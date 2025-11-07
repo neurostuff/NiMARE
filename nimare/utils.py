@@ -381,7 +381,7 @@ def _dict_to_df(id_df, data, key="labels"):
     return df
 
 
-def _dict_to_coordinates(data, masker, space):
+def _dict_to_coordinates(data, space):
     """Load coordinates in NIMADS-format dictionary into DataFrame."""
     # Required columns
     columns = ["id", "study_id", "contrast_id", "x", "y", "z", "space"]

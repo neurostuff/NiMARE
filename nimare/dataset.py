@@ -98,7 +98,8 @@ class Dataset(NiMAREBase):
         # Set up Masker
         if mask is None and target is not None:
             mask = get_template(target, mask="brain")
-        self.masker = mask
+        if mask is not None:
+            self.masker = mask
         self.space = target
 
         self.annotations = _dict_to_df(id_df, data, key="labels")

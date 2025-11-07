@@ -858,7 +858,6 @@ def convert_sleuth_to_dict(text_file):
     if space not in SPACE_OPTS:
         raise ValueError(f"Space {space} unknown. Options supported: {', '.join(SPACE_OPTS)}.")
 
-
     # Split into experiments
     data = data[1:]
     exp_idx = []
@@ -884,8 +883,21 @@ def convert_sleuth_to_dict(text_file):
             n_idx = header_idx[-1]
             study_info = [exp_data[i].replace("//", "").strip() for i in study_info_idx]
             study_info = " ".join(study_info)
-            study_name = study_info.split(":")[0]
-            contrast_name = ":".join(study_info.split(":")[1:]).strip()
+            # Split by semicolon or colon to separate study from analysis details
+            # Both are valid separators (e.g., "Author, Year; Analysis" or "Author: Analysis")
+            # First, try splitting by semicolon, then by colon
+            if ";" in study_info:
+                parts = study_info.split(";", 1)
+                study_name = parts[0].strip()
+                contrast_name = parts[1].strip() if len(parts) > 1 else ""
+            elif ":" in study_info:
+                parts = study_info.split(":", 1)
+                study_name = parts[0].strip()
+                contrast_name = parts[1].strip() if len(parts) > 1 else ""
+            else:
+                # No separator found, entire string is the study name
+                study_name = study_info.strip()
+                contrast_name = "analysis_1"
             sample_size = int(exp_data[n_idx].replace(" ", "").replace("//Subjects=", ""))
             xyz = exp_data[n_idx + 1 :]  # Coords are everything after study info and n
             xyz = [row.split() for row in xyz]
