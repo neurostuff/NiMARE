@@ -262,6 +262,7 @@ def test_StandardizeField(testdata_cbmr_simulated):
 
 
 @pytest.mark.cbmr_importerror
+@pytest.mark.skipif(TORCH_INSTALLED, reason="Torch is installed, ImportError test not applicable")
 def test_cbmr_importerror():
     """Test that ImportErrors are raised when torch is not installed."""
     with pytest.raises(ImportError):
