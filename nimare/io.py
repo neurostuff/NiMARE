@@ -90,9 +90,7 @@ def convert_nimads_to_dataset(studyset, annotation=None):
                 return None
 
             if not isinstance(value, (list, tuple)):
-                LGR.warning(
-                    f"Expected sample_sizes to be list or tuple, but got {type(value)}."
-                )
+                LGR.warning(f"Expected sample_sizes to be list or tuple, but got {type(value)}.")
                 return None
 
             if not value:
@@ -134,9 +132,7 @@ def convert_nimads_to_dataset(studyset, annotation=None):
                 try:
                     return [float(value)]
                 except (ValueError, TypeError):
-                    LGR.warning(
-                        f"Could not convert {value} to numeric from type {type(value)}."
-                    )
+                    LGR.warning(f"Could not convert {value} to numeric from type {type(value)}.")
                     return None
 
         # Sample size priority order:
