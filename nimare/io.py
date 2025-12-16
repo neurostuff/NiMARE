@@ -992,9 +992,12 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
     text_file : :obj:`str` or :obj:`list` of :obj:`str`
         Path to Sleuth-format text file.
         More than one text file may be provided.
-    target : {'ale_2mm', 'mni152_2mm'}, optional
-        Target template space for coordinates. Default is 'ale_2mm'
-        (ALE-specific brainmask in MNI152 2mm space).
+    target : {'ale_2mm', 'mni152_2mm'} or None, optional
+        Target template space for coordinates. If None,
+        coordinates remain in the reference space indicated by the Sleuth
+        file's //Reference= header and no template-based masker is created.
+        If a template name is provided, coordinates are transformed into
+        that space and a corresponding Dataset masker is created.
 
     Returns
     -------
@@ -1004,7 +1007,7 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
     if not isinstance(text_file, str) and not isinstance(text_file, list):
         raise ValueError(f"Unsupported type for parameter 'text_file': {type(text_file)}")
     dset_dict = convert_sleuth_to_dict(text_file)
-    return Dataset(dset_dict, target=None)
+    return Dataset(dset_dict, target=target)
 
 
 def convert_dataset_to_nimads_dict(
