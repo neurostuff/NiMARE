@@ -887,7 +887,6 @@ def convert_sleuth_to_dict(text_file):
         - If no separator is found, treat the entire string as the study
           name and use "analysis_1" as the contrast name.
         """
-
         study_info = study_info.strip()
         if not study_info:
             return "", "analysis_1"

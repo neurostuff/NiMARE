@@ -32,6 +32,7 @@ def test_ALE_missing_sample_sizes_raises_informative_error(testdata_cbma_full):
 
 
 def test_cbma_raises_without_masker():
+    """CBMA estimators require a masker to run."""
     dset_dict = {
         "study1": {
             "contrasts": {"contrast1": {"coords": {"space": "MNI", "x": [0], "y": [0], "z": [0]}}}
@@ -44,6 +45,7 @@ def test_cbma_raises_without_masker():
 
 
 def test_cbma_raises_on_mixed_coordinate_spaces(mni_mask):
+    """CBMA estimators reject datasets with mixed coordinate spaces."""
     dset_dict = {
         "study1": {
             "contrasts": {"contrast1": {"coords": {"space": "MNI", "x": [0], "y": [0], "z": [0]}}}

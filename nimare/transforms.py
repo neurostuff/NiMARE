@@ -354,7 +354,6 @@ class ImagesToCoordinates(NiMAREBase):
         """
         # relevant variables from dataset
         space = dataset.space
-        masker = dataset.masker
         images_df = dataset.images
         metadata = dataset.metadata.copy()
 
