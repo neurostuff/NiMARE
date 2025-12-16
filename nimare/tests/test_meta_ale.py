@@ -1,5 +1,6 @@
 """Test nimare.meta.ale (ALE/SCALE meta-analytic algorithms)."""
 
+import copy
 import os
 import pickle
 
@@ -14,6 +15,20 @@ from nimare.meta import ale
 from nimare.results import MetaResult
 from nimare.tests.utils import get_test_data_path
 from nimare.utils import vox2mm
+
+
+def test_ALE_missing_sample_sizes_raises_informative_error(testdata_cbma_full):
+    """Raise a helpful error listing ids when sample sizes are missing."""
+    dset = copy.deepcopy(testdata_cbma_full)
+    bad_id = dset.coordinates["id"].iloc[0]
+    dset.metadata.loc[dset.metadata["id"] == bad_id, "sample_sizes"] = None
+
+    with pytest.raises(ValueError) as excinfo:
+        ale.ALE(null_method="approximate").fit(dset)
+
+    msg = str(excinfo.value).lower()
+    assert "sample size" in msg
+    assert bad_id.lower() in msg
 
 
 def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):

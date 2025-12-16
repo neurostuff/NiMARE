@@ -148,6 +148,40 @@ class CBMAEstimator(Estimator):
                 target_column="sample_size",
                 filter_func=np.mean,
             )
+            if (
+                hasattr(self.kernel_transformer, "sample_size")
+                and (self.kernel_transformer.sample_size is None)
+                and (getattr(self.kernel_transformer, "fwhm", None) is None)
+            ):
+                coords_df = self.inputs_["coordinates"]
+                if "sample_size" not in coords_df.columns:
+                    raise ValueError(
+                        "This estimator's kernel requires per-experiment sample sizes, but the "
+                        "input coordinates are missing a 'sample_size' column. Add "
+                        "'sample_sizes' to the Dataset metadata or provide a constant kernel "
+                        "size (e.g., ALEKernel(fwhm=...) or ALEKernel(sample_size=...))."
+                    )
+
+                sample_sizes_by_id = coords_df.groupby("id")["sample_size"].mean()
+                missing_ids = sample_sizes_by_id[sample_sizes_by_id.isna()].index.tolist()
+                if missing_ids:
+                    id_word = "id" if len(missing_ids) == 1 else "ids"
+                    verb = "has" if len(missing_ids) == 1 else "have"
+                    max_ids = 25
+                    shown_ids = ", ".join(missing_ids[:max_ids])
+                    suffix = (
+                        f", ... (+{len(missing_ids) - max_ids} more)"
+                        if len(missing_ids) > max_ids
+                        else ""
+                    )
+                    raise ValueError(
+                        "This estimator's kernel requires per-experiment sample sizes, but "
+                        f"{len(missing_ids)} experiment {id_word} {verb} no reported sample size: "
+                        f"{shown_ids}{suffix}. Populate the Dataset metadata field "
+                        "'sample_sizes' for these ids (or fix the source conversion), or provide "
+                        "a constant kernel size (e.g., ALEKernel(fwhm=...) or "
+                        "ALEKernel(sample_size=...))."
+                    )
 
     def _fit(self, dataset):
         """Perform coordinate-based meta-analysis on dataset.
