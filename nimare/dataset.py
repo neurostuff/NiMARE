@@ -187,12 +187,12 @@ class Dataset(NiMAREBase):
 
         Defines the space and location of the area of interest (e.g., 'brain').
         """
-        return self.__masker
+        return getattr(self, "_Dataset__masker", None)
 
     @masker.setter
     def masker(self, mask):
         mask = get_masker(mask)
-        if hasattr(self, "masker") and not np.array_equal(
+        if (self.masker is not None) and not np.array_equal(
             self.masker.mask_img.affine, mask.mask_img.affine
         ):
             # This message does not have an associated effect,
@@ -341,11 +341,7 @@ class Dataset(NiMAREBase):
             new_df = new_df.where(~new_df.isna(), None)
             setattr(new_dset, attribute, new_df)
 
-        new_dset.coordinates = _transform_coordinates_to_space(
-            new_dset.coordinates,
-            self.masker,
-            self.space,
-        )
+        new_dset.coordinates = _transform_coordinates_to_space(new_dset.coordinates, self.space)
 
         return new_dset
 

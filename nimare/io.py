@@ -874,6 +874,50 @@ def convert_sleuth_to_dict(text_file):
     end_idx = start_idx[1:] + [len(data) + 1]
     split_idx = zip(start_idx, end_idx)
 
+    def _parse_sleuth_study_info(study_info):
+        """Parse Sleuth header text into study and contrast names.
+
+        Heuristics:
+        - Prefer splitting on the first ";" or ":" that occurs *after* a
+          four-digit year (e.g., "Smith et al., 2010; Condition"). This
+          avoids splitting on separators that might appear in journal titles
+          or other parts of the citation.
+        - If no year is present, fall back to the first ";" or ":" in the
+          string (backwards compatible with the original behavior).
+        - If no separator is found, treat the entire string as the study
+          name and use "analysis_1" as the contrast name.
+        """
+
+        study_info = study_info.strip()
+        if not study_info:
+            return "", "analysis_1"
+
+        # Prefer a separator that appears after a year-like token.
+        year_match = re.search(r"(19|20)\d{2}", study_info)
+        if year_match is not None:
+            candidate_indices = []
+            for sep in [";", ":"]:
+                idx = study_info.find(sep, year_match.end())
+                if idx != -1:
+                    candidate_indices.append(idx)
+
+            if candidate_indices:
+                split_idx = min(candidate_indices)
+                left = study_info[:split_idx].strip()
+                right = study_info[split_idx + 1 :].strip()
+                return left or study_info, right or "analysis_1"
+
+        # Fallback: first semicolon, then colon anywhere in the string.
+        for sep in [";", ":"]:
+            if sep in study_info:
+                left, _, right = study_info.partition(sep)
+                left = left.strip()
+                right = right.strip()
+                return left or study_info, right or "analysis_1"
+
+        # No usable separator found.
+        return study_info, "analysis_1"
+
     dset_dict = {}
     for i_exp, exp_idx in enumerate(split_idx):
         exp_data = data[exp_idx[0] : exp_idx[1]]
@@ -883,21 +927,7 @@ def convert_sleuth_to_dict(text_file):
             n_idx = header_idx[-1]
             study_info = [exp_data[i].replace("//", "").strip() for i in study_info_idx]
             study_info = " ".join(study_info)
-            # Split by semicolon or colon to separate study from analysis details
-            # Both are valid separators (e.g., "Author, Year; Analysis" or "Author: Analysis")
-            # First, try splitting by semicolon, then by colon
-            if ";" in study_info:
-                parts = study_info.split(";", 1)
-                study_name = parts[0].strip()
-                contrast_name = parts[1].strip() if len(parts) > 1 else ""
-            elif ":" in study_info:
-                parts = study_info.split(":", 1)
-                study_name = parts[0].strip()
-                contrast_name = parts[1].strip() if len(parts) > 1 else ""
-            else:
-                # No separator found, entire string is the study name
-                study_name = study_info.strip()
-                contrast_name = "analysis_1"
+            study_name, contrast_name = _parse_sleuth_study_info(study_info)
             sample_size = int(exp_data[n_idx].replace(" ", "").replace("//Subjects=", ""))
             xyz = exp_data[n_idx + 1 :]  # Coords are everything after study info and n
             xyz = [row.split() for row in xyz]

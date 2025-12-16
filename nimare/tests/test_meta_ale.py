@@ -31,6 +31,33 @@ def test_ALE_missing_sample_sizes_raises_informative_error(testdata_cbma_full):
     assert bad_id.lower() in msg
 
 
+def test_cbma_raises_without_masker():
+    dset_dict = {
+        "study1": {
+            "contrasts": {"contrast1": {"coords": {"space": "MNI", "x": [0], "y": [0], "z": [0]}}}
+        }
+    }
+    dset = nimare.dataset.Dataset(dset_dict, target=None, mask=None)
+
+    with pytest.raises(ValueError, match=r"masker is required"):
+        ale.ALE(null_method="approximate").fit(dset)
+
+
+def test_cbma_raises_on_mixed_coordinate_spaces(mni_mask):
+    dset_dict = {
+        "study1": {
+            "contrasts": {"contrast1": {"coords": {"space": "MNI", "x": [0], "y": [0], "z": [0]}}}
+        },
+        "study2": {
+            "contrasts": {"contrast1": {"coords": {"space": "TAL", "x": [0], "y": [0], "z": [0]}}}
+        },
+    }
+    dset = nimare.dataset.Dataset(dset_dict, target=None, mask=None)
+
+    with pytest.raises(ValueError, match=r"Mixed coordinate spaces detected"):
+        ale.ALE(null_method="approximate", mask=mni_mask).fit(dset)
+
+
 def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
     """Unit test for ALE with approximate null_method."""
     tmpdir = tmp_path_factory.mktemp("test_ALE_approximate_null_unit")

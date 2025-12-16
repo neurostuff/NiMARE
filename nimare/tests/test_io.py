@@ -272,6 +272,50 @@ def test_convert_sleuth_to_dataset_smoke():
         io.convert_sleuth_to_dataset(sleuth_file5)
 
 
+@pytest.mark.parametrize(
+    "header_lines,expected_study,expected_contrast",
+    [
+        # Simple colon separator.
+        (["Smith et al., 2010: Condition A"], "Smith et al., 2010", "Condition A"),
+        # Simple semicolon separator.
+        (["Smith et al., 2010; Condition A"], "Smith et al., 2010", "Condition A"),
+        # Year in the middle, separator after year.
+        (
+            ["Journal of Neuroscience: Methods Smith et al., 2010; Condition A"],
+            "Journal of Neuroscience: Methods Smith et al., 2010",
+            "Condition A",
+        ),
+        # No year, fall back to first semicolon.
+        (["StudyName; ExperimentName"], "StudyName", "ExperimentName"),
+        # No separator at all, use default contrast name.
+        (["StudyName Only"], "StudyName Only", "analysis_1"),
+        # Multi-line header collapsed into one, separator after year.
+        (
+            ["Smith et al.", "2010; Condition A"],
+            "Smith et al. 2010",
+            "Condition A",
+        ),
+    ],
+)
+def test_convert_sleuth_to_dict_study_info_parsing(
+    tmp_path, header_lines, expected_study, expected_contrast
+):
+    """Study/contrast names are parsed robustly from Sleuth headers."""
+    sleuth_path = tmp_path / "test_sleuth_header.txt"
+    lines = ["// Reference = MNI"]
+    for line in header_lines:
+        lines.append(f"// {line}")
+    lines.append("// Subjects = 10")
+    # Single valid coordinate row.
+    lines.append("0 0 0")
+    sleuth_path.write_text("\n".join(lines))
+
+    dset_dict = io.convert_sleuth_to_dict(str(sleuth_path))
+    assert list(dset_dict.keys()) == [expected_study]
+    contrasts = dset_dict[expected_study]["contrasts"]
+    assert list(contrasts.keys()) == [expected_contrast]
+
+
 def test_convert_sleuth_to_json_smoke():
     """Smoke test for Sleuth text file conversion."""
     out_file = os.path.abspath("temp.json")
