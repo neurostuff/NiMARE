@@ -381,7 +381,7 @@ def _dict_to_df(id_df, data, key="labels"):
     return df
 
 
-def _dict_to_coordinates(data, masker, space):
+def _dict_to_coordinates(data, space):
     """Load coordinates in NIMADS-format dictionary into DataFrame."""
     # Required columns
     columns = ["id", "study_id", "contrast_id", "x", "y", "z", "space"]
@@ -446,26 +446,24 @@ def _dict_to_coordinates(data, masker, space):
     # replace nan with none
     df = df.where(pd.notnull(df), None)
     df[["x", "y", "z"]] = df[["x", "y", "z"]].astype(float)
-    df = _transform_coordinates_to_space(df, masker, space)
+    if space is not None:
+        df = _transform_coordinates_to_space(df, space)
     return df
 
 
-def _transform_coordinates_to_space(df, masker, space):
-    """Convert xyz coordinates in a DataFrame to ijk indices for a given target space.
+def _transform_coordinates_to_space(df, space):
+    """Convert xyz coordinates in a DataFrame to xyz indices for a given target space.
 
     Parameters
     ----------
     df : :obj:`pandas.DataFrame`
-    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
-        Masker object defining the space and location of the area of interest
-        (e.g., 'brain').
     space : :obj:`str`
         String describing the stereotactic space and resolution of the masker.
 
     Returns
     -------
     df : :obj:`pandas.DataFrame`
-        DataFrame with IJK columns either added or overwritten.
+        DataFrame with XYZ columns either added or overwritten.
     """
     # Now to apply transformations!
     if "mni" in space.lower() or "ale" in space.lower():

@@ -354,7 +354,6 @@ class ImagesToCoordinates(NiMAREBase):
         """
         # relevant variables from dataset
         space = dataset.space
-        masker = dataset.masker
         images_df = dataset.images
         metadata = dataset.metadata.copy()
 
@@ -432,7 +431,7 @@ class ImagesToCoordinates(NiMAREBase):
             }
 
         # only the generated coordinates ('demolish')
-        coordinates_df = _dict_to_coordinates(coordinates_dict, masker, space)
+        coordinates_df = _dict_to_coordinates(coordinates_dict, space)
         meta_df = _dict_to_df(
             pd.DataFrame(dataset._ids),
             coordinates_dict,

@@ -93,13 +93,19 @@ class Dataset(NiMAREBase):
         self._ids = id_df.index.values
 
         # Set up Masker
-        if mask is None:
+        if mask is None and target is not None:
             mask = get_template(target, mask="brain")
-        self.masker = mask
+        if mask is not None:
+            self.masker = mask
+        if mask is None and target is None:
+            warnings.warn(
+                "No mask or target space specified. Masker will be None, "
+                "and Dataset space will be undefined."
+            )
         self.space = target
 
         self.annotations = _dict_to_df(id_df, data, key="labels")
-        self.coordinates = _dict_to_coordinates(data, masker=self.masker, space=self.space)
+        self.coordinates = _dict_to_coordinates(data, space=self.space)
         self.images = _dict_to_df(id_df, data, key="images")
         self.metadata = _dict_to_df(id_df, data, key="metadata")
         self.texts = _dict_to_df(id_df, data, key="text")
@@ -181,12 +187,12 @@ class Dataset(NiMAREBase):
 
         Defines the space and location of the area of interest (e.g., 'brain').
         """
-        return self.__masker
+        return getattr(self, "_Dataset__masker", None)
 
     @masker.setter
     def masker(self, mask):
         mask = get_masker(mask)
-        if hasattr(self, "masker") and not np.array_equal(
+        if (self.masker is not None) and not np.array_equal(
             self.masker.mask_img.affine, mask.mask_img.affine
         ):
             # This message does not have an associated effect,
@@ -335,11 +341,7 @@ class Dataset(NiMAREBase):
             new_df = new_df.where(~new_df.isna(), None)
             setattr(new_dset, attribute, new_df)
 
-        new_dset.coordinates = _transform_coordinates_to_space(
-            new_dset.coordinates,
-            self.masker,
-            self.space,
-        )
+        new_dset.coordinates = _transform_coordinates_to_space(new_dset.coordinates, self.space)
 
         return new_dset
 

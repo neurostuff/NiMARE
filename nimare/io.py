@@ -874,6 +874,49 @@ def convert_sleuth_to_dict(text_file):
     end_idx = start_idx[1:] + [len(data) + 1]
     split_idx = zip(start_idx, end_idx)
 
+    def _parse_sleuth_study_info(study_info):
+        """Parse Sleuth header text into study and contrast names.
+
+        Heuristics:
+        - Prefer splitting on the first ";" or ":" that occurs *after* a
+          four-digit year (e.g., "Smith et al., 2010; Condition"). This
+          avoids splitting on separators that might appear in journal titles
+          or other parts of the citation.
+        - If no year is present, fall back to the first ";" or ":" in the
+          string (backwards compatible with the original behavior).
+        - If no separator is found, treat the entire string as the study
+          name and use "analysis_1" as the contrast name.
+        """
+        study_info = study_info.strip()
+        if not study_info:
+            return "", "analysis_1"
+
+        # Prefer a separator that appears after a year-like token.
+        year_match = re.search(r"(19|20)\d{2}", study_info)
+        if year_match is not None:
+            candidate_indices = []
+            for sep in [";", ":"]:
+                idx = study_info.find(sep, year_match.end())
+                if idx != -1:
+                    candidate_indices.append(idx)
+
+            if candidate_indices:
+                split_idx = min(candidate_indices)
+                left = study_info[:split_idx].strip()
+                right = study_info[split_idx + 1 :].strip()
+                return left or study_info, right or "analysis_1"
+
+        # Fallback: first semicolon, then colon anywhere in the string.
+        for sep in [";", ":"]:
+            if sep in study_info:
+                left, _, right = study_info.partition(sep)
+                left = left.strip()
+                right = right.strip()
+                return left or study_info, right or "analysis_1"
+
+        # No usable separator found.
+        return study_info, "analysis_1"
+
     dset_dict = {}
     for i_exp, exp_idx in enumerate(split_idx):
         exp_data = data[exp_idx[0] : exp_idx[1]]
@@ -883,8 +926,7 @@ def convert_sleuth_to_dict(text_file):
             n_idx = header_idx[-1]
             study_info = [exp_data[i].replace("//", "").strip() for i in study_info_idx]
             study_info = " ".join(study_info)
-            study_name = study_info.split(":")[0]
-            contrast_name = ":".join(study_info.split(":")[1:]).strip()
+            study_name, contrast_name = _parse_sleuth_study_info(study_info)
             sample_size = int(exp_data[n_idx].replace(" ", "").replace("//Subjects=", ""))
             xyz = exp_data[n_idx + 1 :]  # Coords are everything after study info and n
             xyz = [row.split() for row in xyz]
@@ -950,9 +992,12 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
     text_file : :obj:`str` or :obj:`list` of :obj:`str`
         Path to Sleuth-format text file.
         More than one text file may be provided.
-    target : {'ale_2mm', 'mni152_2mm'}, optional
-        Target template space for coordinates. Default is 'ale_2mm'
-        (ALE-specific brainmask in MNI152 2mm space).
+    target : {'ale_2mm', 'mni152_2mm'} or None, optional
+        Target template space for coordinates. If None,
+        coordinates remain in the reference space indicated by the Sleuth
+        file's //Reference= header and no template-based masker is created.
+        If a template name is provided, coordinates are transformed into
+        that space and a corresponding Dataset masker is created.
 
     Returns
     -------
@@ -1123,7 +1168,7 @@ def convert_dataset_to_studyset(
 def convert_sleuth_to_nimads_dict(
     text_file: Union[str, Path, Sequence[Union[str, Path]]],
     *,
-    target: str = "MNI",
+    target: str = None,
     studyset_id: str = None,
     studyset_name: str = "",
 ) -> Dict[str, Any]:
@@ -1134,10 +1179,12 @@ def convert_sleuth_to_nimads_dict(
     text_file : :obj:`str`, :obj:`pathlib.Path`, or sequence of such
         Path(s) to Sleuth text file(s).
     target : :obj:`str`, optional
-        Target space for Dataset loader. Accepts common dataset targets
-        (e.g., "ale_2mm", "mni152_2mm") but also user-friendly strings like
-        "MNI", "TAL", or variants such as "Talaraich". These are
-        normalized to a Dataset-supported template string internally.
+        Target space for Dataset loader. If None (default), uses the space
+        specified in the Sleuth file's //Reference= tag without conversion.
+        Accepts common dataset targets (e.g., "ale_2mm", "mni152_2mm") or
+        user-friendly strings like "MNI", "TAL", or variants such as
+        "Talairach". These are normalized to a Dataset-supported template
+        string internally. Default is None.
     studyset_id : :obj:`str`, optional
         Identifier for the resulting Studyset. Default is 'nimads_from_sleuth'.
     studyset_name : :obj:`str`, optional
@@ -1148,6 +1195,7 @@ def convert_sleuth_to_nimads_dict(
     dict
         NIMADS Studyset dictionary.
     """
+    # Original behavior when target is specified
     # Normalize incoming target string to dataset template keys accepted by
     # Dataset (mni152_2mm or ale_2mm). Accept common variants including misspellings.
     try:
@@ -1165,8 +1213,7 @@ def convert_sleuth_to_nimads_dict(
     elif "mni" in tgt_str:
         ds_target = "mni152_2mm"
     else:
-        # Fallback to ALE 2mm when unknown
-        ds_target = "ale_2mm"
+        ds_target = None
 
     dset = convert_sleuth_to_dataset(text_file, target=ds_target)
     return convert_dataset_to_nimads_dict(

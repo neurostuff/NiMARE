@@ -120,6 +120,28 @@ class CBMAEstimator(Estimator):
             and (3) sample sizes may be added to the "coordinates" key, as needed.
         """
         masker = self.masker or dataset.masker
+        if masker is None:
+            raise ValueError(
+                "A masker is required for coordinate-based meta-analysis. "
+                "Provide a `mask` to the Estimator (e.g., ALE(mask=...)) or initialize the "
+                "Dataset with a `target` and/or `mask` so `dataset.masker` is defined."
+            )
+
+        coord_spaces = self.inputs_["coordinates"]["space"].dropna().unique()
+        if coord_spaces.size == 0:
+            raise ValueError(
+                "Coordinate space information is missing from the Dataset. "
+                "Ensure the Dataset coordinates include a valid 'space' column."
+            )
+        if coord_spaces.size > 1:
+            shown = ", ".join(map(str, coord_spaces[:10]))
+            suffix = "..." if coord_spaces.size > 10 else ""
+            raise ValueError(
+                "Mixed coordinate spaces detected in the Dataset (space column contains more than "
+                f"one value: {shown}{suffix}). Provide a target space when creating the Dataset "
+                "to harmonize coordinates, or convert coordinates to a common space before "
+                "running a meta-analysis."
+            )
 
         mask_img = masker.mask_img or masker.labels_img
         if isinstance(mask_img, str):
