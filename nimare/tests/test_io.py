@@ -122,6 +122,69 @@ def test_analysis_to_dict_sample_size(
         )
 
 
+def test_analysis_to_dict_sample_size_prioritizes_annotations(example_nimads_studyset):
+    """sample_size in annotations takes priority over metadata."""
+    studyset = Studyset(example_nimads_studyset)
+    study = next(study for study in studyset.studies if study.analyses)
+    analysis = study.analyses[0]
+
+    study.metadata.clear()
+    analysis.metadata.clear()
+    analysis.metadata["sample_size"] = 20
+    study.metadata["sample_size"] = 10
+    analysis.annotations = {"annot": {"sample_size": 30}}
+
+    dset = io.convert_nimads_to_dataset(studyset)
+
+    analysis_id = f"{study.id}-{analysis.id}"
+    md_row = dset.metadata.loc[dset.metadata["id"] == analysis_id].iloc[0]
+    assert md_row["sample_sizes"] == [30]
+
+
+def test_analysis_to_dict_sample_sizes_prioritizes_annotations(example_nimads_studyset):
+    """sample_sizes in annotations takes priority over metadata when sample_size is absent."""
+    studyset = Studyset(example_nimads_studyset)
+    study = next(study for study in studyset.studies if study.analyses)
+    analysis = study.analyses[0]
+
+    study.metadata.clear()
+    analysis.metadata.clear()
+    analysis.metadata["sample_sizes"] = [2, 20]
+    study.metadata["sample_sizes"] = [1, 10]
+    analysis.annotations = {"annot": {"sample_sizes": [40, 41]}}
+
+    dset = io.convert_nimads_to_dataset(studyset)
+
+    analysis_id = f"{study.id}-{analysis.id}"
+    md_row = dset.metadata.loc[dset.metadata["id"] == analysis_id].iloc[0]
+    assert md_row["sample_sizes"] == [40, 41]
+
+
+def test_analysis_to_dict_annotation_sample_size_falls_back_to_metadata(
+    example_nimads_studyset, caplog
+):
+    """Invalid annotation sample size values fall back to analysis/study metadata."""
+    studyset = Studyset(example_nimads_studyset)
+    study = next(study for study in studyset.studies if study.analyses)
+    analysis = study.analyses[0]
+
+    study.metadata.clear()
+    analysis.metadata.clear()
+    analysis.metadata["sample_size"] = 20
+    analysis.annotations = {"annot": {"sample_size": "not_a_number"}}
+
+    with caplog.at_level("WARNING"):
+        dset = io.convert_nimads_to_dataset(studyset)
+
+    analysis_id = f"{study.id}-{analysis.id}"
+    md_row = dset.metadata.loc[dset.metadata["id"] == analysis_id].iloc[0]
+    assert md_row["sample_sizes"] == [20]
+    assert any(
+        "sample_size" in record.message or "sample_sizes" in record.message
+        for record in caplog.records
+    )
+
+
 @pytest.mark.parametrize(
     "annotation_mod,expect_success,expect_typeerror",
     [

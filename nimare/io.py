@@ -70,70 +70,99 @@ def convert_nimads_to_dataset(studyset, annotation=None):
             },
         }
 
-        sample_sizes = analysis.metadata.get("sample_sizes", None) or study.metadata.get(
-            "sample_sizes", None
-        )
-        sample_size = analysis.metadata.get("sample_size", None) or study.metadata.get(
-            "sample_size", None
-        )
-
-        # Validate sample sizes if present
-        if sample_sizes is not None and not isinstance(sample_sizes, (list, tuple)):
-            LGR.warning(
-                f"Expected sample_sizes to be list or tuple, but got {type(sample_sizes)}."
-            )
-            sample_sizes = None
-        elif sample_sizes is not None:
-            # Validate each sample size in the list
-            for i, ss in enumerate(sample_sizes):
-                if not isinstance(ss, (int, float)):
-                    LGR.warning(
-                        f"Expected sample_sizes[{i}] to be numeric, but got {type(ss)}."
-                        " Attempting to convert to numeric."
-                    )
-                try:
-                    sample_sizes[i] = int(ss)
-                except (ValueError, TypeError):
-                    try:
-                        sample_sizes[i] = float(ss)
-                    except (ValueError, TypeError):
-                        LGR.warning(f"Could not convert {ss} to numeric from type {type(ss)}.")
-                        sample_sizes = None
-                        break
-
-        if not sample_sizes and sample_size:
-            # Validate single sample size if present
-            if not isinstance(sample_size, (int, float)):
-                LGR.warning(
-                    f"Expected sample_size to be numeric, but got {type(sample_size)}."
-                    " Attempting to convert to numeric."
-                )
-            try:
-                sample_sizes = [int(sample_size)]
-            except (ValueError, TypeError):
-                try:
-                    sample_sizes = [float(sample_size)]
-                except (ValueError, TypeError):
-                    LGR.warning(
-                        f"Could not convert {sample_size} to"
-                        f" numeric from type {type(sample_size)}."
-                    )
-                    sample_sizes = None
-        if sample_sizes:
-            result["metadata"]["sample_sizes"] = sample_sizes
-
         # Handle annotations if present
+        labels = None
         if analysis.annotations:
-            result["labels"] = {}
+            labels = {}
             try:
                 for annotation in analysis.annotations.values():
                     if not isinstance(annotation, dict):
                         raise TypeError(
                             f"Expected annotation to be dict, but got {type(annotation)}"
                         )
-                    result["labels"].update(annotation)
+                    labels.update(annotation)
             except (TypeError, AttributeError) as e:
                 raise ValueError(f"Invalid annotation format: {str(e)}") from e
+            result["labels"] = labels
+
+        def _coerce_sample_sizes_list(value):
+            if value is None:
+                return None
+
+            if not isinstance(value, (list, tuple)):
+                LGR.warning(
+                    f"Expected sample_sizes to be list or tuple, but got {type(value)}."
+                )
+                return None
+
+            if not value:
+                return None
+
+            coerced = []
+            for i, sample_size_value in enumerate(value):
+                if not isinstance(sample_size_value, (int, float)):
+                    LGR.warning(
+                        f"Expected sample_sizes[{i}] to be numeric, but got "
+                        f"{type(sample_size_value)}. Attempting to convert to numeric."
+                    )
+                try:
+                    coerced.append(int(sample_size_value))
+                except (ValueError, TypeError):
+                    try:
+                        coerced.append(float(sample_size_value))
+                    except (ValueError, TypeError):
+                        LGR.warning(
+                            f"Could not convert {sample_size_value} to numeric from type "
+                            f"{type(sample_size_value)}."
+                        )
+                        return None
+
+            return coerced
+
+        def _coerce_sample_size_scalar(value):
+            if not value:
+                return None
+
+            if not isinstance(value, (int, float)):
+                LGR.warning(
+                    f"Expected sample_size to be numeric, but got {type(value)}."
+                    " Attempting to convert to numeric."
+                )
+            try:
+                return [int(value)]
+            except (ValueError, TypeError):
+                try:
+                    return [float(value)]
+                except (ValueError, TypeError):
+                    LGR.warning(
+                        f"Could not convert {value} to numeric from type {type(value)}."
+                    )
+                    return None
+
+        # Sample size priority order:
+        # 1) sample_size in annotations
+        # 2) sample_sizes in annotations
+        # 3) sample_size(s) in analysis metadata
+        # 4) sample_size(s) in study metadata
+        sample_sizes = None
+        candidates = [
+            ("sample_size", labels.get("sample_size") if labels else None),
+            ("sample_sizes", labels.get("sample_sizes") if labels else None),
+            ("sample_sizes", analysis.metadata.get("sample_sizes")),
+            ("sample_size", analysis.metadata.get("sample_size")),
+            ("sample_sizes", study.metadata.get("sample_sizes")),
+            ("sample_size", study.metadata.get("sample_size")),
+        ]
+
+        for key, raw_value in candidates:
+            if key == "sample_sizes":
+                sample_sizes = _coerce_sample_sizes_list(raw_value)
+            else:
+                sample_sizes = _coerce_sample_size_scalar(raw_value)
+
+            if sample_sizes:
+                result["metadata"]["sample_sizes"] = sample_sizes
+                break
 
         return result
 
