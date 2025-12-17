@@ -2,7 +2,27 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.6.1...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.6.2...HEAD)
+
+## [0.6.2](https://github.com/neurostuff/NiMARE/compare/0.6.1...0.6.2) - 2025-12-17
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+When you use sample size for ALE, we are much clearer with our error message about which studies are missing the necessary metadata.
+
+We also now allow for a transformless conversion between sleuth file to NiMARE dataset. Before, all the coordinates were always converted into a single space. This also adds error handling around trying to use a mixed space dataset with a CBMA algorithm.
+
+#### 🐛 Bug Fixes
+
+* [FIX] sample size handling by @jdkent in https://github.com/neurostuff/NiMARE/pull/951
+* FIX: Sleuth to NiMADS by @adelavega in https://github.com/neurostuff/NiMARE/pull/949
+
+#### Other Changes
+
+* Add information on Neurosynth-Compose by @tsalo in https://github.com/neurostuff/NiMARE/pull/948
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.6.0...0.6.2
 
 ## [0.6.1](https://github.com/neurostuff/NiMARE/compare/0.5.5...0.6.1) - 2025-10-08
 
