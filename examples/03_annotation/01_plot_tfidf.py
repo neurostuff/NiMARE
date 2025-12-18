@@ -10,6 +10,8 @@ Perform simple term count or tf-idf value extraction from texts stored in a Data
 """
 import os
 
+import pandas as pd
+
 from nimare import annotate, dataset, utils
 
 ###############################################################################
@@ -50,3 +52,19 @@ tfidf_df = annotate.text.generate_counts(
     min_df=0.01,
 )
 tfidf_df.head(5)
+
+###############################################################################
+# Add annotations to the Dataset
+# -----------------------------------------------------------------------------
+# Now we can add the generated annotations back into the Dataset object.
+# The annotation functions return DataFrames with 'id' as the index, so we need
+# to reset the index to make 'id' a column before assigning to the Dataset.
+#
+# This will replace any existing annotations. If you want to add to existing
+# annotations instead of replacing them, you can merge the DataFrames:
+# ``dset.annotations = pd.merge(dset.annotations, tfidf_df.reset_index(), on='id', how='left')``
+dset.annotations = tfidf_df.reset_index()
+
+# Now the Dataset has the new annotations
+print(f"Dataset now has {len(dset.annotations.columns)} annotation columns")
+dset.annotations.head(5)
