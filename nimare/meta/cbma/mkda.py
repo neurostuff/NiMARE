@@ -840,50 +840,50 @@ class MKDAChi2(PairwiseCBMAEstimator):
                 "This may occur if the estimator was not properly fitted or if the result "
                 "was loaded from a file without the estimator's full state."
             )
-        
+
         if "coordinates1" not in self.inputs_:
             raise ValueError(
                 "Missing 'coordinates1' in estimator inputs_. "
                 "This may occur if the estimator was not properly fitted or if the result "
                 "was loaded from a file without the estimator's full state."
             )
-        
+
         if "coordinates2" not in self.inputs_:
             raise ValueError(
                 "Missing 'coordinates2' in estimator inputs_. "
                 "This may occur if the estimator was not properly fitted or if the result "
                 "was loaded from a file without the estimator's full state."
             )
-        
+
         iter_df1 = self.inputs_["coordinates1"]
         iter_df2 = self.inputs_["coordinates2"]
-        
+
         if iter_df1 is None or not hasattr(iter_df1, "shape"):
             raise ValueError(
                 f"Invalid 'coordinates1' in estimator inputs_: expected pandas DataFrame, "
                 f"got {type(iter_df1)}. This may occur if the estimator's state was corrupted "
                 "or if the result was loaded from a file without the estimator's full state."
             )
-        
+
         if iter_df2 is None or not hasattr(iter_df2, "shape"):
             raise ValueError(
                 f"Invalid 'coordinates2' in estimator inputs_: expected pandas DataFrame, "
                 f"got {type(iter_df2)}. This may occur if the estimator's state was corrupted "
                 "or if the result was loaded from a file without the estimator's full state."
             )
-        
+
         if len(iter_df1) == 0:
             raise ValueError(
                 "The 'coordinates1' DataFrame (first dataset) in estimator inputs_ is empty. "
                 "Cannot perform Monte Carlo correction without coordinates."
             )
-        
+
         if len(iter_df2) == 0:
             raise ValueError(
                 "The 'coordinates2' DataFrame (second dataset) in estimator inputs_ is empty. "
                 "Cannot perform Monte Carlo correction without coordinates."
             )
-        
+
         rand_idx1 = np.random.choice(null_xyz.shape[0], size=(iter_df1.shape[0], n_iters))
         rand_xyz1 = null_xyz[rand_idx1, :]
         iter_xyzs1 = np.split(rand_xyz1, rand_xyz1.shape[1], axis=1)
