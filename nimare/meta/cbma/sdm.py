@@ -3,6 +3,7 @@
 import logging
 
 import numpy as np
+import pandas as pd
 import sparse
 from joblib import Memory
 from scipy import stats
@@ -255,6 +256,10 @@ class SDMPSI(SDM):
         The kernel used by this estimator.
     """
 
+    # Constants for subject-level simulation
+    _BASE_NOISE_STD = 0.1  # Minimum noise standard deviation
+    _NOISE_SCALE_FACTOR = 0.2  # Noise scaling relative to effect size
+
     def __init__(
         self,
         kernel_transformer=SDMKernel,
@@ -352,8 +357,10 @@ class SDMPSI(SDM):
         # Each subject's image should have mean equal to the study map
         # with added noise that preserves spatial correlation
 
-        # Base noise level
-        noise_std = np.maximum(0.1, np.abs(study_map) * 0.2)
+        # Base noise level using class constants
+        noise_std = np.maximum(
+            self._BASE_NOISE_STD, np.abs(study_map) * self._NOISE_SCALE_FACTOR
+        )
 
         # Generate correlated noise using spatial smoothing
         subject_images = np.zeros((n_subjects, n_voxels))
@@ -403,8 +410,9 @@ class SDMPSI(SDM):
         total_var = within_var + (1 + 1 / n_imp) * between_var
 
         # Compute degrees of freedom using Barnard-Rubin adjustment
-        # This is a simplified version
-        dof = (n_imp - 1) * (1 + within_var / ((1 + 1 / n_imp) * between_var)) ** 2
+        # Protect against division by zero
+        epsilon = np.finfo(float).eps
+        dof = (n_imp - 1) * (1 + within_var / ((1 + 1 / n_imp) * between_var + epsilon)) ** 2
 
         # Compute standard error and z-scores
         se = np.sqrt(total_var)
@@ -517,8 +525,6 @@ class SDMPSI(SDM):
         }
 
         # Store additional information as a DataFrame
-        import pandas as pd
-
         tables = {
             "imputation_info": pd.DataFrame(
                 {
