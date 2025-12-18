@@ -20,4 +20,3 @@ def test_FWECorrector_montecarlo_custom_parameters():
 
     assert corr.parameters["n_iters"] == 10
     assert corr.parameters["n_cores"] == 2
-
