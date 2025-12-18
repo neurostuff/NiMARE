@@ -55,6 +55,22 @@ series = series[series > 0]
 columns = series.index.tolist()
 
 ###############################################################################
+# Add annotations to the Dataset
+# -----------------------------------------------------------------------------
+# Now we can add the generated annotations back into the Dataset object.
+# We'll use the expanded counts since they provide more comprehensive annotations.
+# The annotation functions return DataFrames with 'id' as the index, so we need
+# to reset the index to make 'id' a column before assigning to the Dataset.
+#
+# This will replace any existing annotations. If you want to add to existing
+# annotations instead of replacing them, you can merge the DataFrames:
+# ``dset.annotations = pd.merge(dset.annotations, expanded_df.reset_index(), on='id', how='left')``
+dset.annotations = expanded_df.reset_index()
+
+# Now the Dataset has the new annotations
+print(f"Dataset now has {len(dset.annotations.columns)} annotation columns")
+
+###############################################################################
 # Make some plots
 # -----------------------------------------------------------------------------
 # We will reduce the dataframes to only columns with at least one count to make
