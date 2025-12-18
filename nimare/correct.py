@@ -285,7 +285,12 @@ class FWECorrector(Corrector):
             raise ValueError(f"Unsupported FWE correction method '{method}'")
 
         if method == "montecarlo":
-            kwargs.update({"n_iters": n_iters, "n_cores": n_cores})
+            # Only override estimator defaults when values are explicitly provided.
+            # If ``n_iters`` is None, defer to the estimator's own default, which may vary
+            # across estimators (e.g., MKDAChi2 vs. CBMAEstimator).
+            if n_iters is not None:
+                kwargs["n_iters"] = n_iters
+            kwargs["n_cores"] = n_cores
 
         self.method = method
         self.parameters = kwargs
