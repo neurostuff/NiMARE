@@ -1,7 +1,7 @@
 """Coordinate-, image-, and effect-size-based meta-analysis estimators."""
 
 from . import ibma, kernel
-from .cbma import ALE, KDA, SCALE, ALESubtraction, MKDAChi2, MKDADensity, ale, mkda
+from .cbma import ALE, KDA, SCALE, SDM, ALESubtraction, MKDAChi2, MKDADensity, ale, mkda, sdm
 from .ibma import (
     DerSimonianLaird,
     Fishers,
@@ -12,7 +12,7 @@ from .ibma import (
     VarianceBasedLikelihood,
     WeightedLeastSquares,
 )
-from .kernel import ALEKernel, KDAKernel, MKDAKernel
+from .kernel import ALEKernel, KDAKernel, MKDAKernel, SDMKernel
 
 __all__ = [
     "ALE",
@@ -21,6 +21,7 @@ __all__ = [
     "MKDADensity",
     "MKDAChi2",
     "KDA",
+    "SDM",
     "DerSimonianLaird",
     "Fishers",
     "Hedges",
@@ -32,8 +33,10 @@ __all__ = [
     "MKDAKernel",
     "ALEKernel",
     "KDAKernel",
+    "SDMKernel",
     "kernel",
     "ibma",
     "ale",
     "mkda",
+    "sdm",
 ]
