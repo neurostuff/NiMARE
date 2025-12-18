@@ -2,6 +2,6 @@
 
 from .ale import ALE, SCALE, ALESubtraction
 from .mkda import KDA, MKDAChi2, MKDADensity
-from .sdm import SDM
+from .sdm import SDM, SDMPSI
 
-__all__ = ["ALE", "ALESubtraction", "SCALE", "MKDADensity", "MKDAChi2", "KDA", "SDM"]
+__all__ = ["ALE", "ALESubtraction", "SCALE", "MKDADensity", "MKDAChi2", "KDA", "SDM", "SDMPSI"]
