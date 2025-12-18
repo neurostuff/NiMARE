@@ -5,6 +5,7 @@ import logging
 import numpy as np
 import sparse
 from joblib import Memory
+from scipy import stats
 
 from nimare import _version
 from nimare.meta.cbma.base import CBMAEstimator
@@ -76,7 +77,9 @@ class SDM(CBMAEstimator):
         memory_level=0,
         **kwargs,
     ):
-        if not (isinstance(kernel_transformer, SDMKernel) or kernel_transformer == SDMKernel):
+        if kernel_transformer is not SDMKernel and not isinstance(
+            kernel_transformer, SDMKernel
+        ):
             LGR.warning(
                 f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
                 f"for the {type(self).__name__} algorithm. "
@@ -128,7 +131,7 @@ class SDM(CBMAEstimator):
         stat_values = np.mean(ma_values, axis=0)
 
         # Handle sparse arrays
-        if isinstance(stat_values, sparse._coo.core.COO):
+        if isinstance(stat_values, sparse.COO):
             mask_data = self.masker.mask_img.get_fdata().astype(bool)
             stat_values = stat_values.todense().reshape(-1)
             stat_values = stat_values[mask_data.reshape(-1)]
@@ -158,7 +161,7 @@ class SDM(CBMAEstimator):
 
         # Compute standard error and z-scores
         # Convert sparse to dense if needed for std calculation
-        if isinstance(ma_values, sparse._coo.core.COO):
+        if isinstance(ma_values, sparse.COO):
             ma_dense = ma_values.todense()
             mask_data = self.masker.mask_img.get_fdata().astype(bool)
             ma_dense_reshaped = ma_dense.reshape(n_studies, -1)
@@ -176,7 +179,6 @@ class SDM(CBMAEstimator):
         z_values = stat_values / se_values
 
         # Convert z to p-values using scipy (two-tailed)
-        from scipy import stats
         p_values = 2 * (1 - stats.norm.cdf(np.abs(z_values)))
 
         # Create output maps
