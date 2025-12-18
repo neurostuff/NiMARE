@@ -1,9 +1,12 @@
 """Test validation in MKDAChi2.correct_fwe_montecarlo."""
 import os
+
+import pandas as pd
 import pytest
+
 import nimare
-from nimare.meta.cbma.mkda import MKDAChi2
 from nimare.correct import FWECorrector
+from nimare.meta.cbma.mkda import MKDAChi2
 from nimare.tests.utils import get_test_data_path
 
 def test_correct_fwe_montecarlo_missing_inputs():
@@ -95,8 +98,6 @@ def test_correct_fwe_montecarlo_none_coordinates1():
 
 def test_correct_fwe_montecarlo_empty_coordinates1():
     """Test that correct_fwe_montecarlo raises error when coordinates1 is empty."""
-    import pandas as pd
-    
     # Load test dataset
     dset_file = os.path.join(get_test_data_path(), "test_pain_dataset.json")
     ds = nimare.dataset.Dataset(dset_file)
@@ -121,7 +122,7 @@ def test_correct_fwe_montecarlo_empty_coordinates1():
     # Try to run FWE correction - should raise ValueError
     corrector = FWECorrector(method='montecarlo', voxel_thresh=0.0005, n_iters=5, n_cores=1)
     
-    with pytest.raises(ValueError, match="DataFrame in estimator inputs_ is empty"):
+    with pytest.raises(ValueError, match="DataFrame .* in estimator inputs_ is empty"):
         corrector.transform(results)
 
 

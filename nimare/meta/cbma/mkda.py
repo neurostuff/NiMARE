@@ -874,13 +874,13 @@ class MKDAChi2(PairwiseCBMAEstimator):
         
         if len(iter_df1) == 0:
             raise ValueError(
-                "The 'coordinates1' DataFrame in estimator inputs_ is empty. "
+                "The 'coordinates1' DataFrame (first dataset) in estimator inputs_ is empty. "
                 "Cannot perform Monte Carlo correction without coordinates."
             )
         
         if len(iter_df2) == 0:
             raise ValueError(
-                "The 'coordinates2' DataFrame in estimator inputs_ is empty. "
+                "The 'coordinates2' DataFrame (second dataset) in estimator inputs_ is empty. "
                 "Cannot perform Monte Carlo correction without coordinates."
             )
         
