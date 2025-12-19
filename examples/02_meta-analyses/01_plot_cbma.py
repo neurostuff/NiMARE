@@ -217,3 +217,126 @@ print("Description:")
 pprint(results.description_)
 print("References:")
 pprint(results.bibtex_)
+
+###############################################################################
+# Seed-based d Mapping (SDM)
+# -----------------------------------------------------------------------------
+# SDM is a hybrid meta-analysis method that can accept both peak coordinates
+# and whole-brain statistical images. It uses an anisotropic Gaussian kernel
+# to reconstruct effect-size maps from coordinates when images are unavailable.
+from nimare.meta import SDM, SDMPSI, SDMKernel
+
+meta = SDM()
+results = meta.fit(dset)
+
+corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
+cres = corr.transform(results)
+
+plot_stat_map(
+    results.get_map("z"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+    threshold=0.1,
+)
+plot_stat_map(
+    cres.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+    threshold=0.1,
+)
+
+print("Description:")
+pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)
+print(f"Input mode: {meta.input_mode_}")
+
+###############################################################################
+# SDM with Custom Kernel
+# -----------------------------------------------------------------------------
+# The SDM kernel's smoothness can be customized via the FWHM parameter.
+meta = SDM(SDMKernel, kernel__fwhm=15)
+results = meta.fit(dset)
+
+corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
+cres = corr.transform(results)
+
+plot_stat_map(
+    results.get_map("z"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+    threshold=0.1,
+)
+plot_stat_map(
+    cres.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+    threshold=0.1,
+)
+
+print("Description:")
+pprint(results.description_)
+
+###############################################################################
+# SDM-PSI: Permutation of Subject Images
+# -----------------------------------------------------------------------------
+# SDM-PSI extends SDM with multiple imputation, subject-level simulation,
+# and Rubin's rules for combining results across imputations.
+#
+# .. note::
+#   We use reduced parameters (n_imputations=2, n_subjects_sim=10) for speed
+#   in the documentation. In practice, use higher values (defaults: 5 and 50).
+
+meta = SDMPSI(n_imputations=2, n_subjects_sim=10, random_state=42)
+results = meta.fit(dset)
+
+corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
+cres = corr.transform(results)
+
+plot_stat_map(
+    results.get_map("z"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+    threshold=0.1,
+)
+plot_stat_map(
+    cres.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+    threshold=0.1,
+)
+
+# SDM-PSI provides additional variance decomposition maps
+plot_stat_map(
+    results.get_map("within_var"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="hot",
+    vmax=0.5,
+    title="Within-Imputation Variance",
+)
+plot_stat_map(
+    results.get_map("between_var"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="hot",
+    vmax=0.1,
+    title="Between-Imputation Variance",
+)
+
+print("Description:")
+pprint(results.description_)
+print("References:")
+pprint(results.bibtex_)

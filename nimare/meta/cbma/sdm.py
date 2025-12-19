@@ -224,25 +224,11 @@ class SDM(Estimator):
         if isinstance(mask_img, str):
             mask_img = nib.load(mask_img)
 
-        # Process images if available (IBMA-style preprocessing)
+        # Process images if available (reuses IBMA-style preprocessing pattern)
         if "beta_maps" in self.inputs_:
-            imgs = []
-            for img_path in self.inputs_["beta_maps"]:
-                img = nib.load(img_path)
-                if not check_same_fov(img, reference_masker=mask_img):
-                    img = resample_to_img(img, mask_img, **self._resample_kwargs)
-                imgs.append(img)
-
-            if len(imgs) > 0:
-                img4d = concat_imgs(imgs, ensure_ndim=4)
-                img_data = masker.transform(img4d)
-
-                if self.aggressive_mask:
-                    nonzero = np.all(img_data != 0, axis=0)
-                    nonnan = np.all(~np.isnan(img_data), axis=0)
-                    self.inputs_["aggressive_mask"] = np.logical_and(nonzero, nonnan)
-
-                self.inputs_["image_data"] = img_data
+            self.inputs_["image_data"] = self._preprocess_images(
+                self.inputs_["beta_maps"], mask_img, masker
+            )
 
         # Process coordinates if available (CBMA-style preprocessing)
         if "coordinates" in self.inputs_:
@@ -254,6 +240,46 @@ class SDM(Estimator):
             coordinates[["i", "j", "k"]] = ijk
 
             self.inputs_["coordinates"] = coordinates
+
+    def _preprocess_images(self, image_paths, mask_img, masker):
+        """Preprocess image data using IBMA-style logic.
+
+        Parameters
+        ----------
+        image_paths : list
+            List of paths to image files.
+        mask_img : nibabel image
+            Mask image for resampling reference.
+        masker : NiftiMasker
+            Masker for transforming images.
+
+        Returns
+        -------
+        numpy.ndarray
+            Masked and transformed image data.
+        """
+        # Resample images if needed (same logic as IBMA)
+        imgs = []
+        for img_path in image_paths:
+            img = nib.load(img_path)
+            if not check_same_fov(img, reference_masker=mask_img):
+                img = resample_to_img(img, mask_img, **self._resample_kwargs)
+            imgs.append(img)
+
+        if len(imgs) == 0:
+            return None
+
+        # Concatenate and transform (same as IBMA)
+        img4d = concat_imgs(imgs, ensure_ndim=4)
+        img_data = masker.transform(img4d)
+
+        # Apply aggressive mask if needed (same logic as IBMA)
+        if self.aggressive_mask:
+            nonzero = np.all(img_data != 0, axis=0)
+            nonnan = np.all(~np.isnan(img_data), axis=0)
+            self.inputs_["aggressive_mask"] = np.logical_and(nonzero, nonnan)
+
+        return img_data
 
     def _generate_description(self):
         """Generate a description of the fitted Estimator."""
