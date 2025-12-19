@@ -528,9 +528,13 @@ class SDMKernel(KernelTransformer):
 
     Notes
     -----
-    This is a simplified implementation of the SDM kernel. The full SDM-PSI algorithm
-    includes additional steps such as multiple imputation and subject-level simulation
-    which are not implemented here.
+    This kernel provides the core coordinate-to-image transformation for SDM.
+    Advanced SDM-PSI features (multiple imputation, subject-level simulation, Rubin's rules)
+    are implemented in the SDMPSI estimator class, not in the kernel itself.
+
+    See Also
+    --------
+    nimare.meta.cbma.sdm.SDMPSI : Full SDM-PSI implementation with advanced features
     """
 
     def __init__(

@@ -8,7 +8,7 @@ import pytest
 
 from nimare.correct import FDRCorrector, FWECorrector
 from nimare.generate import create_coordinate_dataset
-from nimare.meta import ale, kernel, mkda
+from nimare.meta import ale, kernel, mkda, sdm
 from nimare.results import MetaResult
 from nimare.tests.utils import _check_p_values, _create_signal_mask, _transform_res
 from nimare.utils import mm2vox
@@ -81,6 +81,7 @@ def signal_masks(simulatedata_cbma):
         pytest.param(ale.ALE, id="ale"),
         pytest.param(mkda.MKDADensity, id="mkda"),
         pytest.param(mkda.KDA, id="kda"),
+        pytest.param(sdm.SDM, id="sdm"),
     ],
 )
 def meta_est(request):
@@ -115,6 +116,7 @@ def meta_params(request):
         pytest.param(kernel.ALEKernel, id="ale_kernel"),
         pytest.param(kernel.MKDAKernel, id="mkda_kernel"),
         pytest.param(kernel.KDAKernel, id="kda_kernel"),
+        pytest.param(kernel.SDMKernel, id="sdm_kernel"),
     ],
 )
 def kern(request):
@@ -169,13 +171,28 @@ def corr_small(request):
 def meta(simulatedata_cbma, meta_est, kern, meta_params):
     """Define estimator/kernel combinations for tests."""
     fwhm, (_, _) = simulatedata_cbma
+
+    # Check for incompatible combinations
+    # SDM only works with SDMKernel
+    if meta_est == sdm.SDM and kern != kernel.SDMKernel:
+        pytest.skip("SDM only works with SDMKernel")
+    # ALE, MKDA, KDA don't work with SDMKernel
+    if meta_est in [ale.ALE, mkda.MKDADensity, mkda.KDA] and kern == kernel.SDMKernel:
+        pytest.skip("ALE/MKDA/KDA don't support SDMKernel")
+
     if kern == kernel.KDAKernel or kern == kernel.MKDAKernel:
         kern = kern(r=fwhm / 2)
+    elif kern == kernel.SDMKernel:
+        kern = kern(fwhm=fwhm)
     else:
         kern = kern()
 
-    # instantiate meta-analysis estimator
-    return meta_est(kern, **meta_params)
+    # SDM doesn't support null_method parameter
+    if meta_est == sdm.SDM:
+        return meta_est(kern)
+    else:
+        # instantiate meta-analysis estimator with null_method params
+        return meta_est(kern, **meta_params)
 
 
 ###########################################

@@ -43,6 +43,18 @@ def test_SDM_default(testdata_cbma):
     assert "dof" in results.maps.keys()
 
 
+def test_SDM_images_only(testdata_ibma):
+    """Test SDM with image-only input (hybrid mode, images only)."""
+    meta = SDM()
+    results = meta.fit(testdata_ibma)
+    assert isinstance(results, nimare.results.MetaResult)
+    assert meta.input_mode_ == "images"
+    assert "stat" in results.maps.keys()
+    assert "z" in results.maps.keys()
+    assert "p" in results.maps.keys()
+    assert "dof" in results.maps.keys()
+
+
 def test_SDMPSI_default(testdata_cbma):
     """Smoke test for SDMPSI with default parameters."""
     meta = SDMPSI(n_imputations=2, n_subjects_sim=10, random_state=42)
@@ -60,9 +72,7 @@ def test_SDMPSI_default(testdata_cbma):
 
 def test_SDMPSI_kernel_class(testdata_cbma):
     """Smoke test for SDMPSI with a kernel transformer class."""
-    meta = SDMPSI(
-        SDMKernel, kernel__fwhm=15, n_imputations=2, n_subjects_sim=10, random_state=42
-    )
+    meta = SDMPSI(SDMKernel, kernel__fwhm=15, n_imputations=2, n_subjects_sim=10, random_state=42)
     results = meta.fit(testdata_cbma)
     assert isinstance(results, nimare.results.MetaResult)
 
@@ -74,3 +84,15 @@ def test_SDMPSI_multiple_imputations(testdata_cbma):
     assert isinstance(results, nimare.results.MetaResult)
     # Check that between-imputation variance is non-zero (shows imputations differ)
     assert results.maps["between_var"].max() > 0
+
+
+def test_SDMPSI_images_only(testdata_ibma):
+    """Test SDMPSI with image-only input (hybrid mode)."""
+    meta = SDMPSI(n_imputations=2, n_subjects_sim=5, random_state=42)
+    results = meta.fit(testdata_ibma)
+    assert isinstance(results, nimare.results.MetaResult)
+    assert meta.input_mode_ == "images"
+    assert "stat" in results.maps.keys()
+    assert "se" in results.maps.keys()
+    assert "within_var" in results.maps.keys()
+    assert "between_var" in results.maps.keys()
