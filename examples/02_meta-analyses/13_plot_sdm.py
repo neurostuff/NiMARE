@@ -153,19 +153,20 @@ plot_stat_map(
 ###############################################################################
 # Multiple Comparison Correction
 # -----------------------------------------------------------------------------
-# Like other CBMA methods, SDM results can be corrected for multiple comparisons.
+# Like other meta-analysis methods, SDM results can be corrected for multiple
+# comparisons. Note that SDM does not support Monte Carlo correction; use Bonferroni instead.
 
-corr = FWECorrector(method="montecarlo", n_iters=100, n_cores=1)
+corr = FWECorrector(method="bonferroni")
 cres = corr.transform(results)
 
 plot_stat_map(
-    cres.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo"),
+    cres.get_map("z_corr-FWE_method-bonferroni"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
     symmetric_cbar=True,
     vmax=3,
-    title="SDM: FWE-corrected Z-statistic",
+    title="SDM: FWE-corrected Z-statistic (Bonferroni)",
 )
 
 ###############################################################################

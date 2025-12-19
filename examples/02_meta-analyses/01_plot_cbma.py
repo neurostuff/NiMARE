@@ -229,7 +229,8 @@ from nimare.meta import SDM, SDMPSI, SDMKernel
 meta = SDM()
 results = meta.fit(dset)
 
-corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
+# Note: SDM does not support Monte Carlo correction, use Bonferroni instead
+corr = FWECorrector(method="bonferroni")
 cres = corr.transform(results)
 
 plot_stat_map(
@@ -241,7 +242,7 @@ plot_stat_map(
     threshold=0.1,
 )
 plot_stat_map(
-    cres.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo"),
+    cres.get_map("z_corr-FWE_method-bonferroni"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
@@ -262,7 +263,8 @@ print(f"Input mode: {meta.input_mode_}")
 meta = SDM(SDMKernel, kernel__fwhm=15)
 results = meta.fit(dset)
 
-corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
+# Note: SDM does not support Monte Carlo correction, use Bonferroni instead
+corr = FWECorrector(method="bonferroni")
 cres = corr.transform(results)
 
 plot_stat_map(
@@ -274,7 +276,7 @@ plot_stat_map(
     threshold=0.1,
 )
 plot_stat_map(
-    cres.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo"),
+    cres.get_map("z_corr-FWE_method-bonferroni"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
@@ -298,7 +300,8 @@ pprint(results.description_)
 meta = SDMPSI(n_imputations=2, n_subjects_sim=10, random_state=42)
 results = meta.fit(dset)
 
-corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
+# Note: SDMPSI does not support Monte Carlo correction, use Bonferroni instead
+corr = FWECorrector(method="bonferroni")
 cres = corr.transform(results)
 
 plot_stat_map(
@@ -310,7 +313,7 @@ plot_stat_map(
     threshold=0.1,
 )
 plot_stat_map(
-    cres.get_map("z_desc-size_level-cluster_corr-FWE_method-montecarlo"),
+    cres.get_map("z_corr-FWE_method-bonferroni"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
