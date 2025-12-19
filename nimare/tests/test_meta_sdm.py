@@ -1,14 +1,9 @@
 """Test nimare.meta.sdm (SDM-based meta-analytic algorithms)."""
 
-import os
-
-import nibabel as nib
-import numpy as np
 import pytest
 
 import nimare
 from nimare.meta import SDM, SDMPSI, SDMKernel
-from nimare.tests.utils import get_test_data_path
 from nimare.transforms import ImageTransformer
 
 
@@ -116,8 +111,6 @@ def testdata_sdm_hybrid(tmp_path_factory, testdata_ibma):
     - Some studies have only z-maps
     - Some studies have beta + varcope maps
     """
-    tmpdir = tmp_path_factory.mktemp("testdata_sdm_hybrid")
-
     # Start with IBMA dataset (has images)
     dset = testdata_ibma.copy()
 

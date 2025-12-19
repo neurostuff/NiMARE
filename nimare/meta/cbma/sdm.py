@@ -216,7 +216,8 @@ class SDM(Estimator):
         if masker is None:
             raise ValueError(
                 "A masker is required for SDM meta-analysis. "
-                "Provide a `mask` to the Estimator or initialize the Dataset with a `target` and/or `mask`."
+                "Provide a `mask` to the Estimator or initialize the Dataset "
+                "with a `target` and/or `mask`."
             )
 
         self.masker = masker
@@ -286,13 +287,17 @@ class SDM(Estimator):
         mode_desc = {
             "coordinates": "coordinate-based reconstruction using an SDM kernel",
             "images": "provided effect size maps",
-            "hybrid": "a hybrid combination of provided effect size maps and coordinate-based reconstruction",
+            "hybrid": (
+                "a hybrid combination of provided effect size maps "
+                "and coordinate-based reconstruction"
+            ),
         }
 
         description = (
             f"A Seed-based d Mapping (SDM) meta-analysis was performed "
             f"with NiMARE {__version__} "
-            f"(RRID:SCR_017398; \\citealt{{Salo2023}}), using {mode_desc.get(self.input_mode_, 'unknown inputs')}. "
+            f"(RRID:SCR_017398; \\citealt{{Salo2023}}), using "
+            f"{mode_desc.get(self.input_mode_, 'unknown inputs')}. "
         )
 
         if self.input_mode_ in ["coordinates", "hybrid"]:
@@ -503,9 +508,10 @@ class SDMPSI(SDM):
         }
 
         description = (
-            "A Seed-based d Mapping with Permuted Subject Images (SDM-PSI) meta-analysis "
-            f"was performed with NiMARE {__version__} "
-            f"(RRID:SCR_017398; \\citealt{{Salo2023}}), using {mode_desc.get(self.input_mode_, 'unknown inputs')}. "
+            "A Seed-based d Mapping with Permuted Subject Images (SDM-PSI) "
+            f"meta-analysis was performed with NiMARE {__version__} "
+            f"(RRID:SCR_017398; \\citealt{{Salo2023}}), using "
+            f"{mode_desc.get(self.input_mode_, 'unknown inputs')}. "
         )
 
         if self.input_mode_ in ["coordinates", "hybrid"]:

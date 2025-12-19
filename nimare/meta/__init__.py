@@ -1,7 +1,19 @@
 """Coordinate-, image-, and effect-size-based meta-analysis estimators."""
 
 from . import ibma, kernel
-from .cbma import ALE, KDA, SCALE, SDM, SDMPSI, ALESubtraction, MKDAChi2, MKDADensity, ale, mkda, sdm
+from .cbma import (
+    ALE,
+    KDA,
+    SCALE,
+    SDM,
+    SDMPSI,
+    ALESubtraction,
+    MKDAChi2,
+    MKDADensity,
+    ale,
+    mkda,
+    sdm,
+)
 from .ibma import (
     DerSimonianLaird,
     Fishers,
