@@ -15,11 +15,15 @@ from nilearn.input_data import NiftiMasker
 from nilearn.mass_univariate import permuted_ols
 
 try:
-    # nilearn>0.10.3
-    from nilearn._utils.niimg_conversions import check_same_fov
+    # nilearn >= 0.13.0
+    from nilearn.image.image import check_same_fov
 except ImportError:
-    # nilearn < 0.10.3
-    from nilearn._utils.niimg_conversions import _check_same_fov as check_same_fov
+    try:
+        # nilearn > 0.10.3; nilearn < 0.13.0
+        from nilearn._utils.niimg_conversions import check_same_fov
+    except ImportError:
+        # nilearn < 0.10.3
+        from nilearn._utils.niimg_conversions import _check_same_fov as check_same_fov
 
 from nimare import _version
 from nimare.estimator import Estimator
