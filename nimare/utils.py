@@ -16,7 +16,7 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 import sparse
-from nilearn.input_data import NiftiMasker
+from nilearn.maskers import NiftiMasker
 
 LGR = logging.getLogger(__name__)
 
@@ -130,7 +130,7 @@ def get_masker(mask, memory=joblib.Memory(location=None, verbose=0), memory_leve
     Returns
     -------
     masker : an initialized, fitted instance of a subclass of
-        `nilearn.input_data.base_masker.BaseMasker`
+        `nilearn.maskers.base_masker.BaseMasker`
     """
     if isinstance(mask, str):
         mask = nib.load(mask)

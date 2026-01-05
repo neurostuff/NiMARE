@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import sparse
 from joblib import Memory, Parallel, delayed
-from nilearn.input_data import NiftiMasker
+from nilearn.maskers import NiftiMasker
 from scipy import ndimage
 from tqdm.auto import tqdm
 

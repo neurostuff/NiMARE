@@ -5,7 +5,7 @@ import weakref
 from copy import deepcopy
 
 import numpy as np
-from nilearn._utils.niimg import load_niimg
+from nilearn.image import load_img
 
 from nimare.io import convert_nimads_to_dataset
 from nimare.utils import mm2vox
@@ -338,7 +338,7 @@ class Studyset:
             A list of Analysis IDs with at least one point in the mask.
         """
         # Load mask
-        mask = load_niimg(img)
+        mask = load_img(img)
 
         # Extract all points from all analyses
         all_points = []

@@ -33,7 +33,7 @@ class MetaResult(NiMAREBase):
         The Corrector used to correct the maps in the MetaResult.
     diagnostics : :obj:`list` of :class:`~nimare.diagnostics.Diagnostics`
         List of diagnostic classes.
-    mask : Niimg-like or `nilearn.input_data.base_masker.BaseMasker`
+    mask : Niimg-like or `nilearn.maskers.base_masker.BaseMasker`
         Mask for converting maps between arrays and images.
     maps : None or :obj:`dict` of :obj:`numpy.ndarray`, optional
         Maps to store in the object. The maps must be provided as 1D numpy arrays. Default is None.
@@ -50,7 +50,7 @@ class MetaResult(NiMAREBase):
         The Corrector used to correct the maps in the MetaResult.
     diagnostics : :obj:`list` of :class:`~nimare.diagnostics.Diagnostics`
         List of diagnostic classes.
-    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+    masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker object.
     maps : :obj:`dict`
         Keys are map names and values are 1D arrays.

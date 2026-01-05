@@ -7,7 +7,7 @@ import pickle
 import nibabel as nib
 import numpy as np
 import pytest
-from nilearn.input_data import NiftiLabelsMasker
+from nilearn.maskers import NiftiLabelsMasker
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector

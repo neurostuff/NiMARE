@@ -77,7 +77,7 @@ class ALE(CBMAEstimator):
 
     Attributes
     ----------
-    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+    masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker object.
     inputs_ : :obj:`dict`
         Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
@@ -368,7 +368,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
     Attributes
     ----------
-    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+    masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker object.
     inputs_ : :obj:`dict`
         Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
@@ -681,7 +681,7 @@ class SCALE(CBMAEstimator):
 
     Attributes
     ----------
-    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+    masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker object.
     inputs_ : :obj:`dict`
         Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.

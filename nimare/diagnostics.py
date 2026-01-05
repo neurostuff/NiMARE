@@ -7,7 +7,7 @@ from abc import abstractmethod
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
-from nilearn import input_data
+from nilearn.maskers import NiftiLabelsMasker
 from nilearn.reporting import get_clusters_table
 from scipy.spatial.distance import cdist
 from tqdm.auto import tqdm
@@ -321,7 +321,7 @@ class Jackknife(Diagnostics):
         original_masker = estimator.masker
 
         # Mask using a labels masker, so that we can easily get the mean value for each cluster
-        cluster_masker = input_data.NiftiLabelsMasker(label_map)
+        cluster_masker = NiftiLabelsMasker(label_map)
         cluster_masker.fit(label_map)
 
         # CBMAs have "stat" maps, while most IBMAs have "est" maps. ALESubtraction has

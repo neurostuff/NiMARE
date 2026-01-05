@@ -6,7 +6,7 @@ import os.path as op
 import nibabel as nib
 import numpy as np
 import pandas as pd
-from nilearn._utils.niimg import load_niimg
+from nilearn.image import load_img
 from scipy.stats import multivariate_normal
 
 from nimare.base import NiMAREBase
@@ -167,7 +167,7 @@ class GCLDAModel(NiMAREBase):
         if isinstance(mask, str) and not op.isfile(mask):
             self.mask = get_template(mask, mask="brain")
         else:
-            self.mask = load_niimg(mask)
+            self.mask = load_img(mask)
 
         # Extract document and word indices from count_df
         docidx_mapper = {id_: i for (i, id_) in enumerate(ids)}

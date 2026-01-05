@@ -2,7 +2,7 @@
 
 import numpy as np
 import pandas as pd
-from nilearn._utils.niimg import load_niimg
+from nilearn.image import load_img
 from pymare.stats import bonferroni, fdr
 from scipy import special
 from scipy.stats import binom
@@ -80,7 +80,7 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
     ----------
     .. footbibliography::
     """
-    roi = load_niimg(roi)
+    roi = load_img(roi)
 
     dset_aff = model.mask.affine
     if not np.array_equal(roi.affine, dset_aff):
@@ -673,7 +673,7 @@ class ROIAssociationDecoder(Decoder):
 
     Parameters
     ----------
-    masker : :class:`~nilearn.input_data.NiftiMasker`, img_like, or similar
+    masker : :class:`~nilearn.maskers.NiftiMasker`, img_like, or similar
         Masker for region of interest.
     kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
         Kernel with which to create modeled activation maps. Default is MKDAKernel.

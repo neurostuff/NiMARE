@@ -90,7 +90,7 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
         DataFrame with paths to images for studies in Dataset.
     target : {'z', 'p', 'beta', 'varcope'}
         Target data type.
-    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+    masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker used to define orientation and resolution of images.
         Specific voxels defined in mask will not be used, and a new masker
         with _all_ voxels in acquisition matrix selected will be created.

@@ -9,7 +9,7 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
-from nilearn._utils.niimg import load_niimg
+from nilearn.image import load_img
 from nilearn.masking import apply_mask
 from tqdm.auto import tqdm
 
@@ -93,7 +93,7 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     ----------
     .. footbibliography::
     """
-    image = load_niimg(image)
+    image = load_img(image)
 
     # Load image file and get voxel values
     input_values = apply_mask(image, model.mask)
