@@ -24,10 +24,8 @@
 """Reports builder for NiMARE's MetaResult object."""
 import textwrap
 from glob import glob
-from pathlib import Path
-
 from importlib.resources import files
-
+from pathlib import Path
 
 import jinja2
 import numpy as np
