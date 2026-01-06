@@ -193,7 +193,8 @@ class Corrector(NiMAREBase):
 
         # Update corrected map names and enforce float32 outputs for map arrays.
         corr_maps = {
-            k + self._name_suffix: (
+            k
+            + self._name_suffix: (
                 v.astype(DEFAULT_FLOAT_DTYPE)
                 if isinstance(v, np.ndarray)
                 and np.issubdtype(v.dtype, np.floating)
