@@ -130,6 +130,16 @@ class IBMAEstimator(Estimator):
 
                 # Mask required input images using either the dataset's mask or the estimator's.
                 temp_arr = masker.transform(img4d)
+                if name == "varcope_maps":
+                    invalid_mask = ~np.isfinite(temp_arr) | (temp_arr <= 0)
+                    if np.any(invalid_mask):
+                        n_invalid = int(np.sum(invalid_mask))
+                        LGR.warning(
+                            "Found %d non-finite or non-positive varcope values; setting to NaN.",
+                            n_invalid,
+                        )
+                        temp_arr = temp_arr.copy()
+                        temp_arr[invalid_mask] = np.nan
 
                 # To save memory, we only save the original image array and perform masking later
                 # in the estimator if self.aggressive_mask is True.
