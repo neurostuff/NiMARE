@@ -4,12 +4,13 @@ import copy
 import logging
 import os
 
+import nibabel as nib
 import numpy as np
 import pandas as pd
 from nibabel.funcs import squeeze_image
 
 from nimare.base import NiMAREBase
-from nimare.utils import get_description_references, get_masker
+from nimare.utils import DEFAULT_FLOAT_DTYPE, get_description_references, get_masker
 
 LGR = logging.getLogger(__name__)
 
@@ -95,6 +96,9 @@ class MetaResult(NiMAREBase):
             if map_.ndim != 1:
                 LGR.warning(f"Map '{map_name}' should be 1D, not {map_.ndim}D. Squeezing.")
                 map_ = np.squeeze(map_)
+            if np.issubdtype(map_.dtype, np.floating) and map_.dtype != DEFAULT_FLOAT_DTYPE:
+                map_ = map_.astype(DEFAULT_FLOAT_DTYPE)
+            maps[map_name] = map_
 
         for table_name, table in tables.items():
             if not isinstance(table, pd.DataFrame):
@@ -134,7 +138,7 @@ class MetaResult(NiMAREBase):
             # NiftiLabelsMasker (and other scikit-learn-based maskers) do not accept NaNs.
             # Replace NaNs with zeros when converting to images to keep transforms stable.
             if np.issubdtype(m.dtype, np.floating):
-                m = np.nan_to_num(m)
+                m = np.nan_to_num(m, nan=0.0, posinf=0.0, neginf=0.0)
             # pending resolution of https://github.com/nilearn/nilearn/issues/2724
             try:
                 return self.masker.inverse_transform(m)
@@ -175,6 +179,19 @@ class MetaResult(NiMAREBase):
         for imgtype, img in maps.items():
             filename = prefix + imgtype + ".nii.gz"
             outpath = os.path.join(output_dir, filename)
+            if img is not None:
+                data_dtype = img.get_data_dtype()
+                if np.issubdtype(data_dtype, np.integer) or data_dtype == np.bool_:
+                    data = np.asanyarray(img.dataobj)
+                else:
+                    data = img.get_fdata(dtype=DEFAULT_FLOAT_DTYPE)
+                header = img.header.copy()
+                header.set_data_dtype(data.dtype)
+                try:
+                    header.set_slope_inter(1.0, 0.0)
+                except Exception:
+                    pass
+                img = nib.Nifti1Image(data, img.affine, header)
             img.to_filename(outpath)
 
     def save_tables(self, output_dir=".", prefix="", prefix_sep="_", names=None):

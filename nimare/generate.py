@@ -9,7 +9,7 @@ from nimare.dataset import Dataset
 from nimare.io import convert_neurovault_to_dataset
 from nimare.meta.utils import compute_ale_ma, get_ale_kernel
 from nimare.transforms import ImageTransformer
-from nimare.utils import get_template, mm2vox, vox2mm
+from nimare.utils import DEFAULT_FLOAT_DTYPE, get_template, mm2vox, vox2mm
 
 # defaults for creating a neurovault dataset
 NEUROVAULT_IDS = (8836, 8838, 8893, 8895, 8892, 8891, 8962, 8894, 8956, 8854, 9000)
@@ -254,7 +254,7 @@ def _create_foci(foci, foci_percentage, fwhm, n_studies, n_noise_foci, rng, spac
         template_img = get_template(space="mni152_2mm", mask="brain")
 
     # use a template to find all "valid" coordinates
-    template_data = template_img.get_fdata()
+    template_data = template_img.get_fdata(dtype=DEFAULT_FLOAT_DTYPE)
     possible_ijks = np.argwhere(template_data)
 
     # number of "convergent" foci each study should report

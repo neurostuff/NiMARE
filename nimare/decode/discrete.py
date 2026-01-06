@@ -12,7 +12,7 @@ from nimare.decode.utils import weight_priors
 from nimare.meta.kernel import KernelTransformer, MKDAKernel
 from nimare.stats import one_way, pearson, two_way
 from nimare.transforms import p_to_z
-from nimare.utils import _check_type, get_masker
+from nimare.utils import _check_type, _mask_img_to_bool, get_masker
 
 
 def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
@@ -90,8 +90,8 @@ def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
         )
 
     # Load ROI file and get ROI voxels overlapping with brain mask
-    mask_vec = model.mask.get_fdata().ravel().astype(bool)
-    roi_vec = roi.get_fdata().astype(bool).ravel()
+    mask_vec = _mask_img_to_bool(model.mask).ravel()
+    roi_vec = _mask_img_to_bool(roi).ravel()
     roi_vec = roi_vec[mask_vec]
     roi_idx = np.where(roi_vec)[0]
     p_topic_g_roi = model.p_topic_g_voxel_[roi_idx, :]  # p(T|V) for voxels in ROI only

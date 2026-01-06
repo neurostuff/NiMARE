@@ -435,9 +435,11 @@ def plot_clusters(img, out_filename):
     template = datasets.load_mni152_template(resolution=1)
 
     # Define cmap depending on the number of clusters
-    clust_ids = list(np.unique(img.get_fdata())[1:])
+    data = np.asanyarray(img.dataobj)
+    clust_ids = [c for c in np.unique(data) if np.isfinite(c) and c != 0]
     if len(clust_ids) <= 1:
-        cmap = mcolors.ListedColormap([plt.colormaps["tab20"](0)])
+        base_color = plt.colormaps["tab20"](0)
+        cmap = mcolors.ListedColormap([base_color, base_color])
     else:
         cmap = plt.colormaps["tab20"].resampled(len(clust_ids))
 

@@ -12,7 +12,13 @@ from nilearn.reporting import get_clusters_table
 from scipy import stats
 
 from nimare.base import NiMAREBase
-from nimare.utils import _dict_to_coordinates, _dict_to_df, _listify, get_masker
+from nimare.utils import (
+    DEFAULT_FLOAT_DTYPE,
+    _dict_to_coordinates,
+    _dict_to_df,
+    _listify,
+    get_masker,
+)
 
 LGR = logging.getLogger(__name__)
 
@@ -389,7 +395,11 @@ class ImagesToCoordinates(NiMAREBase):
 
                 p_threshold = 1 - z_to_p(self.z_threshold)
                 nimg = nib.funcs.squeeze_image(nib.load(row.get("p")))
-                inv_nimg = nib.Nifti1Image(1 - nimg.get_fdata(), nimg.affine, nimg.header)
+                inv_nimg = nib.Nifti1Image(
+                    1 - nimg.get_fdata(dtype=DEFAULT_FLOAT_DTYPE),
+                    nimg.affine,
+                    nimg.header,
+                )
                 clusters = get_clusters_table(
                     inv_nimg,
                     p_threshold,

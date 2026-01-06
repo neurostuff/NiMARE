@@ -8,7 +8,7 @@ import numpy as np
 from nilearn.image import load_img
 
 from nimare.io import convert_nimads_to_dataset
-from nimare.utils import mm2vox
+from nimare.utils import _mask_img_to_bool, mm2vox
 
 
 class Studyset:
@@ -358,7 +358,7 @@ class Studyset:
         ijk = mm2vox(all_points, mask.affine)
 
         # Get mask coordinates
-        mask_data = mask.get_fdata()
+        mask_data = _mask_img_to_bool(mask)
         mask_coords = np.vstack(np.where(mask_data)).T
 
         # Check for presence of coordinates in mask

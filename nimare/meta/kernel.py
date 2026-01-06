@@ -16,7 +16,7 @@ from joblib import Memory
 
 from nimare.base import NiMAREBase
 from nimare.meta.utils import compute_ale_ma, compute_kda_ma, get_ale_kernel
-from nimare.utils import _add_metadata_to_dataframe, mm2vox
+from nimare.utils import _add_metadata_to_dataframe, _mask_img_to_bool, mm2vox
 
 LGR = logging.getLogger(__name__)
 
@@ -171,11 +171,8 @@ class KernelTransformer(NiMAREBase):
                     filter_func=np.mean,
                 )
 
-        if return_type == "array":
-            mask_data = mask.get_fdata().astype(bool)
-        elif return_type == "image":
-            dtype = type(self.value) if hasattr(self, "value") else float
-            mask_data = mask.get_fdata().astype(dtype)
+        if return_type in ("array", "image"):
+            mask_data = _mask_img_to_bool(mask)
 
         # Generate the MA maps
         if return_type == "summary_array" or return_type == "sparse":

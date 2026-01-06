@@ -7,7 +7,7 @@ import sparse
 from numba import jit
 from scipy import ndimage
 
-from nimare.utils import unique_rows
+from nimare.utils import _mask_img_to_bool, unique_rows
 
 
 @jit(nopython=True, cache=True)
@@ -111,7 +111,7 @@ def compute_kda_ma(
     shape = mask.shape
     vox_dims = mask.header.get_zooms()
 
-    mask_data = mask.get_fdata().astype(bool)
+    mask_data = _mask_img_to_bool(mask)
 
     if exp_idx is None:
         exp_idx = np.ones(len(ijks))
@@ -241,7 +241,7 @@ def compute_ale_ma(mask, ijks, kernel=None, exp_idx=None, sample_sizes=None, use
         exp_idx = np.ones(len(ijks))
 
     shape = mask.shape
-    mask_data = mask.get_fdata().astype(bool)
+    mask_data = _mask_img_to_bool(mask)
 
     exp_idx_uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
     n_studies = len(exp_idx_uniq)

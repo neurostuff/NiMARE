@@ -19,6 +19,12 @@ import sparse
 from nilearn.maskers import NiftiMasker
 
 LGR = logging.getLogger(__name__)
+DEFAULT_FLOAT_DTYPE = np.float32
+
+
+def _mask_img_to_bool(mask_img):
+    """Load mask data as boolean without forcing float conversion."""
+    return np.asanyarray(mask_img.dataobj).astype(bool)
 
 
 def _check_ncores(n_cores):
@@ -110,7 +116,14 @@ def get_template(space="mni152_2mm", mask=None):
         raise ValueError(f"Space '{space}' not supported")
 
     # Coerce to array-image
-    img = nib.Nifti1Image(img.get_fdata(), affine=img.affine, header=img.header)
+    if mask is not None:
+        img = nib.Nifti1Image(_mask_img_to_bool(img), affine=img.affine, header=img.header)
+    else:
+        img = nib.Nifti1Image(
+            img.get_fdata(dtype=DEFAULT_FLOAT_DTYPE),
+            affine=img.affine,
+            header=img.header,
+        )
     return img
 
 
@@ -137,14 +150,25 @@ def get_masker(mask, memory=joblib.Memory(location=None, verbose=0), memory_leve
 
     if isinstance(mask, nib.nifti1.Nifti1Image):
         # Coerce to array-image
-        mask = nib.Nifti1Image(mask.get_fdata(), affine=mask.affine, header=mask.header)
+        mask = nib.Nifti1Image(_mask_img_to_bool(mask), affine=mask.affine, header=mask.header)
 
-        mask = NiftiMasker(mask, memory=memory, memory_level=memory_level)
+        mask = NiftiMasker(
+            mask,
+            memory=memory,
+            memory_level=memory_level,
+            standardize=False,
+            detrend=False,
+            smoothing_fwhm=None,
+            dtype=DEFAULT_FLOAT_DTYPE,
+        )
 
     if not (hasattr(mask, "transform") and hasattr(mask, "inverse_transform")):
         raise ValueError(
             "mask argument must be a string, a nibabel image, or a Nilearn Masker instance."
         )
+
+    if hasattr(mask, "dtype") and mask.dtype is None:
+        mask.dtype = DEFAULT_FLOAT_DTYPE
 
     # Fit the masker if needed
     if not hasattr(mask, "mask_img_"):

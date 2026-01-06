@@ -16,6 +16,7 @@ from nimare.utils import (
     _dict_to_coordinates,
     _dict_to_df,
     _listify,
+    _mask_img_to_bool,
     _transform_coordinates_to_space,
     _try_prepend,
     _validate_df,
@@ -653,7 +654,7 @@ class Dataset(NiMAREBase):
 
         # Convert coordinates to voxel indices
         dset_ijk = mm2vox(self.coordinates[["x", "y", "z"]].values, mask.affine)
-        mask_data = mask.get_fdata()
+        mask_data = _mask_img_to_bool(mask)
 
         # Clip coordinates to be within mask dimensions
         shape = mask_data.shape
