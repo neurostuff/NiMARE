@@ -75,7 +75,11 @@ class IBMAEstimator(Estimator):
         super().__init__(memory=memory, memory_level=memory_level)
 
         # defaults for resampling images (nilearn's defaults do not work well)
-        self._resample_kwargs = {"clip": True, "interpolation": "linear"}
+        self._resample_kwargs = {
+            "clip": True,
+            "interpolation": "linear",
+            "copy_header": True,
+        }
 
         # Identify any kwargs
         resample_kwargs = {k: v for k, v in kwargs.items() if k.startswith("resample__")}
@@ -131,11 +135,13 @@ class IBMAEstimator(Estimator):
                 # Mask required input images using either the dataset's mask or the estimator's.
                 temp_arr = masker.transform(img4d)
                 if name == "varcope_maps":
-                    invalid_mask = ~np.isfinite(temp_arr) | (temp_arr <= 0)
+                    min_varcope = 1.0 / np.sqrt(np.finfo(temp_arr.dtype).max)
+                    invalid_mask = ~np.isfinite(temp_arr) | (temp_arr <= min_varcope)
                     if np.any(invalid_mask):
                         n_invalid = int(np.sum(invalid_mask))
                         LGR.warning(
-                            "Found %d non-finite or non-positive varcope values; setting to NaN.",
+                            "Found %d non-finite, non-positive, or tiny varcope values; "
+                            "setting to NaN.",
                             n_invalid,
                         )
                         temp_arr = temp_arr.copy()
@@ -154,8 +160,8 @@ class IBMAEstimator(Estimator):
                     if "aggressive_mask" not in self.inputs_.keys():
                         self.inputs_["aggressive_mask"] = good_voxels_bool
                     else:
-                        # Remove any voxels that are bad in any image-based inputs
-                        self.inputs_["aggressive_mask"] = np.logical_or(
+                        # Require voxels to be valid across all image-based inputs.
+                        self.inputs_["aggressive_mask"] = np.logical_and(
                             self.inputs_["aggressive_mask"],
                             good_voxels_bool,
                         )
