@@ -2,7 +2,31 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.6.2...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.7.0...HEAD)
+
+## [0.7.0](https://github.com/neurostuff/NiMARE/compare/0.6.2...0.7.0) - 2026-01-06
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+With the release of nilearn 0.13.0, we are updating NiMARE to support 3.14, drop 3.9, add some support for agent skills and some documentation of annotations in datasets.
+
+#### 🐛 Bug Fixes
+
+* [FIX] adapt to new nilearn api 0.13.0 by @jdkent in https://github.com/neurostuff/NiMARE/pull/961
+* [FIX] add n_jobs parameter by @jdkent in https://github.com/neurostuff/NiMARE/pull/962
+* [FIX] fix error when n_iters is being set to None by @jdkent in https://github.com/neurostuff/NiMARE/pull/959
+
+#### Other Changes
+
+* try adding skills by @jdkent in https://github.com/neurostuff/NiMARE/pull/954
+* Add annotations to Dataset in documentation examples by @Copilot in https://github.com/neurostuff/NiMARE/pull/955
+
+### New Contributors
+
+* @Copilot made their first contribution in https://github.com/neurostuff/NiMARE/pull/955
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.6.2...0.7.0
 
 ## [0.6.2](https://github.com/neurostuff/NiMARE/compare/0.6.1...0.6.2) - 2025-12-17
 
