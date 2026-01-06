@@ -12,8 +12,8 @@ import pandas as pd
 import pymare
 from joblib import Memory
 from nilearn.image import concat_imgs, resample_to_img
-from nilearn.mass_univariate import permuted_ols
 from nilearn.maskers import NiftiMasker
+from nilearn.mass_univariate import permuted_ols
 
 try:
     # nilearn >= 0.13.0

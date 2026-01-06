@@ -3,6 +3,7 @@
 import logging
 
 import nibabel as nib
+
 try:
     # nilearn >= 0.13.0
     from nilearn.image import check_niimg_3d
