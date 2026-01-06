@@ -49,9 +49,9 @@ try:
     from packaging.version import Version
 
     nilearn_version = Version(nilearn.__version__)
-    if nilearn_version < Version("0.10.1") or nilearn_version >= Version("0.14"):
+    if nilearn_version < Version("0.12.0") or nilearn_version >= Version("0.14"):
         warnings.warn(
-            "NiMARE supports nilearn>=0.10.1,<0.14. " f"Detected nilearn {nilearn.__version__}.",
+            "NiMARE supports nilearn>=0.12.0,<0.14. " f"Detected nilearn {nilearn.__version__}.",
             UserWarning,
         )
 except Exception:

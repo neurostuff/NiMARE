@@ -18,12 +18,8 @@ try:
     # nilearn >= 0.13.0
     from nilearn.image.image import check_same_fov
 except ImportError:
-    try:
-        # nilearn >= 0.10.3; nilearn <= 0.12.1
-        from nilearn._utils.niimg_conversions import check_same_fov
-    except ImportError:
-        # nilearn 0.10.1-0.10.2
-        from nilearn._utils.niimg_conversions import _check_same_fov as check_same_fov
+    # nilearn >= 0.12.0; nilearn <= 0.12.1
+    from nilearn._utils.niimg_conversions import check_same_fov
 
 from nimare import _version
 from nimare.estimator import Estimator
