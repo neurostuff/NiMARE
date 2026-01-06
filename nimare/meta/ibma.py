@@ -1389,9 +1389,10 @@ class PermutedOLS(IBMAEstimator):
 
     _required_inputs = {"beta_maps": ("image", "beta")}
 
-    def __init__(self, two_sided=True, **kwargs):
+    def __init__(self, two_sided=True, n_jobs=1, **kwargs):
         super().__init__(**kwargs)
         self.two_sided = two_sided
+        self.n_jobs = n_jobs
         self.parameters_ = {}
 
     def _generate_description(self):
@@ -1419,7 +1420,7 @@ class PermutedOLS(IBMAEstimator):
                 "n_perm": n_perm,
                 "two_sided_test": self.two_sided,
                 "random_state": 42,
-                "n_jobs": 1,
+                "n_jobs": self.n_jobs,
                 "verbose": 0,
             },
         )
