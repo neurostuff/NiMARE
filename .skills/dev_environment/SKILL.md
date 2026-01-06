@@ -10,7 +10,7 @@ Use a reproducible, project-local environment and install NiMARE in editable mod
 ## Creating or reusing an environment
 
 - Prefer a local virtual environment (e.g., `.venv`) in the repository root; reuse it if it already exists.
-- Use a supported Python version (`>=3.9`) consistent with `docs/installation.rst`.
+- Use a supported Python version (`>=3.10`) consistent with `docs/installation.rst`.
 - If no `.venv` exists, create and activate one:
 
   ```bash

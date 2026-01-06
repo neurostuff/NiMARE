@@ -26,11 +26,8 @@ import textwrap
 from glob import glob
 from pathlib import Path
 
-try:
-    from importlib.resources import files
-except ImportError:
-    # Python < 3.9
-    from importlib_resources import files
+from importlib.resources import files
+
 
 import jinja2
 import numpy as np
