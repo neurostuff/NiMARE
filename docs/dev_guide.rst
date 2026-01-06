@@ -35,7 +35,7 @@ then install your local version of NiMARE in editable mode (``pip install -e``).
 
   cd /path/to/nimare_repo
 
-  conda create -p /path/to/nimare_env pip python=3.9
+  conda create -p /path/to/nimare_env pip python=3.10
   conda activate /path/to/nimare_env
   pip install -e .[all]
 

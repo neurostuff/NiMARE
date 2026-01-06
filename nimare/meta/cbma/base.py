@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import sparse
 from joblib import Memory, Parallel, delayed
-from nilearn.input_data import NiftiMasker
+from nilearn.maskers import NiftiMasker
 from scipy import ndimage
 from tqdm.auto import tqdm
 
@@ -19,9 +19,11 @@ from nimare.results import MetaResult
 from nimare.stats import null_to_p, nullhist_to_p
 from nimare.transforms import p_to_z
 from nimare.utils import (
+    DEFAULT_FLOAT_DTYPE,
     _add_metadata_to_dataframe,
     _check_ncores,
     _check_type,
+    _mask_img_to_bool,
     get_masker,
     mm2vox,
     vox2mm,
@@ -482,7 +484,7 @@ class CBMAEstimator(Estimator):
         if isinstance(ma_maps, sparse._coo.core.COO):
             masker = self.dataset.masker if not self.masker else self.masker
             mask = masker.mask_img
-            mask_data = mask.get_fdata().astype(bool)
+            mask_data = _mask_img_to_bool(mask)
 
             ma_maps = ma_maps.todense()
             ma_maps = ma_maps[:, mask_data]
@@ -548,7 +550,7 @@ class CBMAEstimator(Estimator):
         "histweights_corr-none_method-montecarlo" and
         "histweights_level-voxel_corr-fwe_method-montecarlo".
         """
-        null_ijk = np.vstack(np.where(self.masker.mask_img.get_fdata())).T
+        null_ijk = np.vstack(np.where(_mask_img_to_bool(self.masker.mask_img))).T
 
         n_cores = _check_ncores(n_cores)
 
@@ -641,7 +643,9 @@ class CBMAEstimator(Estimator):
             iter_max_size, iter_max_mass = None, None
         else:
             # Cluster-level inference
-            iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata()
+            iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata(
+                dtype=DEFAULT_FLOAT_DTYPE
+            )
             iter_max_size, iter_max_mass = _calculate_cluster_measures(
                 iter_ss_map, voxel_thresh, conn, tail="upper"
             )
@@ -760,7 +764,7 @@ class CBMAEstimator(Estimator):
                 )
 
             null_xyz = vox2mm(
-                np.vstack(np.where(self.masker.mask_img.get_fdata())).T,
+                np.vstack(np.where(_mask_img_to_bool(self.masker.mask_img))).T,
                 self.masker.mask_img.affine,
             )
 
@@ -803,7 +807,9 @@ class CBMAEstimator(Estimator):
                 # Cluster-level FWE
                 # Extract the summary statistics in voxel-wise (3D) form, threshold, and
                 # cluster-label
-                thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata()
+                thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata(
+                    dtype=DEFAULT_FLOAT_DTYPE
+                )
                 thresh_stat_values[thresh_stat_values <= ss_thresh] = 0
                 labeled_matrix, _ = ndimage.label(thresh_stat_values, conn)
 

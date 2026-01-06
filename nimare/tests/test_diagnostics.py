@@ -3,7 +3,7 @@
 import os.path as op
 
 import pytest
-from nilearn.input_data import NiftiLabelsMasker
+from nilearn.maskers import NiftiLabelsMasker
 
 from nimare import diagnostics
 from nimare.meta import cbma, ibma

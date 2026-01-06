@@ -7,7 +7,7 @@ from abc import abstractmethod
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
-from nilearn import input_data
+from nilearn.maskers import NiftiLabelsMasker
 from nilearn.reporting import get_clusters_table
 from scipy.spatial.distance import cdist
 from tqdm.auto import tqdm
@@ -15,7 +15,13 @@ from tqdm.auto import tqdm
 from nimare.base import NiMAREBase
 from nimare.meta.cbma.base import PairwiseCBMAEstimator
 from nimare.meta.ibma import IBMAEstimator
-from nimare.utils import _check_ncores, get_masker, mm2vox
+from nimare.utils import (
+    DEFAULT_FLOAT_DTYPE,
+    _check_ncores,
+    _filter_kwargs,
+    get_masker,
+    mm2vox,
+)
 
 LGR = logging.getLogger(__name__)
 
@@ -137,17 +143,18 @@ class Diagnostics(NiMAREBase):
 
         # Get clusters table and label maps
         stat_threshold = self.voxel_thresh or 0
+        cluster_threshold = 0 if self.cluster_threshold is None else self.cluster_threshold
 
         if hasattr(result.estimator, "two_sided"):
             # Only present in Fisher's and Stouffer's estimators
             two_sided = getattr(result.estimator, "two_sided")
         else:
-            two_sided = (target_img.get_fdata() < 0).any()
+            two_sided = (target_img.get_fdata(dtype=DEFAULT_FLOAT_DTYPE) < 0).any()
 
         clusters_table, label_maps = get_clusters_table(
             target_img,
             stat_threshold,
-            self.cluster_threshold,
+            cluster_threshold,
             two_sided=two_sided,
             return_label_maps=True,
         )
@@ -217,7 +224,8 @@ class Diagnostics(NiMAREBase):
 
         contribution_tables = []
         for sign, label_map, meta_ids in zip(signs, label_maps, meta_ids_lst):
-            cluster_ids = sorted(list(np.unique(label_map.get_fdata())[1:]))
+            label_arr = np.asanyarray(label_map.dataobj)
+            cluster_ids = sorted(list(np.unique(label_arr)[1:]))
             rows = list(meta_ids)
 
             # Create contribution table
@@ -321,7 +329,16 @@ class Jackknife(Diagnostics):
         original_masker = estimator.masker
 
         # Mask using a labels masker, so that we can easily get the mean value for each cluster
-        cluster_masker = input_data.NiftiLabelsMasker(label_map)
+        cluster_masker_kwargs = _filter_kwargs(
+            NiftiLabelsMasker,
+            {
+                "standardize": False,
+                "detrend": False,
+                "smoothing_fwhm": None,
+                "dtype": DEFAULT_FLOAT_DTYPE,
+            },
+        )
+        cluster_masker = NiftiLabelsMasker(label_map, **cluster_masker_kwargs)
         cluster_masker.fit(label_map)
 
         # CBMAs have "stat" maps, while most IBMAs have "est" maps. ALESubtraction has
@@ -415,7 +432,7 @@ class FocusCounter(Diagnostics):
             raise ValueError("This method only works for coordinate-based meta-analyses.")
 
         affine = label_map.affine
-        label_arr = label_map.get_fdata()
+        label_arr = np.asanyarray(label_map.dataobj)
         clust_ids = sorted(list(np.unique(label_arr)[1:]))
 
         if self._is_pairwaise_estimator:

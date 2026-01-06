@@ -90,7 +90,7 @@ class CBMREstimator(Estimator):
 
     Attributes
     ----------
-    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+    masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker object.
     inputs_ : :obj:`dict`
         Inputs to the Estimator. For CBMR estimators, there is only multiple keys:

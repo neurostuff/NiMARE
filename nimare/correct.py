@@ -10,6 +10,7 @@ from pymare.stats import bonferroni, fdr
 from nimare.base import NiMAREBase
 from nimare.results import MetaResult
 from nimare.transforms import p_to_z
+from nimare.utils import DEFAULT_FLOAT_DTYPE
 
 LGR = logging.getLogger(__name__)
 
@@ -190,8 +191,18 @@ class Corrector(NiMAREBase):
             self._collect_inputs(result)
             corr_maps, corr_tables, description = self._transform(result, method=correction_method)
 
-        # Update corrected map names and add them to maps dict
-        corr_maps = {(k + self._name_suffix): v for k, v in corr_maps.items()}
+        # Update corrected map names and enforce float32 outputs for map arrays.
+        corr_maps = {
+            k
+            + self._name_suffix: (
+                v.astype(DEFAULT_FLOAT_DTYPE)
+                if isinstance(v, np.ndarray)
+                and np.issubdtype(v.dtype, np.floating)
+                and v.dtype != DEFAULT_FLOAT_DTYPE
+                else v
+            )
+            for k, v in corr_maps.items()
+        }
         result.maps.update(corr_maps)
         result.description_ += " " + description
 

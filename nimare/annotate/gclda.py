@@ -6,11 +6,11 @@ import os.path as op
 import nibabel as nib
 import numpy as np
 import pandas as pd
-from nilearn._utils.niimg import load_niimg
+from nilearn.image import load_img
 from scipy.stats import multivariate_normal
 
 from nimare.base import NiMAREBase
-from nimare.utils import get_template
+from nimare.utils import _mask_img_to_bool, get_template
 
 LGR = logging.getLogger(__name__)
 
@@ -167,7 +167,7 @@ class GCLDAModel(NiMAREBase):
         if isinstance(mask, str) and not op.isfile(mask):
             self.mask = get_template(mask, mask="brain")
         else:
-            self.mask = load_niimg(mask)
+            self.mask = load_img(mask)
 
         # Extract document and word indices from count_df
         docidx_mapper = {id_: i for (i, id_) in enumerate(ids)}
@@ -891,7 +891,7 @@ class GCLDAModel(NiMAREBase):
             given topic i has already been selected.
         """
         affine = self.mask.affine
-        mask_ijk = np.vstack(np.where(self.mask.get_fdata())).T
+        mask_ijk = np.vstack(np.where(_mask_img_to_bool(self.mask))).T
         mask_xyz = nib.affines.apply_affine(affine, mask_ijk)
 
         spatial_dists = np.zeros((mask_xyz.shape[0], self.params["n_topics"]), float)

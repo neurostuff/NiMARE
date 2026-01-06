@@ -13,7 +13,7 @@ from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.kernel import ALEKernel
 from nimare.stats import null_to_p, nullhist_to_p
 from nimare.transforms import p_to_z
-from nimare.utils import _check_ncores, use_memmap
+from nimare.utils import _check_ncores, _mask_img_to_bool, use_memmap
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
@@ -77,7 +77,7 @@ class ALE(CBMAEstimator):
 
     Attributes
     ----------
-    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+    masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker object.
     inputs_ : :obj:`dict`
         Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
@@ -210,7 +210,7 @@ class ALE(CBMAEstimator):
         # np.array type is used by _determine_histogram_bins to calculate max_poss_ale
         if isinstance(stat_values, sparse._coo.core.COO):
             # NOTE: This may not work correctly with a non-NiftiMasker.
-            mask_data = self.masker.mask_img.get_fdata().astype(bool)
+            mask_data = _mask_img_to_bool(self.masker.mask_img)
 
             stat_values = stat_values.todense().reshape(-1)  # Indexing a .reshape(-1) is faster
             stat_values = stat_values[mask_data.reshape(-1)]
@@ -368,7 +368,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
     Attributes
     ----------
-    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+    masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker object.
     inputs_ : :obj:`dict`
         Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
@@ -577,7 +577,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         if isinstance(stat_values, sparse._coo.core.COO):
             # NOTE: This may not work correctly with a non-NiftiMasker.
-            mask_data = self.masker.mask_img.get_fdata().astype(bool)
+            mask_data = _mask_img_to_bool(self.masker.mask_img)
 
             stat_values = stat_values.todense().reshape(-1)  # Indexing a .reshape(-1) is faster
             stat_values = stat_values[mask_data.reshape(-1)]
@@ -681,7 +681,7 @@ class SCALE(CBMAEstimator):
 
     Attributes
     ----------
-    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+    masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker object.
     inputs_ : :obj:`dict`
         Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
@@ -859,7 +859,7 @@ class SCALE(CBMAEstimator):
 
         if isinstance(stat_values, sparse._coo.core.COO):
             # NOTE: This may not work correctly with a non-NiftiMasker.
-            mask_data = self.masker.mask_img.get_fdata().astype(bool)
+            mask_data = _mask_img_to_bool(self.masker.mask_img)
 
             stat_values = stat_values.todense().reshape(-1)  # Indexing a .reshape(-1) is faster
             stat_values = stat_values[mask_data.reshape(-1)]

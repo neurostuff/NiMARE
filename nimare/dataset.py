@@ -9,13 +9,14 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from nilearn._utils.niimg import load_niimg
+from nilearn.image import load_img
 
 from nimare.base import NiMAREBase
 from nimare.utils import (
     _dict_to_coordinates,
     _dict_to_df,
     _listify,
+    _mask_img_to_bool,
     _transform_coordinates_to_space,
     _try_prepend,
     _validate_df,
@@ -51,7 +52,7 @@ class Dataset(NiMAREBase):
         This parameter has no impact on images.
 
     mask : :obj:`str`, :class:`~nibabel.nifti1.Nifti1Image`, \
-    :class:`~nilearn.input_data.NiftiMasker` or similar, or None, optional
+    :class:`~nilearn.maskers.NiftiMasker` or similar, or None, optional
         Mask(er) to use. If None, uses the target space image, with all
         non-zero voxels included in the mask.
 
@@ -183,7 +184,7 @@ class Dataset(NiMAREBase):
 
     @property
     def masker(self):
-        """:class:`nilearn.input_data.NiftiMasker` or similar: Masker object.
+        """:class:`nilearn.maskers.NiftiMasker` or similar: Masker object.
 
         Defines the space and location of the area of interest (e.g., 'brain').
         """
@@ -645,7 +646,7 @@ class Dataset(NiMAREBase):
         found_ids : :obj:`list`
             A list of IDs from the Dataset with at least one focus in the mask.
         """
-        mask = load_niimg(mask)
+        mask = load_img(mask)
         dset_mask = self.masker.mask_img
 
         if not np.array_equal(dset_mask.affine, mask.affine):
@@ -653,7 +654,7 @@ class Dataset(NiMAREBase):
 
         # Convert coordinates to voxel indices
         dset_ijk = mm2vox(self.coordinates[["x", "y", "z"]].values, mask.affine)
-        mask_data = mask.get_fdata()
+        mask_data = _mask_img_to_bool(mask)
 
         # Clip coordinates to be within mask dimensions
         shape = mask_data.shape

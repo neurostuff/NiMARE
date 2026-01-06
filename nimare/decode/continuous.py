@@ -9,7 +9,8 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
-from nilearn._utils.niimg import load_niimg
+from nilearn.image import load_img
+from nilearn.maskers import NiftiMasker
 from nilearn.masking import apply_mask
 from tqdm.auto import tqdm
 
@@ -19,7 +20,14 @@ from nimare.meta.cbma.base import CBMAEstimator
 from nimare.meta.cbma.mkda import MKDAChi2
 from nimare.results import MetaResult
 from nimare.stats import pearson
-from nimare.utils import _check_ncores, _check_type, _safe_transform, get_masker
+from nimare.utils import (
+    DEFAULT_FLOAT_DTYPE,
+    _check_ncores,
+    _check_type,
+    _mask_img_to_bool,
+    _safe_transform,
+    get_masker,
+)
 
 LGR = logging.getLogger(__name__)
 
@@ -93,10 +101,10 @@ def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     ----------
     .. footbibliography::
     """
-    image = load_niimg(image)
+    image = load_img(image)
 
     # Load image file and get voxel values
-    input_values = apply_mask(image, model.mask)
+    input_values = apply_mask(image, model.mask, dtype=DEFAULT_FLOAT_DTYPE)
     topic_weights = np.squeeze(np.dot(model.p_topic_g_voxel_.T, input_values[:, None]))
     if topic_priors is not None:
         weighted_priors = weight_priors(topic_priors, prior_weight)
@@ -277,10 +285,20 @@ class CorrelationDecoder(Decoder):
 
         # Load pre-generated maps
         features, images = ([], [])
+        use_nifti_masker = isinstance(self.masker, NiftiMasker)
         for feature, img_path in feature_imgs_dict.items():
             img = nib.load(img_path)
             features.append(feature)
-            images.append(np.squeeze(self.masker.transform(img)))
+            if use_nifti_masker:
+                mask_img = self.masker.mask_img_
+                if img.shape == mask_img.shape and np.allclose(img.affine, mask_img.affine):
+                    mask_data = _mask_img_to_bool(mask_img)
+                    img_data = img.get_fdata(dtype=DEFAULT_FLOAT_DTYPE)
+                    images.append(img_data[mask_data])
+                else:
+                    images.append(apply_mask(img, mask_img, dtype=DEFAULT_FLOAT_DTYPE))
+            else:
+                images.append(np.squeeze(self.masker.transform(img)))
 
         maps = {feature: image for feature, image in zip(features, images)}
         self.results_ = MetaResult(self, mask=self.masker, maps=maps)
@@ -414,6 +432,7 @@ class CorrelationDistributionDecoder(Decoder):
             feature_arr = _safe_transform(
                 test_imgs,
                 dataset.masker,
+                dtype=DEFAULT_FLOAT_DTYPE,
                 memfile=None,
             )
             return feature, feature_arr

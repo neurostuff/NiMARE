@@ -5,10 +5,10 @@ import weakref
 from copy import deepcopy
 
 import numpy as np
-from nilearn._utils.niimg import load_niimg
+from nilearn.image import load_img
 
 from nimare.io import convert_nimads_to_dataset
-from nimare.utils import mm2vox
+from nimare.utils import _mask_img_to_bool, mm2vox
 
 
 class Studyset:
@@ -338,7 +338,7 @@ class Studyset:
             A list of Analysis IDs with at least one point in the mask.
         """
         # Load mask
-        mask = load_niimg(img)
+        mask = load_img(img)
 
         # Extract all points from all analyses
         all_points = []
@@ -358,7 +358,7 @@ class Studyset:
         ijk = mm2vox(all_points, mask.affine)
 
         # Get mask coordinates
-        mask_data = mask.get_fdata()
+        mask_data = _mask_img_to_bool(mask)
         mask_coords = np.vstack(np.where(mask_data)).T
 
         # Check for presence of coordinates in mask

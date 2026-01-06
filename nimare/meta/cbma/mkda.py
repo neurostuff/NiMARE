@@ -17,7 +17,7 @@ from nimare.meta.kernel import KDAKernel, MKDAKernel
 from nimare.meta.utils import _calculate_cluster_measures
 from nimare.stats import null_to_p, one_way, two_way
 from nimare.transforms import p_to_z
-from nimare.utils import _check_ncores, vox2mm
+from nimare.utils import DEFAULT_FLOAT_DTYPE, _check_ncores, _mask_img_to_bool, vox2mm
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
@@ -80,7 +80,7 @@ class MKDADensity(CBMAEstimator):
 
     Attributes
     ----------
-    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+    masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker object.
     inputs_ : :obj:`dict`
         Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
@@ -222,7 +222,7 @@ class MKDADensity(CBMAEstimator):
 
         if isinstance(ma_values, sparse._coo.core.COO):
             # NOTE: This may not work correctly with a non-NiftiMasker.
-            mask_data = self.masker.mask_img.get_fdata().astype(bool)
+            mask_data = _mask_img_to_bool(self.masker.mask_img)
 
             stat_values = stat_values[mask_data.reshape(-1)].ravel()
             # This is used by _compute_null_approximate
@@ -338,7 +338,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
     Attributes
     ----------
-    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+    masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker object.
     inputs_ : :obj:`dict`
         Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
@@ -597,7 +597,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pAgF_max_chi2_value = np.max(np.abs(pAgF_chi2_vals))
 
         # Cluster-level inference
-        pAgF_chi2_map = self.masker.inverse_transform(pAgF_chi2_vals).get_fdata()
+        pAgF_chi2_map = self.masker.inverse_transform(pAgF_chi2_vals).get_fdata(
+            dtype=DEFAULT_FLOAT_DTYPE
+        )
         pAgF_max_size, pAgF_max_mass = _calculate_cluster_measures(
             pAgF_chi2_map, voxel_thresh, conn, tail="two"
         )
@@ -620,7 +622,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pFgA_max_chi2_value = np.max(np.abs(pFgA_chi2_vals))
 
         # Cluster-level inference
-        pFgA_chi2_map = self.masker.inverse_transform(pFgA_chi2_vals).get_fdata()
+        pFgA_chi2_map = self.masker.inverse_transform(pFgA_chi2_vals).get_fdata(
+            dtype=DEFAULT_FLOAT_DTYPE
+        )
         pFgA_max_size, pFgA_max_mass = _calculate_cluster_measures(
             pFgA_chi2_map, voxel_thresh, conn, tail="two"
         )
@@ -670,7 +674,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         # Cluster-level FWE
         # Extract the summary statistics in voxel-wise (3D) form, threshold, and cluster-label
-        stat_map_thresh = self.masker.inverse_transform(stat_values).get_fdata()
+        stat_map_thresh = self.masker.inverse_transform(stat_values).get_fdata(
+            dtype=DEFAULT_FLOAT_DTYPE
+        )
 
         stat_map_thresh[np.abs(stat_map_thresh) <= voxel_thresh] = 0
 
@@ -821,7 +827,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         >>> cresult = corrector.transform(result)
         """
         null_xyz = vox2mm(
-            np.vstack(np.where(self.masker.mask_img.get_fdata())).T,
+            np.vstack(np.where(_mask_img_to_bool(self.masker.mask_img))).T,
             self.masker.mask_img.affine,
         )
         pAgF_chi2_vals = result.get_map("chi2_desc-uniformity", return_type="array")
@@ -1084,7 +1090,7 @@ class KDA(CBMAEstimator):
 
     Attributes
     ----------
-    masker : :class:`~nilearn.input_data.NiftiMasker` or similar
+    masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker object.
     inputs_ : :obj:`dict`
         Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
@@ -1226,7 +1232,7 @@ class KDA(CBMAEstimator):
         # OF is just a sum of MA values.
         if isinstance(ma_values, sparse._coo.core.COO):
             # NOTE: This may not work correctly with a non-NiftiMasker.
-            mask_data = self.masker.mask_img.get_fdata().astype(bool)
+            mask_data = _mask_img_to_bool(self.masker.mask_img)
 
             stat_values = ma_values.sum(axis=0)
 

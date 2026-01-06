@@ -146,26 +146,26 @@ def test_KDA_approximate_null(testdata_cbma):
     corr_results = corr.transform(results)
     assert isinstance(results, nimare.results.MetaResult)
     assert isinstance(results.description_, str)
-    assert results.get_map("p", return_type="array").dtype == np.float64
+    assert results.get_map("p", return_type="array").dtype == np.float32
     assert isinstance(corr_results, nimare.results.MetaResult)
     assert isinstance(corr_results.description_, str)
     assert (
         corr_results.get_map(
             "logp_level-voxel_corr-FWE_method-montecarlo", return_type="array"
         ).dtype
-        == np.float64
+        == np.float32
     )
     assert (
         corr_results.get_map(
             "logp_desc-size_level-cluster_corr-FWE_method-montecarlo", return_type="array"
         ).dtype
-        == np.float64
+        == np.float32
     )
     assert (
         corr_results.get_map(
             "logp_desc-mass_level-cluster_corr-FWE_method-montecarlo", return_type="array"
         ).dtype
-        == np.float64
+        == np.float32
     )
 
 
@@ -176,25 +176,25 @@ def test_KDA_fwe_1core(testdata_cbma):
     corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
     corr_results = corr.transform(results)
     assert isinstance(results, nimare.results.MetaResult)
-    assert results.get_map("p", return_type="array").dtype == np.float64
+    assert results.get_map("p", return_type="array").dtype == np.float32
     assert isinstance(corr_results, nimare.results.MetaResult)
     assert (
         corr_results.get_map(
             "logp_level-voxel_corr-FWE_method-montecarlo", return_type="array"
         ).dtype
-        == np.float64
+        == np.float32
     )
     assert (
         corr_results.get_map(
             "logp_desc-mass_level-cluster_corr-FWE_method-montecarlo", return_type="array"
         ).dtype
-        == np.float64
+        == np.float32
     )
     assert (
         corr_results.get_map(
             "logp_desc-size_level-cluster_corr-FWE_method-montecarlo", return_type="array"
         ).dtype
-        == np.float64
+        == np.float32
     )
 
 
