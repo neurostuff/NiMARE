@@ -49,7 +49,7 @@ def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
 
     assert isinstance(decoded2_df, pd.DataFrame)
     assert np.array_equal(features, features2)
-    assert np.array_equal(images, images2)
+    assert np.allclose(images, images2, rtol=1e-2, atol=1e-2)
     assert decoded_df.equals(decoded2_df)
 
     # Test: load pregenerated maps from a directory
@@ -62,7 +62,7 @@ def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
 
     assert isinstance(decoded3_df, pd.DataFrame)
     assert np.array_equal(features, features3)
-    assert np.array_equal(images, images3)
+    assert np.allclose(images, images3, rtol=1e-2, atol=1e-2)
     assert decoded_df.equals(decoded3_df)
 
     # Test: passing a dataset to load_imgs

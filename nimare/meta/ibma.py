@@ -2,6 +2,7 @@
 
 from __future__ import division
 
+import inspect
 import logging
 from collections import Counter
 
@@ -1393,16 +1394,22 @@ class PermutedOLS(IBMAEstimator):
         tested_vars = np.ones((n_studies, 1))
         confounding_vars = None
 
+        permuted_ols_kwargs = {
+            "confounding_vars": confounding_vars,
+            "model_intercept": False,  # modeled by tested_vars
+            "n_perm": n_perm,
+            "two_sided_test": self.two_sided,
+            "random_state": 42,
+            "n_jobs": 1,
+            "verbose": 0,
+        }
+        if "output_type" in inspect.signature(permuted_ols).parameters:
+            permuted_ols_kwargs["output_type"] = "legacy"
+
         log_p_map, t_map, _ = permuted_ols(
             tested_vars,
             beta_maps,
-            confounding_vars=confounding_vars,
-            model_intercept=False,  # modeled by tested_vars
-            n_perm=n_perm,
-            two_sided_test=self.two_sided,
-            random_state=42,
-            n_jobs=1,
-            verbose=0,
+            **permuted_ols_kwargs,
         )
 
         # Convert t to z, preserving signs

@@ -436,7 +436,10 @@ def plot_clusters(img, out_filename):
 
     # Define cmap depending on the number of clusters
     clust_ids = list(np.unique(img.get_fdata())[1:])
-    cmap = plt.colormaps["tab20"].resampled(len(clust_ids))
+    if len(clust_ids) <= 1:
+        cmap = mcolors.ListedColormap([plt.colormaps["tab20"](0)])
+    else:
+        cmap = plt.colormaps["tab20"].resampled(len(clust_ids))
 
     fig = plot_roi(
         img,

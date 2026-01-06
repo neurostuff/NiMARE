@@ -366,6 +366,7 @@ class ImagesToCoordinates(NiMAREBase):
             coordinate_space = None
 
         coordinates_dict = {}
+        cluster_threshold = 0 if self.cluster_threshold is None else self.cluster_threshold
         for _, row in images_df.iterrows():
             if row["id"] in list(dataset.coordinates["id"]) and self.merge_strategy == "fill":
                 continue
@@ -374,9 +375,9 @@ class ImagesToCoordinates(NiMAREBase):
                 clusters = get_clusters_table(
                     nib.funcs.squeeze_image(nib.load(row.get("z"))),
                     self.z_threshold,
-                    self.cluster_threshold,
-                    self.two_sided,
-                    self.min_distance,
+                    cluster_threshold,
+                    two_sided=self.two_sided,
+                    min_distance=self.min_distance,
                 )
             elif row.get("p"):
                 LGR.info(
@@ -392,8 +393,9 @@ class ImagesToCoordinates(NiMAREBase):
                 clusters = get_clusters_table(
                     inv_nimg,
                     p_threshold,
-                    self.cluster_threshold,
-                    self.min_distance,
+                    cluster_threshold,
+                    two_sided=False,
+                    min_distance=self.min_distance,
                 )
                 # Peak stat p-values are reported as 1 - p in get_clusters_table
                 clusters["Peak Stat"] = p_to_z(1 - clusters["Peak Stat"])
