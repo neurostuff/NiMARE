@@ -15,7 +15,13 @@ from tqdm.auto import tqdm
 from nimare.base import NiMAREBase
 from nimare.meta.cbma.base import PairwiseCBMAEstimator
 from nimare.meta.ibma import IBMAEstimator
-from nimare.utils import DEFAULT_FLOAT_DTYPE, _check_ncores, get_masker, mm2vox
+from nimare.utils import (
+    DEFAULT_FLOAT_DTYPE,
+    _check_ncores,
+    _filter_kwargs,
+    get_masker,
+    mm2vox,
+)
 
 LGR = logging.getLogger(__name__)
 
@@ -323,13 +329,16 @@ class Jackknife(Diagnostics):
         original_masker = estimator.masker
 
         # Mask using a labels masker, so that we can easily get the mean value for each cluster
-        cluster_masker = NiftiLabelsMasker(
-            label_map,
-            standardize=False,
-            detrend=False,
-            smoothing_fwhm=None,
-            dtype=DEFAULT_FLOAT_DTYPE,
+        cluster_masker_kwargs = _filter_kwargs(
+            NiftiLabelsMasker,
+            {
+                "standardize": False,
+                "detrend": False,
+                "smoothing_fwhm": None,
+                "dtype": DEFAULT_FLOAT_DTYPE,
+            },
         )
+        cluster_masker = NiftiLabelsMasker(label_map, **cluster_masker_kwargs)
         cluster_masker.fit(label_map)
 
         # CBMAs have "stat" maps, while most IBMAs have "est" maps. ALESubtraction has

@@ -2,7 +2,6 @@
 
 from __future__ import division
 
-import inspect
 import logging
 from collections import Counter
 
@@ -30,7 +29,13 @@ from nimare import _version
 from nimare.estimator import Estimator
 from nimare.meta.utils import _apply_liberal_mask
 from nimare.transforms import d_to_g, p_to_z, t_to_d, t_to_z
-from nimare.utils import _boolean_unmask, _check_ncores, get_masker
+from nimare.utils import (
+    DEFAULT_FLOAT_DTYPE,
+    _boolean_unmask,
+    _check_ncores,
+    _filter_kwargs,
+    get_masker,
+)
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
@@ -1394,23 +1399,27 @@ class PermutedOLS(IBMAEstimator):
         tested_vars = np.ones((n_studies, 1))
         confounding_vars = None
 
-        permuted_ols_kwargs = {
-            "confounding_vars": confounding_vars,
-            "model_intercept": False,  # modeled by tested_vars
-            "n_perm": n_perm,
-            "two_sided_test": self.two_sided,
-            "random_state": 42,
-            "n_jobs": 1,
-            "verbose": 0,
-        }
-        if "output_type" in inspect.signature(permuted_ols).parameters:
-            permuted_ols_kwargs["output_type"] = "legacy"
-
-        log_p_map, t_map, _ = permuted_ols(
-            tested_vars,
-            beta_maps,
-            **permuted_ols_kwargs,
+        permuted_ols_kwargs = _filter_kwargs(
+            permuted_ols,
+            {
+                "confounding_vars": confounding_vars,
+                "model_intercept": False,  # modeled by tested_vars
+                "n_perm": n_perm,
+                "two_sided_test": self.two_sided,
+                "random_state": 42,
+                "n_jobs": 1,
+                "verbose": 0,
+            },
         )
+
+        result = permuted_ols(tested_vars, beta_maps, **permuted_ols_kwargs)
+        if isinstance(result, dict):
+            t_map = result["t"]
+            log_p_map = result.get("logp_max_t")
+            if log_p_map is None:
+                log_p_map = np.array([], dtype=DEFAULT_FLOAT_DTYPE)
+        else:
+            log_p_map, t_map, _ = result
 
         # Convert t to z, preserving signs
         dof = n_studies - 1

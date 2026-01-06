@@ -43,3 +43,16 @@ with warnings.catch_warnings(record=True) as w:
     ]
 
 del get_versions
+
+try:
+    import nilearn
+    from packaging.version import Version
+
+    nilearn_version = Version(nilearn.__version__)
+    if nilearn_version < Version("0.10.1") or nilearn_version >= Version("0.14"):
+        warnings.warn(
+            "NiMARE supports nilearn>=0.10.1,<0.14. " f"Detected nilearn {nilearn.__version__}.",
+            UserWarning,
+        )
+except Exception:
+    pass

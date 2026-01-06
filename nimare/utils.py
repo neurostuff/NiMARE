@@ -27,6 +27,14 @@ def _mask_img_to_bool(mask_img):
     return np.asanyarray(mask_img.dataobj).astype(bool)
 
 
+def _filter_kwargs(func, kwargs):
+    """Return kwargs limited to a callable's supported parameters."""
+    signature = inspect.signature(func)
+    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()):
+        return kwargs
+    return {key: value for key, value in kwargs.items() if key in signature.parameters}
+
+
 def _check_ncores(n_cores):
     """Check number of cores used for method.
 
@@ -152,15 +160,18 @@ def get_masker(mask, memory=joblib.Memory(location=None, verbose=0), memory_leve
         # Coerce to array-image
         mask = nib.Nifti1Image(_mask_img_to_bool(mask), affine=mask.affine, header=mask.header)
 
-        mask = NiftiMasker(
-            mask,
-            memory=memory,
-            memory_level=memory_level,
-            standardize=False,
-            detrend=False,
-            smoothing_fwhm=None,
-            dtype=DEFAULT_FLOAT_DTYPE,
+        masker_kwargs = _filter_kwargs(
+            NiftiMasker,
+            {
+                "memory": memory,
+                "memory_level": memory_level,
+                "standardize": False,
+                "detrend": False,
+                "smoothing_fwhm": None,
+                "dtype": DEFAULT_FLOAT_DTYPE,
+            },
         )
+        mask = NiftiMasker(mask, **masker_kwargs)
 
     if not (hasattr(mask, "transform") and hasattr(mask, "inverse_transform")):
         raise ValueError(
