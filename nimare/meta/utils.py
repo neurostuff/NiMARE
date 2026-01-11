@@ -62,6 +62,10 @@ def compute_kda_ma(
 ):
     """Compute (M)KDA modeled activation (MA) map.
 
+    .. versionchanged:: 0.2.x
+
+        * Suport surface-based data.
+
     .. versionchanged:: 0.0.12
 
         * Remove low-memory option in favor of sparse arrays.
