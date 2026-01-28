@@ -294,7 +294,8 @@ def convert_neurosynth_to_dict(
     has_title = "title" in metadata_df.columns
 
     for row in metadata_df.itertuples():
-        sid = row.id
+        # Use index for study ID to support datasets without an explicit "id" column.
+        sid = row.Index
         coord_row = coords_grouped.loc[sid] if sid in coords_grouped.index else None
         xs = coord_row["x"] if coord_row is not None else []
         ys = coord_row["y"] if coord_row is not None else []
