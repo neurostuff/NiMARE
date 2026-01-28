@@ -1,5 +1,6 @@
 """Utilities for coordinate-based meta-analysis estimators."""
 
+import os
 import warnings
 
 import numpy as np
@@ -8,6 +9,10 @@ from numba import jit
 from scipy import ndimage
 
 from nimare.utils import _mask_img_to_bool
+
+# based on local benchmarks, tested 20, 30, 40, 50, 100, 200 studies
+# sorting provides speed benefits starting betwee 30 and 40 studies
+KDA_SORT_MIN_STUDIES = 40
 
 
 @jit(nopython=True, cache=True)
@@ -202,21 +207,23 @@ def compute_kda_ma(
 
         # Sort coordinates by experiment index for faster per-experiment access.
         # Also compute exp_ptr (CSR-style offsets) for downstream consumers.
-        exp_idx = kernel_data.coords[0]
-        if exp_idx.size:
-            order = np.argsort(exp_idx, kind="mergesort")
-            coords_sorted = kernel_data.coords[:, order]
-            data_sorted = kernel_data.data[order]
-            kernel_data = sparse.COO(
-                coords_sorted,
-                data=data_sorted,
-                has_duplicates=sum_overlap,
-                shape=kernel_shape,
-            )
-            exp_counts = np.bincount(coords_sorted[0], minlength=n_studies)
-            kernel_data._exp_ptr = np.concatenate(
-                [np.array([0], dtype=np.int64), np.cumsum(exp_counts, dtype=np.int64)]
-            )
+        # Sorting is beneficial above ~40 studies based on local benchmark sweep (20/30/40/50/100/200).
+        if n_studies >= KDA_SORT_MIN_STUDIES:
+            exp_idx = kernel_data.coords[0]
+            if exp_idx.size:
+                order = np.argsort(exp_idx, kind="mergesort")
+                coords_sorted = kernel_data.coords[:, order]
+                data_sorted = kernel_data.data[order]
+                kernel_data = sparse.COO(
+                    coords_sorted,
+                    data=data_sorted,
+                    has_duplicates=sum_overlap,
+                    shape=kernel_shape,
+                )
+                exp_counts = np.bincount(coords_sorted[0], minlength=n_studies)
+                kernel_data._exp_ptr = np.concatenate(
+                    [np.array([0], dtype=np.int64), np.cumsum(exp_counts, dtype=np.int64)]
+                )
 
     return kernel_data
 
