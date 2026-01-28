@@ -205,7 +205,12 @@ class ALE(CBMAEstimator):
         return description
 
     def _compute_summarystat_est(self, ma_values):
-        stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
+        if isinstance(ma_values, sparse._coo.core.COO):
+            log_ma = ma_values.copy()
+            log_ma.data = np.log1p(-log_ma.data)
+            stat_values = 1.0 - np.exp(log_ma.sum(axis=0))
+        else:
+            stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
 
         # np.array type is used by _determine_histogram_bins to calculate max_poss_ale
         if isinstance(stat_values, sparse._coo.core.COO):
@@ -278,10 +283,10 @@ class ALE(CBMAEstimator):
         bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
 
         n_exp = ma_maps.shape[0]
-        n_bins = bin_centers.shape[0]
-        ma_hists = np.zeros((n_exp, n_bins))
         data = ma_maps.data
         coords = ma_maps.coords
+
+        ale_hist = None
         for exp_idx in range(n_exp):
             # The first column of coords is the fourth dimension of the dense array
             study_ma_values = data[coords[0, :] == exp_idx]
@@ -289,18 +294,15 @@ class ALE(CBMAEstimator):
             n_nonzero_voxels = study_ma_values.shape[0]
             n_zero_voxels = self.__n_mask_voxels - n_nonzero_voxels
 
-            ma_hists[exp_idx, :] = np.histogram(study_ma_values, bins=bin_edges, density=False)[
-                0
-            ].astype(float)
-            ma_hists[exp_idx, 0] += n_zero_voxels
+            exp_hist = np.histogram(study_ma_values, bins=bin_edges, density=False)[0].astype(
+                float
+            )
+            exp_hist[0] += n_zero_voxels
+            exp_hist /= exp_hist.sum()
 
-        # Normalize MA histograms to get probabilities
-        ma_hists /= ma_hists.sum(1)[:, None]
-
-        ale_hist = ma_hists[0, :].copy()
-
-        for i_exp in range(1, ma_hists.shape[0]):
-            exp_hist = ma_hists[i_exp, :]
+            if ale_hist is None:
+                ale_hist = exp_hist.copy()
+                continue
 
             # Find histogram bins with nonzero values for each histogram.
             ale_idx = np.where(ale_hist > 0)[0]
@@ -573,7 +575,12 @@ class ALESubtraction(PairwiseCBMAEstimator):
         return maps, {}, description
 
     def _compute_summarystat_est(self, ma_values):
-        stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
+        if isinstance(ma_values, sparse._coo.core.COO):
+            log_ma = ma_values.copy()
+            log_ma.data = np.log1p(-log_ma.data)
+            stat_values = 1.0 - np.exp(log_ma.sum(axis=0))
+        else:
+            stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
 
         if isinstance(stat_values, sparse._coo.core.COO):
             # NOTE: This may not work correctly with a non-NiftiMasker.
