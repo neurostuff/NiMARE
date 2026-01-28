@@ -1,6 +1,5 @@
 """Utilities for coordinate-based meta-analysis estimators."""
 
-import os
 import warnings
 
 import numpy as np
@@ -207,7 +206,8 @@ def compute_kda_ma(
 
         # Sort coordinates by experiment index for faster per-experiment access.
         # Also compute exp_ptr (CSR-style offsets) for downstream consumers.
-        # Sorting is beneficial above ~40 studies based on local benchmark sweep (20/30/40/50/100/200).
+        # Sorting is beneficial above ~40 studies based on
+        # local benchmark sweep (20/30/40/50/100/200).
         if n_studies >= KDA_SORT_MIN_STUDIES:
             exp_idx = kernel_data.coords[0]
             if exp_idx.size:
