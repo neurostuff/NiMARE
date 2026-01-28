@@ -264,7 +264,6 @@ class MKDADensity(CBMAEstimator):
             else:
                 study_ma_values = data[coords[0, :] == exp_idx]
 
-            n_nonzero_voxels = study_ma_values.shape[0]
             if self.__n_mask_voxels == 0:
                 prop_active[exp_idx] = 0.0
             else:
