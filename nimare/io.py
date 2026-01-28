@@ -268,7 +268,7 @@ def convert_neurosynth_to_dict(
             else:
                 feature_group = f"{vocab}_{source}_{value_type}__"
 
-            features = sparse.load_npz(features_file).todense()
+            features = sparse.load_npz(features_file).toarray()
             vocab = np.loadtxt(vocabulary_file, dtype=str, delimiter="\t")
 
             labels = [feature_group + label for label in vocab]
@@ -283,36 +283,55 @@ def convert_neurosynth_to_dict(
         label_df = None
 
     # Compile (pseudo-)NIMADS-format dictionary
-    x = coords_df["x"].values
-    y = coords_df["y"].values
-    z = coords_df["z"].values
+    coords_grouped = coords_df.groupby("id")[["x", "y", "z"]].agg(list)
+    label_dict = label_df.to_dict(orient="index") if label_df is not None else None
 
     dset_dict = {}
 
-    for sid, study_metadata in metadata_df.iterrows():
-        coord_inds = np.where(coords_df["id"].values == sid)[0]
-        study_dict = {}
-        study_dict["metadata"] = {}
-        study_dict["metadata"]["authors"] = study_metadata.get("authors", "n/a")
-        study_dict["metadata"]["journal"] = study_metadata.get("journal", "n/a")
-        study_dict["metadata"]["year"] = study_metadata.get("year", "n/a")
-        study_dict["metadata"]["title"] = study_metadata.get("title", "n/a")
-        study_dict["contrasts"] = {}
-        study_dict["contrasts"]["1"] = {}
-        # Duplicate metadata across study and contrast levels
-        study_dict["contrasts"]["1"]["metadata"] = {}
-        study_dict["contrasts"]["1"]["metadata"]["authors"] = study_metadata.get("authors", "n/a")
-        study_dict["contrasts"]["1"]["metadata"]["journal"] = study_metadata.get("journal", "n/a")
-        study_dict["contrasts"]["1"]["metadata"]["year"] = study_metadata.get("year", "n/a")
-        study_dict["contrasts"]["1"]["metadata"]["title"] = study_metadata.get("title", "n/a")
-        study_dict["contrasts"]["1"]["coords"] = {}
-        study_dict["contrasts"]["1"]["coords"]["space"] = study_metadata["space"]
-        study_dict["contrasts"]["1"]["coords"]["x"] = list(x[coord_inds])
-        study_dict["contrasts"]["1"]["coords"]["y"] = list(y[coord_inds])
-        study_dict["contrasts"]["1"]["coords"]["z"] = list(z[coord_inds])
+    has_authors = "authors" in metadata_df.columns
+    has_journal = "journal" in metadata_df.columns
+    has_year = "year" in metadata_df.columns
+    has_title = "title" in metadata_df.columns
 
-        if label_df is not None:
-            study_dict["contrasts"]["1"]["labels"] = label_df.loc[sid].to_dict()
+    for row in metadata_df.itertuples():
+        sid = row.id
+        coord_row = coords_grouped.loc[sid] if sid in coords_grouped.index else None
+        xs = coord_row["x"] if coord_row is not None else []
+        ys = coord_row["y"] if coord_row is not None else []
+        zs = coord_row["z"] if coord_row is not None else []
+
+        authors = row.authors if has_authors else "n/a"
+        journal = row.journal if has_journal else "n/a"
+        year = row.year if has_year else "n/a"
+        title = row.title if has_title else "n/a"
+
+        study_dict = {
+            "metadata": {
+                "authors": authors,
+                "journal": journal,
+                "year": year,
+                "title": title,
+            },
+            "contrasts": {
+                "1": {
+                    "metadata": {
+                        "authors": authors,
+                        "journal": journal,
+                        "year": year,
+                        "title": title,
+                    },
+                    "coords": {
+                        "space": row.space,
+                        "x": xs,
+                        "y": ys,
+                        "z": zs,
+                    },
+                }
+            },
+        }
+
+        if label_dict is not None:
+            study_dict["contrasts"]["1"]["labels"] = label_dict.get(sid, {})
 
         dset_dict[sid] = study_dict
 

@@ -7,7 +7,7 @@ import sparse
 from numba import jit
 from scipy import ndimage
 
-from nimare.utils import _mask_img_to_bool, unique_rows
+from nimare.utils import _mask_img_to_bool
 
 
 @jit(nopython=True, cache=True)
@@ -49,6 +49,28 @@ def _convolve_sphere(kernel, ijks, index, max_shape):
     idx = np_all_axis1(np.logical_and(sphere_coords >= 0, np.less(sphere_coords, max_shape)))
 
     return sphere_coords[idx, :]
+
+
+@jit(nopython=True, cache=True)
+def _convolve_sphere_to_mask(kernel, ijks, index, max_shape):
+    """Convolve peaks with a spherical kernel into a boolean occupancy mask."""
+    peaks = ijks[index]
+    occ = np.zeros((max_shape[0], max_shape[1], max_shape[2]), dtype=np.bool_)
+    for peak in peaks:
+        for i in range(kernel.shape[1]):
+            x = kernel[0, i] + peak[0]
+            y = kernel[1, i] + peak[1]
+            z = kernel[2, i] + peak[2]
+            if (
+                (x >= 0)
+                and (y >= 0)
+                and (z >= 0)
+                and (x < max_shape[0])
+                and (y < max_shape[1])
+                and (z < max_shape[2])
+            ):
+                occ[x, y, z] = True
+    return occ
 
 
 def compute_kda_ma(
@@ -111,6 +133,7 @@ def compute_kda_ma(
     shape = mask.shape
     vox_dims = mask.header.get_zooms()
 
+    max_shape = np.array(shape, dtype=np.int32)
     mask_data = _mask_img_to_bool(mask)
 
     if exp_idx is None:
@@ -133,11 +156,11 @@ def compute_kda_ma(
         for i_exp, _ in enumerate(exp_idx_uniq):
             # Index peaks by experiment
             curr_exp_idx = exp_idx == i_exp
-            sphere_coords = _convolve_sphere(kernel, ijks, curr_exp_idx, np.array(shape))
+            occ = _convolve_sphere_to_mask(kernel, ijks, curr_exp_idx, max_shape)
 
             # preallocate array for current study
             study_values = np.zeros(shape, dtype=np.int32)
-            study_values[sphere_coords[:, 0], sphere_coords[:, 1], sphere_coords[:, 2]] = value
+            study_values[occ] = value
 
             # Sum across studies
             all_values += study_values
@@ -151,18 +174,20 @@ def compute_kda_ma(
         # Loop over experiments
         for i_exp, _ in enumerate(exp_idx_uniq):
             curr_exp_idx = exp_idx == i_exp
-            # Convolve with sphere
-            all_spheres = _convolve_sphere(kernel, ijks, curr_exp_idx, np.array(shape))
-
-            if not sum_overlap:
-                all_spheres = unique_rows(all_spheres)
-
-            # Apply mask
-            sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
-            all_spheres = all_spheres[sphere_idx_inside_mask, :]
-
-            # Combine experiment id with coordinates
-            all_coords.append(all_spheres)
+            if sum_overlap:
+                # Convolve with sphere (allow duplicates when overlaps occur)
+                all_spheres = _convolve_sphere(kernel, ijks, curr_exp_idx, max_shape)
+                # Apply mask
+                sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
+                all_spheres = all_spheres[sphere_idx_inside_mask, :]
+                all_coords.append(all_spheres)
+            else:
+                # Convolve with sphere and deduplicate via occupancy mask
+                occ = _convolve_sphere_to_mask(kernel, ijks, curr_exp_idx, max_shape)
+                # Apply mask
+                occ &= mask_data
+                # Combine experiment id with coordinates
+                all_coords.append(np.column_stack(np.where(occ)))
 
         # Add exp_idx to coordinates
         exp_shapes = [coords.shape[0] for coords in all_coords]
