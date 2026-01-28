@@ -594,8 +594,12 @@ def _validate_images_df(image_df):
 
         image_df = image_df_out
 
-    # Normalize missing values to None (avoid NaN floats in path columns)
-    image_df = image_df.where(pd.notnull(image_df), None)
+    # Normalize missing values to None (avoid NaN floats in path columns).
+    # Pandas may keep float dtypes; force object to retain None.
+    for col in image_df.columns:
+        if col in id_columns:
+            continue
+        image_df[col] = image_df[col].astype(object).where(pd.notnull(image_df[col]), None)
 
     return image_df
 
