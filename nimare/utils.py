@@ -594,6 +594,9 @@ def _validate_images_df(image_df):
 
         image_df = image_df_out
 
+    # Normalize missing values to None (avoid NaN floats in path columns)
+    image_df = image_df.where(pd.notnull(image_df), None)
+
     return image_df
 
 
