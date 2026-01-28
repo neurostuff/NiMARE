@@ -317,6 +317,10 @@ For more information about fetching data from the internet, see :ref:`fetching t
    utils.mni2tal
    utils.unique_rows
 
+.. warning::
+   ``utils.unique_rows`` is deprecated and will be removed in a future release.
+   Use ``numpy.unique(ar, axis=0)`` instead.
+
 .. _api_workflows_ref:
 
 :mod:`nimare.workflows`: Common workflows
