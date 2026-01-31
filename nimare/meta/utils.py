@@ -7,7 +7,7 @@ import sparse
 from numba import jit
 from scipy import ndimage
 
-from nimare.utils import _mask_img_to_bool
+from nimare.utils import _mask_img_to_bool, unique_rows
 
 # based on local benchmarks, tested 20, 30, 40, 50, 100, 200 studies
 # sorting provides speed benefits starting betwee 30 and 40 studies
@@ -208,7 +208,7 @@ def compute_kda_ma(
             else:
                 # Convolve with sphere and deduplicate via unique rows
                 all_spheres = _convolve_sphere(kernel, ijks, curr_exp_idx, max_shape)
-                all_spheres = np.unique(all_spheres, axis=0)
+                all_spheres = unique_rows(all_spheres)
                 # Apply mask
                 sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
                 all_spheres = all_spheres[sphere_idx_inside_mask, :]

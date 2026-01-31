@@ -1015,11 +1015,6 @@ def unique_rows(ar, return_counts=False):
 
     Notes
     -----
-    .. deprecated:: 0.1.0
-        This helper is retained for backward compatibility and will be removed
-        in a future release. Use ``np.unique(ar, axis=0)`` (and
-        ``return_counts=True`` if needed) instead.
-
     The function will generate a copy of `ar` if it is not
     C-contiguous, which will negatively affect performance for large
     input arrays.
@@ -1040,12 +1035,6 @@ def unique_rows(ar, return_counts=False):
     Copyright (C) 2019, the scikit-image team
     All rights reserved.
     """
-    warnings.warn(
-        "nimare.utils.unique_rows is deprecated and will be removed in a future release. "
-        "Use np.unique(ar, axis=0) instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
     if ar.ndim != 2:
         raise ValueError("unique_rows() only makes sense for 2D arrays, " "got %dd" % ar.ndim)
     # the view in the next line only works if the array is C-contiguous
