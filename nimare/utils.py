@@ -8,7 +8,6 @@ import multiprocessing as mp
 import os
 import os.path as op
 import re
-import warnings
 from functools import wraps
 from tempfile import mkstemp
 
