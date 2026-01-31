@@ -7,6 +7,7 @@ from shutil import copyfile
 
 import nibabel as nib
 import numpy as np
+import pandas as pd
 import pytest
 from nilearn.image import resample_img
 from requests import request
@@ -36,7 +37,9 @@ def testdata_ibma(tmp_path_factory):
         if c.endswith("__relative"):
             continue
         for f in dset.images[c].values:
-            if (f is None) or not os.path.isfile(f):
+            if (f is None) or pd.isna(f) or not isinstance(f, (str, os.PathLike)):
+                continue
+            if not os.path.isfile(f):
                 continue
             new_f = f.replace(
                 dset_dir.rstrip(os.path.sep), str(tmpdir.absolute()).rstrip(os.path.sep)

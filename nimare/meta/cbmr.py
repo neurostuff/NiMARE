@@ -283,10 +283,8 @@ class CBMREstimator(Estimator):
                     unique_groups = ["Default"]
                 elif isinstance(self.group_categories, str):
                     if self.group_categories not in valid_dset_annotations.columns:
-                        raise ValueError(
-                            f"""Category_names: {self.group_categories} does not exist
-                            in the dataset"""
-                        )
+                        raise ValueError(f"""Category_names: {self.group_categories} does not exist
+                            in the dataset""")
                     else:
                         unique_groups = list(
                             valid_dset_annotations[self.group_categories].unique()

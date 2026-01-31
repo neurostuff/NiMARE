@@ -22,6 +22,7 @@
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
 """Reports builder for NiMARE's MetaResult object."""
+
 import textwrap
 from glob import glob
 from importlib.resources import files

@@ -2,6 +2,7 @@
 
 import copy
 import logging
+import os
 import os.path as op
 import warnings
 
@@ -377,15 +378,20 @@ class ImagesToCoordinates(NiMAREBase):
             if row["id"] in list(dataset.coordinates["id"]) and self.merge_strategy == "fill":
                 continue
 
-            if row.get("z"):
+            z_path = row.get("z")
+            p_path = row.get("p")
+            has_z = isinstance(z_path, (str, os.PathLike)) and str(z_path).strip() != ""
+            has_p = isinstance(p_path, (str, os.PathLike)) and str(p_path).strip() != ""
+
+            if has_z:
                 clusters = get_clusters_table(
-                    nib.funcs.squeeze_image(nib.load(row.get("z"))),
+                    nib.funcs.squeeze_image(nib.load(z_path)),
                     self.z_threshold,
                     cluster_threshold,
                     two_sided=self.two_sided,
                     min_distance=self.min_distance,
                 )
-            elif row.get("p"):
+            elif has_p:
                 LGR.info(
                     f"No Z map for {row['id']}, using p map "
                     "(p-values will be treated as positive z-values)"
@@ -394,7 +400,7 @@ class ImagesToCoordinates(NiMAREBase):
                     LGR.warning(f"Cannot use two_sided threshold using a p map for {row['id']}")
 
                 p_threshold = 1 - z_to_p(self.z_threshold)
-                nimg = nib.funcs.squeeze_image(nib.load(row.get("p")))
+                nimg = nib.funcs.squeeze_image(nib.load(p_path))
                 inv_nimg = nib.Nifti1Image(
                     1 - nimg.get_fdata(dtype=DEFAULT_FLOAT_DTYPE),
                     nimg.affine,

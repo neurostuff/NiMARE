@@ -9,6 +9,12 @@ from scipy import ndimage
 
 from nimare.utils import _mask_img_to_bool, unique_rows
 
+# based on local benchmarks, tested 20, 30, 40, 50, 100, 200 studies
+# sorting provides speed benefits starting betwee 30 and 40 studies
+KDA_SORT_MIN_STUDIES = 40
+# occupancy-mask vs. unique-rows crossover observed around ~50 foci/study
+KDA_OCCUPANCY_MIN_FOCI = 50
+
 
 @jit(nopython=True, cache=True)
 def _convolve_sphere(kernel, ijks, index, max_shape):
@@ -49,6 +55,28 @@ def _convolve_sphere(kernel, ijks, index, max_shape):
     idx = np_all_axis1(np.logical_and(sphere_coords >= 0, np.less(sphere_coords, max_shape)))
 
     return sphere_coords[idx, :]
+
+
+@jit(nopython=True, cache=True)
+def _convolve_sphere_to_mask(kernel, ijks, index, max_shape):
+    """Convolve peaks with a spherical kernel into a boolean occupancy mask."""
+    peaks = ijks[index]
+    occ = np.zeros((max_shape[0], max_shape[1], max_shape[2]), dtype=np.bool_)
+    for peak in peaks:
+        for i in range(kernel.shape[1]):
+            x = kernel[0, i] + peak[0]
+            y = kernel[1, i] + peak[1]
+            z = kernel[2, i] + peak[2]
+            if (
+                (x >= 0)
+                and (y >= 0)
+                and (z >= 0)
+                and (x < max_shape[0])
+                and (y < max_shape[1])
+                and (z < max_shape[2])
+            ):
+                occ[x, y, z] = True
+    return occ
 
 
 def compute_kda_ma(
@@ -111,6 +139,7 @@ def compute_kda_ma(
     shape = mask.shape
     vox_dims = mask.header.get_zooms()
 
+    max_shape = np.array(shape, dtype=np.int32)
     mask_data = _mask_img_to_bool(mask)
 
     if exp_idx is None:
@@ -118,6 +147,11 @@ def compute_kda_ma(
 
     exp_idx_uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
     n_studies = len(exp_idx_uniq)
+    # Determine which experiments to use occupancy vs. unique-rows
+    # occupancy is more efficient when there are many foci per experiment
+    # unique-rows is more efficient when there are few foci per experiment
+    exp_counts = np.bincount(exp_idx, minlength=n_studies)
+    use_occ_by_exp = exp_counts >= KDA_OCCUPANCY_MIN_FOCI
 
     kernel_shape = (n_studies,) + shape
 
@@ -133,11 +167,16 @@ def compute_kda_ma(
         for i_exp, _ in enumerate(exp_idx_uniq):
             # Index peaks by experiment
             curr_exp_idx = exp_idx == i_exp
-            sphere_coords = _convolve_sphere(kernel, ijks, curr_exp_idx, np.array(shape))
+            use_occ = use_occ_by_exp[i_exp]
 
             # preallocate array for current study
             study_values = np.zeros(shape, dtype=np.int32)
-            study_values[sphere_coords[:, 0], sphere_coords[:, 1], sphere_coords[:, 2]] = value
+            if use_occ:
+                occ = _convolve_sphere_to_mask(kernel, ijks, curr_exp_idx, max_shape)
+                study_values[occ] = value
+            else:
+                sphere_coords = _convolve_sphere(kernel, ijks, curr_exp_idx, max_shape)
+                study_values[sphere_coords[:, 0], sphere_coords[:, 1], sphere_coords[:, 2]] = value
 
             # Sum across studies
             all_values += study_values
@@ -151,18 +190,29 @@ def compute_kda_ma(
         # Loop over experiments
         for i_exp, _ in enumerate(exp_idx_uniq):
             curr_exp_idx = exp_idx == i_exp
-            # Convolve with sphere
-            all_spheres = _convolve_sphere(kernel, ijks, curr_exp_idx, np.array(shape))
-
-            if not sum_overlap:
+            use_occ = use_occ_by_exp[i_exp]
+            if sum_overlap:
+                # Convolve with sphere (allow duplicates when overlaps occur)
+                all_spheres = _convolve_sphere(kernel, ijks, curr_exp_idx, max_shape)
+                # Apply mask
+                sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
+                all_spheres = all_spheres[sphere_idx_inside_mask, :]
+                all_coords.append(all_spheres)
+            elif use_occ:
+                # Convolve with sphere and deduplicate via occupancy mask
+                occ = _convolve_sphere_to_mask(kernel, ijks, curr_exp_idx, max_shape)
+                # Apply mask
+                occ &= mask_data
+                # Combine experiment id with coordinates
+                all_coords.append(np.column_stack(np.where(occ)))
+            else:
+                # Convolve with sphere and deduplicate via unique rows
+                all_spheres = _convolve_sphere(kernel, ijks, curr_exp_idx, max_shape)
                 all_spheres = unique_rows(all_spheres)
-
-            # Apply mask
-            sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
-            all_spheres = all_spheres[sphere_idx_inside_mask, :]
-
-            # Combine experiment id with coordinates
-            all_coords.append(all_spheres)
+                # Apply mask
+                sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
+                all_spheres = all_spheres[sphere_idx_inside_mask, :]
+                all_coords.append(all_spheres)
 
         # Add exp_idx to coordinates
         exp_shapes = [coords.shape[0] for coords in all_coords]
@@ -174,6 +224,27 @@ def compute_kda_ma(
         kernel_data = sparse.COO(
             all_coords, data=value, has_duplicates=sum_overlap, shape=kernel_shape
         )
+
+        # Sort coordinates by experiment index for faster per-experiment access.
+        # Also compute exp_ptr (CSR-style offsets) for downstream consumers.
+        # Sorting is beneficial above ~40 studies based on
+        # local benchmark sweep (20/30/40/50/100/200).
+        if n_studies >= KDA_SORT_MIN_STUDIES:
+            exp_idx = kernel_data.coords[0]
+            if exp_idx.size:
+                order = np.argsort(exp_idx, kind="mergesort")
+                coords_sorted = kernel_data.coords[:, order]
+                data_sorted = kernel_data.data[order]
+                kernel_data = sparse.COO(
+                    coords_sorted,
+                    data=data_sorted,
+                    has_duplicates=sum_overlap,
+                    shape=kernel_shape,
+                )
+                exp_counts = np.bincount(coords_sorted[0], minlength=n_studies)
+                kernel_data._exp_ptr = np.concatenate(
+                    [np.array([0], dtype=np.int64), np.cumsum(exp_counts, dtype=np.int64)]
+                )
 
     return kernel_data
 
@@ -313,7 +384,7 @@ def compute_ale_ma(mask, ijks, kernel=None, exp_idx=None, sample_sizes=None, use
     coords = np.vstack((exp.flatten(), np.hstack(all_coords)))
     data = np.hstack(all_data).flatten()
 
-    kernel_data = sparse.COO(coords, data, shape=kernel_shape)
+    kernel_data = sparse.COO(coords, data, shape=kernel_shape, has_duplicates=False, sorted=True)
 
     return kernel_data
 

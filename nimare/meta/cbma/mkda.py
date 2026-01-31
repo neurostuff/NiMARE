@@ -254,14 +254,21 @@ class MKDADensity(CBMAEstimator):
         prop_active = np.zeros(n_exp)
         data = ma_maps.data
         coords = ma_maps.coords
+        exp_ptr = getattr(ma_maps, "_exp_ptr", None)
         for exp_idx in range(n_exp):
             # The first column of coords is the fourth dimension of the dense array
-            study_ma_values = data[coords[0, :] == exp_idx]
+            if exp_ptr is not None:
+                start = exp_ptr[exp_idx]
+                end = exp_ptr[exp_idx + 1]
+                study_ma_values = data[start:end]
+            else:
+                study_ma_values = data[coords[0, :] == exp_idx]
 
-            n_nonzero_voxels = study_ma_values.shape[0]
-            n_zero_voxels = self.__n_mask_voxels - n_nonzero_voxels
-
-            prop_active[exp_idx] = np.mean(np.hstack([study_ma_values, np.zeros(n_zero_voxels)]))
+            if self.__n_mask_voxels == 0:
+                prop_active[exp_idx] = 0.0
+            else:
+                # Mean including zero voxels is equivalent to sum / total voxels.
+                prop_active[exp_idx] = study_ma_values.sum() / self.__n_mask_voxels
 
         self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
 
