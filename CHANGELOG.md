@@ -2,7 +2,20 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.7.0...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.8.0...HEAD)
+
+## [0.8.0](https://github.com/neurostuff/NiMARE/compare/0.7.0...0.8.0) - 2026-02-01
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+Support pandas 3.0 (changed nan handling)
+make loading the neurosynth dataset much (16 times) faster
+make MKDAChi2/MKDADensity faster in when datasets are large/have many foci.
+
+### What's Changed
+
+* [ENH] neurosynth loading and MKDACHI2 speedup by @jdkent in https://github.com/neurostuff/NiMARE/pull/967
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.7.0...0.8.0
 
 ## [0.7.0](https://github.com/neurostuff/NiMARE/compare/0.6.2...0.7.0) - 2026-01-06
 
