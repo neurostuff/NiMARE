@@ -1406,3 +1406,39 @@ def dummy_encoding_moderators(dataset_annotations, moderators):
         else:
             new_moderators.append(moderator)
     return dataset_annotations, new_moderators
+
+
+def robust_inverse(FI, eps=1e-8):
+    """
+    Compute the robust inverse of a Fisher information matrix.
+
+    This function computes the inverse of a Fisher information matrix (FI) using
+    Singular Value Decomposition (SVD) and a thresholding approach to handle
+    small singular values, which can lead to numerical instability.
+
+    Parameters
+    ----------
+    FI : :obj:`numpy.ndarray`
+        The Fisher information matrix to be inverted.
+    eps : :obj:`float`, optional
+        A small value to threshold the singular values. Singular values below this
+        threshold will be set to zero in the inverse computation to avoid numerical
+        instability. Default is 1e-8.
+
+    Returns
+    -------
+    FI_inv : :obj:`numpy.ndarray`
+        The robust inverse of the Fisher information matrix.
+    """
+    # Improve numerical stability of FI by symmetrizing it
+    FI = (FI + FI.T) / 2
+    # Perform Singular Value Decomposition
+    # and compute the inverse using a threshold on singular values
+    # to avoid division by zero or very small values
+    U, S, VT = np.linalg.svd(FI, full_matrices=False)
+    M = S > eps
+    S_inv = S**-1
+    U = ((U + VT.T) / 2) * M[None, :]
+    # Set small singular values to zero in the inverse
+    FI_inv = U @ np.diag(S_inv) @ U.T
+    return FI_inv

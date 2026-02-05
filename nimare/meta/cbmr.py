@@ -20,7 +20,13 @@ from nimare import _version
 from nimare.diagnostics import FocusFilter
 from nimare.estimator import Estimator
 from nimare.meta import models
-from nimare.utils import b_spline_bases, dummy_encoding_moderators, get_masker, mm2vox
+from nimare.utils import (
+    b_spline_bases,
+    dummy_encoding_moderators,
+    get_masker,
+    mm2vox,
+    robust_inverse,
+)
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
@@ -106,6 +112,8 @@ class CBMREstimator(Estimator):
 
     Notes
     -----
+    The CBMR framework was developed in :footcite:t:`yu2024neuroimaging`,
+
     Available correction methods: :meth:`~nimare.meta.cbmr.CBMRInference`.
     """
 
@@ -749,7 +757,7 @@ class CBMRInference(object):
                 self.estimator.inputs_["foci_per_voxel"],
                 self.estimator.inputs_["foci_per_study"],
             )
-            cov_spatial_coef = np.linalg.inv(f_spatial_coef)
+            cov_spatial_coef = robust_inverse(f_spatial_coef)
             # compute numerator: contrast vector * group-wise log spatial intensity
             involved_log_intensity_per_voxel = list()
             for group in con_group_involved:
@@ -923,8 +931,7 @@ class CBMRInference(object):
                 self.estimator.inputs_["foci_per_voxel"],
                 self.estimator.inputs_["foci_per_study"],
             )
-
-            cov_moderator_coef = np.linalg.inv(f_moderator_coef)
+            cov_moderator_coef = robust_inverse(f_moderator_coef)
             if m_con_moderator == 1:  # a single contrast vector, use Wald test
                 var_moderator_coef = np.diag(cov_moderator_coef)
                 involved_var_moderator_coef = con_moderator**2 @ var_moderator_coef
