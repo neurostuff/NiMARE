@@ -2,7 +2,20 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.8.0...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.8.1...HEAD)
+
+## [0.8.1](https://github.com/neurostuff/NiMARE/compare/0.8.0...0.8.1) - 2026-02-05
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+Thanks to @araikes for reporting! #970, mismatch between the label of the clustertables name and the actual contents of the cluster table. This is resolved now.
+
+#### Bug Fixes
+
+* ensure cluster label files are named correctly by @jdkent in https://github.com/neurostuff/NiMARE/pull/971
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.8.0...0.8.1
 
 ## [0.8.0](https://github.com/neurostuff/NiMARE/compare/0.7.0...0.8.0) - 2026-02-01
 
