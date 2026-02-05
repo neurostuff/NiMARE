@@ -1,7 +1,10 @@
 """Tests for the nimare.diagnostics module."""
 
+import logging
 import os.path as op
 
+import nibabel as nib
+import numpy as np
 import pytest
 from nilearn.maskers import NiftiLabelsMasker
 
@@ -103,6 +106,111 @@ def test_jackknife_with_custom_masker_smoke(testdata_ibma):
     with pytest.raises(ValueError):
         jackknife = diagnostics.Jackknife(target_image="doggy", voxel_thresh=0.5)
         jackknife.transform(res)
+
+
+def test_focuscounter_negative_tail_label_map_naming(testdata_cbma_full):
+    """Ensure single-tail negative clusters are labeled as negative."""
+    dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:5])
+    meta = cbma.ALE()
+    res = meta.fit(dset)
+
+    masker = res.estimator.masker
+    mask_img = masker.mask_img_
+    mask_data = mask_img.get_fdata().astype(bool)
+
+    neg_data = np.zeros(mask_img.shape, dtype=float)
+    ijk = np.column_stack(np.where(mask_data))[0]
+    neg_data[tuple(ijk)] = -5.0
+    neg_img = nib.Nifti1Image(neg_data, mask_img.affine)
+    res.maps["z"] = np.squeeze(masker.transform(neg_img))
+
+    counter = diagnostics.FocusCounter(target_image="z", voxel_thresh=1.0)
+    results = counter.transform(res)
+
+    assert "label_tail-negative" in results.maps
+    assert results.maps["label_tail-negative"] is not None
+    assert "label_tail-positive" not in results.maps
+    assert "z_diag-FocusCounter_tab-counts_tail-negative" in results.tables
+
+
+def test_focuscounter_positive_tail_label_map_naming(testdata_cbma_full):
+    """Ensure single-tail positive clusters are labeled as positive."""
+    dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:5])
+    meta = cbma.ALE()
+    res = meta.fit(dset)
+
+    masker = res.estimator.masker
+    mask_img = masker.mask_img_
+    mask_data = mask_img.get_fdata().astype(bool)
+
+    pos_data = np.zeros(mask_img.shape, dtype=float)
+    ijk = np.column_stack(np.where(mask_data))[0]
+    pos_data[tuple(ijk)] = 5.0
+    pos_img = nib.Nifti1Image(pos_data, mask_img.affine)
+    res.maps["z"] = np.squeeze(masker.transform(pos_img))
+
+    counter = diagnostics.FocusCounter(target_image="z", voxel_thresh=1.0)
+    results = counter.transform(res)
+
+    assert "label_tail-positive" in results.maps
+    assert results.maps["label_tail-positive"] is not None
+    assert "label_tail-negative" not in results.maps
+    assert "z_diag-FocusCounter_tab-counts_tail-positive" in results.tables
+
+
+def test_focuscounter_single_tail_mixed_sign_warning(testdata_cbma_full, monkeypatch, caplog):
+    """Ensure mixed-sign single-tail path warns and defaults to positive."""
+    dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:5])
+    meta = cbma.ALE()
+    res = meta.fit(dset)
+
+    masker = res.estimator.masker
+    mask_img = masker.mask_img_
+    mask_data = mask_img.get_fdata().astype(bool)
+
+    pos_data = np.zeros(mask_img.shape, dtype=float)
+    ijk = np.column_stack(np.where(mask_data))[0]
+    pos_data[tuple(ijk)] = 5.0
+    pos_img = nib.Nifti1Image(pos_data, mask_img.affine)
+    res.maps["z"] = np.squeeze(masker.transform(pos_img))
+
+    def _fake_infer(_label_maps, _clusters_table, _n_clusters):
+        return ["positive"], "positive", True
+
+    monkeypatch.setattr(diagnostics, "_infer_label_map_tails", _fake_infer)
+    caplog.set_level(logging.WARNING, logger="nimare.diagnostics")
+
+    counter = diagnostics.FocusCounter(target_image="z", voxel_thresh=1.0)
+    results = counter.transform(res)
+
+    assert any("Mixed-sign clusters detected" in r.message for r in caplog.records)
+    assert "label_tail-positive" in results.maps
+    assert "label_tail-negative" not in results.maps
+
+
+def test_focuscounter_pairwise_negative_tail_uses_group2(testdata_cbma_full):
+    """Ensure pairwise negative-tail diagnostics use group2 study IDs."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:4])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[4:8])
+    meta = cbma.MKDAChi2()
+    res = meta.fit(dset1, dset2)
+
+    masker = res.estimator.masker
+    mask_img = masker.mask_img_
+    mask_data = mask_img.get_fdata().astype(bool)
+
+    neg_data = np.zeros(mask_img.shape, dtype=float)
+    ijk = np.column_stack(np.where(mask_data))[0]
+    neg_data[tuple(ijk)] = -5.0
+    neg_img = nib.Nifti1Image(neg_data, mask_img.affine)
+    res.maps["z_desc-uniformity"] = np.squeeze(masker.transform(neg_img))
+
+    counter = diagnostics.FocusCounter(target_image="z_desc-uniformity", voxel_thresh=1.0)
+    results = counter.transform(res)
+
+    table_key = "z_desc-uniformity_diag-FocusCounter_tab-counts_tail-negative"
+    assert table_key in results.tables
+    assert results.tables[table_key]["id"].tolist() == list(res.estimator.inputs_["id2"])
 
 
 @pytest.mark.parametrize(

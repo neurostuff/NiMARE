@@ -29,6 +29,36 @@ POSTAIL_LBL = "PositiveTail"  # Label assigned to positive tail clusters
 NEGTAIL_LBL = "NegativeTail"  # Label assigned to negative tail clusters
 
 
+def _tail_mappings():
+    """Return tail/sign mappings for consistent diagnostics labeling."""
+    tail_to_sign = {"positive": POSTAIL_LBL, "negative": NEGTAIL_LBL}
+    sign_to_tail = {POSTAIL_LBL: "positive", NEGTAIL_LBL: "negative"}
+    return tail_to_sign, sign_to_tail
+
+
+def _infer_label_map_tails(label_maps, clusters_table, n_clusters):
+    """Infer tail labels from label maps and cluster statistics."""
+    inferred_tail = "positive"
+    mixed_signs = False
+
+    if len(label_maps) == 2:
+        return ["positive", "negative"], inferred_tail, mixed_signs
+
+    if len(label_maps) == 1 and n_clusters > 0:
+        peak_stats = clusters_table["Peak Stat"].astype(float)
+        has_pos = (peak_stats > 0).any()
+        has_neg = (peak_stats < 0).any()
+        if has_pos and not has_neg:
+            inferred_tail = "positive"
+        elif has_neg and not has_pos:
+            inferred_tail = "negative"
+        else:
+            mixed_signs = True
+        return [inferred_tail], inferred_tail, mixed_signs
+
+    return [inferred_tail], inferred_tail, mixed_signs
+
+
 class Diagnostics(NiMAREBase):
     """Base class for diagnostic methods.
 
@@ -181,11 +211,19 @@ class Diagnostics(NiMAREBase):
         image_name = f"_{image_name}" if image_name else image_name
         clusters_table_name = f"{self.target_image}_tab-clust"
         contribution_table_name = f"{self.target_image}_diag-{diag_name}_tab-counts"
-        label_map_names = (
-            [f"label{image_name}_tail-positive", f"label{image_name}_tail-negative"]
-            if len(label_maps) == 2
-            else [f"label{image_name}_tail-positive"]
+
+        tail_to_sign, sign_to_tail = _tail_mappings()
+        label_map_tails, inferred_tail, mixed_signs = _infer_label_map_tails(
+            label_maps, clusters_table, n_clusters
         )
+        if mixed_signs:
+            LGR.warning(
+                "Mixed-sign clusters detected but only one label map was returned; "
+                "assuming %s tail.",
+                inferred_tail,
+            )
+
+        label_map_names = [f"label{image_name}_tail-{tail}" for tail in label_map_tails]
 
         # Check number of clusters
         if n_clusters == 0:
@@ -207,12 +245,28 @@ class Diagnostics(NiMAREBase):
         # For pairwise estimators, use id1 for positive tail and id2 for negative tail.
         # Run diagnostics with id2 for pairwise estimators and display_second_group=True.
         if self._is_pairwaise_estimator:
-            if self.display_second_group and len(label_maps) == 2:
-                meta_ids_lst = [result.estimator.inputs_["id1"], result.estimator.inputs_["id2"]]
-                signs = [POSTAIL_LBL, NEGTAIL_LBL]
+            if len(label_maps) == 2:
+                if self.display_second_group:
+                    meta_ids_lst = [
+                        result.estimator.inputs_["id1"],
+                        result.estimator.inputs_["id2"],
+                    ]
+                    signs = [POSTAIL_LBL, NEGTAIL_LBL]
+                else:
+                    meta_ids_lst = [result.estimator.inputs_["id1"]]
+                    signs = [POSTAIL_LBL]
             else:
-                meta_ids_lst = [result.estimator.inputs_["id1"]]
-                signs = [POSTAIL_LBL]
+                # Single-tail pairwise outputs are assigned to a specific group based on tail,
+                # regardless of display_second_group (which only applies when two tails exist).
+                single_tail = label_map_tails[0]
+                meta_ids_lst = [
+                    (
+                        result.estimator.inputs_["id1"]
+                        if single_tail == "positive"
+                        else result.estimator.inputs_["id2"]
+                    )
+                ]
+                signs = [tail_to_sign[single_tail]]
         elif len(label_maps) == 2:
             # Non pairwise estimator with two tails (IBMA estimators)
             meta_ids_lst = [result.estimator.inputs_["id"], result.estimator.inputs_["id"]]
@@ -220,7 +274,7 @@ class Diagnostics(NiMAREBase):
         else:
             # Non pairwise estimator with one tail (CBMA estimators)
             meta_ids_lst = [result.estimator.inputs_["id"]]
-            signs = [POSTAIL_LBL]
+            signs = [tail_to_sign[label_map_tails[0]]]
 
         contribution_tables = []
         for sign, label_map, meta_ids in zip(signs, label_maps, meta_ids_lst):
@@ -250,7 +304,7 @@ class Diagnostics(NiMAREBase):
 
             contribution_tables.append(contribution_table.reset_index())
 
-        tails = ["positive", "negative"] if len(contribution_tables) == 2 else ["positive"]
+        tails = [sign_to_tail[sign] for sign in signs]
         if not self._is_pairwaise_estimator and len(contribution_tables) == 2:
             # Merge POSTAIL_LBL and NEGTAIL_LBL tables for IBMA
             contribution_table = (
