@@ -292,9 +292,28 @@ def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
         results.get_map("z_desc-group1MinusGroup2", return_type="image"), nib.Nifti1Image
     )
     assert isinstance(results.get_map("z_desc-group1MinusGroup2", return_type="array"), np.ndarray)
+    assert (
+        "values_level-voxel_corr-fwe_method-montecarlo"
+        in results.estimator.null_distributions_.keys()
+    )
 
     sub_meta.save(out_file)
     assert os.path.isfile(out_file)
+
+
+def test_ALESubtraction_cluster_nulls(testdata_cbma):
+    """Verify optional cluster nulls are computed for ALESubtraction."""
+    sub_meta = ale.ALESubtraction(n_iters=2, n_cores=1, vfwe_only=False, voxel_thresh=0.05)
+    results = sub_meta.fit(testdata_cbma, testdata_cbma)
+
+    assert (
+        "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+        in results.estimator.null_distributions_.keys()
+    )
+    assert (
+        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+        in results.estimator.null_distributions_.keys()
+    )
 
 
 def test_SCALE_smoke(testdata_cbma, tmp_path_factory):

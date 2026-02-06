@@ -6,14 +6,16 @@ import numpy as np
 import pandas as pd
 import sparse
 from joblib import Memory, Parallel, delayed
+from scipy import ndimage
 from tqdm.auto import tqdm
 
 from nimare import _version
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.kernel import ALEKernel
+from nimare.meta.utils import _calculate_cluster_measures
 from nimare.stats import null_to_p, nullhist_to_p
 from nimare.transforms import p_to_z
-from nimare.utils import _check_ncores, _mask_img_to_bool, use_memmap
+from nimare.utils import DEFAULT_FLOAT_DTYPE, _check_ncores, _mask_img_to_bool, use_memmap
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
@@ -353,6 +355,12 @@ class ALESubtraction(PairwiseCBMAEstimator):
         Default is ALEKernel.
     n_iters : :obj:`int`, default=5000
         Default is 5000.
+    voxel_thresh : :obj:`float`, default=0.001
+        Uncorrected voxel-level p-value threshold used for cluster-defining threshold when
+        cluster nulls are computed.
+    vfwe_only : :obj:`bool`, default=True
+        If True, only compute voxel-level null information. If False, also compute and retain
+        cluster size and mass null distributions from the permutation maps.
     memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
         Used to cache the output of a function. By default, no caching is done.
         If a :obj:`str` is given, it is the path to the caching directory.
@@ -385,7 +393,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
     BrainMap organization (https://www.brainmap.org/ale/).
 
     The voxel-wise null distributions used by this Estimator are very large, so they are not
-    retained as Estimator attributes.
+    retained as Estimator attributes. However, summary distributions (e.g., per-iteration
+    maximum statistics for voxel-level FWE correction) are retained.
 
     Warnings
     --------
@@ -407,6 +416,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self,
         kernel_transformer=ALEKernel,
         n_iters=5000,
+        voxel_thresh=0.001,
+        vfwe_only=True,
         memory=Memory(location=None, verbose=0),
         memory_level=0,
         n_cores=1,
@@ -430,6 +441,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.dataset1 = None
         self.dataset2 = None
         self.n_iters = n_iters
+        self.voxel_thresh = voxel_thresh
+        self.vfwe_only = vfwe_only
         self.n_cores = _check_ncores(n_cores)
         # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
         # a Dataset with pre-generated MA maps is provided.
@@ -489,6 +502,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.dataset1 = dataset1
         self.dataset2 = dataset2
         self.masker = self.masker or dataset1.masker
+        self.null_distributions_ = {}
 
         ma_maps1 = self._collect_ma_maps(
             maps_key="ma_maps1",
@@ -554,6 +568,41 @@ class ALESubtraction(PairwiseCBMAEstimator):
         p_values = np.array(p_values)[np.array(voxel_idx)]
 
         diff_signs = np.sign(diff_ale_values - np.median(iter_diff_values, axis=0))
+
+        # Save per-iteration max statistics for voxel-level FWE correction.
+        # Use max absolute values to align with two-sided inference.
+        iter_max = np.max(iter_diff_values, axis=1)
+        iter_min = np.min(iter_diff_values, axis=1)
+        self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = np.maximum(
+            np.abs(iter_max), np.abs(iter_min)
+        )
+
+        if not self.vfwe_only:
+            if self.voxel_thresh is None:
+                raise ValueError("voxel_thresh must be provided when vfwe_only is False.")
+
+            # Determine a summary-statistic threshold from the pooled null distribution.
+            # Use absolute values to align with two-sided inference.
+            ss_thresh = np.quantile(np.abs(iter_diff_values), 1 - self.voxel_thresh)
+
+            conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
+            iter_max_sizes = np.zeros(self.n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+            iter_max_masses = np.zeros(self.n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+
+            for i_iter in range(self.n_iters):
+                iter_map = self.masker.inverse_transform(iter_diff_values[i_iter, :]).get_fdata(
+                    dtype=DEFAULT_FLOAT_DTYPE
+                )
+                iter_max_sizes[i_iter], iter_max_masses[i_iter] = _calculate_cluster_measures(
+                    iter_map, ss_thresh, conn, tail="two"
+                )
+
+            self.null_distributions_[
+                "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+            ] = iter_max_sizes
+            self.null_distributions_[
+                "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+            ] = iter_max_masses
 
         if isinstance(iter_diff_values, np.memmap):
             LGR.debug(f"Closing memmap at {iter_diff_values.filename}")
