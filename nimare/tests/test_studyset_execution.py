@@ -1,15 +1,17 @@
 """Tests for Studyset-native execution paths."""
 
 import numpy as np
+import pytest
 
-from nimare.io import convert_nimads_to_dataset
 from nimare.correct import FDRCorrector
+from nimare.generate import create_coordinate_dataset
+from nimare.io import convert_nimads_to_dataset
 from nimare.meta.cbma import ALE
-from nimare.meta.kernel import ALEKernel
 from nimare.meta.ibma import Stouffers
+from nimare.meta.kernel import ALEKernel
 from nimare.nimads import Studyset
 from nimare.reports.base import run_reports
-from nimare.studyset import ensure_studyset_view
+from nimare.studyset import StudysetView, ensure_studyset_view
 from nimare.transforms import ImageTransformer
 from nimare.workflows import CBMAWorkflow, IBMAWorkflow, PairwiseCBMAWorkflow
 
@@ -140,7 +142,7 @@ def test_ensure_studyset_view_reflects_dataset_edits(testdata_ibma):
 
 
 def test_image_transformer_accepts_studyset(testdata_ibma):
-    """ImageTransformer should accept Studyset inputs."""
+    """Ensure ImageTransformer accepts Studyset inputs."""
     studyset = Studyset.from_dataset(testdata_ibma)
     transformed = ImageTransformer(target="z").transform(studyset)
     assert "z" in transformed.images.columns
@@ -165,3 +167,67 @@ def test_ale_from_nimads_studyset_infers_default_mask(example_nimads_studyset):
         kernel_transformer=ALEKernel(sample_size=20),
     ).fit(studyset)
     assert "stat" in result.maps
+
+
+def test_studyset_view_handles_empty_annotations_and_texts():
+    """Empty Studysets should expose Dataset-like empty annotation/text tables."""
+    view = StudysetView({"id": "empty", "name": "", "studies": []})
+
+    assert view.annotations.empty
+    assert list(view.annotations.columns) == ["id", "study_id", "contrast_id"]
+
+    assert view.texts.empty
+    assert list(view.texts.columns) == ["id", "study_id", "contrast_id"]
+
+
+def test_ensure_studyset_view_rebuilds_after_view_mutation(testdata_cbma):
+    """ensure_studyset_view should not reuse a previously mutated cached StudysetView."""
+    studyset = Studyset.from_dataset(testdata_cbma.slice(testdata_cbma.ids[:5]))
+
+    view1 = ensure_studyset_view(studyset)
+    n_coords = view1.coordinates.shape[0]
+    # Simulate in-place mutations performed by transformers/diagnostics.
+    view1.coordinates = view1.coordinates.iloc[:1].copy()
+
+    view2 = ensure_studyset_view(studyset)
+    assert view2.coordinates.shape[0] == n_coords
+
+
+def test_ensure_studyset_view_refreshes_after_studyset_touch(testdata_cbma):
+    """Studyset.touch should invalidate cached views and refresh derived tables."""
+    studyset = Studyset.from_dataset(testdata_cbma.slice(testdata_cbma.ids[:5]))
+    view1 = ensure_studyset_view(studyset)
+    n_ids_before = len(view1.ids)
+
+    studyset.studies[0].analyses = []
+    studyset.touch()
+
+    view2 = ensure_studyset_view(studyset)
+    assert len(view2.ids) < n_ids_before
+
+
+def test_cbmr_accepts_studyset_smoke():
+    """CBMR should accept Studyset inputs."""
+    pytest.importorskip("torch")
+    from nimare.meta import models
+    from nimare.meta.cbmr import CBMREstimator
+
+    _, dset = create_coordinate_dataset(foci=5, sample_size=(20, 30), n_studies=30, seed=13)
+    n_rows = dset.annotations.shape[0]
+    dset.annotations["diagnosis"] = [
+        "schizophrenia" if i % 2 == 0 else "depression" for i in range(n_rows)
+    ]
+    dset.annotations["drug_status"] = ["Yes" if i % 2 == 0 else "No" for i in range(n_rows)]
+
+    studyset = Studyset.from_dataset(dset)
+    cbmr = CBMREstimator(
+        group_categories=["diagnosis", "drug_status"],
+        spline_spacing=100,
+        model=models.PoissonEstimator,
+        n_iter=10,
+        lr=1,
+        tol=1e4,
+        device="cpu",
+    )
+    result = cbmr.fit(studyset)
+    assert result.maps

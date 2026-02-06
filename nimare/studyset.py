@@ -11,7 +11,14 @@ from nilearn.image import load_img
 
 from nimare.base import NiMAREBase
 from nimare.io import DEFAULT_MAP_TYPE_CONVERSION
-from nimare.utils import _listify, _mask_img_to_bool, get_masker, get_template, load_nimads, mm2vox
+from nimare.utils import (
+    _listify,
+    _mask_img_to_bool,
+    get_masker,
+    get_template,
+    load_nimads,
+    mm2vox,
+)
 
 LGR = logging.getLogger(__name__)
 
@@ -52,7 +59,14 @@ class StudysetView(NiMAREBase):
 
     _id_cols = ["id", "study_id", "contrast_id"]
 
-    def __init__(self, studyset, target=None, mask=None, basepath=None):
+    @staticmethod
+    def _empty_table(extra_cols=None):
+        """Create an empty, Dataset-compatible table with ID columns."""
+        if extra_cols is None:
+            extra_cols = []
+        return pd.DataFrame(columns=StudysetView._id_cols + list(extra_cols))
+
+    def __init__(self, studyset, target=None, mask=None, basepath=None, materialize_ids=True):
         self.studyset = load_nimads(studyset)
         self.space = target or getattr(self.studyset, "_nimare_space", None)
         self.basepath = (
@@ -69,8 +83,35 @@ class StudysetView(NiMAREBase):
         self._metadata = None
         self._annotations = None
         self._texts = None
-        # Materialize IDs eagerly for compatibility with Dataset-like private access patterns.
+        self._source_version = getattr(self.studyset, "_nimare_version", None)
+        if materialize_ids:
+            # Materialize IDs eagerly for compatibility with Dataset-like private access patterns.
+            _ = self.ids
+
+    def _spawn_cached_clone(self):
+        """Return a lightweight clone with shared cached tables."""
+        clone = object.__new__(StudysetView)
+        clone.studyset = self.studyset
+        clone.space = self.space
+        clone.basepath = self.basepath
+        clone.masker = self.masker
+        clone._source_version = self._source_version
+        clone._ids = self._ids
+        clone._coordinates = self._coordinates
+        clone._images = self._images
+        clone._metadata = self._metadata
+        clone._annotations = self._annotations
+        clone._texts = self._texts
+        return clone
+
+    def _materialize_cache(self):
+        """Populate all core tables on this view."""
         _ = self.ids
+        _ = self.coordinates
+        _ = self.images
+        _ = self.metadata
+        _ = self.annotations
+        _ = self.texts
 
     def _ensure_masker_from_space(self):
         """Initialize a default masker from the inferred/declared Studyset space when possible."""
@@ -188,7 +229,10 @@ class StudysetView(NiMAREBase):
                         else:
                             row[key] = note
                     rows.append(row)
-            self._annotations = pd.DataFrame(rows).sort_values(by="id")
+            if rows:
+                self._annotations = pd.DataFrame(rows).sort_values(by="id")
+            else:
+                self._annotations = self._empty_table()
         return self._annotations
 
     @annotations.setter
@@ -242,7 +286,10 @@ class StudysetView(NiMAREBase):
                     }
                     row.update(analysis.texts or {})
                     rows.append(row)
-            self._texts = pd.DataFrame(rows).sort_values(by="id")
+            if rows:
+                self._texts = pd.DataFrame(rows).sort_values(by="id")
+            else:
+                self._texts = self._empty_table()
         return self._texts
 
     def copy(self):
@@ -468,13 +515,21 @@ def ensure_studyset_view(dataset):
     if isinstance(dataset, Studyset) or isinstance(dataset, (dict, str)):
         studyset = load_nimads(dataset)
         if isinstance(dataset, Studyset):
-            cached_view = getattr(dataset, "_nimare_view_cache", None)
-            if cached_view is not None:
-                return cached_view
-        view = StudysetView(studyset=studyset)
-        if isinstance(dataset, Studyset):
-            dataset._nimare_view_cache = view
-        return view
+            studyset_version = int(getattr(studyset, "_nimare_version", 0))
+            cached_view = getattr(studyset, "_nimare_view_cache", None)
+            if (
+                cached_view is not None
+                and getattr(cached_view, "_source_version", None) == studyset_version
+            ):
+                return cached_view._spawn_cached_clone()
+
+            cached_view = StudysetView(studyset=studyset, materialize_ids=False)
+            cached_view._materialize_cache()
+            cached_view._source_version = studyset_version
+            studyset._nimare_view_cache = cached_view
+            return cached_view._spawn_cached_clone()
+
+        return StudysetView(studyset=studyset)
 
     raise ValueError(
         "Input must be a Dataset, Studyset, dict, or path to a NIMADS studyset JSON, "

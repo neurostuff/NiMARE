@@ -40,6 +40,8 @@ class Studyset:
         self.name = source.get("name", "") or ""
         self.studies = [Study(s) for s in source.get("studies", [])]
         self._annotations = []
+        self._nimare_version = 0
+        self._nimare_view_cache = None
         for annotation in source.get("annotations", []):
             self.annotations = annotation
         if annotations:
@@ -73,6 +75,7 @@ class Studyset:
         elif isinstance(annotation, Annotation):
             loaded_annotation = annotation
         self._annotations.append(loaded_annotation)
+        self.touch()
 
     @annotations.deleter
     def annotations(self, annotation_id=None):
@@ -80,6 +83,12 @@ class Studyset:
             self._annotations = [a for a in self._annotations if a.id != annotation_id]
         else:
             self._annotations = []
+        self.touch()
+
+    def touch(self):
+        """Invalidate Studyset-derived caches after in-place mutation."""
+        self._nimare_version = int(getattr(self, "_nimare_version", 0)) + 1
+        self._nimare_view_cache = None
 
     @classmethod
     def from_nimads(cls, filename):
@@ -192,6 +201,9 @@ class Studyset:
         self.name = loaded_data.name
         self.studies = loaded_data.studies
         self._annotations = loaded_data._annotations
+        self._nimare_version = int(getattr(loaded_data, "_nimare_version", 0))
+        self._nimare_view_cache = None
+        self.touch()
         return self
 
     def save(self, filename):

@@ -6,7 +6,7 @@ from joblib import Memory
 
 from nimare.base import NiMAREBase
 from nimare.results import MetaResult
-from nimare.studyset import ensure_studyset_view
+from nimare.studyset import StudysetView, ensure_studyset_view
 
 
 class Estimator(NiMAREBase):
@@ -51,7 +51,8 @@ class Estimator(NiMAREBase):
             The actual inputs collected in this attribute are determined by the
             ``_required_inputs`` variable that should be specified in each child class.
         """
-        dataset = ensure_studyset_view(dataset)
+        if not isinstance(dataset, StudysetView):
+            dataset = ensure_studyset_view(dataset)
 
         if not hasattr(dataset, "slice"):
             raise ValueError(
