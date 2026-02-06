@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import logging
-import os.path as op
 
 import numpy as np
 import pandas as pd
@@ -12,7 +11,7 @@ from nilearn.image import load_img
 
 from nimare.base import NiMAREBase
 from nimare.io import DEFAULT_MAP_TYPE_CONVERSION
-from nimare.utils import _listify, _mask_img_to_bool, get_masker, load_nimads, mm2vox
+from nimare.utils import _listify, _mask_img_to_bool, get_masker, get_template, load_nimads, mm2vox
 
 LGR = logging.getLogger(__name__)
 
@@ -62,6 +61,7 @@ class StudysetView(NiMAREBase):
 
         mask = mask if mask is not None else getattr(self.studyset, "_nimare_masker", None)
         self.masker = get_masker(mask) if mask is not None else None
+        self._ensure_masker_from_space()
 
         self._ids = None
         self._coordinates = None
@@ -72,14 +72,24 @@ class StudysetView(NiMAREBase):
         # Materialize IDs eagerly for compatibility with Dataset-like private access patterns.
         _ = self.ids
 
+    def _ensure_masker_from_space(self):
+        """Initialize a default masker from the inferred/declared Studyset space when possible."""
+        if self.masker is not None or not isinstance(self.space, str):
+            return
+
+        try:
+            self.masker = get_masker(get_template(self.space, mask="brain"))
+        except Exception:
+            LGR.warning(
+                "Could not initialize masker from Studyset space '%s'. "
+                "Provide a mask explicitly for coordinate-based analyses.",
+                self.space,
+            )
+
     @property
     def ids(self):
         """numpy.ndarray: 1D array of full analysis identifiers."""
         if self._ids is None:
-            if hasattr(self.studyset, "_nimare_ids"):
-                self._ids = np.sort(np.asarray(self.studyset._nimare_ids))
-                return self._ids
-
             ids = []
             for study in self.studyset.studies:
                 for analysis in study.analyses:
@@ -91,20 +101,6 @@ class StudysetView(NiMAREBase):
     def coordinates(self):
         """pandas.DataFrame: Coordinates table."""
         if self._coordinates is None:
-            if hasattr(self.studyset, "_nimare_coordinates_df"):
-                self._coordinates = self.studyset._nimare_coordinates_df.copy().sort_values(
-                    by="id"
-                )
-                if self.space is None and "space" in self._coordinates.columns:
-                    inferred_spaces = {
-                        _normalize_point_space(space)
-                        for space in self._coordinates["space"].dropna().unique().tolist()
-                    }
-                    inferred_spaces = {space for space in inferred_spaces if space is not None}
-                    if len(inferred_spaces) == 1:
-                        self.space = inferred_spaces.pop()
-                return self._coordinates
-
             rows = []
             spaces = []
             for study in self.studyset.studies:
@@ -132,6 +128,7 @@ class StudysetView(NiMAREBase):
                 inferred_spaces = {space for space in spaces if space is not None}
                 if len(inferred_spaces) == 1:
                     self.space = inferred_spaces.pop()
+                    self._ensure_masker_from_space()
 
             self._coordinates = coordinates
         return self._coordinates
@@ -145,10 +142,6 @@ class StudysetView(NiMAREBase):
     def metadata(self):
         """pandas.DataFrame: Metadata table."""
         if self._metadata is None:
-            if hasattr(self.studyset, "_nimare_metadata_df"):
-                self._metadata = self.studyset._nimare_metadata_df.copy().sort_values(by="id")
-                return self._metadata
-
             rows = []
             for study in self.studyset.studies:
                 for analysis in study.analyses:
@@ -180,12 +173,6 @@ class StudysetView(NiMAREBase):
     def annotations(self):
         """pandas.DataFrame: Flattened analysis annotation table."""
         if self._annotations is None:
-            if hasattr(self.studyset, "_nimare_annotations_df"):
-                self._annotations = self.studyset._nimare_annotations_df.copy().sort_values(
-                    by="id"
-                )
-                return self._annotations
-
             rows = []
             for study in self.studyset.studies:
                 for analysis in study.analyses:
@@ -195,9 +182,11 @@ class StudysetView(NiMAREBase):
                         "study_id": study.id,
                         "contrast_id": analysis.id,
                     }
-                    for _, note in (analysis.annotations or {}).items():
+                    for key, note in (analysis.annotations or {}).items():
                         if isinstance(note, dict):
                             row.update(note)
+                        else:
+                            row[key] = note
                     rows.append(row)
             self._annotations = pd.DataFrame(rows).sort_values(by="id")
         return self._annotations
@@ -210,10 +199,6 @@ class StudysetView(NiMAREBase):
     def images(self):
         """pandas.DataFrame: Image file table."""
         if self._images is None:
-            if hasattr(self.studyset, "_nimare_images_df"):
-                self._images = self.studyset._nimare_images_df.copy().sort_values(by="id")
-                return self._images
-
             rows = []
             for study in self.studyset.studies:
                 for analysis in study.analyses:
@@ -229,6 +214,8 @@ class StudysetView(NiMAREBase):
                             continue
                         image_path = image.url if image.url else image.filename
                         row[image_type] = image_path
+                        if image.space and "space" not in row:
+                            row["space"] = image.space
                     rows.append(row)
 
             if rows:
@@ -243,12 +230,19 @@ class StudysetView(NiMAREBase):
 
     @property
     def texts(self):
-        """pandas.DataFrame: Empty texts table for Dataset compatibility."""
+        """pandas.DataFrame: Flattened analysis texts table."""
         if self._texts is None:
-            if hasattr(self.studyset, "_nimare_texts_df"):
-                self._texts = self.studyset._nimare_texts_df.copy().sort_values(by="id")
-            else:
-                self._texts = pd.DataFrame(columns=self._id_cols)
+            rows = []
+            for study in self.studyset.studies:
+                for analysis in study.analyses:
+                    row = {
+                        "id": f"{study.id}-{analysis.id}",
+                        "study_id": study.id,
+                        "contrast_id": analysis.id,
+                    }
+                    row.update(analysis.texts or {})
+                    rows.append(row)
+            self._texts = pd.DataFrame(rows).sort_values(by="id")
         return self._texts
 
     def copy(self):
@@ -332,6 +326,26 @@ class StudysetView(NiMAREBase):
             result = res.loc[res].index.tolist()
         return result
 
+    def get_studies_by_label(self, labels=None, label_threshold=0.001):
+        """Extract list of analyses with a given label."""
+        if isinstance(labels, str):
+            labels = [labels]
+        elif not isinstance(labels, list):
+            raise ValueError(f"Argument 'labels' cannot be {type(labels)}")
+
+        missing_labels = [label for label in labels if label not in self.annotations.columns]
+        if missing_labels:
+            raise ValueError(f"Missing label(s): {', '.join(missing_labels)}")
+
+        temp_annotations = self.annotations[self._id_cols + labels]
+        found_rows = (temp_annotations[labels] >= label_threshold).all(axis=1)
+        if any(found_rows):
+            found_ids = temp_annotations.loc[found_rows, "id"].tolist()
+        else:
+            found_ids = []
+
+        return found_ids
+
     def get_texts(self, ids=None, text_type=None):
         """Get texts for selected analyses."""
         return self._generic_column_getter("texts", ids=ids, column=text_type)
@@ -342,7 +356,14 @@ class StudysetView(NiMAREBase):
 
     def get_images(self, ids=None, imtype=None):
         """Get image paths for selected analyses."""
-        return self._generic_column_getter("images", ids=ids, column=imtype)
+        ignore_columns = ["space"]
+        ignore_columns += [c for c in self.images.columns if c.endswith("__relative")]
+        return self._generic_column_getter(
+            "images",
+            ids=ids,
+            column=imtype,
+            ignore_columns=ignore_columns,
+        )
 
     def get(self, dict_, drop_invalid=True):
         """Retrieve files and/or metadata from the current StudysetView."""
@@ -431,13 +452,9 @@ def ensure_studyset_view(dataset):
         return dataset
 
     if isinstance(dataset, Dataset):
-        cache_key = (tuple(dataset.ids.tolist()), dataset.space, dataset.basepath)
-        if getattr(dataset, "_nimare_studyset_cache_key", None) == cache_key:
-            studyset = dataset._nimare_studyset_cache
-        else:
-            studyset = Studyset.from_dataset(dataset)
-            dataset._nimare_studyset_cache = studyset
-            dataset._nimare_studyset_cache_key = cache_key
+        # Always rebuild from the Dataset to avoid stale cached data when DataFrames
+        # are modified in place between estimator calls.
+        studyset = Studyset.from_dataset(dataset)
         studyset._nimare_masker = dataset.masker
         studyset._nimare_space = dataset.space
         studyset._nimare_basepath = dataset.basepath
@@ -453,7 +470,7 @@ def ensure_studyset_view(dataset):
         if isinstance(dataset, Studyset):
             cached_view = getattr(dataset, "_nimare_view_cache", None)
             if cached_view is not None:
-                return cached_view.copy()
+                return cached_view
         view = StudysetView(studyset=studyset)
         if isinstance(dataset, Studyset):
             dataset._nimare_view_cache = view

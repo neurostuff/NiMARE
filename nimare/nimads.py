@@ -37,9 +37,11 @@ class Studyset:
                 source = json.load(f)
 
         self.id = source["id"]
-        self.name = source["name"] or ""
-        self.studies = [Study(s) for s in source["studies"]]
+        self.name = source.get("name", "") or ""
+        self.studies = [Study(s) for s in source.get("studies", [])]
         self._annotations = []
+        for annotation in source.get("annotations", []):
+            self.annotations = annotation
         if annotations:
             self.annotations = annotations
 
@@ -58,6 +60,11 @@ class Studyset:
 
     @annotations.setter
     def annotations(self, annotation):
+        if isinstance(annotation, (list, tuple)):
+            for annotation_i in annotation:
+                self.annotations = annotation_i
+            return
+
         if isinstance(annotation, dict):
             loaded_annotation = Annotation(annotation, self)
         elif isinstance(annotation, str):
@@ -93,13 +100,6 @@ class Studyset:
         studyset._nimare_masker = dataset.masker
         studyset._nimare_space = dataset.space
         studyset._nimare_basepath = dataset.basepath
-        # Preserve original tabular data for high-fidelity Dataset->Studyset execution.
-        studyset._nimare_coordinates_df = dataset.coordinates.copy()
-        studyset._nimare_metadata_df = dataset.metadata.copy()
-        studyset._nimare_images_df = dataset.images.copy()
-        studyset._nimare_annotations_df = dataset.annotations.copy()
-        studyset._nimare_texts_df = dataset.texts.copy()
-        studyset._nimare_ids = dataset.ids.copy()
         return studyset
 
     @classmethod
@@ -116,9 +116,15 @@ class Studyset:
         for study in studyset.studies:
             if len(study.analyses) > 1:
                 source_lst = [analysis.to_dict() for analysis in study.analyses]
-                ids, names, conditions, images, points, weights, metadata = [
-                    [source[key] for source in source_lst] for key in source_lst[0]
-                ]
+                ids = [source["id"] for source in source_lst]
+                names = [source["name"] for source in source_lst]
+                conditions = [source.get("conditions", []) for source in source_lst]
+                images = [source.get("images", []) for source in source_lst]
+                points = [source.get("points", []) for source in source_lst]
+                weights = [source.get("weights", []) for source in source_lst]
+                metadata = [source.get("metadata", {}) for source in source_lst]
+                annotations = [source.get("annotations", {}) for source in source_lst]
+                texts = [source.get("texts", {}) for source in source_lst]
 
                 new_source = {
                     "id": "_".join(ids),
@@ -129,6 +135,14 @@ class Studyset:
                     "weights": [weight for w_list in weights for weight in w_list],
                     "metadata": {k: v for m_dict in metadata for k, v in m_dict.items()},
                 }
+                combined_annotations = {
+                    k: v for annot_dict in annotations for k, v in annot_dict.items()
+                }
+                combined_texts = {k: v for text_dict in texts for k, v in text_dict.items()}
+                if combined_annotations:
+                    new_source["annotations"] = combined_annotations
+                if combined_texts:
+                    new_source["texts"] = combined_texts
                 study.analyses = [Analysis(new_source)]
 
         return studyset
@@ -140,11 +154,16 @@ class Studyset:
 
     def to_dict(self):
         """Return a dictionary representation of the Studyset."""
-        return {
+        studyset_dict = {
             "id": self.id,
             "name": self.name,
             "studies": [s.to_dict() for s in self.studies],
         }
+        if self.annotations:
+            studyset_dict["annotations"] = [
+                annotation.to_dict() for annotation in self.annotations
+            ]
+        return studyset_dict
 
     def to_dataset(self):
         """Convert the Studyset to a NiMARE Dataset."""
@@ -196,6 +215,7 @@ class Studyset:
         """Create a new Studyset with only requested Analyses."""
         studyset_dict = self.to_dict()
         annotations = [annot.to_dict() for annot in self.annotations]
+        studyset_dict.pop("annotations", None)
 
         for study in studyset_dict["studies"]:
             study["analyses"] = [a for a in study["analyses"] if a["id"] in analyses]
@@ -548,13 +568,18 @@ class Analysis:
     def __init__(self, source, study=None):
         self.id = source["id"]
         self.name = source["name"]
-        self.conditions = [
-            Condition(c, w) for c, w in zip(source["conditions"], source["weights"])
-        ]
-        self.images = [Image(i) for i in source["images"]]
-        self.points = [Point(p) for p in source["points"]]
+        conditions = source.get("conditions", []) or [{"name": "default", "description": ""}]
+        weights = source.get("weights", []) or [1.0] * len(conditions)
+        if len(weights) < len(conditions):
+            weights = list(weights) + [1.0] * (len(conditions) - len(weights))
+        self.conditions = [Condition(c, w) for c, w in zip(conditions, weights)]
+        self.images = [Image(i) for i in source.get("images", [])]
+        self.points = [Point(p) for p in source.get("points", [])]
         self.metadata = source.get("metadata", {}) or {}
-        self.annotations = {}
+        annotations = source.get("annotations", {}) or {}
+        self.annotations = annotations if isinstance(annotations, dict) else {}
+        texts = source.get("texts", {}) or {}
+        self.texts = texts if isinstance(texts, dict) else {}
         self._study = weakref.proxy(study) if study else None
 
     def __repr__(self):
@@ -585,7 +610,7 @@ class Analysis:
 
     def to_dict(self):
         """Convert the Analysis to a dictionary."""
-        return {
+        analysis_dict = {
             "id": self.id,
             "name": self.name,
             "conditions": [
@@ -597,6 +622,11 @@ class Analysis:
             "weights": [c.to_dict()["weight"] for c in self.conditions],
             "metadata": self.metadata,
         }
+        if self.annotations:
+            analysis_dict["annotations"] = self.annotations
+        if self.texts:
+            analysis_dict["texts"] = self.texts
+        return analysis_dict
 
 
 class Condition:
