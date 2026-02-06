@@ -1,7 +1,11 @@
 """CBMA methods from the activation likelihood estimation (ALE) family."""
 
 import logging
+import os
+import tempfile
+import warnings
 
+import nibabel as nib
 import numpy as np
 import pandas as pd
 import sparse
@@ -589,6 +593,9 @@ class ALESubtraction(PairwiseCBMAEstimator):
             # Determine a summary-statistic threshold from the pooled null distribution.
             # Use absolute values to align with two-sided inference.
             ss_thresh = np.quantile(np.abs(iter_diff_values), 1 - self.voxel_thresh)
+            self.null_distributions_[
+                "summary_stat_thresh_level-voxel_corr-fwe_method-montecarlo"
+            ] = ss_thresh
 
             conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
             iter_max_sizes = np.zeros(self.n_iters, dtype=DEFAULT_FLOAT_DTYPE)
@@ -680,16 +687,233 @@ class ALESubtraction(PairwiseCBMAEstimator):
         p_value = null_to_p(stat_value, voxel_null, tail="two", symmetric=False)
         return p_value, i_voxel
 
-    def correct_fwe_montecarlo(self):
-        """Perform Monte Carlo-based FWE correction.
+    def correct_fwe_montecarlo(
+        self,
+        result,
+        voxel_thresh=0.001,
+        n_iters=None,
+        n_cores=1,
+        vfwe_only=False,
+    ):
+        """Perform FWE correction using the max-value permutation method.
 
-        Warnings
-        --------
-        This method is not implemented for this class.
+        Only call this method from within a Corrector.
+
+        Parameters
+        ----------
+        result : :obj:`~nimare.results.MetaResult`
+            Result object from an ALE subtraction analysis.
+        voxel_thresh : :obj:`float`, default=0.001
+            Cluster-defining p-value threshold. Default is 0.001.
+        n_iters : :obj:`int`, optional
+            Number of iterations to build the voxel-level, cluster-size, and cluster-mass FWE
+            null distributions. If None, defaults to the Estimator's ``n_iters``.
+        n_cores : :obj:`int`, default=1
+            Number of cores to use for parallelization.
+            If <=0, defaults to using all available cores. Default is 1.
+        vfwe_only : :obj:`bool`, default=False
+            If True, only calculate the voxel-level FWE-corrected maps.
+
+        Returns
+        -------
+        maps : :obj:`dict`
+            Dictionary of corrected map arrays.
         """
-        raise NotImplementedError(
-            f"The {type(self)} class does not support `correct_fwe_montecarlo`."
+        stat_values = result.get_map("stat_desc-group1MinusGroup2", return_type="array")
+        z_values = result.get_map("z_desc-group1MinusGroup2", return_type="array")
+        sign = np.sign(z_values)
+        eps = np.spacing(1)
+
+        if n_iters is None:
+            n_iters = self.n_iters
+        if voxel_thresh is None:
+            voxel_thresh = self.voxel_thresh
+
+        expected = (self.n_iters, self.voxel_thresh, self.vfwe_only)
+        requested = (n_iters, voxel_thresh, vfwe_only)
+
+        has_vfwe_null = "values_level-voxel_corr-fwe_method-montecarlo" in self.null_distributions_
+        has_cluster_null = all(
+            key in self.null_distributions_
+            for key in (
+                "values_desc-size_level-cluster_corr-fwe_method-montecarlo",
+                "values_desc-mass_level-cluster_corr-fwe_method-montecarlo",
+                "summary_stat_thresh_level-voxel_corr-fwe_method-montecarlo",
+            )
         )
+
+        use_cached = requested == expected and has_vfwe_null and (vfwe_only or has_cluster_null)
+
+        if not use_cached:
+            warnings.warn(
+                "ALESubtraction FWE correction is recomputing permutations because the "
+                "requested parameters do not match the estimator's cached null model "
+                "(or cached nulls are missing).\n"
+                f"Estimator: n_iters={expected[0]}, voxel_thresh={expected[1]}, "
+                f"vfwe_only={expected[2]}\n"
+                f"Requested: n_iters={requested[0]}, voxel_thresh={requested[1]}, "
+                f"vfwe_only={requested[2]}\n"
+                "Recomputing Monte Carlo nulls for correction.",
+                UserWarning,
+            )
+
+            ma_maps1 = self._collect_ma_maps(
+                maps_key="ma_maps1",
+                coords_key="coordinates1",
+            )
+            ma_maps2 = self._collect_ma_maps(
+                maps_key="ma_maps2",
+                coords_key="coordinates2",
+            )
+
+            n_grp1 = ma_maps1.shape[0]
+            n_voxels = stat_values.shape[0]
+            ma_arr = sparse.concatenate((ma_maps1, ma_maps2))
+
+            del ma_maps1, ma_maps2
+
+            n_cores = _check_ncores(n_cores)
+
+            fd, tmp_path = tempfile.mkstemp(prefix="ALESubtractionFWE", suffix=".mmap")
+            os.close(fd)
+            iter_diff_values = np.memmap(
+                tmp_path,
+                dtype=ma_arr.dtype,
+                mode="w+",
+                shape=(n_iters, n_voxels),
+            )
+
+            try:
+                _ = [
+                    r
+                    for r in tqdm(
+                        Parallel(return_as="generator", n_jobs=n_cores)(
+                            delayed(self._run_permutation)(
+                                i_iter, n_grp1, ma_arr, iter_diff_values
+                            )
+                            for i_iter in range(n_iters)
+                        ),
+                        total=n_iters,
+                    )
+                ]
+
+                iter_max = np.max(iter_diff_values, axis=1)
+                iter_min = np.min(iter_diff_values, axis=1)
+                vfwe_null = np.maximum(np.abs(iter_max), np.abs(iter_min))
+
+                self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = (
+                    vfwe_null
+                )
+
+                if not vfwe_only:
+                    ss_thresh = np.quantile(np.abs(iter_diff_values), 1 - voxel_thresh)
+                    self.null_distributions_[
+                        "summary_stat_thresh_level-voxel_corr-fwe_method-montecarlo"
+                    ] = ss_thresh
+
+                    conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
+                    iter_max_sizes = np.zeros(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+                    iter_max_masses = np.zeros(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+
+                    for i_iter in range(n_iters):
+                        iter_map = self.masker.inverse_transform(
+                            iter_diff_values[i_iter, :]
+                        ).get_fdata(dtype=DEFAULT_FLOAT_DTYPE)
+                        iter_max_sizes[i_iter], iter_max_masses[i_iter] = (
+                            _calculate_cluster_measures(iter_map, ss_thresh, conn, tail="two")
+                        )
+
+                    self.null_distributions_[
+                        "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+                    ] = iter_max_sizes
+                    self.null_distributions_[
+                        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+                    ] = iter_max_masses
+            finally:
+                if isinstance(iter_diff_values, np.memmap):
+                    iter_diff_values._mmap.close()
+                if os.path.isfile(tmp_path):
+                    os.remove(tmp_path)
+
+        vfwe_null = self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]
+        p_vfwe_vals = null_to_p(np.abs(stat_values), vfwe_null, tail="upper")
+        z_vfwe_vals = p_to_z(p_vfwe_vals, tail="two") * sign
+        logp_vfwe_vals = -np.log10(p_vfwe_vals)
+        logp_vfwe_vals[np.isinf(logp_vfwe_vals)] = -np.log10(eps)
+
+        maps = {
+            "p_desc-group1MinusGroup2_level-voxel": p_vfwe_vals,
+            "z_desc-group1MinusGroup2_level-voxel": z_vfwe_vals,
+            "logp_desc-group1MinusGroup2_level-voxel": logp_vfwe_vals,
+        }
+
+        if not vfwe_only:
+            csfwe_null = self.null_distributions_[
+                "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+            ]
+            cmfwe_null = self.null_distributions_[
+                "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+            ]
+            ss_thresh = self.null_distributions_[
+                "summary_stat_thresh_level-voxel_corr-fwe_method-montecarlo"
+            ]
+
+            stat_map = self.masker.inverse_transform(stat_values).get_fdata(
+                dtype=DEFAULT_FLOAT_DTYPE
+            )
+            stat_map[np.abs(stat_map) <= ss_thresh] = 0
+
+            conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
+            labeled_pos, _ = ndimage.label(stat_map > 0, conn)
+            labeled_neg, _ = ndimage.label(stat_map < 0, conn)
+            if labeled_pos.size:
+                labeled_neg[labeled_neg > 0] += labeled_pos.max()
+            labeled = labeled_pos + labeled_neg
+
+            cluster_labels, idx, cluster_sizes = np.unique(
+                labeled, return_inverse=True, return_counts=True
+            )
+            cluster_sizes[0] = 0
+
+            cluster_masses = np.zeros(cluster_labels.shape, dtype=DEFAULT_FLOAT_DTYPE)
+            for label in cluster_labels[1:]:
+                ss_vals = np.abs(stat_map[labeled == label]) - ss_thresh
+                cluster_masses[label] = np.sum(ss_vals)
+
+            p_cmfwe_vals = null_to_p(cluster_masses, cmfwe_null, tail="upper")
+            p_cmfwe_map = p_cmfwe_vals[idx].reshape(labeled.shape)
+            p_cmfwe_values = np.squeeze(
+                self.masker.transform(nib.Nifti1Image(p_cmfwe_map, self.masker.mask_img.affine))
+            )
+
+            p_csfwe_vals = null_to_p(cluster_sizes, csfwe_null, tail="upper")
+            p_csfwe_map = p_csfwe_vals[idx].reshape(labeled.shape)
+            p_csfwe_values = np.squeeze(
+                self.masker.transform(nib.Nifti1Image(p_csfwe_map, self.masker.mask_img.affine))
+            )
+
+            z_cmfwe_vals = p_to_z(p_cmfwe_values, tail="two") * sign
+            logp_cmfwe_vals = -np.log10(p_cmfwe_values)
+            logp_cmfwe_vals[np.isinf(logp_cmfwe_vals)] = -np.log10(eps)
+
+            z_csfwe_vals = p_to_z(p_csfwe_values, tail="two") * sign
+            logp_csfwe_vals = -np.log10(p_csfwe_values)
+            logp_csfwe_vals[np.isinf(logp_csfwe_vals)] = -np.log10(eps)
+
+            maps.update(
+                {
+                    "p_desc-group1MinusGroup2Mass_level-cluster": p_cmfwe_values,
+                    "z_desc-group1MinusGroup2Mass_level-cluster": z_cmfwe_vals,
+                    "logp_desc-group1MinusGroup2Mass_level-cluster": logp_cmfwe_vals,
+                    "p_desc-group1MinusGroup2Size_level-cluster": p_csfwe_values,
+                    "z_desc-group1MinusGroup2Size_level-cluster": z_csfwe_vals,
+                    "logp_desc-group1MinusGroup2Size_level-cluster": logp_csfwe_vals,
+                }
+            )
+
+        description = ""
+
+        return maps, {}, description
 
 
 class SCALE(CBMAEstimator):
