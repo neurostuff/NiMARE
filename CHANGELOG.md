@@ -2,7 +2,20 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.8.1...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.9.0...HEAD)
+
+## [0.9.0](https://github.com/neurostuff/NiMARE/compare/0.8.1...0.9.0) - 2026-02-06
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+Added montecarlo multiple comparison corrections for ALESubtraction.
+
+### Features
+
+* [ENH] Add montecarlo mcc to ALESubtraction by @jdkent in https://github.com/neurostuff/NiMARE/pull/973
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.8.1...0.9.0
 
 ## [0.8.1](https://github.com/neurostuff/NiMARE/compare/0.8.0...0.8.1) - 2026-02-05
 
