@@ -188,9 +188,7 @@ class Workflow(NiMAREBase):
                 img_keys = [
                     img_key
                     for img_key in corr_result.maps.keys()
-                    if img_key.startswith("z_")
-                    and "_corr-" in img_key
-                    and "_desc-" in img_key
+                    if img_key.startswith("z_") and "_corr-" in img_key and "_desc-" in img_key
                 ]
         else:
             modalities = ["_desc-mass", "_corr-"] if corr_method == "montecarlo" else ["_corr-"]
