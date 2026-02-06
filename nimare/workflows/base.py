@@ -159,19 +159,46 @@ class Workflow(NiMAREBase):
         corr_method = corr_result.get_params()["corrector__method"]
 
         if issubclass(type(result.estimator), PairwiseCBMAEstimator):
-            modalities = (
-                ["_desc-associationMass", "_corr-"]
-                if corr_method == "montecarlo"
-                else ["_desc-", "_corr-"]
-            )
+            if corr_method == "montecarlo":
+                # Pairwise Monte Carlo estimators use different descriptor labels:
+                # MKDAChi2 -> associationMass, ALESubtraction -> group1MinusGroup2Mass.
+                mass_labels = ("_desc-associationMass", "_desc-group1MinusGroup2Mass")
+                img_keys = [
+                    img_key
+                    for img_key in corr_result.maps.keys()
+                    if img_key.startswith("z_")
+                    and "_corr-" in img_key
+                    and any(label in img_key for label in mass_labels)
+                ]
+
+                # Fall back to voxel-level pairwise maps when only voxel-level FWE is available.
+                if not img_keys:
+                    voxel_labels = (
+                        "_desc-association_level-voxel",
+                        "_desc-group1MinusGroup2_level-voxel",
+                    )
+                    img_keys = [
+                        img_key
+                        for img_key in corr_result.maps.keys()
+                        if img_key.startswith("z_")
+                        and "_corr-" in img_key
+                        and any(label in img_key for label in voxel_labels)
+                    ]
+            else:
+                img_keys = [
+                    img_key
+                    for img_key in corr_result.maps.keys()
+                    if img_key.startswith("z_")
+                    and "_corr-" in img_key
+                    and "_desc-" in img_key
+                ]
         else:
             modalities = ["_desc-mass", "_corr-"] if corr_method == "montecarlo" else ["_corr-"]
-
-        img_keys = [
-            img_key
-            for img_key in corr_result.maps.keys()
-            if img_key.startswith("z_") and all(mod in img_key for mod in modalities)
-        ]
+            img_keys = [
+                img_key
+                for img_key in corr_result.maps.keys()
+                if img_key.startswith("z_") and all(mod in img_key for mod in modalities)
+            ]
 
         for img_key, diagnostic in itertools.product(img_keys, self.diagnostics):
             # Work on copy of diagnostic:
