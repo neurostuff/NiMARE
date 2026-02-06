@@ -292,9 +292,92 @@ def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
         results.get_map("z_desc-group1MinusGroup2", return_type="image"), nib.Nifti1Image
     )
     assert isinstance(results.get_map("z_desc-group1MinusGroup2", return_type="array"), np.ndarray)
+    assert (
+        "values_level-voxel_corr-fwe_method-montecarlo"
+        in results.estimator.null_distributions_.keys()
+    )
+    assert (
+        "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+        not in results.estimator.null_distributions_.keys()
+    )
+    assert (
+        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+        not in results.estimator.null_distributions_.keys()
+    )
 
     sub_meta.save(out_file)
     assert os.path.isfile(out_file)
+
+
+def test_ALESubtraction_init_vfwe_voxel_thresh_logic():
+    """Verify ALESubtraction init validation for vfwe_only/voxel_thresh."""
+    # Default init should work and keep default vfwe_only behavior.
+    sub_meta = ale.ALESubtraction()
+    assert sub_meta.vfwe_only is True
+    assert sub_meta.voxel_thresh == 0.001
+
+    # If cluster nulls are requested, voxel_thresh is required.
+    with pytest.raises(ValueError, match="voxel_thresh must be provided"):
+        ale.ALESubtraction(vfwe_only=False, voxel_thresh=None)
+
+    # If cluster nulls are requested, voxel_thresh must be numeric.
+    with pytest.raises(TypeError, match="voxel_thresh must be a scalar numeric value"):
+        ale.ALESubtraction(vfwe_only=False, voxel_thresh="not_a_number")
+
+    # If cluster nulls are requested, voxel_thresh must be in (0, 1).
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        ale.ALESubtraction(vfwe_only=False, voxel_thresh=0)
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        ale.ALESubtraction(vfwe_only=False, voxel_thresh=1)
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        ale.ALESubtraction(vfwe_only=False, voxel_thresh=-0.1)
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        ale.ALESubtraction(vfwe_only=False, voxel_thresh=1.1)
+
+    # Numeric-like strings are accepted by float conversion.
+    sub_meta = ale.ALESubtraction(vfwe_only=False, voxel_thresh="0.01")
+    assert sub_meta.vfwe_only is False
+
+
+def test_ALESubtraction_cluster_nulls(testdata_cbma):
+    """Verify optional cluster nulls are computed for ALESubtraction."""
+    sub_meta = ale.ALESubtraction(n_iters=2, n_cores=1, vfwe_only=False, voxel_thresh=0.05)
+    results = sub_meta.fit(testdata_cbma, testdata_cbma)
+
+    assert (
+        "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+        in results.estimator.null_distributions_.keys()
+    )
+    assert (
+        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+        in results.estimator.null_distributions_.keys()
+    )
+
+
+def test_ALESubtraction_fwe_description_branches(testdata_cbma):
+    """Verify ALESubtraction Monte Carlo FWE descriptions match correction mode."""
+    # Voxel-only branch.
+    sub_meta_vfwe = ale.ALESubtraction(n_iters=2, n_cores=1, vfwe_only=True)
+    results_vfwe = sub_meta_vfwe.fit(testdata_cbma, testdata_cbma)
+    corr_vfwe = FWECorrector(method="montecarlo", n_iters=2, n_cores=1, vfwe_only=True)
+    corr_results_vfwe = corr_vfwe.transform(results_vfwe)
+
+    assert (
+        "voxel-level Monte Carlo procedure for ALE subtraction" in corr_results_vfwe.description_
+    )
+    assert "cluster sizes, and cluster masses" not in corr_results_vfwe.description_
+
+    # Voxel + cluster branch.
+    sub_meta_cluster = ale.ALESubtraction(n_iters=2, n_cores=1, vfwe_only=False, voxel_thresh=0.05)
+    results_cluster = sub_meta_cluster.fit(testdata_cbma, testdata_cbma)
+    corr_cluster = FWECorrector(
+        method="montecarlo", n_iters=2, n_cores=1, vfwe_only=False, voxel_thresh=0.05
+    )
+    corr_results_cluster = corr_cluster.transform(results_cluster)
+
+    assert "cluster sizes, and cluster masses" in corr_results_cluster.description_
+    assert "face-wise connectivity" in corr_results_cluster.description_
+    assert "p < 0.05" in corr_results_cluster.description_
 
 
 def test_SCALE_smoke(testdata_cbma, tmp_path_factory):

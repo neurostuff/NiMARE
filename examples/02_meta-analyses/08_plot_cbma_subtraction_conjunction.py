@@ -143,15 +143,34 @@ related_jackknife_table.head(10)
 # -----------------------------------------------------------------------------
 # Typically, one would use at least 5000 iterations for a subtraction analysis.
 # However, we have reduced this to 100 iterations for this example.
-# Similarly here we use a voxel-level z-threshold of 0.01, but in practice one would
-# use a more stringent threshold (e.g., 1.65).
+# Here we use a cluster-defining p-threshold of 0.01 for Monte Carlo FWE correction.
+# In practice one would generally use a more stringent threshold.
 from nimare.meta.cbma import ALESubtraction
 from nimare.reports.base import run_reports
 from nimare.workflows import PairwiseCBMAWorkflow
 
+subtraction_iters = 100
+subtraction_voxel_thresh = 0.01
+
+# Keep estimator and Corrector Monte Carlo parameters synchronized so the
+# correction step can reuse cached permutation nulls from ALESubtraction.
+subtraction_estimator = ALESubtraction(
+    n_iters=subtraction_iters,
+    voxel_thresh=subtraction_voxel_thresh,
+    vfwe_only=False,
+    n_cores=1,
+)
+subtraction_corrector = FWECorrector(
+    method="montecarlo",
+    voxel_thresh=subtraction_voxel_thresh,
+    n_iters=subtraction_iters,
+    n_cores=1,
+    vfwe_only=False,
+)
+
 workflow = PairwiseCBMAWorkflow(
-    estimator=ALESubtraction(n_iters=10, n_cores=1),
-    corrector="fdr",
+    estimator=subtraction_estimator,
+    corrector=subtraction_corrector,
     diagnostics=FocusCounter(voxel_thresh=0.01, display_second_group=True),
 )
 res_sub = workflow.fit(knowledge_dset, related_dset)

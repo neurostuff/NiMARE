@@ -130,3 +130,34 @@ def test_reports_ibma_multiple_contrasts_smoke(tmp_path_factory, testdata_ibma_m
     filename = "report.html"
     outpath = op.join(stouffers_dir, filename)
     assert op.isfile(outpath)
+
+
+def test_reports_alesubtraction_montecarlo_uses_pairwise_mass_map(
+    tmp_path_factory,
+    testdata_cbma_full,
+):
+    """Ensure ALESubtraction Monte Carlo maps are discovered and rendered in reports."""
+    tmpdir = tmp_path_factory.mktemp("test_reports_alesubtraction_montecarlo")
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:])
+
+    workflow = PairwiseCBMAWorkflow(
+        estimator=ALESubtraction(n_iters=2, n_cores=1, vfwe_only=False, voxel_thresh=0.05),
+        corrector=FWECorrector(
+            method="montecarlo",
+            n_iters=2,
+            n_cores=1,
+            vfwe_only=False,
+            voxel_thresh=0.05,
+        ),
+        diagnostics=FocusCounter(voxel_thresh=0.01, display_second_group=True),
+        output_dir=tmpdir,
+    )
+    results = workflow.fit(dset1, dset2)
+    run_reports(results, tmpdir)
+
+    summary_file = op.join(tmpdir, "figures", "corrector_figure-summary.html")
+    assert op.isfile(summary_file)
+    with open(summary_file) as fo:
+        summary_text = fo.read()
+    assert "z_desc-group1MinusGroup2Mass_level-cluster_corr-FWE_method-montecarlo" in summary_text
