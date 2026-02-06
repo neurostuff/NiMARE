@@ -17,6 +17,7 @@ from nimare.meta.kernel import KernelTransformer
 from nimare.meta.utils import _calculate_cluster_measures, _get_last_bin
 from nimare.results import MetaResult
 from nimare.stats import null_to_p, nullhist_to_p
+from nimare.studyset import ensure_studyset_view
 from nimare.transforms import p_to_z
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
@@ -978,6 +979,9 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         "fitting" methods are implemented as `_fit`, although users should
         call `fit`.
         """
+        dataset1 = ensure_studyset_view(dataset1)
+        dataset2 = ensure_studyset_view(dataset2)
+
         # Reproduce fit() for dataset1 to collect and process inputs.
         self._collect_inputs(dataset1, drop_invalid=drop_invalid)
         self._preprocess_input(dataset1)

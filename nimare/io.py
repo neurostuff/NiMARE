@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import re
 from collections import Counter, defaultdict
 from itertools import groupby
@@ -53,15 +54,21 @@ def convert_nimads_to_dataset(studyset, annotation=None):
     def _analysis_to_dict(study, analysis):
         study_name = study.name or study.id
         analysis_name = analysis.name or analysis.id
+        metadata = {
+            "authors": study.authors,
+            "journal": study.publication,
+            "study_name": study_name,
+            "analysis_name": analysis_name,
+            "name": f"{study_name}-{analysis_name}",
+        }
+        combined_metadata = analysis.get_metadata()
+        # Preserve existing sample-size parsing behavior below by avoiding direct passthrough.
+        combined_metadata.pop("sample_sizes", None)
+        combined_metadata.pop("sample_size", None)
+        metadata.update(combined_metadata)
 
         result = {
-            "metadata": {
-                "authors": study.authors,
-                "journal": study.publication,
-                "study_name": study_name,
-                "analysis_name": analysis_name,
-                "name": f"{study_name}-{analysis_name}",
-            },
+            "metadata": metadata,
             "coords": {
                 "space": analysis.points[0].space if analysis.points else "UNKNOWN",
                 "x": [p.x for p in analysis.points] or [None],
@@ -70,20 +77,42 @@ def convert_nimads_to_dataset(studyset, annotation=None):
             },
         }
 
+        # Carry image paths through conversion when available.
+        images = {}
+        for image in analysis.images:
+            image_type = image.value_type
+            if image_type in DEFAULT_MAP_TYPE_CONVERSION:
+                image_type = DEFAULT_MAP_TYPE_CONVERSION[image_type]
+            elif isinstance(image_type, str):
+                image_type = image_type.lower().strip()
+                if image_type.endswith(" map"):
+                    image_type = image_type[: -len(" map")]
+            if image_type == "variance":
+                image_type = "varcope"
+            image_path = image.url or image.filename
+            if image_path:
+                images[image_type] = image_path
+        if images:
+            if analysis.images and getattr(analysis.images[0], "space", None):
+                images["space"] = analysis.images[0].space
+            result["images"] = images
+
         # Handle annotations if present
         labels = None
         if analysis.annotations:
             labels = {}
             try:
-                for annotation in analysis.annotations.values():
-                    if not isinstance(annotation, dict):
-                        raise TypeError(
-                            f"Expected annotation to be dict, but got {type(annotation)}"
-                        )
-                    labels.update(annotation)
+                for key, annotation in analysis.annotations.items():
+                    if isinstance(annotation, dict):
+                        labels.update(annotation)
+                    else:
+                        labels[key] = annotation
             except (TypeError, AttributeError) as e:
                 raise ValueError(f"Invalid annotation format: {str(e)}") from e
             result["labels"] = labels
+
+        if analysis.texts:
+            result["text"] = analysis.texts
 
         def _coerce_sample_sizes_list(value):
             if value is None:
@@ -164,13 +193,15 @@ def convert_nimads_to_dataset(studyset, annotation=None):
 
     def _study_to_dict(study):
         study_name = study.name or study.id
+        metadata = {
+            "authors": study.authors,
+            "journal": study.publication,
+            "title": study_name,
+            "study_name": study_name,
+        }
+        metadata.update(study.metadata or {})
         return {
-            "metadata": {
-                "authors": study.authors,
-                "journal": study.publication,
-                "title": study_name,
-                "study_name": study_name,
-            },
+            "metadata": metadata,
             "contrasts": {a.id: _analysis_to_dict(study, a) for a in study.analyses},
         }
 
@@ -1030,6 +1061,36 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
     return Dataset(dset_dict, target=target)
 
 
+def _is_missing(value: Any) -> bool:
+    """Return True when value should be treated as missing."""
+    if value is None:
+        return True
+    try:
+        missing = pd.isna(value)
+        if isinstance(missing, (bool, np.bool_)):
+            return bool(missing)
+    except Exception:
+        return False
+    return False
+
+
+def _to_serializable(value: Any) -> Any:
+    """Convert values to JSON-serializable Python objects."""
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, np.ndarray):
+        return [_to_serializable(v) for v in value.tolist()]
+    if isinstance(value, pd.Series):
+        return {k: _to_serializable(v) for k, v in value.to_dict().items()}
+    if isinstance(value, dict):
+        return {k: _to_serializable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_to_serializable(v) for v in value]
+    if isinstance(value, os.PathLike):
+        return os.fspath(value)
+    return value
+
+
 def convert_dataset_to_nimads_dict(
     dataset: Dataset,
     *,
@@ -1055,12 +1116,17 @@ def convert_dataset_to_nimads_dict(
     dict
         NIMADS Studyset dictionary.
     """
+    id_cols = {"id", "study_id", "contrast_id"}
+
     # Build studies in the deterministic order of dataset.ids (sorted in Dataset)
     studies: Dict[str, Dict[str, Any]] = {}
 
     # Prepare lookups
     md = dataset.metadata
     coords = dataset.coordinates
+    images_df = dataset.images
+    annotations_df = dataset.annotations
+    texts_df = dataset.texts
 
     # Ensure minimal required columns exist even if empty
     if md is None or md.empty:
@@ -1071,34 +1137,77 @@ def convert_dataset_to_nimads_dict(
             if coords is not None
             else pd.DataFrame(columns=["id", "study_id", "contrast_id", "x", "y", "z", "space"])
         )
+    if images_df is None or images_df.empty:
+        images_df = (
+            images_df
+            if images_df is not None
+            else pd.DataFrame(columns=["id", "study_id", "contrast_id"])
+        )
+    if annotations_df is None or annotations_df.empty:
+        annotations_df = (
+            annotations_df
+            if annotations_df is not None
+            else pd.DataFrame(columns=["id", "study_id", "contrast_id"])
+        )
+    if texts_df is None or texts_df.empty:
+        texts_df = (
+            texts_df
+            if texts_df is not None
+            else pd.DataFrame(columns=["id", "study_id", "contrast_id"])
+        )
 
     for id_ in dataset.ids:
-        # Pull identifiers
-        row = md.loc[md["id"] == id_]
-        if row.empty:
-            # Fall back to coordinates to get identifiers
-            row = coords.loc[coords["id"] == id_]
-        if row.empty:
-            # Skip if completely missing
+        md_rows = md.loc[md["id"] == id_]
+        crows = coords.loc[coords["id"] == id_]
+        if md_rows.empty and crows.empty:
             continue
-        study_id = str(row["study_id"].iloc[0])
-        contrast_id = str(row["contrast_id"].iloc[0])
+
+        row = md_rows.iloc[0] if not md_rows.empty else crows.iloc[0]
+        study_id = str(row["study_id"])
+        contrast_id = str(row["contrast_id"])
+
+        study_name = study_id
+        if not md_rows.empty:
+            md_row = md_rows.iloc[0]
+            for study_name_col in ("study_name", "title"):
+                value = md_row.get(study_name_col, None)
+                if isinstance(value, str) and value.strip():
+                    study_name = value
+                    break
 
         # Study object (create if needed)
         if study_id not in studies:
             studies[study_id] = {
                 "id": study_id,
-                "name": study_id,
+                "name": study_name,
                 "authors": "",
                 "publication": "",
                 "metadata": {},
                 "analyses": [],
             }
 
+        if not md_rows.empty:
+            md_row = md_rows.iloc[0]
+            authors = md_row.get("authors", None)
+            if isinstance(authors, str) and authors.strip():
+                studies[study_id]["authors"] = authors
+            publication = md_row.get("journal", md_row.get("publication", None))
+            if isinstance(publication, str) and publication.strip():
+                studies[study_id]["publication"] = publication
+
+        analysis_name = contrast_id
+        if not md_rows.empty:
+            md_row = md_rows.iloc[0]
+            for analysis_name_col in ("analysis_name", "contrast_name", "name"):
+                value = md_row.get(analysis_name_col, None)
+                if isinstance(value, str) and value.strip():
+                    analysis_name = value
+                    break
+
         # Analysis object
         analysis: Dict[str, Any] = {
             "id": contrast_id,
-            "name": contrast_id,
+            "name": analysis_name,
             "conditions": [{"name": "default", "description": ""}],
             "weights": [1.0],
             "images": [],
@@ -1106,15 +1215,88 @@ def convert_dataset_to_nimads_dict(
             "metadata": {},
         }
 
-        # Sample size metadata if available
-        if "sample_sizes" in row.columns and pd.notnull(row["sample_sizes"].iloc[0]):
-            analysis["metadata"]["sample_sizes"] = row["sample_sizes"].iloc[0]
-        elif "sample_size" in row.columns and pd.notnull(row["sample_size"].iloc[0]):
-            analysis["metadata"]["sample_size"] = row["sample_size"].iloc[0]
+        if not md_rows.empty:
+            md_row = md_rows.iloc[0]
+            for col in md_row.index:
+                if col in id_cols:
+                    continue
+                value = md_row[col]
+                if _is_missing(value):
+                    continue
+                analysis["metadata"][col] = _to_serializable(value)
+
+        # Collect annotations for this analysis.
+        annotation_rows = annotations_df.loc[annotations_df["id"] == id_]
+        if not annotation_rows.empty:
+            annotation_row = annotation_rows.iloc[0]
+            annotation_dict = {}
+            for col in annotation_row.index:
+                if col in id_cols:
+                    continue
+                value = annotation_row[col]
+                if _is_missing(value):
+                    continue
+                annotation_dict[col] = _to_serializable(value)
+            if annotation_dict:
+                analysis["annotations"] = annotation_dict
+
+        # Collect texts for this analysis.
+        text_rows = texts_df.loc[texts_df["id"] == id_]
+        if not text_rows.empty:
+            text_row = text_rows.iloc[0]
+            text_dict = {}
+            for col in text_row.index:
+                if col in id_cols:
+                    continue
+                value = text_row[col]
+                if _is_missing(value):
+                    continue
+                text_dict[col] = _to_serializable(value)
+            if text_dict:
+                analysis["texts"] = text_dict
+
+        # Collect image metadata for this analysis.
+        image_rows = images_df.loc[images_df["id"] == id_]
+        if not image_rows.empty:
+            image_row = image_rows.iloc[0]
+            image_space = image_row.get("space", dataset.space)
+            if isinstance(image_space, str):
+                image_space_lower = image_space.lower()
+                if "tal" in image_space_lower:
+                    image_space = "TAL"
+                elif "mni" in image_space_lower or "ale" in image_space_lower:
+                    image_space = "MNI"
+
+            for col in images_df.columns:
+                if col in ("id", "study_id", "contrast_id", "space") or col.endswith("__relative"):
+                    continue
+
+                image_value = image_row.get(col, None)
+                if _is_missing(image_value):
+                    continue
+                if isinstance(image_value, os.PathLike):
+                    image_value = os.fspath(image_value)
+                if not isinstance(image_value, str) or not image_value:
+                    continue
+
+                analysis["images"].append(
+                    {
+                        "url": image_value,
+                        "filename": Path(image_value).name,
+                        "space": image_space or "UNKNOWN",
+                        "value_type": col,
+                    }
+                )
 
         # Collect points for this analysis in order of appearance
-        crows = coords.loc[coords["id"] == id_]
         for _, crow in crows.iterrows():
+            if (
+                _is_missing(crow.get("x"))
+                or _is_missing(crow.get("y"))
+                or _is_missing(crow.get("z"))
+            ):
+                continue
+
             sp = crow.get("space", None)
             if isinstance(sp, str):
                 spl = sp.lower()
