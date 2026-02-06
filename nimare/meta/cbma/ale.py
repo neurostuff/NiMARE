@@ -15,7 +15,12 @@ from nimare.meta.kernel import ALEKernel
 from nimare.meta.utils import _calculate_cluster_measures
 from nimare.stats import null_to_p, nullhist_to_p
 from nimare.transforms import p_to_z
-from nimare.utils import DEFAULT_FLOAT_DTYPE, _check_ncores, _mask_img_to_bool, use_memmap
+from nimare.utils import (
+    DEFAULT_FLOAT_DTYPE,
+    _check_ncores,
+    _mask_img_to_bool,
+    use_memmap,
+)
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
