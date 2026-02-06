@@ -338,6 +338,11 @@ class ALE(CBMAEstimator):
 class ALESubtraction(PairwiseCBMAEstimator):
     """ALE subtraction analysis.
 
+    .. versionchanged:: 0.9.0
+
+        - New parameters: ``vfwe_only`` and ``voxel_thresh``
+          for montecarlo family wise error correction.
+
     .. versionchanged:: 0.2.1
 
         - New parameters: ``memory`` and ``memory_level`` for memory caching.
@@ -456,6 +461,25 @@ class ALESubtraction(PairwiseCBMAEstimator):
         # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
         # a Dataset with pre-generated MA maps is provided.
         self.memory_limit = "100mb"
+
+        if not self.vfwe_only:
+            if self.voxel_thresh is None:
+                raise ValueError("voxel_thresh must be provided when vfwe_only is False.")
+
+            # Enforce scalar numeric voxel-wise threshold
+            try:
+                voxel_thresh_float = float(self.voxel_thresh)
+            except (TypeError, ValueError):
+                raise TypeError(
+                    "voxel_thresh must be a scalar numeric value when vfwe_only is False; "
+                    f"got {type(self.voxel_thresh).__name__}."
+                )
+
+            if not 0 < voxel_thresh_float < 1:
+                raise ValueError(
+                    "voxel_thresh must be between 0 and 1 (exclusive) when vfwe_only is False; "
+                    f"got {self.voxel_thresh!r}."
+                )
 
     def _generate_description(self):
         if (
@@ -911,7 +935,29 @@ class ALESubtraction(PairwiseCBMAEstimator):
                 }
             )
 
-        description = ""
+        if vfwe_only:
+            description = (
+                "Family-wise error correction was performed using a voxel-level Monte Carlo "
+                "procedure for ALE subtraction. "
+                "In this procedure, experiments from the two input datasets were randomly "
+                "reassigned between groups while preserving the original group sizes, and the "
+                "maximum absolute ALE-difference value was retained. "
+                f"This procedure was repeated {n_iters} times to build a null distribution of "
+                "summary statistics."
+            )
+        else:
+            description = (
+                "Family-wise error rate correction was performed using a Monte Carlo procedure "
+                "for ALE subtraction. "
+                "In this procedure, experiments from the two input datasets were randomly "
+                "reassigned between groups while preserving the original group sizes, and "
+                "maximum values were retained. "
+                f"This procedure was repeated {n_iters} times to build null distributions of "
+                "summary statistics, cluster sizes, and cluster masses. "
+                "Clusters for cluster-level correction were defined using face-wise connectivity "
+                f"and a voxel-level threshold of p < {voxel_thresh} from the uncorrected ALE-"
+                "difference null distribution."
+            )
 
         return maps, {}, description
 
