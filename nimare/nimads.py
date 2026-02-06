@@ -88,7 +88,19 @@ class Studyset:
         from nimare.io import convert_dataset_to_nimads_dict
 
         nimads = convert_dataset_to_nimads_dict(dataset)
-        return cls(nimads)
+        studyset = cls(nimads)
+        # Preserve Dataset execution context so estimators can run directly on Studyset inputs.
+        studyset._nimare_masker = dataset.masker
+        studyset._nimare_space = dataset.space
+        studyset._nimare_basepath = dataset.basepath
+        # Preserve original tabular data for high-fidelity Dataset->Studyset execution.
+        studyset._nimare_coordinates_df = dataset.coordinates.copy()
+        studyset._nimare_metadata_df = dataset.metadata.copy()
+        studyset._nimare_images_df = dataset.images.copy()
+        studyset._nimare_annotations_df = dataset.annotations.copy()
+        studyset._nimare_texts_df = dataset.texts.copy()
+        studyset._nimare_ids = dataset.ids.copy()
+        return studyset
 
     @classmethod
     def from_sleuth(cls, sleuth_file):

@@ -3,11 +3,9 @@
 import logging
 
 from nimare.correct import FWECorrector
-from nimare.dataset import Dataset
 from nimare.diagnostics import Jackknife
 from nimare.meta import ALE, MKDAChi2
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
-from nimare.utils import _check_type
 from nimare.workflows.base import Workflow
 
 LGR = logging.getLogger(__name__)
@@ -83,9 +81,6 @@ class CBMAWorkflow(Workflow):
         :obj:`~nimare.results.MetaResult`
             Results of Estimator fitting.
         """
-        # Check dataset type
-        dataset = _check_type(dataset, Dataset)
-
         LGR.info("Performing meta-analysis...")
         results = self.estimator.fit(dataset, drop_invalid=drop_invalid)
 
@@ -155,10 +150,6 @@ class PairwiseCBMAWorkflow(Workflow):
         :obj:`~nimare.results.MetaResult`
             Results of Estimator fitting.
         """
-        # Check dataset type
-        dataset1 = _check_type(dataset1, Dataset)
-        dataset2 = _check_type(dataset2, Dataset)
-
         LGR.info("Performing meta-analysis...")
         results = self.estimator.fit(dataset1, dataset2, drop_invalid=drop_invalid)
 
