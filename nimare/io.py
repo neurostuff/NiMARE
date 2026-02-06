@@ -70,6 +70,26 @@ def convert_nimads_to_dataset(studyset, annotation=None):
             },
         }
 
+        # Carry image paths through conversion when available.
+        images = {}
+        for image in analysis.images:
+            image_type = image.value_type
+            if image_type in DEFAULT_MAP_TYPE_CONVERSION:
+                image_type = DEFAULT_MAP_TYPE_CONVERSION[image_type]
+            elif isinstance(image_type, str):
+                image_type = image_type.lower().strip()
+                if image_type.endswith(" map"):
+                    image_type = image_type[: -len(" map")]
+            if image_type == "variance":
+                image_type = "varcope"
+            image_path = image.url or image.filename
+            if image_path:
+                images[image_type] = image_path
+        if images:
+            if analysis.images and getattr(analysis.images[0], "space", None):
+                images["space"] = analysis.images[0].space
+            result["images"] = images
+
         # Handle annotations if present
         labels = None
         if analysis.annotations:
@@ -1111,6 +1131,35 @@ def convert_dataset_to_nimads_dict(
             analysis["metadata"]["sample_sizes"] = row["sample_sizes"].iloc[0]
         elif "sample_size" in row.columns and pd.notnull(row["sample_size"].iloc[0]):
             analysis["metadata"]["sample_size"] = row["sample_size"].iloc[0]
+
+        # Collect image metadata for this analysis.
+        image_row = dataset.images.loc[dataset.images["id"] == id_]
+        if not image_row.empty:
+            image_row = image_row.iloc[0]
+            image_space = image_row.get("space", dataset.space)
+            if isinstance(image_space, str):
+                image_space_lower = image_space.lower()
+                if "tal" in image_space_lower:
+                    image_space = "TAL"
+                elif "mni" in image_space_lower or "ale" in image_space_lower:
+                    image_space = "MNI"
+
+            for col in dataset.images.columns:
+                if col in ("id", "study_id", "contrast_id", "space") or col.endswith("__relative"):
+                    continue
+
+                image_value = image_row.get(col, None)
+                if not isinstance(image_value, str) or not image_value:
+                    continue
+
+                analysis["images"].append(
+                    {
+                        "url": image_value,
+                        "filename": Path(image_value).name,
+                        "space": image_space or "UNKNOWN",
+                        "value_type": col,
+                    }
+                )
 
         # Collect points for this analysis in order of appearance
         crows = coords.loc[coords["id"] == id_]

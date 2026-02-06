@@ -6,6 +6,7 @@ from joblib import Memory
 
 from nimare.base import NiMAREBase
 from nimare.results import MetaResult
+from nimare.studyset import ensure_studyset_view
 
 
 class Estimator(NiMAREBase):
@@ -50,6 +51,8 @@ class Estimator(NiMAREBase):
             The actual inputs collected in this attribute are determined by the
             ``_required_inputs`` variable that should be specified in each child class.
         """
+        dataset = ensure_studyset_view(dataset)
+
         if not hasattr(dataset, "slice"):
             raise ValueError(
                 f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}."
@@ -127,6 +130,7 @@ class Estimator(NiMAREBase):
         "fitting" methods are implemented as `_fit`, although users should
         call `fit`.
         """
+        dataset = ensure_studyset_view(dataset)
         self._collect_inputs(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)
         maps, tables, description = self._cache(self._fit, func_memory_level=1)(dataset)
