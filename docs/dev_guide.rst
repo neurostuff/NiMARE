@@ -22,6 +22,24 @@ and then use ``fit`` or ``transform`` methods to apply the algorithm to data (ge
 
 Installation for Development
 ----------------------------
+To set up NiMARE for development, first clone the repository from GitHub::
+
+    git clone https://github.com/neurostuff/NiMARE.git
+    cd NiMARE
+
+Create and activate a virtual environment::
+
+    python -m venv venv
+    source venv/bin/activate
+
+Install NiMARE in editable (development) mode::
+
+    pip install -e .
+
+Run the test suite to verify that the installation was successful::
+
+    pytest
+
 
 Installation with Conda
 ```````````````````````
@@ -135,3 +153,9 @@ The two main things to know are:
 
       .. warning:: Known Bugs This version contains some bugs that were identified after it was released.
       \   - The ALESubtraction class from this release should not be used, as it uses a symmetric null distribution, which does not work properly for comparisons between Datasets with different sizes.
+
+ note
+
+   It is recommended to use a virtual environment when developing NiMARE
+   to avoid dependency conflicts with other Python projects.
+
