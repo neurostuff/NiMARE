@@ -449,6 +449,7 @@ class NeurosynthDecoder(Decoder):
         u=0.05,
         correction="fdr_bh",
     ):
+        super().__init__()
         self.feature_group = feature_group
         self.features = features
         self.frequency_threshold = frequency_threshold
@@ -499,7 +500,6 @@ def neurosynth_decode(
     annotations,
     ids,
     ids2=None,
-    feature_group=None,
     features=None,
     frequency_threshold=0.001,
     prior=0.5,
