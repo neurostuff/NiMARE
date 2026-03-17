@@ -2,7 +2,17 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.9.0...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.9.1...HEAD)
+
+## [0.9.1](https://github.com/neurostuff/NiMARE/compare/0.9.0...0.9.1) - 2026-03-17
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+* [ENH] optimize ale permutations by @jdkent in https://github.com/neurostuff/NiMARE/pull/976
+* [FIX] skip and log features that do not exist in both groups by @jdkent in https://github.com/neurostuff/NiMARE/pull/977
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.9.0...0.10.0
 
 ## [0.9.0](https://github.com/neurostuff/NiMARE/compare/0.8.1...0.9.0) - 2026-02-06
 
