@@ -200,12 +200,15 @@ class CorrelationDecoder(Decoder):
         self.meta_estimator = meta_estimator
         self.target_image = target_image
         self.n_cores = _check_ncores(n_cores)
+        self._is_pairwise_estimator = (
+            "dataset2" in inspect.getfullargspec(self.meta_estimator.fit).args
+        )
 
     def _preprocess_input(self, dataset):
         """Select features and drop pairwise features without a comparison set."""
         super()._preprocess_input(dataset)
 
-        if "dataset2" not in inspect.getfullargspec(self.meta_estimator.fit).args:
+        if not self._is_pairwise_estimator:
             return
 
         n_ids = len(self.inputs_["id"])
@@ -269,7 +272,7 @@ class CorrelationDecoder(Decoder):
 
         # Check if the meta method is a pairwise estimator
         # This seems like a somewhat inelegant solution
-        if "dataset2" in inspect.getfullargspec(self.meta_estimator.fit).args:
+        if self._is_pairwise_estimator:
             nonfeature_ids = sorted(list(set(self.inputs_["id"]) - set(feature_ids)))
             if not nonfeature_ids:
                 LGR.info(f"Skipping feature '{feature}'. No valid unselected studies found.")
