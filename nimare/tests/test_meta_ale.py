@@ -7,10 +7,12 @@ import pickle
 import nibabel as nib
 import numpy as np
 import pytest
+import sparse
 from nilearn.maskers import NiftiLabelsMasker
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
+from nimare.generate import create_coordinate_dataset
 from nimare.meta import ale
 from nimare.results import MetaResult
 from nimare.tests.utils import get_test_data_path
@@ -278,6 +280,50 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
     )
 
 
+def test_ALE_montecarlo_histogram_reduction_matches_batch():
+    """Streaming Monte Carlo histogram reduction should match batch reduction semantics."""
+    _, dset = create_coordinate_dataset(
+        foci=3,
+        fwhm=10.0,
+        n_studies=4,
+        sample_size=30,
+        n_noise_foci=5,
+        seed=7,
+    )
+    meta = ale.ALE(null_method="montecarlo", n_iters=3, n_cores=1)
+    meta.masker = dset.masker
+    meta._collect_inputs(dset)
+    meta._preprocess_input(dset)
+    meta.null_distributions_ = {"histogram_bins": np.array([0.0, 0.5, 1.0])}
+
+    counts_seq = [
+        np.array([3, 0, 1], dtype=np.int32),
+        np.array([1, 2, 0], dtype=np.int32),
+        np.array([0, 1, 3], dtype=np.int32),
+    ]
+    expected_uncorr = np.sum(counts_seq, axis=0)
+    expected_vfwe = np.zeros_like(expected_uncorr)
+    for idx in (2, 1, 2):
+        expected_vfwe[idx] += 1
+
+    counter = iter(counts_seq)
+
+    def fake_permutation(iter_xyz, iter_df, bin_edges=None):
+        return next(counter).copy()
+
+    meta._compute_null_montecarlo_permutation = fake_permutation
+    meta._compute_null_montecarlo(n_iters=3, n_cores=1)
+
+    np.testing.assert_array_equal(
+        meta.null_distributions_["histweights_corr-none_method-montecarlo"],
+        expected_uncorr,
+    )
+    np.testing.assert_array_equal(
+        meta.null_distributions_["histweights_level-voxel_corr-fwe_method-montecarlo"],
+        expected_vfwe,
+    )
+
+
 def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
     """Smoke test for ALESubtraction."""
     tmpdir = tmp_path_factory.mktemp("test_ALESubtraction_smoke")
@@ -354,6 +400,105 @@ def test_ALESubtraction_cluster_nulls(testdata_cbma):
     )
 
 
+def test_ALESubtraction_masked_sparse_summary_matches_coo():
+    """Masked sparse ALE summaries should match the original COO path."""
+    _, dset = create_coordinate_dataset(
+        foci=3,
+        fwhm=10.0,
+        n_studies=6,
+        sample_size=30,
+        n_noise_foci=5,
+        seed=12,
+    )
+    dset1 = dset.slice(dset.ids[:3])
+
+    sub_meta = ale.ALESubtraction(n_iters=2, n_cores=1)
+    sub_meta.masker = dset1.masker
+    sub_meta._collect_inputs(dset1)
+    sub_meta._preprocess_input(dset1)
+    sub_meta.inputs_["id1"] = sub_meta.inputs_.pop("id")
+    sub_meta.inputs_["coordinates1"] = sub_meta.inputs_.pop("coordinates")
+
+    ma_maps = sub_meta._collect_ma_maps(coords_key="coordinates1")
+    masked_ma_maps = sub_meta._ma_maps_to_masked_matrix(ma_maps)
+
+    coo_summary = sub_meta._compute_summarystat_est(ma_maps)
+    masked_summary = sub_meta._compute_summarystat_est(masked_ma_maps)
+
+    np.testing.assert_allclose(masked_summary, coo_summary, rtol=1e-5, atol=2e-7)
+
+
+def test_ALESubtraction_masked_sparse_drops_out_of_mask_entries():
+    """Masked sparse conversion should ignore any nonzero entries outside the analysis mask."""
+    _, dset = create_coordinate_dataset(
+        foci=3,
+        fwhm=10.0,
+        n_studies=6,
+        sample_size=30,
+        n_noise_foci=5,
+        seed=12,
+    )
+    dset1 = dset.slice(dset.ids[:3])
+
+    sub_meta = ale.ALESubtraction(n_iters=2, n_cores=1)
+    sub_meta.masker = dset1.masker
+
+    mask_data = dset1.masker.mask_img.get_fdata().astype(bool)
+    in_mask_ijk = np.argwhere(mask_data)[0]
+    out_of_mask_ijk = np.argwhere(~mask_data)[0]
+    coords = np.array(
+        [
+            [0, 0],
+            [in_mask_ijk[0], out_of_mask_ijk[0]],
+            [in_mask_ijk[1], out_of_mask_ijk[1]],
+            [in_mask_ijk[2], out_of_mask_ijk[2]],
+        ],
+        dtype=np.int64,
+    )
+    ma_maps = sparse.COO(
+        coords=coords,
+        data=np.array([0.4, 0.9], dtype=np.float32),
+        shape=(1,) + mask_data.shape,
+    )
+
+    masked_ma_maps = sub_meta._ma_maps_to_masked_matrix(ma_maps)
+
+    assert masked_ma_maps.nnz == 1
+    masked_summary = sub_meta._compute_summarystat_est(masked_ma_maps)
+    assert np.count_nonzero(masked_summary) == 1
+    np.testing.assert_allclose(masked_summary[masked_summary > 0], [0.4])
+    np.testing.assert_allclose(
+        masked_summary,
+        sub_meta._compute_summarystat_est(ma_maps),
+    )
+
+
+def test_ALESubtraction_chunked_pvalues_match_scalar_path():
+    """Chunked p-value conversion should match the scalar implementation."""
+    rng = np.random.default_rng(4)
+    sub_meta = ale.ALESubtraction(n_iters=5, n_cores=1)
+
+    stat_values = rng.normal(size=17).astype(np.float32)
+    iter_diff_values = rng.normal(size=(13, 17)).astype(np.float32)
+
+    scalar_p = np.array(
+        [
+            sub_meta._alediff_to_p_voxel(
+                i_voxel, stat_values[i_voxel], iter_diff_values[:, i_voxel]
+            )[0]
+            for i_voxel in range(stat_values.shape[0])
+        ]
+    ).reshape(-1)
+    scalar_sign = np.sign(stat_values - np.median(iter_diff_values, axis=0))
+
+    chunked_p, chunked_sign = sub_meta._alediff_to_p_values(
+        stat_values, iter_diff_values, chunk_size=4
+    )
+
+    np.testing.assert_allclose(chunked_p, scalar_p)
+    np.testing.assert_array_equal(chunked_sign, scalar_sign)
+
+
 def test_ALESubtraction_fwe_description_branches(testdata_cbma):
     """Verify ALESubtraction Monte Carlo FWE descriptions match correction mode."""
     # Voxel-only branch.
@@ -410,6 +555,30 @@ def test_SCALE_smoke(testdata_cbma, tmp_path_factory):
 
     meta.save(out_file)
     assert os.path.isfile(out_file)
+
+
+def test_SCALE_chunked_pvalues_match_scalar_path():
+    """Chunked SCALE p-value conversion should match the scalar implementation."""
+    rng = np.random.default_rng(7)
+    meta = ale.SCALE(xyz=np.zeros((1, 3)), n_iters=5, n_cores=1)
+    meta.null_distributions_ = {"histogram_bins": np.linspace(0, 1, 11)}
+
+    stat_values = rng.uniform(0.0, 0.8, size=9).astype(np.float32)
+    scale_values = rng.uniform(0.0, 0.8, size=(13, 9)).astype(np.float32)
+    scale_values[scale_values < 0.2] = 0
+
+    scalar_p = np.array(
+        [
+            meta._scale_to_p_voxel(i_voxel, stat_values[i_voxel], scale_values[:, i_voxel].copy())[
+                0
+            ]
+            for i_voxel in range(stat_values.shape[0])
+        ]
+    ).reshape(-1)
+
+    chunked_p = meta._scale_to_p_values(stat_values, scale_values, chunk_size=4)
+
+    np.testing.assert_allclose(chunked_p, scalar_p)
 
 
 def test_ALE_non_nifti_masker(testdata_cbma):
