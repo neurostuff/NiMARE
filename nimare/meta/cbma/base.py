@@ -591,9 +591,7 @@ class CBMAEstimator(Estimator):
             histweights_corr_none += counts
             histweights_level_voxel[_get_last_bin(counts)] += 1
 
-        self.null_distributions_["histweights_corr-none_method-montecarlo"] = (
-            histweights_corr_none
-        )
+        self.null_distributions_["histweights_corr-none_method-montecarlo"] = histweights_corr_none
         self.null_distributions_["histweights_level-voxel_corr-fwe_method-montecarlo"] = (
             histweights_level_voxel
         )

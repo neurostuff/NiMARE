@@ -10,7 +10,8 @@ import numpy as np
 import pandas as pd
 import sparse
 from joblib import Memory, Parallel, delayed
-from scipy import ndimage, sparse as sp_sparse
+from scipy import ndimage
+from scipy import sparse as sp_sparse
 from tqdm.auto import tqdm
 
 from nimare import _version
@@ -665,8 +666,6 @@ class ALESubtraction(PairwiseCBMAEstimator):
             return ma_values
 
         shape = self.masker.mask_img.shape
-        n_studies = ma_values.shape[0]
-        n_voxels = int(np.prod(ma_values.shape[1:]))
         if not hasattr(self, "_mask_flat_to_masked"):
             mask_data = _mask_img_to_bool(self.masker.mask_img).reshape(-1)
             self._mask_flat_to_masked = np.full(mask_data.shape[0], -1, dtype=np.int32)
@@ -678,7 +677,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         data = ma_values.data.astype(DEFAULT_FLOAT_DTYPE, copy=False)
         return sp_sparse.csr_matrix(
             (data, (rows, cols)),
-            shape=(n_studies, int(self._mask_flat_to_masked.max()) + 1),
+            shape=(ma_values.shape[0], int(self._mask_flat_to_masked.max()) + 1),
             dtype=DEFAULT_FLOAT_DTYPE,
         )
 
@@ -758,12 +757,16 @@ class ALESubtraction(PairwiseCBMAEstimator):
         p_values = np.empty(n_voxels, dtype=DEFAULT_FLOAT_DTYPE)
         diff_signs = np.empty(n_voxels, dtype=DEFAULT_FLOAT_DTYPE)
 
-        for start in tqdm(range(0, n_voxels, chunk_size), total=int(np.ceil(n_voxels / chunk_size))):
+        for start in tqdm(
+            range(0, n_voxels, chunk_size), total=int(np.ceil(n_voxels / chunk_size))
+        ):
             stop = min(start + chunk_size, n_voxels)
             null_chunk = np.asarray(iter_diff_values[:, start:stop])
             stat_chunk = np.asarray(stat_values[start:stop], dtype=null_chunk.dtype)
 
-            left_tail = 1.0 - (np.count_nonzero(null_chunk < stat_chunk[None, :], axis=0) / n_iters)
+            left_tail = 1.0 - (
+                np.count_nonzero(null_chunk < stat_chunk[None, :], axis=0) / n_iters
+            )
             right_tail = 1.0 - (
                 np.count_nonzero(null_chunk > stat_chunk[None, :], axis=0) / n_iters
             )
@@ -1303,7 +1306,9 @@ class SCALE(CBMAEstimator):
         n_voxels = stat_values.shape[0]
         p_values = np.empty(n_voxels, dtype=DEFAULT_FLOAT_DTYPE)
 
-        for start in tqdm(range(0, n_voxels, chunk_size), total=int(np.ceil(n_voxels / chunk_size))):
+        for start in tqdm(
+            range(0, n_voxels, chunk_size), total=int(np.ceil(n_voxels / chunk_size))
+        ):
             stop = min(start + chunk_size, n_voxels)
             null_chunk = np.asarray(scale_values[:, start:stop])
             n_chunk_voxels = stop - start

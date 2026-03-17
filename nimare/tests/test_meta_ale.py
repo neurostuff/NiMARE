@@ -437,9 +437,9 @@ def test_ALESubtraction_chunked_pvalues_match_scalar_path():
 
     scalar_p = np.array(
         [
-            sub_meta._alediff_to_p_voxel(i_voxel, stat_values[i_voxel], iter_diff_values[:, i_voxel])[
-                0
-            ]
+            sub_meta._alediff_to_p_voxel(
+                i_voxel, stat_values[i_voxel], iter_diff_values[:, i_voxel]
+            )[0]
             for i_voxel in range(stat_values.shape[0])
         ]
     ).reshape(-1)
@@ -523,7 +523,9 @@ def test_SCALE_chunked_pvalues_match_scalar_path():
 
     scalar_p = np.array(
         [
-            meta._scale_to_p_voxel(i_voxel, stat_values[i_voxel], scale_values[:, i_voxel].copy())[0]
+            meta._scale_to_p_voxel(i_voxel, stat_values[i_voxel], scale_values[:, i_voxel].copy())[
+                0
+            ]
             for i_voxel in range(stat_values.shape[0])
         ]
     ).reshape(-1)
