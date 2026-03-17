@@ -562,11 +562,14 @@ class CBMAEstimator(Estimator):
         rand_xyz = vox2mm(rand_ijk, self.masker.mask_img.affine)
         iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
         iter_df = self.inputs_["coordinates"].copy()
+        parallel_kwargs = {"return_as": "generator", "n_jobs": n_cores}
+        if getattr(self, "_permutation_parallel_backend", None) is not None:
+            parallel_kwargs["backend"] = self._permutation_parallel_backend
 
         perm_histograms = [
             r
             for r in tqdm(
-                Parallel(return_as="generator", n_jobs=n_cores)(
+                Parallel(**parallel_kwargs)(
                     delayed(self._compute_null_montecarlo_permutation)(
                         iter_xyzs[i_iter], iter_df=iter_df
                     )
@@ -780,6 +783,9 @@ class CBMAEstimator(Estimator):
             rand_xyz = null_xyz[rand_idx, :]
             iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
             iter_df = self.inputs_["coordinates"].copy()
+            parallel_kwargs = {"return_as": "generator", "n_jobs": n_cores}
+            if getattr(self, "_permutation_parallel_backend", None) is not None:
+                parallel_kwargs["backend"] = self._permutation_parallel_backend
 
             # Define connectivity matrix for cluster labeling
             conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
@@ -787,7 +793,7 @@ class CBMAEstimator(Estimator):
             perm_results = [
                 r
                 for r in tqdm(
-                    Parallel(return_as="generator", n_jobs=n_cores)(
+                    Parallel(**parallel_kwargs)(
                         delayed(self._correct_fwe_montecarlo_permutation)(
                             iter_xyzs[i_iter],
                             iter_df=iter_df,

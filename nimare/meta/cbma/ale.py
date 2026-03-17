@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import sparse
 from joblib import Memory, Parallel, delayed
-from scipy import ndimage
+from scipy import ndimage, sparse as sp_sparse
 from tqdm.auto import tqdm
 
 from nimare import _version
@@ -28,6 +28,9 @@ from nimare.utils import (
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
+
+ALE_SUBTRACTION_PVALUE_CHUNK_SIZE = 8192
+SCALE_PVALUE_CHUNK_SIZE = 1024
 
 
 class ALE(CBMAEstimator):
@@ -171,6 +174,7 @@ class ALE(CBMAEstimator):
         self.n_iters = None if null_method == "approximate" else n_iters or 5000
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
+        self._permutation_parallel_backend = "threading"
 
     def _generate_description(self):
         """Generate a description of the fitted Estimator.
@@ -458,6 +462,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.voxel_thresh = voxel_thresh
         self.vfwe_only = vfwe_only
         self.n_cores = _check_ncores(n_cores)
+        self._permutation_parallel_backend = "threading"
         # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
         # a Dataset with pre-generated MA maps is provided.
         self.memory_limit = "100mb"
@@ -541,10 +546,12 @@ class ALESubtraction(PairwiseCBMAEstimator):
             maps_key="ma_maps1",
             coords_key="coordinates1",
         )
+        ma_maps1 = self._ma_maps_to_masked_matrix(ma_maps1)
         ma_maps2 = self._collect_ma_maps(
             maps_key="ma_maps2",
             coords_key="coordinates2",
         )
+        ma_maps2 = self._ma_maps_to_masked_matrix(ma_maps2)
 
         # Get ALE values for the two groups and difference scores
         grp1_ale_values = self._compute_summarystat_est(ma_maps1)
@@ -556,7 +563,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         n_voxels = diff_ale_values.shape[0]
 
         # Combine the MA maps into a single array to draw from for null distribution
-        ma_arr = sparse.concatenate((ma_maps1, ma_maps2))
+        ma_arr = self._combine_ma_maps(ma_maps1, ma_maps2)
 
         del ma_maps1, ma_maps2
 
@@ -564,15 +571,20 @@ class ALESubtraction(PairwiseCBMAEstimator):
         # Use a memmapped 2D array
         iter_diff_values = np.memmap(
             self.memmap_filenames[2],
-            dtype=ma_arr.dtype,
+            dtype=DEFAULT_FLOAT_DTYPE,
             mode="w+",
             shape=(self.n_iters, n_voxels),
         )
+        parallel_kwargs = {
+            "return_as": "generator",
+            "n_jobs": self.n_cores,
+            "backend": self._permutation_parallel_backend,
+        }
 
         _ = [
             r
             for r in tqdm(
-                Parallel(return_as="generator", n_jobs=self.n_cores)(
+                Parallel(**parallel_kwargs)(
                     delayed(self._run_permutation)(i_iter, n_grp1, ma_arr, iter_diff_values)
                     for i_iter in range(self.n_iters)
                 ),
@@ -583,24 +595,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         # Determine p-values based on voxel-wise null distributions
         # I know that joblib probably preserves order of outputs, but I'm paranoid, so we track
         # the iteration as well and sort the resulting p-value array based on that.
-        p_values, voxel_idx = tqdm(
-            zip(
-                *Parallel(return_as="generator", n_jobs=self.n_cores)(
-                    delayed(self._alediff_to_p_voxel)(
-                        i_voxel,
-                        diff_ale_values[i_voxel],
-                        iter_diff_values[:, i_voxel],
-                    )
-                    for i_voxel in range(n_voxels)
-                ),
-            ),
-            total=n_voxels,
-        )
-
-        # Convert to an array and sort the p-values array based on the voxel index.
-        p_values = np.array(p_values)[np.array(voxel_idx)]
-
-        diff_signs = np.sign(diff_ale_values - np.median(iter_diff_values, axis=0))
+        p_values, diff_signs = self._alediff_to_p_values(diff_ale_values, iter_diff_values)
 
         # Save per-iteration max statistics for voxel-level FWE correction.
         # Use max absolute values to align with two-sided inference.
@@ -659,8 +654,46 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         return maps, {}, description
 
+    def _ma_maps_to_masked_matrix(self, ma_values):
+        """Convert 4D MA maps to a study-by-voxel CSR matrix within the analysis mask."""
+        if sp_sparse.isspmatrix_csr(ma_values):
+            return ma_values
+
+        if not isinstance(ma_values, sparse._coo.core.COO):
+            return ma_values
+
+        shape = self.masker.mask_img.shape
+        n_studies = ma_values.shape[0]
+        n_voxels = int(np.prod(ma_values.shape[1:]))
+        if not hasattr(self, "_mask_flat_to_masked"):
+            mask_data = _mask_img_to_bool(self.masker.mask_img).reshape(-1)
+            self._mask_flat_to_masked = np.full(mask_data.shape[0], -1, dtype=np.int32)
+            self._mask_flat_to_masked[mask_data] = np.arange(mask_data.sum(), dtype=np.int32)
+
+        flat_voxels = np.ravel_multi_index(ma_values.coords[1:], dims=shape)
+        rows = ma_values.coords[0].astype(np.int32, copy=False)
+        cols = self._mask_flat_to_masked[flat_voxels]
+        data = ma_values.data.astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        return sp_sparse.csr_matrix(
+            (data, (rows, cols)),
+            shape=(n_studies, int(self._mask_flat_to_masked.max()) + 1),
+            dtype=DEFAULT_FLOAT_DTYPE,
+        )
+
+    def _combine_ma_maps(self, ma_maps1, ma_maps2):
+        """Combine two MA map collections while preserving efficient sparse formats."""
+        if sp_sparse.isspmatrix_csr(ma_maps1) and sp_sparse.isspmatrix_csr(ma_maps2):
+            return sp_sparse.vstack((ma_maps1, ma_maps2), format="csr")
+
+        return sparse.concatenate((ma_maps1, ma_maps2))
+
     def _compute_summarystat_est(self, ma_values):
-        if isinstance(ma_values, sparse._coo.core.COO):
+        if sp_sparse.isspmatrix(ma_values):
+            log_ma = ma_values.copy()
+            log_ma.data = np.log1p(-log_ma.data)
+            stat_values = 1.0 - np.exp(np.asarray(log_ma.sum(axis=0)).ravel())
+            stat_values = stat_values.astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        elif isinstance(ma_values, sparse._coo.core.COO):
             log_ma = ma_values.copy()
             log_ma.data = np.log1p(-log_ma.data)
             stat_values = 1.0 - np.exp(log_ma.sum(axis=0))
@@ -710,6 +743,35 @@ class ALESubtraction(PairwiseCBMAEstimator):
         """
         p_value = null_to_p(stat_value, voxel_null, tail="two", symmetric=False)
         return p_value, i_voxel
+
+    def _alediff_to_p_values(
+        self,
+        stat_values,
+        iter_diff_values,
+        chunk_size=ALE_SUBTRACTION_PVALUE_CHUNK_SIZE,
+    ):
+        """Compute voxelwise p-values and signs in chunks to avoid per-voxel task overhead."""
+        n_iters, n_voxels = iter_diff_values.shape
+        smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
+        p_values = np.empty(n_voxels, dtype=DEFAULT_FLOAT_DTYPE)
+        diff_signs = np.empty(n_voxels, dtype=DEFAULT_FLOAT_DTYPE)
+
+        for start in tqdm(range(0, n_voxels, chunk_size), total=int(np.ceil(n_voxels / chunk_size))):
+            stop = min(start + chunk_size, n_voxels)
+            null_chunk = np.asarray(iter_diff_values[:, start:stop])
+            stat_chunk = np.asarray(stat_values[start:stop], dtype=null_chunk.dtype)
+
+            left_tail = 1.0 - (np.count_nonzero(null_chunk < stat_chunk[None, :], axis=0) / n_iters)
+            right_tail = 1.0 - (
+                np.count_nonzero(null_chunk > stat_chunk[None, :], axis=0) / n_iters
+            )
+            p_chunk = 2.0 * np.minimum(left_tail, right_tail)
+            p_values[start:stop] = np.maximum(
+                smallest_value, np.minimum(p_chunk, 1.0 - smallest_value)
+            ).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+            diff_signs[start:stop] = np.sign(stat_chunk - np.median(null_chunk, axis=0))
+
+        return p_values, diff_signs
 
     def correct_fwe_montecarlo(
         self,
@@ -785,14 +847,16 @@ class ALESubtraction(PairwiseCBMAEstimator):
                 maps_key="ma_maps1",
                 coords_key="coordinates1",
             )
+            ma_maps1 = self._ma_maps_to_masked_matrix(ma_maps1)
             ma_maps2 = self._collect_ma_maps(
                 maps_key="ma_maps2",
                 coords_key="coordinates2",
             )
+            ma_maps2 = self._ma_maps_to_masked_matrix(ma_maps2)
 
             n_grp1 = ma_maps1.shape[0]
             n_voxels = stat_values.shape[0]
-            ma_arr = sparse.concatenate((ma_maps1, ma_maps2))
+            ma_arr = self._combine_ma_maps(ma_maps1, ma_maps2)
 
             del ma_maps1, ma_maps2
 
@@ -802,16 +866,21 @@ class ALESubtraction(PairwiseCBMAEstimator):
             os.close(fd)
             iter_diff_values = np.memmap(
                 tmp_path,
-                dtype=ma_arr.dtype,
+                dtype=DEFAULT_FLOAT_DTYPE,
                 mode="w+",
                 shape=(n_iters, n_voxels),
             )
+            parallel_kwargs = {
+                "return_as": "generator",
+                "n_jobs": n_cores,
+                "backend": self._permutation_parallel_backend,
+            }
 
             try:
                 _ = [
                     r
                     for r in tqdm(
-                        Parallel(return_as="generator", n_jobs=n_cores)(
+                        Parallel(**parallel_kwargs)(
                             delayed(self._run_permutation)(
                                 i_iter, n_grp1, ma_arr, iter_diff_values
                             )
@@ -1216,27 +1285,51 @@ class SCALE(CBMAEstimator):
         -----
         This method also uses the "histogram_bins" element in the null_distributions_ attribute.
         """
-        n_voxels = stat_values.shape[0]
-
-        # I know that joblib probably preserves order of outputs, but I'm paranoid, so we track
-        # the iteration as well and sort the resulting p-value array based on that.
-        p_values, voxel_idx = tqdm(
-            zip(
-                *Parallel(return_as="generator", n_jobs=self.n_cores)(
-                    delayed(self._scale_to_p_voxel)(
-                        i_voxel, stat_values[i_voxel], scale_values[:, i_voxel]
-                    )
-                    for i_voxel in range(n_voxels)
-                )
-            ),
-            total=n_voxels,
-        )
-
-        # Convert to an array and sort the p-values array based on the voxel index.
-        p_values = np.array(p_values)[np.array(voxel_idx)]
-
+        p_values = self._scale_to_p_values(stat_values, scale_values)
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
+
+    def _scale_to_p_values(
+        self,
+        stat_values,
+        scale_values,
+        chunk_size=SCALE_PVALUE_CHUNK_SIZE,
+    ):
+        """Compute SCALE p-values in chunks to avoid per-voxel scheduling overhead."""
+        histogram_bins = self.null_distributions_["histogram_bins"]
+        n_bins = len(histogram_bins)
+        n_voxels = stat_values.shape[0]
+        p_values = np.empty(n_voxels, dtype=DEFAULT_FLOAT_DTYPE)
+
+        for start in tqdm(range(0, n_voxels, chunk_size), total=int(np.ceil(n_voxels / chunk_size))):
+            stop = min(start + chunk_size, n_voxels)
+            null_chunk = np.asarray(scale_values[:, start:stop])
+            n_chunk_voxels = stop - start
+
+            histogram_weights = np.zeros((n_bins, n_chunk_voxels), dtype=np.int32)
+            zero_mask = null_chunk == 0
+            histogram_weights[0, :] = np.sum(zero_mask, axis=0)
+
+            valid_mask = ~zero_mask
+            if np.any(valid_mask):
+                bin_idx = np.searchsorted(histogram_bins, null_chunk[valid_mask], side="right") - 1
+                bin_idx = np.clip(bin_idx, 0, n_bins - 2)
+                voxel_idx = np.broadcast_to(
+                    np.arange(n_chunk_voxels, dtype=np.int32),
+                    null_chunk.shape,
+                )[valid_mask]
+                np.add.at(histogram_weights[1:, :], (bin_idx, voxel_idx), 1)
+
+            hist_arg = histogram_weights[:, 0] if n_chunk_voxels == 1 else histogram_weights
+            p_values[start:stop] = np.atleast_1d(
+                nullhist_to_p(
+                    stat_values[start:stop],
+                    hist_arg,
+                    histogram_bins,
+                )
+            ).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+
+        return p_values
 
     def _scale_to_p_voxel(self, i_voxel, stat_value, voxel_null):
         """Compute one voxel's p-value from its specific null distribution."""
