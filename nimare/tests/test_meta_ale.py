@@ -7,6 +7,7 @@ import pickle
 import nibabel as nib
 import numpy as np
 import pytest
+import sparse
 from nilearn.maskers import NiftiLabelsMasker
 
 import nimare
@@ -425,6 +426,51 @@ def test_ALESubtraction_masked_sparse_summary_matches_coo():
     masked_summary = sub_meta._compute_summarystat_est(masked_ma_maps)
 
     np.testing.assert_allclose(masked_summary, coo_summary, rtol=1e-5, atol=2e-7)
+
+
+def test_ALESubtraction_masked_sparse_drops_out_of_mask_entries():
+    """Masked sparse conversion should ignore any nonzero entries outside the analysis mask."""
+    _, dset = create_coordinate_dataset(
+        foci=3,
+        fwhm=10.0,
+        n_studies=6,
+        sample_size=30,
+        n_noise_foci=5,
+        seed=12,
+    )
+    dset1 = dset.slice(dset.ids[:3])
+
+    sub_meta = ale.ALESubtraction(n_iters=2, n_cores=1)
+    sub_meta.masker = dset1.masker
+
+    mask_data = dset1.masker.mask_img.get_fdata().astype(bool)
+    in_mask_ijk = np.argwhere(mask_data)[0]
+    out_of_mask_ijk = np.argwhere(~mask_data)[0]
+    coords = np.array(
+        [
+            [0, 0],
+            [in_mask_ijk[0], out_of_mask_ijk[0]],
+            [in_mask_ijk[1], out_of_mask_ijk[1]],
+            [in_mask_ijk[2], out_of_mask_ijk[2]],
+        ],
+        dtype=np.int64,
+    )
+    ma_maps = sparse.COO(
+        coords=coords,
+        data=np.array([0.4, 0.9], dtype=np.float32),
+        shape=(1,) + mask_data.shape,
+    )
+
+    masked_ma_maps = sub_meta._ma_maps_to_masked_matrix(ma_maps)
+
+    assert masked_ma_maps.nnz == 1
+    masked_summary = sub_meta._compute_summarystat_est(masked_ma_maps)
+    assert np.count_nonzero(masked_summary) == 1
+    np.testing.assert_allclose(masked_summary[masked_summary > 0], [0.4])
+    np.testing.assert_allclose(
+        masked_summary,
+        sub_meta._compute_summarystat_est(ma_maps),
+    )
 
 
 def test_ALESubtraction_chunked_pvalues_match_scalar_path():

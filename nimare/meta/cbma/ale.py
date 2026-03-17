@@ -675,6 +675,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
         rows = ma_values.coords[0].astype(np.int32, copy=False)
         cols = self._mask_flat_to_masked[flat_voxels]
         data = ma_values.data.astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        valid_mask = cols >= 0
+        rows = rows[valid_mask]
+        cols = cols[valid_mask]
+        data = data[valid_mask]
         return sp_sparse.csr_matrix(
             (data, (rows, cols)),
             shape=(ma_values.shape[0], int(self._mask_flat_to_masked.max()) + 1),
