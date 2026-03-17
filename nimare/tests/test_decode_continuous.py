@@ -81,9 +81,7 @@ def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
         decoder6.transform(img)
 
 
-def test_CorrelationDecoder_pairwise_skips_features_without_comparison_set(
-    testdata_laird, caplog
-):
+def test_CorrelationDecoder_pairwise_skips_features_without_comparison_set(testdata_laird, caplog):
     """Pairwise decoders should skip features without a valid non-feature group."""
     testdata_laird = testdata_laird.copy()
     testdata_laird.annotations = testdata_laird.annotations.copy()
