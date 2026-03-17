@@ -29,7 +29,9 @@ from nimare.utils import (
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
 
+# Benchmarked ALESubtraction chunk sizes: 512, 1024, 2048, 4096, 8192, 16384.
 ALE_SUBTRACTION_PVALUE_CHUNK_SIZE = 8192
+# Benchmarked SCALE chunk sizes: 256, 512, 1024, 2048, 4096.
 SCALE_PVALUE_CHUNK_SIZE = 1024
 
 

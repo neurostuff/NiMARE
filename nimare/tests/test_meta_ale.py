@@ -279,6 +279,50 @@ def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
     )
 
 
+def test_ALE_montecarlo_histogram_reduction_matches_batch():
+    """Streaming Monte Carlo histogram reduction should match batch reduction semantics."""
+    _, dset = create_coordinate_dataset(
+        foci=3,
+        fwhm=10.0,
+        n_studies=4,
+        sample_size=30,
+        n_noise_foci=5,
+        seed=7,
+    )
+    meta = ale.ALE(null_method="montecarlo", n_iters=3, n_cores=1)
+    meta.masker = dset.masker
+    meta._collect_inputs(dset)
+    meta._preprocess_input(dset)
+    meta.null_distributions_ = {"histogram_bins": np.array([0.0, 0.5, 1.0])}
+
+    counts_seq = [
+        np.array([3, 0, 1], dtype=np.int32),
+        np.array([1, 2, 0], dtype=np.int32),
+        np.array([0, 1, 3], dtype=np.int32),
+    ]
+    expected_uncorr = np.sum(counts_seq, axis=0)
+    expected_vfwe = np.zeros_like(expected_uncorr)
+    for idx in (2, 1, 2):
+        expected_vfwe[idx] += 1
+
+    counter = iter(counts_seq)
+
+    def fake_permutation(iter_xyz, iter_df, bin_edges=None):
+        return next(counter).copy()
+
+    meta._compute_null_montecarlo_permutation = fake_permutation
+    meta._compute_null_montecarlo(n_iters=3, n_cores=1)
+
+    np.testing.assert_array_equal(
+        meta.null_distributions_["histweights_corr-none_method-montecarlo"],
+        expected_uncorr,
+    )
+    np.testing.assert_array_equal(
+        meta.null_distributions_["histweights_level-voxel_corr-fwe_method-montecarlo"],
+        expected_vfwe,
+    )
+
+
 def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
     """Smoke test for ALESubtraction."""
     tmpdir = tmp_path_factory.mktemp("test_ALESubtraction_smoke")

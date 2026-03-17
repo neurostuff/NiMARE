@@ -495,7 +495,7 @@ class CBMAEstimator(Estimator):
         null_dist = self._compute_summarystat(iter_ma_values)
         self.null_distributions_["values_corr-none_method-reducedMontecarlo"] = null_dist
 
-    def _compute_null_montecarlo_permutation(self, iter_xyz, iter_df):
+    def _compute_null_montecarlo_permutation(self, iter_xyz, iter_df, bin_edges=None):
         """Run a single Monte Carlo permutation of a dataset.
 
         Does the shared work between uncorrected stat-to-p conversion and vFWE.
@@ -525,11 +525,12 @@ class CBMAEstimator(Estimator):
 
         del iter_ma_maps
 
-        # Get bin edges for histogram
-        bin_centers = self.null_distributions_["histogram_bins"]
-        step_size = bin_centers[1] - bin_centers[0]
-        bin_edges = bin_centers - (step_size / 2)
-        bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
+        # Reuse shared histogram edges when available to avoid per-permutation allocation.
+        if bin_edges is None:
+            bin_centers = self.null_distributions_["histogram_bins"]
+            step_size = bin_centers[1] - bin_centers[0]
+            bin_edges = bin_centers - (step_size / 2)
+            bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
 
         counts, _ = np.histogram(iter_ss_map, bins=bin_edges, density=False)
         return counts
@@ -566,31 +567,35 @@ class CBMAEstimator(Estimator):
         if getattr(self, "_permutation_parallel_backend", None) is not None:
             parallel_kwargs["backend"] = self._permutation_parallel_backend
 
-        perm_histograms = [
-            r
-            for r in tqdm(
-                Parallel(**parallel_kwargs)(
-                    delayed(self._compute_null_montecarlo_permutation)(
-                        iter_xyzs[i_iter], iter_df=iter_df
-                    )
-                    for i_iter in range(n_iters)
-                ),
-                total=n_iters,
-            )
-        ]
+        bin_centers = self.null_distributions_["histogram_bins"]
+        step_size = bin_centers[1] - bin_centers[0]
+        bin_edges = bin_centers - (step_size / 2)
+        bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
 
-        perm_histograms = np.vstack(perm_histograms)
-        self.null_distributions_["histweights_corr-none_method-montecarlo"] = np.sum(
-            perm_histograms, axis=0
+        perm_histograms = Parallel(**parallel_kwargs)(
+            delayed(self._compute_null_montecarlo_permutation)(
+                iter_xyzs[i_iter],
+                iter_df=iter_df,
+                bin_edges=bin_edges,
+            )
+            for i_iter in range(n_iters)
         )
 
-        fwe_voxel_max = np.apply_along_axis(_get_last_bin, 1, perm_histograms)
-        histweights = np.zeros(perm_histograms.shape[1], dtype=perm_histograms.dtype)
-        for perm in fwe_voxel_max:
-            histweights[perm] += 1
+        histweights_corr_none = None
+        histweights_level_voxel = None
+        for counts in tqdm(perm_histograms, total=n_iters):
+            if histweights_corr_none is None:
+                histweights_corr_none = np.zeros(counts.shape, dtype=np.int64)
+                histweights_level_voxel = np.zeros(counts.shape, dtype=np.int64)
 
+            histweights_corr_none += counts
+            histweights_level_voxel[_get_last_bin(counts)] += 1
+
+        self.null_distributions_["histweights_corr-none_method-montecarlo"] = (
+            histweights_corr_none
+        )
         self.null_distributions_["histweights_level-voxel_corr-fwe_method-montecarlo"] = (
-            histweights
+            histweights_level_voxel
         )
 
     def _correct_fwe_montecarlo_permutation(
@@ -790,24 +795,32 @@ class CBMAEstimator(Estimator):
             # Define connectivity matrix for cluster labeling
             conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
 
-            perm_results = [
-                r
-                for r in tqdm(
-                    Parallel(**parallel_kwargs)(
-                        delayed(self._correct_fwe_montecarlo_permutation)(
-                            iter_xyzs[i_iter],
-                            iter_df=iter_df,
-                            conn=conn,
-                            voxel_thresh=ss_thresh,
-                            vfwe_only=vfwe_only,
-                        )
-                        for i_iter in range(n_iters)
-                    ),
-                    total=n_iters,
+            perm_results = Parallel(**parallel_kwargs)(
+                delayed(self._correct_fwe_montecarlo_permutation)(
+                    iter_xyzs[i_iter],
+                    iter_df=iter_df,
+                    conn=conn,
+                    voxel_thresh=ss_thresh,
+                    vfwe_only=vfwe_only,
                 )
-            ]
+                for i_iter in range(n_iters)
+            )
 
-            fwe_voxel_max, fwe_cluster_size_max, fwe_cluster_mass_max = zip(*perm_results)
+            fwe_voxel_max = np.empty(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+            if vfwe_only:
+                fwe_cluster_size_max = None
+                fwe_cluster_mass_max = None
+            else:
+                fwe_cluster_size_max = np.empty(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+                fwe_cluster_mass_max = np.empty(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+
+            for i_iter, (iter_max_value, iter_max_size, iter_max_mass) in enumerate(
+                tqdm(perm_results, total=n_iters)
+            ):
+                fwe_voxel_max[i_iter] = iter_max_value
+                if not vfwe_only:
+                    fwe_cluster_size_max[i_iter] = iter_max_size
+                    fwe_cluster_mass_max[i_iter] = iter_max_mass
 
             if not vfwe_only:
                 # Cluster-level FWE
