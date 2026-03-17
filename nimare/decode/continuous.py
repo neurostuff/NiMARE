@@ -32,6 +32,19 @@ from nimare.utils import (
 LGR = logging.getLogger(__name__)
 
 
+def _collect_feature_maps(results_iter, total):
+    """Collect feature-map pairs from parallel decoder jobs, skipping missing results."""
+    maps = {}
+    for result in tqdm(results_iter, total=total):
+        if result is None:
+            continue
+
+        feature, data = result
+        maps[feature] = data
+
+    return maps
+
+
 def gclda_decode_map(model, image, topic_priors=None, prior_weight=1):
     r"""Perform image-to-text decoding for continuous inputs using method from Rubin et al. (2017).
 
@@ -187,6 +200,38 @@ class CorrelationDecoder(Decoder):
         self.meta_estimator = meta_estimator
         self.target_image = target_image
         self.n_cores = _check_ncores(n_cores)
+        self._is_pairwise_estimator = (
+            "dataset2" in inspect.getfullargspec(self.meta_estimator.fit).args
+        )
+
+    def _preprocess_input(self, dataset):
+        """Select features and drop pairwise features without a comparison set."""
+        super()._preprocess_input(dataset)
+
+        if not self._is_pairwise_estimator:
+            return
+
+        n_ids = len(self.inputs_["id"])
+        counts = (self.inputs_["annotations"][self.features_] > self.frequency_threshold).sum(
+            axis=0
+        )
+        features = counts[counts < n_ids].index.tolist()
+        skipped_features = sorted(set(self.features_) - set(features))
+
+        if skipped_features:
+            LGR.info(
+                "Skipping %d features without both selected and unselected studies: %s",
+                len(skipped_features),
+                ", ".join(skipped_features),
+            )
+
+        if not features:
+            raise ValueError(
+                "No decodable features remain after excluding pairwise features without "
+                "both selected and unselected studies."
+            )
+
+        self.features_ = features
 
     def _fit(self, dataset):
         """Generate feature-specific meta-analytic maps for dataset.
@@ -202,15 +247,12 @@ class CorrelationDecoder(Decoder):
             MetaResult with meta-analytic maps and masker added.
         """
         n_features = len(self.features_)
-        maps = {
-            r: v
-            for r, v in tqdm(
-                Parallel(return_as="generator", n_jobs=self.n_cores)(
-                    delayed(self._run_fit)(feature, dataset) for feature in self.features_
-                ),
-                total=n_features,
-            )
-        }
+        maps = _collect_feature_maps(
+            Parallel(return_as="generator", n_jobs=self.n_cores)(
+                delayed(self._run_fit)(feature, dataset) for feature in self.features_
+            ),
+            total=n_features,
+        )
 
         self.results_ = MetaResult(self, mask=dataset.masker, maps=maps)
 
@@ -221,14 +263,21 @@ class CorrelationDecoder(Decoder):
         )
         # Limit selected studies to studies with valid data
         feature_ids = sorted(list(set(feature_ids).intersection(self.inputs_["id"])))
+        if not feature_ids:
+            LGR.info(f"Skipping feature '{feature}'. No valid selected studies found.")
+            return None
 
         # Create the reduced Dataset
         feature_dset = dataset.slice(feature_ids)
 
         # Check if the meta method is a pairwise estimator
         # This seems like a somewhat inelegant solution
-        if "dataset2" in inspect.getfullargspec(self.meta_estimator.fit).args:
+        if self._is_pairwise_estimator:
             nonfeature_ids = sorted(list(set(self.inputs_["id"]) - set(feature_ids)))
+            if not nonfeature_ids:
+                LGR.info(f"Skipping feature '{feature}'. No valid unselected studies found.")
+                return None
+
             nonfeature_dset = dataset.slice(nonfeature_ids)
             meta_results = self.meta_estimator.fit(feature_dset, nonfeature_dset)
         else:
@@ -405,15 +454,12 @@ class CorrelationDistributionDecoder(Decoder):
             MetaResult with meta-analytic maps and masker added.
         """
         n_features = len(self.features_)
-        maps = {
-            r: v
-            for r, v in tqdm(
-                Parallel(return_as="generator", n_jobs=self.n_cores)(
-                    delayed(self._run_fit)(feature, dataset) for feature in self.features_
-                ),
-                total=n_features,
-            )
-        }
+        maps = _collect_feature_maps(
+            Parallel(return_as="generator", n_jobs=self.n_cores)(
+                delayed(self._run_fit)(feature, dataset) for feature in self.features_
+            ),
+            total=n_features,
+        )
 
         self.results_ = MetaResult(self, mask=dataset.masker, maps=maps)
 

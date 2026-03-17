@@ -81,6 +81,39 @@ def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
         decoder6.transform(img)
 
 
+def test_CorrelationDecoder_pairwise_skips_features_without_comparison_set(testdata_laird, caplog):
+    """Pairwise decoders should skip features without a valid non-feature group."""
+    testdata_laird = testdata_laird.copy()
+    testdata_laird.annotations = testdata_laird.annotations.copy()
+    testdata_laird.annotations["all_valid"] = 1.0
+
+    n_ids = len(testdata_laird.ids)
+    candidate_features = [
+        col
+        for col in testdata_laird.annotations.columns
+        if col not in ("id", "study_id", "contrast_id", "all_valid")
+    ]
+    retained_feature = next(
+        feature
+        for feature in candidate_features
+        if 0 < (testdata_laird.annotations[feature] > 0.001).sum() < n_ids
+    )
+
+    decoder = continuous.CorrelationDecoder(
+        features=["all_valid", retained_feature],
+        meta_estimator=mkda.MKDAChi2(),
+        n_cores=1,
+    )
+    with caplog.at_level("INFO", logger="nimare.decode.continuous"):
+        decoder.fit(testdata_laird)
+
+    assert "all_valid" not in decoder.results_.maps
+    assert retained_feature in decoder.results_.maps
+    assert "Skipping 1 features without both selected and unselected studies: all_valid" in (
+        caplog.text
+    )
+
+
 def test_CorrelationDistributionDecoder_smoke(testdata_laird, tmp_path_factory):
     """Smoke test for continuous.CorrelationDistributionDecoder."""
     tmpdir = tmp_path_factory.mktemp("test_CorrelationDistributionDecoder")
