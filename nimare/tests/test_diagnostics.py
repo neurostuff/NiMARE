@@ -2,6 +2,7 @@
 
 import logging
 import os.path as op
+from types import SimpleNamespace
 
 import nibabel as nib
 import numpy as np
@@ -29,6 +30,66 @@ def test_summarize_cluster_values_masked_array():
     )
 
     assert np.allclose(reduced, np.array([2.0, 3.0]))
+
+
+def test_summarize_cluster_values_image_mode():
+    """Cluster summaries should preserve cluster order in image mode."""
+    mask_data = np.ones((2, 2, 1), dtype=np.int8)
+    mask_img = nib.Nifti1Image(mask_data, affine=np.eye(4))
+
+    class DummyMasker:
+        """Minimal masker with the inverse_transform API used by diagnostics."""
+
+        def __init__(self, mask_img):
+            self.mask_img_ = mask_img
+
+        def inverse_transform(self, data):
+            arr = np.asarray(data)
+            if arr.ndim == 1:
+                arr = arr[np.newaxis, :]
+
+            vol = np.zeros(mask_data.shape, dtype=float)
+            vol[mask_data.astype(bool)] = arr[0]
+            return nib.Nifti1Image(vol, affine=mask_img.affine)
+
+    label_data = np.zeros(mask_data.shape, dtype=np.int16)
+    label_data[0, 0, 0] = 1
+    label_data[0, 1, 0] = 1
+    label_data[1, 0, 0] = 2
+    label_data[1, 1, 0] = 2
+    label_img = nib.Nifti1Image(label_data, affine=np.eye(4))
+
+    cluster_masker = NiftiLabelsMasker(label_img, **diagnostics._cluster_masker_kwargs())
+    cluster_masker.fit(label_img)
+
+    cluster_summary_context = {
+        "mode": "image",
+        "cluster_masker": cluster_masker,
+    }
+    values = np.array([1.0, 3.0, 2.0, 4.0], dtype=float)
+
+    reduced = diagnostics._summarize_cluster_values(
+        values,
+        masker=DummyMasker(mask_img),
+        cluster_summary_context=cluster_summary_context,
+    )
+
+    assert np.allclose(reduced, np.array([2.0, 3.0]))
+
+
+def test_get_target_value_map_prefers_deterministic_priority():
+    """Target value map selection should use explicit key priority."""
+    result = SimpleNamespace(maps={"z": None, "est": None, "stat": None})
+
+    assert diagnostics._get_target_value_map(result) == "stat"
+
+
+def test_get_target_value_map_raises_for_unsupported_maps():
+    """Unsupported map sets should fail loudly."""
+    result = SimpleNamespace(maps={"doggy": None})
+
+    with pytest.raises(ValueError, match="No supported map found"):
+        diagnostics._get_target_value_map(result)
 
 
 @pytest.mark.parametrize(

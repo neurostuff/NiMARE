@@ -41,10 +41,16 @@ def _get_target_value_map(result):
     # CBMAs have "stat" maps, while most IBMAs have "est" maps. ALESubtraction has
     # "stat_desc-group1MinusGroup2" maps, while MKDAChi2 has "z_desc-association" maps.
     # Fisher's and Stouffer's only have "z" maps though.
-    target_value_keys = {"stat", "est", "stat_desc-group1MinusGroup2", "z_desc-association"}
-    avail_value_keys = set(result.maps.keys())
-    union_value_keys = list(target_value_keys & avail_value_keys)
-    return union_value_keys[0] if union_value_keys else "z"
+    target_value_keys = ("stat", "est", "stat_desc-group1MinusGroup2", "z_desc-association", "z")
+    for target_value_key in target_value_keys:
+        if target_value_key in result.maps:
+            return target_value_key
+
+    available_maps = ", ".join(sorted(result.maps.keys()))
+    raise ValueError(
+        "No supported map found for per-cluster contribution calculations. "
+        f"Expected one of {target_value_keys}; available maps are: {available_maps}."
+    )
 
 
 def _cluster_masker_kwargs():
@@ -78,8 +84,19 @@ def _build_cluster_summary_context(masker, label_map, label_vector, cluster_ids)
     """Precompute cluster summaries in array space when possible."""
     label_vector = np.squeeze(np.asarray(label_vector))
     if _is_voxelwise_masker(masker, label_vector.shape[0]):
+        rounded_labels = np.rint(label_vector).astype(np.int32, copy=False)
+        positive_indices = np.flatnonzero(rounded_labels > 0)
+        positive_labels = rounded_labels[positive_indices]
+
+        order = np.argsort(positive_labels, kind="stable")
+        sorted_indices = positive_indices[order]
+        sorted_labels = positive_labels[order]
+        unique_labels, starts = np.unique(sorted_labels, return_index=True)
+        grouped_indices = np.split(sorted_indices, starts[1:]) if unique_labels.size else []
+        label_to_indices = dict(zip(unique_labels.tolist(), grouped_indices))
+
         cluster_indices = [
-            np.flatnonzero(np.isclose(label_vector, c_id)).astype(np.int32, copy=False)
+            label_to_indices.get(int(c_id), np.array([], dtype=np.int32)).astype(np.int32, copy=False)
             for c_id in cluster_ids
         ]
         if all(cluster_idx.size > 0 for cluster_idx in cluster_indices):
@@ -190,7 +207,6 @@ class Diagnostics(NiMAREBase):
         sign,
         result,
         target_value_map=None,
-        stat_values=None,
         cluster_summary_context=None,
     ):
         """Apply transform to study ID and label map.
@@ -362,7 +378,6 @@ class Diagnostics(NiMAREBase):
             signs = [tail_to_sign[label_map_tails[0]]]
 
         target_value_map = _get_target_value_map(result)
-        stat_values = result.get_map(target_value_map, return_type="array")
 
         contribution_tables = []
         for sign, label_map, label_map_name, meta_ids in zip(
@@ -393,7 +408,6 @@ class Diagnostics(NiMAREBase):
                             sign,
                             result,
                             target_value_map,
-                            stat_values,
                             cluster_summary_context,
                         )
                         for expid in meta_ids
@@ -463,7 +477,6 @@ class Jackknife(Diagnostics):
         sign,
         result,
         target_value_map=None,
-        stat_values=None,
         cluster_summary_context=None,
     ):
         """Apply transform to study ID and label map.
@@ -494,11 +507,7 @@ class Jackknife(Diagnostics):
             all_ids = estimator.inputs_["id"]
 
         target_value_map = target_value_map or _get_target_value_map(result)
-        stat_values = (
-            np.asarray(stat_values)
-            if stat_values is not None
-            else result.get_map(target_value_map, return_type="array")
-        )
+        stat_values = result.get_map(target_value_map, return_type="array")
         cluster_summary_context = cluster_summary_context or _build_cluster_summary_context(
             result.estimator.masker,
             label_map,
@@ -571,7 +580,6 @@ class FocusCounter(Diagnostics):
         sign,
         result,
         target_value_map=None,
-        stat_values=None,
         cluster_summary_context=None,
     ):
         """Apply transform to study ID and label map.
