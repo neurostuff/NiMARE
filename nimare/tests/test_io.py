@@ -272,6 +272,16 @@ def test_convert_sleuth_to_dataset_smoke():
         io.convert_sleuth_to_dataset(sleuth_file5)
 
 
+def test_convert_sleuth_to_studyset_smoke():
+    """Smoke test for direct Sleuth-to-Studyset conversion."""
+    sleuth_file = os.path.join(get_test_data_path(), "test_sleuth_file.txt")
+    studyset = io.convert_sleuth_to_studyset(sleuth_file)
+
+    assert isinstance(studyset, Studyset)
+    assert studyset.coordinates.shape[0] == 7
+    assert len(studyset.ids) == 3
+
+
 @pytest.mark.parametrize(
     "header_lines,expected_study,expected_contrast",
     [

@@ -18,7 +18,9 @@ These plugins automatically evaluate imports, code formatting, and docstring for
 Additionally, we have modeled NiMARE's code on `scikit-learn`_.
 By this we mean that most of NiMARE user-facing tools are implemented as classes.
 These classes generally accept a number of parameters at initialization,
-and then use ``fit`` or ``transform`` methods to apply the algorithm to data (generally a NiMARE ``Dataset`` object).
+and then use ``fit`` or ``transform`` methods to apply the algorithm to data
+(generally a NiMARE ``Studyset`` object, with legacy ``Dataset`` support retained
+for backwards compatibility).
 
 Installation for Development
 ----------------------------

@@ -29,15 +29,15 @@ from nilearn.plotting import plot_stat_map
 # * `457 <https://neurovault.org/collections/457/>`_
 #
 # I can load specific statistical maps from these collections
-# into a NiMARE dataset:
-from nimare.io import convert_neurovault_to_dataset
+# directly into a Studyset for analysis:
+from nimare.generate import create_neurovault_studyset
 
 # The specific collections I would like to download group level
 # statistical maps from
 collection_ids = (2884, 2621, 3085, 5623, 3264, 3192, 457)
 
 # A mapping between what I want the contrast(s) to be
-# named in the dataset and what their respective group
+# named in the Studyset and what their respective group
 # statistical maps are named on neurovault
 contrasts = {
     "working_memory": (
@@ -52,10 +52,10 @@ contrasts = {
 }
 
 # Convert how the statistical maps on neurovault are represented
-# in a NiMARE dataset.
+# in a NiMARE Studyset.
 map_type_conversion = {"Z map": "z", "T map": "t"}
 
-dset = convert_neurovault_to_dataset(
+studyset = create_neurovault_studyset(
     collection_ids,
     contrasts,
     img_dir=None,
@@ -65,22 +65,27 @@ dset = convert_neurovault_to_dataset(
 ###############################################################################
 # Conversion of Statistical Maps
 # -----------------------------------------------------------------------------
-# Some of the statistical maps are T statistics and others are Z statistics.
-# To perform a Fisher's meta analysis, we need all Z maps.
-# Thoughtfully, NiMARE has a class named ``ImageTransformer`` that will
-# help us.
+# ``create_neurovault_studyset`` already resolves compatible image types.
+# To explicitly demonstrate :class:`~nimare.transforms.ImageTransformer` on a
+# Studyset-backed collection, we drop the derived Z maps from contrasts that
+# still have T maps and regenerate them.
 from nimare.transforms import ImageTransformer
 
-# Not all studies have Z maps!
-dset.images[["z"]]
+studyset_view = studyset.view()
+images = studyset_view.images.copy()
+images.loc[images["t"].notnull(), "z"] = None
+studyset_view.images = images
+
+# Some studies are now missing Z maps again.
+studyset_view.images[["t", "z"]]
 
 ###############################################################################
 z_transformer = ImageTransformer(target="z")
-dset = z_transformer.transform(dset)
+studyset_view = z_transformer.transform(studyset_view)
 
 ###############################################################################
-# All studies now have Z maps!
-dset.images[["z"]]
+# All studies now have Z maps again.
+studyset_view.images[["z"]]
 
 ###############################################################################
 # Run a Meta-Analysis
@@ -94,7 +99,7 @@ from nimare.meta.ibma import Fishers
 # images during the fitting process.
 meta = Fishers(resample=True)
 
-meta_res = meta.fit(dset)
+meta_res = meta.fit(studyset_view)
 
 fig, ax = plt.subplots()
 display = plot_stat_map(meta_res.get_map("z"), threshold=3.3, axes=ax, figure=fig)

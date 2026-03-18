@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import os.path as op
 
 import numpy as np
 import pandas as pd
@@ -14,6 +15,7 @@ from nimare.io import DEFAULT_MAP_TYPE_CONVERSION
 from nimare.utils import (
     _listify,
     _mask_img_to_bool,
+    _try_prepend,
     get_masker,
     get_template,
     load_nimads,
@@ -250,7 +252,19 @@ class StudysetView(NiMAREBase):
                     image_type = _normalize_image_type(image.value_type)
                     if image_type is None:
                         continue
-                    image_row[image_type] = image.url if image.url else image.filename
+                    image_value = image.url if image.url else image.filename
+                    if not isinstance(image_value, str) or not image_value:
+                        continue
+
+                    is_remote = "://" in image_value
+                    is_relative = not op.isabs(image_value) and not is_remote
+                    if is_relative:
+                        image_row[f"{image_type}__relative"] = image_value
+                        if self.basepath:
+                            image_row[image_type] = _try_prepend(image_value, self.basepath)
+                    else:
+                        image_row[image_type] = image_value
+
                     if image.space and "space" not in image_row:
                         image_row["space"] = image.space
                 image_rows.append(image_row)

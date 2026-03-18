@@ -13,8 +13,10 @@ from scipy.spatial.distance import cdist
 from tqdm.auto import tqdm
 
 from nimare.base import NiMAREBase
+from nimare.dataset import Dataset
 from nimare.meta.cbma.base import PairwiseCBMAEstimator
 from nimare.meta.ibma import IBMAEstimator
+from nimare.studyset import StudysetView, ensure_studyset_view
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
@@ -515,7 +517,7 @@ class FocusCounter(Diagnostics):
 
 
 class FocusFilter(NiMAREBase):
-    """Remove coordinates outside of the Dataset's mask from the Dataset.
+    """Remove coordinates outside of the collection mask.
 
     .. versionadded:: 0.0.13
 
@@ -523,13 +525,13 @@ class FocusFilter(NiMAREBase):
     ----------
     mask : :obj:`str`, :class:`~nibabel.nifti1.Nifti1Image`, \
     :class:`~nilearn.maskers.NiftiMasker` or similar, or None, optional
-        Mask(er) to use. If None, uses the masker of the Dataset provided in ``transform``.
+        Mask(er) to use. If None, uses the masker of the collection provided in ``transform``.
 
     Notes
     -----
     This filter removes any coordinates outside of the brain mask.
-    It does not remove studies without coordinates in the brain mask, since a Dataset does not
-    need to have coordinates for all studies (e.g., some may only have images).
+    It does not remove studies without coordinates in the brain mask, since an input collection
+    does not need to have coordinates for all studies (e.g., some may only have images).
     """
 
     def __init__(self, mask=None):
@@ -539,24 +541,37 @@ class FocusFilter(NiMAREBase):
         self.masker = mask
 
     def transform(self, dataset):
-        """Apply the filter to a Dataset.
+        """Apply the filter to a Studyset/Dataset collection.
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.dataset.Dataset`
-            The Dataset to filter.
+        dataset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
+                or :obj:`~nimare.dataset.Dataset`
+            The collection to filter.
 
         Returns
         -------
-        dataset : :obj:`~nimare.dataset.Dataset`
-            The filtered Dataset.
+        dataset : :obj:`~nimare.dataset.Dataset` or :obj:`~nimare.studyset.StudysetView`
+            The filtered collection. Dataset inputs preserve the Dataset fast path; Studyset
+            inputs return a filtered StudysetView.
+
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
-        masker = self.masker or dataset.masker
+        if isinstance(dataset, Dataset):
+            filtered = dataset
+        elif isinstance(dataset, StudysetView):
+            filtered = dataset.copy()
+        else:
+            filtered = ensure_studyset_view(dataset).copy()
+
+        masker = self.masker or filtered.masker
         # use 0 or 1 to indicate if voxels are in the mask
         masker_array = masker.mask_img_.dataobj
 
-        # Get matrix indices for Dataset coordinates
-        dset_xyz = dataset.coordinates[["x", "y", "z"]].values
+        # Get matrix indices for collection coordinates
+        dset_xyz = filtered.coordinates[["x", "y", "z"]].values
 
         # mm2vox automatically rounds the coordinates
         dset_ijk = mm2vox(dset_xyz, masker.mask_img.affine)
@@ -576,6 +591,6 @@ class FocusFilter(NiMAREBase):
         )
 
         # Only retain coordinates inside the brain mask
-        dataset.coordinates = dataset.coordinates.iloc[keep_idx]
+        filtered.coordinates = filtered.coordinates.iloc[keep_idx]
 
-        return dataset
+        return filtered

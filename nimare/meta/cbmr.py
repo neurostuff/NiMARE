@@ -29,6 +29,10 @@ __version__ = _version.get_versions()["version"]
 class CBMREstimator(Estimator):
     """Coordinate-based meta-regression with a spatial model.
 
+    .. warning::
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+
     .. versionadded:: 0.1.0
 
     Parameters
@@ -253,6 +257,10 @@ class CBMREstimator(Estimator):
             studies, categorized by groups),
             (7) an 'foci_per_study' key will be added (study-wise sum of foci count across
             space, categorized by groups).
+
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         masker = self.masker or dataset.masker
 
@@ -390,6 +398,10 @@ class CBMREstimator(Estimator):
         ----------
         dataset : :obj:`~nimare.dataset.Dataset`
             Dataset to analyze.
+
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         init_weight_kwargs = {
             "groups": self.groups,

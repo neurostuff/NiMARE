@@ -116,6 +116,10 @@ class BrainMapDecoder(Decoder):
 
     This method was described in :footcite:t:`amft2015definition`.
 
+    .. warning::
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+
     .. versionadded:: 0.0.3
 
     Parameters
@@ -194,6 +198,11 @@ class BrainMapDecoder(Decoder):
             Table with each label and the following values associated with each
             label: 'pForward', 'zForward', 'likelihoodForward', 'pReverse',
             'zReverse', and 'probReverse'.
+
+        .. warning::
+            Fitting decoders on :class:`~nimare.dataset.Dataset` inputs is deprecated and will be
+            removed in a future release. Prefer fitting on
+            :class:`~nimare.nimads.Studyset`.
         """
         results = brainmap_decode(
             self.inputs_["coordinates"],
@@ -389,6 +398,10 @@ class NeurosynthDecoder(Decoder):
 
     Neurosynth was described in :footcite:t:`yarkoni2011large`.
 
+    .. warning::
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+
     .. versionadded:: 0.0.3
 
     This does not employ correlations between unthresholded maps, which are the
@@ -479,6 +492,11 @@ class NeurosynthDecoder(Decoder):
             Table with each label and the following values associated with each
             label: 'pForward', 'zForward', 'probForward', 'pReverse', 'zReverse',
             and 'probReverse'.
+
+        .. warning::
+            Fitting decoders on :class:`~nimare.dataset.Dataset` inputs is deprecated and will be
+            removed in a future release. Prefer fitting on
+            :class:`~nimare.nimads.Studyset`.
         """
         results = neurosynth_decode(
             self.inputs_["coordinates"],
@@ -671,6 +689,10 @@ class ROIAssociationDecoder(Decoder):
 
     Neurosynth was described in :footcite:t:`yarkoni2011large`.
 
+    .. warning::
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+
     Parameters
     ----------
     masker : :class:`~nilearn.maskers.NiftiMasker`, img_like, or similar
@@ -745,6 +767,11 @@ class ROIAssociationDecoder(Decoder):
         results : :class:`pandas.DataFrame`
             Table with each label and the following values associated with each
             label: 'r'.
+
+        .. warning::
+            Fitting decoders on :class:`~nimare.dataset.Dataset` inputs is deprecated and will be
+            removed in a future release. Prefer fitting on
+            :class:`~nimare.nimads.Studyset`.
         """
         feature_values = self.inputs_["annotations"][self.features_].values
         corrs = pearson(self.roi_values_, feature_values.T)

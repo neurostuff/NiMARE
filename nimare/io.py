@@ -49,6 +49,11 @@ def convert_nimads_to_dataset(studyset, annotation=None):
     -------
     dset : :obj:`nimare.dataset.Dataset`
         NiMARE Dataset object containing experiment information from nimads studyset.
+
+    .. warning::
+        :class:`~nimare.dataset.Dataset` is deprecated and will be removed in a future release.
+        Prefer keeping data in :class:`~nimare.nimads.Studyset` form and using
+        :meth:`~nimare.nimads.Studyset.view` when a Dataset-like tabular view is needed.
     """
 
     def _analysis_to_dict(study, analysis):
@@ -473,10 +478,15 @@ def convert_neurosynth_to_dataset(
     :obj:`~nimare.dataset.Dataset`
         Dataset object containing experiment information from text_file.
 
-    Warnings
-    --------
-    Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
-    format. Old code using this function **will not work** with the new version.
+    .. warning::
+        :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in a future
+        release. When possible, prefer :func:`~nimare.extract.fetch_neurosynth` or
+        :func:`~nimare.extract.fetch_neuroquery`, which return
+        :class:`~nimare.nimads.Studyset` objects by default.
+
+    .. warning::
+        Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
+        format. Old code using this function **will not work** with the new version.
     """
     dset_dict = convert_neurosynth_to_dict(
         coordinates_file,
@@ -1038,6 +1048,10 @@ def convert_sleuth_to_json(text_file, out_file):
 def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
     """Convert Sleuth output text file into NiMARE Dataset.
 
+    .. warning::
+        :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in a future
+        release. Prefer :func:`~nimare.io.convert_sleuth_to_studyset`.
+
     Parameters
     ----------
     text_file : :obj:`str` or :obj:`list` of :obj:`str`
@@ -1059,6 +1073,35 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
         raise ValueError(f"Unsupported type for parameter 'text_file': {type(text_file)}")
     dset_dict = convert_sleuth_to_dict(text_file)
     return Dataset(dset_dict, target=target)
+
+
+def convert_sleuth_to_studyset(text_file, target="ale_2mm"):
+    """Convert Sleuth output text file into a NiMARE Studyset.
+
+    This is the Studyset-native companion to
+    :func:`convert_sleuth_to_dataset` and accepts the same arguments.
+
+    Parameters
+    ----------
+    text_file : :obj:`str` or :obj:`list` of :obj:`str`
+        Path to Sleuth-format text file.
+        More than one text file may be provided.
+    target : {'ale_2mm', 'mni152_2mm'} or None, optional
+        Target template space for coordinates. If None,
+        coordinates remain in the reference space indicated by the Sleuth
+        file's //Reference= header and no template-based masker is created.
+        If a template name is provided, coordinates are transformed into
+        that space and a corresponding Studyset view can be created.
+
+    Returns
+    -------
+    :obj:`~nimare.nimads.Studyset`
+        Studyset object containing experiment information from ``text_file``.
+    """
+    from nimare.nimads import Studyset
+
+    dataset = convert_sleuth_to_dataset(text_file, target=target)
+    return Studyset.from_dataset(dataset)
 
 
 def _is_missing(value: Any) -> bool:
@@ -1099,6 +1142,11 @@ def convert_dataset_to_nimads_dict(
     out_file: Optional[Union[str, Path]] = None,
 ) -> Dict[str, Any]:
     """Convert a NiMARE Dataset to a NIMADS Studyset dictionary.
+
+    .. warning::
+        :class:`~nimare.dataset.Dataset` input is deprecated and will be removed in a future
+        release. Prefer operating on :class:`~nimare.nimads.Studyset` directly, or convert once
+        with :func:`~nimare.io.convert_dataset_to_studyset`.
 
     Parameters
     ----------
@@ -1267,24 +1315,39 @@ def convert_dataset_to_nimads_dict(
                 elif "mni" in image_space_lower or "ale" in image_space_lower:
                     image_space = "MNI"
 
+            image_type_map = {}
             for col in images_df.columns:
-                if col in ("id", "study_id", "contrast_id", "space") or col.endswith("__relative"):
+                if col in ("id", "study_id", "contrast_id", "space"):
                     continue
 
-                image_value = image_row.get(col, None)
-                if _is_missing(image_value):
+                image_type = col.replace("__relative", "")
+                image_path = image_row.get(col, None)
+                if _is_missing(image_path):
                     continue
-                if isinstance(image_value, os.PathLike):
-                    image_value = os.fspath(image_value)
-                if not isinstance(image_value, str) or not image_value:
+                if isinstance(image_path, os.PathLike):
+                    image_path = os.fspath(image_path)
+                if not isinstance(image_path, str) or not image_path:
                     continue
 
+                existing_path, existing_is_relative = image_type_map.get(
+                    image_type,
+                    (None, False),
+                )
+                is_relative = col.endswith("__relative")
+                # Prefer relative paths so serialized Studysets remain portable.
+                if existing_path is not None and existing_is_relative and not is_relative:
+                    continue
+                if existing_path is not None and not existing_is_relative and not is_relative:
+                    continue
+                image_type_map[image_type] = (image_path, is_relative)
+
+            for image_type, (image_path, _) in image_type_map.items():
                 analysis["images"].append(
                     {
-                        "url": image_value,
-                        "filename": Path(image_value).name,
+                        "url": image_path,
+                        "filename": Path(image_path).name,
                         "space": image_space or "UNKNOWN",
-                        "value_type": col,
+                        "value_type": image_type,
                     }
                 )
 
@@ -1341,6 +1404,11 @@ def convert_dataset_to_studyset(
     returns a fully-constructed :class:`nimare.nimads.Studyset` instance instead of a
     plain dictionary. If ``out_file`` is provided, the underlying NIMADS dictionary will
     also be written to disk (same behavior as :func:`convert_dataset_to_nimads_dict`).
+
+    .. warning::
+        :class:`~nimare.dataset.Dataset` input is deprecated and will be removed in a future
+        release. For new workflows, prefer starting from :class:`~nimare.nimads.Studyset`
+        directly.
 
     Parameters
     ----------
@@ -1435,6 +1503,10 @@ def convert_neurovault_to_dataset(
     """Convert a group of NeuroVault collections into a NiMARE Dataset.
 
     .. versionadded:: 0.0.8
+
+    .. warning::
+        :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in a future
+        release. Prefer :func:`~nimare.generate.create_neurovault_studyset`.
 
     Parameters
     ----------

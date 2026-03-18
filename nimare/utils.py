@@ -871,8 +871,8 @@ def _add_metadata_to_dataframe(
         Dataset containing study IDs and metadata to feed into dataframe.
     dataframe : :obj:`pandas.DataFrame`
         DataFrame containing study IDs, into which Dataset metadata will be merged.
-    metadata_field : :obj:`str`
-        Metadata field in ``dataset``.
+    metadata_field : :obj:`str` or iterable of :obj:`str`
+        Metadata field or fallback fields in ``dataset``. The first available field will be used.
     target_column : :obj:`str`
         Name of the column that will be added to ``dataframe``, containing information from the
         Dataset.
@@ -884,21 +884,32 @@ def _add_metadata_to_dataframe(
     -------
     dataframe : :obj:`pandas.DataFrame`
         Updated DataFrame with ``target_column`` added.
+
+    .. warning::
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer passing a :class:`~nimare.studyset.StudysetView` derived from
+        :class:`~nimare.nimads.Studyset` when possible.
     """
     dataframe = dataframe.copy()
+    metadata_fields = [metadata_field] if isinstance(metadata_field, str) else list(metadata_field)
+    available_metadata = set(dataset.get_metadata())
+    selected_field = next(
+        (field for field in metadata_fields if field in available_metadata),
+        None,
+    )
 
-    if metadata_field in dataset.get_metadata():
+    if selected_field is not None:
         # Collect metadata from Dataset
-        metadata = dataset.get_metadata(field=metadata_field, ids=dataset.ids)
+        metadata = dataset.get_metadata(field=selected_field, ids=dataset.ids)
         metadata = [[m] for m in metadata]
         # Create a DataFrame with the metadata
         metadata = pd.DataFrame(
             index=dataset.ids,
             data=metadata,
-            columns=[metadata_field],
+            columns=[selected_field],
         )
         # Reduce the metadata (if in list/array format) to single values
-        metadata[target_column] = metadata[metadata_field].apply(
+        metadata[target_column] = metadata[selected_field].apply(
             lambda x: None if x is None else filter_func(x)
         )
         # Merge metadata df into coordinates df
@@ -912,8 +923,9 @@ def _add_metadata_to_dataframe(
             how="left",
         )
     else:
+        fields_str = ", ".join(f"'{field}'" for field in metadata_fields)
         LGR.warning(
-            f"Metadata field '{metadata_field}' not found. "
+            f"Metadata field(s) {fields_str} not found. "
             "Set a constant value for this field as an argument, if possible."
         )
 

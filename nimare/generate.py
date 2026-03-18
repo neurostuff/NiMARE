@@ -28,6 +28,10 @@ def create_coordinate_dataset(
 ):
     """Generate coordinate based dataset for meta analysis.
 
+    .. warning::
+        :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in a future
+        release. Prefer :func:`~nimare.generate.create_coordinate_studyset`.
+
     .. versionadded:: 0.0.4
 
     Parameters
@@ -114,6 +118,43 @@ def create_coordinate_dataset(
     return ground_truth_foci, dataset
 
 
+def create_coordinate_studyset(
+    foci=1,
+    foci_percentage="100%",
+    fwhm=10,
+    sample_size=30,
+    n_studies=30,
+    n_noise_foci=0,
+    seed=None,
+    space="MNI",
+):
+    """Generate a coordinate-based Studyset for meta-analysis.
+
+    This is the Studyset-native companion to :func:`create_coordinate_dataset`
+    and accepts the same arguments.
+
+    Returns
+    -------
+    ground_truth_foci : :obj:`list`
+        Generated foci in xyz (mm) coordinates.
+    studyset : :class:`~nimare.nimads.Studyset`
+    """
+    from nimare.nimads import Studyset
+
+    ground_truth_foci, dataset = create_coordinate_dataset(
+        foci=foci,
+        foci_percentage=foci_percentage,
+        fwhm=fwhm,
+        sample_size=sample_size,
+        n_studies=n_studies,
+        n_noise_foci=n_noise_foci,
+        seed=seed,
+        space=space,
+    )
+    studyset = Studyset.from_dataset(dataset)
+    return ground_truth_foci, studyset
+
+
 def create_neurovault_dataset(
     collection_ids=NEUROVAULT_IDS,
     contrasts=CONTRAST_OF_INTEREST,
@@ -124,6 +165,10 @@ def create_neurovault_dataset(
     """Download images from NeuroVault and use them to create a dataset.
 
     .. versionadded:: 0.0.8
+
+    .. warning::
+        :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in a future
+        release. Prefer :func:`~nimare.generate.create_neurovault_studyset`.
 
     This function will also attempt to generate Z images for any contrasts
     for which this is possible.
@@ -171,6 +216,35 @@ def create_neurovault_dataset(
     dataset = transformer.transform(dataset)
 
     return dataset
+
+
+def create_neurovault_studyset(
+    collection_ids=NEUROVAULT_IDS,
+    contrasts=CONTRAST_OF_INTEREST,
+    img_dir=None,
+    map_type_conversion=None,
+    **dset_kwargs,
+):
+    """Download images from NeuroVault and use them to create a Studyset.
+
+    This is the Studyset-native companion to :func:`create_neurovault_dataset`
+    and accepts the same arguments.
+
+    Returns
+    -------
+    :obj:`~nimare.nimads.Studyset`
+        Studyset object containing experiment information from NeuroVault.
+    """
+    from nimare.nimads import Studyset
+
+    dataset = create_neurovault_dataset(
+        collection_ids=collection_ids,
+        contrasts=contrasts,
+        img_dir=img_dir,
+        map_type_conversion=map_type_conversion,
+        **dset_kwargs,
+    )
+    return Studyset.from_dataset(dataset)
 
 
 def _create_source(foci, sample_sizes, space="MNI"):

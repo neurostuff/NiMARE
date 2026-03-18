@@ -11,8 +11,11 @@ from nimare.generate import (
     _create_foci,
     _create_source,
     create_coordinate_dataset,
+    create_coordinate_studyset,
     create_neurovault_dataset,
+    create_neurovault_studyset,
 )
+from nimare.nimads import Studyset
 
 
 @pytest.mark.parametrize(
@@ -237,6 +240,25 @@ def test_create_coordinate_dataset(kwargs, expectation):
         assert len(dataset.coordinates) == expected_coordinate_number
 
 
+def test_create_coordinate_studyset():
+    """Create a coordinate Studyset according to parameters."""
+    ground_truth_foci, studyset = create_coordinate_studyset(
+        foci=2,
+        foci_percentage="60%",
+        fwhm=10.0,
+        sample_size=30,
+        n_studies=5,
+        n_noise_foci=1,
+        seed=42,
+        space="MNI",
+    )
+
+    assert isinstance(studyset, Studyset)
+    assert len(studyset.ids) == 5
+    assert len(ground_truth_foci) == 2
+    assert not studyset.coordinates.empty
+
+
 def test_create_neurovault_dataset():
     """Test creating a neurovault dataset."""
     dset = create_neurovault_dataset(
@@ -245,3 +267,14 @@ def test_create_neurovault_dataset():
     )
     expected_columns = {"beta", "t", "varcope", "z"}
     assert expected_columns.issubset(dset.images.columns)
+
+
+def test_create_neurovault_studyset():
+    """Test creating a neurovault Studyset."""
+    studyset = create_neurovault_studyset(
+        collection_ids=(8836,),
+        contrasts={"animal": "as-Animal"},
+    )
+    expected_columns = {"beta", "t", "varcope", "z"}
+    assert isinstance(studyset, Studyset)
+    assert expected_columns.issubset(studyset.images.columns)

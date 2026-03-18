@@ -9,8 +9,8 @@ The Estimator class
 An introduction to the Estimator class.
 
 The Estimator class is the base for all meta-analyses in NiMARE.
-A general rule of thumb for Estimators is that they ingest Datasets and output
-MetaResult objects.
+A general rule of thumb for Estimators is that they ingest Studysets
+(or legacy Datasets) and output MetaResult objects.
 """
 ###############################################################################
 # Start with the necessary imports
@@ -18,16 +18,18 @@ MetaResult objects.
 import os
 
 ###############################################################################
-# Load Dataset
+# Load Studyset
 # -----------------------------------------------------------------------------
-from nimare.dataset import Dataset
+from nimare.nimads import Studyset
 from nimare.utils import get_resource_path
 
-dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
-dset = Dataset(dset_file)
+studyset_file = os.path.join(get_resource_path(), "nidm_pain_studyset.json")
+studyset = Studyset(studyset_file, target="mni152_2mm")
 
-# We will reduce the Dataset to the first 10 studies
-dset = dset.slice(dset.ids[:10])
+# We will reduce the Studyset to the first 10 studies.
+source = studyset.to_dict()
+source["studies"] = source["studies"][:10]
+studyset = Studyset(source, target="mni152_2mm")
 
 ###############################################################################
 # The Estimator
@@ -39,8 +41,8 @@ from nimare.meta.cbma.ale import ALE
 # First, the Estimator should be initialized with any parameters.
 meta = ALE()
 
-# Then, the ``fit`` method takes in the Dataset and produces a MetaResult.
-results = meta.fit(dset)
+# Then, the ``fit`` method takes in the Studyset and produces a MetaResult.
+results = meta.fit(studyset)
 
 # You can also look at the description of the Estimator.
 print("Description:")
@@ -60,7 +62,7 @@ pprint(results.bibtex_)
 from nimare.meta.kernel import MKDAKernel
 
 meta = ALE(kernel_transformer=MKDAKernel)
-results = meta.fit(dset)
+results = meta.fit(studyset)
 
 ###############################################################################
 from nilearn.plotting import plot_stat_map
@@ -107,14 +109,14 @@ print(meta.kernel_transformer)
 # parameter, are ``"approximate"`` and ``"montecarlo"``.
 # For more information about these options, see :ref:`null methods`.
 meta = ALE(null_method="approximate")
-results = meta.fit(dset)
+results = meta.fit(studyset)
 
 ######################################################################################
 # Note that, to measure significance appropriately with the montecarlo method,
 # you need a lot more than 10 iterations.
 # We recommend 5000 (the default value).
 mc_meta = ALE(null_method="montecarlo", n_iters=10, n_cores=1)
-mc_results = mc_meta.fit(dset)
+mc_results = mc_meta.fit(studyset)
 
 ###############################################################################
 # The null distributions are stored within the Estimators

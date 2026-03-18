@@ -3,14 +3,18 @@
 import copy
 
 import numpy as np
+import pandas as pd
 import pytest
 
+from nimare import annotate
 from nimare.correct import FDRCorrector
-from nimare.generate import create_coordinate_dataset
+from nimare.decode import discrete
+from nimare.diagnostics import FocusFilter
+from nimare.generate import create_coordinate_studyset
 from nimare.io import convert_nimads_to_dataset
 from nimare.meta.cbma import ALE
 from nimare.meta.ibma import Stouffers
-from nimare.meta.kernel import ALEKernel
+from nimare.meta.kernel import ALEKernel, MKDAKernel
 from nimare.nimads import Studyset
 from nimare.reports.base import run_reports
 from nimare.studyset import StudysetView, ensure_studyset_view
@@ -31,6 +35,22 @@ def test_ale_studyset_parity(testdata_cbma):
     )
     np.testing.assert_allclose(res_dset.get_map("p", return_type="array"), res_studyset.maps["p"])
     np.testing.assert_allclose(res_dset.get_map("z", return_type="array"), res_studyset.maps["z"])
+
+
+def test_ale_accepts_singular_sample_size_metadata(testdata_cbma):
+    """ALE should accept Studysets that expose per-analysis ``sample_size`` metadata."""
+    studyset = Studyset.from_dataset(testdata_cbma.slice(testdata_cbma.ids[:5]))
+
+    for study in studyset.studies:
+        study.metadata.pop("sample_sizes", None)
+        for analysis in study.analyses:
+            sample_sizes = analysis.metadata.pop("sample_sizes", None)
+            if sample_sizes:
+                analysis.metadata["sample_size"] = int(np.mean(sample_sizes))
+
+    result = ALE(null_method="approximate").fit(studyset)
+
+    assert "stat" in result.maps
 
 
 def test_stouffers_studyset_parity(testdata_ibma):
@@ -101,6 +121,8 @@ def test_dataset_studyset_roundtrip_preserves_core_tables(testdata_ibma):
     studyset = Studyset.from_dataset(dset)
     reloaded_studyset = Studyset(studyset.to_dict())
     roundtrip = convert_nimads_to_dataset(reloaded_studyset)
+    if dset.basepath:
+        roundtrip.update_path(dset.basepath)
 
     id_cols = {"id", "study_id", "contrast_id", "space"}
     orig_cols = {
@@ -203,6 +225,103 @@ def test_image_transformer_accepts_studyset(testdata_ibma):
     studyset = Studyset.from_dataset(testdata_ibma)
     transformed = ImageTransformer(target="z").transform(studyset)
     assert "z" in transformed.images.columns
+
+
+def test_kernel_transformer_studyset_parity(testdata_cbma):
+    """Kernel transformers should accept Studysets and match Dataset outputs."""
+    dset = testdata_cbma.slice(testdata_cbma.ids[:5])
+    studyset = Studyset.from_dataset(dset)
+    kernel = MKDAKernel()
+
+    dset_array = kernel.transform(dset, return_type="array")
+    studyset_array = kernel.transform(studyset, return_type="array")
+
+    np.testing.assert_allclose(dset_array, studyset_array)
+
+    dset_summary = kernel.transform(dset, return_type="summary_array")
+    studyset_summary = kernel.transform(studyset, return_type="summary_array")
+
+    np.testing.assert_allclose(dset_summary, studyset_summary)
+
+
+def test_kernel_transformer_dataset_fast_path(monkeypatch, testdata_cbma):
+    """Kernel transformers should keep Dataset inputs on the direct fast path."""
+    dset = testdata_cbma.slice(testdata_cbma.ids[:5])
+    kernel = MKDAKernel()
+
+    def _fail(dataset):
+        raise AssertionError("Dataset inputs should not be normalized through StudysetView")
+
+    monkeypatch.setattr("nimare.meta.kernel.ensure_studyset_view", _fail)
+
+    output = kernel.transform(dset, return_type="summary_array")
+
+    assert output.ndim == 1
+    assert output.size > 0
+
+
+def test_studyset_annotations_df_updates_nested_annotations(testdata_laird):
+    """Studyset.annotations_df should update nested analysis annotations."""
+    studyset = Studyset.from_dataset(testdata_laird.slice(testdata_laird.ids[:3]))
+    values = np.arange(len(studyset.ids), dtype=float)
+    annotations_df = pd.DataFrame({"id": studyset.ids, "custom_label": values})
+
+    studyset.annotations_df = annotations_df
+
+    flattened = studyset.annotations_df.set_index("id")
+    np.testing.assert_allclose(flattened.loc[studyset.ids, "custom_label"].to_numpy(), values)
+
+    for study in studyset.studies:
+        for analysis in study.analyses:
+            full_id = f"{study.id}-{analysis.id}"
+            assert analysis.annotations["custom_label"] == flattened.loc[full_id, "custom_label"]
+
+
+def test_studyset_slice_accepts_analysis_ids(testdata_cbma):
+    """Studyset.slice should accept analysis-level IDs."""
+    studyset = Studyset.from_dataset(testdata_cbma.slice(testdata_cbma.ids[:5]))
+    target_ids = [study.analyses[0].id for study in studyset.studies[:2]]
+
+    sliced = studyset.slice(target_ids)
+
+    assert {analysis.id for study in sliced.studies for analysis in study.analyses} == set(
+        target_ids
+    )
+
+
+def test_decoder_accepts_studyset(testdata_laird):
+    """Discrete decoders should accept raw Studyset inputs."""
+    studyset = Studyset.from_dataset(testdata_laird)
+    selected_ids = studyset.get_studies_by_mask(studyset.masker.mask_img)
+    decoder = discrete.NeurosynthDecoder(feature_group="Neurosynth_TFIDF")
+
+    decoder.fit(studyset)
+    decoded_df = decoder.transform(ids=selected_ids[:5])
+
+    assert isinstance(decoded_df, pd.DataFrame)
+    assert not decoded_df.empty
+
+
+def test_lda_accepts_studyset(testdata_laird):
+    """LDA should return a Studyset with tabular annotations attached."""
+    studyset = Studyset.from_dataset(testdata_laird)
+    model = annotate.lda.LDAModel(n_topics=5, max_iter=100, text_column="abstract")
+
+    annotated = model.fit(studyset)
+
+    assert isinstance(annotated, Studyset)
+    topic_columns = [col for col in annotated.annotations_df.columns if col.startswith("LDA")]
+    assert len(topic_columns) == 5
+
+
+def test_focus_filter_accepts_studyset(testdata_cbma):
+    """Ensure FocusFilter accepts Studysets and returns a filtered StudysetView."""
+    studyset = Studyset.from_dataset(testdata_cbma.slice(testdata_cbma.ids[:5]))
+
+    filtered = FocusFilter().transform(studyset)
+
+    assert isinstance(filtered, StudysetView)
+    assert set(filtered.coordinates["id"].unique()).issubset(set(studyset.ids))
 
 
 def test_reports_accept_studyset_results(tmp_path_factory, testdata_cbma):
@@ -316,14 +435,19 @@ def test_cbmr_accepts_studyset_smoke():
     from nimare.meta import models
     from nimare.meta.cbmr import CBMREstimator
 
-    _, dset = create_coordinate_dataset(foci=5, sample_size=(20, 30), n_studies=30, seed=13)
-    n_rows = dset.annotations.shape[0]
-    dset.annotations["diagnosis"] = [
+    _, studyset = create_coordinate_studyset(
+        foci=5,
+        sample_size=(20, 30),
+        n_studies=30,
+        seed=13,
+    )
+    annotations_df = studyset.annotations_df.copy()
+    n_rows = annotations_df.shape[0]
+    annotations_df["diagnosis"] = [
         "schizophrenia" if i % 2 == 0 else "depression" for i in range(n_rows)
     ]
-    dset.annotations["drug_status"] = ["Yes" if i % 2 == 0 else "No" for i in range(n_rows)]
-
-    studyset = Studyset.from_dataset(dset)
+    annotations_df["drug_status"] = ["Yes" if i % 2 == 0 else "No" for i in range(n_rows)]
+    studyset.annotations_df = annotations_df
     cbmr = CBMREstimator(
         group_categories=["diagnosis", "drug_status"],
         spline_spacing=100,

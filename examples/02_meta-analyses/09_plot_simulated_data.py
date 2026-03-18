@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from nilearn.plotting import plot_stat_map
 
 from nimare.correct import FDRCorrector
-from nimare.generate import create_coordinate_dataset
+from nimare.generate import create_coordinate_studyset
 from nimare.meta import ALE
 
 ###############################################################################
@@ -21,9 +21,9 @@ from nimare.meta import ALE
 # -----------------------------------------------------------------------------
 
 
-def analyze_and_plot(dset, ground_truth_foci=None, correct=True, return_cres=False):
+def analyze_and_plot(studyset, ground_truth_foci=None, correct=True, return_cres=False):
     meta = ALE(kernel__fwhm=10)
-    results = meta.fit(dset)
+    results = meta.fit(studyset)
     if correct:
         corr = FDRCorrector()
         cres = corr.transform(results)
@@ -60,7 +60,7 @@ def analyze_and_plot(dset, ground_truth_foci=None, correct=True, return_cres=Fal
 
 
 ###############################################################################
-# Create Dataset
+# Create a simulated collection
 # -----------------------------------------------------------------------------
 # In this example, each of the 30 generated fake studies
 # select 4 coordinates from a probability map representing the probability
@@ -72,7 +72,9 @@ def analyze_and_plot(dset, ground_truth_foci=None, correct=True, return_cres=Fal
 # so some studies may have fewer than 30 participants and some
 # more.
 
-ground_truth_foci, dset = create_coordinate_dataset(foci=4, sample_size=(20, 40), n_studies=30)
+ground_truth_foci, studyset = create_coordinate_studyset(
+    foci=4, sample_size=(20, 40), n_studies=30
+)
 
 ###############################################################################
 # Analyze and plot simple dataset
@@ -81,10 +83,10 @@ ground_truth_foci, dset = create_coordinate_dataset(foci=4, sample_size=(20, 40)
 # simulated ground truth foci, and the clouds represent the statistical
 # maps of the simulated data.
 
-analyze_and_plot(dset, ground_truth_foci)
+analyze_and_plot(studyset, ground_truth_foci)
 
 ###############################################################################
-# Fine-tune dataset creation
+# Fine-tune collection creation
 # -----------------------------------------------------------------------------
 # Perhaps you want more control over the studies being generated.
 # you can set:
@@ -104,7 +106,7 @@ sample_sizes = [30] * n_studies
 sample_sizes[0] = 300
 n_noise_foci = 10
 
-_, manual_dset = create_coordinate_dataset(
+_, manual_studyset = create_coordinate_studyset(
     foci=foci, fwhm=fwhm, sample_size=sample_sizes, n_studies=n_studies, n_noise_foci=n_noise_foci
 )
 
@@ -112,7 +114,7 @@ _, manual_dset = create_coordinate_dataset(
 # Analyze and plot manual dataset
 # -----------------------------------------------------------------------------
 
-fig = analyze_and_plot(manual_dset, ground_truth_foci)
+fig = analyze_and_plot(manual_studyset, ground_truth_foci)
 fig.show()
 
 ###############################################################################
@@ -123,7 +125,7 @@ fig.show()
 # We can select a percentage of studies where a coordinate
 # is selected around the ground truth foci.
 
-_, perc_foci_dset = create_coordinate_dataset(
+_, perc_foci_studyset = create_coordinate_studyset(
     foci=ground_truth_foci[0:2], foci_percentage="50%", fwhm=10.0, sample_size=30, n_studies=30
 )
 
@@ -131,11 +133,11 @@ _, perc_foci_dset = create_coordinate_dataset(
 # Analyze and plot the 50% foci dataset
 # -----------------------------------------------------------------------------
 
-fig = analyze_and_plot(perc_foci_dset, ground_truth_foci[0:2])
+fig = analyze_and_plot(perc_foci_studyset, ground_truth_foci[0:2])
 fig.show()
 
 ###############################################################################
-# Create a null dataset
+# Create a null collection
 # -----------------------------------------------------------------------------
 # Perhaps you are interested in the number of false positives your favorite
 # meta-analysis algorithm typically gives.
@@ -143,7 +145,7 @@ fig.show()
 # To test this, we can create a dataset with no foci that converge, but have many
 # distributed foci.
 
-_, no_foci_dset = create_coordinate_dataset(
+_, no_foci_studyset = create_coordinate_studyset(
     foci=0, sample_size=(20, 30), n_studies=30, n_noise_foci=100
 )
 
@@ -153,7 +155,7 @@ _, no_foci_dset = create_coordinate_dataset(
 # When not performing a multiple comparisons correction,
 # there is a false positive rate of approximately 5%.
 
-fig, cres = analyze_and_plot(no_foci_dset, correct=False, return_cres=True)
+fig, cres = analyze_and_plot(no_foci_studyset, correct=False, return_cres=True)
 fig.show()
 
 p_values = cres.get_map("p", return_type="array")

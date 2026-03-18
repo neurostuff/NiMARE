@@ -2,12 +2,18 @@
 
 .. _datasets_json:
 
-===============================================
-Create a NiMARE Dataset object from a JSON file
-===============================================
+======================================================
+Create a legacy NiMARE Dataset object from a JSON file
+======================================================
 
 Here, we present the structure of the JSON/dict input format to create a
 :class:`~nimare.dataset.Dataset` class from scratch.
+
+.. warning::
+
+   This JSON structure is the legacy Dataset input format.
+   New projects should generally use :class:`~nimare.nimads.Studyset` instead.
+   For the preferred workflow, see :ref:`nimads_object`.
 """
 
 ###############################################################################
@@ -155,8 +161,8 @@ print(sample_size)
 
 ###############################################################################
 # .. note::
-#    Find more information about the Dataset class that can be created from this JSON file
-#    in :ref:`datasets_object`.
+#    Find more information about the legacy Dataset class that can be created
+#    from this JSON file in :ref:`datasets_object`.
 
 ###############################################################################
 # Example JSON Structure

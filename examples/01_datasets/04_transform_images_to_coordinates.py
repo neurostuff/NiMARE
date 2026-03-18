@@ -19,9 +19,9 @@ import os
 import matplotlib.pyplot as plt
 from nilearn.plotting import plot_stat_map
 
-from nimare.dataset import Dataset
 from nimare.extract import download_nidm_pain
 from nimare.meta.cbma import ALE
+from nimare.nimads import Studyset
 from nimare.transforms import ImagesToCoordinates, ImageTransformer
 from nimare.utils import get_resource_path
 
@@ -31,40 +31,43 @@ from nimare.utils import get_resource_path
 dset_dir = download_nidm_pain()
 
 ###############################################################################
-# Load Dataset
+# Load Studyset
 # -----------------------------------------------------------------------------
-dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
-dset = Dataset(dset_file)
-dset.update_path(dset_dir)
+studyset_file = os.path.join(get_resource_path(), "nidm_pain_studyset.json")
+studyset = Studyset(studyset_file, target="mni152_2mm")
+studyset.update_path(dset_dir)
 
 # ImagesToCoordinates uses z or p statistical maps
 z_transformer = ImageTransformer(target="z")
-dset = z_transformer.transform(dset)
+studyset = z_transformer.transform(studyset)
 
 study_no_images = "pain_02.nidm-1"
 # delete images for study
-dset.images = dset.images.query(f"id != '{study_no_images}'")
+studyset.images = studyset.images.query(f"id != '{study_no_images}'")
 
 study_no_coordinates = "pain_03.nidm-1"
 
 # delete coordinates for study
-dset.coordinates = dset.coordinates.query(f"id != '{study_no_coordinates}'")
+studyset.coordinates = studyset.coordinates.query(f"id != '{study_no_coordinates}'")
 
 
 ###############################################################################
-# Inspect Dataset
+# Inspect collection
 # -----------------------------------------------------------------------------
 
 # There is only one study contrast with coordinates, but no images
-print(f"studies with only coordinates: {set(dset.coordinates['id']) - set(dset.images['id'])}\n")
+print(
+    f"studies with only coordinates: "
+    f"{set(studyset.coordinates['id']) - set(studyset.images['id'])}\n"
+)
 
-print(f"studies with only images: {set(dset.images['id']) - set(dset.coordinates['id'])}\n")
+print(f"studies with only images: {set(studyset.images['id']) - set(studyset.coordinates['id'])}\n")
 
 # the images dataframe has z maps as one of the columns
-print(f"columns in images dataframe: {dset.images.columns}\n")
+print(f"columns in images dataframe: {studyset.images.columns}\n")
 
 # there is no z_stat column in the coordinates dataframe
-print(f"columns in coordinates dataframe: {dset.coordinates.columns}\n")
+print(f"columns in coordinates dataframe: {studyset.coordinates.columns}\n")
 
 
 ###############################################################################
@@ -95,9 +98,9 @@ coord_fill = ImagesToCoordinates(merge_strategy="fill")
 coord_replace = ImagesToCoordinates(merge_strategy="replace")
 coord_demolish = ImagesToCoordinates(merge_strategy="demolish")
 
-dset_fill = coord_fill.transform(dset)
-dset_replace = coord_replace.transform(dset)
-dset_demolish = coord_demolish.transform(dset)
+studyset_fill = coord_fill.transform(studyset)
+studyset_replace = coord_replace.transform(studyset)
+studyset_demolish = coord_demolish.transform(studyset)
 
 ###############################################################################
 # Inspect generated datasets
@@ -106,29 +109,29 @@ dset_demolish = coord_demolish.transform(dset)
 example_study = "pain_01.nidm-1"
 
 print(f"no coordinate data for {study_no_coordinates}")
-assert study_no_coordinates not in dset.coordinates["id"]
+assert study_no_coordinates not in studyset.coordinates["id"]
 
 # 'fill' will add coordinates for study without coordinates
 print(f"'fill' strategy for study {study_no_coordinates}")
-print(dset_fill.coordinates.query(f"id == '{study_no_coordinates}'"))
+print(studyset_fill.coordinates.query(f"id == '{study_no_coordinates}'"))
 print("\n\n")
 
 
 # 'replace' will change the data for studies with images
 print(f"original data for study {example_study}")
-print(dset.coordinates.query(f"id == '{example_study}'"))
+print(studyset.coordinates.query(f"id == '{example_study}'"))
 print(f"'replace' strategy for study {example_study}")
-print(dset_replace.coordinates.query(f"id == '{example_study}'"))
+print(studyset_replace.coordinates.query(f"id == '{example_study}'"))
 
 # 'demolish' will remove studies that do not have images
 print(f"'demolish' strategy for study {study_no_images}")
-assert study_no_images not in dset.coordinates["id"]
+assert study_no_images not in studyset.coordinates["id"]
 
 # while studies with only coordinates (no images) are in 'replace',
 # they are removed from 'demolish'.
 print(
     "studies in 'replace', but not 'demolish': "
-    f"{set(dset_replace.coordinates['id']) - set(dset_demolish.coordinates['id'])}"
+    f"{set(studyset_replace.coordinates['id']) - set(studyset_demolish.coordinates['id'])}"
 )
 
 ###############################################################################
@@ -139,11 +142,12 @@ print(
 # The difference is because in 'fill' most of the original coordinates
 # in the dataset are used, whereas with 'replace' and 'demolish' the
 # majority/all of the coordinates are generated by NiMARE.
+# The transformed collections remain Studyset-compatible, so we can fit ALE directly.
 
 ale = ALE()
-res_fill = ale.fit(dset_fill)
-res_replace = ale.fit(dset_replace)
-res_demolish = ale.fit(dset_demolish)
+res_fill = ale.fit(studyset_fill)
+res_replace = ale.fit(studyset_replace)
+res_demolish = ale.fit(studyset_demolish)
 fig, axs = plt.subplots(3, figsize=(6, 8))
 for ax, strat, res in zip(
     axs, ["fill", "replace", "demolist"], [res_fill, res_replace, res_demolish]
@@ -172,17 +176,17 @@ fig.show()
 
 coord_two_sided = ImagesToCoordinates(merge_strategy="demolish", two_sided=True)
 
-dset_two_sided = coord_two_sided.transform(dset)
+studyset_two_sided = coord_two_sided.transform(studyset)
 
-dset_positive = dset_two_sided.copy()
-dset_negative = dset_two_sided.copy()
-dset_positive.coordinates = dset_two_sided.coordinates.query("z_stat >= 0.0")
-dset_negative.coordinates = dset_two_sided.coordinates.query("z_stat < 0.0")
+studyset_positive = studyset_two_sided.copy()
+studyset_negative = studyset_two_sided.copy()
+studyset_positive.coordinates = studyset_two_sided.coordinates.query("z_stat >= 0.0")
+studyset_negative.coordinates = studyset_two_sided.coordinates.query("z_stat < 0.0")
 
 # plot the results
 ale = ALE()
-res_positive = ale.fit(dset_positive)
-res_negative = ale.fit(dset_negative)
+res_positive = ale.fit(studyset_positive)
+res_negative = ale.fit(studyset_negative)
 fig, axs = plt.subplots(2, figsize=(6, 6))
 for ax, sign, res in zip(axs, ["positive", "negative"], [res_positive, res_negative]):
     plot_stat_map(

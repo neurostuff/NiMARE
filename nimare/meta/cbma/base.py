@@ -36,6 +36,10 @@ LGR = logging.getLogger(__name__)
 class CBMAEstimator(Estimator):
     """Base class for coordinate-based meta-analysis methods.
 
+    .. warning::
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+
     .. versionchanged:: 0.0.12
 
         * Remove *low_memory* option
@@ -121,6 +125,10 @@ class CBMAEstimator(Estimator):
             Specifically, (1) an "ma_maps" key may be added if pre-generated MA maps are available,
             (2) IJK coordinates will be added based on the mask image's affine,
             and (3) sample sizes may be added to the "coordinates" key, as needed.
+
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         masker = self.masker or dataset.masker
         if masker is None:
@@ -169,7 +177,7 @@ class CBMAEstimator(Estimator):
             self.inputs_["coordinates"] = _add_metadata_to_dataframe(
                 dataset,
                 self.inputs_["coordinates"],
-                metadata_field="sample_sizes",
+                metadata_field=("sample_sizes", "sample_size"),
                 target_column="sample_size",
                 filter_func=np.mean,
             )
@@ -183,8 +191,9 @@ class CBMAEstimator(Estimator):
                     raise ValueError(
                         "This estimator's kernel requires per-experiment sample sizes, but the "
                         "input coordinates are missing a 'sample_size' column. Add "
-                        "'sample_sizes' to the Dataset metadata or provide a constant kernel "
-                        "size (e.g., ALEKernel(fwhm=...) or ALEKernel(sample_size=...))."
+                        "'sample_sizes' or 'sample_size' to the Dataset metadata or provide a "
+                        "constant kernel size (e.g., ALEKernel(fwhm=...) or "
+                        "ALEKernel(sample_size=...))."
                     )
 
                 sample_sizes_by_id = coords_df.groupby("id")["sample_size"].mean()
@@ -203,9 +212,9 @@ class CBMAEstimator(Estimator):
                         "This estimator's kernel requires per-experiment sample sizes, but "
                         f"{len(missing_ids)} experiment {id_word} {verb} no reported sample size: "
                         f"{shown_ids}{suffix}. Populate the Dataset metadata field "
-                        "'sample_sizes' for these ids (or fix the source conversion), or provide "
-                        "a constant kernel size (e.g., ALEKernel(fwhm=...) or "
-                        "ALEKernel(sample_size=...))."
+                        "'sample_sizes' or 'sample_size' for these ids (or fix the source "
+                        "conversion), or provide a constant kernel size "
+                        "(e.g., ALEKernel(fwhm=...) or ALEKernel(sample_size=...))."
                     )
 
     def _fit(self, dataset):
@@ -215,6 +224,10 @@ class CBMAEstimator(Estimator):
         ----------
         dataset : :obj:`~nimare.dataset.Dataset`
             Dataset to analyze.
+
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
@@ -977,20 +990,23 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         raise NotImplementedError
 
     def fit(self, dataset1, dataset2, drop_invalid=True):
-        """Fit Estimator to two Datasets.
+        """Fit Estimator to two Studyset-backed collections.
 
         Parameters
         ----------
-        dataset1/dataset2 : :obj:`~nimare.dataset.Dataset`
-            Dataset objects to analyze.
+        dataset1/dataset2 : :obj:`~nimare.nimads.Studyset`, \
+                :obj:`~nimare.studyset.StudysetView`, or :obj:`~nimare.dataset.Dataset`
+            Collection objects to analyze.
 
         Returns
         -------
         :obj:`~nimare.results.MetaResult`
             Results of Estimator fitting.
 
-        Notes
-        -----
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+
         The `fit` method is a light wrapper that runs input validation and
         preprocessing before fitting the actual model. Estimators' individual
         "fitting" methods are implemented as `_fit`, although users should

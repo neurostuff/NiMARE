@@ -25,53 +25,50 @@ import matplotlib.pyplot as plt
 from nilearn.plotting import plot_stat_map
 
 ###############################################################################
-# Load Dataset
+# Load Studyset
 # -----------------------------------------------------------------------------
-from nimare.dataset import Dataset
+from nimare.nimads import Studyset
 from nimare.utils import get_resource_path
 
-dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
-dset = Dataset(dset_file)
+studyset_file = os.path.join(get_resource_path(), "nidm_pain_studyset.json")
+studyset = Studyset(studyset_file, target="mni152_2mm")
 
-# First, let us reduce this Dataset to only two studies
-dset = dset.slice(dset.ids[2:4])
+# First, let us reduce this Studyset to only two studies.
+source = studyset.to_dict()
+source["studies"] = source["studies"][2:4]
+studyset = Studyset(source, target="mni152_2mm")
 
 ###############################################################################
-# Kernels ingest Datasets and can produce a few types of outputs
+# Kernels ingest Studysets and can produce a few types of outputs
 # -----------------------------------------------------------------------------
 from nimare.meta.kernel import MKDAKernel
 
 # First, the kernel should be initialized with any parameters.
 kernel = MKDAKernel()
 
-# Then, the ``transform`` method takes in the Dataset and produces the MA maps.
-output = kernel.transform(dset)
+# Then, the ``transform`` method takes in the Studyset and produces the MA maps.
+output = kernel.transform(studyset)
 
 ###############################################################################
 # ``return_type="image"`` returns a list of 3D niimg objects.
 #
 # This is the default option.
-image_output = kernel.transform(dset, return_type="image")
+image_output = kernel.transform(studyset, return_type="image")
 print(type(image_output))
 print(type(image_output[0]))
 print(image_output[0].shape)
 
 ###############################################################################
 # ``return_type="array"`` returns a 2D numpy array
-array_output = kernel.transform(dset, return_type="array")
+array_output = kernel.transform(studyset, return_type="array")
 print(type(array_output))
 print(array_output.shape)
 
 ###############################################################################
-# There is also an option to return an updated Dataset
-# (``return_type="dataset"``), with the MA maps saved as nifti files and
-# references in the Dataset's images attribute.
-# However, this will only work if the Dataset has a location set for its
-# images.
-try:
-    dataset_output = kernel.transform(dset, return_type="dataset")
-except ValueError as error:
-    print(error)
+# ``return_type="summary_array"`` returns a 1D summary map across studies.
+summary_output = kernel.transform(studyset, return_type="summary_array")
+print(type(summary_output))
+print(summary_output.shape)
 
 ###############################################################################
 # Each kernel can accept certain parameters that control behavior
@@ -88,7 +85,7 @@ fig, axes = plt.subplots(ncols=3, figsize=(20, 10))
 
 for i, radius in enumerate(RADIUS_VALUES):
     kernel = MKDAKernel(r=radius)
-    ma_maps = kernel.transform(dset, return_type="image")
+    ma_maps = kernel.transform(studyset, return_type="image")
 
     plot_stat_map(
         ma_maps[0],
@@ -109,7 +106,7 @@ for i, radius in enumerate(RADIUS_VALUES):
 # :class:`~nimare.meta.kernel.MKDAKernel` convolves coordinates with a
 # sphere and takes the union across voxels.
 kernel = MKDAKernel(r=10)
-ma_maps = kernel.transform(dset, return_type="image")
+ma_maps = kernel.transform(studyset, return_type="image")
 
 plot_stat_map(
     ma_maps[0],
@@ -126,7 +123,7 @@ plot_stat_map(
 from nimare.meta.kernel import KDAKernel
 
 kernel = KDAKernel(r=10)
-ma_maps = kernel.transform(dset, return_type="image")
+ma_maps = kernel.transform(studyset, return_type="image")
 
 plot_stat_map(
     ma_maps[0],
@@ -141,12 +138,12 @@ plot_stat_map(
 # :class:`~nimare.meta.kernel.ALEKernel` convolves coordinates with a 3D
 # Gaussian, for which the FWHM is determined by the sample size of each study.
 # This sample size will be inferred automatically, if that information is
-# available in the Dataset, or it can be set as a constant value across all
-# studies in the Dataset with the ``sample_size`` argument.
+# available in the Studyset, or it can be set as a constant value across all
+# studies in the Studyset with the ``sample_size`` argument.
 from nimare.meta.kernel import ALEKernel
 
 kernel = ALEKernel(sample_size=20)
-ma_maps = kernel.transform(dset, return_type="image")
+ma_maps = kernel.transform(studyset, return_type="image")
 
 plot_stat_map(
     ma_maps[0],

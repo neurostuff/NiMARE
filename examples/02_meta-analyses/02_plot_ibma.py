@@ -27,22 +27,22 @@ from nimare.extract import download_nidm_pain
 dset_dir = download_nidm_pain()
 
 ###############################################################################
-# Load Dataset
+# Load Studyset
 # -----------------------------------------------------------------------------
 import os
 from pprint import pprint
 
-from nimare.dataset import Dataset
+from nimare.nimads import Studyset
 from nimare.transforms import ImageTransformer
 from nimare.utils import get_resource_path
 
-dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
-dset = Dataset(dset_file)
-dset.update_path(dset_dir)
+studyset_file = os.path.join(get_resource_path(), "nidm_pain_studyset.json")
+studyset = Studyset(studyset_file, target="mni152_2mm")
+studyset.update_path(dset_dir)
 
 # Calculate missing images
 xformer = ImageTransformer(target=["varcope", "z"])
-dset = xformer.transform(dset)
+studyset = xformer.transform(studyset)
 
 ###############################################################################
 # Stouffer's
@@ -50,7 +50,7 @@ dset = xformer.transform(dset)
 from nimare.meta.ibma import Stouffers
 
 meta = Stouffers(use_sample_size=False)
-results = meta.fit(dset)
+results = meta.fit(studyset)
 
 plot_stat_map(
     results.get_map("z"),
@@ -69,7 +69,7 @@ pprint(results.bibtex_)
 # Stouffer's with weighting by sample size
 # -----------------------------------------------------------------------------
 meta = Stouffers(use_sample_size=True)
-results = meta.fit(dset)
+results = meta.fit(studyset)
 
 plot_stat_map(
     results.get_map("z"),
@@ -90,7 +90,7 @@ pprint(results.bibtex_)
 from nimare.meta.ibma import Fishers
 
 meta = Fishers()
-results = meta.fit(dset)
+results = meta.fit(studyset)
 
 plot_stat_map(
     results.get_map("z"),
@@ -112,7 +112,7 @@ from nimare.correct import FWECorrector
 from nimare.meta.ibma import PermutedOLS
 
 meta = PermutedOLS(two_sided=True)
-results = meta.fit(dset)
+results = meta.fit(studyset)
 
 plot_stat_map(
     results.get_map("z"),
@@ -144,7 +144,7 @@ pprint(cresult.bibtex_)
 from nimare.meta.ibma import WeightedLeastSquares
 
 meta = WeightedLeastSquares(tau2=0)
-results = meta.fit(dset)
+results = meta.fit(studyset)
 
 plot_stat_map(
     results.get_map("z"),
@@ -165,7 +165,7 @@ pprint(results.bibtex_)
 from nimare.meta.ibma import DerSimonianLaird
 
 meta = DerSimonianLaird()
-results = meta.fit(dset)
+results = meta.fit(studyset)
 
 plot_stat_map(
     results.get_map("z"),
@@ -186,7 +186,7 @@ pprint(results.bibtex_)
 from nimare.meta.ibma import Hedges
 
 meta = Hedges()
-results = meta.fit(dset)
+results = meta.fit(studyset)
 
 plot_stat_map(
     results.get_map("z"),
@@ -208,7 +208,7 @@ pprint(results.bibtex_)
 from nimare.meta.ibma import FixedEffectsHedges
 
 meta = FixedEffectsHedges(tau2=0)
-results = meta.fit(dset)
+results = meta.fit(studyset)
 
 plot_stat_map(
     results.get_map("z"),

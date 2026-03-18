@@ -23,18 +23,16 @@ from nimare.extract import download_nidm_pain
 dset_dir = download_nidm_pain()
 
 ###############################################################################
-# Load Dataset
+# Load Studyset
 # -----------------------------------------------------------------------------
 import os
 
-from nimare.dataset import Dataset
+from nimare.nimads import Studyset
 from nimare.utils import get_resource_path
 
-dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
-dset = Dataset(dset_file)
-dset.update_path(dset_dir)
-
-mask_img = dset.masker.mask_img
+studyset_file = os.path.join(get_resource_path(), "nidm_pain_studyset.json")
+studyset = Studyset(studyset_file, target="mni152_2mm")
+studyset.update_path(dset_dir)
 
 ###############################################################################
 # .. _corrector-cbma-example:
@@ -46,9 +44,9 @@ mask_img = dset.masker.mask_img
 #   see :ref:`multiple comparisons correction`.
 from nimare.meta.cbma.ale import ALE
 
-# First, we need to fit the Estimator to the Dataset.
+# First, we need to fit the Estimator to the Studyset.
 meta = ALE(null_method="approximate")
-results = meta.fit(dset)
+results = meta.fit(studyset)
 
 # We can check which FWE correction methods are available for the ALE Estimator
 # with the ``inspect`` class method.
@@ -135,7 +133,7 @@ from nimare.correct import FDRCorrector
 from nimare.meta.ibma import Stouffers
 
 meta = Stouffers(resample=True)
-results = meta.fit(dset)
+results = meta.fit(studyset)
 print(f"FWECorrector options: {FWECorrector.inspect(results)}")
 print(f"FDRCorrector options: {FDRCorrector.inspect(results)}")
 

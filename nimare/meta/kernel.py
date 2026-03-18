@@ -15,7 +15,9 @@ import pandas as pd
 from joblib import Memory
 
 from nimare.base import NiMAREBase
+from nimare.dataset import Dataset
 from nimare.meta.utils import compute_ale_ma, compute_kda_ma, get_ale_kernel
+from nimare.studyset import ensure_studyset_view
 from nimare.utils import _add_metadata_to_dataframe, _mask_img_to_bool, mm2vox
 
 LGR = logging.getLogger(__name__)
@@ -95,12 +97,13 @@ class KernelTransformer(NiMAREBase):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.dataset.Dataset` or :obj:`pandas.DataFrame`
-            Dataset for which to make images. Can be a DataFrame if necessary.
+        dataset : :obj:`~nimare.dataset.Dataset`, :obj:`~nimare.nimads.Studyset`, \
+                :obj:`~nimare.studyset.StudysetView`, or :obj:`pandas.DataFrame`
+            Collection for which to make images. Can be a DataFrame if necessary.
         masker : img_like or None, optional
             Mask to apply to MA maps. Required if ``dataset`` is a DataFrame.
-            If None (and ``dataset`` is a Dataset), the Dataset's masker attribute will be used.
-            Default is None.
+            If None, the input collection's masker attribute will be used.
+            Required only for DataFrame inputs. Default is None.
         return_type : {'sparse', 'array', 'image', 'summary_array'}, optional
             Whether to return a sparse matrix ('sparse'), a numpy array ('array'),
             or a list of niimgs ('image').
@@ -127,6 +130,10 @@ class KernelTransformer(NiMAREBase):
         image_type : str
             Name of the corresponding column in the Dataset.images DataFrame.
             If :meth:`_infer_names` is executed.
+
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         if return_type not in ("sparse", "array", "image", "summary_array"):
             raise ValueError(
@@ -144,6 +151,9 @@ class KernelTransformer(NiMAREBase):
             # but has different affine, from original IJK.
             coordinates[["i", "j", "k"]] = mm2vox(dataset[["x", "y", "z"]], mask.affine)
         else:
+            if not isinstance(dataset, Dataset):
+                dataset = ensure_studyset_view(dataset)
+
             masker = dataset.masker if not masker else masker
             mask = masker.mask_img
             coordinates = dataset.coordinates.copy()
@@ -166,7 +176,7 @@ class KernelTransformer(NiMAREBase):
                 coordinates = _add_metadata_to_dataframe(
                     dataset,
                     coordinates,
-                    metadata_field="sample_sizes",
+                    metadata_field=("sample_sizes", "sample_size"),
                     target_column="sample_size",
                     filter_func=np.mean,
                 )

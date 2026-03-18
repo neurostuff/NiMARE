@@ -69,17 +69,22 @@ class CBMAWorkflow(Workflow):
     _diag_default = Jackknife
 
     def fit(self, dataset, drop_invalid=True):
-        """Fit Workflow to a Dataset.
+        """Fit Workflow to a Studyset-backed collection.
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.dataset.Dataset`
-            Dataset to analyze.
+        dataset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
+                or :obj:`~nimare.dataset.Dataset`
+            Collection to analyze.
 
         Returns
         -------
         :obj:`~nimare.results.MetaResult`
             Results of Estimator fitting.
+
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         LGR.info("Performing meta-analysis...")
         results = self.estimator.fit(dataset, drop_invalid=drop_invalid)
@@ -138,17 +143,22 @@ class PairwiseCBMAWorkflow(Workflow):
     _diag_default = Jackknife
 
     def fit(self, dataset1, dataset2, drop_invalid=True):
-        """Fit Workflow to two Datasets.
+        """Fit Workflow to two Studyset-backed collections.
 
         Parameters
         ----------
-        dataset1/dataset2 : :obj:`~nimare.dataset.Dataset`
-            Dataset objects to analyze.
+        dataset1/dataset2 : :obj:`~nimare.nimads.Studyset`, \
+                :obj:`~nimare.studyset.StudysetView`, or :obj:`~nimare.dataset.Dataset`
+            Collection objects to analyze.
 
         Returns
         -------
         :obj:`~nimare.results.MetaResult`
             Results of Estimator fitting.
+
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         LGR.info("Performing meta-analysis...")
         results = self.estimator.fit(dataset1, dataset2, drop_invalid=drop_invalid)
