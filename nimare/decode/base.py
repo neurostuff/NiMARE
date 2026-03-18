@@ -99,6 +99,9 @@ class Decoder(NiMAREBase):
 
         Notes
         -----
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+
         The `fit` method is a light wrapper that runs input validation and
         preprocessing before fitting the actual model. Decoders' individual
         "fitting" methods are implemented as `_fit`, although users should

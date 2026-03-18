@@ -105,6 +105,11 @@ class LDAModel(NiMAREBase):
                     containing the topic-term weights for the model.
                 -   ``p_topic_g_word_df``: :obj:`pandas.DataFrame` of shape (n_topics, n_tokens)
                     containing the topic-term weights for the model.
+
+        Notes
+        -----
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         source = dset
         if isinstance(dset, Studyset):

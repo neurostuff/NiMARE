@@ -18,6 +18,10 @@ class Estimator(NiMAREBase):
     Users will interact with the ``_fit`` method by calling the user-facing ``fit`` method.
     ``fit`` takes in a ``Dataset``, calls ``_collect_inputs``, then ``_preprocess_input``,
     then ``_fit``, and finally converts the dictionary returned by ``_fit`` into a ``MetaResult``.
+
+    .. warning::
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
     """
 
     # Inputs that must be available in input Dataset. Keys are names of
@@ -104,12 +108,13 @@ class Estimator(NiMAREBase):
         pass
 
     def fit(self, dataset, drop_invalid=True):
-        """Fit Estimator to Dataset.
+        """Fit Estimator to a Studyset-backed collection.
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.dataset.Dataset`
-            Dataset object to analyze.
+        dataset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
+                or :obj:`~nimare.dataset.Dataset`
+            Collection object to analyze.
         drop_invalid : :obj:`bool`, optional
             Whether to automatically ignore any studies without the required data or not.
             Default is False.
@@ -126,6 +131,9 @@ class Estimator(NiMAREBase):
 
         Notes
         -----
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+
         The `fit` method is a light wrapper that runs input validation and
         preprocessing before fitting the actual model. Estimators' individual
         "fitting" methods are implemented as `_fit`, although users should

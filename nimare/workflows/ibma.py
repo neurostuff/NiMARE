@@ -76,17 +76,23 @@ class IBMAWorkflow(Workflow):
     _diag_default = Jackknife
 
     def fit(self, dataset, drop_invalid=True):
-        """Fit Workflow to a Dataset.
+        """Fit Workflow to a Studyset-backed collection.
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.dataset.Dataset`
-            Dataset to analyze.
+        dataset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
+                or :obj:`~nimare.dataset.Dataset`
+            Collection to analyze.
 
         Returns
         -------
         :obj:`~nimare.results.MetaResult`
             Results of Estimator fitting.
+
+        Notes
+        -----
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         dataset = ensure_studyset_view(dataset)
 

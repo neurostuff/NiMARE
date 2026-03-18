@@ -49,6 +49,12 @@ def convert_nimads_to_dataset(studyset, annotation=None):
     -------
     dset : :obj:`nimare.dataset.Dataset`
         NiMARE Dataset object containing experiment information from nimads studyset.
+
+    Warnings
+    --------
+    :class:`~nimare.dataset.Dataset` is deprecated and will be removed in a future
+    release. Prefer keeping data in :class:`~nimare.nimads.Studyset` form and using
+    :meth:`~nimare.nimads.Studyset.view` when a Dataset-like tabular view is needed.
     """
 
     def _analysis_to_dict(study, analysis):
@@ -475,6 +481,11 @@ def convert_neurosynth_to_dataset(
 
     Warnings
     --------
+    :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in a future
+    release. When possible, prefer :func:`~nimare.extract.fetch_neurosynth` or
+    :func:`~nimare.extract.fetch_neuroquery`, which return
+    :class:`~nimare.nimads.Studyset` objects by default.
+
     Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
     format. Old code using this function **will not work** with the new version.
     """
@@ -1038,6 +1049,10 @@ def convert_sleuth_to_json(text_file, out_file):
 def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
     """Convert Sleuth output text file into NiMARE Dataset.
 
+    .. warning::
+        :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in a future
+        release. Prefer :func:`~nimare.io.convert_sleuth_to_studyset`.
+
     Parameters
     ----------
     text_file : :obj:`str` or :obj:`list` of :obj:`str`
@@ -1128,6 +1143,11 @@ def convert_dataset_to_nimads_dict(
     out_file: Optional[Union[str, Path]] = None,
 ) -> Dict[str, Any]:
     """Convert a NiMARE Dataset to a NIMADS Studyset dictionary.
+
+    .. warning::
+        :class:`~nimare.dataset.Dataset` input is deprecated and will be removed in a future
+        release. Prefer operating on :class:`~nimare.nimads.Studyset` directly, or convert once
+        with :func:`~nimare.io.convert_dataset_to_studyset`.
 
     Parameters
     ----------
@@ -1386,6 +1406,11 @@ def convert_dataset_to_studyset(
     plain dictionary. If ``out_file`` is provided, the underlying NIMADS dictionary will
     also be written to disk (same behavior as :func:`convert_dataset_to_nimads_dict`).
 
+    .. warning::
+        :class:`~nimare.dataset.Dataset` input is deprecated and will be removed in a future
+        release. For new workflows, prefer starting from :class:`~nimare.nimads.Studyset`
+        directly.
+
     Parameters
     ----------
     dataset
@@ -1479,6 +1504,10 @@ def convert_neurovault_to_dataset(
     """Convert a group of NeuroVault collections into a NiMARE Dataset.
 
     .. versionadded:: 0.0.8
+
+    .. warning::
+        :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in a future
+        release. Prefer :func:`~nimare.generate.create_neurovault_studyset`.
 
     Parameters
     ----------

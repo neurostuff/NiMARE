@@ -218,6 +218,9 @@ def fetch_neurosynth(
 
     Warnings
     --------
+    ``return_type="dataset"`` is deprecated and will be removed in a future release.
+    Prefer the default ``return_type="studyset"``.
+
     Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
     format. Old code using this function **will not work** with the new version.
     """
@@ -282,6 +285,11 @@ def fetch_neuroquery(
     Notes
     -----
     This function was adapted from neurosynth.base.dataset.download().
+
+    Warnings
+    --------
+    ``return_type="dataset"`` is deprecated and will be removed in a future release.
+    Prefer the default ``return_type="studyset"``.
     """
     URL = (
         "https://github.com/neuroquery/neuroquery_data/blob/"
@@ -481,6 +489,9 @@ def download_abstracts(dataset, email):
 
     Warnings
     --------
+    Passing a :class:`~nimare.dataset.Dataset` is deprecated and will be removed in a future
+    release. Prefer passing a :class:`~nimare.nimads.Studyset`.
+
     This function assumes that the dataset uses identifiers in the format
     [PMID-EXPID]. Thus, the ``study_id`` column of the
     :py:attr:`~nimare.dataset.Dataset.texts` DataFrame should correspond to PMID.

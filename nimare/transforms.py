@@ -26,9 +26,13 @@ LGR = logging.getLogger(__name__)
 
 
 class ImageTransformer(NiMAREBase):
-    """A class to create new images from existing ones within a Dataset.
+    """A class to create new images from existing ones within a collection.
 
     This class is a light wrapper around :func:`~nimare.transforms.transform_images`.
+
+    .. warning::
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
 
     .. versionadded:: 0.0.9
 
@@ -49,17 +53,23 @@ class ImageTransformer(NiMAREBase):
         self.overwrite = overwrite
 
     def transform(self, dataset):
-        """Generate images of the target type from other image types in a Dataset.
+        """Generate images of the target type from other image types in a collection.
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.dataset.Dataset`
-            A Dataset containing images and relevant metadata.
+        dataset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
+                or :obj:`~nimare.dataset.Dataset`
+            A collection containing images and relevant metadata.
 
         Returns
         -------
-        new_dataset : :obj:`~nimare.dataset.Dataset`
-            A copy of the input Dataset, with new images added to its images attribute.
+        new_dataset : same type as input when possible
+            A copy of the input collection, with new images added to its images attribute.
+
+        Notes
+        -----
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         from nimare.dataset import Dataset
 
@@ -354,16 +364,22 @@ class ImagesToCoordinates(NiMAREBase):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.dataset.Dataset`
-            Dataset with z maps and/or p maps
+        dataset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
+                or :obj:`~nimare.dataset.Dataset`
+            Collection with z maps and/or p maps
             that can be converted to coordinates.
 
         Returns
         -------
-        dataset : :obj:`~nimare.dataset.Dataset`
-            Dataset with coordinates generated from
+        dataset : same type as input when possible
+            Collection with coordinates generated from
             images and metadata indicating origin
             of coordinates ('original' or 'nimare').
+
+        Notes
+        -----
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         from nimare.dataset import Dataset
 

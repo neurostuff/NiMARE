@@ -978,12 +978,13 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         raise NotImplementedError
 
     def fit(self, dataset1, dataset2, drop_invalid=True):
-        """Fit Estimator to two Datasets.
+        """Fit Estimator to two Studyset-backed collections.
 
         Parameters
         ----------
-        dataset1/dataset2 : :obj:`~nimare.dataset.Dataset`
-            Dataset objects to analyze.
+        dataset1/dataset2 : :obj:`~nimare.nimads.Studyset`, \
+                :obj:`~nimare.studyset.StudysetView`, or :obj:`~nimare.dataset.Dataset`
+            Collection objects to analyze.
 
         Returns
         -------
@@ -992,6 +993,9 @@ class PairwiseCBMAEstimator(CBMAEstimator):
 
         Notes
         -----
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+
         The `fit` method is a light wrapper that runs input validation and
         preprocessing before fitting the actual model. Estimators' individual
         "fitting" methods are implemented as `_fit`, although users should

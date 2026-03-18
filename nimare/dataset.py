@@ -63,6 +63,12 @@ class Dataset(NiMAREBase):
 
     Notes
     -----
+    .. warning::
+        :class:`~nimare.dataset.Dataset` is deprecated and will be removed in a future
+        release. For new workflows, use :class:`~nimare.nimads.Studyset` instead.
+        If you need a Dataset-compatible tabular execution view, use
+        :meth:`~nimare.nimads.Studyset.view`.
+
     Images loaded into a Dataset are assumed to be in the same space.
     If images have different resolutions or affines from the Dataset's masker,
     then they will be resampled automatically, at the point where they're used,
@@ -290,6 +296,11 @@ class Dataset(NiMAREBase):
     def slice(self, ids):
         """Create a new dataset with only requested IDs.
 
+        .. warning::
+            This legacy Dataset method will be deprecated in a future release.
+            Prefer :meth:`~nimare.nimads.Studyset.slice` for nested Studysets or
+            :meth:`~nimare.studyset.StudysetView.slice` for Dataset-like tabular slicing.
+
         Parameters
         ----------
         ids : array_like
@@ -313,6 +324,10 @@ class Dataset(NiMAREBase):
         """Merge two Datasets.
 
         .. versionadded:: 0.0.9
+
+        .. warning::
+            This legacy Dataset method will be deprecated in a future release.
+            Prefer :meth:`~nimare.nimads.Studyset.merge`.
 
         Parameters
         ----------
@@ -349,6 +364,10 @@ class Dataset(NiMAREBase):
     def update_path(self, new_path):
         """Update paths to images.
 
+        .. warning::
+            This legacy Dataset method will be deprecated in a future release.
+            Prefer :meth:`~nimare.nimads.Studyset.update_path`.
+
         Prepends new path to the relative path for files in Dataset.images.
 
         Parameters
@@ -372,6 +391,11 @@ class Dataset(NiMAREBase):
 
     def get(self, dict_, drop_invalid=True):
         """Retrieve files and/or metadata from the current Dataset.
+
+        .. warning::
+            This legacy Dataset method will be deprecated in a future release.
+            Prefer :meth:`~nimare.nimads.Studyset.get` or
+            :meth:`~nimare.studyset.StudysetView.get`.
 
         Parameters
         ----------
@@ -501,6 +525,11 @@ class Dataset(NiMAREBase):
     def get_labels(self, ids=None):
         """Extract list of labels for which studies in Dataset have annotations.
 
+        .. warning::
+            This legacy Dataset method will be deprecated in a future release.
+            Prefer :meth:`~nimare.nimads.Studyset.get_labels` or
+            :meth:`~nimare.studyset.StudysetView.get_labels`.
+
         Parameters
         ----------
         ids : :obj:`list`, optional
@@ -526,6 +555,10 @@ class Dataset(NiMAREBase):
     def get_texts(self, ids=None, text_type=None):
         """Extract list of texts of a given type for selected IDs.
 
+        .. warning::
+            This legacy Dataset method will be deprecated in a future release.
+            Prefer :meth:`~nimare.studyset.StudysetView.get_texts`.
+
         Parameters
         ----------
         ids : :obj:`list`, optional
@@ -546,6 +579,10 @@ class Dataset(NiMAREBase):
     def get_metadata(self, ids=None, field=None):
         """Get metadata from Dataset.
 
+        .. warning::
+            This legacy Dataset method will be deprecated in a future release.
+            Prefer :meth:`~nimare.studyset.StudysetView.get_metadata`.
+
         Parameters
         ----------
         ids : :obj:`list`, optional
@@ -565,6 +602,10 @@ class Dataset(NiMAREBase):
 
     def get_images(self, ids=None, imtype=None):
         """Get images of a certain type for a subset of studies in the dataset.
+
+        .. warning::
+            This legacy Dataset method will be deprecated in a future release.
+            Prefer :meth:`~nimare.studyset.StudysetView.get_images`.
 
         Parameters
         ----------
@@ -601,6 +642,12 @@ class Dataset(NiMAREBase):
 
             Default value for label_threshold changed to 0.001.
 
+        .. warning::
+            This legacy Dataset method will be deprecated in a future release.
+            Prefer :meth:`~nimare.nimads.Studyset.get_analyses_by_label` for slicing-ready
+            analysis IDs, or :meth:`~nimare.nimads.Studyset.get_studies_by_label` for the
+            Dataset-style convenience wrapper.
+
         Parameters
         ----------
         labels : :obj:`list`, optional
@@ -636,6 +683,12 @@ class Dataset(NiMAREBase):
     def get_studies_by_mask(self, mask):
         """Extract list of studies with at least one focus in mask.
 
+        .. warning::
+            This legacy Dataset method will be deprecated in a future release.
+            Prefer :meth:`~nimare.nimads.Studyset.get_analyses_by_mask` for slicing-ready
+            analysis IDs, or :meth:`~nimare.nimads.Studyset.get_studies_by_mask` for the
+            Dataset-style convenience wrapper.
+
         Parameters
         ----------
         mask : :obj:`~nibabel.nifti1.Nifti1Image`
@@ -668,6 +721,12 @@ class Dataset(NiMAREBase):
 
     def get_studies_by_coordinate(self, xyz, r=20):
         """Extract list of studies with at least one focus within radius of requested coordinates.
+
+        .. warning::
+            This legacy Dataset method will be deprecated in a future release.
+            Prefer :meth:`~nimare.nimads.Studyset.get_analyses_by_coordinate` for slicing-ready
+            analysis IDs, or :meth:`~nimare.nimads.Studyset.get_studies_by_coordinate` for the
+            Dataset-style convenience wrapper.
 
         Parameters
         ----------

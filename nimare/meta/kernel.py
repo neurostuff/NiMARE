@@ -130,6 +130,11 @@ class KernelTransformer(NiMAREBase):
         image_type : str
             Name of the corresponding column in the Dataset.images DataFrame.
             If :meth:`_infer_names` is executed.
+
+        Notes
+        -----
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         if return_type not in ("sparse", "array", "image", "summary_array"):
             raise ValueError(
