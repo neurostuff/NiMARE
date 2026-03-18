@@ -95,7 +95,9 @@ class Studyset:
     def _extend_annotations(self, annotations):
         """Append one or more annotations and invalidate caches once."""
         if isinstance(annotations, (list, tuple)):
-            loaded_annotations = [self._coerce_annotation(annotation) for annotation in annotations]
+            loaded_annotations = [
+                self._coerce_annotation(annotation) for annotation in annotations
+            ]
         else:
             loaded_annotations = [self._coerce_annotation(annotations)]
 
