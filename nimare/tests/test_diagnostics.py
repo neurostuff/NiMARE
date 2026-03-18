@@ -13,6 +13,24 @@ from nimare.meta import cbma, ibma
 from nimare.tests.utils import get_test_data_path
 
 
+def test_summarize_cluster_values_masked_array():
+    """Cluster summaries should preserve cluster order in masked-array mode."""
+    values = np.array([0.0, 1.0, 3.0, 2.0, 4.0], dtype=float)
+    cluster_summary_context = {
+        "mode": "masked_array",
+        "cluster_indices": [
+            np.array([1, 2], dtype=int),
+            np.array([3, 4], dtype=int),
+        ],
+    }
+
+    reduced = diagnostics._summarize_cluster_values(
+        values, masker=None, cluster_summary_context=cluster_summary_context
+    )
+
+    assert np.allclose(reduced, np.array([2.0, 3.0]))
+
+
 @pytest.mark.parametrize(
     "estimator,meta_type,n_samples,target_image,voxel_thresh",
     [

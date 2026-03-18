@@ -36,6 +36,82 @@ def _tail_mappings():
     return tail_to_sign, sign_to_tail
 
 
+def _get_target_value_map(result):
+    """Select the map to use for per-cluster contribution calculations."""
+    # CBMAs have "stat" maps, while most IBMAs have "est" maps. ALESubtraction has
+    # "stat_desc-group1MinusGroup2" maps, while MKDAChi2 has "z_desc-association" maps.
+    # Fisher's and Stouffer's only have "z" maps though.
+    target_value_keys = {"stat", "est", "stat_desc-group1MinusGroup2", "z_desc-association"}
+    avail_value_keys = set(result.maps.keys())
+    union_value_keys = list(target_value_keys & avail_value_keys)
+    return union_value_keys[0] if union_value_keys else "z"
+
+
+def _cluster_masker_kwargs():
+    """Return standardized kwargs for label-based cluster summaries."""
+    return _filter_kwargs(
+        NiftiLabelsMasker,
+        {
+            "standardize": False,
+            "detrend": False,
+            "smoothing_fwhm": None,
+            "dtype": DEFAULT_FLOAT_DTYPE,
+        },
+    )
+
+
+def _is_voxelwise_masker(masker, n_features):
+    """Determine whether a masker output is voxelwise in masked-array space."""
+    mask_img = getattr(masker, "mask_img_", None)
+    if mask_img is None:
+        return False
+
+    try:
+        n_mask_voxels = int(np.count_nonzero(np.asanyarray(mask_img.dataobj)))
+    except Exception:
+        return False
+
+    return n_mask_voxels == n_features
+
+
+def _build_cluster_summary_context(masker, label_map, label_vector, cluster_ids):
+    """Precompute cluster summaries in array space when possible."""
+    label_vector = np.squeeze(np.asarray(label_vector))
+    if _is_voxelwise_masker(masker, label_vector.shape[0]):
+        cluster_indices = [
+            np.flatnonzero(np.isclose(label_vector, c_id)).astype(np.int32, copy=False)
+            for c_id in cluster_ids
+        ]
+        if all(cluster_idx.size > 0 for cluster_idx in cluster_indices):
+            return {
+                "mode": "masked_array",
+                "cluster_indices": cluster_indices,
+            }
+
+    cluster_masker = NiftiLabelsMasker(label_map, **_cluster_masker_kwargs())
+    cluster_masker.fit(label_map)
+    return {
+        "mode": "image",
+        "cluster_masker": cluster_masker,
+    }
+
+
+def _summarize_cluster_values(values, masker, cluster_summary_context):
+    """Reduce per-feature values to cluster-level means."""
+    if cluster_summary_context["mode"] == "masked_array":
+        return np.array(
+            [
+                np.mean(values[cluster_idx])
+                for cluster_idx in cluster_summary_context["cluster_indices"]
+            ],
+            dtype=DEFAULT_FLOAT_DTYPE,
+        )
+
+    stat_prop_img = masker.inverse_transform(values)
+    stat_prop_values = cluster_summary_context["cluster_masker"].transform(stat_prop_img)
+    return stat_prop_values.flatten()
+
+
 def _infer_label_map_tails(label_maps, clusters_table, n_clusters):
     """Infer tail labels from label maps and cluster statistics."""
     inferred_tail = "positive"
@@ -107,7 +183,16 @@ class Diagnostics(NiMAREBase):
         self.n_cores = _check_ncores(n_cores)
 
     @abstractmethod
-    def _transform(self, expid, label_map, result):
+    def _transform(
+        self,
+        expid,
+        label_map,
+        sign,
+        result,
+        target_value_map=None,
+        stat_values=None,
+        cluster_summary_context=None,
+    ):
         """Apply transform to study ID and label map.
 
         Must return a 1D array with the contribution of `expid` in each cluster of `label_map`.
@@ -276,11 +361,22 @@ class Diagnostics(NiMAREBase):
             meta_ids_lst = [result.estimator.inputs_["id"]]
             signs = [tail_to_sign[label_map_tails[0]]]
 
+        target_value_map = _get_target_value_map(result)
+        stat_values = result.get_map(target_value_map, return_type="array")
+
         contribution_tables = []
-        for sign, label_map, meta_ids in zip(signs, label_maps, meta_ids_lst):
+        for sign, label_map, label_map_name, meta_ids in zip(
+            signs, label_maps, label_map_names, meta_ids_lst
+        ):
             label_arr = np.asanyarray(label_map.dataobj)
             cluster_ids = sorted(list(np.unique(label_arr)[1:]))
             rows = list(meta_ids)
+            cluster_summary_context = _build_cluster_summary_context(
+                masker,
+                label_map,
+                maps_dict[label_map_name],
+                cluster_ids,
+            )
 
             # Create contribution table
             cols = [f"{sign} {int(c_id)}" for c_id in cluster_ids]
@@ -291,7 +387,15 @@ class Diagnostics(NiMAREBase):
                 r
                 for r in tqdm(
                     Parallel(return_as="generator", n_jobs=self.n_cores)(
-                        delayed(self._transform)(expid, label_map, sign, result)
+                        delayed(self._transform)(
+                            expid,
+                            label_map,
+                            sign,
+                            result,
+                            target_value_map,
+                            stat_values,
+                            cluster_summary_context,
+                        )
                         for expid in meta_ids
                     ),
                     total=len(meta_ids),
@@ -352,7 +456,16 @@ class Jackknife(Diagnostics):
     averaging the resulting proportion values across all voxels in each cluster.
     """
 
-    def _transform(self, expid, label_map, sign, result):
+    def _transform(
+        self,
+        expid,
+        label_map,
+        sign,
+        result,
+        target_value_map=None,
+        stat_values=None,
+        cluster_summary_context=None,
+    ):
         """Apply transform to study ID and label map.
 
         Parameters
@@ -380,30 +493,18 @@ class Jackknife(Diagnostics):
         else:
             all_ids = estimator.inputs_["id"]
 
-        original_masker = estimator.masker
-
-        # Mask using a labels masker, so that we can easily get the mean value for each cluster
-        cluster_masker_kwargs = _filter_kwargs(
-            NiftiLabelsMasker,
-            {
-                "standardize": False,
-                "detrend": False,
-                "smoothing_fwhm": None,
-                "dtype": DEFAULT_FLOAT_DTYPE,
-            },
+        target_value_map = target_value_map or _get_target_value_map(result)
+        stat_values = (
+            np.asarray(stat_values)
+            if stat_values is not None
+            else result.get_map(target_value_map, return_type="array")
         )
-        cluster_masker = NiftiLabelsMasker(label_map, **cluster_masker_kwargs)
-        cluster_masker.fit(label_map)
-
-        # CBMAs have "stat" maps, while most IBMAs have "est" maps. ALESubtraction has
-        # stat_desc-group1MinusGroup2" maps, while MKDAChi2 has "z_desc-association' maps.
-        # Fisher's and Stouffer's only have "z" maps though.
-        target_value_keys = {"stat", "est", "stat_desc-group1MinusGroup2", "z_desc-association"}
-        avail_value_keys = set(result.maps.keys())
-        union_value_keys = list(target_value_keys & avail_value_keys)
-        target_value_map = union_value_keys[0] if union_value_keys else "z"
-
-        stat_values = result.get_map(target_value_map, return_type="array")
+        cluster_summary_context = cluster_summary_context or _build_cluster_summary_context(
+            result.estimator.masker,
+            label_map,
+            np.squeeze(result.estimator.masker.transform(label_map)),
+            sorted(list(np.unique(np.asanyarray(label_map.dataobj))[1:])),
+        )
 
         # Fit Estimator to all studies except the target study
         other_ids = [id_ for id_ in all_ids if id_ != expid]
@@ -419,8 +520,7 @@ class Jackknife(Diagnostics):
             temp_result = estimator.fit(temp_dset)
 
         # Collect the target values (e.g., ALE values) from the N-1 meta-analysis
-        temp_stat_img = temp_result.get_map(target_value_map, return_type="image")
-        temp_stat_vals = np.squeeze(original_masker.transform(temp_stat_img))
+        temp_stat_vals = temp_result.get_map(target_value_map, return_type="array")
 
         # Voxelwise proportional reduction of each statistic after removal of the experiment
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -428,10 +528,11 @@ class Jackknife(Diagnostics):
             prop_values = np.nan_to_num(prop_values)
 
         voxelwise_stat_prop_values = 1 - prop_values
-        stat_prop_img = original_masker.inverse_transform(voxelwise_stat_prop_values)
-        stat_prop_values = cluster_masker.transform(stat_prop_img)
-
-        return stat_prop_values.flatten()
+        return _summarize_cluster_values(
+            voxelwise_stat_prop_values,
+            estimator.masker,
+            cluster_summary_context,
+        )
 
 
 class FocusCounter(Diagnostics):
@@ -463,7 +564,16 @@ class FocusCounter(Diagnostics):
     This method only works for coordinate-based meta-analyses.
     """
 
-    def _transform(self, expid, label_map, sign, result):
+    def _transform(
+        self,
+        expid,
+        label_map,
+        sign,
+        result,
+        target_value_map=None,
+        stat_values=None,
+        cluster_summary_context=None,
+    ):
         """Apply transform to study ID and label map.
 
         Parameters
