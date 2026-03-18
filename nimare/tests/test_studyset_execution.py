@@ -179,6 +179,25 @@ def test_studyset_from_dataset_caches_independent_tables(testdata_ibma):
     assert view.images[image_col].notnull().any()
 
 
+def test_studyset_annotations_batch_assignment_touches_once(
+    example_nimads_studyset, example_nimads_annotation, monkeypatch
+):
+    """Assigning multiple annotations should invalidate caches once."""
+    studyset = Studyset(example_nimads_studyset)
+    touch_calls = []
+
+    def _touch():
+        touch_calls.append(True)
+        studyset._nimare_table_cache = None
+
+    monkeypatch.setattr(studyset, "touch", _touch)
+
+    studyset.annotations = [example_nimads_annotation, example_nimads_annotation]
+
+    assert len(studyset.annotations) == 2
+    assert len(touch_calls) == 1
+
+
 def test_image_transformer_accepts_studyset(testdata_ibma):
     """Ensure ImageTransformer accepts Studyset inputs."""
     studyset = Studyset.from_dataset(testdata_ibma)
@@ -228,6 +247,29 @@ def test_studyset_view_handles_empty_annotations_and_texts():
 
     assert view.texts.empty
     assert list(view.texts.columns) == ["id", "study_id", "contrast_id"]
+
+
+def test_studyset_view_slice_preserves_materialized_tables(testdata_ibma):
+    """Slicing a StudysetView should retain already-materialized cached tables."""
+    studyset = Studyset.from_dataset(testdata_ibma.slice(testdata_ibma.ids[:5]))
+    view = ensure_studyset_view(studyset)
+    target_ids = set(view.ids[:2])
+
+    _ = view.images
+    _ = view.metadata
+    _ = view.texts
+    _ = view.annotations
+
+    sliced = view.slice(sorted(target_ids))
+
+    assert sliced._ids is not None
+    assert sliced._images is not None
+    assert sliced._metadata is not None
+    assert sliced._texts is not None
+    assert sliced._annotations is not None
+    assert set(sliced.ids) == target_ids
+    assert set(sliced.images["id"].unique()).issubset(target_ids)
+    assert set(sliced.metadata["id"].unique()).issubset(target_ids)
 
 
 def test_ensure_studyset_view_rebuilds_after_view_mutation(testdata_cbma):

@@ -81,22 +81,30 @@ class Studyset:
         """Return existing Annotations."""
         return self._annotations
 
+    def _coerce_annotation(self, annotation):
+        """Normalize one annotation payload to an Annotation instance."""
+        if isinstance(annotation, dict):
+            return Annotation(annotation, self)
+        if isinstance(annotation, str):
+            with open(annotation, "r+") as f:
+                return Annotation(json.load(f), self)
+        if isinstance(annotation, Annotation):
+            return annotation
+        raise TypeError(f"Unsupported annotation type: {type(annotation)}")
+
+    def _extend_annotations(self, annotations):
+        """Append one or more annotations and invalidate caches once."""
+        if isinstance(annotations, (list, tuple)):
+            loaded_annotations = [self._coerce_annotation(annotation) for annotation in annotations]
+        else:
+            loaded_annotations = [self._coerce_annotation(annotations)]
+
+        self._annotations.extend(loaded_annotations)
+        self.touch()
+
     @annotations.setter
     def annotations(self, annotation):
-        if isinstance(annotation, (list, tuple)):
-            for annotation_i in annotation:
-                self.annotations = annotation_i
-            return
-
-        if isinstance(annotation, dict):
-            loaded_annotation = Annotation(annotation, self)
-        elif isinstance(annotation, str):
-            with open(annotation, "r+") as f:
-                loaded_annotation = Annotation(json.load(f), self)
-        elif isinstance(annotation, Annotation):
-            loaded_annotation = annotation
-        self._annotations.append(loaded_annotation)
-        self.touch()
+        self._extend_annotations(annotation)
 
     @annotations.deleter
     def annotations(self, annotation_id=None):

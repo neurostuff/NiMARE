@@ -415,10 +415,27 @@ class StudysetView(NiMAREBase):
             target=self.space,
             mask=self.masker,
             basepath=self.basepath,
+            materialize_ids=False,
         )
 
-        if self.annotations is not None and not self.annotations.empty:
-            sliced_view.annotations = self.annotations[self.annotations["id"].isin(ids)].copy()
+        cached_attrs = []
+        if self._ids is not None:
+            sliced_view._ids = np.sort(self._ids[np.isin(self._ids, list(ids))])
+            cached_attrs.append("ids")
+
+        for attr in _TABLE_ATTRS[1:]:
+            cached_table = getattr(self, f"_{attr}")
+            if cached_table is None:
+                continue
+            setattr(
+                sliced_view,
+                f"_{attr}",
+                cached_table[cached_table["id"].isin(ids)].copy(),
+            )
+            cached_attrs.append(attr)
+
+        if cached_attrs:
+            sliced_view._update_studyset_cache(*cached_attrs)
 
         return sliced_view
 
