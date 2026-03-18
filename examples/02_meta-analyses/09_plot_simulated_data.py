@@ -15,6 +15,7 @@ from nilearn.plotting import plot_stat_map
 from nimare.correct import FDRCorrector
 from nimare.generate import create_coordinate_dataset
 from nimare.meta import ALE
+from nimare.nimads import Studyset
 
 ###############################################################################
 # Create function to perform a meta-analysis and plot results
@@ -22,8 +23,9 @@ from nimare.meta import ALE
 
 
 def analyze_and_plot(dset, ground_truth_foci=None, correct=True, return_cres=False):
+    studyset = Studyset.from_dataset(dset)
     meta = ALE(kernel__fwhm=10)
-    results = meta.fit(dset)
+    results = meta.fit(studyset)
     if correct:
         corr = FDRCorrector()
         cres = corr.transform(results)
@@ -60,7 +62,7 @@ def analyze_and_plot(dset, ground_truth_foci=None, correct=True, return_cres=Fal
 
 
 ###############################################################################
-# Create Dataset
+# Create a simulated collection
 # -----------------------------------------------------------------------------
 # In this example, each of the 30 generated fake studies
 # select 4 coordinates from a probability map representing the probability
@@ -84,7 +86,7 @@ ground_truth_foci, dset = create_coordinate_dataset(foci=4, sample_size=(20, 40)
 analyze_and_plot(dset, ground_truth_foci)
 
 ###############################################################################
-# Fine-tune dataset creation
+# Fine-tune collection creation
 # -----------------------------------------------------------------------------
 # Perhaps you want more control over the studies being generated.
 # you can set:
@@ -135,7 +137,7 @@ fig = analyze_and_plot(perc_foci_dset, ground_truth_foci[0:2])
 fig.show()
 
 ###############################################################################
-# Create a null dataset
+# Create a null collection
 # -----------------------------------------------------------------------------
 # Perhaps you are interested in the number of false positives your favorite
 # meta-analysis algorithm typically gives.

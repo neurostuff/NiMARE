@@ -2,17 +2,19 @@
 
 .. _nimads_object:
 
-========================
-Using NIMADS with NiMARE
-========================
+==========================
+The NiMARE Studyset object
+==========================
 
 This example demonstrates the key functionality of the NeuroImaging Meta-Analysis Data Structure
-(NIMADS) with NiMARE, including working with StudySets, annotations, coordinates, and metadata.
+(NIMADS) with NiMARE, including working with Studysets, annotations, coordinates, metadata,
+and native Studyset-backed meta-analysis.
 """
 
 from pprint import pprint
 from requests import request
 
+from nimare.meta.cbma import ALE
 from nimare.nimads import Studyset
 
 
@@ -33,14 +35,14 @@ nimads_annotation = download_file("https://neurostore.org/api/annotations/76PyNq
 
 
 ###############################################################################
-# Create and Explore StudySet
+# Create and Explore Studyset
 # -----------------------------------------------------------------------------
 # Load the data into a NiMADS Studyset object and explore its contents
 
 studyset = Studyset(nimads_studyset, annotations=nimads_annotation)
 
 # Display basic information about the studyset
-print("\nStudySet Information:")
+print("\nStudyset Information:")
 print("-" * 50)
 print(f"ID: {studyset.id}")
 print(f"Name: {studyset.name}")
@@ -118,12 +120,22 @@ pprint(metadata_results)
 
 
 ###############################################################################
-# Convert to NiMARE Dataset
+# Run a meta-analysis directly on the Studyset
 # -----------------------------------------------------------------------------
-# Convert the NiMADS Studyset to a NiMARE Dataset for further analysis
+# Studysets are now accepted directly by NiMARE estimators and workflows.
+
+results = ALE(null_method="approximate").fit(studyset)
+print("\nMeta-analysis output maps:")
+print("-" * 50)
+print(sorted(results.maps))
+
+###############################################################################
+# Interoperate with the legacy Dataset class when needed
+# -----------------------------------------------------------------------------
+# Some older utilities still operate on :class:`~nimare.dataset.Dataset` tables.
+# When you need that older interface, you can still convert explicitly.
 
 nimare_dset = studyset.to_dataset()
-print("\nNiMARE Dataset Information:")
+print("\nLegacy Dataset coordinates preview:")
 print("-" * 50)
-print("Coordinates DataFrame Preview:")
 print(nimare_dset.coordinates.head())

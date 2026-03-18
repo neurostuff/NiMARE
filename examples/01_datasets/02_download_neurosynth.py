@@ -8,7 +8,7 @@ Neurosynth and NeuroQuery
 
 Neurosynth and NeuroQuery are the two largest publicly-available coordinate-based databases.
 NiMARE includes functions for downloading releases of each database and converting the databases
-to NiMARE Datasets.
+to NiMARE collections for analysis.
 
 In this example, we download and convert the Neurosynth and NeuroQuery databases for analysis with
 NiMARE.
@@ -38,6 +38,7 @@ from pprint import pprint
 
 from nimare.extract import download_abstracts, fetch_neuroquery, fetch_neurosynth
 from nimare.io import convert_neurosynth_to_dataset
+from nimare.nimads import Studyset
 
 # biopython is unnecessary here, but is required by download_abstracts.
 # We import it here only to document the dependency and cause an early failure if it's missing.
@@ -62,15 +63,13 @@ pprint(files)
 neurosynth_db = files[0]
 
 ###############################################################################
-# Convert Neurosynth database to NiMARE dataset file
+# Convert Neurosynth database to a NiMARE Studyset
 # -----------------------------------------------------------------------------
 neurosynth_dset = convert_neurosynth_to_dataset(
     coordinates_file=neurosynth_db["coordinates"],
     metadata_file=neurosynth_db["metadata"],
     annotations_files=neurosynth_db["features"],
 )
-neurosynth_dset.save(os.path.join(out_dir, "neurosynth_dataset.pkl.gz"))
-print(neurosynth_dset)
 
 ###############################################################################
 # Add article abstracts to dataset
@@ -79,7 +78,9 @@ print(neurosynth_dset)
 #
 # Make sure you replace the example email address with your own.
 neurosynth_dset = download_abstracts(neurosynth_dset, "example@example.edu")
-neurosynth_dset.save(os.path.join(out_dir, "neurosynth_dataset_with_abstracts.pkl.gz"))
+neurosynth_studyset = Studyset.from_dataset(neurosynth_dset)
+neurosynth_studyset.to_nimads(os.path.join(out_dir, "neurosynth_studyset.json"))
+print(neurosynth_studyset)
 
 ###############################################################################
 # Do the same with NeuroQuery
@@ -104,9 +105,9 @@ neuroquery_dset = convert_neurosynth_to_dataset(
     metadata_file=neuroquery_db["metadata"],
     annotations_files=neuroquery_db["features"],
 )
-neuroquery_dset.save(os.path.join(out_dir, "neuroquery_dataset.pkl.gz"))
-print(neuroquery_dset)
 
 # NeuroQuery also uses PMIDs as study IDs.
 neuroquery_dset = download_abstracts(neuroquery_dset, "example@example.edu")
-neuroquery_dset.save(os.path.join(out_dir, "neuroquery_dataset_with_abstracts.pkl.gz"))
+neuroquery_studyset = Studyset.from_dataset(neuroquery_dset)
+neuroquery_studyset.to_nimads(os.path.join(out_dir, "neuroquery_studyset.json"))
+print(neuroquery_studyset)

@@ -2,11 +2,20 @@
 
 .. _datasets_object:
 
-=========================
-The NiMARE Dataset object
-=========================
+=================================
+The legacy NiMARE Dataset object
+=================================
 
-This is a brief walkthrough of the :class:`~nimare.dataset.Dataset` class and its methods.
+This is a brief walkthrough of the legacy :class:`~nimare.dataset.Dataset` class
+and its methods.
+
+.. warning::
+
+   :class:`~nimare.dataset.Dataset` is deprecated in favor of
+   :class:`~nimare.nimads.Studyset`.
+   New workflows should start with the :ref:`nimads_object` example instead.
+   This page is retained for migration and for APIs that still operate on legacy
+   Dataset tables.
 """
 
 ###############################################################################
@@ -166,7 +175,9 @@ print("\n".join(sel_studies))
 # -----------------------------------------------------------------------------
 # While some elements of Datasets are designed to be changeable, like the paths
 # to image files, most elements are not.
-# NiMARE Estimators operate on Datasets and return *new*, updated Datasets.
+# NiMARE Estimators now primarily operate on Studysets, but the legacy Dataset
+# behavior is still supported for backwards compatibility.
+# Either way, analyses return *new*, updated collection objects.
 # If you want to reduce a Dataset based on a subset of the studies in the
 # Dataset, you need to use :meth:`~nimare.dataset.Dataset.slice`.
 sub_dset = dset.slice(ids=sel_studies)

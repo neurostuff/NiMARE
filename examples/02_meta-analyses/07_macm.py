@@ -21,9 +21,10 @@ from nimare.correct import FWECorrector
 from nimare.dataset import Dataset
 from nimare.meta.cbma.ale import SCALE
 from nimare.meta.cbma.mkda import MKDAChi2
+from nimare.nimads import Studyset
 
 ###############################################################################
-# Load Dataset
+# Load dataset and create Studysets
 # -----------------------------------------------------------------------------
 # We will assume that the Neurosynth database has already been downloaded and
 # converted to a NiMARE dataset.
@@ -46,14 +47,14 @@ roi_img = image.math_img(f"img1 == {roi_val}", img1=img)
 # Select studies with a reported coordinate in the ROI
 # -----------------------------------------------------------------------------
 roi_ids = dset.get_studies_by_mask(roi_img)
-dset_sel = dset.slice(roi_ids)
+studyset_sel = Studyset.from_dataset(dset.slice(roi_ids))
 print(f"{len(roi_ids)}/{len(dset.ids)} studies report at least one coordinate in the ROI")
 
 ###############################################################################
 # Select studies with *no* reported coordinates in the ROI
 # -----------------------------------------------------------------------------
 no_roi_ids = list(set(dset.ids).difference(roi_ids))
-dset_unsel = dset.slice(no_roi_ids)
+studyset_unsel = Studyset.from_dataset(dset.slice(no_roi_ids))
 print(f"{len(no_roi_ids)}/{len(dset.ids)} studies report zero coordinates in the ROI")
 
 
@@ -61,7 +62,7 @@ print(f"{len(no_roi_ids)}/{len(dset.ids)} studies report zero coordinates in the
 # MKDA Chi2 with FWE correction
 # -----------------------------------------------------------------------------
 mkda = MKDAChi2(kernel__r=10)
-results = mkda.fit(dset_sel, dset_unsel)
+results = mkda.fit(studyset_sel, studyset_unsel)
 
 corr = FWECorrector(method="montecarlo", n_iters=10000)
 cres = corr.transform(results)
@@ -86,5 +87,5 @@ plotting.plot_stat_map(
 # We will use the coordinates in Neurosynth
 xyz = dset.coordinates[["x", "y", "z"]].values
 scale = SCALE(xyz=xyz, n_iters=10000, n_cores=1, kernel__n=20)
-results = scale.fit(dset_sel)
+results = scale.fit(studyset_sel)
 plotting.plot_stat_map(results.get_map("z"), draw_cross=False, cmap="RdBu_r", symmetric_cbar=True)

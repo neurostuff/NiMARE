@@ -6,7 +6,7 @@
 Compare image and coordinate based meta-analyses
 ================================================
 
-Run IBMAs and CBMAs on a toy dataset, then compare the results qualitatively.
+Run IBMAs and CBMAs on a toy Studyset, then compare the results qualitatively.
 
 Collection of NIDM-Results packs downloaded from Neurovault collection 1425,
 uploaded by Dr. Camille Maumet.
@@ -21,6 +21,7 @@ from nimare.dataset import Dataset
 from nimare.extract import download_nidm_pain
 from nimare.meta.cbma import ALE
 from nimare.meta.ibma import DerSimonianLaird
+from nimare.nimads import Studyset
 from nimare.transforms import ImagesToCoordinates, ImageTransformer
 from nimare.utils import get_resource_path
 
@@ -30,25 +31,26 @@ from nimare.utils import get_resource_path
 dset_dir = download_nidm_pain()
 
 ###############################################################################
-# Load Dataset
+# Load Studyset
 # -----------------------------------------------------------------------------
 dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
 dset = Dataset(dset_file)
 dset.update_path(dset_dir)
+studyset = Studyset.from_dataset(dset)
 
 # Calculate missing statistical images from the available stats.
 xformer = ImageTransformer(target=["varcope"])
-dset = xformer.transform(dset)
+studyset = xformer.transform(studyset)
 
 # create coordinates from statistical maps
 coord_gen = ImagesToCoordinates(merge_strategy="fill")
-dset = coord_gen.transform(dset)
+studyset = coord_gen.transform(studyset)
 
 ###############################################################################
 # ALE (CBMA)
 # -----------------------------------------------------------------------------
 meta_cbma = ALE()
-cbma_results = meta_cbma.fit(dset)
+cbma_results = meta_cbma.fit(studyset)
 plot_stat_map(
     cbma_results.get_map("z"),
     cut_coords=[0, 0, -8],
@@ -61,7 +63,7 @@ plot_stat_map(
 # DerSimonian-Laird (IBMA)
 # -----------------------------------------------------------------------------
 meta_ibma = DerSimonianLaird()
-ibma_results = meta_ibma.fit(dset)
+ibma_results = meta_ibma.fit(studyset)
 plot_stat_map(
     ibma_results.get_map("z"),
     cut_coords=[0, 0, -8],

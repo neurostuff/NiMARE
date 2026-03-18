@@ -19,16 +19,18 @@ import matplotlib.pyplot as plt
 from nilearn.plotting import plot_stat_map
 
 from nimare.dataset import Dataset
+from nimare.nimads import Studyset
 from nimare.reports.base import run_reports
 from nimare.utils import get_resource_path
 from nimare.workflows.cbma import CBMAWorkflow
 
 ###############################################################################
-# Load Dataset
+# Load Studyset
 # -----------------------------------------------------------------------------
 
 dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
 dset = Dataset(dset_file)
+studyset = Studyset.from_dataset(dset)
 
 ###############################################################################
 # Run CBMA Workflow
@@ -41,13 +43,13 @@ dset = Dataset(dset_file)
 #
 # All in one call!
 #
-# result = CBMAWorkflow().fit(dset)
+# result = CBMAWorkflow().fit(studyset)
 #
 # For this example, we use an FDR correction because the default corrector (FWE correction with
 # Monte Carlo simulation) takes a long time to run due to the high number of iterations that
 # are required
 workflow = CBMAWorkflow(corrector="fdr")
-result = workflow.fit(dset)
+result = workflow.fit(studyset)
 
 ###############################################################################
 # Plot Results

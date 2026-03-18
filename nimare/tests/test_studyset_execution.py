@@ -10,7 +10,7 @@ from nimare.generate import create_coordinate_dataset
 from nimare.io import convert_nimads_to_dataset
 from nimare.meta.cbma import ALE
 from nimare.meta.ibma import Stouffers
-from nimare.meta.kernel import ALEKernel
+from nimare.meta.kernel import ALEKernel, MKDAKernel
 from nimare.nimads import Studyset
 from nimare.reports.base import run_reports
 from nimare.studyset import StudysetView, ensure_studyset_view
@@ -203,6 +203,39 @@ def test_image_transformer_accepts_studyset(testdata_ibma):
     studyset = Studyset.from_dataset(testdata_ibma)
     transformed = ImageTransformer(target="z").transform(studyset)
     assert "z" in transformed.images.columns
+
+
+def test_kernel_transformer_studyset_parity(testdata_cbma):
+    """Kernel transformers should accept Studysets and match Dataset outputs."""
+    dset = testdata_cbma.slice(testdata_cbma.ids[:5])
+    studyset = Studyset.from_dataset(dset)
+    kernel = MKDAKernel()
+
+    dset_array = kernel.transform(dset, return_type="array")
+    studyset_array = kernel.transform(studyset, return_type="array")
+
+    np.testing.assert_allclose(dset_array, studyset_array)
+
+    dset_summary = kernel.transform(dset, return_type="summary_array")
+    studyset_summary = kernel.transform(studyset, return_type="summary_array")
+
+    np.testing.assert_allclose(dset_summary, studyset_summary)
+
+
+def test_kernel_transformer_dataset_fast_path(monkeypatch, testdata_cbma):
+    """Kernel transformers should keep Dataset inputs on the direct fast path."""
+    dset = testdata_cbma.slice(testdata_cbma.ids[:5])
+    kernel = MKDAKernel()
+
+    def _fail(dataset):
+        raise AssertionError("Dataset inputs should not be normalized through StudysetView")
+
+    monkeypatch.setattr("nimare.meta.kernel.ensure_studyset_view", _fail)
+
+    output = kernel.transform(dset, return_type="summary_array")
+
+    assert output.ndim == 1
+    assert output.size > 0
 
 
 def test_reports_accept_studyset_results(tmp_path_factory, testdata_cbma):

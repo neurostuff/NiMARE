@@ -1,24 +1,6 @@
 API
 ===
 
-.. _api_dataset_ref:
-
-:mod:`nimare.dataset`: Dataset IO
---------------------------------------------------
-
-.. automodule:: nimare.dataset
-   :no-members:
-   :no-inherited-members:
-
-.. currentmodule:: nimare
-
-.. autosummary::
-   :toctree: generated/
-   :template: class.rst
-
-   dataset.Dataset
-
-
 .. _api_meta_ref:
 
 :mod:`nimare.meta`: Meta-analytic algorithms
@@ -163,6 +145,8 @@ For more information about functional characterization analysis, see :doc:`decod
    io.convert_neurosynth_to_dict
    io.convert_neurosynth_to_json
    io.convert_neurosynth_to_dataset
+   io.convert_dataset_to_nimads_dict
+   io.convert_dataset_to_studyset
    io.convert_sleuth_to_dict
    io.convert_sleuth_to_json
    io.convert_sleuth_to_dataset
@@ -173,6 +157,10 @@ For more information about functional characterization analysis, see :doc:`decod
 
 :mod:`nimare.nimads`: NeuroImaging Meta-Analysis Data Structure
 ---------------------------------------------------------------
+
+The NIMADS :class:`~nimare.nimads.Studyset` is the primary collection type for
+new NiMARE workflows.
+
 .. automodule:: nimare.nimads
    :no-members:
    :no-inherited-members:
@@ -190,6 +178,24 @@ For more information about functional characterization analysis, see :doc:`decod
    nimads.Condition
    nimads.Image
    nimads.Point
+
+
+.. _api_dataset_ref:
+
+:mod:`nimare.dataset`: Legacy Dataset IO
+--------------------------------------------------
+
+.. automodule:: nimare.dataset
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. autosummary::
+   :toctree: generated/
+   :template: class.rst
+
+   dataset.Dataset
 
 
 .. _api_transforms_ref:

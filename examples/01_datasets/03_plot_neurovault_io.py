@@ -28,9 +28,10 @@ from nilearn.plotting import plot_stat_map
 # * `3192 <https://neurovault.org/collections/3192/>`_
 # * `457 <https://neurovault.org/collections/457/>`_
 #
-# I can load specific statistical maps from these collections
-# into a NiMARE dataset:
+# I can load specific statistical maps from these collections,
+# then convert them to a Studyset for analysis:
 from nimare.io import convert_neurovault_to_dataset
+from nimare.nimads import Studyset
 
 # The specific collections I would like to download group level
 # statistical maps from
@@ -55,7 +56,7 @@ contrasts = {
 # in a NiMARE dataset.
 map_type_conversion = {"Z map": "z", "T map": "t"}
 
-dset = convert_neurovault_to_dataset(
+dataset = convert_neurovault_to_dataset(
     collection_ids,
     contrasts,
     img_dir=None,
@@ -68,19 +69,20 @@ dset = convert_neurovault_to_dataset(
 # Some of the statistical maps are T statistics and others are Z statistics.
 # To perform a Fisher's meta analysis, we need all Z maps.
 # Thoughtfully, NiMARE has a class named ``ImageTransformer`` that will
-# help us.
+# help us, and it can operate directly on a Studyset.
 from nimare.transforms import ImageTransformer
 
 # Not all studies have Z maps!
-dset.images[["z"]]
+dataset.images[["z"]]
 
 ###############################################################################
+studyset = Studyset.from_dataset(dataset)
 z_transformer = ImageTransformer(target="z")
-dset = z_transformer.transform(dset)
+studyset = z_transformer.transform(studyset)
 
 ###############################################################################
 # All studies now have Z maps!
-dset.images[["z"]]
+studyset.images[["z"]]
 
 ###############################################################################
 # Run a Meta-Analysis
@@ -94,7 +96,7 @@ from nimare.meta.ibma import Fishers
 # images during the fitting process.
 meta = Fishers(resample=True)
 
-meta_res = meta.fit(dset)
+meta_res = meta.fit(studyset)
 
 fig, ax = plt.subplots()
 display = plot_stat_map(meta_res.get_map("z"), threshold=3.3, axes=ax, figure=fig)

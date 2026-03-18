@@ -15,7 +15,7 @@ meta-analysis, see other stuff.
 """
 
 ###############################################################################
-# Load Dataset
+# Load Studysets
 # -----------------------------------------------------------------------------
 # .. note::
 #   The data used in this example come from a collection of NIDM-Results packs
@@ -32,15 +32,19 @@ from nilearn.plotting import plot_stat_map
 
 from nimare.correct import FWECorrector
 from nimare.dataset import Dataset
+from nimare.nimads import Studyset
 from nimare.utils import get_resource_path
 
 dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
 dset = Dataset(dset_file)
+studyset = Studyset.from_dataset(dset)
 
-# Some of the CBMA algorithms compare two Datasets,
-# so we'll split this example Dataset in half.
+# Some of the CBMA algorithms compare two collections,
+# so we'll split this example dataset in half before converting each subset to a Studyset.
 dset1 = dset.slice(dset.ids[:10])
 dset2 = dset.slice(dset.ids[10:])
+studyset1 = Studyset.from_dataset(dset1)
+studyset2 = Studyset.from_dataset(dset2)
 
 ###############################################################################
 # Multilevel Kernel Density Analysis
@@ -48,7 +52,7 @@ dset2 = dset.slice(dset.ids[10:])
 from nimare.meta.cbma.mkda import MKDADensity
 
 meta = MKDADensity()
-results = meta.fit(dset)
+results = meta.fit(studyset)
 
 corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(results)
@@ -81,7 +85,7 @@ pprint(results.bibtex_)
 from nimare.meta.cbma.mkda import MKDAChi2
 
 meta = MKDAChi2(kernel__r=10)
-results = meta.fit(dset1, dset2)
+results = meta.fit(studyset1, studyset2)
 
 corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(results)
@@ -112,7 +116,7 @@ pprint(results.bibtex_)
 from nimare.meta.cbma.mkda import KDA
 
 meta = KDA()
-results = meta.fit(dset)
+results = meta.fit(studyset)
 
 corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(results)
@@ -145,7 +149,7 @@ pprint(results.bibtex_)
 from nimare.meta.cbma.ale import ALE
 
 meta = ALE()
-results = meta.fit(dset)
+results = meta.fit(studyset)
 
 corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
 cres = corr.transform(results)
@@ -202,7 +206,7 @@ pprint(results.bibtex_)
 from nimare.meta.cbma.ale import ALESubtraction
 
 meta = ALESubtraction(n_iters=10, n_cores=1)
-results = meta.fit(dset1, dset2)
+results = meta.fit(studyset1, studyset2)
 
 plot_stat_map(
     results.get_map("z_desc-group1MinusGroup2"),

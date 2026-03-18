@@ -30,10 +30,11 @@ from nilearn.plotting import plot_stat_map
 
 from nimare.generate import create_coordinate_dataset
 from nimare.meta import models
+from nimare.nimads import Studyset
 from nimare.transforms import StandardizeField
 
 ###############################################################################
-# Load Dataset
+# Load Studyset-compatible data
 # -----------------------------------------------------------------------------
 # Here, we're going to simulate a dataset
 # (using `nimare.generate.create_coordinate_dataset
@@ -88,6 +89,7 @@ dset.annotations["schizophrenia_subtype"] = (
 from nimare.meta.cbmr import CBMREstimator
 
 dset = StandardizeField(fields=["sample_sizes", "avg_age"]).transform(dset)
+studyset = Studyset.from_dataset(dset)
 
 cbmr = CBMREstimator(
     group_categories=["diagnosis", "drug_status"],
@@ -103,7 +105,7 @@ cbmr = CBMREstimator(
     tol=1e3,   # a reasonable choice is 1e-2, 1e3 is for speed
     device="cpu",  # "cuda" if you have GPU
 )
-results = cbmr.fit(dataset=dset)
+results = cbmr.fit(dataset=studyset)
 
 ###############################################################################
 # Now that we have fitted the model, we can plot the spatial intensity maps.

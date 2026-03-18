@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 from nilearn.plotting import plot_stat_map
 
 ###############################################################################
-# Load Sleuth text files into Datasets
+# Load Sleuth text files and convert them to Studysets
 # -----------------------------------------------------------------------------
 # The data for this example are a subset of studies from a meta-analysis on
 # semantic cognition in children :footcite:p:`enge2021meta`.
@@ -36,6 +36,7 @@ from nilearn.plotting import plot_stat_map
 # while a second group of studies asked children to decide if two (or more)
 # words were semantically related to one another or not.
 from nimare.io import convert_sleuth_to_dataset
+from nimare.nimads import Studyset
 from nimare.utils import get_resource_path
 
 knowledge_file = os.path.join(get_resource_path(), "semantic_knowledge_children.txt")
@@ -43,6 +44,8 @@ related_file = os.path.join(get_resource_path(), "semantic_relatedness_children.
 
 knowledge_dset = convert_sleuth_to_dataset(knowledge_file)
 related_dset = convert_sleuth_to_dataset(related_file)
+knowledge_studyset = Studyset.from_dataset(knowledge_dset)
+related_studyset = Studyset.from_dataset(related_dset)
 
 ###############################################################################
 # Individual group ALEs
@@ -54,8 +57,8 @@ from nimare.correct import FWECorrector
 from nimare.meta.cbma import ALE
 
 ale = ALE(null_method="approximate")
-knowledge_results = ale.fit(knowledge_dset)
-related_results = ale.fit(related_dset)
+knowledge_results = ale.fit(knowledge_studyset)
+related_results = ale.fit(related_studyset)
 
 corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=100, n_cores=2)
 knowledge_corrected_results = corr.transform(knowledge_results)
@@ -173,7 +176,7 @@ workflow = PairwiseCBMAWorkflow(
     corrector=subtraction_corrector,
     diagnostics=FocusCounter(voxel_thresh=0.01, display_second_group=True),
 )
-res_sub = workflow.fit(knowledge_dset, related_dset)
+res_sub = workflow.fit(knowledge_studyset, related_studyset)
 
 ###############################################################################
 # Report

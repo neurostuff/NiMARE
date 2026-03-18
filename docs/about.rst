@@ -37,7 +37,7 @@ NiMARE's Role in a Proposed Meta-Analytic Ecosystem
   If you are interested in using a GUI to curate and perform large-scale meta-analyses along the lines of Neurosynth,
   we recommend checking out `Neurosynth-Compose`_.
   Neurosynth-Compose is a web application that takes over for Neurosynth,
-  allowing users to search across the literature and build large meta-analytic datasets,
+  allowing users to search across the literature and build large meta-analytic studysets,
   which can then be analyzed with NiMARE.
 
 .. image:: _static/ecosystem.png
@@ -47,7 +47,7 @@ NiMARE aims to fill a gap in a burgeoning meta-analytic ecosystem.
 The goal of NiMARE is to collect a wide range of meta-analytic tools in one Python library.
 Currently, those methods are spread out across a range of programming languages and user interfaces,
 or are never even translated from the original papers into useable tools.
-NiMARE operates on NIMADS-format datasets, which users will be able to compile by searching the NeuroStore database with the pyNIMADS library.
+NiMARE operates on NIMADS-format Studysets, which users will be able to compile by searching the NeuroStore database with the pyNIMADS library.
 A number of other services in the ecosystem will then use NiMARE functions to perform meta-analyses,
 including `Neurosynth-Compose`_ and `NeuroVault`_.
 
@@ -77,4 +77,3 @@ Meta-analysis tools for other neuroimaging modalities
 `````````````````````````````````````````````````````
 
 `ERPscanr`_: A resource for semi-automated, large-scale meta-analyses of ERP data.
-
