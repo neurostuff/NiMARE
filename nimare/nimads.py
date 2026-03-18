@@ -7,8 +7,24 @@ from copy import deepcopy
 import numpy as np
 from nilearn.image import load_img
 
+from nimare.exceptions import InvalidStudysetError
 from nimare.io import convert_nimads_to_dataset
 from nimare.utils import _mask_img_to_bool, get_masker, mm2vox
+
+
+def _validate_studyset_source(source):
+    """Validate the minimal schema required to construct a Studyset."""
+    if not isinstance(source, dict):
+        raise InvalidStudysetError("Studyset source must be a dictionary or JSON path")
+
+    missing_fields = [field for field in ("id", "studies") if field not in source]
+    if missing_fields:
+        raise InvalidStudysetError(
+            f"Studyset is missing required field(s): {', '.join(missing_fields)}"
+        )
+
+    if not isinstance(source["studies"], list):
+        raise InvalidStudysetError("Studyset 'studies' field must be a list")
 
 
 class Studyset:
@@ -36,9 +52,11 @@ class Studyset:
             with open(source, "r+") as f:
                 source = json.load(f)
 
+        _validate_studyset_source(source)
+
         self.id = source["id"]
         self.name = source.get("name", "") or ""
-        self.studies = [Study(s) for s in source.get("studies", [])]
+        self.studies = [Study(s) for s in source["studies"]]
         self._annotations = []
         self._nimare_space = None
         self._nimare_masker = None
