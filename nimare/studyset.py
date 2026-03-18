@@ -21,6 +21,7 @@ from nimare.utils import (
 )
 
 LGR = logging.getLogger(__name__)
+_TABLE_ATTRS = ("ids", "coordinates", "images", "metadata", "annotations", "texts")
 
 
 def _normalize_point_space(space):
@@ -54,6 +55,36 @@ def _normalize_image_type(value_type):
     return value_type
 
 
+def _snapshot_dataset_tables(dataset, copy_tables=False):
+    """Capture Dataset tables for StudysetView construction or Studyset caching."""
+    if copy_tables:
+        ids = dataset.ids.copy()
+        coordinates = dataset.coordinates.copy()
+        images = dataset.images.copy()
+        metadata = dataset.metadata.copy()
+        annotations = dataset.annotations.copy()
+        texts = dataset.texts.copy()
+    else:
+        ids = dataset.ids
+        coordinates = dataset.coordinates
+        images = dataset.images
+        metadata = dataset.metadata
+        annotations = dataset.annotations
+        texts = dataset.texts
+
+    return {
+        "ids": ids,
+        "coordinates": coordinates,
+        "images": images,
+        "metadata": metadata,
+        "annotations": annotations,
+        "texts": texts,
+        "space": dataset.space,
+        "masker": dataset.masker,
+        "basepath": dataset.basepath,
+    }
+
+
 class StudysetView(NiMAREBase):
     """Dataset-like, cached tabular view of a NIMADS Studyset."""
 
@@ -67,6 +98,7 @@ class StudysetView(NiMAREBase):
         return pd.DataFrame(columns=StudysetView._id_cols + list(extra_cols))
 
     def __init__(self, studyset, target=None, mask=None, basepath=None, materialize_ids=True):
+        self._dataset = None
         self.studyset = load_nimads(studyset)
         self.space = target or getattr(self.studyset, "_nimare_space", None)
         self.basepath = (
@@ -84,13 +116,44 @@ class StudysetView(NiMAREBase):
         self._annotations = None
         self._texts = None
         self._source_version = getattr(self.studyset, "_nimare_version", None)
+        table_cache = getattr(self.studyset, "_nimare_table_cache", None)
+        if table_cache is not None:
+            self._load_table_cache(table_cache)
         if materialize_ids:
             # Materialize IDs eagerly for compatibility with Dataset-like private access patterns.
             _ = self.ids
 
+    @classmethod
+    def from_dataset(cls, dataset):
+        """Create a Dataset-backed StudysetView without rebuilding nested Studyset objects."""
+        view = object.__new__(cls)
+        view._dataset = dataset
+        view.studyset = None
+        view.space = dataset.space
+        view.basepath = dataset.basepath
+        view.masker = dataset.masker
+        view._source_version = None
+        view._load_table_cache(_snapshot_dataset_tables(dataset, copy_tables=True))
+        return view
+
+    def _load_table_cache(self, table_cache):
+        """Attach pre-materialized Dataset-compatible tables to this view."""
+        if self.space is None:
+            self.space = table_cache.get("space")
+        if self.basepath is None:
+            self.basepath = table_cache.get("basepath")
+        if self.masker is None:
+            self.masker = table_cache.get("masker")
+
+        for attr in _TABLE_ATTRS:
+            setattr(self, f"_{attr}", table_cache.get(attr))
+
+        self._ensure_masker_from_space()
+
     def _spawn_cached_clone(self):
         """Return a lightweight clone with shared cached tables."""
         clone = object.__new__(StudysetView)
+        clone._dataset = self._dataset
         clone.studyset = self.studyset
         clone.space = self.space
         clone.basepath = self.basepath
@@ -299,6 +362,9 @@ class StudysetView(NiMAREBase):
     def slice(self, ids):
         """Create a new view with only requested full analysis IDs."""
         ids = set(_listify(ids))
+        if self._dataset is not None:
+            return StudysetView.from_dataset(self._dataset.slice(sorted(ids)))
+
         studyset_dict = self.studyset.to_dict()
         for study in studyset_dict["studies"]:
             study_id = study["id"]
@@ -499,18 +565,7 @@ def ensure_studyset_view(dataset):
         return dataset
 
     if isinstance(dataset, Dataset):
-        # Always rebuild from the Dataset to avoid stale cached data when DataFrames
-        # are modified in place between estimator calls.
-        studyset = Studyset.from_dataset(dataset)
-        studyset._nimare_masker = dataset.masker
-        studyset._nimare_space = dataset.space
-        studyset._nimare_basepath = dataset.basepath
-        return StudysetView(
-            studyset=studyset,
-            target=dataset.space,
-            mask=dataset.masker,
-            basepath=dataset.basepath,
-        )
+        return StudysetView.from_dataset(dataset)
 
     if isinstance(dataset, Studyset) or isinstance(dataset, (dict, str)):
         studyset = load_nimads(dataset)

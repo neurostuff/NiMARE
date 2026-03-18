@@ -141,6 +141,41 @@ def test_ensure_studyset_view_reflects_dataset_edits(testdata_ibma):
         assert image_col not in view2.images.columns
 
 
+def test_ensure_studyset_view_avoids_dataset_to_studyset_rebuild(monkeypatch, testdata_cbma):
+    """Dataset inputs should use the direct StudysetView fast path."""
+
+    def _fail_from_dataset(cls, dataset):
+        raise AssertionError("Studyset.from_dataset should not be called for Dataset inputs")
+
+    monkeypatch.setattr(Studyset, "from_dataset", classmethod(_fail_from_dataset))
+
+    dset = testdata_cbma.slice(testdata_cbma.ids[:5])
+    view = ensure_studyset_view(dset)
+
+    assert len(view.ids) == 5
+    assert set(view.ids) == set(dset.ids)
+    assert set(view.coordinates["id"]).issubset(set(dset.ids))
+
+
+def test_studyset_from_dataset_caches_independent_tables(testdata_ibma):
+    """Studyset.from_dataset should snapshot Dataset tables for native execution."""
+    dset = testdata_ibma.slice(testdata_ibma.ids[:5])
+    image_cols = [
+        col
+        for col in dset.images.columns
+        if col not in {"id", "study_id", "contrast_id", "space"} and not col.endswith("__relative")
+    ]
+    image_col = next((col for col in image_cols if dset.images[col].notnull().any()), None)
+    assert image_col is not None
+
+    studyset = Studyset.from_dataset(dset)
+    dset.images.loc[:, image_col] = None
+
+    view = ensure_studyset_view(studyset)
+    assert image_col in view.images.columns
+    assert view.images[image_col].notnull().any()
+
+
 def test_image_transformer_accepts_studyset(testdata_ibma):
     """Ensure ImageTransformer accepts Studyset inputs."""
     studyset = Studyset.from_dataset(testdata_ibma)

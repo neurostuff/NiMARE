@@ -42,6 +42,7 @@ class Studyset:
         self._annotations = []
         self._nimare_version = 0
         self._nimare_view_cache = None
+        self._nimare_table_cache = None
         for annotation in source.get("annotations", []):
             self.annotations = annotation
         if annotations:
@@ -89,6 +90,7 @@ class Studyset:
         """Invalidate Studyset-derived caches after in-place mutation."""
         self._nimare_version = int(getattr(self, "_nimare_version", 0)) + 1
         self._nimare_view_cache = None
+        self._nimare_table_cache = None
 
     @classmethod
     def from_nimads(cls, filename):
@@ -102,6 +104,7 @@ class Studyset:
     def from_dataset(cls, dataset):
         """Create a Studyset from a NiMARE Dataset."""
         from nimare.io import convert_dataset_to_nimads_dict
+        from nimare.studyset import _snapshot_dataset_tables
 
         nimads = convert_dataset_to_nimads_dict(dataset)
         studyset = cls(nimads)
@@ -109,6 +112,7 @@ class Studyset:
         studyset._nimare_masker = dataset.masker
         studyset._nimare_space = dataset.space
         studyset._nimare_basepath = dataset.basepath
+        studyset._nimare_table_cache = _snapshot_dataset_tables(dataset, copy_tables=True)
         return studyset
 
     @classmethod
@@ -203,6 +207,7 @@ class Studyset:
         self._annotations = loaded_data._annotations
         self._nimare_version = int(getattr(loaded_data, "_nimare_version", 0))
         self._nimare_view_cache = None
+        self._nimare_table_cache = None
         self.touch()
         return self
 
