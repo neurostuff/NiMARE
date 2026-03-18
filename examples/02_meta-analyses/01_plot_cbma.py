@@ -31,20 +31,23 @@ from pprint import pprint
 from nilearn.plotting import plot_stat_map
 
 from nimare.correct import FWECorrector
-from nimare.dataset import Dataset
 from nimare.nimads import Studyset
 from nimare.utils import get_resource_path
 
-dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
-dset = Dataset(dset_file)
-studyset = Studyset.from_dataset(dset)
+studyset_file = os.path.join(get_resource_path(), "nidm_pain_studyset.json")
+studyset = Studyset(studyset_file, target="mni152_2mm")
+
+
+def subset_studies(studyset, start=None, stop=None):
+    """Create a Studyset limited to a slice of studies."""
+    source = studyset.to_dict()
+    source["studies"] = source["studies"][start:stop]
+    return Studyset(source, target=studyset.space)
 
 # Some of the CBMA algorithms compare two collections,
-# so we'll split this example dataset in half before converting each subset to a Studyset.
-dset1 = dset.slice(dset.ids[:10])
-dset2 = dset.slice(dset.ids[10:])
-studyset1 = Studyset.from_dataset(dset1)
-studyset2 = Studyset.from_dataset(dset2)
+# so we'll split this example Studyset in half.
+studyset1 = subset_studies(studyset, None, 10)
+studyset2 = subset_studies(studyset, 10, None)
 
 ###############################################################################
 # Multilevel Kernel Density Analysis
@@ -193,8 +196,8 @@ pprint(results.bibtex_)
 #   from nimare.utils import vox2mm
 #
 #   xyz = vox2mm(
-#       np.vstack(np.where(dset.masker.mask_img.get_fdata())).T,
-#       dset.masker.mask_img.affine,
+#       np.vstack(np.where(studyset.masker.mask_img.get_fdata())).T,
+#       studyset.masker.mask_img.affine,
 #   )
 #
 #   meta = SCALE(xyz=xyz, n_iters=10)

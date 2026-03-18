@@ -18,7 +18,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from nilearn.plotting import plot_stat_map
 
-from nimare.dataset import Dataset
 from nimare.nimads import Studyset
 from nimare.reports.base import run_reports
 from nimare.utils import get_resource_path
@@ -28,9 +27,8 @@ from nimare.workflows.cbma import CBMAWorkflow
 # Load Studyset
 # -----------------------------------------------------------------------------
 
-dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
-dset = Dataset(dset_file)
-studyset = Studyset.from_dataset(dset)
+studyset_file = os.path.join(get_resource_path(), "nidm_pain_studyset.json")
+studyset = Studyset(studyset_file, target="mni152_2mm")
 
 ###############################################################################
 # Run CBMA Workflow

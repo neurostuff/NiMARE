@@ -8,6 +8,7 @@ import pytest
 
 from nimare import nimads
 from nimare.dataset import Dataset
+from nimare.tests.utils import get_test_data_path
 
 
 def test_load_nimads(example_nimads_studyset, example_nimads_annotation):
@@ -98,6 +99,18 @@ def test_studyset_init(example_nimads_studyset):
         assert len(studyset2.studies) == len(example_nimads_studyset["studies"])
     finally:
         os.unlink(tmp_path)
+
+
+def test_saved_nidm_pain_studyset_loads_directly():
+    """Test loading the saved pain Studyset resource directly."""
+    studyset_file = os.path.join(get_test_data_path(), "nidm_pain_studyset.json")
+
+    studyset = nimads.Studyset(studyset_file, target="mni152_2mm")
+    studyset.update_path(get_test_data_path())
+
+    assert len(studyset.studies) > 0
+    assert studyset.space == "mni152_2mm"
+    assert studyset.basepath == os.path.abspath(get_test_data_path())
 
 
 def test_studyset_string_methods(example_nimads_studyset):
@@ -201,27 +214,27 @@ def test_studyset_merge(example_nimads_studyset):
         studyset1.merge("not a studyset")
 
 
-def test_get_analyses_by_coordinates(example_nimads_studyset):
+def test_get_analyses_by_coordinate(example_nimads_studyset):
     """Test retrieving analyses by coordinates."""
     studyset = nimads.Studyset(example_nimads_studyset)
 
     # Test with radius
     xyz = [0, 0, 0]
-    results_r = studyset.get_analyses_by_coordinates(xyz, r=10)
+    results_r = studyset.get_analyses_by_coordinate(xyz, r=10)
     assert isinstance(results_r, list)
 
     # Test with n nearest
-    results_n = studyset.get_analyses_by_coordinates(xyz, n=5)
+    results_n = studyset.get_analyses_by_coordinate(xyz, n=5)
     assert isinstance(results_n, list)
     assert len(results_n) <= 5
 
     # Test invalid parameters
     with pytest.raises(ValueError):
-        studyset.get_analyses_by_coordinates(xyz)  # Neither r nor n
+        studyset.get_analyses_by_coordinate(xyz)  # Neither r nor n
     with pytest.raises(ValueError):
-        studyset.get_analyses_by_coordinates(xyz, r=10, n=5)  # Both r and n
+        studyset.get_analyses_by_coordinate(xyz, r=10, n=5)  # Both r and n
     with pytest.raises(ValueError):
-        studyset.get_analyses_by_coordinates([0, 0])  # Invalid coordinates
+        studyset.get_analyses_by_coordinate([0, 0])  # Invalid coordinates
 
 
 def test_get_analyses_by_mask(example_nimads_studyset, mni_mask):
@@ -230,6 +243,22 @@ def test_get_analyses_by_mask(example_nimads_studyset, mni_mask):
 
     results = studyset.get_analyses_by_mask(mni_mask)
     assert isinstance(results, list)
+
+
+def test_get_analyses_by_label(example_nimads_studyset):
+    """Test retrieving analyses by label threshold."""
+    studyset = nimads.Studyset(example_nimads_studyset)
+
+    selected_ids = []
+    for i, (_, analysis) in enumerate(studyset._iter_analyses()):
+        analysis.annotations["custom_label"] = 1.0 if i < 2 else 0.0
+        if i < 2:
+            selected_ids.append(analysis.id)
+
+    results = studyset.get_analyses_by_label("custom_label", label_threshold=0.5)
+
+    assert isinstance(results, list)
+    assert set(results) == set(selected_ids)
 
 
 def test_get_analyses_by_metadata(example_nimads_studyset):
@@ -251,6 +280,18 @@ def test_get_analyses_by_metadata(example_nimads_studyset):
     results2 = studyset.get_analyses_by_metadata(key, value)
     assert isinstance(results2, dict)
     assert all(list(d.values())[0] == value for d in results2.values())
+
+
+def test_get_studies_by_coordinate(example_nimads_studyset):
+    """Test the StudysetView-style coordinate search wrapper."""
+    studyset = nimads.Studyset(example_nimads_studyset)
+    xyz = [[0, 0, 0]]
+
+    results = studyset.get_studies_by_coordinate(xyz, r=10)
+    expected = studyset.view().get_studies_by_coordinate(xyz, r=10)
+
+    assert isinstance(results, list)
+    assert set(results) == set(expected)
 
 
 def test_data_retrieval_methods(example_nimads_studyset):

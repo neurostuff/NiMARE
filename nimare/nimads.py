@@ -1,6 +1,7 @@
 """NIMADS-related classes for NiMARE."""
 
 import json
+import os
 import weakref
 from copy import deepcopy
 
@@ -261,6 +262,41 @@ class Studyset:
         """Extract labels present in the Studyset's analysis-level annotations."""
         return self.view().get_labels(ids=ids)
 
+    @staticmethod
+    def _flatten_analysis_annotations(analysis):
+        """Return one analysis' annotations as a flat label-to-value mapping."""
+        flat_annotations = {}
+        for key, note in (analysis.annotations or {}).items():
+            if isinstance(note, dict):
+                flat_annotations.update(note)
+            else:
+                flat_annotations[key] = note
+        return flat_annotations
+
+    def get_analyses_by_label(self, labels=None, label_threshold=0.001):
+        """Extract analysis IDs whose annotation values exceed the threshold."""
+        if isinstance(labels, str):
+            labels = [labels]
+        elif not isinstance(labels, list):
+            raise ValueError(f"Argument 'labels' cannot be {type(labels)}")
+
+        missing_labels = [label for label in labels if label not in self.get_labels()]
+        if missing_labels:
+            raise ValueError(f"Missing label(s): {', '.join(missing_labels)}")
+
+        found_ids = []
+        for _, analysis in self._iter_analyses():
+            flat_annotations = self._flatten_analysis_annotations(analysis)
+            if all(
+                (label in flat_annotations)
+                and (not pd.isna(flat_annotations[label]))
+                and (flat_annotations[label] >= label_threshold)
+                for label in labels
+            ):
+                found_ids.append(analysis.id)
+
+        return found_ids
+
     def get_studies_by_label(self, labels=None, label_threshold=0.001):
         """Extract full analysis IDs whose annotation values exceed the threshold."""
         return self.view().get_studies_by_label(
@@ -458,6 +494,11 @@ class Studyset:
         with open(filename, "wb") as f:
             pickle.dump(self, f)
 
+    def update_path(self, new_path):
+        """Prepend a base path for relative image paths in the Studyset."""
+        self._set_execution_context(basepath=os.path.abspath(new_path))
+        return self
+
     def copy(self):
         """Create a copy of the Studyset."""
         return deepcopy(self)
@@ -570,7 +611,7 @@ class Studyset:
 
         return merged
 
-    def get_analyses_by_coordinates(self, xyz, r=None, n=None):
+    def get_analyses_by_coordinate(self, xyz, r=None, n=None):
         """Extract a list of Analyses with at least one Point near the requested coordinates.
 
         Parameters

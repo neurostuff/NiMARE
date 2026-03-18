@@ -20,16 +20,16 @@ import os
 ###############################################################################
 # Load Studyset
 # -----------------------------------------------------------------------------
-from nimare.dataset import Dataset
 from nimare.nimads import Studyset
 from nimare.utils import get_resource_path
 
-dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
-dset = Dataset(dset_file)
+studyset_file = os.path.join(get_resource_path(), "nidm_pain_studyset.json")
+studyset = Studyset(studyset_file, target="mni152_2mm")
 
-# We will reduce the dataset to the first 10 studies, then convert it to a Studyset.
-dset = dset.slice(dset.ids[:10])
-studyset = Studyset.from_dataset(dset)
+# We will reduce the Studyset to the first 10 studies.
+source = studyset.to_dict()
+source["studies"] = source["studies"][:10]
+studyset = Studyset(source, target="mni152_2mm")
 
 ###############################################################################
 # The Estimator

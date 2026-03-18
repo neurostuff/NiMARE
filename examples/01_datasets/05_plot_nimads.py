@@ -86,11 +86,11 @@ print("-" * 50)
 print(f"Searching near coordinate: {example_coord}")
 
 # Find analyses with coordinates within 10mm
-nearby_analyses = studyset.get_analyses_by_coordinates(example_coord, r=10)
+nearby_analyses = studyset.get_analyses_by_coordinate(example_coord, r=10)
 print(f"\nFound {len(nearby_analyses)} analyses within 10mm")
 
 # Find 5 closest analyses
-closest_analyses = studyset.get_analyses_by_coordinates(example_coord, n=5)
+closest_analyses = studyset.get_analyses_by_coordinate(example_coord, n=5)
 print(f"\nClosest 5 analyses: {closest_analyses}")
 
 

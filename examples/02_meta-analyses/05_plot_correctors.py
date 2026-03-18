@@ -27,14 +27,12 @@ dset_dir = download_nidm_pain()
 # -----------------------------------------------------------------------------
 import os
 
-from nimare.dataset import Dataset
 from nimare.nimads import Studyset
 from nimare.utils import get_resource_path
 
-dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
-dset = Dataset(dset_file)
-dset.update_path(dset_dir)
-studyset = Studyset.from_dataset(dset)
+studyset_file = os.path.join(get_resource_path(), "nidm_pain_studyset.json")
+studyset = Studyset(studyset_file, target="mni152_2mm")
+studyset.update_path(dset_dir)
 
 ###############################################################################
 # .. _corrector-cbma-example:

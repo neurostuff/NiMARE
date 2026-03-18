@@ -27,16 +27,16 @@ from nilearn.plotting import plot_stat_map
 ###############################################################################
 # Load Studyset
 # -----------------------------------------------------------------------------
-from nimare.dataset import Dataset
 from nimare.nimads import Studyset
 from nimare.utils import get_resource_path
 
-dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
-dset = Dataset(dset_file)
+studyset_file = os.path.join(get_resource_path(), "nidm_pain_studyset.json")
+studyset = Studyset(studyset_file, target="mni152_2mm")
 
-# First, let us reduce this dataset to only two studies, then convert it to a Studyset.
-dset = dset.slice(dset.ids[2:4])
-studyset = Studyset.from_dataset(dset)
+# First, let us reduce this Studyset to only two studies.
+source = studyset.to_dict()
+source["studies"] = source["studies"][2:4]
+studyset = Studyset(source, target="mni152_2mm")
 
 ###############################################################################
 # Kernels ingest Studysets and can produce a few types of outputs
