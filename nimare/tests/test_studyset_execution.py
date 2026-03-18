@@ -10,7 +10,7 @@ from nimare import annotate
 from nimare.correct import FDRCorrector
 from nimare.decode import discrete
 from nimare.diagnostics import FocusFilter
-from nimare.generate import create_coordinate_dataset, create_coordinate_studyset
+from nimare.generate import create_coordinate_studyset
 from nimare.io import convert_nimads_to_dataset
 from nimare.meta.cbma import ALE
 from nimare.meta.ibma import Stouffers

@@ -6,7 +6,6 @@ import pytest
 from numpy.random import RandomState
 
 from nimare.dataset import Dataset
-from nimare.nimads import Studyset
 from nimare.generate import (
     _array_like,
     _create_foci,
@@ -15,6 +14,7 @@ from nimare.generate import (
     create_coordinate_studyset,
     create_neurovault_dataset,
 )
+from nimare.nimads import Studyset
 
 
 @pytest.mark.parametrize(
