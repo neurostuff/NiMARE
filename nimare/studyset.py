@@ -57,32 +57,15 @@ def _normalize_image_type(value_type):
 
 def _snapshot_dataset_tables(dataset, copy_tables=False):
     """Capture Dataset tables for StudysetView construction or Studyset caching."""
-    if copy_tables:
-        ids = dataset.ids.copy()
-        coordinates = dataset.coordinates.copy()
-        images = dataset.images.copy()
-        metadata = dataset.metadata.copy()
-        annotations = dataset.annotations.copy()
-        texts = dataset.texts.copy()
-    else:
-        ids = dataset.ids
-        coordinates = dataset.coordinates
-        images = dataset.images
-        metadata = dataset.metadata
-        annotations = dataset.annotations
-        texts = dataset.texts
-
-    return {
-        "ids": ids,
-        "coordinates": coordinates,
-        "images": images,
-        "metadata": metadata,
-        "annotations": annotations,
-        "texts": texts,
+    table_cache = {
         "space": dataset.space,
         "masker": dataset.masker,
         "basepath": dataset.basepath,
     }
+    for attr in _TABLE_ATTRS:
+        value = getattr(dataset, attr)
+        table_cache[attr] = value.copy() if copy_tables else value
+    return table_cache
 
 
 class StudysetView(NiMAREBase):
@@ -100,12 +83,11 @@ class StudysetView(NiMAREBase):
     def __init__(self, studyset, target=None, mask=None, basepath=None, materialize_ids=True):
         self._dataset = None
         self.studyset = load_nimads(studyset)
-        self.space = target or getattr(self.studyset, "_nimare_space", None)
-        self.basepath = (
-            basepath if basepath is not None else getattr(self.studyset, "_nimare_basepath", None)
-        )
+        context = self.studyset._get_execution_context()
+        self.space = target or context["space"]
+        self.basepath = basepath if basepath is not None else context["basepath"]
 
-        mask = mask if mask is not None else getattr(self.studyset, "_nimare_masker", None)
+        mask = mask if mask is not None else context["masker"]
         self.masker = get_masker(mask) if mask is not None else None
         self._ensure_masker_from_space()
 
@@ -115,8 +97,7 @@ class StudysetView(NiMAREBase):
         self._metadata = None
         self._annotations = None
         self._texts = None
-        self._source_version = getattr(self.studyset, "_nimare_version", None)
-        table_cache = getattr(self.studyset, "_nimare_table_cache", None)
+        table_cache = context["table_cache"]
         if table_cache is not None:
             self._load_table_cache(table_cache)
         if materialize_ids:
@@ -132,7 +113,6 @@ class StudysetView(NiMAREBase):
         view.space = dataset.space
         view.basepath = dataset.basepath
         view.masker = dataset.masker
-        view._source_version = None
         view._load_table_cache(_snapshot_dataset_tables(dataset, copy_tables=True))
         return view
 
@@ -150,6 +130,20 @@ class StudysetView(NiMAREBase):
 
         self._ensure_masker_from_space()
 
+    def _iter_flat_analyses(self):
+        """Yield analyses with their parent study and full Dataset-style ID."""
+        for study, analysis in self.studyset._iter_analyses():
+            yield study, analysis, f"{study.id}-{analysis.id}"
+
+    @classmethod
+    def _analysis_row(cls, study, analysis, full_id):
+        """Create the shared ID columns for a single analysis row."""
+        return {
+            "id": full_id,
+            "study_id": study.id,
+            "contrast_id": analysis.id,
+        }
+
     def _spawn_cached_clone(self):
         """Return a lightweight clone with shared cached tables."""
         clone = object.__new__(StudysetView)
@@ -158,7 +152,6 @@ class StudysetView(NiMAREBase):
         clone.space = self.space
         clone.basepath = self.basepath
         clone.masker = self.masker
-        clone._source_version = self._source_version
         clone._ids = self._ids
         clone._coordinates = self._coordinates
         clone._images = self._images
@@ -167,14 +160,162 @@ class StudysetView(NiMAREBase):
         clone._texts = self._texts
         return clone
 
-    def _materialize_cache(self):
-        """Populate all core tables on this view."""
-        _ = self.ids
-        _ = self.coordinates
-        _ = self.images
-        _ = self.metadata
-        _ = self.annotations
-        _ = self.texts
+    def __deepcopy__(self, memo):
+        """Avoid recursively copying the underlying Dataset/Studyset graph."""
+        existing = memo.get(id(self))
+        if existing is not None:
+            return existing
+
+        clone = self._spawn_cached_clone()
+        memo[id(self)] = clone
+        return clone
+
+    @staticmethod
+    def _rows_to_df(rows, columns):
+        """Build a sorted DataFrame from row dictionaries."""
+        if not rows:
+            return pd.DataFrame(columns=columns)
+        return pd.DataFrame(rows).sort_values(by="id")
+
+    def _update_studyset_cache(self, *attrs):
+        """Persist newly materialized tables back onto the source Studyset."""
+        if self.studyset is None:
+            return
+
+        table_cache = dict(self.studyset._get_execution_context()["table_cache"] or {})
+        table_cache.update(
+            {
+                "space": self.space,
+                "masker": self.masker,
+                "basepath": self.basepath,
+            }
+        )
+        for attr in attrs:
+            table_cache[attr] = getattr(self, f"_{attr}")
+        self.studyset._set_table_cache(table_cache)
+
+    def _materialize_tables(self, *table_names):
+        """Populate requested tables from the underlying Studyset in one pass."""
+        if self.studyset is None:
+            return
+
+        requested = tuple(dict.fromkeys(table_names))
+        if not requested:
+            return
+
+        pending = [name for name in requested if getattr(self, f"_{name}") is None]
+        if not pending:
+            return
+
+        build_ids = self._ids is None
+        build_coordinates = "coordinates" in pending
+        build_images = "images" in pending
+        build_metadata = "metadata" in pending
+        build_annotations = "annotations" in pending
+        build_texts = "texts" in pending
+
+        ids = [] if build_ids else None
+        coordinate_rows = [] if build_coordinates else None
+        image_rows = [] if build_images else None
+        metadata_rows = [] if build_metadata else None
+        annotation_rows = [] if build_annotations else None
+        text_rows = [] if build_texts else None
+        spaces = [] if build_coordinates and self.space is None else None
+
+        for study, analysis, full_id in self._iter_flat_analyses():
+            base_row = self._analysis_row(study, analysis, full_id)
+
+            if build_ids:
+                ids.append(full_id)
+
+            if build_metadata:
+                study_name = study.name or study.id
+                analysis_name = analysis.name or analysis.id
+                metadata_row = {
+                    **base_row,
+                    "study_name": study_name,
+                    "analysis_name": analysis_name,
+                    "authors": study.authors,
+                    "journal": study.publication,
+                    "name": f"{study_name}-{analysis_name}",
+                }
+                metadata_row.update(analysis.get_metadata())
+                metadata_rows.append(metadata_row)
+
+            if build_annotations:
+                annotation_row = dict(base_row)
+                for key, note in (analysis.annotations or {}).items():
+                    if isinstance(note, dict):
+                        annotation_row.update(note)
+                    else:
+                        annotation_row[key] = note
+                annotation_rows.append(annotation_row)
+
+            if build_images:
+                image_row = dict(base_row)
+                for image in analysis.images:
+                    image_type = _normalize_image_type(image.value_type)
+                    if image_type is None:
+                        continue
+                    image_row[image_type] = image.url if image.url else image.filename
+                    if image.space and "space" not in image_row:
+                        image_row["space"] = image.space
+                image_rows.append(image_row)
+
+            if build_texts:
+                text_row = dict(base_row)
+                text_row.update(analysis.texts or {})
+                text_rows.append(text_row)
+
+            if build_coordinates:
+                for point in analysis.points:
+                    coordinate_rows.append(
+                        {
+                            **base_row,
+                            "x": float(point.x),
+                            "y": float(point.y),
+                            "z": float(point.z),
+                            "space": point.space,
+                        }
+                    )
+                    if spaces is not None:
+                        spaces.append(_normalize_point_space(point.space))
+
+        built_attrs = []
+        if build_ids:
+            self._ids = np.sort(np.asarray(ids))
+            built_attrs.append("ids")
+
+        if build_coordinates:
+            self._coordinates = self._rows_to_df(
+                coordinate_rows,
+                self._id_cols + ["x", "y", "z", "space"],
+            )
+            built_attrs.append("coordinates")
+
+        if build_images:
+            self._images = self._rows_to_df(image_rows, self._id_cols)
+            built_attrs.append("images")
+
+        if build_metadata:
+            self._metadata = self._rows_to_df(metadata_rows, self._id_cols)
+            built_attrs.append("metadata")
+
+        if build_annotations:
+            self._annotations = self._rows_to_df(annotation_rows, self._id_cols)
+            built_attrs.append("annotations")
+
+        if build_texts:
+            self._texts = self._rows_to_df(text_rows, self._id_cols)
+            built_attrs.append("texts")
+
+        if spaces is not None and self.space is None:
+            inferred_spaces = {space for space in spaces if space is not None}
+            if len(inferred_spaces) == 1:
+                self.space = inferred_spaces.pop()
+                self._ensure_masker_from_space()
+
+        self._update_studyset_cache(*built_attrs)
 
     def _ensure_masker_from_space(self):
         """Initialize a default masker from the inferred/declared Studyset space when possible."""
@@ -194,47 +335,18 @@ class StudysetView(NiMAREBase):
     def ids(self):
         """numpy.ndarray: 1D array of full analysis identifiers."""
         if self._ids is None:
-            ids = []
-            for study in self.studyset.studies:
-                for analysis in study.analyses:
-                    ids.append(f"{study.id}-{analysis.id}")
-            self._ids = np.sort(np.asarray(ids))
+            if self.studyset is None:
+                raise ValueError(
+                    "StudysetView is missing both cached tables and a Studyset source."
+                )
+            self._materialize_tables("ids")
         return self._ids
 
     @property
     def coordinates(self):
         """pandas.DataFrame: Coordinates table."""
         if self._coordinates is None:
-            rows = []
-            spaces = []
-            for study in self.studyset.studies:
-                for analysis in study.analyses:
-                    full_id = f"{study.id}-{analysis.id}"
-                    for point in analysis.points:
-                        row = {
-                            "id": full_id,
-                            "study_id": study.id,
-                            "contrast_id": analysis.id,
-                            "x": float(point.x),
-                            "y": float(point.y),
-                            "z": float(point.z),
-                            "space": point.space,
-                        }
-                        rows.append(row)
-                        spaces.append(_normalize_point_space(point.space))
-
-            if rows:
-                coordinates = pd.DataFrame(rows).sort_values(by="id")
-            else:
-                coordinates = pd.DataFrame(columns=self._id_cols + ["x", "y", "z", "space"])
-
-            if self.space is None:
-                inferred_spaces = {space for space in spaces if space is not None}
-                if len(inferred_spaces) == 1:
-                    self.space = inferred_spaces.pop()
-                    self._ensure_masker_from_space()
-
-            self._coordinates = coordinates
+            self._materialize_tables("coordinates")
         return self._coordinates
 
     @coordinates.setter
@@ -246,27 +358,7 @@ class StudysetView(NiMAREBase):
     def metadata(self):
         """pandas.DataFrame: Metadata table."""
         if self._metadata is None:
-            rows = []
-            for study in self.studyset.studies:
-                for analysis in study.analyses:
-                    full_id = f"{study.id}-{analysis.id}"
-                    row = {
-                        "id": full_id,
-                        "study_id": study.id,
-                        "contrast_id": analysis.id,
-                        "study_name": study.name or study.id,
-                        "analysis_name": analysis.name or analysis.id,
-                        "authors": study.authors,
-                        "journal": study.publication,
-                        "name": f"{study.name or study.id}-{analysis.name or analysis.id}",
-                    }
-                    row.update(analysis.get_metadata())
-                    rows.append(row)
-
-            if rows:
-                self._metadata = pd.DataFrame(rows).sort_values(by="id")
-            else:
-                self._metadata = pd.DataFrame(columns=self._id_cols)
+            self._materialize_tables("metadata")
         return self._metadata
 
     @metadata.setter
@@ -277,25 +369,7 @@ class StudysetView(NiMAREBase):
     def annotations(self):
         """pandas.DataFrame: Flattened analysis annotation table."""
         if self._annotations is None:
-            rows = []
-            for study in self.studyset.studies:
-                for analysis in study.analyses:
-                    full_id = f"{study.id}-{analysis.id}"
-                    row = {
-                        "id": full_id,
-                        "study_id": study.id,
-                        "contrast_id": analysis.id,
-                    }
-                    for key, note in (analysis.annotations or {}).items():
-                        if isinstance(note, dict):
-                            row.update(note)
-                        else:
-                            row[key] = note
-                    rows.append(row)
-            if rows:
-                self._annotations = pd.DataFrame(rows).sort_values(by="id")
-            else:
-                self._annotations = self._empty_table()
+            self._materialize_tables("annotations")
         return self._annotations
 
     @annotations.setter
@@ -306,29 +380,7 @@ class StudysetView(NiMAREBase):
     def images(self):
         """pandas.DataFrame: Image file table."""
         if self._images is None:
-            rows = []
-            for study in self.studyset.studies:
-                for analysis in study.analyses:
-                    full_id = f"{study.id}-{analysis.id}"
-                    row = {
-                        "id": full_id,
-                        "study_id": study.id,
-                        "contrast_id": analysis.id,
-                    }
-                    for image in analysis.images:
-                        image_type = _normalize_image_type(image.value_type)
-                        if image_type is None:
-                            continue
-                        image_path = image.url if image.url else image.filename
-                        row[image_type] = image_path
-                        if image.space and "space" not in row:
-                            row["space"] = image.space
-                    rows.append(row)
-
-            if rows:
-                self._images = pd.DataFrame(rows).sort_values(by="id")
-            else:
-                self._images = pd.DataFrame(columns=self._id_cols)
+            self._materialize_tables("images")
         return self._images
 
     @images.setter
@@ -339,20 +391,7 @@ class StudysetView(NiMAREBase):
     def texts(self):
         """pandas.DataFrame: Flattened analysis texts table."""
         if self._texts is None:
-            rows = []
-            for study in self.studyset.studies:
-                for analysis in study.analyses:
-                    row = {
-                        "id": f"{study.id}-{analysis.id}",
-                        "study_id": study.id,
-                        "contrast_id": analysis.id,
-                    }
-                    row.update(analysis.texts or {})
-                    rows.append(row)
-            if rows:
-                self._texts = pd.DataFrame(rows).sort_values(by="id")
-            else:
-                self._texts = self._empty_table()
+            self._materialize_tables("texts")
         return self._texts
 
     def copy(self):
@@ -569,22 +608,7 @@ def ensure_studyset_view(dataset):
 
     if isinstance(dataset, Studyset) or isinstance(dataset, (dict, str)):
         studyset = load_nimads(dataset)
-        if isinstance(dataset, Studyset):
-            studyset_version = int(getattr(studyset, "_nimare_version", 0))
-            cached_view = getattr(studyset, "_nimare_view_cache", None)
-            if (
-                cached_view is not None
-                and getattr(cached_view, "_source_version", None) == studyset_version
-            ):
-                return cached_view._spawn_cached_clone()
-
-            cached_view = StudysetView(studyset=studyset, materialize_ids=False)
-            cached_view._materialize_cache()
-            cached_view._source_version = studyset_version
-            studyset._nimare_view_cache = cached_view
-            return cached_view._spawn_cached_clone()
-
-        return StudysetView(studyset=studyset)
+        return StudysetView(studyset=studyset, materialize_ids=False)
 
     raise ValueError(
         "Input must be a Dataset, Studyset, dict, or path to a NIMADS studyset JSON, "

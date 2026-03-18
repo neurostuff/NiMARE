@@ -8,7 +8,7 @@ import numpy as np
 from nilearn.image import load_img
 
 from nimare.io import convert_nimads_to_dataset
-from nimare.utils import _mask_img_to_bool, mm2vox
+from nimare.utils import _mask_img_to_bool, get_masker, mm2vox
 
 
 class Studyset:
@@ -40,9 +40,11 @@ class Studyset:
         self.name = source.get("name", "") or ""
         self.studies = [Study(s) for s in source.get("studies", [])]
         self._annotations = []
-        self._nimare_version = 0
-        self._nimare_view_cache = None
+        self._nimare_space = None
+        self._nimare_masker = None
+        self._nimare_basepath = None
         self._nimare_table_cache = None
+        self._set_execution_context(space=target, masker=mask)
         for annotation in source.get("annotations", []):
             self.annotations = annotation
         if annotations:
@@ -88,9 +90,64 @@ class Studyset:
 
     def touch(self):
         """Invalidate Studyset-derived caches after in-place mutation."""
-        self._nimare_version = int(getattr(self, "_nimare_version", 0)) + 1
-        self._nimare_view_cache = None
         self._nimare_table_cache = None
+
+    def _set_execution_context(self, *, space=None, masker=None, basepath=None):
+        """Update cached execution context used by StudysetView."""
+        if space is not None:
+            self._nimare_space = space
+        if masker is not None:
+            self._nimare_masker = get_masker(masker)
+        if basepath is not None:
+            self._nimare_basepath = basepath
+
+    def _get_execution_context(self):
+        """Return cached execution context used by Studyset-backed estimators."""
+        return {
+            "space": self._nimare_space,
+            "masker": self._nimare_masker,
+            "basepath": self._nimare_basepath,
+            "table_cache": self._nimare_table_cache,
+        }
+
+    def _set_table_cache(self, table_cache):
+        """Store Dataset-compatible cached tables for reuse by StudysetView."""
+        self._nimare_table_cache = table_cache
+
+    def _iter_analyses(self):
+        """Yield each analysis with its parent study."""
+        for study in self.studies:
+            for analysis in study.analyses:
+                yield study, analysis
+
+    def _iter_selected_analyses(self, analyses):
+        """Yield analyses whose IDs appear in the requested list."""
+        analyses = set(analyses)
+        for _, analysis in self._iter_analyses():
+            if analysis.id in analyses:
+                yield analysis
+
+    def _collect_analysis_points(self):
+        """Collect all coordinate points and their analysis IDs."""
+        all_points = []
+        analysis_ids = []
+        for _, analysis in self._iter_analyses():
+            for point in analysis.points:
+                if hasattr(point, "x") and hasattr(point, "y") and hasattr(point, "z"):
+                    all_points.append([point.x, point.y, point.z])
+                    analysis_ids.append(analysis.id)
+        return all_points, analysis_ids
+
+    def _attach_dataset_context(self, dataset):
+        """Cache Dataset-derived execution state for fast Studyset-backed estimators."""
+        from nimare.studyset import _snapshot_dataset_tables
+
+        self._set_execution_context(
+            space=dataset.space,
+            masker=dataset.masker,
+            basepath=dataset.basepath,
+        )
+        self._set_table_cache(_snapshot_dataset_tables(dataset, copy_tables=True))
 
     @classmethod
     def from_nimads(cls, filename):
@@ -104,15 +161,10 @@ class Studyset:
     def from_dataset(cls, dataset):
         """Create a Studyset from a NiMARE Dataset."""
         from nimare.io import convert_dataset_to_nimads_dict
-        from nimare.studyset import _snapshot_dataset_tables
 
         nimads = convert_dataset_to_nimads_dict(dataset)
         studyset = cls(nimads)
-        # Preserve Dataset execution context so estimators can run directly on Studyset inputs.
-        studyset._nimare_masker = dataset.masker
-        studyset._nimare_space = dataset.space
-        studyset._nimare_basepath = dataset.basepath
-        studyset._nimare_table_cache = _snapshot_dataset_tables(dataset, copy_tables=True)
+        studyset._attach_dataset_context(dataset)
         return studyset
 
     @classmethod
@@ -205,8 +257,6 @@ class Studyset:
         self.name = loaded_data.name
         self.studies = loaded_data.studies
         self._annotations = loaded_data._annotations
-        self._nimare_version = int(getattr(loaded_data, "_nimare_version", 0))
-        self._nimare_view_cache = None
         self._nimare_table_cache = None
         self.touch()
         return self
@@ -344,16 +394,7 @@ class Studyset:
         if xyz.shape != (3,):
             raise ValueError("xyz must be a 1 x 3 array-like object.")
 
-        # Extract all points from all analyses
-        all_points = []
-        analysis_ids = []
-        for study in self.studies:
-            for analysis in study.analyses:
-                for point in analysis.points:
-                    if hasattr(point, "x") and hasattr(point, "y") and hasattr(point, "z"):
-                        all_points.append([point.x, point.y, point.z])
-                        analysis_ids.append(analysis.id)
-
+        all_points, analysis_ids = self._collect_analysis_points()
         if not all_points:  # Return empty list if no coordinates found
             return []
 
@@ -389,16 +430,7 @@ class Studyset:
         # Load mask
         mask = load_img(img)
 
-        # Extract all points from all analyses
-        all_points = []
-        analysis_ids = []
-        for study in self.studies:
-            for analysis in study.analyses:
-                for point in analysis.points:
-                    if hasattr(point, "x") and hasattr(point, "y") and hasattr(point, "z"):
-                        all_points.append([point.x, point.y, point.z])
-                        analysis_ids.append(analysis.id)
-
+        all_points, analysis_ids = self._collect_analysis_points()
         if not all_points:  # Return empty list if no coordinates found
             return []
 
@@ -421,41 +453,33 @@ class Studyset:
     def get_analyses_by_annotations(self, key, value=None):
         """Extract a list of Analyses with a given label/annotation."""
         annotations = {}
-        for study in self.studies:
-            for analysis in study.analyses:
-                a_annot = analysis.annotations
-                if key in a_annot and (value is None or a_annot[key] == value):
-                    annotations[analysis.id] = {key: a_annot[key]}
+        for _, analysis in self._iter_analyses():
+            a_annot = analysis.annotations
+            if key in a_annot and (value is None or a_annot[key] == value):
+                annotations[analysis.id] = {key: a_annot[key]}
         return annotations
 
     def get_analyses_by_metadata(self, key, value=None):
         """Extract a list of Analyses with a metadata field/value."""
         metadata = {}
-        for study in self.studies:
-            for analysis in study.analyses:
-                a_metadata = analysis.metadata
-                if key in a_metadata and (value is None or a_metadata[key] == value):
-                    metadata[analysis.id] = {key: a_metadata[key]}
+        for _, analysis in self._iter_analyses():
+            a_metadata = analysis.metadata
+            if key in a_metadata and (value is None or a_metadata[key] == value):
+                metadata[analysis.id] = {key: a_metadata[key]}
         return metadata
 
     def get_points(self, analyses):
         """Collect Points associated with specified Analyses."""
-        points = {}
-        for study in self.studies:
-            for analysis in study.analyses:
-                if analysis.id in analyses:
-                    points[analysis.id] = analysis.points
-        return points
+        return {
+            analysis.id: analysis.points for analysis in self._iter_selected_analyses(analyses)
+        }
 
     def get_annotations(self, analyses):
         """Collect Annotations associated with specified Analyses."""
-        annotations = {}
-        for study in self.studies:
-            for analysis in study.analyses:
-                if analysis.id in analyses:
-                    annotations[analysis.id] = analysis.annotations
-
-        return annotations
+        return {
+            analysis.id: analysis.annotations
+            for analysis in self._iter_selected_analyses(analyses)
+        }
 
     def get_texts(self, analyses):
         """Collect texts associated with specified Analyses."""
@@ -463,12 +487,9 @@ class Studyset:
 
     def get_images(self, analyses):
         """Collect image files associated with specified Analyses."""
-        images = {}
-        for study in self.studies:
-            for analysis in study.analyses:
-                if analysis.id in analyses:
-                    images[analysis.id] = analysis.images
-        return images
+        return {
+            analysis.id: analysis.images for analysis in self._iter_selected_analyses(analyses)
+        }
 
     def get_metadata(self, analyses):
         """Collect metadata associated with specified Analyses.
@@ -483,12 +504,10 @@ class Studyset:
         dict[str, dict]
             Dictionary mapping Analysis IDs to their combined metadata (including study metadata).
         """
-        metadata = {}
-        for study in self.studies:
-            for analysis in study.analyses:
-                if analysis.id in analyses:
-                    metadata[analysis.id] = analysis.get_metadata()
-        return metadata
+        return {
+            analysis.id: analysis.get_metadata()
+            for analysis in self._iter_selected_analyses(analyses)
+        }
 
 
 class Study:

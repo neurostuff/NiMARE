@@ -1363,13 +1363,9 @@ def convert_dataset_to_studyset(
     )
     # Local import to avoid circular import at module import time.
     from nimare.nimads import Studyset as _Studyset
-    from nimare.studyset import _snapshot_dataset_tables
 
     studyset = _Studyset(nimads_dict)
-    studyset._nimare_masker = dataset.masker
-    studyset._nimare_space = dataset.space
-    studyset._nimare_basepath = dataset.basepath
-    studyset._nimare_table_cache = _snapshot_dataset_tables(dataset, copy_tables=True)
+    studyset._attach_dataset_context(dataset)
     return studyset
 
 

@@ -1,5 +1,7 @@
 """Tests for Studyset-native execution paths."""
 
+import copy
+
 import numpy as np
 import pytest
 
@@ -13,6 +15,7 @@ from nimare.nimads import Studyset
 from nimare.reports.base import run_reports
 from nimare.studyset import StudysetView, ensure_studyset_view
 from nimare.transforms import ImageTransformer
+from nimare.utils import get_template
 from nimare.workflows import CBMAWorkflow, IBMAWorkflow, PairwiseCBMAWorkflow
 
 
@@ -204,6 +207,18 @@ def test_ale_from_nimads_studyset_infers_default_mask(example_nimads_studyset):
     assert "stat" in result.maps
 
 
+def test_studyset_constructor_preserves_execution_context(example_nimads_studyset):
+    """Studyset constructor target/mask arguments should drive StudysetView execution context."""
+    mask = get_template("mni152_2mm", mask="brain")
+    studyset = Studyset(example_nimads_studyset, target="mni152_2mm", mask=mask)
+
+    view = ensure_studyset_view(studyset)
+
+    assert view.space == "mni152_2mm"
+    assert view.masker is not None
+    assert np.array_equal(view.masker.mask_img.affine, mask.affine)
+
+
 def test_studyset_view_handles_empty_annotations_and_texts():
     """Empty Studysets should expose Dataset-like empty annotation/text tables."""
     view = StudysetView({"id": "empty", "name": "", "studies": []})
@@ -239,6 +254,18 @@ def test_ensure_studyset_view_refreshes_after_studyset_touch(testdata_cbma):
 
     view2 = ensure_studyset_view(studyset)
     assert len(view2.ids) < n_ids_before
+
+
+def test_studyset_view_deepcopy_reuses_underlying_studyset(testdata_cbma):
+    """Deep-copying a StudysetView should not recursively copy the Studyset graph."""
+    studyset = Studyset.from_dataset(testdata_cbma.slice(testdata_cbma.ids[:5]))
+    view = ensure_studyset_view(studyset)
+
+    copied = copy.deepcopy(view)
+
+    assert copied is not view
+    assert copied.studyset is studyset
+    assert copied.coordinates is view.coordinates
 
 
 def test_cbmr_accepts_studyset_smoke():
