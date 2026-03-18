@@ -205,8 +205,8 @@ class CBMAEstimator(Estimator):
                         f"{len(missing_ids)} experiment {id_word} {verb} no reported sample size: "
                         f"{shown_ids}{suffix}. Populate the Dataset metadata field "
                         "'sample_sizes' or 'sample_size' for these ids (or fix the source "
-                        "conversion), or provide a constant kernel size (e.g., ALEKernel(fwhm=...) or "
-                        "ALEKernel(sample_size=...))."
+                        "conversion), or provide a constant kernel size "
+                        "(e.g., ALEKernel(fwhm=...) or ALEKernel(sample_size=...))."
                     )
 
     def _fit(self, dataset):

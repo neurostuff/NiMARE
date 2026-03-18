@@ -282,7 +282,9 @@ def test_studyset_slice_accepts_analysis_ids(testdata_cbma):
 
     sliced = studyset.slice(target_ids)
 
-    assert {analysis.id for study in sliced.studies for analysis in study.analyses} == set(target_ids)
+    assert {analysis.id for study in sliced.studies for analysis in study.analyses} == set(
+        target_ids
+    )
 
 
 def test_decoder_accepts_studyset(testdata_laird):
@@ -311,7 +313,7 @@ def test_lda_accepts_studyset(testdata_laird):
 
 
 def test_focus_filter_accepts_studyset(testdata_cbma):
-    """FocusFilter should accept Studysets and return a filtered StudysetView."""
+    """Ensure FocusFilter accepts Studysets and returns a filtered StudysetView."""
     studyset = Studyset.from_dataset(testdata_cbma.slice(testdata_cbma.ids[:5]))
 
     filtered = FocusFilter().transform(studyset)
