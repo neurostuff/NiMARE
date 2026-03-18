@@ -5,6 +5,7 @@ import weakref
 from copy import deepcopy
 
 import numpy as np
+import pandas as pd
 from nilearn.image import load_img
 
 from nimare.exceptions import InvalidStudysetError
@@ -119,6 +120,161 @@ class Studyset:
     def touch(self):
         """Invalidate Studyset-derived caches after in-place mutation."""
         self._nimare_table_cache = None
+
+    def view(self, materialize_ids=True):
+        """Return a Dataset-like tabular view of the Studyset."""
+        from nimare.studyset import StudysetView
+
+        return StudysetView(self, materialize_ids=materialize_ids)
+
+    @property
+    def space(self):
+        """Execution-space label used for Dataset-like Studyset views."""
+        view = self.view(materialize_ids=False)
+        return view.space
+
+    @property
+    def masker(self):
+        """Masker used for Dataset-like Studyset views."""
+        view = self.view(materialize_ids=False)
+        return view.masker
+
+    @property
+    def basepath(self):
+        """Base path used for image resolution in Dataset-like Studyset views."""
+        return self._get_execution_context()["basepath"]
+
+    @property
+    def ids(self):
+        """numpy.ndarray: 1D array of full analysis identifiers."""
+        return self.view().ids
+
+    @property
+    def coordinates(self):
+        """pandas.DataFrame: Dataset-like coordinates table."""
+        return self.view().coordinates
+
+    @property
+    def images(self):
+        """pandas.DataFrame: Dataset-like images table."""
+        return self.view().images
+
+    @property
+    def metadata(self):
+        """pandas.DataFrame: Dataset-like metadata table."""
+        return self.view().metadata
+
+    @property
+    def texts(self):
+        """pandas.DataFrame: Dataset-like texts table."""
+        return self.view().texts
+
+    @property
+    def annotations_df(self):
+        """pandas.DataFrame: Flattened analysis-level annotations table."""
+        return self.view().annotations
+
+    @annotations_df.setter
+    def annotations_df(self, annotations_df):
+        self.set_annotations_df(annotations_df)
+
+    def set_annotations_df(self, annotations_df, overwrite=True):
+        """Update analysis-level annotations from a flattened DataFrame.
+
+        Parameters
+        ----------
+        annotations_df : :class:`pandas.DataFrame`
+            DataFrame with one row per analysis. Must contain either an ``id`` column with
+            Dataset-style full IDs (``<study_id>-<analysis_id>``) or both ``study_id`` and
+            ``contrast_id`` columns from which the full IDs can be derived.
+        overwrite : :obj:`bool`, optional
+            If True, replace each analysis' existing annotation dictionary with the values from
+            ``annotations_df``. Analyses absent from the DataFrame will have their annotations
+            cleared. If False, merge new values into existing annotation dictionaries while leaving
+            untouched analyses unchanged. Default is True.
+        """
+        if not isinstance(annotations_df, pd.DataFrame):
+            raise TypeError("annotations_df must be a pandas DataFrame")
+
+        annotations_df = annotations_df.copy()
+        if "id" not in annotations_df.columns:
+            required_cols = {"study_id", "contrast_id"}
+            if not required_cols.issubset(annotations_df.columns):
+                raise ValueError(
+                    "annotations_df must contain either an 'id' column or both "
+                    "'study_id' and 'contrast_id' columns."
+                )
+            annotations_df["id"] = (
+                annotations_df["study_id"].astype(str)
+                + "-"
+                + annotations_df["contrast_id"].astype(str)
+            )
+
+        duplicated = annotations_df["id"].duplicated()
+        if duplicated.any():
+            dup_ids = annotations_df.loc[duplicated, "id"].astype(str).tolist()
+            raise ValueError(
+                "annotations_df contains duplicate analysis IDs: " + ", ".join(dup_ids[:10])
+            )
+
+        analysis_map = {
+            f"{study.id}-{analysis.id}": analysis
+            for study in self.studies
+            for analysis in study.analyses
+        }
+        unknown_ids = sorted(set(annotations_df["id"].astype(str)) - set(analysis_map))
+        if unknown_ids:
+            raise ValueError(
+                "annotations_df contains IDs not present in the Studyset: "
+                + ", ".join(unknown_ids[:10])
+            )
+
+        ignore_cols = {"id", "study_id", "contrast_id"}
+        annotations_by_id = {}
+        for _, row in annotations_df.iterrows():
+            full_id = str(row["id"])
+            row_annotations = {
+                key: value
+                for key, value in row.items()
+                if key not in ignore_cols and not pd.isna(value)
+            }
+            annotations_by_id[full_id] = row_annotations
+
+        for full_id, analysis in analysis_map.items():
+            if full_id in annotations_by_id:
+                if overwrite:
+                    analysis.annotations = annotations_by_id[full_id]
+                else:
+                    merged = dict(analysis.annotations)
+                    merged.update(annotations_by_id[full_id])
+                    analysis.annotations = merged
+            elif overwrite:
+                analysis.annotations = {}
+
+        self.touch()
+
+    def get(self, dict_, drop_invalid=True):
+        """Retrieve files and/or metadata from the current Studyset."""
+        return self.view().get(dict_, drop_invalid=drop_invalid)
+
+    def get_labels(self, ids=None):
+        """Extract labels present in the Studyset's analysis-level annotations."""
+        return self.view().get_labels(ids=ids)
+
+    def get_studies_by_label(self, labels=None, label_threshold=0.001):
+        """Extract full analysis IDs whose annotation values exceed the threshold."""
+        return self.view().get_studies_by_label(
+            labels=labels,
+            label_threshold=label_threshold,
+        )
+
+    def get_studies_by_mask(self, mask):
+        """Extract full analysis IDs with at least one focus inside ``mask``."""
+        return self.view().get_studies_by_mask(mask)
+
+    def get_studies_by_coordinate(self, xyz, r=20):
+        """Extract full analysis IDs with at least one focus near the requested coordinates."""
+        return self.view().get_studies_by_coordinate(xyz, r=r)
 
     def _set_execution_context(self, *, space=None, masker=None, basepath=None):
         """Update cached execution context used by StudysetView."""
@@ -307,18 +463,40 @@ class Studyset:
         return deepcopy(self)
 
     def slice(self, analyses):
-        """Create a new Studyset with only requested Analyses."""
+        """Create a new Studyset with only requested analyses.
+
+        Parameters
+        ----------
+        analyses : :obj:`list` of :obj:`str` or :obj:`str`
+            Requested analysis IDs.
+        """
+        if isinstance(analyses, str):
+            analyses = [analyses]
+
+        requested_ids = {str(analysis) for analysis in analyses}
         studyset_dict = self.to_dict()
         annotations = [annot.to_dict() for annot in self.annotations]
         studyset_dict.pop("annotations", None)
+        retained_analysis_ids = set()
 
         for study in studyset_dict["studies"]:
-            study["analyses"] = [a for a in study["analyses"] if a["id"] in analyses]
+            kept_analyses = []
+            for analysis in study["analyses"]:
+                if analysis["id"] in requested_ids:
+                    kept_analyses.append(analysis)
+                    retained_analysis_ids.add(analysis["id"])
+            study["analyses"] = kept_analyses
 
         studyset = self.__class__(source=studyset_dict)
+        context = self._get_execution_context()
+        studyset._set_execution_context(
+            space=context["space"],
+            masker=context["masker"],
+            basepath=context["basepath"],
+        )
 
         for annot in annotations:
-            annot["notes"] = [n for n in annot["notes"] if n["analysis"] in analyses]
+            annot["notes"] = [n for n in annot["notes"] if n["analysis"] in retained_analysis_ids]
             studyset.annotations = annot
 
         return studyset

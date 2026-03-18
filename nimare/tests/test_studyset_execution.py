@@ -3,9 +3,13 @@
 import copy
 
 import numpy as np
+import pandas as pd
 import pytest
 
+from nimare import annotate
 from nimare.correct import FDRCorrector
+from nimare.decode import discrete
+from nimare.diagnostics import FocusFilter
 from nimare.generate import create_coordinate_dataset
 from nimare.io import convert_nimads_to_dataset
 from nimare.meta.cbma import ALE
@@ -31,6 +35,22 @@ def test_ale_studyset_parity(testdata_cbma):
     )
     np.testing.assert_allclose(res_dset.get_map("p", return_type="array"), res_studyset.maps["p"])
     np.testing.assert_allclose(res_dset.get_map("z", return_type="array"), res_studyset.maps["z"])
+
+
+def test_ale_accepts_singular_sample_size_metadata(testdata_cbma):
+    """ALE should accept Studysets that expose per-analysis ``sample_size`` metadata."""
+    studyset = Studyset.from_dataset(testdata_cbma.slice(testdata_cbma.ids[:5]))
+
+    for study in studyset.studies:
+        study.metadata.pop("sample_sizes", None)
+        for analysis in study.analyses:
+            sample_sizes = analysis.metadata.pop("sample_sizes", None)
+            if sample_sizes:
+                analysis.metadata["sample_size"] = int(np.mean(sample_sizes))
+
+    result = ALE(null_method="approximate").fit(studyset)
+
+    assert "stat" in result.maps
 
 
 def test_stouffers_studyset_parity(testdata_ibma):
@@ -236,6 +256,68 @@ def test_kernel_transformer_dataset_fast_path(monkeypatch, testdata_cbma):
 
     assert output.ndim == 1
     assert output.size > 0
+
+
+def test_studyset_annotations_df_updates_nested_annotations(testdata_laird):
+    """Studyset.annotations_df should update nested analysis annotations."""
+    studyset = Studyset.from_dataset(testdata_laird.slice(testdata_laird.ids[:3]))
+    values = np.arange(len(studyset.ids), dtype=float)
+    annotations_df = pd.DataFrame({"id": studyset.ids, "custom_label": values})
+
+    studyset.annotations_df = annotations_df
+
+    flattened = studyset.annotations_df.set_index("id")
+    np.testing.assert_allclose(flattened.loc[studyset.ids, "custom_label"].to_numpy(), values)
+
+    for study in studyset.studies:
+        for analysis in study.analyses:
+            full_id = f"{study.id}-{analysis.id}"
+            assert analysis.annotations["custom_label"] == flattened.loc[full_id, "custom_label"]
+
+
+def test_studyset_slice_accepts_analysis_ids(testdata_cbma):
+    """Studyset.slice should accept analysis-level IDs."""
+    studyset = Studyset.from_dataset(testdata_cbma.slice(testdata_cbma.ids[:5]))
+    target_ids = [study.analyses[0].id for study in studyset.studies[:2]]
+
+    sliced = studyset.slice(target_ids)
+
+    assert {analysis.id for study in sliced.studies for analysis in study.analyses} == set(target_ids)
+
+
+def test_decoder_accepts_studyset(testdata_laird):
+    """Discrete decoders should accept raw Studyset inputs."""
+    studyset = Studyset.from_dataset(testdata_laird)
+    selected_ids = studyset.get_studies_by_mask(studyset.masker.mask_img)
+    decoder = discrete.NeurosynthDecoder(feature_group="Neurosynth_TFIDF")
+
+    decoder.fit(studyset)
+    decoded_df = decoder.transform(ids=selected_ids[:5])
+
+    assert isinstance(decoded_df, pd.DataFrame)
+    assert not decoded_df.empty
+
+
+def test_lda_accepts_studyset(testdata_laird):
+    """LDA should return a Studyset with tabular annotations attached."""
+    studyset = Studyset.from_dataset(testdata_laird)
+    model = annotate.lda.LDAModel(n_topics=5, max_iter=100, text_column="abstract")
+
+    annotated = model.fit(studyset)
+
+    assert isinstance(annotated, Studyset)
+    topic_columns = [col for col in annotated.annotations_df.columns if col.startswith("LDA")]
+    assert len(topic_columns) == 5
+
+
+def test_focus_filter_accepts_studyset(testdata_cbma):
+    """FocusFilter should accept Studysets and return a filtered StudysetView."""
+    studyset = Studyset.from_dataset(testdata_cbma.slice(testdata_cbma.ids[:5]))
+
+    filtered = FocusFilter().transform(studyset)
+
+    assert isinstance(filtered, StudysetView)
+    assert set(filtered.coordinates["id"].unique()).issubset(set(studyset.ids))
 
 
 def test_reports_accept_studyset_results(tmp_path_factory, testdata_cbma):

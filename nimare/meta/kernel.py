@@ -172,7 +172,7 @@ class KernelTransformer(NiMAREBase):
                 coordinates = _add_metadata_to_dataframe(
                     dataset,
                     coordinates,
-                    metadata_field="sample_sizes",
+                    metadata_field=("sample_sizes", "sample_size"),
                     target_column="sample_size",
                     filter_func=np.mean,
                 )

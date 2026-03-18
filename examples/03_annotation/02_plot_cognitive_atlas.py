@@ -16,12 +16,16 @@ import pandas as pd
 
 from nimare import annotate, extract
 from nimare.dataset import Dataset
+from nimare.nimads import Studyset
 from nimare.utils import get_resource_path
 
 ###############################################################################
-# Load dataset with abstracts
+# Load Studyset with abstracts
 # -----------------------------------------------------------------------------
+# The bundled example file uses the legacy Dataset JSON structure, so we load
+# it once and immediately convert it to a Studyset.
 dset = Dataset(os.path.join(get_resource_path(), "neurosynth_laird_studies.json"))
+studyset = Studyset.from_dataset(dset)
 
 ###############################################################################
 # Download Cognitive Atlas
@@ -41,7 +45,11 @@ rel_df.head()
 ###############################################################################
 # Extract Cognitive Atlas terms from text
 # -----------------------------------------------------------------------------
-counts_df, rep_text_df = annotate.cogat.extract_cogat(dset.texts, id_df, text_column="abstract")
+counts_df, rep_text_df = annotate.cogat.extract_cogat(
+    studyset.texts,
+    id_df,
+    text_column="abstract",
+)
 
 ###############################################################################
 # Expand counts
@@ -55,20 +63,20 @@ series = series[series > 0]
 columns = series.index.tolist()
 
 ###############################################################################
-# Add annotations to the Dataset
+# Add annotations to the Studyset
 # -----------------------------------------------------------------------------
-# Now we can add the generated annotations back into the Dataset object.
+# Now we can add the generated annotations back into the Studyset object.
 # We'll use the expanded counts since they provide more comprehensive annotations.
 # The annotation functions return DataFrames with 'id' as the index, so we need
-# to reset the index to make 'id' a column before assigning to the Dataset.
+# to reset the index to make 'id' a column before assigning to the Studyset.
 #
 # This will replace any existing annotations. If you want to add to existing
 # annotations instead of replacing them, you can merge the DataFrames:
-# ``dset.annotations = pd.merge(dset.annotations, expanded_df.reset_index(), on='id', how='left')``
-dset.annotations = expanded_df.reset_index()
+# ``studyset.annotations_df = studyset.annotations_df.merge(expanded_df.reset_index(), on='id', how='left')``
+studyset.annotations_df = expanded_df.reset_index()
 
-# Now the Dataset has the new annotations
-print(f"Dataset now has {len(dset.annotations.columns)} annotation columns")
+# Now the Studyset has the new annotations
+print(f"Studyset now has {len(studyset.annotations_df.columns)} annotation columns")
 
 ###############################################################################
 # Make some plots

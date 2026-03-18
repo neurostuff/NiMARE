@@ -363,8 +363,8 @@ publication, `Margulies et al. (2016)`_.
 
 This approach uses the following steps to calculate label-wise correlation values:
 
-1.  Specify a region of interest (ROI) image in the same space as the Dataset.
-2.  Generate modeled activation (MA) maps for all studies in Dataset with coordinates.
+1.  Specify a region of interest (ROI) image in the same space as the Studyset.
+2.  Generate modeled activation (MA) maps for all analyses in the Studyset with coordinates.
 3.  Average the MA values within the ROI to get a study-wise MA regressor.
 4.  Correlate the MA regressor with study-wise annotation values (e.g., tf-idf values).
 

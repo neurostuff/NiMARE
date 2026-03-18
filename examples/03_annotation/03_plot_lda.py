@@ -14,12 +14,16 @@ import pandas as pd
 
 from nimare import annotate
 from nimare.dataset import Dataset
+from nimare.nimads import Studyset
 from nimare.utils import get_resource_path
 
 ###############################################################################
-# Load dataset with abstracts
+# Load Studyset with abstracts
 # -----------------------------------------------------------------------------
+# The bundled example file uses the legacy Dataset JSON structure, so we load
+# it once and immediately convert it to a Studyset.
 dset = Dataset(os.path.join(get_resource_path(), "neurosynth_laird_studies.json"))
+studyset = Studyset.from_dataset(dset)
 
 ###############################################################################
 # Initialize LDA model
@@ -29,13 +33,13 @@ model = annotate.lda.LDAModel(n_topics=5, max_iter=1000, text_column="abstract")
 ###############################################################################
 # Run model
 # -----------------------------------------------------------------------------
-new_dset = model.fit(dset)
+new_studyset = model.fit(studyset)
 
 ###############################################################################
 # View results
 # -----------------------------------------------------------------------------
 # This DataFrame is very large, so we will only show a slice of it.
-new_dset.annotations[new_dset.annotations.columns[:10]].head(10)
+new_studyset.annotations_df[new_studyset.annotations_df.columns[:10]].head(10)
 
 ###############################################################################
 # Given that this DataFrame is very wide (many terms), we will transpose it before presenting it.

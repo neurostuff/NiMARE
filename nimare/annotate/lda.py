@@ -6,6 +6,9 @@ from sklearn.decomposition import LatentDirichletAllocation
 
 from nimare.annotate.text import generate_counts
 from nimare.base import NiMAREBase
+from nimare.dataset import Dataset
+from nimare.nimads import Studyset
+from nimare.studyset import StudysetView, ensure_studyset_view
 from nimare.utils import _check_ncores
 
 
@@ -31,7 +34,7 @@ class LDAModel(NiMAREBase):
         Default is 0.001, which was used in :footcite:t:`poldrack2012discovering`.
     text_column : :obj:`str`, optional
         The source of text to use for the model. This should correspond to an existing column
-        in the :py:attr:`~nimare.dataset.Dataset.texts` attribute. Default is "abstract".
+        in the collection's ``texts`` table. Default is "abstract".
     n_cores : :obj:`int`, optional
         Number of cores to use for parallelization.
         If <=0, defaults to using all available cores.
@@ -53,7 +56,8 @@ class LDAModel(NiMAREBase):
     See Also
     --------
     :class:`~sklearn.feature_extraction.text.CountVectorizer`: Used to build a vocabulary of terms
-        and their associated counts from texts in the ``self.text_column`` of the Dataset's
+        and their associated counts from texts in the ``self.text_column`` of the input
+        Studyset/Dataset collection's
         ``texts`` attribute.
     :class:`~sklearn.decomposition.LatentDirichletAllocation`: Used to train the LDA model.
     """
@@ -78,18 +82,19 @@ class LDAModel(NiMAREBase):
         )
 
     def fit(self, dset):
-        """Fit the LDA topic model to text from a Dataset.
+        """Fit the LDA topic model to text from a Studyset/Dataset collection.
 
         Parameters
         ----------
-        dset : :obj:`~nimare.dataset.Dataset`
-            A Dataset with, at minimum, text available in the ``self.text_column`` column of its
-            :py:attr:`~nimare.dataset.Dataset.texts` attribute.
+        dset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
+                or :obj:`~nimare.dataset.Dataset`
+            A Studyset-backed collection with, at minimum, text available in the
+            ``self.text_column`` column of its ``texts`` table.
 
         Returns
         -------
-        dset : :obj:`~nimare.dataset.Dataset`
-            A new Dataset with an updated :py:attr:`~nimare.dataset.Dataset.annotations` attribute.
+        dset : same type as input when possible
+            A new object with updated analysis-level annotations.
 
         Attributes
         ----------
@@ -101,11 +106,20 @@ class LDAModel(NiMAREBase):
                 -   ``p_topic_g_word_df``: :obj:`pandas.DataFrame` of shape (n_topics, n_tokens)
                     containing the topic-term weights for the model.
         """
+        source = dset
+        if isinstance(dset, Studyset):
+            tabular_source = dset.view()
+        elif isinstance(dset, (Dataset, StudysetView)):
+            tabular_source = dset
+        else:
+            tabular_source = ensure_studyset_view(dset)
+            source = tabular_source
+
         counts_df = generate_counts(
-            dset.texts,
+            tabular_source.texts,
             text_column=self.text_column,
             tfidf=False,
-            max_df=len(dset.ids) - 2,
+            max_df=len(tabular_source.ids) - 2,
             min_df=2,
         )
         vocabulary = counts_df.columns.to_numpy()
@@ -140,8 +154,11 @@ class LDAModel(NiMAREBase):
             "p_topic_g_word_df": topic_word_weights_df,
         }
 
-        annotations = dset.annotations.copy()
+        annotations = tabular_source.annotations.copy()
         annotations = pd.merge(annotations, doc_topic_weights_df, left_on="id", right_index=True)
-        new_dset = dset.copy()
-        new_dset.annotations = annotations
+        new_dset = source.copy()
+        if isinstance(new_dset, Studyset):
+            new_dset.annotations_df = annotations
+        else:
+            new_dset.annotations = annotations
         return new_dset

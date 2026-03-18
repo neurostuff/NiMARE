@@ -169,7 +169,7 @@ class CBMAEstimator(Estimator):
             self.inputs_["coordinates"] = _add_metadata_to_dataframe(
                 dataset,
                 self.inputs_["coordinates"],
-                metadata_field="sample_sizes",
+                metadata_field=("sample_sizes", "sample_size"),
                 target_column="sample_size",
                 filter_func=np.mean,
             )
@@ -183,8 +183,9 @@ class CBMAEstimator(Estimator):
                     raise ValueError(
                         "This estimator's kernel requires per-experiment sample sizes, but the "
                         "input coordinates are missing a 'sample_size' column. Add "
-                        "'sample_sizes' to the Dataset metadata or provide a constant kernel "
-                        "size (e.g., ALEKernel(fwhm=...) or ALEKernel(sample_size=...))."
+                        "'sample_sizes' or 'sample_size' to the Dataset metadata or provide a "
+                        "constant kernel size (e.g., ALEKernel(fwhm=...) or "
+                        "ALEKernel(sample_size=...))."
                     )
 
                 sample_sizes_by_id = coords_df.groupby("id")["sample_size"].mean()
@@ -203,8 +204,8 @@ class CBMAEstimator(Estimator):
                         "This estimator's kernel requires per-experiment sample sizes, but "
                         f"{len(missing_ids)} experiment {id_word} {verb} no reported sample size: "
                         f"{shown_ids}{suffix}. Populate the Dataset metadata field "
-                        "'sample_sizes' for these ids (or fix the source conversion), or provide "
-                        "a constant kernel size (e.g., ALEKernel(fwhm=...) or "
+                        "'sample_sizes' or 'sample_size' for these ids (or fix the source "
+                        "conversion), or provide a constant kernel size (e.g., ALEKernel(fwhm=...) or "
                         "ALEKernel(sample_size=...))."
                     )
 

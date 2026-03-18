@@ -4,6 +4,8 @@ import logging
 from abc import abstractmethod
 
 from nimare.base import NiMAREBase
+from nimare.dataset import Dataset
+from nimare.studyset import StudysetView, ensure_studyset_view
 
 LGR = logging.getLogger(__name__)
 
@@ -25,7 +27,8 @@ class Decoder(NiMAREBase):
         """Search for, and validate, required inputs as necessary."""
         if not hasattr(dataset, "slice"):
             raise ValueError(
-                f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}."
+                "Argument 'dataset' must be a valid Studyset/Dataset collection, "
+                f"not a {type(dataset)}."
             )
 
         if self._required_inputs:
@@ -51,7 +54,7 @@ class Decoder(NiMAREBase):
         """Select features for model based on requested features and feature_group.
 
         This also takes into account which features have at least one study in the
-        Dataset with the feature.
+        Studyset/Dataset collection with the feature.
         """
         # Reduce feature list as desired
         if self.feature_group is not None:
@@ -76,19 +79,20 @@ class Decoder(NiMAREBase):
         counts = (self.inputs_["annotations"][features] > self.frequency_threshold).sum(0)
         features = counts[counts > 0].index.tolist()
         if not len(features):
-            raise Exception("No features identified in Dataset!")
+            raise Exception("No features identified in the input Studyset/Dataset collection!")
         elif len(features) < n_features_orig:
             LGR.info(f"Retaining {len(features)}/{n_features_orig} features.")
 
         self.features_ = features
 
     def fit(self, dataset, drop_invalid=True):
-        """Fit Decoder to Dataset.
+        """Fit Decoder to a Studyset/Dataset collection.
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.dataset.Dataset`
-            Dataset object to analyze.
+        dataset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
+                or :obj:`~nimare.dataset.Dataset`
+            Studyset-backed collection object to analyze.
         drop_invalid : :obj:`bool`, default=True
             Whether to automatically ignore any studies without the required data or not.
             Default is True.
@@ -103,6 +107,9 @@ class Decoder(NiMAREBase):
         Selection of features based on requested features and feature group is performed in
         `Decoder._preprocess_input`.
         """
+        if not isinstance(dataset, (Dataset, StudysetView)):
+            dataset = ensure_studyset_view(dataset)
+
         self._collect_inputs(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)
         self._fit(dataset)
