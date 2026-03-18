@@ -13,6 +13,7 @@ from nilearn.reporting import get_clusters_table
 from scipy import stats
 
 from nimare.base import NiMAREBase
+from nimare.studyset import ensure_studyset_view
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _dict_to_coordinates,
@@ -60,6 +61,11 @@ class ImageTransformer(NiMAREBase):
         new_dataset : :obj:`~nimare.dataset.Dataset`
             A copy of the input Dataset, with new images added to its images attribute.
         """
+        from nimare.dataset import Dataset
+
+        if not isinstance(dataset, Dataset):
+            dataset = ensure_studyset_view(dataset)
+
         # Using attribute check instead of type check to allow fake Datasets for testing.
         if not hasattr(dataset, "slice"):
             raise ValueError(
@@ -359,6 +365,11 @@ class ImagesToCoordinates(NiMAREBase):
             images and metadata indicating origin
             of coordinates ('original' or 'nimare').
         """
+        from nimare.dataset import Dataset
+
+        if not isinstance(dataset, Dataset):
+            dataset = ensure_studyset_view(dataset)
+
         # relevant variables from dataset
         space = dataset.space
         images_df = dataset.images
@@ -500,6 +511,10 @@ class StandardizeField(NiMAREBase):
 
     def transform(self, dataset):
         """Standardize metadata fields."""
+        from nimare.dataset import Dataset
+
+        if not isinstance(dataset, Dataset):
+            dataset = ensure_studyset_view(dataset)
         # update a copy of the dataset
         dataset = dataset.copy()
 

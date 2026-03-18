@@ -7,8 +7,24 @@ from copy import deepcopy
 import numpy as np
 from nilearn.image import load_img
 
+from nimare.exceptions import InvalidStudysetError
 from nimare.io import convert_nimads_to_dataset
-from nimare.utils import _mask_img_to_bool, mm2vox
+from nimare.utils import _mask_img_to_bool, get_masker, mm2vox
+
+
+def _validate_studyset_source(source):
+    """Validate the minimal schema required to construct a Studyset."""
+    if not isinstance(source, dict):
+        raise InvalidStudysetError("Studyset source must be a dictionary or JSON path")
+
+    missing_fields = [field for field in ("id", "studies") if field not in source]
+    if missing_fields:
+        raise InvalidStudysetError(
+            f"Studyset is missing required field(s): {', '.join(missing_fields)}"
+        )
+
+    if not isinstance(source["studies"], list):
+        raise InvalidStudysetError("Studyset 'studies' field must be a list")
 
 
 class Studyset:
@@ -36,10 +52,19 @@ class Studyset:
             with open(source, "r+") as f:
                 source = json.load(f)
 
+        _validate_studyset_source(source)
+
         self.id = source["id"]
-        self.name = source["name"] or ""
+        self.name = source.get("name", "") or ""
         self.studies = [Study(s) for s in source["studies"]]
         self._annotations = []
+        self._nimare_space = None
+        self._nimare_masker = None
+        self._nimare_basepath = None
+        self._nimare_table_cache = None
+        self._set_execution_context(space=target, masker=mask)
+        for annotation in source.get("annotations", []):
+            self.annotations = annotation
         if annotations:
             self.annotations = annotations
 
@@ -56,16 +81,32 @@ class Studyset:
         """Return existing Annotations."""
         return self._annotations
 
+    def _coerce_annotation(self, annotation):
+        """Normalize one annotation payload to an Annotation instance."""
+        if isinstance(annotation, dict):
+            return Annotation(annotation, self)
+        if isinstance(annotation, str):
+            with open(annotation, "r+") as f:
+                return Annotation(json.load(f), self)
+        if isinstance(annotation, Annotation):
+            return annotation
+        raise TypeError(f"Unsupported annotation type: {type(annotation)}")
+
+    def _extend_annotations(self, annotations):
+        """Append one or more annotations and invalidate caches once."""
+        if isinstance(annotations, (list, tuple)):
+            loaded_annotations = [
+                self._coerce_annotation(annotation) for annotation in annotations
+            ]
+        else:
+            loaded_annotations = [self._coerce_annotation(annotations)]
+
+        self._annotations.extend(loaded_annotations)
+        self.touch()
+
     @annotations.setter
     def annotations(self, annotation):
-        if isinstance(annotation, dict):
-            loaded_annotation = Annotation(annotation, self)
-        elif isinstance(annotation, str):
-            with open(annotation, "r+") as f:
-                loaded_annotation = Annotation(json.load(f), self)
-        elif isinstance(annotation, Annotation):
-            loaded_annotation = annotation
-        self._annotations.append(loaded_annotation)
+        self._extend_annotations(annotation)
 
     @annotations.deleter
     def annotations(self, annotation_id=None):
@@ -73,6 +114,68 @@ class Studyset:
             self._annotations = [a for a in self._annotations if a.id != annotation_id]
         else:
             self._annotations = []
+        self.touch()
+
+    def touch(self):
+        """Invalidate Studyset-derived caches after in-place mutation."""
+        self._nimare_table_cache = None
+
+    def _set_execution_context(self, *, space=None, masker=None, basepath=None):
+        """Update cached execution context used by StudysetView."""
+        if space is not None:
+            self._nimare_space = space
+        if masker is not None:
+            self._nimare_masker = get_masker(masker)
+        if basepath is not None:
+            self._nimare_basepath = basepath
+
+    def _get_execution_context(self):
+        """Return cached execution context used by Studyset-backed estimators."""
+        return {
+            "space": self._nimare_space,
+            "masker": self._nimare_masker,
+            "basepath": self._nimare_basepath,
+            "table_cache": self._nimare_table_cache,
+        }
+
+    def _set_table_cache(self, table_cache):
+        """Store Dataset-compatible cached tables for reuse by StudysetView."""
+        self._nimare_table_cache = table_cache
+
+    def _iter_analyses(self):
+        """Yield each analysis with its parent study."""
+        for study in self.studies:
+            for analysis in study.analyses:
+                yield study, analysis
+
+    def _iter_selected_analyses(self, analyses):
+        """Yield analyses whose IDs appear in the requested list."""
+        analyses = set(analyses)
+        for _, analysis in self._iter_analyses():
+            if analysis.id in analyses:
+                yield analysis
+
+    def _collect_analysis_points(self):
+        """Collect all coordinate points and their analysis IDs."""
+        all_points = []
+        analysis_ids = []
+        for _, analysis in self._iter_analyses():
+            for point in analysis.points:
+                if hasattr(point, "x") and hasattr(point, "y") and hasattr(point, "z"):
+                    all_points.append([point.x, point.y, point.z])
+                    analysis_ids.append(analysis.id)
+        return all_points, analysis_ids
+
+    def _attach_dataset_context(self, dataset):
+        """Cache Dataset-derived execution state for fast Studyset-backed estimators."""
+        from nimare.studyset import _snapshot_dataset_tables
+
+        self._set_execution_context(
+            space=dataset.space,
+            masker=dataset.masker,
+            basepath=dataset.basepath,
+        )
+        self._set_table_cache(_snapshot_dataset_tables(dataset, copy_tables=True))
 
     @classmethod
     def from_nimads(cls, filename):
@@ -88,7 +191,9 @@ class Studyset:
         from nimare.io import convert_dataset_to_nimads_dict
 
         nimads = convert_dataset_to_nimads_dict(dataset)
-        return cls(nimads)
+        studyset = cls(nimads)
+        studyset._attach_dataset_context(dataset)
+        return studyset
 
     @classmethod
     def from_sleuth(cls, sleuth_file):
@@ -104,9 +209,15 @@ class Studyset:
         for study in studyset.studies:
             if len(study.analyses) > 1:
                 source_lst = [analysis.to_dict() for analysis in study.analyses]
-                ids, names, conditions, images, points, weights, metadata = [
-                    [source[key] for source in source_lst] for key in source_lst[0]
-                ]
+                ids = [source["id"] for source in source_lst]
+                names = [source["name"] for source in source_lst]
+                conditions = [source.get("conditions", []) for source in source_lst]
+                images = [source.get("images", []) for source in source_lst]
+                points = [source.get("points", []) for source in source_lst]
+                weights = [source.get("weights", []) for source in source_lst]
+                metadata = [source.get("metadata", {}) for source in source_lst]
+                annotations = [source.get("annotations", {}) for source in source_lst]
+                texts = [source.get("texts", {}) for source in source_lst]
 
                 new_source = {
                     "id": "_".join(ids),
@@ -117,6 +228,14 @@ class Studyset:
                     "weights": [weight for w_list in weights for weight in w_list],
                     "metadata": {k: v for m_dict in metadata for k, v in m_dict.items()},
                 }
+                combined_annotations = {
+                    k: v for annot_dict in annotations for k, v in annot_dict.items()
+                }
+                combined_texts = {k: v for text_dict in texts for k, v in text_dict.items()}
+                if combined_annotations:
+                    new_source["annotations"] = combined_annotations
+                if combined_texts:
+                    new_source["texts"] = combined_texts
                 study.analyses = [Analysis(new_source)]
 
         return studyset
@@ -128,11 +247,16 @@ class Studyset:
 
     def to_dict(self):
         """Return a dictionary representation of the Studyset."""
-        return {
+        studyset_dict = {
             "id": self.id,
             "name": self.name,
             "studies": [s.to_dict() for s in self.studies],
         }
+        if self.annotations:
+            studyset_dict["annotations"] = [
+                annotation.to_dict() for annotation in self.annotations
+            ]
+        return studyset_dict
 
     def to_dataset(self):
         """Convert the Studyset to a NiMARE Dataset."""
@@ -161,6 +285,8 @@ class Studyset:
         self.name = loaded_data.name
         self.studies = loaded_data.studies
         self._annotations = loaded_data._annotations
+        self._nimare_table_cache = None
+        self.touch()
         return self
 
     def save(self, filename):
@@ -184,6 +310,7 @@ class Studyset:
         """Create a new Studyset with only requested Analyses."""
         studyset_dict = self.to_dict()
         annotations = [annot.to_dict() for annot in self.annotations]
+        studyset_dict.pop("annotations", None)
 
         for study in studyset_dict["studies"]:
             study["analyses"] = [a for a in study["analyses"] if a["id"] in analyses]
@@ -295,16 +422,7 @@ class Studyset:
         if xyz.shape != (3,):
             raise ValueError("xyz must be a 1 x 3 array-like object.")
 
-        # Extract all points from all analyses
-        all_points = []
-        analysis_ids = []
-        for study in self.studies:
-            for analysis in study.analyses:
-                for point in analysis.points:
-                    if hasattr(point, "x") and hasattr(point, "y") and hasattr(point, "z"):
-                        all_points.append([point.x, point.y, point.z])
-                        analysis_ids.append(analysis.id)
-
+        all_points, analysis_ids = self._collect_analysis_points()
         if not all_points:  # Return empty list if no coordinates found
             return []
 
@@ -340,16 +458,7 @@ class Studyset:
         # Load mask
         mask = load_img(img)
 
-        # Extract all points from all analyses
-        all_points = []
-        analysis_ids = []
-        for study in self.studies:
-            for analysis in study.analyses:
-                for point in analysis.points:
-                    if hasattr(point, "x") and hasattr(point, "y") and hasattr(point, "z"):
-                        all_points.append([point.x, point.y, point.z])
-                        analysis_ids.append(analysis.id)
-
+        all_points, analysis_ids = self._collect_analysis_points()
         if not all_points:  # Return empty list if no coordinates found
             return []
 
@@ -372,41 +481,33 @@ class Studyset:
     def get_analyses_by_annotations(self, key, value=None):
         """Extract a list of Analyses with a given label/annotation."""
         annotations = {}
-        for study in self.studies:
-            for analysis in study.analyses:
-                a_annot = analysis.annotations
-                if key in a_annot and (value is None or a_annot[key] == value):
-                    annotations[analysis.id] = {key: a_annot[key]}
+        for _, analysis in self._iter_analyses():
+            a_annot = analysis.annotations
+            if key in a_annot and (value is None or a_annot[key] == value):
+                annotations[analysis.id] = {key: a_annot[key]}
         return annotations
 
     def get_analyses_by_metadata(self, key, value=None):
         """Extract a list of Analyses with a metadata field/value."""
         metadata = {}
-        for study in self.studies:
-            for analysis in study.analyses:
-                a_metadata = analysis.metadata
-                if key in a_metadata and (value is None or a_metadata[key] == value):
-                    metadata[analysis.id] = {key: a_metadata[key]}
+        for _, analysis in self._iter_analyses():
+            a_metadata = analysis.metadata
+            if key in a_metadata and (value is None or a_metadata[key] == value):
+                metadata[analysis.id] = {key: a_metadata[key]}
         return metadata
 
     def get_points(self, analyses):
         """Collect Points associated with specified Analyses."""
-        points = {}
-        for study in self.studies:
-            for analysis in study.analyses:
-                if analysis.id in analyses:
-                    points[analysis.id] = analysis.points
-        return points
+        return {
+            analysis.id: analysis.points for analysis in self._iter_selected_analyses(analyses)
+        }
 
     def get_annotations(self, analyses):
         """Collect Annotations associated with specified Analyses."""
-        annotations = {}
-        for study in self.studies:
-            for analysis in study.analyses:
-                if analysis.id in analyses:
-                    annotations[analysis.id] = analysis.annotations
-
-        return annotations
+        return {
+            analysis.id: analysis.annotations
+            for analysis in self._iter_selected_analyses(analyses)
+        }
 
     def get_texts(self, analyses):
         """Collect texts associated with specified Analyses."""
@@ -414,12 +515,9 @@ class Studyset:
 
     def get_images(self, analyses):
         """Collect image files associated with specified Analyses."""
-        images = {}
-        for study in self.studies:
-            for analysis in study.analyses:
-                if analysis.id in analyses:
-                    images[analysis.id] = analysis.images
-        return images
+        return {
+            analysis.id: analysis.images for analysis in self._iter_selected_analyses(analyses)
+        }
 
     def get_metadata(self, analyses):
         """Collect metadata associated with specified Analyses.
@@ -434,12 +532,10 @@ class Studyset:
         dict[str, dict]
             Dictionary mapping Analysis IDs to their combined metadata (including study metadata).
         """
-        metadata = {}
-        for study in self.studies:
-            for analysis in study.analyses:
-                if analysis.id in analyses:
-                    metadata[analysis.id] = analysis.get_metadata()
-        return metadata
+        return {
+            analysis.id: analysis.get_metadata()
+            for analysis in self._iter_selected_analyses(analyses)
+        }
 
 
 class Study:
@@ -536,13 +632,18 @@ class Analysis:
     def __init__(self, source, study=None):
         self.id = source["id"]
         self.name = source["name"]
-        self.conditions = [
-            Condition(c, w) for c, w in zip(source["conditions"], source["weights"])
-        ]
-        self.images = [Image(i) for i in source["images"]]
-        self.points = [Point(p) for p in source["points"]]
+        conditions = source.get("conditions", []) or [{"name": "default", "description": ""}]
+        weights = source.get("weights", []) or [1.0] * len(conditions)
+        if len(weights) < len(conditions):
+            weights = list(weights) + [1.0] * (len(conditions) - len(weights))
+        self.conditions = [Condition(c, w) for c, w in zip(conditions, weights)]
+        self.images = [Image(i) for i in source.get("images", [])]
+        self.points = [Point(p) for p in source.get("points", [])]
         self.metadata = source.get("metadata", {}) or {}
-        self.annotations = {}
+        annotations = source.get("annotations", {}) or {}
+        self.annotations = annotations if isinstance(annotations, dict) else {}
+        texts = source.get("texts", {}) or {}
+        self.texts = texts if isinstance(texts, dict) else {}
         self._study = weakref.proxy(study) if study else None
 
     def __repr__(self):
@@ -573,7 +674,7 @@ class Analysis:
 
     def to_dict(self):
         """Convert the Analysis to a dictionary."""
-        return {
+        analysis_dict = {
             "id": self.id,
             "name": self.name,
             "conditions": [
@@ -585,6 +686,11 @@ class Analysis:
             "weights": [c.to_dict()["weight"] for c in self.conditions],
             "metadata": self.metadata,
         }
+        if self.annotations:
+            analysis_dict["annotations"] = self.annotations
+        if self.texts:
+            analysis_dict["texts"] = self.texts
+        return analysis_dict
 
 
 class Condition:

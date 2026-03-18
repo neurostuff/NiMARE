@@ -13,6 +13,7 @@ from nimare.io import (
     convert_sleuth_to_dataset,
     convert_sleuth_to_nimads_dict,
 )
+from nimare.studyset import ensure_studyset_view
 
 
 def test_annotation_splitting_boolean(example_nimads_studyset, example_nimads_annotation):
@@ -394,3 +395,17 @@ def test_convert_dataset_to_studyset_returns_object():
     assert isinstance(studyset, Studyset)
     assert studyset.id == "cdts"
     assert studyset.name == "From Dataset"
+
+
+def test_convert_dataset_to_studyset_preserves_execution_context():
+    """Dataset->Studyset convenience conversion should preserve native execution caches."""
+    sleuth_file = "nimare/tests/data/test_sleuth_file.txt"
+    dset = convert_sleuth_to_dataset(sleuth_file)
+    studyset = convert_dataset_to_studyset(dset, studyset_id="cdts", studyset_name="From Dataset")
+
+    assert studyset._nimare_table_cache is not None
+    assert studyset._nimare_space == dset.space
+    assert studyset._nimare_masker is dset.masker
+
+    view = ensure_studyset_view(studyset)
+    assert set(view.ids) == set(dset.ids)
