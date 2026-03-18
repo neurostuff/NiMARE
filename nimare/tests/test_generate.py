@@ -13,6 +13,7 @@ from nimare.generate import (
     create_coordinate_dataset,
     create_coordinate_studyset,
     create_neurovault_dataset,
+    create_neurovault_studyset,
 )
 from nimare.nimads import Studyset
 
@@ -266,3 +267,14 @@ def test_create_neurovault_dataset():
     )
     expected_columns = {"beta", "t", "varcope", "z"}
     assert expected_columns.issubset(dset.images.columns)
+
+
+def test_create_neurovault_studyset():
+    """Test creating a neurovault Studyset."""
+    studyset = create_neurovault_studyset(
+        collection_ids=(8836,),
+        contrasts={"animal": "as-Animal"},
+    )
+    expected_columns = {"beta", "t", "varcope", "z"}
+    assert isinstance(studyset, Studyset)
+    assert expected_columns.issubset(studyset.images.columns)

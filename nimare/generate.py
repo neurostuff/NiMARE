@@ -210,6 +210,35 @@ def create_neurovault_dataset(
     return dataset
 
 
+def create_neurovault_studyset(
+    collection_ids=NEUROVAULT_IDS,
+    contrasts=CONTRAST_OF_INTEREST,
+    img_dir=None,
+    map_type_conversion=None,
+    **dset_kwargs,
+):
+    """Download images from NeuroVault and use them to create a Studyset.
+
+    This is the Studyset-native companion to :func:`create_neurovault_dataset`
+    and accepts the same arguments.
+
+    Returns
+    -------
+    :obj:`~nimare.nimads.Studyset`
+        Studyset object containing experiment information from NeuroVault.
+    """
+    from nimare.nimads import Studyset
+
+    dataset = create_neurovault_dataset(
+        collection_ids=collection_ids,
+        contrasts=contrasts,
+        img_dir=img_dir,
+        map_type_conversion=map_type_conversion,
+        **dset_kwargs,
+    )
+    return Studyset.from_dataset(dataset)
+
+
 def _create_source(foci, sample_sizes, space="MNI"):
     """Create dictionary according to nimads(ish) specification.
 

@@ -1061,6 +1061,35 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
     return Dataset(dset_dict, target=target)
 
 
+def convert_sleuth_to_studyset(text_file, target="ale_2mm"):
+    """Convert Sleuth output text file into a NiMARE Studyset.
+
+    This is the Studyset-native companion to
+    :func:`convert_sleuth_to_dataset` and accepts the same arguments.
+
+    Parameters
+    ----------
+    text_file : :obj:`str` or :obj:`list` of :obj:`str`
+        Path to Sleuth-format text file.
+        More than one text file may be provided.
+    target : {'ale_2mm', 'mni152_2mm'} or None, optional
+        Target template space for coordinates. If None,
+        coordinates remain in the reference space indicated by the Sleuth
+        file's //Reference= header and no template-based masker is created.
+        If a template name is provided, coordinates are transformed into
+        that space and a corresponding Studyset view can be created.
+
+    Returns
+    -------
+    :obj:`~nimare.nimads.Studyset`
+        Studyset object containing experiment information from ``text_file``.
+    """
+    from nimare.nimads import Studyset
+
+    dataset = convert_sleuth_to_dataset(text_file, target=target)
+    return Studyset.from_dataset(dataset)
+
+
 def _is_missing(value: Any) -> bool:
     """Return True when value should be treated as missing."""
     if value is None:

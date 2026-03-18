@@ -150,6 +150,7 @@ For more information about functional characterization analysis, see :doc:`decod
    io.convert_sleuth_to_dict
    io.convert_sleuth_to_json
    io.convert_sleuth_to_dataset
+   io.convert_sleuth_to_studyset
    io.convert_neurovault_to_dataset
 
 
@@ -298,6 +299,7 @@ For more information about fetching data from the internet, see :ref:`fetching t
    generate.create_coordinate_dataset
    generate.create_coordinate_studyset
    generate.create_neurovault_dataset
+   generate.create_neurovault_studyset
 
 
 .. _api_utils_ref:

@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 from nilearn.plotting import plot_stat_map
 
 ###############################################################################
-# Load Sleuth text files and convert them to Studysets
+# Load Sleuth text files directly into Studysets
 # -----------------------------------------------------------------------------
 # The data for this example are a subset of studies from a meta-analysis on
 # semantic cognition in children :footcite:p:`enge2021meta`.
@@ -35,17 +35,14 @@ from nilearn.plotting import plot_stat_map
 # (e.g., correctly naming an object after hearing its auditory description)
 # while a second group of studies asked children to decide if two (or more)
 # words were semantically related to one another or not.
-from nimare.io import convert_sleuth_to_dataset
-from nimare.nimads import Studyset
+from nimare.io import convert_sleuth_to_studyset
 from nimare.utils import get_resource_path
 
 knowledge_file = os.path.join(get_resource_path(), "semantic_knowledge_children.txt")
 related_file = os.path.join(get_resource_path(), "semantic_relatedness_children.txt")
 
-knowledge_dset = convert_sleuth_to_dataset(knowledge_file)
-related_dset = convert_sleuth_to_dataset(related_file)
-knowledge_studyset = Studyset.from_dataset(knowledge_dset)
-related_studyset = Studyset.from_dataset(related_dset)
+knowledge_studyset = convert_sleuth_to_studyset(knowledge_file)
+related_studyset = convert_sleuth_to_studyset(related_file)
 
 ###############################################################################
 # Individual group ALEs
