@@ -15,17 +15,16 @@ import numpy as np
 import pandas as pd
 
 from nimare import annotate, extract
-from nimare.dataset import Dataset
 from nimare.nimads import Studyset
 from nimare.utils import get_resource_path
 
 ###############################################################################
 # Load Studyset with abstracts
 # -----------------------------------------------------------------------------
-# The bundled example file uses the legacy Dataset JSON structure, so we load
-# it once and immediately convert it to a Studyset.
-dset = Dataset(os.path.join(get_resource_path(), "neurosynth_laird_studies.json"))
-studyset = Studyset.from_dataset(dset)
+studyset = Studyset(
+    os.path.join(get_resource_path(), "neurosynth_laird_studyset.json"),
+    target="mni152_2mm",
+)
 
 ###############################################################################
 # Download Cognitive Atlas

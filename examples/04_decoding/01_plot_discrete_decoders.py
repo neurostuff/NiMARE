@@ -17,7 +17,6 @@ import nibabel as nib
 import numpy as np
 from nilearn.plotting import plot_roi
 
-from nimare.dataset import Dataset
 from nimare.decode import discrete
 from nimare.nimads import Studyset
 from nimare.utils import get_resource_path
@@ -25,10 +24,10 @@ from nimare.utils import get_resource_path
 ###############################################################################
 # Load Studyset with abstracts
 # -----------------------------------------------------------------------------
-# The bundled example file uses the legacy Dataset JSON structure, so we load
-# it once and immediately convert it to a Studyset.
-dset = Dataset(os.path.join(get_resource_path(), "neurosynth_laird_studies.json"))
-studyset = Studyset.from_dataset(dset)
+studyset = Studyset(
+    os.path.join(get_resource_path(), "neurosynth_laird_studyset.json"),
+    target="mni152_2mm",
+)
 studyset.annotations_df.head(5)
 
 ###############################################################################

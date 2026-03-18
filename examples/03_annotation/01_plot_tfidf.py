@@ -10,16 +10,16 @@ Perform simple term count or tf-idf value extraction from texts stored in a Stud
 """
 import os
 
-from nimare import annotate, dataset, utils
+from nimare import annotate, utils
 from nimare.nimads import Studyset
 
 ###############################################################################
 # Load Studyset with abstracts
 # -----------------------------------------------------------------------------
-# The bundled example file uses the legacy Dataset JSON structure, so we load
-# it once and immediately convert it to a Studyset.
-dset = dataset.Dataset(os.path.join(utils.get_resource_path(), "neurosynth_laird_studies.json"))
-studyset = Studyset.from_dataset(dset)
+studyset = Studyset(
+    os.path.join(utils.get_resource_path(), "neurosynth_laird_studyset.json"),
+    target="mni152_2mm",
+)
 studyset.texts.head(2)
 
 ###############################################################################

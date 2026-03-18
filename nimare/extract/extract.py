@@ -34,6 +34,7 @@ VALID_ENTITIES = {
     "metadata.json": ["data", "version", "vocab"],
     "keys.tsv": ["data", "version", "vocab"],
 }
+VALID_FETCH_RETURN_TYPES = {"studyset", "dataset", "files"}
 
 
 def _find_entities(filename, search_pairs, log=False):
@@ -133,7 +134,45 @@ def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
     return found_databases
 
 
-def fetch_neurosynth(data_dir=None, version="7", overwrite=False, **kwargs):
+def _materialize_found_databases(found_databases, return_type, target):
+    """Convert downloaded database manifests into NiMARE objects when requested."""
+    from nimare.io import convert_neurosynth_to_dataset
+
+    if return_type == "files":
+        return found_databases
+
+    if return_type not in VALID_FETCH_RETURN_TYPES:
+        raise ValueError(
+            f"Invalid return_type '{return_type}'. "
+            f"Expected one of: {', '.join(sorted(VALID_FETCH_RETURN_TYPES))}."
+        )
+
+    materialized = []
+    for database in found_databases:
+        dataset = convert_neurosynth_to_dataset(
+            coordinates_file=database["coordinates"],
+            metadata_file=database["metadata"],
+            annotations_files=database["features"],
+            target=target,
+        )
+        if return_type == "dataset":
+            materialized.append(dataset)
+        else:
+            from nimare.nimads import Studyset
+
+            materialized.append(Studyset.from_dataset(dataset))
+
+    return materialized
+
+
+def fetch_neurosynth(
+    data_dir=None,
+    version="7",
+    overwrite=False,
+    return_type="studyset",
+    target="mni152_2mm",
+    **kwargs,
+):
     """Download the latest data files from NeuroSynth.
 
     .. versionchanged:: 0.0.10
@@ -153,6 +192,13 @@ def fetch_neurosynth(data_dir=None, version="7", overwrite=False, **kwargs):
         The version to fetch. The default is "7" (Neurosynth's latest version).
     overwrite : bool, optional
         Whether to overwrite existing files or not. Default is False.
+    return_type : {"studyset", "dataset", "files"}, optional
+        Type of object to return after downloading. The default is ``"studyset"``.
+        Use ``"dataset"`` for the legacy Dataset return type or ``"files"`` to return the
+        downloaded file manifest without conversion.
+    target : {'mni152_2mm', 'ale_2mm'}, optional
+        Target template space used when constructing Dataset or Studyset outputs.
+        Ignored when ``return_type="files"``.
     kwargs : dict, optional
         Keyword arguments to select relevant feature files.
         Valid kwargs include: source, vocab, type.
@@ -162,12 +208,9 @@ def fetch_neurosynth(data_dir=None, version="7", overwrite=False, **kwargs):
 
     Returns
     -------
-    found_databases : :obj:`list` of :obj:`dict`
-        List of dictionaries indicating datasets downloaded.
-        Each list entry is a different database, containing a dictionary with three keys:
-        "coordinates", "metadata", and "features". "coordinates" and "metadata" will be filenames.
-        "features" will be a list of dictionaries, each containing "id", "vocab", and "features"
-        keys with associated files.
+    outputs : :obj:`list`
+        List of downloaded databases, returned as Studysets, Datasets, or file-manifest
+        dictionaries depending on ``return_type``.
 
     Notes
     -----
@@ -191,10 +234,17 @@ def fetch_neurosynth(data_dir=None, version="7", overwrite=False, **kwargs):
 
     found_databases = _fetch_database(kwargs, URL, data_dir, overwrite=overwrite)
 
-    return found_databases
+    return _materialize_found_databases(found_databases, return_type=return_type, target=target)
 
 
-def fetch_neuroquery(data_dir=None, version="1", overwrite=False, **kwargs):
+def fetch_neuroquery(
+    data_dir=None,
+    version="1",
+    overwrite=False,
+    return_type="studyset",
+    target="mni152_2mm",
+    **kwargs,
+):
     """Download the latest data files from NeuroQuery.
 
     .. versionadded:: 0.0.10
@@ -215,15 +265,19 @@ def fetch_neuroquery(data_dir=None, version="1", overwrite=False, **kwargs):
         Each kwarg may be a string or a list of strings.
         If no kwargs are provided, all feature files for the specified database version will be
         downloaded.
+    return_type : {"studyset", "dataset", "files"}, optional
+        Type of object to return after downloading. The default is ``"studyset"``.
+        Use ``"dataset"`` for the legacy Dataset return type or ``"files"`` to return the
+        downloaded file manifest without conversion.
+    target : {'mni152_2mm', 'ale_2mm'}, optional
+        Target template space used when constructing Dataset or Studyset outputs.
+        Ignored when ``return_type="files"``.
 
     Returns
     -------
-    found_databases : :obj:`list` of :obj:`dict`
-        List of dictionaries indicating datasets downloaded.
-        Each list entry is a different database, containing a dictionary with three keys:
-        "coordinates", "metadata", and "features". "coordinates" and "metadata" will be filenames.
-        "features" will be a list of dictionaries, each containing "id", "vocab", and "features"
-        keys with associated files.
+    outputs : :obj:`list`
+        List of downloaded databases, returned as Studysets, Datasets, or file-manifest
+        dictionaries depending on ``return_type``.
 
     Notes
     -----
@@ -242,7 +296,7 @@ def fetch_neuroquery(data_dir=None, version="1", overwrite=False, **kwargs):
 
     found_databases = _fetch_database(kwargs, URL, data_dir, overwrite=overwrite)
 
-    return found_databases
+    return _materialize_found_databases(found_databases, return_type=return_type, target=target)
 
 
 def download_nidm_pain(data_dir=None, overwrite=False):
@@ -416,14 +470,14 @@ def download_abstracts(dataset, email):
 
     Parameters
     ----------
-    dataset : :obj:`~nimare.dataset.Dataset`
-        A Dataset object where IDs are in the form PMID-EXPID
+    dataset : :obj:`~nimare.dataset.Dataset` or :obj:`~nimare.nimads.Studyset`
+        A Dataset or Studyset where study IDs correspond to PMIDs.
     email : :obj:`str`
         Email address to use to call the PubMed API
 
     Returns
     -------
-    dataset : :obj:`~nimare.dataset.Dataset`
+    dataset : :obj:`~nimare.dataset.Dataset` or :obj:`~nimare.nimads.Studyset`
 
     Warnings
     --------
@@ -436,9 +490,14 @@ def download_abstracts(dataset, email):
     except ImportError:
         raise Exception("Module biopython is required for downloading abstracts from PubMed.")
 
+    from nimare.nimads import Studyset
+
     Entrez.email = email
 
     if isinstance(dataset, Dataset):
+        pmids = dataset.texts["study_id"].astype(str).tolist()
+        pmids = sorted(list(set(pmids)))
+    elif isinstance(dataset, Studyset):
         pmids = dataset.texts["study_id"].astype(str).tolist()
         pmids = sorted(list(set(pmids)))
     elif isinstance(dataset, list):
@@ -458,6 +517,17 @@ def download_abstracts(dataset, email):
     data = [[study["PMID"], study["AB"]] for study in records if study.get("AB", None)]
     df = pd.DataFrame(columns=["study_id", "abstract"], data=data)
     if not isinstance(dataset, Dataset):
+        if isinstance(dataset, Studyset):
+            abstract_by_study = df.drop_duplicates("study_id").set_index("study_id")["abstract"]
+            for study in dataset.studies:
+                abstract = abstract_by_study.get(str(study.id), None)
+                if abstract is None:
+                    continue
+                for analysis in study.analyses:
+                    analysis.texts = dict(analysis.texts or {})
+                    analysis.texts["abstract"] = abstract
+            dataset.touch()
+            return dataset
         return df
 
     dataset.texts = pd.merge(

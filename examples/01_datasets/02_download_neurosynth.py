@@ -37,8 +37,6 @@ import os
 from pprint import pprint
 
 from nimare.extract import download_abstracts, fetch_neuroquery, fetch_neurosynth
-from nimare.io import convert_neurosynth_to_dataset
-from nimare.nimads import Studyset
 
 # biopython is unnecessary here, but is required by download_abstracts.
 # We import it here only to document the dependency and cause an early failure if it's missing.
@@ -57,28 +55,31 @@ files = fetch_neurosynth(
     overwrite=False,
     source="abstract",
     vocab="terms",
+    return_type="files",
 )
 # Note that the files are saved to a new folder within "out_dir" named "neurosynth".
 pprint(files)
-neurosynth_db = files[0]
 
 ###############################################################################
-# Convert Neurosynth database to a NiMARE Studyset
+# Download Neurosynth directly as a Studyset
 # -----------------------------------------------------------------------------
-neurosynth_dset = convert_neurosynth_to_dataset(
-    coordinates_file=neurosynth_db["coordinates"],
-    metadata_file=neurosynth_db["metadata"],
-    annotations_files=neurosynth_db["features"],
-)
+# Studysets are now the default return type. For the legacy Dataset return type,
+# pass ``return_type="dataset"``.
+neurosynth_studyset = fetch_neurosynth(
+    data_dir=out_dir,
+    version="7",
+    overwrite=False,
+    source="abstract",
+    vocab="terms",
+)[0]
 
 ###############################################################################
-# Add article abstracts to dataset
+# Add article abstracts to Studyset
 # -----------------------------------------------------------------------------
 # This is only possible because Neurosynth uses PMIDs as study IDs.
 #
 # Make sure you replace the example email address with your own.
-neurosynth_dset = download_abstracts(neurosynth_dset, "example@example.edu")
-neurosynth_studyset = Studyset.from_dataset(neurosynth_dset)
+neurosynth_studyset = download_abstracts(neurosynth_studyset, "example@example.edu")
 neurosynth_studyset.to_nimads(os.path.join(out_dir, "neurosynth_studyset.json"))
 print(neurosynth_studyset)
 
@@ -93,21 +94,21 @@ files = fetch_neuroquery(
     source="combined",
     vocab="neuroquery6308",
     type="tfidf",
+    return_type="files",
 )
 # Note that the files are saved to a new folder within "out_dir" named "neuroquery".
 pprint(files)
-neuroquery_db = files[0]
 
-# Note that the conversion function says "neurosynth".
-# This is just for backwards compatibility.
-neuroquery_dset = convert_neurosynth_to_dataset(
-    coordinates_file=neuroquery_db["coordinates"],
-    metadata_file=neuroquery_db["metadata"],
-    annotations_files=neuroquery_db["features"],
-)
+neuroquery_studyset = fetch_neuroquery(
+    data_dir=out_dir,
+    version="1",
+    overwrite=False,
+    source="combined",
+    vocab="neuroquery6308",
+    type="tfidf",
+)[0]
 
 # NeuroQuery also uses PMIDs as study IDs.
-neuroquery_dset = download_abstracts(neuroquery_dset, "example@example.edu")
-neuroquery_studyset = Studyset.from_dataset(neuroquery_dset)
+neuroquery_studyset = download_abstracts(neuroquery_studyset, "example@example.edu")
 neuroquery_studyset.to_nimads(os.path.join(out_dir, "neuroquery_studyset.json"))
 print(neuroquery_studyset)

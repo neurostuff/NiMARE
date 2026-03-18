@@ -116,6 +116,19 @@ def test_saved_nidm_pain_studyset_loads_directly():
     assert "beta__relative" in studyset.images.columns
 
 
+def test_saved_neurosynth_laird_studyset_loads_directly():
+    """Test loading the saved Neurosynth Laird Studyset resource directly."""
+    studyset_file = os.path.join(get_test_data_path(), "neurosynth_laird_studyset.json")
+
+    studyset = nimads.Studyset(studyset_file, target="mni152_2mm")
+
+    assert len(studyset.studies) > 0
+    assert studyset.space == "mni152_2mm"
+    assert not studyset.texts.empty
+    assert "abstract" in studyset.texts.columns
+    assert not studyset.annotations_df.empty
+
+
 def test_studyset_string_methods(example_nimads_studyset):
     """Test string representation methods."""
     studyset = nimads.Studyset(example_nimads_studyset)
