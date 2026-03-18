@@ -96,7 +96,9 @@ def _build_cluster_summary_context(masker, label_map, label_vector, cluster_ids)
         label_to_indices = dict(zip(unique_labels.tolist(), grouped_indices))
 
         cluster_indices = [
-            label_to_indices.get(int(c_id), np.array([], dtype=np.int32)).astype(np.int32, copy=False)
+            label_to_indices.get(int(c_id), np.array([], dtype=np.int32)).astype(
+                np.int32, copy=False
+            )
             for c_id in cluster_ids
         ]
         if all(cluster_idx.size > 0 for cluster_idx in cluster_indices):
