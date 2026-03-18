@@ -526,7 +526,13 @@ class StandardizeField(NiMAREBase):
         self.fields = fields  # the fields to be standardized
 
     def transform(self, dataset):
-        """Standardize metadata fields."""
+        """Standardize metadata fields.
+
+        Notes
+        -----
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        """
         from nimare.dataset import Dataset
 
         if not isinstance(dataset, Dataset):

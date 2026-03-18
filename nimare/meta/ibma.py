@@ -40,6 +40,10 @@ __version__ = _version.get_versions()["version"]
 class IBMAEstimator(Estimator):
     """Base class for meta-analysis methods in :mod:`~nimare.meta`.
 
+    .. warning::
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+
     .. versionchanged:: 0.2.1
 
         - New parameters: ``memory`` and ``memory_level`` for memory caching.
@@ -94,7 +98,13 @@ class IBMAEstimator(Estimator):
         self._resample_kwargs.update(resample_kwargs)
 
     def _preprocess_input(self, dataset):
-        """Preprocess inputs to the Estimator from the Dataset as needed."""
+        """Preprocess inputs to the Estimator from the Dataset as needed.
+
+        Notes
+        -----
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        """
         masker = self.masker or dataset.masker
 
         mask_img = masker.mask_img or masker.labels_img
@@ -405,7 +415,13 @@ class Stouffers(IBMAEstimator):
         self._mode = "concordant" if self.two_sided else "directed"
 
     def _preprocess_input(self, dataset):
-        """Preprocess additional inputs to the Estimator from the Dataset as needed."""
+        """Preprocess additional inputs to the Estimator from the Dataset as needed.
+
+        Notes
+        -----
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        """
         super()._preprocess_input(dataset)
 
         study_mask = dataset.images["id"].isin(self.inputs_["id"])

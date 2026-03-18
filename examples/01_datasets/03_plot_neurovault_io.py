@@ -65,9 +65,27 @@ studyset = create_neurovault_studyset(
 ###############################################################################
 # Conversion of Statistical Maps
 # -----------------------------------------------------------------------------
-# The helper resolves compatible statistical maps into Studyset images,
-# including derived Z maps when possible.
-studyset.images[["z"]]
+# ``create_neurovault_studyset`` already resolves compatible image types.
+# To explicitly demonstrate :class:`~nimare.transforms.ImageTransformer` on a
+# Studyset-backed collection, we drop the derived Z maps from contrasts that
+# still have T maps and regenerate them.
+from nimare.transforms import ImageTransformer
+
+studyset_view = studyset.view()
+images = studyset_view.images.copy()
+images.loc[images["t"].notnull(), "z"] = None
+studyset_view.images = images
+
+# Some studies are now missing Z maps again.
+studyset_view.images[["t", "z"]]
+
+###############################################################################
+z_transformer = ImageTransformer(target="z")
+studyset_view = z_transformer.transform(studyset_view)
+
+###############################################################################
+# All studies now have Z maps again.
+studyset_view.images[["z"]]
 
 ###############################################################################
 # Run a Meta-Analysis
@@ -81,7 +99,7 @@ from nimare.meta.ibma import Fishers
 # images during the fitting process.
 meta = Fishers(resample=True)
 
-meta_res = meta.fit(studyset)
+meta_res = meta.fit(studyset_view)
 
 fig, ax = plt.subplots()
 display = plot_stat_map(meta_res.get_map("z"), threshold=3.3, axes=ax, figure=fig)

@@ -36,6 +36,10 @@ LGR = logging.getLogger(__name__)
 class CBMAEstimator(Estimator):
     """Base class for coordinate-based meta-analysis methods.
 
+    .. warning::
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+
     .. versionchanged:: 0.0.12
 
         * Remove *low_memory* option
@@ -121,6 +125,11 @@ class CBMAEstimator(Estimator):
             Specifically, (1) an "ma_maps" key may be added if pre-generated MA maps are available,
             (2) IJK coordinates will be added based on the mask image's affine,
             and (3) sample sizes may be added to the "coordinates" key, as needed.
+
+        Notes
+        -----
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         masker = self.masker or dataset.masker
         if masker is None:
@@ -216,6 +225,11 @@ class CBMAEstimator(Estimator):
         ----------
         dataset : :obj:`~nimare.dataset.Dataset`
             Dataset to analyze.
+
+        Notes
+        -----
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         self.dataset = dataset
         self.masker = self.masker or dataset.masker

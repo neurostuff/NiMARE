@@ -54,6 +54,11 @@ class Estimator(NiMAREBase):
             A dictionary of required inputs for the Estimator, extracted from the Dataset.
             The actual inputs collected in this attribute are determined by the
             ``_required_inputs`` variable that should be specified in each child class.
+
+        Notes
+        -----
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         if not isinstance(dataset, StudysetView):
             dataset = ensure_studyset_view(dataset)
@@ -95,6 +100,11 @@ class Estimator(NiMAREBase):
         ----------
         dataset : :obj:`~nimare.dataset.Dataset`
             The Dataset
+
+        Notes
+        -----
+        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
+        a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         pass
 
