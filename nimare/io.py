@@ -50,11 +50,10 @@ def convert_nimads_to_dataset(studyset, annotation=None):
     dset : :obj:`nimare.dataset.Dataset`
         NiMARE Dataset object containing experiment information from nimads studyset.
 
-    Warnings
-    --------
-    :class:`~nimare.dataset.Dataset` is deprecated and will be removed in a future
-    release. Prefer keeping data in :class:`~nimare.nimads.Studyset` form and using
-    :meth:`~nimare.nimads.Studyset.view` when a Dataset-like tabular view is needed.
+    .. warning::
+        :class:`~nimare.dataset.Dataset` is deprecated and will be removed in a future release.
+        Prefer keeping data in :class:`~nimare.nimads.Studyset` form and using
+        :meth:`~nimare.nimads.Studyset.view` when a Dataset-like tabular view is needed.
     """
 
     def _analysis_to_dict(study, analysis):
@@ -479,15 +478,15 @@ def convert_neurosynth_to_dataset(
     :obj:`~nimare.dataset.Dataset`
         Dataset object containing experiment information from text_file.
 
-    Warnings
-    --------
-    :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in a future
-    release. When possible, prefer :func:`~nimare.extract.fetch_neurosynth` or
-    :func:`~nimare.extract.fetch_neuroquery`, which return
-    :class:`~nimare.nimads.Studyset` objects by default.
+    .. warning::
+        :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in a future
+        release. When possible, prefer :func:`~nimare.extract.fetch_neurosynth` or
+        :func:`~nimare.extract.fetch_neuroquery`, which return
+        :class:`~nimare.nimads.Studyset` objects by default.
 
-    Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
-    format. Old code using this function **will not work** with the new version.
+    .. warning::
+        Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
+        format. Old code using this function **will not work** with the new version.
     """
     dset_dict = convert_neurosynth_to_dict(
         coordinates_file,

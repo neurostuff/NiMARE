@@ -1186,10 +1186,9 @@ class SCALE(CBMAEstimator):
         dataset : :obj:`~nimare.dataset.Dataset`
             Dataset to analyze.
 
-        Notes
-        -----
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         self.dataset = dataset
         self.masker = self.masker or dataset.masker

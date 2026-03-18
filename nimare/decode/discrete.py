@@ -199,10 +199,10 @@ class BrainMapDecoder(Decoder):
             label: 'pForward', 'zForward', 'likelihoodForward', 'pReverse',
             'zReverse', and 'probReverse'.
 
-        Notes
-        -----
-        Fitting decoders on :class:`~nimare.dataset.Dataset` inputs is deprecated and will be
-        removed in a future release. Prefer fitting on :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Fitting decoders on :class:`~nimare.dataset.Dataset` inputs is deprecated and will be
+            removed in a future release. Prefer fitting on
+            :class:`~nimare.nimads.Studyset`.
         """
         results = brainmap_decode(
             self.inputs_["coordinates"],
@@ -493,10 +493,10 @@ class NeurosynthDecoder(Decoder):
             label: 'pForward', 'zForward', 'probForward', 'pReverse', 'zReverse',
             and 'probReverse'.
 
-        Notes
-        -----
-        Fitting decoders on :class:`~nimare.dataset.Dataset` inputs is deprecated and will be
-        removed in a future release. Prefer fitting on :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Fitting decoders on :class:`~nimare.dataset.Dataset` inputs is deprecated and will be
+            removed in a future release. Prefer fitting on
+            :class:`~nimare.nimads.Studyset`.
         """
         results = neurosynth_decode(
             self.inputs_["coordinates"],
@@ -768,10 +768,10 @@ class ROIAssociationDecoder(Decoder):
             Table with each label and the following values associated with each
             label: 'r'.
 
-        Notes
-        -----
-        Fitting decoders on :class:`~nimare.dataset.Dataset` inputs is deprecated and will be
-        removed in a future release. Prefer fitting on :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Fitting decoders on :class:`~nimare.dataset.Dataset` inputs is deprecated and will be
+            removed in a future release. Prefer fitting on
+            :class:`~nimare.nimads.Studyset`.
         """
         feature_values = self.inputs_["annotations"][self.features_].values
         corrs = pearson(self.roi_values_, feature_values.T)

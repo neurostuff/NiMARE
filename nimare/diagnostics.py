@@ -555,10 +555,9 @@ class FocusFilter(NiMAREBase):
             The filtered collection. Dataset inputs preserve the Dataset fast path; Studyset
             inputs return a filtered StudysetView.
 
-        Notes
-        -----
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         if isinstance(dataset, Dataset):
             filtered = dataset

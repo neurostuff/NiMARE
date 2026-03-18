@@ -82,10 +82,9 @@ class CBMAWorkflow(Workflow):
         :obj:`~nimare.results.MetaResult`
             Results of Estimator fitting.
 
-        Notes
-        -----
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         LGR.info("Performing meta-analysis...")
         results = self.estimator.fit(dataset, drop_invalid=drop_invalid)
@@ -157,10 +156,9 @@ class PairwiseCBMAWorkflow(Workflow):
         :obj:`~nimare.results.MetaResult`
             Results of Estimator fitting.
 
-        Notes
-        -----
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         LGR.info("Performing meta-analysis...")
         results = self.estimator.fit(dataset1, dataset2, drop_invalid=drop_invalid)

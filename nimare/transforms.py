@@ -66,10 +66,9 @@ class ImageTransformer(NiMAREBase):
         new_dataset : same type as input when possible
             A copy of the input collection, with new images added to its images attribute.
 
-        Notes
-        -----
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         from nimare.dataset import Dataset
 
@@ -376,10 +375,9 @@ class ImagesToCoordinates(NiMAREBase):
             images and metadata indicating origin
             of coordinates ('original' or 'nimare').
 
-        Notes
-        -----
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         from nimare.dataset import Dataset
 
@@ -528,10 +526,9 @@ class StandardizeField(NiMAREBase):
     def transform(self, dataset):
         """Standardize metadata fields.
 
-        Notes
-        -----
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         from nimare.dataset import Dataset
 

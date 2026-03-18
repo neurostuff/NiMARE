@@ -55,10 +55,9 @@ class Estimator(NiMAREBase):
             The actual inputs collected in this attribute are determined by the
             ``_required_inputs`` variable that should be specified in each child class.
 
-        Notes
-        -----
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         if not isinstance(dataset, StudysetView):
             dataset = ensure_studyset_view(dataset)
@@ -101,10 +100,9 @@ class Estimator(NiMAREBase):
         dataset : :obj:`~nimare.dataset.Dataset`
             The Dataset
 
-        Notes
-        -----
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         pass
 
@@ -139,10 +137,9 @@ class Estimator(NiMAREBase):
         inputs_ : :obj:`dict`
             Inputs used in _fit.
 
-        Notes
-        -----
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
 
         The `fit` method is a light wrapper that runs input validation and
         preprocessing before fitting the actual model. Estimators' individual

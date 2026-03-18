@@ -246,10 +246,9 @@ class CorrelationDecoder(Decoder):
         results_ : :obj:`~nimare.results.MetaResult`
             MetaResult with meta-analytic maps and masker added.
 
-        Notes
-        -----
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         n_features = len(self.features_)
         maps = _collect_feature_maps(
@@ -458,10 +457,9 @@ class CorrelationDistributionDecoder(Decoder):
         results : :obj:`~nimare.results.MetaResult`
             MetaResult with meta-analytic maps and masker added.
 
-        Notes
-        -----
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         n_features = len(self.features_)
         maps = _collect_feature_maps(

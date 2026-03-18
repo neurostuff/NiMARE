@@ -100,10 +100,9 @@ class IBMAEstimator(Estimator):
     def _preprocess_input(self, dataset):
         """Preprocess inputs to the Estimator from the Dataset as needed.
 
-        Notes
-        -----
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         masker = self.masker or dataset.masker
 
@@ -417,10 +416,9 @@ class Stouffers(IBMAEstimator):
     def _preprocess_input(self, dataset):
         """Preprocess additional inputs to the Estimator from the Dataset as needed.
 
-        Notes
-        -----
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         super()._preprocess_input(dataset)
 

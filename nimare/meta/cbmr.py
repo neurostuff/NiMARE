@@ -258,10 +258,9 @@ class CBMREstimator(Estimator):
             (7) an 'foci_per_study' key will be added (study-wise sum of foci count across
             space, categorized by groups).
 
-        Notes
-        -----
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         masker = self.masker or dataset.masker
 
@@ -400,10 +399,9 @@ class CBMREstimator(Estimator):
         dataset : :obj:`~nimare.dataset.Dataset`
             Dataset to analyze.
 
-        Notes
-        -----
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         init_weight_kwargs = {
             "groups": self.groups,

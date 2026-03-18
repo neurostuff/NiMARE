@@ -126,10 +126,9 @@ class CBMAEstimator(Estimator):
             (2) IJK coordinates will be added based on the mask image's affine,
             and (3) sample sizes may be added to the "coordinates" key, as needed.
 
-        Notes
-        -----
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         masker = self.masker or dataset.masker
         if masker is None:
@@ -226,10 +225,9 @@ class CBMAEstimator(Estimator):
         dataset : :obj:`~nimare.dataset.Dataset`
             Dataset to analyze.
 
-        Notes
-        -----
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
@@ -1005,10 +1003,9 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         :obj:`~nimare.results.MetaResult`
             Results of Estimator fitting.
 
-        Notes
-        -----
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
 
         The `fit` method is a light wrapper that runs input validation and
         preprocessing before fitting the actual model. Estimators' individual
