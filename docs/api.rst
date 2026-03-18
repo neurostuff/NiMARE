@@ -296,6 +296,7 @@ For more information about fetching data from the internet, see :ref:`fetching t
    :template: function.rst
 
    generate.create_coordinate_dataset
+   generate.create_coordinate_studyset
    generate.create_neurovault_dataset
 
 

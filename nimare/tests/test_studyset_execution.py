@@ -10,7 +10,7 @@ from nimare import annotate
 from nimare.correct import FDRCorrector
 from nimare.decode import discrete
 from nimare.diagnostics import FocusFilter
-from nimare.generate import create_coordinate_dataset
+from nimare.generate import create_coordinate_dataset, create_coordinate_studyset
 from nimare.io import convert_nimads_to_dataset
 from nimare.meta.cbma import ALE
 from nimare.meta.ibma import Stouffers
@@ -435,14 +435,19 @@ def test_cbmr_accepts_studyset_smoke():
     from nimare.meta import models
     from nimare.meta.cbmr import CBMREstimator
 
-    _, dset = create_coordinate_dataset(foci=5, sample_size=(20, 30), n_studies=30, seed=13)
-    n_rows = dset.annotations.shape[0]
-    dset.annotations["diagnosis"] = [
+    _, studyset = create_coordinate_studyset(
+        foci=5,
+        sample_size=(20, 30),
+        n_studies=30,
+        seed=13,
+    )
+    annotations_df = studyset.annotations_df.copy()
+    n_rows = annotations_df.shape[0]
+    annotations_df["diagnosis"] = [
         "schizophrenia" if i % 2 == 0 else "depression" for i in range(n_rows)
     ]
-    dset.annotations["drug_status"] = ["Yes" if i % 2 == 0 else "No" for i in range(n_rows)]
-
-    studyset = Studyset.from_dataset(dset)
+    annotations_df["drug_status"] = ["Yes" if i % 2 == 0 else "No" for i in range(n_rows)]
+    studyset.annotations_df = annotations_df
     cbmr = CBMREstimator(
         group_categories=["diagnosis", "drug_status"],
         spline_spacing=100,

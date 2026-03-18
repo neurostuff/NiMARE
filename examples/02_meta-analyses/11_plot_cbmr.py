@@ -28,9 +28,8 @@ import numpy as np
 import scipy
 from nilearn.plotting import plot_stat_map
 
-from nimare.generate import create_coordinate_dataset
+from nimare.generate import create_coordinate_studyset
 from nimare.meta import models
-from nimare.nimads import Studyset
 from nimare.transforms import StandardizeField
 
 ###############################################################################
@@ -45,27 +44,33 @@ from nimare.transforms import StandardizeField
 # average age) and a categorical study-level moderator (schizophrenia subtype).
 
 # data simulation
-ground_truth_foci, dset = create_coordinate_dataset(foci=10, sample_size=(20, 40), n_studies=1000)
+ground_truth_foci, studyset = create_coordinate_studyset(
+    foci=10,
+    sample_size=(20, 40),
+    n_studies=1000,
+)
 # set up group columns: diagnosis & drug_status
-n_rows = dset.annotations.shape[0]
-dset.annotations["diagnosis"] = [
+annotations_df = studyset.annotations_df.copy()
+n_rows = annotations_df.shape[0]
+annotations_df["diagnosis"] = [
     "schizophrenia" if i % 2 == 0 else "depression" for i in range(n_rows)
 ]
-dset.annotations["drug_status"] = ["Yes" if i % 2 == 0 else "No" for i in range(n_rows)]
-dset.annotations["drug_status"] = (
-    dset.annotations["drug_status"].sample(frac=1).reset_index(drop=True)
+annotations_df["drug_status"] = ["Yes" if i % 2 == 0 else "No" for i in range(n_rows)]
+annotations_df["drug_status"] = (
+    annotations_df["drug_status"].sample(frac=1).reset_index(drop=True)
 )  # random shuffle drug_status column
 # set up continuous moderators: sample sizes & avg_age
-dset.annotations["sample_sizes"] = [dset.metadata.sample_sizes[i][0] for i in range(n_rows)]
-dset.annotations["avg_age"] = np.arange(n_rows)
+annotations_df["sample_sizes"] = [studyset.metadata.sample_sizes[i][0] for i in range(n_rows)]
+annotations_df["avg_age"] = np.arange(n_rows)
 # set up categorical moderators: schizophrenia_subtype (as not enough data to be interpreted
 # as groups)
-dset.annotations["schizophrenia_subtype"] = ["type1", "type2", "type3", "type4", "type5"] * int(
+annotations_df["schizophrenia_subtype"] = ["type1", "type2", "type3", "type4", "type5"] * int(
     n_rows / 5
 )
-dset.annotations["schizophrenia_subtype"] = (
-    dset.annotations["schizophrenia_subtype"].sample(frac=1).reset_index(drop=True)
+annotations_df["schizophrenia_subtype"] = (
+    annotations_df["schizophrenia_subtype"].sample(frac=1).reset_index(drop=True)
 )  # random shuffle drug_status column
+studyset.annotations_df = annotations_df
 
 ###############################################################################
 # Estimation of group-specific spatial intensity functions
@@ -88,8 +93,7 @@ dset.annotations["schizophrenia_subtype"] = (
 
 from nimare.meta.cbmr import CBMREstimator
 
-dset = StandardizeField(fields=["sample_sizes", "avg_age"]).transform(dset)
-studyset = Studyset.from_dataset(dset)
+studyset = StandardizeField(fields=["sample_sizes", "avg_age"]).transform(studyset)
 
 cbmr = CBMREstimator(
     group_categories=["diagnosis", "drug_status"],

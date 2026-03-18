@@ -114,6 +114,43 @@ def create_coordinate_dataset(
     return ground_truth_foci, dataset
 
 
+def create_coordinate_studyset(
+    foci=1,
+    foci_percentage="100%",
+    fwhm=10,
+    sample_size=30,
+    n_studies=30,
+    n_noise_foci=0,
+    seed=None,
+    space="MNI",
+):
+    """Generate a coordinate-based Studyset for meta-analysis.
+
+    This is the Studyset-native companion to :func:`create_coordinate_dataset`
+    and accepts the same arguments.
+
+    Returns
+    -------
+    ground_truth_foci : :obj:`list`
+        Generated foci in xyz (mm) coordinates.
+    studyset : :class:`~nimare.nimads.Studyset`
+    """
+    from nimare.nimads import Studyset
+
+    ground_truth_foci, dataset = create_coordinate_dataset(
+        foci=foci,
+        foci_percentage=foci_percentage,
+        fwhm=fwhm,
+        sample_size=sample_size,
+        n_studies=n_studies,
+        n_noise_foci=n_noise_foci,
+        seed=seed,
+        space=space,
+    )
+    studyset = Studyset.from_dataset(dataset)
+    return ground_truth_foci, studyset
+
+
 def create_neurovault_dataset(
     collection_ids=NEUROVAULT_IDS,
     contrasts=CONTRAST_OF_INTEREST,

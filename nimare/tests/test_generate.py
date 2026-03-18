@@ -6,11 +6,13 @@ import pytest
 from numpy.random import RandomState
 
 from nimare.dataset import Dataset
+from nimare.nimads import Studyset
 from nimare.generate import (
     _array_like,
     _create_foci,
     _create_source,
     create_coordinate_dataset,
+    create_coordinate_studyset,
     create_neurovault_dataset,
 )
 
@@ -235,6 +237,25 @@ def test_create_coordinate_dataset(kwargs, expectation):
             (kwargs["n_studies"] * n_foci) + (kwargs["n_studies"] * kwargs["n_noise_foci"]),
         )
         assert len(dataset.coordinates) == expected_coordinate_number
+
+
+def test_create_coordinate_studyset():
+    """Create a coordinate Studyset according to parameters."""
+    ground_truth_foci, studyset = create_coordinate_studyset(
+        foci=2,
+        foci_percentage="60%",
+        fwhm=10.0,
+        sample_size=30,
+        n_studies=5,
+        n_noise_foci=1,
+        seed=42,
+        space="MNI",
+    )
+
+    assert isinstance(studyset, Studyset)
+    assert len(studyset.ids) == 5
+    assert len(ground_truth_foci) == 2
+    assert not studyset.coordinates.empty
 
 
 def test_create_neurovault_dataset():
