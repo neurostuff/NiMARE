@@ -73,13 +73,6 @@ class StudysetView(NiMAREBase):
 
     _id_cols = ["id", "study_id", "contrast_id"]
 
-    @staticmethod
-    def _empty_table(extra_cols=None):
-        """Create an empty, Dataset-compatible table with ID columns."""
-        if extra_cols is None:
-            extra_cols = []
-        return pd.DataFrame(columns=StudysetView._id_cols + list(extra_cols))
-
     def __init__(self, studyset, target=None, mask=None, basepath=None, materialize_ids=True):
         self._dataset = None
         self.studyset = load_nimads(studyset)
@@ -614,17 +607,3 @@ def ensure_studyset_view(dataset):
         "Input must be a Dataset, Studyset, dict, or path to a NIMADS studyset JSON, "
         f"not {type(dataset)}."
     )
-
-
-def restore_input_type(input_obj, studyset_view):
-    """Restore output type to match input type when possible."""
-    from nimare.dataset import Dataset
-    from nimare.nimads import Studyset
-
-    if isinstance(input_obj, Dataset):
-        return studyset_view
-
-    if isinstance(input_obj, Studyset):
-        return studyset_view.studyset
-
-    return studyset_view
