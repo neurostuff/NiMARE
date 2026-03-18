@@ -160,7 +160,7 @@ For more information about functional characterization analysis, see :doc:`decod
 ---------------------------------------------------------------
 
 The NIMADS :class:`~nimare.nimads.Studyset` is the primary collection type for
-new NiMARE workflows.
+all NiMARE workflows.
 
 .. automodule:: nimare.nimads
    :no-members:
