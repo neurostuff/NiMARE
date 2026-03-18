@@ -1,1 +1,3237 @@
-{"id": "nimads_from_dataset", "name": "", "studies": [{"id": "pain_01.nidm", "name": "pain_01.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [48.0, -38.0, -24.0]}, {"space": "MNI", "coordinates": [-50.0, -42.0, -24.0]}, {"space": "MNI", "coordinates": [-56.0, -62.0, -6.0]}, {"space": "MNI", "coordinates": [-60.0, -52.0, -10.0]}, {"space": "MNI", "coordinates": [-2.0, -104.0, -2.0]}, {"space": "MNI", "coordinates": [12.0, -106.0, 2.0]}, {"space": "MNI", "coordinates": [26.0, -80.0, -48.0]}, {"space": "MNI", "coordinates": [-36.0, -68.0, -40.0]}, {"space": "MNI", "coordinates": [-56.0, -66.0, -12.0]}, {"space": "MNI", "coordinates": [52.0, -4.0, 6.0]}, {"space": "MNI", "coordinates": [44.0, -6.0, 4.0]}, {"space": "MNI", "coordinates": [38.0, 46.0, 6.0]}, {"space": "MNI", "coordinates": [60.0, -58.0, -10.0]}, {"space": "MNI", "coordinates": [60.0, -30.0, -28.0]}, {"space": "MNI", "coordinates": [54.0, -46.0, -26.0]}, {"space": "MNI", "coordinates": [36.0, -12.0, -12.0]}], "weights": [1.0], "metadata": {"sample_sizes": [25]}}]}, {"id": "pain_02.nidm", "name": "pain_02.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [4.0, -90.0, 2.0]}, {"space": "MNI", "coordinates": [-8.0, -88.0, -16.0]}, {"space": "MNI", "coordinates": [-6.0, -94.0, -6.0]}, {"space": "MNI", "coordinates": [10.0, -62.0, -10.0]}, {"space": "MNI", "coordinates": [36.0, -18.0, 10.0]}, {"space": "MNI", "coordinates": [36.0, 38.0, 30.0]}, {"space": "MNI", "coordinates": [-36.0, 2.0, -16.0]}, {"space": "MNI", "coordinates": [52.0, -22.0, 22.0]}], "weights": [1.0], "metadata": {"sample_sizes": [25]}}]}, {"id": "pain_03.nidm", "name": "pain_03.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [-26.0, -66.0, -40.0]}, {"space": "MNI", "coordinates": [0.0, -4.0, 60.0]}, {"space": "MNI", "coordinates": [-2.0, 20.0, 40.0]}, {"space": "MNI", "coordinates": [4.0, -2.0, 52.0]}, {"space": "MNI", "coordinates": [8.0, 2.0, 60.0]}, {"space": "MNI", "coordinates": [-28.0, -74.0, -32.0]}, {"space": "MNI", "coordinates": [-24.0, -68.0, -28.0]}, {"space": "MNI", "coordinates": [-32.0, -90.0, -10.0]}, {"space": "MNI", "coordinates": [32.0, -92.0, -12.0]}, {"space": "MNI", "coordinates": [22.0, -92.0, -6.0]}, {"space": "MNI", "coordinates": [18.0, -102.0, -4.0]}, {"space": "MNI", "coordinates": [12.0, 10.0, 0.0]}, {"space": "MNI", "coordinates": [60.0, 0.0, 0.0]}, {"space": "MNI", "coordinates": [52.0, 6.0, 0.0]}, {"space": "MNI", "coordinates": [-58.0, 10.0, 8.0]}, {"space": "MNI", "coordinates": [46.0, -82.0, -8.0]}], "weights": [1.0], "metadata": {"sample_sizes": [20]}}]}, {"id": "pain_04.nidm", "name": "pain_04.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [4.0, -6.0, 66.0]}, {"space": "MNI", "coordinates": [2.0, 10.0, 50.0]}, {"space": "MNI", "coordinates": [-8.0, -8.0, 62.0]}, {"space": "MNI", "coordinates": [-36.0, -90.0, -14.0]}, {"space": "MNI", "coordinates": [-24.0, -68.0, -36.0]}, {"space": "MNI", "coordinates": [-32.0, 18.0, -20.0]}, {"space": "MNI", "coordinates": [-28.0, -98.0, -20.0]}, {"space": "MNI", "coordinates": [-40.0, 4.0, -14.0]}, {"space": "MNI", "coordinates": [-30.0, 16.0, 2.0]}, {"space": "MNI", "coordinates": [-38.0, 16.0, 10.0]}, {"space": "MNI", "coordinates": [-34.0, -88.0, -20.0]}, {"space": "MNI", "coordinates": [8.0, 4.0, 58.0]}, {"space": "MNI", "coordinates": [20.0, -100.0, -2.0]}, {"space": "MNI", "coordinates": [20.0, -92.0, -14.0]}, {"space": "MNI", "coordinates": [54.0, -28.0, 18.0]}, {"space": "MNI", "coordinates": [14.0, -104.0, -6.0]}, {"space": "MNI", "coordinates": [54.0, -22.0, 16.0]}, {"space": "MNI", "coordinates": [34.0, -18.0, -10.0]}, {"space": "MNI", "coordinates": [34.0, -20.0, 14.0]}, {"space": "MNI", "coordinates": [56.0, 10.0, 8.0]}, {"space": "MNI", "coordinates": [36.0, 2.0, -2.0]}, {"space": "MNI", "coordinates": [52.0, -8.0, -2.0]}, {"space": "MNI", "coordinates": [32.0, -98.0, -14.0]}, {"space": "MNI", "coordinates": [52.0, 4.0, -2.0]}], "weights": [1.0], "metadata": {"sample_sizes": [20]}}]}, {"id": "pain_05.nidm", "name": "pain_05.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [-32.0, -32.0, -44.0]}, {"space": "MNI", "coordinates": [-4.0, 10.0, 46.0]}, {"space": "MNI", "coordinates": [6.0, 18.0, 42.0]}, {"space": "MNI", "coordinates": [-8.0, -26.0, 28.0]}, {"space": "MNI", "coordinates": [-6.0, 20.0, 40.0]}, {"space": "MNI", "coordinates": [42.0, -64.0, -32.0]}, {"space": "MNI", "coordinates": [-20.0, -58.0, -44.0]}, {"space": "MNI", "coordinates": [-32.0, -60.0, -34.0]}, {"space": "MNI", "coordinates": [38.0, 22.0, 4.0]}, {"space": "MNI", "coordinates": [42.0, 6.0, -6.0]}, {"space": "MNI", "coordinates": [-34.0, 12.0, -10.0]}, {"space": "MNI", "coordinates": [40.0, 10.0, -8.0]}], "weights": [1.0], "metadata": {"sample_sizes": [9]}}]}, {"id": "pain_06.nidm", "name": "pain_06.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [-10.0, -28.0, 2.0]}, {"space": "MNI", "coordinates": [-2.0, 6.0, 56.0]}, {"space": "MNI", "coordinates": [-34.0, -4.0, -8.0]}, {"space": "MNI", "coordinates": [26.0, 44.0, 36.0]}], "weights": [1.0], "metadata": {"sample_sizes": [9]}}]}, {"id": "pain_07.nidm", "name": "pain_07.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [0.0, -38.0, 84.0]}, {"space": "MNI", "coordinates": [-4.0, -44.0, 74.0]}, {"space": "MNI", "coordinates": [2.0, -34.0, 78.0]}, {"space": "MNI", "coordinates": [8.0, -30.0, 82.0]}, {"space": "MNI", "coordinates": [-40.0, -44.0, -12.0]}, {"space": "MNI", "coordinates": [-34.0, -74.0, -42.0]}, {"space": "MNI", "coordinates": [22.0, -62.0, -4.0]}, {"space": "MNI", "coordinates": [-10.0, -92.0, 2.0]}], "weights": [1.0], "metadata": {"sample_sizes": [9]}}]}, {"id": "pain_08.nidm", "name": "pain_08.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [0.0, -46.0, 56.0]}, {"space": "MNI", "coordinates": [12.0, -68.0, 46.0]}, {"space": "MNI", "coordinates": [20.0, -44.0, 62.0]}, {"space": "MNI", "coordinates": [2.0, -86.0, -40.0]}, {"space": "MNI", "coordinates": [-36.0, -60.0, -40.0]}, {"space": "MNI", "coordinates": [-42.0, -44.0, -56.0]}, {"space": "MNI", "coordinates": [38.0, 38.0, 12.0]}, {"space": "MNI", "coordinates": [-46.0, -56.0, -54.0]}, {"space": "MNI", "coordinates": [38.0, 56.0, 20.0]}, {"space": "MNI", "coordinates": [-4.0, -70.0, 50.0]}, {"space": "MNI", "coordinates": [4.0, -36.0, -16.0]}, {"space": "MNI", "coordinates": [-24.0, -8.0, 6.0]}, {"space": "MNI", "coordinates": [36.0, 44.0, 24.0]}, {"space": "MNI", "coordinates": [0.0, 14.0, 30.0]}, {"space": "MNI", "coordinates": [4.0, -26.0, 24.0]}, {"space": "MNI", "coordinates": [60.0, -54.0, 2.0]}, {"space": "MNI", "coordinates": [72.0, -38.0, 28.0]}, {"space": "MNI", "coordinates": [54.0, -30.0, 20.0]}, {"space": "MNI", "coordinates": [64.0, -38.0, 22.0]}], "weights": [1.0], "metadata": {"sample_sizes": [12]}}]}, {"id": "pain_09.nidm", "name": "pain_09.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [14.0, -76.0, -42.0]}, {"space": "MNI", "coordinates": [38.0, -58.0, -44.0]}, {"space": "MNI", "coordinates": [30.0, -62.0, -38.0]}, {"space": "MNI", "coordinates": [-46.0, -58.0, -54.0]}, {"space": "MNI", "coordinates": [-28.0, -56.0, -46.0]}, {"space": "MNI", "coordinates": [-20.0, -74.0, -40.0]}, {"space": "MNI", "coordinates": [52.0, 48.0, 24.0]}, {"space": "MNI", "coordinates": [-50.0, -54.0, -44.0]}, {"space": "MNI", "coordinates": [36.0, -50.0, -40.0]}, {"space": "MNI", "coordinates": [24.0, 36.0, 16.0]}, {"space": "MNI", "coordinates": [-8.0, -34.0, 20.0]}, {"space": "MNI", "coordinates": [36.0, 44.0, 34.0]}, {"space": "MNI", "coordinates": [46.0, -50.0, 54.0]}, {"space": "MNI", "coordinates": [2.0, -52.0, 50.0]}, {"space": "MNI", "coordinates": [8.0, -26.0, 18.0]}, {"space": "MNI", "coordinates": [54.0, -50.0, -14.0]}, {"space": "MNI", "coordinates": [66.0, -44.0, -4.0]}, {"space": "MNI", "coordinates": [68.0, -48.0, -14.0]}, {"space": "MNI", "coordinates": [60.0, -60.0, -16.0]}, {"space": "MNI", "coordinates": [30.0, 26.0, 12.0]}], "weights": [1.0], "metadata": {"sample_sizes": [12]}}]}, {"id": "pain_10.nidm", "name": "pain_10.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [-12.0, -24.0, -14.0]}, {"space": "MNI", "coordinates": [-4.0, -18.0, 0.0]}, {"space": "MNI", "coordinates": [2.0, 18.0, 28.0]}, {"space": "MNI", "coordinates": [-64.0, -24.0, 30.0]}, {"space": "MNI", "coordinates": [26.0, -32.0, -38.0]}, {"space": "MNI", "coordinates": [-10.0, -66.0, 50.0]}, {"space": "MNI", "coordinates": [-2.0, -38.0, 84.0]}, {"space": "MNI", "coordinates": [-6.0, -68.0, 52.0]}, {"space": "MNI", "coordinates": [22.0, -40.0, 38.0]}, {"space": "MNI", "coordinates": [40.0, -36.0, -44.0]}, {"space": "MNI", "coordinates": [44.0, 4.0, 12.0]}, {"space": "MNI", "coordinates": [-38.0, -54.0, -40.0]}, {"space": "MNI", "coordinates": [36.0, 16.0, 8.0]}, {"space": "MNI", "coordinates": [-30.0, -60.0, -46.0]}, {"space": "MNI", "coordinates": [40.0, 8.0, 2.0]}, {"space": "MNI", "coordinates": [46.0, -2.0, -10.0]}, {"space": "MNI", "coordinates": [52.0, -40.0, 42.0]}, {"space": "MNI", "coordinates": [60.0, -38.0, 32.0]}, {"space": "MNI", "coordinates": [52.0, -30.0, 20.0]}, {"space": "MNI", "coordinates": [68.0, -36.0, 36.0]}], "weights": [1.0], "metadata": {"sample_sizes": [12]}}]}, {"id": "pain_11.nidm", "name": "pain_11.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [10.0, -12.0, 8.0]}, {"space": "MNI", "coordinates": [-6.0, -48.0, 54.0]}, {"space": "MNI", "coordinates": [8.0, -22.0, 8.0]}, {"space": "MNI", "coordinates": [-36.0, -20.0, 12.0]}], "weights": [1.0], "metadata": {"sample_sizes": [12]}}]}, {"id": "pain_12.nidm", "name": "pain_12.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [10.0, -72.0, 52.0]}, {"space": "MNI", "coordinates": [-30.0, 42.0, 38.0]}, {"space": "MNI", "coordinates": [-30.0, 40.0, 16.0]}, {"space": "MNI", "coordinates": [-28.0, 38.0, 26.0]}, {"space": "MNI", "coordinates": [-34.0, 46.0, 30.0]}, {"space": "MNI", "coordinates": [2.0, -74.0, 48.0]}, {"space": "MNI", "coordinates": [38.0, 2.0, 2.0]}, {"space": "MNI", "coordinates": [4.0, -70.0, 34.0]}, {"space": "MNI", "coordinates": [56.0, -24.0, 24.0]}, {"space": "MNI", "coordinates": [38.0, 4.0, -16.0]}, {"space": "MNI", "coordinates": [-36.0, 14.0, 2.0]}, {"space": "MNI", "coordinates": [12.0, -68.0, 34.0]}], "weights": [1.0], "metadata": {"sample_sizes": [13]}}]}, {"id": "pain_13.nidm", "name": "pain_13.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [-66.0, -20.0, 28.0]}, {"space": "MNI", "coordinates": [-64.0, -26.0, 40.0]}, {"space": "MNI", "coordinates": [-58.0, -30.0, 34.0]}, {"space": "MNI", "coordinates": [-64.0, -20.0, 20.0]}, {"space": "MNI", "coordinates": [36.0, 2.0, 4.0]}, {"space": "MNI", "coordinates": [38.0, -10.0, -4.0]}, {"space": "MNI", "coordinates": [38.0, 16.0, -6.0]}, {"space": "MNI", "coordinates": [-38.0, 16.0, -2.0]}], "weights": [1.0], "metadata": {"sample_sizes": [32]}}]}, {"id": "pain_14.nidm", "name": "pain_14.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [32.0, 22.0, -2.0]}, {"space": "MNI", "coordinates": [22.0, -102.0, -10.0]}, {"space": "MNI", "coordinates": [38.0, 18.0, -8.0]}, {"space": "MNI", "coordinates": [-34.0, -58.0, -34.0]}, {"space": "MNI", "coordinates": [28.0, -56.0, -66.0]}, {"space": "MNI", "coordinates": [26.0, -46.0, -62.0]}, {"space": "MNI", "coordinates": [16.0, -72.0, -62.0]}, {"space": "MNI", "coordinates": [16.0, -62.0, -64.0]}], "weights": [1.0], "metadata": {"sample_sizes": [24]}}]}, {"id": "pain_15.nidm", "name": "pain_15.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [-46.0, 4.0, 28.0]}, {"space": "MNI", "coordinates": [38.0, -8.0, -6.0]}, {"space": "MNI", "coordinates": [-62.0, -22.0, 18.0]}, {"space": "MNI", "coordinates": [0.0, 6.0, 44.0]}], "weights": [1.0], "metadata": {"sample_sizes": [14]}}]}, {"id": "pain_16.nidm", "name": "pain_16.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [-48.0, -34.0, 20.0]}, {"space": "MNI", "coordinates": [-46.0, -56.0, 4.0]}, {"space": "MNI", "coordinates": [-54.0, -48.0, 8.0]}, {"space": "MNI", "coordinates": [-60.0, -62.0, 4.0]}, {"space": "MNI", "coordinates": [8.0, -68.0, 36.0]}, {"space": "MNI", "coordinates": [-20.0, -46.0, 66.0]}, {"space": "MNI", "coordinates": [-8.0, -46.0, 52.0]}, {"space": "MNI", "coordinates": [-2.0, -54.0, 56.0]}, {"space": "MNI", "coordinates": [-54.0, -28.0, 14.0]}, {"space": "MNI", "coordinates": [-42.0, -48.0, -26.0]}, {"space": "MNI", "coordinates": [-32.0, 14.0, -2.0]}, {"space": "MNI", "coordinates": [-6.0, 10.0, 44.0]}, {"space": "MNI", "coordinates": [32.0, 22.0, -2.0]}, {"space": "MNI", "coordinates": [58.0, -46.0, 14.0]}, {"space": "MNI", "coordinates": [50.0, -24.0, 14.0]}, {"space": "MNI", "coordinates": [34.0, 18.0, -12.0]}, {"space": "MNI", "coordinates": [50.0, -50.0, -44.0]}, {"space": "MNI", "coordinates": [28.0, -48.0, -58.0]}, {"space": "MNI", "coordinates": [46.0, -54.0, -40.0]}, {"space": "MNI", "coordinates": [30.0, -54.0, -42.0]}], "weights": [1.0], "metadata": {"sample_sizes": [14]}}]}, {"id": "pain_17.nidm", "name": "pain_17.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [-10.0, -66.0, -28.0]}, {"space": "MNI", "coordinates": [-58.0, -56.0, 8.0]}, {"space": "MNI", "coordinates": [-44.0, -62.0, 4.0]}, {"space": "MNI", "coordinates": [-52.0, -64.0, 4.0]}, {"space": "MNI", "coordinates": [-48.0, -70.0, -4.0]}, {"space": "MNI", "coordinates": [-50.0, -56.0, -20.0]}, {"space": "MNI", "coordinates": [-42.0, -60.0, -36.0]}, {"space": "MNI", "coordinates": [-32.0, -60.0, -26.0]}, {"space": "MNI", "coordinates": [0.0, -84.0, 6.0]}, {"space": "MNI", "coordinates": [0.0, -54.0, -10.0]}, {"space": "MNI", "coordinates": [-2.0, -58.0, -18.0]}, {"space": "MNI", "coordinates": [-54.0, -10.0, 4.0]}, {"space": "MNI", "coordinates": [-52.0, -28.0, 22.0]}, {"space": "MNI", "coordinates": [-36.0, -18.0, 4.0]}, {"space": "MNI", "coordinates": [-60.0, -28.0, 20.0]}, {"space": "MNI", "coordinates": [0.0, -64.0, -8.0]}], "weights": [1.0], "metadata": {"sample_sizes": [12]}}]}, {"id": "pain_18.nidm", "name": "pain_18.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [-36.0, -24.0, 10.0]}, {"space": "MNI", "coordinates": [-36.0, -2.0, 6.0]}, {"space": "MNI", "coordinates": [-56.0, -22.0, 24.0]}, {"space": "MNI", "coordinates": [-56.0, -32.0, 20.0]}, {"space": "MNI", "coordinates": [36.0, 16.0, 0.0]}, {"space": "MNI", "coordinates": [38.0, 2.0, 2.0]}, {"space": "MNI", "coordinates": [58.0, -30.0, 18.0]}, {"space": "MNI", "coordinates": [52.0, -44.0, 8.0]}], "weights": [1.0], "metadata": {"sample_sizes": [12]}}]}, {"id": "pain_19.nidm", "name": "pain_19.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [20.0, -80.0, -28.0]}, {"space": "MNI", "coordinates": [-42.0, 54.0, 12.0]}, {"space": "MNI", "coordinates": [-38.0, 64.0, -6.0]}, {"space": "MNI", "coordinates": [-50.0, 54.0, -10.0]}, {"space": "MNI", "coordinates": [-42.0, 58.0, 0.0]}, {"space": "MNI", "coordinates": [-8.0, 14.0, 34.0]}, {"space": "MNI", "coordinates": [4.0, 2.0, 50.0]}, {"space": "MNI", "coordinates": [-6.0, 10.0, 38.0]}, {"space": "MNI", "coordinates": [-2.0, 0.0, 48.0]}, {"space": "MNI", "coordinates": [-14.0, -90.0, -28.0]}, {"space": "MNI", "coordinates": [-52.0, -8.0, 6.0]}, {"space": "MNI", "coordinates": [-24.0, -84.0, -26.0]}, {"space": "MNI", "coordinates": [38.0, 70.0, 6.0]}, {"space": "MNI", "coordinates": [20.0, 72.0, 18.0]}, {"space": "MNI", "coordinates": [30.0, 70.0, -10.0]}, {"space": "MNI", "coordinates": [40.0, 68.0, -6.0]}, {"space": "MNI", "coordinates": [34.0, 22.0, 2.0]}, {"space": "MNI", "coordinates": [42.0, 2.0, -4.0]}, {"space": "MNI", "coordinates": [40.0, 12.0, -6.0]}, {"space": "MNI", "coordinates": [-28.0, -60.0, -34.0]}], "weights": [1.0], "metadata": {"sample_sizes": [16]}}]}, {"id": "pain_20.nidm", "name": "pain_20.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [10.0, -24.0, 40.0]}, {"space": "MNI", "coordinates": [6.0, 8.0, 34.0]}, {"space": "MNI", "coordinates": [2.0, -4.0, 64.0]}, {"space": "MNI", "coordinates": [4.0, 8.0, 52.0]}, {"space": "MNI", "coordinates": [36.0, 8.0, 2.0]}, {"space": "MNI", "coordinates": [-54.0, -68.0, 0.0]}, {"space": "MNI", "coordinates": [40.0, 6.0, -8.0]}, {"space": "MNI", "coordinates": [-36.0, -78.0, -20.0]}], "weights": [1.0], "metadata": {"sample_sizes": [16]}}]}, {"id": "pain_21.nidm", "name": "pain_21.nidm", "authors": "", "publication": "", "metadata": {}, "analyses": [{"id": "1", "name": "1", "conditions": [{"name": "default", "description": ""}], "images": [], "points": [{"space": "MNI", "coordinates": [-34.0, 8.0, -16.0]}, {"space": "MNI", "coordinates": [40.0, -72.0, -20.0]}, {"space": "MNI", "coordinates": [34.0, 10.0, 0.0]}, {"space": "MNI", "coordinates": [30.0, -78.0, -22.0]}, {"space": "MNI", "coordinates": [-26.0, -86.0, -16.0]}, {"space": "MNI", "coordinates": [4.0, 12.0, 36.0]}, {"space": "MNI", "coordinates": [-8.0, 14.0, 34.0]}, {"space": "MNI", "coordinates": [0.0, 2.0, 54.0]}, {"space": "MNI", "coordinates": [-8.0, 6.0, 40.0]}, {"space": "MNI", "coordinates": [-34.0, 14.0, 2.0]}, {"space": "MNI", "coordinates": [-56.0, -34.0, 24.0]}, {"space": "MNI", "coordinates": [-58.0, -44.0, 20.0]}], "weights": [1.0], "metadata": {"sample_sizes": [16]}}]}]}
+{
+  "id": "nimads_from_dataset",
+  "name": "",
+  "studies": [
+    {
+      "id": "pain_01.nidm",
+      "name": "pain_01.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_01.nidm/Contrast.nii.gz",
+              "filename": "Contrast.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_01.nidm/ContrastStandardError.nii.gz",
+              "filename": "ContrastStandardError.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_01.nidm/TStatistic.nii.gz",
+              "filename": "TStatistic.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                48.0,
+                -38.0,
+                -24.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -50.0,
+                -42.0,
+                -24.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -56.0,
+                -62.0,
+                -6.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -60.0,
+                -52.0,
+                -10.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -2.0,
+                -104.0,
+                -2.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                12.0,
+                -106.0,
+                2.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                26.0,
+                -80.0,
+                -48.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -36.0,
+                -68.0,
+                -40.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -56.0,
+                -66.0,
+                -12.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                52.0,
+                -4.0,
+                6.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                44.0,
+                -6.0,
+                4.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                38.0,
+                46.0,
+                6.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                60.0,
+                -58.0,
+                -10.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                60.0,
+                -30.0,
+                -28.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                54.0,
+                -46.0,
+                -26.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                36.0,
+                -12.0,
+                -12.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              25
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_02.nidm",
+      "name": "pain_02.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_02.nidm/Contrast.nii.gz",
+              "filename": "Contrast.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_02.nidm/ContrastStandardError.nii.gz",
+              "filename": "ContrastStandardError.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_02.nidm/TStatistic.nii.gz",
+              "filename": "TStatistic.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                4.0,
+                -90.0,
+                2.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -8.0,
+                -88.0,
+                -16.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -6.0,
+                -94.0,
+                -6.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                10.0,
+                -62.0,
+                -10.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                36.0,
+                -18.0,
+                10.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                36.0,
+                38.0,
+                30.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -36.0,
+                2.0,
+                -16.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                52.0,
+                -22.0,
+                22.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              25
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_03.nidm",
+      "name": "pain_03.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_03.nidm/Contrast.nii.gz",
+              "filename": "Contrast.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_03.nidm/ContrastStandardError.nii.gz",
+              "filename": "ContrastStandardError.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_03.nidm/TStatistic.nii.gz",
+              "filename": "TStatistic.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                -26.0,
+                -66.0,
+                -40.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                0.0,
+                -4.0,
+                60.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -2.0,
+                20.0,
+                40.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                4.0,
+                -2.0,
+                52.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                8.0,
+                2.0,
+                60.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -28.0,
+                -74.0,
+                -32.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -24.0,
+                -68.0,
+                -28.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -32.0,
+                -90.0,
+                -10.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                32.0,
+                -92.0,
+                -12.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                22.0,
+                -92.0,
+                -6.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                18.0,
+                -102.0,
+                -4.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                12.0,
+                10.0,
+                0.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                60.0,
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                52.0,
+                6.0,
+                0.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -58.0,
+                10.0,
+                8.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                46.0,
+                -82.0,
+                -8.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              20
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_04.nidm",
+      "name": "pain_04.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_04.nidm/Contrast.nii.gz",
+              "filename": "Contrast.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_04.nidm/ContrastStandardError.nii.gz",
+              "filename": "ContrastStandardError.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_04.nidm/TStatistic.nii.gz",
+              "filename": "TStatistic.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                4.0,
+                -6.0,
+                66.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                2.0,
+                10.0,
+                50.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -8.0,
+                -8.0,
+                62.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -36.0,
+                -90.0,
+                -14.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -24.0,
+                -68.0,
+                -36.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -32.0,
+                18.0,
+                -20.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -28.0,
+                -98.0,
+                -20.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -40.0,
+                4.0,
+                -14.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -30.0,
+                16.0,
+                2.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -38.0,
+                16.0,
+                10.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -34.0,
+                -88.0,
+                -20.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                8.0,
+                4.0,
+                58.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                20.0,
+                -100.0,
+                -2.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                20.0,
+                -92.0,
+                -14.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                54.0,
+                -28.0,
+                18.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                14.0,
+                -104.0,
+                -6.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                54.0,
+                -22.0,
+                16.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                34.0,
+                -18.0,
+                -10.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                34.0,
+                -20.0,
+                14.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                56.0,
+                10.0,
+                8.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                36.0,
+                2.0,
+                -2.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                52.0,
+                -8.0,
+                -2.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                32.0,
+                -98.0,
+                -14.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                52.0,
+                4.0,
+                -2.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              20
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_05.nidm",
+      "name": "pain_05.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_05.nidm/Contrast.nii.gz",
+              "filename": "Contrast.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_05.nidm/ContrastStandardError.nii.gz",
+              "filename": "ContrastStandardError.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_05.nidm/TStatistic.nii.gz",
+              "filename": "TStatistic.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                -32.0,
+                -32.0,
+                -44.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -4.0,
+                10.0,
+                46.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                6.0,
+                18.0,
+                42.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -8.0,
+                -26.0,
+                28.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -6.0,
+                20.0,
+                40.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                42.0,
+                -64.0,
+                -32.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -20.0,
+                -58.0,
+                -44.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -32.0,
+                -60.0,
+                -34.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                38.0,
+                22.0,
+                4.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                42.0,
+                6.0,
+                -6.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -34.0,
+                12.0,
+                -10.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                40.0,
+                10.0,
+                -8.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              9
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_06.nidm",
+      "name": "pain_06.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_06.nidm/Contrast.nii.gz",
+              "filename": "Contrast.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_06.nidm/ContrastStandardError.nii.gz",
+              "filename": "ContrastStandardError.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_06.nidm/TStatistic.nii.gz",
+              "filename": "TStatistic.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                -10.0,
+                -28.0,
+                2.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -2.0,
+                6.0,
+                56.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -34.0,
+                -4.0,
+                -8.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                26.0,
+                44.0,
+                36.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              9
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_07.nidm",
+      "name": "pain_07.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_07.nidm/Contrast.nii.gz",
+              "filename": "Contrast.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_07.nidm/ContrastStandardError.nii.gz",
+              "filename": "ContrastStandardError.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_07.nidm/TStatistic.nii.gz",
+              "filename": "TStatistic.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                0.0,
+                -38.0,
+                84.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -4.0,
+                -44.0,
+                74.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                2.0,
+                -34.0,
+                78.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                8.0,
+                -30.0,
+                82.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -40.0,
+                -44.0,
+                -12.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -34.0,
+                -74.0,
+                -42.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                22.0,
+                -62.0,
+                -4.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -10.0,
+                -92.0,
+                2.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              9
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_08.nidm",
+      "name": "pain_08.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_08.nidm/Contrast.nii.gz",
+              "filename": "Contrast.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_08.nidm/ContrastStandardError.nii.gz",
+              "filename": "ContrastStandardError.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_08.nidm/TStatistic.nii.gz",
+              "filename": "TStatistic.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                0.0,
+                -46.0,
+                56.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                12.0,
+                -68.0,
+                46.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                20.0,
+                -44.0,
+                62.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                2.0,
+                -86.0,
+                -40.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -36.0,
+                -60.0,
+                -40.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -42.0,
+                -44.0,
+                -56.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                38.0,
+                38.0,
+                12.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -46.0,
+                -56.0,
+                -54.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                38.0,
+                56.0,
+                20.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -4.0,
+                -70.0,
+                50.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                4.0,
+                -36.0,
+                -16.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -24.0,
+                -8.0,
+                6.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                36.0,
+                44.0,
+                24.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                0.0,
+                14.0,
+                30.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                4.0,
+                -26.0,
+                24.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                60.0,
+                -54.0,
+                2.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                72.0,
+                -38.0,
+                28.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                54.0,
+                -30.0,
+                20.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                64.0,
+                -38.0,
+                22.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              12
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_09.nidm",
+      "name": "pain_09.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_09.nidm/Contrast.nii.gz",
+              "filename": "Contrast.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_09.nidm/ContrastStandardError.nii.gz",
+              "filename": "ContrastStandardError.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_09.nidm/TStatistic.nii.gz",
+              "filename": "TStatistic.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                14.0,
+                -76.0,
+                -42.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                38.0,
+                -58.0,
+                -44.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                30.0,
+                -62.0,
+                -38.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -46.0,
+                -58.0,
+                -54.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -28.0,
+                -56.0,
+                -46.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -20.0,
+                -74.0,
+                -40.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                52.0,
+                48.0,
+                24.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -50.0,
+                -54.0,
+                -44.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                36.0,
+                -50.0,
+                -40.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                24.0,
+                36.0,
+                16.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -8.0,
+                -34.0,
+                20.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                36.0,
+                44.0,
+                34.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                46.0,
+                -50.0,
+                54.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                2.0,
+                -52.0,
+                50.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                8.0,
+                -26.0,
+                18.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                54.0,
+                -50.0,
+                -14.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                66.0,
+                -44.0,
+                -4.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                68.0,
+                -48.0,
+                -14.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                60.0,
+                -60.0,
+                -16.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                30.0,
+                26.0,
+                12.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              12
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_10.nidm",
+      "name": "pain_10.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_10.nidm/Contrast.nii.gz",
+              "filename": "Contrast.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_10.nidm/ContrastStandardError.nii.gz",
+              "filename": "ContrastStandardError.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_10.nidm/TStatistic.nii.gz",
+              "filename": "TStatistic.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                -12.0,
+                -24.0,
+                -14.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -4.0,
+                -18.0,
+                0.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                2.0,
+                18.0,
+                28.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -64.0,
+                -24.0,
+                30.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                26.0,
+                -32.0,
+                -38.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -10.0,
+                -66.0,
+                50.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -2.0,
+                -38.0,
+                84.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -6.0,
+                -68.0,
+                52.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                22.0,
+                -40.0,
+                38.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                40.0,
+                -36.0,
+                -44.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                44.0,
+                4.0,
+                12.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -38.0,
+                -54.0,
+                -40.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                36.0,
+                16.0,
+                8.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -30.0,
+                -60.0,
+                -46.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                40.0,
+                8.0,
+                2.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                46.0,
+                -2.0,
+                -10.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                52.0,
+                -40.0,
+                42.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                60.0,
+                -38.0,
+                32.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                52.0,
+                -30.0,
+                20.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                68.0,
+                -36.0,
+                36.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              12
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_11.nidm",
+      "name": "pain_11.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_11.nidm/Contrast_T001.nii.gz",
+              "filename": "Contrast_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_11.nidm/ContrastStandardError_T001.nii.gz",
+              "filename": "ContrastStandardError_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_11.nidm/TStatistic_T001.nii.gz",
+              "filename": "TStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            },
+            {
+              "url": "pain_11.nidm/ZStatistic_T001.nii.gz",
+              "filename": "ZStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "z"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                10.0,
+                -12.0,
+                8.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -6.0,
+                -48.0,
+                54.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                8.0,
+                -22.0,
+                8.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -36.0,
+                -20.0,
+                12.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              12
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_12.nidm",
+      "name": "pain_12.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_12.nidm/Contrast_T001.nii.gz",
+              "filename": "Contrast_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_12.nidm/ContrastStandardError_T001.nii.gz",
+              "filename": "ContrastStandardError_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_12.nidm/TStatistic_T001.nii.gz",
+              "filename": "TStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            },
+            {
+              "url": "pain_12.nidm/ZStatistic_T001.nii.gz",
+              "filename": "ZStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "z"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                10.0,
+                -72.0,
+                52.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -30.0,
+                42.0,
+                38.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -30.0,
+                40.0,
+                16.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -28.0,
+                38.0,
+                26.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -34.0,
+                46.0,
+                30.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                2.0,
+                -74.0,
+                48.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                38.0,
+                2.0,
+                2.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                4.0,
+                -70.0,
+                34.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                56.0,
+                -24.0,
+                24.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                38.0,
+                4.0,
+                -16.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -36.0,
+                14.0,
+                2.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                12.0,
+                -68.0,
+                34.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              13
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_13.nidm",
+      "name": "pain_13.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_13.nidm/Contrast_T001.nii.gz",
+              "filename": "Contrast_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_13.nidm/ContrastStandardError_T001.nii.gz",
+              "filename": "ContrastStandardError_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_13.nidm/TStatistic_T001.nii.gz",
+              "filename": "TStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            },
+            {
+              "url": "pain_13.nidm/ZStatistic_T001.nii.gz",
+              "filename": "ZStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "z"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                -66.0,
+                -20.0,
+                28.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -64.0,
+                -26.0,
+                40.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -58.0,
+                -30.0,
+                34.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -64.0,
+                -20.0,
+                20.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                36.0,
+                2.0,
+                4.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                38.0,
+                -10.0,
+                -4.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                38.0,
+                16.0,
+                -6.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -38.0,
+                16.0,
+                -2.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_14.nidm",
+      "name": "pain_14.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_14.nidm/Contrast_T001.nii.gz",
+              "filename": "Contrast_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_14.nidm/ContrastStandardError_T001.nii.gz",
+              "filename": "ContrastStandardError_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_14.nidm/TStatistic_T001.nii.gz",
+              "filename": "TStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            },
+            {
+              "url": "pain_14.nidm/ZStatistic_T001.nii.gz",
+              "filename": "ZStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "z"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                32.0,
+                22.0,
+                -2.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                22.0,
+                -102.0,
+                -10.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                38.0,
+                18.0,
+                -8.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -34.0,
+                -58.0,
+                -34.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                28.0,
+                -56.0,
+                -66.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                26.0,
+                -46.0,
+                -62.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                16.0,
+                -72.0,
+                -62.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                16.0,
+                -62.0,
+                -64.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              24
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_15.nidm",
+      "name": "pain_15.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_15.nidm/Contrast_T001.nii.gz",
+              "filename": "Contrast_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_15.nidm/ContrastStandardError_T001.nii.gz",
+              "filename": "ContrastStandardError_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_15.nidm/TStatistic_T001.nii.gz",
+              "filename": "TStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            },
+            {
+              "url": "pain_15.nidm/ZStatistic_T001.nii.gz",
+              "filename": "ZStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "z"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                -46.0,
+                4.0,
+                28.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                38.0,
+                -8.0,
+                -6.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -62.0,
+                -22.0,
+                18.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                0.0,
+                6.0,
+                44.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              14
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_16.nidm",
+      "name": "pain_16.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_16.nidm/Contrast_T001.nii.gz",
+              "filename": "Contrast_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_16.nidm/ContrastStandardError_T001.nii.gz",
+              "filename": "ContrastStandardError_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_16.nidm/TStatistic_T001.nii.gz",
+              "filename": "TStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            },
+            {
+              "url": "pain_16.nidm/ZStatistic_T001.nii.gz",
+              "filename": "ZStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "z"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                -48.0,
+                -34.0,
+                20.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -46.0,
+                -56.0,
+                4.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -54.0,
+                -48.0,
+                8.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -60.0,
+                -62.0,
+                4.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                8.0,
+                -68.0,
+                36.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -20.0,
+                -46.0,
+                66.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -8.0,
+                -46.0,
+                52.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -2.0,
+                -54.0,
+                56.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -54.0,
+                -28.0,
+                14.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -42.0,
+                -48.0,
+                -26.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -32.0,
+                14.0,
+                -2.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -6.0,
+                10.0,
+                44.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                32.0,
+                22.0,
+                -2.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                58.0,
+                -46.0,
+                14.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                50.0,
+                -24.0,
+                14.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                34.0,
+                18.0,
+                -12.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                50.0,
+                -50.0,
+                -44.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                28.0,
+                -48.0,
+                -58.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                46.0,
+                -54.0,
+                -40.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                30.0,
+                -54.0,
+                -42.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              14
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_17.nidm",
+      "name": "pain_17.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_17.nidm/Contrast_T001.nii.gz",
+              "filename": "Contrast_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_17.nidm/ContrastStandardError_T001.nii.gz",
+              "filename": "ContrastStandardError_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_17.nidm/TStatistic_T001.nii.gz",
+              "filename": "TStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            },
+            {
+              "url": "pain_17.nidm/ZStatistic_T001.nii.gz",
+              "filename": "ZStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "z"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                -10.0,
+                -66.0,
+                -28.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -58.0,
+                -56.0,
+                8.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -44.0,
+                -62.0,
+                4.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -52.0,
+                -64.0,
+                4.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -48.0,
+                -70.0,
+                -4.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -50.0,
+                -56.0,
+                -20.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -42.0,
+                -60.0,
+                -36.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -32.0,
+                -60.0,
+                -26.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                0.0,
+                -84.0,
+                6.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                0.0,
+                -54.0,
+                -10.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -2.0,
+                -58.0,
+                -18.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -54.0,
+                -10.0,
+                4.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -52.0,
+                -28.0,
+                22.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -36.0,
+                -18.0,
+                4.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -60.0,
+                -28.0,
+                20.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                0.0,
+                -64.0,
+                -8.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              12
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_18.nidm",
+      "name": "pain_18.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_18.nidm/Contrast_T001.nii.gz",
+              "filename": "Contrast_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_18.nidm/ContrastStandardError_T001.nii.gz",
+              "filename": "ContrastStandardError_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_18.nidm/TStatistic_T001.nii.gz",
+              "filename": "TStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            },
+            {
+              "url": "pain_18.nidm/ZStatistic_T001.nii.gz",
+              "filename": "ZStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "z"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                -36.0,
+                -24.0,
+                10.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -36.0,
+                -2.0,
+                6.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -56.0,
+                -22.0,
+                24.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -56.0,
+                -32.0,
+                20.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                36.0,
+                16.0,
+                0.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                38.0,
+                2.0,
+                2.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                58.0,
+                -30.0,
+                18.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                52.0,
+                -44.0,
+                8.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              12
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_19.nidm",
+      "name": "pain_19.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_19.nidm/Contrast_T001.nii.gz",
+              "filename": "Contrast_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_19.nidm/ContrastStandardError_T001.nii.gz",
+              "filename": "ContrastStandardError_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_19.nidm/TStatistic_T001.nii.gz",
+              "filename": "TStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            },
+            {
+              "url": "pain_19.nidm/ZStatistic_T001.nii.gz",
+              "filename": "ZStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "z"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                20.0,
+                -80.0,
+                -28.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -42.0,
+                54.0,
+                12.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -38.0,
+                64.0,
+                -6.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -50.0,
+                54.0,
+                -10.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -42.0,
+                58.0,
+                0.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -8.0,
+                14.0,
+                34.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                4.0,
+                2.0,
+                50.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -6.0,
+                10.0,
+                38.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -2.0,
+                0.0,
+                48.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -14.0,
+                -90.0,
+                -28.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -52.0,
+                -8.0,
+                6.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -24.0,
+                -84.0,
+                -26.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                38.0,
+                70.0,
+                6.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                20.0,
+                72.0,
+                18.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                30.0,
+                70.0,
+                -10.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                40.0,
+                68.0,
+                -6.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                34.0,
+                22.0,
+                2.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                42.0,
+                2.0,
+                -4.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                40.0,
+                12.0,
+                -6.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -28.0,
+                -60.0,
+                -34.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              16
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_20.nidm",
+      "name": "pain_20.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_20.nidm/Contrast_T001.nii.gz",
+              "filename": "Contrast_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_20.nidm/ContrastStandardError_T001.nii.gz",
+              "filename": "ContrastStandardError_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_20.nidm/TStatistic_T001.nii.gz",
+              "filename": "TStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            },
+            {
+              "url": "pain_20.nidm/ZStatistic_T001.nii.gz",
+              "filename": "ZStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "z"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                10.0,
+                -24.0,
+                40.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                6.0,
+                8.0,
+                34.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                2.0,
+                -4.0,
+                64.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                4.0,
+                8.0,
+                52.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                36.0,
+                8.0,
+                2.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -54.0,
+                -68.0,
+                0.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                40.0,
+                6.0,
+                -8.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -36.0,
+                -78.0,
+                -20.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              16
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pain_21.nidm",
+      "name": "pain_21.nidm",
+      "authors": "",
+      "publication": "",
+      "metadata": {},
+      "analyses": [
+        {
+          "id": "1",
+          "name": "1",
+          "conditions": [
+            {
+              "name": "default",
+              "description": ""
+            }
+          ],
+          "weights": [
+            1.0
+          ],
+          "images": [
+            {
+              "url": "pain_21.nidm/Contrast_T001.nii.gz",
+              "filename": "Contrast_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "beta"
+            },
+            {
+              "url": "pain_21.nidm/ContrastStandardError_T001.nii.gz",
+              "filename": "ContrastStandardError_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "se"
+            },
+            {
+              "url": "pain_21.nidm/TStatistic_T001.nii.gz",
+              "filename": "TStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "t"
+            },
+            {
+              "url": "pain_21.nidm/ZStatistic_T001.nii.gz",
+              "filename": "ZStatistic_T001.nii.gz",
+              "space": "MNI",
+              "value_type": "z"
+            }
+          ],
+          "points": [
+            {
+              "space": "MNI",
+              "coordinates": [
+                -34.0,
+                8.0,
+                -16.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                40.0,
+                -72.0,
+                -20.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                34.0,
+                10.0,
+                0.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                30.0,
+                -78.0,
+                -22.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -26.0,
+                -86.0,
+                -16.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                4.0,
+                12.0,
+                36.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -8.0,
+                14.0,
+                34.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                0.0,
+                2.0,
+                54.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -8.0,
+                6.0,
+                40.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -34.0,
+                14.0,
+                2.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -56.0,
+                -34.0,
+                24.0
+              ]
+            },
+            {
+              "space": "MNI",
+              "coordinates": [
+                -58.0,
+                -44.0,
+                20.0
+              ]
+            }
+          ],
+          "metadata": {
+            "sample_sizes": [
+              16
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

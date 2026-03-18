@@ -111,6 +111,9 @@ def test_saved_nidm_pain_studyset_loads_directly():
     assert len(studyset.studies) > 0
     assert studyset.space == "mni152_2mm"
     assert studyset.basepath == os.path.abspath(get_test_data_path())
+    assert "beta" in studyset.images.columns
+    assert studyset.images["beta"].notnull().any()
+    assert "beta__relative" in studyset.images.columns
 
 
 def test_studyset_string_methods(example_nimads_studyset):

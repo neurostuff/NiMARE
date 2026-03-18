@@ -1267,24 +1267,39 @@ def convert_dataset_to_nimads_dict(
                 elif "mni" in image_space_lower or "ale" in image_space_lower:
                     image_space = "MNI"
 
+            image_type_map = {}
             for col in images_df.columns:
-                if col in ("id", "study_id", "contrast_id", "space") or col.endswith("__relative"):
+                if col in ("id", "study_id", "contrast_id", "space"):
                     continue
 
-                image_value = image_row.get(col, None)
-                if _is_missing(image_value):
+                image_type = col.replace("__relative", "")
+                image_path = image_row.get(col, None)
+                if _is_missing(image_path):
                     continue
-                if isinstance(image_value, os.PathLike):
-                    image_value = os.fspath(image_value)
-                if not isinstance(image_value, str) or not image_value:
+                if isinstance(image_path, os.PathLike):
+                    image_path = os.fspath(image_path)
+                if not isinstance(image_path, str) or not image_path:
                     continue
 
+                existing_path, existing_is_relative = image_type_map.get(
+                    image_type,
+                    (None, False),
+                )
+                is_relative = col.endswith("__relative")
+                # Prefer relative paths so serialized Studysets remain portable.
+                if existing_path is not None and existing_is_relative and not is_relative:
+                    continue
+                if existing_path is not None and not existing_is_relative and not is_relative:
+                    continue
+                image_type_map[image_type] = (image_path, is_relative)
+
+            for image_type, (image_path, _) in image_type_map.items():
                 analysis["images"].append(
                     {
-                        "url": image_value,
-                        "filename": Path(image_value).name,
+                        "url": image_path,
+                        "filename": Path(image_path).name,
                         "space": image_space or "UNKNOWN",
-                        "value_type": col,
+                        "value_type": image_type,
                     }
                 )
 

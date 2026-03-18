@@ -121,6 +121,8 @@ def test_dataset_studyset_roundtrip_preserves_core_tables(testdata_ibma):
     studyset = Studyset.from_dataset(dset)
     reloaded_studyset = Studyset(studyset.to_dict())
     roundtrip = convert_nimads_to_dataset(reloaded_studyset)
+    if dset.basepath:
+        roundtrip.update_path(dset.basepath)
 
     id_cols = {"id", "study_id", "contrast_id", "space"}
     orig_cols = {
