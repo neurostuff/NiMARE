@@ -62,6 +62,19 @@ Correlation-based decoding
 
 The correlation-based decoding is implemented in NiMARE's `CorrelationDecoder` class object.
 
+When building ``ns_dset`` from Neurosynth for term-based decoding, fetch only the abstract-derived
+term annotations instead of the full release:
+
+.. code-block:: python
+
+   from nimare.extract import fetch_neurosynth
+
+   ns_dset = fetch_neurosynth(
+       version="7",
+       source="abstract",
+       vocab="terms",
+   )[0].to_dataset()
+
 .. code-block:: python
 
    from nimare.decode.continuous import CorrelationDecoder
