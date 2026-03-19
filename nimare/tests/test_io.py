@@ -441,7 +441,9 @@ def test_convert_neurosynth_to_studyset_rejects_mismatched_feature_groups(tmp_pa
         ),
     }
 
-    with pytest.raises(ValueError, match="feature_groups and annotations_files must have the same length"):
+    with pytest.raises(
+        ValueError, match="feature_groups and annotations_files must have the same length"
+    ):
         io.convert_neurosynth_to_studyset(
             coordinates_file,
             metadata_file,
