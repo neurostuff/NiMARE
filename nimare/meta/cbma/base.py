@@ -9,8 +9,8 @@ import pandas as pd
 import sparse
 from joblib import Memory, Parallel, delayed
 from nilearn.maskers import NiftiMasker
-from scipy import sparse as sp_sparse
 from scipy import ndimage
+from scipy import sparse as sp_sparse
 from tqdm.auto import tqdm
 
 from nimare.estimator import Estimator
@@ -274,6 +274,14 @@ class CBMAEstimator(Estimator):
         description = self._description_text()
         return maps, {}, description
 
+    def _clear_precomputed_ma_inputs(self):
+        """Remove MA-map inputs retained from prior fit calls."""
+        if not hasattr(self, "inputs_"):
+            return
+
+        for key in ("ma_maps", "ma_maps1", "ma_maps2"):
+            self.inputs_.pop(key, None)
+
     def fit(self, dataset, drop_invalid=True, ma_maps=None):
         """Fit Estimator to a Studyset-backed collection.
 
@@ -296,6 +304,7 @@ class CBMAEstimator(Estimator):
             Results of Estimator fitting.
         """
         dataset = ensure_studyset_view(dataset)
+        self._clear_precomputed_ma_inputs()
         self._collect_inputs(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)
         if ma_maps is not None:
@@ -1084,6 +1093,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         """
         dataset1 = ensure_studyset_view(dataset1)
         dataset2 = ensure_studyset_view(dataset2)
+        self._clear_precomputed_ma_inputs()
 
         # Reproduce fit() for dataset1 to collect and process inputs.
         self._collect_inputs(dataset1, drop_invalid=drop_invalid)

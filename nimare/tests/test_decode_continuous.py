@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 from nimare.decode import continuous
-from nimare.meta import kernel, mkda
+from nimare.meta import ale, kernel, mkda
 
 
 def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
@@ -137,10 +137,46 @@ def test_CorrelationDecoder_pairwise_uses_precomputed_ma_maps_without_changing_m
         nonfeature_ids = sorted(list(set(decoder.inputs_["id"]) - set(feature_ids)))
         feature_dset = testdata_laird.slice(feature_ids)
         nonfeature_dset = testdata_laird.slice(nonfeature_ids)
-        expected = mkda.MKDAChi2(generate_description=False).fit(
-            feature_dset, nonfeature_dset
-        ).get_map("z_desc-association", return_type="array")
+        expected = (
+            mkda.MKDAChi2(generate_description=False)
+            .fit(feature_dset, nonfeature_dset)
+            .get_map("z_desc-association", return_type="array")
+        )
         assert np.array_equal(decoder.results_.maps[feature], expected)
+
+
+def test_CorrelationDecoder_single_group_cbma_skips_pairwise_fastpath(testdata_laird):
+    """Single-dataset CBMA estimators should not use the pairwise MA-map fast path."""
+    testdata_laird = testdata_laird.copy()
+    features = testdata_laird.get_labels(ids=testdata_laird.ids[0])[:3]
+
+    decoder = continuous.CorrelationDecoder(
+        features=features,
+        meta_estimator=ale.ALE(
+            null_method="approximate",
+            generate_description=False,
+            kernel__sample_size=20,
+        ),
+        target_image="stat",
+        n_cores=1,
+    )
+    decoder.fit(testdata_laird)
+
+    assert decoder._precomputed_ma_maps_ is None
+
+    for feature in features:
+        feature_ids = testdata_laird.get_studies_by_label(labels=[feature], label_threshold=0.001)
+        feature_ids = sorted(list(set(feature_ids).intersection(decoder.inputs_["id"])))
+        expected = (
+            ale.ALE(
+                null_method="approximate",
+                generate_description=False,
+                kernel__sample_size=20,
+            )
+            .fit(testdata_laird.slice(feature_ids))
+            .get_map("stat", return_type="array")
+        )
+        assert np.allclose(decoder.results_.maps[feature], expected)
 
 
 def test_CorrelationDistributionDecoder_smoke(testdata_laird, tmp_path_factory):

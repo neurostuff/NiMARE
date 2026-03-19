@@ -118,6 +118,7 @@ def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
     assert "logp_desc-size_level-cluster_corr-FWE_method-montecarlo" in corr_results.maps.keys()
     assert "logp_desc-mass_level-cluster_corr-FWE_method-montecarlo" in corr_results.maps.keys()
     assert "logp_level-voxel_corr-FWE_method-montecarlo" in corr_results.maps.keys()
+
     assert isinstance(
         corr_results.get_map(
             "z_desc-size_level-cluster_corr-FWE_method-montecarlo", return_type="image"
@@ -165,6 +166,27 @@ def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
     )
     assert isinstance(
         corr_results.get_map("z_corr-FDR_method-indep", return_type="array"), np.ndarray
+    )
+
+
+def test_ALE_precomputed_ma_maps_do_not_leak_between_fit_calls(testdata_cbma):
+    """Precomputed MA maps from one fit should not affect a later fit."""
+    testdata_cbma = testdata_cbma.copy()
+    ids = sorted(testdata_cbma.ids)
+    first_dset = testdata_cbma.slice(ids[:8])
+    second_dset = testdata_cbma.slice(ids[8:16])
+
+    meta = ale.ALE(null_method="approximate", generate_description=False)
+    precomputed = meta.kernel_transformer.transform(first_dset, return_type="sparse")
+
+    meta.fit(first_dset, ma_maps=precomputed)
+    second_result = meta.fit(second_dset)
+    expected = ale.ALE(null_method="approximate", generate_description=False).fit(second_dset)
+
+    assert "ma_maps" not in meta.inputs_
+    assert np.array_equal(
+        second_result.get_map("stat", return_type="array"),
+        expected.get_map("stat", return_type="array"),
     )
 
 
