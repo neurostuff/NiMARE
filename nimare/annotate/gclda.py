@@ -5,8 +5,8 @@ import os.path as op
 
 import nibabel as nib
 import numpy as np
-from numba import njit, prange
 from nilearn.image import load_img
+from numba import njit, prange
 
 from nimare.base import NiMAREBase
 from nimare.utils import _mask_img_to_bool, get_template
@@ -246,7 +246,10 @@ def _jit_update_peak_assignments(
             for i_topic in range(n_topics):
                 probs_pdf[flat_idx] = (
                     peak_probs[i_ptoken, i_topic, j_region]
-                    * ((region_by_topic[j_region, i_topic] + delta) / (region_totals[i_topic] + region_total_prior))
+                    * (
+                        (region_by_topic[j_region, i_topic] + delta)
+                        / (region_totals[i_topic] + region_total_prior)
+                    )
                     * (doc_by_topic[doc, i_topic] + alpha)
                     * peak_topic_probs[i_topic]
                 )
@@ -889,7 +892,9 @@ class GCLDAModel(NiMAREBase):
                     if n_obs <= 1:
                         c_hat = default_roi
                     else:
-                        c_hat = self._compute_covariance_from_stats(sum_vector, cross_matrix, n_obs)
+                        c_hat = self._compute_covariance_from_stats(
+                            sum_vector, cross_matrix, n_obs
+                        )
 
                     # Regularize the covariance, using the ratio of observations
                     # to dobs (default constant # observations)

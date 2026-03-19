@@ -135,13 +135,14 @@ class LDAModel(NiMAREBase):
 
         # Only the top few terms are needed for topic labels, so avoid a full sort.
         n_top_tokens = min(3, len(vocabulary))
-        top_token_idxs = np.argpartition(topic_word_weights, -n_top_tokens, axis=1)[:, -n_top_tokens:]
+        top_token_idxs = np.argpartition(topic_word_weights, -n_top_tokens, axis=1)[
+            :, -n_top_tokens:
+        ]
         top_token_weights = np.take_along_axis(topic_word_weights, top_token_idxs, axis=1)
         top_token_order = np.argsort(-top_token_weights, axis=1)
         top_token_idxs = np.take_along_axis(top_token_idxs, top_token_order, axis=1)
         top_tokens = [
-            "_".join(vocabulary[top_token_idxs[topic_i]])
-            for topic_i in range(self.n_topics)
+            "_".join(vocabulary[top_token_idxs[topic_i]]) for topic_i in range(self.n_topics)
         ]
         topic_names = [
             f"LDA{self.n_topics}__{i + 1}_{top_tokens[i]}" for i in range(self.n_topics)
