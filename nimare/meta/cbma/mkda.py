@@ -7,7 +7,7 @@ import numpy as np
 import sparse
 from joblib import Memory, Parallel, delayed
 from pymare.stats import fdr
-from scipy import ndimage
+from scipy import ndimage, special
 from scipy.stats import chi2
 from tqdm.auto import tqdm
 
@@ -21,6 +21,11 @@ from nimare.utils import DEFAULT_FLOAT_DTYPE, _check_ncores, _mask_img_to_bool, 
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
+
+
+def _chi2_sf_1dof(stat_values):
+    """Survival function for chi-square statistics with one degree of freedom."""
+    return special.erfc(np.sqrt(stat_values / 2.0))
 
 
 class MKDADensity(CBMAEstimator):
@@ -488,9 +493,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         # One-way chi-square test for uniformity of activation
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels), n_selected)
-        pAgF_p_vals = chi2.sf(pAgF_chi2_vals, 1)
+        pAgF_p_vals = _chi2_sf_1dof(pAgF_chi2_vals)
         pAgF_sign = np.sign(n_selected_active_voxels - np.mean(n_selected_active_voxels))
-        pAgF_z = p_to_z(pAgF_p_vals, tail="two") * pAgF_sign
+        pAgF_z = np.sqrt(pAgF_chi2_vals) * pAgF_sign
 
         del pAgF_sign
 
@@ -514,10 +519,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
         del n_selected_active_voxels, n_unselected_active_voxels
 
         eps = np.spacing(1)
-        pFgA_p_vals = chi2.sf(pFgA_chi2_vals, 1)
+        pFgA_p_vals = _chi2_sf_1dof(pFgA_chi2_vals)
         pFgA_p_vals[pFgA_p_vals < eps] = eps
         pFgA_sign = np.sign(pAgF - pAgU).ravel()
-        pFgA_z = p_to_z(pFgA_p_vals, tail="two") * pFgA_sign
+        pFgA_z = np.sqrt(pFgA_chi2_vals) * pFgA_sign
 
         del pFgA_sign, pAgU
 
@@ -537,7 +542,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             maps["prob_desc-AgF_prior"] = pAgF_prior
             maps["prob_desc-FgA_prior"] = pFgA_prior
 
-        description = self._generate_description()
+        description = self._description_text()
         return maps, {}, description
 
     def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2, conn, voxel_thresh):

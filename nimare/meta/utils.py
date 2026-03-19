@@ -79,6 +79,37 @@ def _convolve_sphere_to_mask(kernel, ijks, index, max_shape):
     return occ
 
 
+@jit(nopython=True, cache=True)
+def _sum_across_studies_last_seen(kernel, ijks, exp_idx, n_studies, max_shape, value):
+    """Accumulate study counts directly while deduplicating voxels within each study."""
+    all_values = np.zeros((max_shape[0], max_shape[1], max_shape[2]), dtype=np.int32)
+    last_seen = np.full((max_shape[0], max_shape[1], max_shape[2]), -1, dtype=np.int32)
+
+    for study_idx in range(n_studies):
+        for peak_idx in range(ijks.shape[0]):
+            if exp_idx[peak_idx] != study_idx:
+                continue
+
+            peak = ijks[peak_idx]
+            for kernel_idx in range(kernel.shape[1]):
+                x = kernel[0, kernel_idx] + peak[0]
+                y = kernel[1, kernel_idx] + peak[1]
+                z = kernel[2, kernel_idx] + peak[2]
+                if (
+                    (x >= 0)
+                    and (y >= 0)
+                    and (z >= 0)
+                    and (x < max_shape[0])
+                    and (y < max_shape[1])
+                    and (z < max_shape[2])
+                    and (last_seen[x, y, z] != study_idx)
+                ):
+                    last_seen[x, y, z] = study_idx
+                    all_values[x, y, z] += value
+
+    return all_values
+
+
 def compute_kda_ma(
     mask,
     ijks,
@@ -161,25 +192,14 @@ def compute_kda_ma(
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
     if sum_across_studies:
-        all_values = np.zeros(shape, dtype=np.int32)
-
-        # Loop over experiments
-        for i_exp, _ in enumerate(exp_idx_uniq):
-            # Index peaks by experiment
-            curr_exp_idx = exp_idx == i_exp
-            use_occ = use_occ_by_exp[i_exp]
-
-            # preallocate array for current study
-            study_values = np.zeros(shape, dtype=np.int32)
-            if use_occ:
-                occ = _convolve_sphere_to_mask(kernel, ijks, curr_exp_idx, max_shape)
-                study_values[occ] = value
-            else:
-                sphere_coords = _convolve_sphere(kernel, ijks, curr_exp_idx, max_shape)
-                study_values[sphere_coords[:, 0], sphere_coords[:, 1], sphere_coords[:, 2]] = value
-
-            # Sum across studies
-            all_values += study_values
+        all_values = _sum_across_studies_last_seen(
+            kernel,
+            ijks,
+            exp_idx.astype(np.int32),
+            n_studies,
+            max_shape,
+            np.int32(value),
+        )
 
         # Only return values within the mask
         all_values = all_values.reshape(-1)

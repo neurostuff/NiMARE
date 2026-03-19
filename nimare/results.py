@@ -117,8 +117,9 @@ class MetaResult(NiMAREBase):
     @description_.setter
     def description_(self, desc):
         """Automatically extract references when the description is set."""
+        desc = desc or ""
         self.__description = desc
-        self.bibtex_ = get_description_references(desc)
+        self.bibtex_ = "" if not desc else get_description_references(desc)
 
     def get_map(self, name, return_type="image"):
         """Get stored map as image or array.

@@ -114,6 +114,35 @@ def test_CorrelationDecoder_pairwise_skips_features_without_comparison_set(testd
     )
 
 
+def test_CorrelationDecoder_pairwise_uses_precomputed_ma_maps_without_changing_maps(
+    testdata_laird,
+):
+    """Automatic decoder MA-map precomputation should preserve feature maps."""
+    testdata_laird = testdata_laird.copy()
+    features = testdata_laird.get_labels(ids=testdata_laird.ids[0])[:3]
+
+    decoder = continuous.CorrelationDecoder(
+        features=features,
+        meta_estimator=mkda.MKDAChi2(generate_description=False),
+        n_cores=1,
+    )
+    decoder.fit(testdata_laird)
+
+    assert decoder.results_.maps.keys() == set(features)
+    assert decoder._precomputed_ma_maps_ is not None
+
+    for feature in features:
+        feature_ids = testdata_laird.get_studies_by_label(labels=[feature], label_threshold=0.001)
+        feature_ids = sorted(list(set(feature_ids).intersection(decoder.inputs_["id"])))
+        nonfeature_ids = sorted(list(set(decoder.inputs_["id"]) - set(feature_ids)))
+        feature_dset = testdata_laird.slice(feature_ids)
+        nonfeature_dset = testdata_laird.slice(nonfeature_ids)
+        expected = mkda.MKDAChi2(generate_description=False).fit(
+            feature_dset, nonfeature_dset
+        ).get_map("z_desc-association", return_type="array")
+        assert np.array_equal(decoder.results_.maps[feature], expected)
+
+
 def test_CorrelationDistributionDecoder_smoke(testdata_laird, tmp_path_factory):
     """Smoke test for continuous.CorrelationDistributionDecoder."""
     tmpdir = tmp_path_factory.mktemp("test_CorrelationDistributionDecoder")

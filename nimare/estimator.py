@@ -28,9 +28,15 @@ class Estimator(NiMAREBase):
     # attributes to set; values are strings indicating location in Dataset.
     _required_inputs = {}
 
-    def __init__(self, memory=Memory(location=None, verbose=0), memory_level=0):
+    def __init__(
+        self,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+        generate_description=True,
+    ):
         self.memory = memory
         self.memory_level = memory_level
+        self.generate_description = generate_description
 
     def _collect_inputs(self, dataset, drop_invalid=True):
         """Search for, and validate, required inputs as necessary.
@@ -91,6 +97,12 @@ class Estimator(NiMAREBase):
         """Generate a text description of the Estimator."""
         pass
 
+    def _description_text(self):
+        """Return the estimator description, or an empty string when disabled."""
+        if not self.generate_description:
+            return ""
+        return self._generate_description()
+
     @abstractmethod
     def _preprocess_input(self, dataset):
         """Perform any additional preprocessing steps on data in self.inputs_.
@@ -150,6 +162,8 @@ class Estimator(NiMAREBase):
         self._collect_inputs(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)
         maps, tables, description = self._cache(self._fit, func_memory_level=1)(dataset)
+        if not self.generate_description:
+            description = ""
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker

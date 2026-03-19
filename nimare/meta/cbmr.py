@@ -421,7 +421,7 @@ class CBMREstimator(Estimator):
 
         maps, tables = self.model.summary()
 
-        return maps, tables, self._generate_description()
+        return maps, tables, self._description_text()
 
 
 class CBMRInference(object):
