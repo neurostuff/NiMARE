@@ -25,6 +25,20 @@ for backwards compatibility).
 Installation for Development
 ----------------------------
 
+First, you need to fork the NiMARE repository on GitHub, then clone your fork to your local machine.
+
+.. code-block:: bash
+
+   git clone https://github.com/<your-username>/NiMARE.git
+   cd NiMARE
+   pip install -e .
+
+.. note::
+
+   Replace ``<your-username>`` with your actual GitHub username, and ensure 
+   all instances of ``/path/to/`` are replaced with the appropriate path on 
+   your filesystem.
+
 Installation with Conda
 ```````````````````````
 
@@ -72,6 +86,12 @@ Once inside the container, you can install NiMARE:
 
 Maintaining NiMARE
 ------------------
+
+Making Changes
+````````````
+
+Please follow the instructions specified in the 
+`Contributing Guide <https://github.com/neurostuff/NiMARE/blob/main/CONTRIBUTING.md>`_.
 
 Labeling PRs
 ````````````
