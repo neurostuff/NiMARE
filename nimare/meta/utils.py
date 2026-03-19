@@ -81,7 +81,12 @@ def _convolve_sphere_to_mask(kernel, ijks, index, max_shape):
 
 @jit(nopython=True, cache=True)
 def _sum_across_studies_last_seen(kernel, ijks, exp_idx, n_studies, max_shape, value):
-    """Accumulate study counts directly while deduplicating voxels within each study."""
+    """Accumulate study counts directly while deduplicating voxels within each study.
+
+    This matches the previous Python implementation for ``sum_across_studies=True``:
+    each voxel contributes at most once per study before being added into the across-study
+    summary map, even if multiple peaks from the same study overlap there.
+    """
     all_values = np.zeros((max_shape[0], max_shape[1], max_shape[2]), dtype=np.int32)
     last_seen = np.full((max_shape[0], max_shape[1], max_shape[2]), -1, dtype=np.int32)
 
@@ -178,11 +183,6 @@ def compute_kda_ma(
 
     exp_idx_uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
     n_studies = len(exp_idx_uniq)
-    # Determine which experiments to use occupancy vs. unique-rows
-    # occupancy is more efficient when there are many foci per experiment
-    # unique-rows is more efficient when there are few foci per experiment
-    exp_counts = np.bincount(exp_idx, minlength=n_studies)
-    use_occ_by_exp = exp_counts >= KDA_OCCUPANCY_MIN_FOCI
 
     kernel_shape = (n_studies,) + shape
 
@@ -192,6 +192,8 @@ def compute_kda_ma(
     kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
 
     if sum_across_studies:
+        # The JIT helper preserves the previous semantics while avoiding per-study temporary
+        # arrays: deduplicate voxels within each study, then accumulate once across studies.
         all_values = _sum_across_studies_last_seen(
             kernel,
             ijks,
@@ -206,6 +208,12 @@ def compute_kda_ma(
         kernel_data = all_values[mask_data.reshape(-1)]
 
     else:
+        # Determine which experiments to use occupancy vs. unique-rows.
+        # Occupancy is more efficient when there are many foci per experiment;
+        # unique-rows is more efficient when there are few foci per experiment.
+        exp_counts = np.bincount(exp_idx, minlength=n_studies)
+        use_occ_by_exp = exp_counts >= KDA_OCCUPANCY_MIN_FOCI
+
         all_coords = []
         # Loop over experiments
         for i_exp, _ in enumerate(exp_idx_uniq):
