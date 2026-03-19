@@ -13,6 +13,45 @@ to NiMARE collections for analysis.
 In this example, we download and convert the Neurosynth and NeuroQuery databases for analysis with
 NiMARE.
 
+For most Neurosynth term-based workflows, including the decoding examples in NiMARE, you should
+download only the abstract-derived term annotations by passing ``source="abstract"`` and
+``vocab="terms"``. Leaving these selectors unset downloads every available annotation set for the
+release.
+
+The selector keywords determine which annotation files are downloaded:
+
++--------------+---------------------------------------------------------------+
+| Keyword      | Meaning                                                       |
++==============+===============================================================+
+| ``source``   | Text source used to generate the annotations. Neurosynth      |
+|              | currently provides ``"abstract"``.                            |
++--------------+---------------------------------------------------------------+
+| ``vocab``    | Annotation vocabulary. ``"terms"`` selects term-level tf-idf |
+|              | features, while ``"LDA50"``, ``"LDA100"``, ``"LDA200"``, and  |
+|              | ``"LDA400"`` select topic-model vocabularies.                 |
++--------------+---------------------------------------------------------------+
+| ``type``     | Feature representation. ``"tfidf"`` is used for ``"terms"``, |
+|              | while ``"weight"`` is used for the LDA vocabularies.          |
++--------------+---------------------------------------------------------------+
+
+Only the combinations below are valid for Neurosynth:
+
++--------------+------------+------------+-------------------------------+
+| version      | source     | vocab      | type                          |
++==============+============+============+===============================+
+| ``3``-``5``  | abstract   | terms      | tfidf                         |
++--------------+------------+------------+-------------------------------+
+| ``6``-``7``  | abstract   | terms      | tfidf                         |
++--------------+------------+------------+-------------------------------+
+| ``6``-``7``  | abstract   | LDA50      | weight                        |
++--------------+------------+------------+-------------------------------+
+| ``6``-``7``  | abstract   | LDA100     | weight                        |
++--------------+------------+------------+-------------------------------+
+| ``6``-``7``  | abstract   | LDA200     | weight                        |
++--------------+------------+------------+-------------------------------+
+| ``6``-``7``  | abstract   | LDA400     | weight                        |
++--------------+------------+------------+-------------------------------+
+
 .. warning::
     In August 2021, the Neurosynth database was reorganized according to a new file format.
     As such, the ``fetch_neurosynth`` function for NiMARE versions before 0.0.10 will not work
@@ -46,6 +85,8 @@ import Bio  # pip install biopython
 # Download Neurosynth
 # -----------------------------------------------------------------------------
 # Neurosynth's data files are stored at https://github.com/neurosynth/neurosynth-data.
+# For term-based workflows, use the abstract-derived term annotations instead of downloading every
+# annotation set in the release.
 out_dir = os.path.abspath("../example_data/")
 os.makedirs(out_dir, exist_ok=True)
 

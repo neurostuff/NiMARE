@@ -203,8 +203,10 @@ def fetch_neurosynth(
         Keyword arguments to select relevant feature files.
         Valid kwargs include: source, vocab, type.
         Each kwarg may be a string or a list of strings.
+        For most Neurosynth term-based workflows, including the decoding examples in NiMARE,
+        use ``source="abstract"`` and ``vocab="terms"``.
         If no kwargs are provided, all feature files for the specified database version will be
-        downloaded.
+        downloaded, including multiple annotation sets.
 
     Returns
     -------
@@ -215,6 +217,38 @@ def fetch_neurosynth(
     Notes
     -----
     This function was adapted from neurosynth.base.dataset.download().
+
+    The ``source``, ``vocab``, and ``type`` keyword arguments are selectors for annotation files:
+
+    - ``source`` identifies which text source the annotations came from.
+      For Neurosynth, the available source is currently ``"abstract"``.
+    - ``vocab`` identifies the annotation vocabulary.
+      ``"terms"`` selects term-level tf-idf features, while ``"LDA50"``, ``"LDA100"``,
+      ``"LDA200"``, and ``"LDA400"`` select topic-model features for versions 6 and 7.
+    - ``type`` identifies the feature representation.
+      ``"tfidf"`` is used for term annotations, while ``"weight"`` is used for LDA topics.
+
+    Only combinations present in NiMARE's database manifest are valid.
+    For Neurosynth, the supported combinations are:
+
+    ======= ========= ========
+    source  vocab     type
+    ======= ========= ========
+    abstract terms    tfidf
+    abstract LDA50    weight
+    abstract LDA100   weight
+    abstract LDA200   weight
+    abstract LDA400   weight
+    ======= ========= ========
+
+    Versions 3, 4, and 5 only provide ``abstract`` + ``terms`` + ``tfidf``.
+    The LDA vocabularies are only available for versions 6 and 7.
+
+    Examples
+    --------
+    Fetch the abstract-derived term annotations used by most Neurosynth decoding workflows::
+
+        fetch_neurosynth(version="7", source="abstract", vocab="terms")
 
     .. warning::
         ``return_type="dataset"`` is deprecated and will be removed in a future release.
