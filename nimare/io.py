@@ -18,7 +18,7 @@ from scipy import sparse
 from nimare.dataset import Dataset
 from nimare.exceptions import InvalidStudysetError
 from nimare.extract.utils import _get_dataset_dir
-from nimare.utils import load_nimads, mni2tal, tal2mni
+from nimare.utils import _transform_coordinates_to_space, load_nimads, mni2tal, tal2mni
 
 LGR = logging.getLogger(__name__)
 
@@ -495,6 +495,180 @@ def convert_neurosynth_to_dataset(
         feature_groups,
     )
     return Dataset(dset_dict, target=target)
+
+
+def convert_neurosynth_to_studyset(
+    coordinates_file,
+    metadata_file,
+    annotations_files=None,
+    feature_groups=None,
+    target="mni152_2mm",
+    *,
+    materialize=False,
+    studyset_id="nimads_from_neurosynth",
+    studyset_name="",
+):
+    """Convert Neurosynth/NeuroQuery database files into a Studyset.
+
+    Parameters
+    ----------
+    coordinates_file : :obj:`str`
+        TSV.GZ file with Neurosynth/NeuroQuery coordinates.
+    metadata_file : :obj:`str`
+        TSV.GZ file with Neurosynth/NeuroQuery metadata.
+    annotations_files : :obj:`dict`, :obj:`list` of :obj:`dict`, or None, optional
+        Optional feature matrix/vocabulary inputs in the same format accepted by
+        :func:`convert_neurosynth_to_dataset`.
+    feature_groups : :obj:`list` of :obj:`str`, or None, optional
+        Optional override names for annotation feature groups.
+    target : {'mni152_2mm', 'ale_2mm'}, optional
+        Target template space for coordinates. Default is 'mni152_2mm'.
+    materialize : :obj:`bool`, optional
+        If True, build a fully materialized nested Studyset through the legacy Dataset
+        conversion path. If False, return a lightweight Studyset backed by cached
+        Dataset-style tables for faster execution-oriented loading. Default is False.
+    studyset_id : :obj:`str`, optional
+        Identifier for the returned Studyset.
+    studyset_name : :obj:`str`, optional
+        Human-readable name for the returned Studyset.
+
+    Returns
+    -------
+    :obj:`~nimare.nimads.Studyset`
+        Studyset object containing experiment information from the Neurosynth files.
+    """
+    from nimare.nimads import Studyset
+
+    if materialize:
+        dataset = convert_neurosynth_to_dataset(
+            coordinates_file,
+            metadata_file,
+            annotations_files=annotations_files,
+            feature_groups=feature_groups,
+            target=target,
+        )
+        return Studyset.from_dataset(dataset)
+
+    metadata_df = pd.read_table(metadata_file)
+    metadata_df["study_id"] = metadata_df["id"].astype(str)
+    metadata_df["contrast_id"] = "1"
+    metadata_df["id"] = metadata_df["study_id"] + "-1"
+
+    study_names = metadata_df["study_id"].copy()
+    if "title" in metadata_df.columns:
+        study_names = metadata_df["title"].where(metadata_df["title"].notna(), study_names)
+    metadata_df["study_name"] = study_names
+    metadata_df["analysis_name"] = "1"
+    metadata_df["name"] = metadata_df["study_name"]
+    metadata_columns = ["id", "study_id", "contrast_id"] + [
+        col for col in metadata_df.columns if col not in {"id", "study_id", "contrast_id"}
+    ]
+    metadata_df = metadata_df[metadata_columns].sort_values("id").reset_index(drop=True)
+    full_ids = metadata_df["id"].to_numpy(dtype=str)
+    study_ids = metadata_df["study_id"].to_numpy(dtype=str)
+
+    coords_df = pd.read_table(coordinates_file)
+    coords_df["study_id"] = coords_df["id"].astype(str)
+    coords_df["contrast_id"] = "1"
+    coords_df["id"] = coords_df["study_id"] + "-1"
+    if "space" in metadata_df.columns:
+        coord_space_map = metadata_df.set_index("study_id")["space"]
+        coords_df["space"] = coords_df["study_id"].map(coord_space_map).fillna("UNKNOWN")
+    else:
+        coords_df["space"] = "UNKNOWN"
+    coords_df = coords_df[["id", "study_id", "contrast_id", "x", "y", "z", "space"]]
+    if target is not None:
+        coords_df = _transform_coordinates_to_space(coords_df, target)
+    coords_df = coords_df.sort_values("id").reset_index(drop=True)
+
+    if isinstance(annotations_files, dict):
+        annotations_files = [annotations_files]
+
+    if isinstance(feature_groups, str):
+        feature_groups = [feature_groups]
+
+    annotation_tables = []
+    if annotations_files is not None:
+        if feature_groups is not None:
+            assert len(feature_groups) == len(annotations_files)
+
+        for i_feature_group, annotations_dict in enumerate(annotations_files):
+            features_file = annotations_dict["features"]
+            vocabulary_file = annotations_dict["vocabulary"]
+
+            vocab = re.findall("vocab-([a-zA-Z0-9]+)_", features_file)[0]
+            source = re.findall("source-([a-zA-Z0-9]+)_", features_file)[0]
+            value_type = re.findall("type-([a-zA-Z0-9]+)_", features_file)[0]
+
+            if feature_groups is not None:
+                feature_group = feature_groups[i_feature_group].rstrip("_") + "__"
+            else:
+                feature_group = f"{vocab}_{source}_{value_type}__"
+
+            feature_matrix = sparse.load_npz(features_file).astype(np.float32).toarray()
+            if feature_matrix.shape[0] != len(full_ids):
+                raise ValueError(
+                    "Feature matrix row count does not match metadata rows: "
+                    f"{feature_matrix.shape[0]} != {len(full_ids)}"
+                )
+
+            vocabulary = np.loadtxt(vocabulary_file, dtype=str, delimiter="\t")
+            labels = [feature_group + label for label in vocabulary.tolist()]
+            annotation_tables.append(pd.DataFrame(feature_matrix, columns=labels, copy=False))
+
+    if annotation_tables:
+        annotations_df = pd.concat(annotation_tables, axis=1)
+        annotations_df.insert(0, "contrast_id", "1")
+        annotations_df.insert(0, "study_id", study_ids)
+        annotations_df.insert(0, "id", full_ids)
+    else:
+        annotations_df = pd.DataFrame(
+            {
+                "id": full_ids,
+                "study_id": study_ids,
+                "contrast_id": "1",
+            }
+        )
+    annotations_df = annotations_df.sort_values("id").reset_index(drop=True)
+
+    if "abstract" in metadata_df.columns:
+        texts_df = metadata_df[["id", "study_id", "contrast_id", "abstract"]].copy()
+    else:
+        texts_df = pd.DataFrame(columns=["id", "study_id", "contrast_id"])
+
+    table_cache = {
+        "space": target,
+        "masker": None,
+        "basepath": None,
+        "ids": np.sort(full_ids),
+        "coordinates": coords_df,
+        "images": pd.DataFrame(columns=["id", "study_id", "contrast_id"]),
+        "metadata": metadata_df,
+        "annotations": annotations_df,
+        "texts": texts_df,
+    }
+
+    def _materializer():
+        dataset = convert_neurosynth_to_dataset(
+            coordinates_file,
+            metadata_file,
+            annotations_files=annotations_files,
+            feature_groups=feature_groups,
+            target=target,
+        )
+        return convert_dataset_to_nimads_dict(
+            dataset,
+            studyset_id=studyset_id,
+            studyset_name=studyset_name,
+        )
+
+    return Studyset.from_table_cache(
+        table_cache,
+        studyset_id=studyset_id,
+        studyset_name=studyset_name,
+        target=target,
+        materializer=_materializer,
+    )
 
 
 def convert_nimads_to_sleuth(

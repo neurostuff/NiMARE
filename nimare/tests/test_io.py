@@ -390,6 +390,36 @@ def test_convert_neurosynth_to_dataset_smoke():
     assert "terms_abstract_tfidf__abilities" in dset.annotations.columns
 
 
+def test_convert_neurosynth_to_studyset_smoke():
+    """Smoke test for fast Neurosynth Studyset conversion."""
+    coordinates_file = os.path.join(
+        get_test_data_path(),
+        "data-neurosynth_version-7_coordinates.tsv.gz",
+    )
+    metadata_file = os.path.join(
+        get_test_data_path(),
+        "data-neurosynth_version-7_metadata.tsv.gz",
+    )
+    features = {
+        "features": os.path.join(
+            get_test_data_path(),
+            "data-neurosynth_version-7_vocab-terms_source-abstract_type-tfidf_features.npz",
+        ),
+        "vocabulary": os.path.join(
+            get_test_data_path(), "data-neurosynth_version-7_vocab-terms_vocabulary.txt"
+        ),
+    }
+    studyset = io.convert_neurosynth_to_studyset(
+        coordinates_file,
+        metadata_file,
+        annotations_files=features,
+    )
+    assert isinstance(studyset, Studyset)
+    assert len(studyset.ids) == 20
+    assert not studyset.is_materialized
+    assert "terms_abstract_tfidf__abilities" in studyset.annotations_df.columns
+
+
 def test_convert_neurosynth_to_json_smoke():
     """Smoke test for Neurosynth file conversion."""
     out_file = os.path.abspath("temp.json")
