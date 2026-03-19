@@ -92,6 +92,30 @@ def test_get_target_value_map_raises_for_unsupported_maps():
         diagnostics._get_target_value_map(result)
 
 
+def test_is_voxelwise_masker_uses_round_trip_when_mask_count_mismatches():
+    """Voxelwise detection should fall back to a round-trip feature-shape check."""
+    mask_data = np.array([[[1], [0]], [[1], [1]]], dtype=np.int8)
+    mask_img = nib.Nifti1Image(mask_data, affine=np.eye(4))
+
+    class DummyMasker:
+        def __init__(self, mask_img):
+            self.mask_img_ = mask_img
+
+        def inverse_transform(self, data):
+            arr = np.asarray(data)
+            if arr.ndim > 1:
+                arr = np.squeeze(arr, axis=0)
+            return nib.Nifti1Image(arr.reshape((2, 2, 1)), affine=mask_img.affine)
+
+        def transform(self, img):
+            return np.asanyarray(img.dataobj).reshape(1, 4)
+
+    masker = DummyMasker(mask_img)
+
+    assert diagnostics._is_voxelwise_masker(masker, 4)
+    assert masker._nimare_mask_voxel_count == 3
+
+
 @pytest.mark.parametrize(
     "estimator,meta_type,n_samples,target_image,voxel_thresh",
     [

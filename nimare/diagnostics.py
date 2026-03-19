@@ -66,18 +66,39 @@ def _cluster_masker_kwargs():
     )
 
 
-def _is_voxelwise_masker(masker, n_features):
-    """Determine whether a masker output is voxelwise in masked-array space."""
+def _get_masker_voxel_count(masker):
+    """Infer and cache the voxel count represented by a masker."""
+    cached_count = getattr(masker, "_nimare_mask_voxel_count", None)
+    if cached_count is not None:
+        return cached_count
+
     mask_img = getattr(masker, "mask_img_", None)
     if mask_img is None:
-        return False
+        return None
 
     try:
-        n_mask_voxels = int(np.count_nonzero(np.asanyarray(mask_img.dataobj)))
+        mask_data = np.asanyarray(mask_img.dataobj).astype(bool, copy=False)
+        cached_count = int(mask_data.sum())
+    except Exception:
+        return None
+
+    setattr(masker, "_nimare_mask_voxel_count", cached_count)
+    return cached_count
+
+
+def _is_voxelwise_masker(masker, n_features):
+    """Determine whether a masker output is voxelwise in masked-array space."""
+    n_mask_voxels = _get_masker_voxel_count(masker)
+    if n_mask_voxels == n_features:
+        return True
+
+    try:
+        probe_values = np.zeros(int(n_features), dtype=DEFAULT_FLOAT_DTYPE)
+        round_trip_values = np.squeeze(masker.transform(masker.inverse_transform(probe_values)))
     except Exception:
         return False
 
-    return n_mask_voxels == n_features
+    return round_trip_values.ndim == 1 and round_trip_values.shape[0] == n_features
 
 
 def _build_cluster_summary_context(masker, label_map, label_vector, cluster_ids):
@@ -510,12 +531,8 @@ class Jackknife(Diagnostics):
 
         target_value_map = target_value_map or _get_target_value_map(result)
         stat_values = result.get_map(target_value_map, return_type="array")
-        cluster_summary_context = cluster_summary_context or _build_cluster_summary_context(
-            result.estimator.masker,
-            label_map,
-            np.squeeze(result.estimator.masker.transform(label_map)),
-            sorted(list(np.unique(np.asanyarray(label_map.dataobj))[1:])),
-        )
+        if cluster_summary_context is None:
+            raise ValueError("Jackknife requires a precomputed cluster_summary_context.")
 
         # Fit Estimator to all studies except the target study
         other_ids = [id_ for id_ in all_ids if id_ != expid]
