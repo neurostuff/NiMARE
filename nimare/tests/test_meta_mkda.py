@@ -128,6 +128,31 @@ def test_MKDAChi2_fwe_1core(testdata_cbma):
     )
 
 
+def test_MKDAChi2_precomputed_ma_maps_do_not_leak_between_fit_calls(testdata_cbma):
+    """Precomputed pairwise MA maps should not affect a later fit."""
+    testdata_cbma = testdata_cbma.copy()
+    ids = sorted(testdata_cbma.ids)
+    first_dset1 = testdata_cbma.slice(ids[:4])
+    first_dset2 = testdata_cbma.slice(ids[4:8])
+    second_dset1 = testdata_cbma.slice(ids[8:12])
+    second_dset2 = testdata_cbma.slice(ids[12:16])
+
+    meta = MKDAChi2(generate_description=False)
+    precomputed1 = meta.kernel_transformer.transform(first_dset1, return_type="sparse")
+    precomputed2 = meta.kernel_transformer.transform(first_dset2, return_type="sparse")
+
+    meta.fit(first_dset1, first_dset2, ma_maps1=precomputed1, ma_maps2=precomputed2)
+    second_result = meta.fit(second_dset1, second_dset2)
+    expected = MKDAChi2(generate_description=False).fit(second_dset1, second_dset2)
+
+    assert "ma_maps1" not in meta.inputs_
+    assert "ma_maps2" not in meta.inputs_
+    assert np.array_equal(
+        second_result.get_map("chi2_desc-association", return_type="array"),
+        expected.get_map("chi2_desc-association", return_type="array"),
+    )
+
+
 def test_MKDAChi2_fwe_2core(testdata_cbma):
     """Smoke test for MKDAChi2."""
     meta = MKDAChi2()

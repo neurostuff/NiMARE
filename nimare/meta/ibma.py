@@ -315,7 +315,7 @@ class Fishers(IBMAEstimator):
                 ) = self._fit_model(bag["values"])
 
         maps = {"z": z_map, "p": p_map, "dof": dof_map}
-        description = self._generate_description()
+        description = self._description_text()
 
         return maps, {}, description
 
@@ -542,7 +542,7 @@ class Stouffers(IBMAEstimator):
                 )
 
         maps = {"z": z_map, "p": p_map, "dof": dof_map}
-        description = self._generate_description()
+        description = self._description_text()
 
         return maps, {}, description
 
@@ -692,7 +692,7 @@ class WeightedLeastSquares(IBMAEstimator):
         # tau2 is a float, not a map, so it can't go into the results dictionary
         tables = {"level-estimator": pd.DataFrame(columns=["tau2"], data=[self.tau2])}
         maps = {"z": z_map, "p": p_map, "est": est_map, "se": se_map, "dof": dof_map}
-        description = self._generate_description()
+        description = self._description_text()
 
         return maps, tables, description
 
@@ -843,7 +843,7 @@ class DerSimonianLaird(IBMAEstimator):
             "tau2": tau2_map,
             "dof": dof_map,
         }
-        description = self._generate_description()
+        description = self._description_text()
 
         return maps, {}, description
 
@@ -993,7 +993,7 @@ class Hedges(IBMAEstimator):
             "tau2": tau2_map,
             "dof": dof_map,
         }
-        description = self._generate_description()
+        description = self._description_text()
 
         return maps, {}, description
 
@@ -1161,7 +1161,7 @@ class SampleSizeBasedLikelihood(IBMAEstimator):
             "sigma2": sigma2_map,
             "dof": dof_map,
         }
-        description = self._generate_description()
+        description = self._description_text()
 
         return maps, {}, description
 
@@ -1332,7 +1332,7 @@ class VarianceBasedLikelihood(IBMAEstimator):
             "tau2": tau2_map,
             "dof": dof_map,
         }
-        description = self._generate_description()
+        description = self._description_text()
 
         return maps, {}, description
 
@@ -1482,7 +1482,7 @@ class PermutedOLS(IBMAEstimator):
                 ) = self._fit_model(bag["values"])
 
         maps = {"t": t_map, "z": z_map, "dof": dof_map}
-        description = self._generate_description()
+        description = self._description_text()
 
         return maps, {}, description
 
@@ -1724,6 +1724,6 @@ class FixedEffectsHedges(IBMAEstimator):
         # tau2 is a float, not a map, so it can't go into the results dictionary
         tables = {"level-estimator": pd.DataFrame(columns=["tau2"], data=[self.tau2])}
         maps = {"z": z_map, "p": p_map, "est": est_map, "se": se_map, "dof": dof_map}
-        description = self._generate_description()
+        description = self._description_text()
 
         return maps, tables, description

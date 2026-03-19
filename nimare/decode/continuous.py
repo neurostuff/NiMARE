@@ -12,11 +12,12 @@ from joblib import Parallel, delayed
 from nilearn.image import load_img
 from nilearn.maskers import NiftiMasker
 from nilearn.masking import apply_mask
+from scipy import sparse as sp_sparse
 from tqdm.auto import tqdm
 
 from nimare.decode.base import Decoder
 from nimare.decode.utils import weight_priors
-from nimare.meta.cbma.base import CBMAEstimator
+from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.cbma.mkda import MKDAChi2
 from nimare.results import MetaResult
 from nimare.stats import pearson
@@ -168,7 +169,6 @@ class CorrelationDecoder(Decoder):
         Number of cores to use for parallelization.
         If <=0, defaults to using all available cores.
         Default is 1.
-
     Warnings
     --------
     Coefficients from correlating two maps have very large degrees of freedom,
@@ -250,6 +250,12 @@ class CorrelationDecoder(Decoder):
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
             in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
+        self._precomputed_ma_maps_ = None
+        self._precomputed_ma_map_id_to_idx_ = None
+        self._precomputed_mask_flat_to_masked_ = None
+        if isinstance(self.meta_estimator, PairwiseCBMAEstimator):
+            self._precompute_meta_estimator_maps(dataset)
+
         n_features = len(self.features_)
         maps = _collect_feature_maps(
             Parallel(return_as="generator", n_jobs=self.n_cores)(
@@ -259,6 +265,58 @@ class CorrelationDecoder(Decoder):
         )
 
         self.results_ = MetaResult(self, mask=dataset.masker, maps=maps)
+
+    def _precompute_meta_estimator_maps(self, dataset):
+        """Precompute study-wise MA maps for reuse across decoder features."""
+        valid_ids = set(self.inputs_["id"])
+        precomp_ids = np.unique(
+            dataset.coordinates.loc[dataset.coordinates["id"].isin(valid_ids), "id"]
+        )
+        if precomp_ids.size == 0:
+            return
+
+        precomp_dataset = dataset.slice(precomp_ids.tolist())
+        ma_maps = self.meta_estimator.kernel_transformer.transform(
+            precomp_dataset, return_type="sparse"
+        )
+        self._precomputed_ma_maps_ = self._ma_maps_to_masked_matrix(
+            ma_maps, precomp_dataset.masker
+        )
+        self._precomputed_ma_map_id_to_idx_ = {
+            id_: idx for idx, id_ in enumerate(precomp_ids.tolist())
+        }
+
+    def _subset_precomputed_ma_maps(self, selected_ids):
+        """Return a study-sliced sparse MA map tensor for the requested ids."""
+        if self._precomputed_ma_maps_ is None:
+            return None
+
+        study_indices = [self._precomputed_ma_map_id_to_idx_[id_] for id_ in selected_ids]
+        return self._precomputed_ma_maps_[study_indices]
+
+    def _ma_maps_to_masked_matrix(self, ma_maps, masker):
+        """Convert 4D sparse MA maps to a study-by-voxel CSR matrix within the mask."""
+        if sp_sparse.issparse(ma_maps):
+            return ma_maps.tocsr()
+
+        if self._precomputed_mask_flat_to_masked_ is None:
+            mask_data = _mask_img_to_bool(masker.mask_img).reshape(-1)
+            flat_to_masked = np.full(mask_data.shape[0], -1, dtype=np.int32)
+            flat_to_masked[mask_data] = np.arange(mask_data.sum(), dtype=np.int32)
+            self._precomputed_mask_flat_to_masked_ = flat_to_masked
+
+        flat_voxels = np.ravel_multi_index(ma_maps.coords[1:], dims=masker.mask_img.shape)
+        rows = ma_maps.coords[0].astype(np.int32, copy=False)
+        cols = self._precomputed_mask_flat_to_masked_[flat_voxels]
+        valid_mask = cols >= 0
+        rows = rows[valid_mask]
+        cols = cols[valid_mask]
+        data = ma_maps.data[valid_mask]
+        return sp_sparse.csr_matrix(
+            (data, (rows, cols)),
+            shape=(ma_maps.shape[0], int(self._precomputed_mask_flat_to_masked_.max()) + 1),
+            dtype=ma_maps.dtype,
+        )
 
     def _run_fit(self, feature, dataset):
         feature_ids = dataset.get_studies_by_label(
@@ -283,9 +341,23 @@ class CorrelationDecoder(Decoder):
                 return None
 
             nonfeature_dset = dataset.slice(nonfeature_ids)
-            meta_results = self.meta_estimator.fit(feature_dset, nonfeature_dset)
+            if self._precomputed_ma_maps_ is not None:
+                meta_results = self.meta_estimator.fit(
+                    feature_dset,
+                    nonfeature_dset,
+                    ma_maps1=self._subset_precomputed_ma_maps(feature_ids),
+                    ma_maps2=self._subset_precomputed_ma_maps(nonfeature_ids),
+                )
+            else:
+                meta_results = self.meta_estimator.fit(feature_dset, nonfeature_dset)
         else:
-            meta_results = self.meta_estimator.fit(feature_dset)
+            if self._precomputed_ma_maps_ is not None:
+                meta_results = self.meta_estimator.fit(
+                    feature_dset,
+                    ma_maps=self._subset_precomputed_ma_maps(feature_ids),
+                )
+            else:
+                meta_results = self.meta_estimator.fit(feature_dset)
 
         feature_data = meta_results.get_map(
             self.target_image,

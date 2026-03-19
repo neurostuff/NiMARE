@@ -653,7 +653,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
             "z_desc-group1MinusGroup2": z_arr,
             "logp_desc-group1MinusGroup2": logp_arr,
         }
-        description = self._generate_description()
+        description = self._description_text()
 
         return maps, {}, description
 
@@ -1248,7 +1248,7 @@ class SCALE(CBMAEstimator):
 
         # Write out unthresholded value images
         maps = {"stat": stat_values, "logp": logp_values, "z": z_values}
-        description = self._generate_description()
+        description = self._description_text()
 
         return maps, {}, description
 

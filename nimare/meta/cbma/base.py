@@ -10,6 +10,7 @@ import sparse
 from joblib import Memory, Parallel, delayed
 from nilearn.maskers import NiftiMasker
 from scipy import ndimage
+from scipy import sparse as sp_sparse
 from tqdm.auto import tqdm
 
 from nimare.estimator import Estimator
@@ -82,6 +83,7 @@ class CBMAEstimator(Estimator):
         kernel_transformer,
         memory=Memory(location=None, verbose=0),
         memory_level=0,
+        generate_description=True,
         *,
         mask=None,
         **kwargs,
@@ -105,7 +107,11 @@ class CBMAEstimator(Estimator):
         kernel_transformer = _check_type(kernel_transformer, KernelTransformer, **kernel_args)
         self.kernel_transformer = kernel_transformer
 
-        super().__init__(memory=memory, memory_level=memory_level)
+        super().__init__(
+            memory=memory,
+            memory_level=memory_level,
+            generate_description=generate_description,
+        )
 
     def _preprocess_input(self, dataset):
         """Mask required input images using either the Dataset's mask or the Estimator's.
@@ -265,8 +271,55 @@ class CBMAEstimator(Estimator):
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
         maps = {"stat": stat_values, "p": p_values, "z": z_values}
-        description = self._generate_description()
+        description = self._description_text()
         return maps, {}, description
+
+    def _clear_precomputed_ma_inputs(self):
+        """Remove MA-map inputs retained from prior fit calls."""
+        if not hasattr(self, "inputs_"):
+            return
+
+        for key in ("ma_maps", "ma_maps1", "ma_maps2"):
+            self.inputs_.pop(key, None)
+
+    def fit(self, dataset, drop_invalid=True, ma_maps=None):
+        """Fit Estimator to a Studyset-backed collection.
+
+        Parameters
+        ----------
+        dataset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
+                or :obj:`~nimare.dataset.Dataset`
+            Collection object to analyze.
+        drop_invalid : :obj:`bool`, optional
+            Whether to automatically ignore any studies without the required data or not.
+            Default is False.
+        ma_maps : :obj:`sparse._coo.core.COO`, optional
+            Precomputed study-wise MA maps aligned to the study ids in ``dataset``.
+            When provided, the estimator will reuse these maps instead of recomputing them from
+            coordinates.
+
+        Returns
+        -------
+        :obj:`~nimare.results.MetaResult`
+            Results of Estimator fitting.
+        """
+        dataset = ensure_studyset_view(dataset)
+        self._clear_precomputed_ma_inputs()
+        self._collect_inputs(dataset, drop_invalid=drop_invalid)
+        self._preprocess_input(dataset)
+        if ma_maps is not None:
+            self.inputs_["ma_maps"] = ma_maps
+
+        maps, tables, description = self._cache(self._fit, func_memory_level=1)(dataset)
+        if not self.generate_description:
+            description = ""
+
+        if hasattr(self, "masker") and self.masker is not None:
+            masker = self.masker
+        else:
+            masker = dataset.masker
+
+        return MetaResult(self, mask=masker, maps=maps, tables=tables, description=description)
 
     def _compute_weights(self, ma_values):
         """Perform optional weight computation routine.
@@ -298,6 +351,28 @@ class CBMAEstimator(Estimator):
             Return a 4D sparse array of shape
             (n_studies, mask.shape) with MA maps.
         """
+        if maps_key in self.inputs_:
+            LGR.debug("Using precomputed MA maps from inputs (%s).", maps_key)
+            ma_maps = self.inputs_[maps_key]
+            if return_type == "sparse":
+                return ma_maps
+            if return_type == "summary_array":
+                if sp_sparse.issparse(ma_maps):
+                    return np.asarray(ma_maps.sum(axis=0)).ravel()
+
+                mask_img = self.masker.mask_img or self.masker.labels_img
+                mask_data = _mask_img_to_bool(mask_img)
+                summary_map = ma_maps.sum(axis=0)
+                if isinstance(summary_map, sparse._coo.core.COO):
+                    summary_map = summary_map.todense()
+                summary_map = np.asarray(summary_map).reshape(-1)
+                return summary_map[mask_data.reshape(-1)]
+
+            raise ValueError(
+                f"Precomputed MA maps do not support return_type '{return_type}'. "
+                "Use 'sparse' or 'summary_array'."
+            )
+
         LGR.debug(f"Generating MA maps from coordinates ({coords_key}).")
 
         ma_maps = self.kernel_transformer.transform(
@@ -989,7 +1064,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         """
         raise NotImplementedError
 
-    def fit(self, dataset1, dataset2, drop_invalid=True):
+    def fit(self, dataset1, dataset2, drop_invalid=True, ma_maps1=None, ma_maps2=None):
         """Fit Estimator to two Studyset-backed collections.
 
         Parameters
@@ -997,6 +1072,10 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         dataset1/dataset2 : :obj:`~nimare.nimads.Studyset`, \
                 :obj:`~nimare.studyset.StudysetView`, or :obj:`~nimare.dataset.Dataset`
             Collection objects to analyze.
+        ma_maps1/ma_maps2 : :obj:`sparse._coo.core.COO`, optional
+            Precomputed study-wise MA maps aligned to ``dataset1`` and ``dataset2``,
+            respectively. When provided, the estimator will reuse these maps instead of
+            recomputing them from coordinates.
 
         Returns
         -------
@@ -1014,10 +1093,13 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         """
         dataset1 = ensure_studyset_view(dataset1)
         dataset2 = ensure_studyset_view(dataset2)
+        self._clear_precomputed_ma_inputs()
 
         # Reproduce fit() for dataset1 to collect and process inputs.
         self._collect_inputs(dataset1, drop_invalid=drop_invalid)
         self._preprocess_input(dataset1)
+        if ma_maps1 is not None:
+            self.inputs_["ma_maps"] = ma_maps1
         if "ma_maps" in self.inputs_.keys():
             # Grab pre-generated MA maps
             self.inputs_["ma_maps1"] = self.inputs_.pop("ma_maps")
@@ -1028,6 +1110,8 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         # Reproduce fit() for dataset2 to collect and process inputs.
         self._collect_inputs(dataset2, drop_invalid=drop_invalid)
         self._preprocess_input(dataset2)
+        if ma_maps2 is not None:
+            self.inputs_["ma_maps"] = ma_maps2
         if "ma_maps" in self.inputs_.keys():
             # Grab pre-generated MA maps
             self.inputs_["ma_maps2"] = self.inputs_.pop("ma_maps")
@@ -1037,6 +1121,8 @@ class PairwiseCBMAEstimator(CBMAEstimator):
 
         # Now run the Estimator-specific _fit() method.
         maps, tables, description = self._cache(self._fit, func_memory_level=1)(dataset1, dataset2)
+        if not self.generate_description:
+            description = ""
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker
