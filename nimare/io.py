@@ -31,6 +31,26 @@ DEFAULT_MAP_TYPE_CONVERSION = {
 }
 
 
+def _parse_feature_filename_entities(features_file):
+    """Extract vocab/source/type entities from a Neurosynth-style feature filename."""
+    patterns = {
+        "vocab": r"vocab-([A-Za-z0-9]+)_",
+        "source": r"source-([A-Za-z0-9]+)_",
+        "type": r"type-([A-Za-z0-9]+)_",
+    }
+    matches = {}
+    for entity, pattern in patterns.items():
+        match = re.search(pattern, features_file)
+        if match is None:
+            raise ValueError(
+                "Could not parse feature filename entity "
+                f"'{entity}' from '{features_file}'. Expected a Neurosynth-style filename "
+                "containing vocab-*, source-*, and type-* segments."
+            )
+        matches[entity] = match.group(1)
+    return matches["vocab"], matches["source"], matches["type"]
+
+
 def convert_nimads_to_dataset(studyset, annotation=None):
     """Convert nimads studyset to a dataset.
 
@@ -288,15 +308,18 @@ def convert_neurosynth_to_dict(
     if annotations_files is not None:
         label_dfs = []
         if feature_groups is not None:
-            assert len(feature_groups) == len(annotations_files)
+            if len(feature_groups) != len(annotations_files):
+                raise ValueError(
+                    "feature_groups and annotations_files must have the same length. "
+                    f"Got {len(feature_groups)} feature group names and "
+                    f"{len(annotations_files)} annotation file sets."
+                )
 
         for i_feature_group, annotations_dict in enumerate(annotations_files):
             features_file = annotations_dict["features"]
             vocabulary_file = annotations_dict["vocabulary"]
 
-            vocab = re.findall("vocab-([a-zA-Z0-9]+)_", features_file)[0]
-            source = re.findall("source-([a-zA-Z0-9]+)_", features_file)[0]
-            value_type = re.findall("type-([a-zA-Z0-9]+)_", features_file)[0]
+            vocab, source, value_type = _parse_feature_filename_entities(features_file)
 
             if feature_groups is not None:
                 feature_group = feature_groups[i_feature_group]
@@ -590,15 +613,18 @@ def convert_neurosynth_to_studyset(
     annotation_tables = []
     if annotations_files is not None:
         if feature_groups is not None:
-            assert len(feature_groups) == len(annotations_files)
+            if len(feature_groups) != len(annotations_files):
+                raise ValueError(
+                    "feature_groups and annotations_files must have the same length. "
+                    f"Got {len(feature_groups)} feature group names and "
+                    f"{len(annotations_files)} annotation file sets."
+                )
 
         for i_feature_group, annotations_dict in enumerate(annotations_files):
             features_file = annotations_dict["features"]
             vocabulary_file = annotations_dict["vocabulary"]
 
-            vocab = re.findall("vocab-([a-zA-Z0-9]+)_", features_file)[0]
-            source = re.findall("source-([a-zA-Z0-9]+)_", features_file)[0]
-            value_type = re.findall("type-([a-zA-Z0-9]+)_", features_file)[0]
+            vocab, source, value_type = _parse_feature_filename_entities(features_file)
 
             if feature_groups is not None:
                 feature_group = feature_groups[i_feature_group].rstrip("_") + "__"

@@ -304,7 +304,11 @@ class Studyset:
 
     def get_analyses_by_label(self, labels=None, label_threshold=0.001):
         """Extract analysis IDs whose annotation values exceed the threshold."""
-        if (not self._studies) and self._nimare_table_cache is not None and not self.is_materialized:
+        if (
+            (not self._studies)
+            and self._nimare_table_cache is not None
+            and not self.is_materialized
+        ):
             return [
                 full_id.rsplit("-", 1)[1]
                 for full_id in self.get_studies_by_label(
@@ -454,7 +458,9 @@ class Studyset:
             def _materializer():
                 dataset_obj = dataset_ref()
                 if dataset_obj is None:
-                    raise RuntimeError("Cannot materialize Studyset because the source Dataset is gone.")
+                    raise RuntimeError(
+                        "Cannot materialize Studyset because the source Dataset is gone."
+                    )
 
                 from nimare.io import convert_dataset_to_nimads_dict
 
