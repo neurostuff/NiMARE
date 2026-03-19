@@ -21,6 +21,9 @@ def _sample_from_unnormalized(weights):
     for i_weight in range(weights.shape[0]):
         total += weights[i_weight]
 
+    if total <= 0.0:
+        raise ValueError("Sampling weights must sum to a positive value.")
+
     threshold = np.random.random() * total
     cumulative = 0.0
     for i_weight in range(weights.shape[0]):
@@ -103,8 +106,9 @@ def _jit_get_spatial_dists(points, regions_mu, regions_precision, regions_log_no
 
 
 @njit(cache=True)
-def _jit_accumulate_region_stats(coords, peak_topic_idx, peak_region_idx, n_topics, n_regions):
+def _jit_accumulate_region_stats(coords, peak_topic_idx, peak_region_idx, region_by_topic):
     """Accumulate sums and cross-products for each topic-region pair."""
+    n_regions, n_topics = region_by_topic.shape
     n_dim = coords.shape[1]
     region_sums = np.zeros((n_regions, n_topics, n_dim), dtype=np.float64)
     region_cross = np.zeros((n_regions, n_topics, n_dim, n_dim), dtype=np.float64)
@@ -785,8 +789,7 @@ class GCLDAModel(NiMAREBase):
             self.data["ptoken_coords"],
             self.topics["peak_topic_idx"],
             self.topics["peak_region_idx"],
-            n_topics,
-            n_regions,
+            region_counts,
         )
         zero_vec = np.zeros(n_dim)
 

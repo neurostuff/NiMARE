@@ -2,6 +2,7 @@
 
 import logging
 import os.path as op
+from functools import lru_cache
 
 import pandas as pd
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
@@ -29,6 +30,7 @@ def _prepare_text_documents(text_df, text_column):
     return ids, text
 
 
+@lru_cache(maxsize=1)
 def _load_stop_words():
     """Load the default Neurosynth stop-word list."""
     stoplist = op.join(get_resource_path(), "neurosynth_stoplist.txt")
