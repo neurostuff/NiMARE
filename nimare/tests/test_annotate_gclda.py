@@ -8,6 +8,12 @@ import pytest
 from nimare import annotate, decode
 
 
+def test_gclda_sampling_rejects_nonpositive_total():
+    """Sampling should fail fast on degenerate unnormalized weights."""
+    with pytest.raises(ValueError, match="positive"):
+        annotate.gclda._sample_from_unnormalized(np.zeros(3, dtype=np.float64))
+
+
 def test_gclda_symmetric(testdata_laird):
     """A smoke test for GCLDA with symmetric regions."""
     counts_df = annotate.text.generate_counts(

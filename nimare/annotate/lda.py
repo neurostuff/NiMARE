@@ -4,12 +4,12 @@ import numpy as np
 import pandas as pd
 from sklearn.decomposition import LatentDirichletAllocation
 
-from nimare.annotate.text import generate_counts
+from nimare.annotate.text import _generate_weights
 from nimare.base import NiMAREBase
 from nimare.dataset import Dataset
 from nimare.nimads import Studyset
 from nimare.studyset import StudysetView, ensure_studyset_view
-from nimare.utils import _check_ncores
+from nimare.utils import DEFAULT_FLOAT_DTYPE, _check_ncores
 
 
 class LDAModel(NiMAREBase):
@@ -78,7 +78,7 @@ class LDAModel(NiMAREBase):
             learning_method="batch",
             doc_topic_prior=alpha,
             topic_word_prior=beta,
-            n_jobs=n_cores,
+            n_jobs=self.n_cores,
         )
 
     def fit(self, dset):
@@ -119,25 +119,30 @@ class LDAModel(NiMAREBase):
             tabular_source = ensure_studyset_view(dset)
             source = tabular_source
 
-        counts_df = generate_counts(
+        counts, vocabulary, study_ids = _generate_weights(
             tabular_source.texts,
             text_column=self.text_column,
             tfidf=False,
             max_df=len(tabular_source.ids) - 2,
             min_df=2,
+            dtype=DEFAULT_FLOAT_DTYPE,
         )
-        vocabulary = counts_df.columns.to_numpy()
-        count_values = counts_df.values
-        study_ids = counts_df.index.tolist()
+        vocabulary = np.asarray(vocabulary)
+        count_values = counts.toarray()
 
         doc_topic_weights = self.model.fit_transform(count_values)
         topic_word_weights = self.model.components_
 
-        # Get top 3 words for each topic for annotation
-        sorted_weights_idxs = np.argsort(-topic_word_weights, axis=1)
+        # Only the top few terms are needed for topic labels, so avoid a full sort.
+        n_top_tokens = min(3, len(vocabulary))
+        top_token_idxs = np.argpartition(topic_word_weights, -n_top_tokens, axis=1)[
+            :, -n_top_tokens:
+        ]
+        top_token_weights = np.take_along_axis(topic_word_weights, top_token_idxs, axis=1)
+        top_token_order = np.argsort(-top_token_weights, axis=1)
+        top_token_idxs = np.take_along_axis(top_token_idxs, top_token_order, axis=1)
         top_tokens = [
-            "_".join(vocabulary[sorted_weights_idxs[topic_i, :]][:3])
-            for topic_i in range(self.n_topics)
+            "_".join(vocabulary[top_token_idxs[topic_i]]) for topic_i in range(self.n_topics)
         ]
         topic_names = [
             f"LDA{self.n_topics}__{i + 1}_{top_tokens[i]}" for i in range(self.n_topics)
