@@ -8,7 +8,7 @@ import pytest
 
 from nimare import annotate
 from nimare.correct import FDRCorrector
-from nimare.decode import discrete
+from nimare.decode import continuous, discrete
 from nimare.diagnostics import FocusFilter
 from nimare.generate import create_coordinate_studyset
 from nimare.io import convert_nimads_to_dataset
@@ -300,6 +300,48 @@ def test_decoder_accepts_studyset(testdata_laird):
 
     assert isinstance(decoded_df, pd.DataFrame)
     assert not decoded_df.empty
+
+
+def test_correlation_decoder_accepts_lazy_studyset(testdata_laird):
+    """Correlation Decoder should run on a lazily cached Studyset."""
+    dset = testdata_laird.slice(testdata_laird.ids[:10])
+    studyset = Studyset.from_dataset(dset, materialize=False)
+    features = next(
+        (dset.get_labels(ids=id_)[:3] for id_ in dset.ids if dset.get_labels(ids=id_)), []
+    )
+    assert features
+
+    decoder = continuous.CorrelationDecoder(features=features, n_cores=1)
+    decoder.fit(studyset)
+
+    assert set(decoder.results_.maps.keys()) == set(features)
+
+
+def test_lazy_studyset_view_slice_uses_cached_tables(testdata_ibma):
+    """Cached-table Studysets should support view slicing without nested studies."""
+    dset = testdata_ibma.slice(testdata_ibma.ids[:5])
+    studyset = Studyset.from_dataset(dset, materialize=False)
+    view = ensure_studyset_view(studyset)
+
+    sliced = view.slice(dset.ids[:2])
+
+    assert not studyset.is_materialized
+    assert set(sliced.ids) == set(dset.ids[:2])
+    assert set(sliced.metadata["id"].unique()) == set(dset.ids[:2])
+    assert sliced.studyset is None
+
+
+def test_lazy_studyset_materializes_on_nested_access(testdata_cbma):
+    """Accessing nested Study objects should materialize a lazy Studyset once."""
+    dset = testdata_cbma.slice(testdata_cbma.ids[:5])
+    studyset = Studyset.from_dataset(dset, materialize=False)
+
+    assert not studyset.is_materialized
+
+    studies = studyset.studies
+
+    assert studyset.is_materialized
+    assert len(studies) == len(dset.ids)
 
 
 def test_lda_accepts_studyset(testdata_laird):

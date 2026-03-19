@@ -70,6 +70,26 @@ def _snapshot_dataset_tables(dataset, copy_tables=False):
     return table_cache
 
 
+def _slice_table_cache(table_cache, ids):
+    """Filter a Dataset-style table cache down to the requested analysis IDs."""
+    ids = np.sort(np.asarray(_listify(ids), dtype=str))
+    id_set = set(ids.tolist())
+
+    sliced_cache = {
+        "space": table_cache.get("space"),
+        "masker": table_cache.get("masker"),
+        "basepath": table_cache.get("basepath"),
+        "ids": ids,
+    }
+    for attr in _TABLE_ATTRS[1:]:
+        value = table_cache.get(attr)
+        if value is None:
+            sliced_cache[attr] = None
+        else:
+            sliced_cache[attr] = value.loc[value["id"].isin(id_set)].copy()
+    return sliced_cache
+
+
 class StudysetView(NiMAREBase):
     """Dataset-like, cached tabular view of a NIMADS Studyset."""
 
@@ -102,13 +122,31 @@ class StudysetView(NiMAREBase):
     @classmethod
     def from_dataset(cls, dataset):
         """Create a Dataset-backed StudysetView without rebuilding nested Studyset objects."""
-        view = object.__new__(cls)
+        view = cls.from_table_cache(
+            _snapshot_dataset_tables(dataset, copy_tables=True),
+            target=dataset.space,
+            mask=dataset.masker,
+            basepath=dataset.basepath,
+        )
         view._dataset = dataset
+        return view
+
+    @classmethod
+    def from_table_cache(cls, table_cache, target=None, mask=None, basepath=None):
+        """Create a StudysetView directly from pre-materialized Dataset-style tables."""
+        view = object.__new__(cls)
+        view._dataset = None
         view.studyset = None
-        view.space = dataset.space
-        view.basepath = dataset.basepath
-        view.masker = dataset.masker
-        view._load_table_cache(_snapshot_dataset_tables(dataset, copy_tables=True))
+        view.space = target if target is not None else table_cache.get("space")
+        view.basepath = basepath if basepath is not None else table_cache.get("basepath")
+        view.masker = get_masker(mask) if mask is not None else table_cache.get("masker")
+        view._ids = None
+        view._coordinates = None
+        view._images = None
+        view._metadata = None
+        view._annotations = None
+        view._texts = None
+        view._load_table_cache(table_cache)
         return view
 
     def _load_table_cache(self, table_cache):
@@ -154,6 +192,23 @@ class StudysetView(NiMAREBase):
         clone._annotations = self._annotations
         clone._texts = self._texts
         return clone
+
+    def _get_available_table_cache(self):
+        """Return the best available Dataset-style cache for this view."""
+        table_cache = {
+            "space": self.space,
+            "masker": self.masker,
+            "basepath": self.basepath,
+        }
+        if self.studyset is not None:
+            table_cache.update(self.studyset._get_execution_context()["table_cache"] or {})
+
+        for attr in _TABLE_ATTRS:
+            value = getattr(self, f"_{attr}")
+            if value is not None:
+                table_cache[attr] = value
+
+        return table_cache
 
     def __deepcopy__(self, memo):
         """Avoid recursively copying the underlying Dataset/Studyset graph."""
@@ -410,6 +465,17 @@ class StudysetView(NiMAREBase):
         ids = set(_listify(ids))
         if self._dataset is not None:
             return StudysetView.from_dataset(self._dataset.slice(sorted(ids)))
+
+        if self.studyset is None or (
+            not self.studyset.is_materialized and not getattr(self.studyset, "_studies", None)
+        ):
+            sliced_cache = _slice_table_cache(self._get_available_table_cache(), sorted(ids))
+            return StudysetView.from_table_cache(
+                sliced_cache,
+                target=self.space,
+                mask=self.masker,
+                basepath=self.basepath,
+            )
 
         studyset_dict = self.studyset.to_dict()
         for study in studyset_dict["studies"]:

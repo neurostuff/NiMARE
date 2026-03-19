@@ -58,12 +58,14 @@ class Studyset:
 
         self.id = source["id"]
         self.name = source.get("name", "") or ""
-        self.studies = [Study(s) for s in source["studies"]]
+        self._studies = [Study(s) for s in source["studies"]]
         self._annotations = []
         self._nimare_space = None
         self._nimare_masker = None
         self._nimare_basepath = None
         self._nimare_table_cache = None
+        self._nimare_dataset_ref = None
+        self._nimare_materializer = None
         self._set_execution_context(space=target, masker=mask)
         for annotation in source.get("annotations", []):
             self.annotations = annotation
@@ -76,7 +78,23 @@ class Studyset:
 
     def __str__(self):
         """Give useful information about the Studyset."""
-        return str(" ".join(["Studyset:", self.name, "::", f"studies: {len(self.studies)}"]))
+        return str(" ".join(["Studyset:", self.name, "::", f"studies: {len(self._studies)}"]))
+
+    @property
+    def is_materialized(self):
+        """bool: Whether the nested Study/Analysis graph has been materialized."""
+        return self._nimare_materializer is None
+
+    @property
+    def studies(self):
+        """Return the nested Study graph, materializing it on demand if needed."""
+        self.materialize()
+        return self._studies
+
+    @studies.setter
+    def studies(self, studies):
+        self._studies = studies
+        self._nimare_materializer = None
 
     @property
     def annotations(self):
@@ -121,6 +139,17 @@ class Studyset:
     def touch(self):
         """Invalidate Studyset-derived caches after in-place mutation."""
         self._nimare_table_cache = None
+
+    def materialize(self):
+        """Materialize the nested Study/Analysis graph if this Studyset is lazy."""
+        if self._nimare_materializer is None:
+            return self
+
+        source = self._nimare_materializer()
+        _validate_studyset_source(source)
+        self._studies = [Study(s) for s in source["studies"]]
+        self._nimare_materializer = None
+        return self
 
     def view(self, materialize_ids=True):
         """Return a Dataset-like tabular view of the Studyset."""
@@ -275,6 +304,19 @@ class Studyset:
 
     def get_analyses_by_label(self, labels=None, label_threshold=0.001):
         """Extract analysis IDs whose annotation values exceed the threshold."""
+        if (
+            (not self._studies)
+            and self._nimare_table_cache is not None
+            and not self.is_materialized
+        ):
+            return [
+                full_id.rsplit("-", 1)[1]
+                for full_id in self.get_studies_by_label(
+                    labels=labels,
+                    label_threshold=label_threshold,
+                )
+            ]
+
         if isinstance(labels, str):
             labels = [labels]
         elif not isinstance(labels, list):
@@ -368,6 +410,34 @@ class Studyset:
             basepath=dataset.basepath,
         )
         self._set_table_cache(_snapshot_dataset_tables(dataset, copy_tables=True))
+        self._nimare_dataset_ref = weakref.ref(dataset)
+
+    @classmethod
+    def from_table_cache(
+        cls,
+        table_cache,
+        *,
+        studyset_id="nimads_cached_tables",
+        studyset_name="",
+        target=None,
+        mask=None,
+        basepath=None,
+        materializer=None,
+    ):
+        """Create a lightweight Studyset backed by precomputed Dataset-style tables."""
+        studyset = cls(
+            {"id": studyset_id, "name": studyset_name, "studies": []},
+            target=target if target is not None else table_cache.get("space"),
+            mask=mask if mask is not None else table_cache.get("masker"),
+        )
+        studyset._set_execution_context(
+            space=target if target is not None else table_cache.get("space"),
+            masker=mask if mask is not None else table_cache.get("masker"),
+            basepath=basepath if basepath is not None else table_cache.get("basepath"),
+        )
+        studyset._set_table_cache(table_cache)
+        studyset._nimare_materializer = materializer
+        return studyset
 
     @classmethod
     def from_nimads(cls, filename):
@@ -378,8 +448,39 @@ class Studyset:
         return cls(nimads)
 
     @classmethod
-    def from_dataset(cls, dataset):
+    def from_dataset(cls, dataset, *, materialize=True):
         """Create a Studyset from a NiMARE Dataset."""
+        if not materialize:
+            from nimare.studyset import _snapshot_dataset_tables
+
+            dataset_ref = weakref.ref(dataset)
+
+            def _materializer():
+                dataset_obj = dataset_ref()
+                if dataset_obj is None:
+                    raise RuntimeError(
+                        "Cannot materialize Studyset because the source Dataset is gone."
+                    )
+
+                from nimare.io import convert_dataset_to_nimads_dict
+
+                return convert_dataset_to_nimads_dict(
+                    dataset_obj,
+                    studyset_id="nimads_from_dataset",
+                    studyset_name="",
+                )
+
+            studyset = cls.from_table_cache(
+                _snapshot_dataset_tables(dataset, copy_tables=True),
+                studyset_id="nimads_from_dataset",
+                target=dataset.space,
+                mask=dataset.masker,
+                basepath=dataset.basepath,
+                materializer=_materializer,
+            )
+            studyset._nimare_dataset_ref = dataset_ref
+            return studyset
+
         from nimare.io import convert_dataset_to_nimads_dict
 
         nimads = convert_dataset_to_nimads_dict(dataset)
@@ -439,10 +540,12 @@ class Studyset:
 
     def to_dict(self):
         """Return a dictionary representation of the Studyset."""
+        self.materialize()
+
         studyset_dict = {
             "id": self.id,
             "name": self.name,
-            "studies": [s.to_dict() for s in self.studies],
+            "studies": [s.to_dict() for s in self._studies],
         }
         if self.annotations:
             studyset_dict["annotations"] = [
@@ -475,9 +578,11 @@ class Studyset:
         # Update current instance with loaded data
         self.id = loaded_data.id
         self.name = loaded_data.name
-        self.studies = loaded_data.studies
+        self._studies = loaded_data.studies
         self._annotations = loaded_data._annotations
         self._nimare_table_cache = None
+        self._nimare_dataset_ref = None
+        self._nimare_materializer = None
         self.touch()
         return self
 
