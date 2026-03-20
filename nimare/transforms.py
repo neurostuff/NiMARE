@@ -538,12 +538,13 @@ class StandardizeField(NiMAREBase):
         categorical_metadata, numerical_metadata = [], []
         for metadata_name in self.fields:
             if np.array_equal(
-                dataset.annotations[metadata_name], dataset.annotations[metadata_name].astype(str)
+                dataset.annotations_df[metadata_name],
+                dataset.annotations_df[metadata_name].astype(str),
             ):
                 categorical_metadata.append(metadata_name)
             elif np.array_equal(
-                dataset.annotations[metadata_name],
-                dataset.annotations[metadata_name].astype(float),
+                dataset.annotations_df[metadata_name],
+                dataset.annotations_df[metadata_name].astype(float),
             ):
                 numerical_metadata.append(metadata_name)
         if len(categorical_metadata) > 0:
@@ -551,14 +552,14 @@ class StandardizeField(NiMAREBase):
         if len(numerical_metadata) == 0:
             raise ValueError("No numerical metadata found.")
 
-        moderators = dataset.annotations[numerical_metadata]
+        moderators = dataset.annotations_df[numerical_metadata]
         standardize_moderators = moderators - np.mean(moderators, axis=0)
         standardize_moderators /= np.std(standardize_moderators, axis=0)
         if isinstance(self.fields, str):
             column_name = "standardized_" + self.fields
         elif isinstance(self.fields, list):
             column_name = ["standardized_" + moderator for moderator in numerical_metadata]
-        dataset.annotations[column_name] = standardize_moderators
+        dataset.annotations_df[column_name] = standardize_moderators
 
         return dataset
 

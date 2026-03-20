@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import copy
-from functools import lru_cache
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Callable, Optional
 
 import numpy as np
 import pandas as pd
 
 from nimare.io import DEFAULT_MAP_TYPE_CONVERSION
-from nimare.utils import _transform_coordinates_to_space, _try_prepend, get_masker, get_template
+from nimare.utils import (
+    _transform_coordinates_to_space,
+    _try_prepend,
+    get_masker,
+    get_template,
+)
 
 _ID_COLS = ["id", "study_id", "contrast_id"]
 _TABLE_ATTRS = ("ids", "coordinates", "images", "metadata", "annotations", "texts")
@@ -53,6 +58,52 @@ def _normalize_image_type(value_type):
     if value_type == "variance":
         return "varcope"
     return value_type
+
+
+def _structural_copy_source_dict(source_dict):
+    """Create a structure-preserving copy of a NIMADS source dictionary.
+
+    Copies the dict/list skeleton so that in-place mutations (coordinate
+    harmonization, annotation application) don't affect the caller's input.
+    Immutable leaf values (strings, numbers) are shared, avoiding the cost
+    of a full ``copy.deepcopy``.
+    """
+    copied = {
+        "id": source_dict.get("id"),
+        "name": source_dict.get("name", ""),
+    }
+    # Copy study → analysis → points/images/annotations structure
+    new_studies = []
+    for study in source_dict.get("studies", []):
+        new_study = dict(study)
+        if "metadata" in study and isinstance(study["metadata"], dict):
+            new_study["metadata"] = dict(study["metadata"])
+        new_analyses = []
+        for analysis in study.get("analyses", []):
+            new_analysis = dict(analysis)
+            # Points may be mutated during coordinate harmonization
+            if "points" in analysis:
+                new_analysis["points"] = [dict(p) for p in (analysis["points"] or [])]
+            # Annotations may be mutated during payload application
+            if "annotations" in analysis and isinstance(analysis["annotations"], dict):
+                new_analysis["annotations"] = dict(analysis["annotations"])
+            # Metadata may be merged
+            if "metadata" in analysis and isinstance(analysis["metadata"], dict):
+                new_analysis["metadata"] = dict(analysis["metadata"])
+            # Texts may be merged
+            if "texts" in analysis and isinstance(analysis["texts"], dict):
+                new_analysis["texts"] = dict(analysis["texts"])
+            # Images are read-only during store creation
+            if "images" in analysis:
+                new_analysis["images"] = list(analysis["images"] or [])
+            new_analyses.append(new_analysis)
+        new_study["analyses"] = new_analyses
+        new_studies.append(new_study)
+    copied["studies"] = new_studies
+    # Top-level annotations are deepcopied separately by _coerce_annotation_payloads
+    if "annotations" in source_dict:
+        copied["annotations"] = source_dict["annotations"]
+    return copied
 
 
 def _coerce_annotation_payloads(annotations):
@@ -325,6 +376,7 @@ class StudysetExecutionProfile:
     coordinate_space_policy: str = "explicit"
 
     def __post_init__(self):
+        """Normalize the configured masker after initialization."""
         if self.masker is not None:
             self.masker = get_masker(self.masker)
         elif isinstance(self.target, str):
@@ -332,9 +384,11 @@ class StudysetExecutionProfile:
 
     @property
     def is_ready(self):
+        """Whether the profile contains enough context for execution."""
         return self.masker is not None or self.target is not None
 
     def cache_key(self):
+        """Return a cache key for projected execution tables."""
         mask_img = getattr(self.masker, "mask_img", None) if self.masker is not None else None
         return (
             self.target,
@@ -345,7 +399,7 @@ class StudysetExecutionProfile:
 
 
 class StudysetStore:
-    """Canonical Studyset storage with normalized tables and optional lazy source materialization."""
+    """Canonical Studyset storage with normalized tables and lazy materialization."""
 
     def __init__(
         self,
@@ -360,9 +414,15 @@ class StudysetStore:
         self.studyset_id = studyset_id
         self.studyset_name = studyset_name
         self._source_dict = source_dict
-        self._tables = tables or _build_tables_from_source(source_dict or {"studies": []})
+        self._tables = tables  # None → built lazily on first table access
         self._annotation_payloads = _coerce_annotation_payloads(annotation_payloads)
         self._materializer = materializer
+
+    def _ensure_tables(self):
+        """Build tables lazily from the source dict on first access."""
+        if self._tables is None:
+            self._tables = _build_tables_from_source(self._source_dict or {"studies": []})
+        return self._tables
 
     @classmethod
     def from_source_dict(
@@ -372,9 +432,20 @@ class StudysetStore:
         target=None,
         *,
         harmonize_coordinates=True,
+        _owned=False,
     ):
-        """Create a store from a source dictionary."""
-        source_dict = copy.deepcopy(source_dict)
+        """Create a store from a source dictionary.
+
+        Parameters
+        ----------
+        _owned : bool
+            When True the caller guarantees that ``source_dict`` is already an
+            independent copy (e.g. freshly built from ``to_dict()``).  This
+            skips the structural copy, saving time in internal callers such as
+            ``touch()``.
+        """
+        if not _owned:
+            source_dict = _structural_copy_source_dict(source_dict)
         source_dict = _harmonize_source_dict_coordinates(
             source_dict,
             target,
@@ -432,13 +503,27 @@ class StudysetStore:
 
     @property
     def annotation_payloads(self):
+        """Return detached top-level annotation payloads."""
         return copy.deepcopy(self._annotation_payloads)
 
     @property
     def ids(self):
-        return self._tables["ids"]
+        """Return the full analysis IDs tracked by the store."""
+        if self._tables is not None:
+            return self._tables["ids"]
+        return self._extract_ids()
+
+    def _extract_ids(self):
+        """Extract sorted ID array from source dict without building full tables."""
+        ids = []
+        for study in (self._source_dict or {}).get("studies", []):
+            study_id = str(study["id"])
+            for analysis in study.get("analyses", []):
+                ids.append(f"{study_id}-{analysis['id']}")
+        return np.sort(np.asarray(ids, dtype=str))
 
     def selected_ids(self, selected_full_ids=None):
+        """Return the selected full IDs constrained to those present in the store."""
         if selected_full_ids is None:
             return self.ids
         selected_full_ids = np.sort(np.asarray(selected_full_ids, dtype=str))
@@ -446,12 +531,13 @@ class StudysetStore:
 
     def raw_tables(self, selected_full_ids=None, *, basepath=None):
         """Return raw Dataset-like tables for the selected analyses."""
+        tables = self._ensure_tables()
         ids = self.selected_ids(selected_full_ids)
         id_set = set(ids.tolist())
 
         table_cache = {"ids": ids}
         for attr in _TABLE_ATTRS[1:]:
-            table = self._tables.get(attr)
+            table = tables.get(attr)
             if table is None:
                 table_cache[attr] = None
             elif table.empty:

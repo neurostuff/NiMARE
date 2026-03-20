@@ -225,6 +225,20 @@ class Dataset(NiMAREBase):
         self.__annotations = df.sort_values(by="id")
 
     @property
+    def annotations_df(self):
+        """:class:`pandas.DataFrame`: Alias for :attr:`annotations`.
+
+        Provides a unified tabular annotation interface shared with
+        :class:`~nimare.nimads.Studyset`.
+        """
+        return self.__annotations
+
+    @annotations_df.setter
+    def annotations_df(self, df):
+        _validate_df(df)
+        self.__annotations = df.sort_values(by="id")
+
+    @property
     def coordinates(self):
         """:class:`pandas.DataFrame`: Coordinates in the dataset.
 

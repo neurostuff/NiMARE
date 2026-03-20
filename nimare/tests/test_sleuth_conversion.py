@@ -403,9 +403,9 @@ def test_convert_dataset_to_studyset_preserves_execution_context():
     dset = convert_sleuth_to_dataset(sleuth_file)
     studyset = convert_dataset_to_studyset(dset, studyset_id="cdts", studyset_name="From Dataset")
 
-    assert studyset._nimare_table_cache is not None
-    assert studyset._nimare_space == dset.space
-    assert studyset._nimare_masker is dset.masker
+    assert studyset.space == dset.space
+    assert studyset.masker is not None
+    assert studyset.is_execution_ready
 
     view = normalize_collection(studyset)
     assert set(view.ids) == set(dset.ids)

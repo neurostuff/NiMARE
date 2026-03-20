@@ -280,8 +280,8 @@ class CBMREstimator(Estimator):
                 # remove dataset coordinates outside of mask
                 focus_filter = FocusFilter(mask=masker)
                 dataset = focus_filter.transform(dataset)
-                valid_dset_annotations = dataset.annotations[
-                    dataset.annotations["id"].isin(self.inputs_["id"])
+                valid_dset_annotations = dataset.annotations_df[
+                    dataset.annotations_df["id"].isin(self.inputs_["id"])
                 ]
                 studies_by_group = dict()
                 if self.group_categories is None:
@@ -307,7 +307,7 @@ class CBMREstimator(Estimator):
                             studies_by_group[group.capitalize()] = group_study_id.unique().tolist()
                 elif isinstance(self.group_categories, list):
                     missing_categories = set(self.group_categories) - set(
-                        dataset.annotations.columns
+                        dataset.annotations_df.columns
                     )
                     if missing_categories:
                         raise ValueError(

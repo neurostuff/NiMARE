@@ -33,7 +33,9 @@ def _make_mixed_space_studyset_payload(dataset):
                 continue
 
             if analysis_index % 2 == 0:
-                coords = np.asarray([point["coordinates"] for point in analysis["points"]], dtype=float)
+                coords = np.asarray(
+                    [point["coordinates"] for point in analysis["points"]], dtype=float
+                )
                 tal_coords = mni2tal(coords)
                 for point, tal_coord in zip(analysis["points"], tal_coords):
                     point["space"] = "TAL"
@@ -233,7 +235,7 @@ def test_studyset_annotations_batch_assignment_touches_once(
 
     def _touch():
         touch_calls.append(True)
-        studyset._nimare_table_cache = None
+        studyset._projection_cache = {}
 
     monkeypatch.setattr(studyset, "touch", _touch)
 
@@ -507,9 +509,7 @@ def test_ale_accepts_fresh_mixed_space_studyset_with_explicit_target(testdata_cb
     assert "stat" in result.maps
 
 
-def test_cbma_workflow_accepts_fresh_mixed_space_studyset(
-    tmp_path_factory, testdata_cbma_full
-):
+def test_cbma_workflow_accepts_fresh_mixed_space_studyset(tmp_path_factory, testdata_cbma_full):
     """CBMAWorkflow.fit should run directly on a freshly constructed mixed-space Studyset."""
     dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
     studyset = Studyset(_make_mixed_space_studyset_payload(dset), target="mni152_2mm")

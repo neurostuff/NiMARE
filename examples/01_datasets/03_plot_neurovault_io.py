@@ -71,21 +71,20 @@ studyset = create_neurovault_studyset(
 # still have T maps and regenerate them.
 from nimare.transforms import ImageTransformer
 
-studyset_view = studyset.view()
-images = studyset_view.images.copy()
+images = studyset.images.copy()
 images.loc[images["t"].notnull(), "z"] = None
-studyset_view.images = images
+studyset.images = images
 
 # Some studies are now missing Z maps again.
-studyset_view.images[["t", "z"]]
+studyset.images[["t", "z"]]
 
 ###############################################################################
 z_transformer = ImageTransformer(target="z")
-studyset_view = z_transformer.transform(studyset_view)
+studyset = z_transformer.transform(studyset)
 
 ###############################################################################
 # All studies now have Z maps again.
-studyset_view.images[["z"]]
+studyset.images[["z"]]
 
 ###############################################################################
 # Run a Meta-Analysis
@@ -99,7 +98,7 @@ from nimare.meta.ibma import Fishers
 # images during the fitting process.
 meta = Fishers(resample=True)
 
-meta_res = meta.fit(studyset_view)
+meta_res = meta.fit(studyset)
 
 fig, ax = plt.subplots()
 display = plot_stat_map(meta_res.get_map("z"), threshold=3.3, axes=ax, figure=fig)

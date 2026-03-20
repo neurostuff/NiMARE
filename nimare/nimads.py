@@ -16,9 +16,6 @@ from nimare.exceptions import InvalidStudysetError
 from nimare.io import convert_nimads_to_dataset
 from nimare.utils import (
     _mask_img_to_bool,
-    _transform_coordinates_to_space,
-    get_masker,
-    get_template,
     mm2vox,
 )
 
@@ -94,9 +91,9 @@ class Studyset:
             target=target,
             masker=mask,
             basepath=basepath,
-            coordinate_space_policy="harmonize"
-            if target is not None and harmonize_coordinates
-            else "preserve",
+            coordinate_space_policy=(
+                "harmonize" if target is not None and harmonize_coordinates else "preserve"
+            ),
         )
         self._initialize_from_store(store, execution_profile)
 
@@ -106,11 +103,11 @@ class Studyset:
 
     def __str__(self):
         """Give useful information about the Studyset."""
-        n_studies = (
-            len(self._studies)
-            if self._studies is not None
-            else self._get_raw_table_cache()["metadata"]["study_id"].nunique()
-        )
+        if self._studies is not None:
+            n_studies = len(self._studies)
+        else:
+            ids = self._current_store().selected_ids(self._selection_full_ids)
+            n_studies = len(set(fid.rsplit("-", 1)[0] for fid in ids))
         return str(" ".join(["Studyset:", self.name, "::", f"studies: {n_studies}"]))
 
     def _initialize_from_store(self, store, execution_profile, selection_full_ids=None):
@@ -128,11 +125,7 @@ class Studyset:
         self._revision = 0
         self._studies = None
         self._annotations = None
-        self._nested_graph_authoritative = False
-        self._nimare_table_cache = None
-        self._nimare_dataset_ref = None
-        self._nimare_materializer = store._materializer
-        self._sync_execution_context()
+        self._store_needs_sync = False
 
     @classmethod
     def _from_store(cls, store, execution_profile, selection_full_ids=None):
@@ -140,12 +133,6 @@ class Studyset:
         studyset = object.__new__(cls)
         studyset._initialize_from_store(store, execution_profile, selection_full_ids)
         return studyset
-
-    def _sync_execution_context(self):
-        """Mirror execution-profile state onto legacy private attributes."""
-        self._nimare_space = self._execution_profile.target
-        self._nimare_masker = self._execution_profile.masker
-        self._nimare_basepath = self._execution_profile.basepath
 
     def _selection_key(self):
         """Return a cacheable fingerprint for the current analysis selection."""
@@ -175,9 +162,7 @@ class Studyset:
         return studyset_dict
 
     def _current_store(self):
-        """Return the currently authoritative store for projections and selection."""
-        if self._nested_graph_authoritative and self._studies is not None:
-            return StudysetStore.from_source_dict(self._source_dict_from_materialized())
+        """Return the canonical store for projections and selection."""
         return self._studyset_store
 
     def _copy_table_cache(self, table_cache):
@@ -215,31 +200,21 @@ class Studyset:
             return self._copy_table_cache(table_cache)
         return table_cache
 
-    def _get_projected_table_cache(self, *, target=None, mask=None, basepath=None, copy_tables=False):
+    def _get_projected_table_cache(
+        self, *, target=None, mask=None, basepath=None, copy_tables=False
+    ):
         """Return Dataset-compatible execution tables for the current selection."""
         execution_profile = self._copy_execution_profile(
             target=target,
             mask=mask,
             basepath=basepath,
         )
-        if self._nested_graph_authoritative and self._studies is not None:
-            table_cache = self._current_store().projected_tables(
-                execution_profile,
-                self._selection_full_ids,
-            )
-            if target is None and mask is None and basepath is None:
-                self._nimare_table_cache = self._copy_table_cache(table_cache)
-            return self._copy_table_cache(table_cache) if copy_tables else table_cache
-
         cache_key = self._cache_key(execution_profile)
         if cache_key not in self._projection_cache:
-            table_cache = self._studyset_store.projected_tables(
+            self._projection_cache[cache_key] = self._studyset_store.projected_tables(
                 execution_profile,
                 self._selection_full_ids,
             )
-            self._projection_cache[cache_key] = table_cache
-            if target is None and mask is None and basepath is None:
-                self._nimare_table_cache = self._copy_table_cache(table_cache)
 
         table_cache = self._projection_cache[cache_key]
         return self._copy_table_cache(table_cache) if copy_tables else table_cache
@@ -253,23 +228,18 @@ class Studyset:
     def studies(self):
         """Return the nested Study graph, materializing it on demand if needed."""
         self.materialize()
-        self._nested_graph_authoritative = True
-        self._nimare_table_cache = None
         return self._studies
 
     @studies.setter
     def studies(self, studies):
         self._studies = studies
-        self._nimare_materializer = None
-        self._nested_graph_authoritative = True
+        self._store_needs_sync = True
         self.touch()
 
     @property
     def annotations(self):
         """Return existing Annotations."""
         self.materialize()
-        self._nested_graph_authoritative = True
-        self._nimare_table_cache = None
         return self._annotations
 
     def _coerce_annotation(self, annotation):
@@ -294,6 +264,7 @@ class Studyset:
             loaded_annotations = [self._coerce_annotation(annotations)]
 
         self._annotations = (self._annotations or []) + loaded_annotations
+        self._store_needs_sync = True
         self.touch()
 
     @annotations.setter
@@ -306,59 +277,26 @@ class Studyset:
             self._annotations = [a for a in self._annotations if a.id != annotation_id]
         else:
             self._annotations = []
+        self._store_needs_sync = True
         self.touch()
 
     def touch(self):
         """Invalidate Studyset-derived caches after in-place mutation."""
         if self._studies is not None:
-            self._studyset_store = StudysetStore.from_source_dict(self._source_dict_from_materialized())
+            # The source dict is freshly built from our own graph, so pass
+            # _owned=True to skip the structural copy and skip harmonization
+            # (coordinates are already in the target space).
+            self._studyset_store = StudysetStore.from_source_dict(
+                self._source_dict_from_materialized(),
+                _owned=True,
+                harmonize_coordinates=False,
+            )
             self.id = self._studyset_store.studyset_id
             self.name = self._studyset_store.studyset_name or self.name
             self._selection_full_ids = None
-            self._nimare_materializer = self._studyset_store._materializer
+        self._store_needs_sync = False
         self._revision += 1
         self._projection_cache = {}
-        self._nimare_table_cache = None
-
-    def _harmonize_points_to_target(self, target):
-        """Transform all point coordinates into the requested target space."""
-        point_rows = []
-        points = []
-        for _, analysis in self._iter_analyses():
-            for point in analysis.points:
-                points.append(point)
-                point_rows.append(
-                    {
-                        "x": float(point.x),
-                        "y": float(point.y),
-                        "z": float(point.z),
-                        "space": point.space,
-                    }
-                )
-
-        if not point_rows:
-            return
-
-        transformed = _transform_coordinates_to_space(pd.DataFrame(point_rows), target)
-        for point, row in zip(points, transformed.itertuples(index=False)):
-            point.x = float(row.x)
-            point.y = float(row.y)
-            point.z = float(row.z)
-            point.space = row.space
-
-    def _ensure_masker_from_space(self):
-        """Initialize a default execution masker from the declared Studyset space."""
-        if self._nimare_masker is not None or not isinstance(self._nimare_space, str):
-            return
-
-        try:
-            self._nimare_masker = get_masker(get_template(self._nimare_space, mask="brain"))
-        except Exception:
-            LGR.warning(
-                "Could not initialize masker from Studyset space '%s'. "
-                "Provide a mask explicitly for coordinate-based analyses.",
-                self._nimare_space,
-            )
 
     def materialize(self):
         """Materialize the nested Study/Analysis graph if this Studyset is lazy."""
@@ -368,12 +306,9 @@ class Studyset:
         source = self._studyset_store.selected_source_dict(self._selection_full_ids)
         _validate_studyset_source(source)
         self._studies = [Study(s) for s in source["studies"]]
-        self._annotations = [Annotation(annotation, self) for annotation in source.get("annotations", [])]
-        self._nimare_materializer = None
-        return self
-
-    def view(self, materialize_ids=True):
-        """Return a Dataset-like tabular view of the Studyset."""
+        self._annotations = [
+            Annotation(annotation, self) for annotation in source.get("annotations", [])
+        ]
         return self
 
     @property
@@ -400,6 +335,15 @@ class Studyset:
     def ids(self):
         """numpy.ndarray: 1D array of full analysis identifiers."""
         return self._current_store().selected_ids(self._selection_full_ids)
+
+    @property
+    def study_ids(self):
+        """numpy.ndarray: 1D array of unique study identifiers.
+
+        Extracted from the full ``<study_id>-<analysis_id>`` identifiers
+        without materializing the nested Study graph.
+        """
+        return np.unique(np.array([fid.rsplit("-", 1)[0] for fid in self.ids]))
 
     @property
     def coordinates(self):
@@ -458,7 +402,6 @@ class Studyset:
 
         default_key = self._cache_key(self._execution_profile)
         self._projection_cache[default_key] = table_cache
-        self._nimare_table_cache = self._copy_table_cache(table_cache)
 
     def set_annotations_df(self, annotations_df, overwrite=True):
         """Update analysis-level annotations from a flattened DataFrame.
@@ -533,6 +476,7 @@ class Studyset:
             elif overwrite:
                 analysis.annotations = {}
 
+        self._store_needs_sync = True
         self.touch()
 
     def _generic_column_getter(self, attr, ids=None, column=None, ignore_columns=None):
@@ -701,22 +645,7 @@ class Studyset:
             mask=masker,
             basepath=basepath,
         )
-        self._sync_execution_context()
         self._projection_cache = {}
-        self._nimare_table_cache = None
-
-    def _get_execution_context(self):
-        """Return cached execution context used by Studyset-backed estimators."""
-        return {
-            "space": self._execution_profile.target,
-            "masker": self._execution_profile.masker,
-            "basepath": self._execution_profile.basepath,
-            "table_cache": self._nimare_table_cache,
-        }
-
-    def _set_table_cache(self, table_cache):
-        """Store Dataset-compatible cached tables for reuse by Studyset."""
-        self._nimare_table_cache = self._copy_table_cache(table_cache)
 
     def _iter_analyses(self):
         """Yield each analysis with its parent study."""
@@ -744,15 +673,11 @@ class Studyset:
 
     def _attach_dataset_context(self, dataset):
         """Cache Dataset-derived execution state for fast Studyset-backed estimators."""
-        from nimare.studyset import _snapshot_dataset_tables
-
         self._set_execution_context(
             space=dataset.space,
             masker=dataset.masker,
             basepath=dataset.basepath,
         )
-        self._set_table_cache(_snapshot_dataset_tables(dataset, copy_tables=True))
-        self._nimare_dataset_ref = weakref.ref(dataset)
 
     @classmethod
     def from_table_cache(
@@ -779,7 +704,19 @@ class Studyset:
             materializer=materializer,
         )
         studyset = cls._from_store(store, execution_profile)
-        studyset._set_table_cache(table_cache)
+        # Seed the projection cache so the first property access doesn't rebuild.
+        cache_key = studyset._cache_key(execution_profile)
+        studyset._projection_cache[cache_key] = {
+            "ids": table_cache.get("ids"),
+            "coordinates": table_cache.get("coordinates"),
+            "images": table_cache.get("images"),
+            "metadata": table_cache.get("metadata"),
+            "annotations": table_cache.get("annotations"),
+            "texts": table_cache.get("texts"),
+            "space": execution_profile.target,
+            "masker": execution_profile.masker,
+            "basepath": execution_profile.basepath,
+        }
         return studyset
 
     @classmethod
@@ -821,7 +758,6 @@ class Studyset:
                 basepath=dataset.basepath,
                 materializer=_materializer,
             )
-            studyset._nimare_dataset_ref = dataset_ref
             return studyset
 
         from nimare.io import convert_dataset_to_nimads_dict
@@ -879,6 +815,11 @@ class Studyset:
                     new_source["texts"] = combined_texts
                 study.analyses = [Analysis(new_source)]
 
+        # Old Analysis objects are gone; Annotation notes hold dead weak references.
+        # Clear top-level annotations so touch() can rebuild cleanly.
+        studyset._annotations = []
+        studyset._store_needs_sync = True
+        studyset.touch()
         return studyset
 
     def to_nimads(self, filename):
@@ -888,8 +829,8 @@ class Studyset:
 
     def to_dict(self):
         """Return a dictionary representation of the Studyset."""
-        if self._nested_graph_authoritative and self._studies is not None:
-            return self._source_dict_from_materialized()
+        if self._studies is not None:
+            self._ensure_store_synced()
         return self._studyset_store.selected_source_dict(self._selection_full_ids)
 
     def to_dataset(self):
@@ -915,7 +856,6 @@ class Studyset:
             loaded_data = pickle.load(f)
 
         self.__dict__.update(loaded_data.__dict__)
-        self._nimare_table_cache = None
         self._projection_cache = {}
         return self
 
@@ -941,8 +881,18 @@ class Studyset:
         """Create a copy of the Studyset."""
         return deepcopy(self)
 
+    def _ensure_store_synced(self):
+        """Rebuild the store from the materialized graph if it may be stale.
+
+        This is conservative: any materialized graph triggers a sync because
+        users may have mutated Study/Analysis objects directly.
+        """
+        if self._studies is not None:
+            self.touch()
+
     def filter_ids(self, ids):
         """Return a Studyset filtered to the requested analysis IDs."""
+        self._ensure_store_synced()
         if isinstance(ids, str):
             ids = [ids]
         resolved_ids = self._current_store().resolve_full_ids(
@@ -951,11 +901,9 @@ class Studyset:
             selected_full_ids=self._selection_full_ids,
         )
         execution_profile = self._copy_execution_profile()
-        if self._nested_graph_authoritative and self._studies is not None:
-            store = self._current_store()
-        else:
-            store = self._studyset_store
-        return self.__class__._from_store(store, execution_profile, selection_full_ids=resolved_ids)
+        return self.__class__._from_store(
+            self._studyset_store, execution_profile, selection_full_ids=resolved_ids
+        )
 
     def filter_annotations(self, labels, threshold=0.001, match="all"):
         """Return a Studyset filtered by annotation labels."""
@@ -978,6 +926,44 @@ class Studyset:
             raise ValueError("match must be 'all' or 'any'")
 
         return self.filter_ids(annotations_df.loc[keep, "id"].tolist())
+
+    def filter_study_ids(self, study_ids):
+        """Return a Studyset keeping only analyses belonging to the given study IDs.
+
+        Parameters
+        ----------
+        study_ids : :obj:`str` or :obj:`list` of :obj:`str`
+            One or more study-level identifiers to keep.
+
+        Returns
+        -------
+        Studyset
+            A new Studyset containing only analyses from the specified studies.
+        """
+        if isinstance(study_ids, str):
+            study_ids = [study_ids]
+        keep = set(study_ids)
+        full_ids = [fid for fid in self.ids if fid.rsplit("-", 1)[0] in keep]
+        return self.filter_ids(full_ids)
+
+    def exclude_study_ids(self, study_ids):
+        """Return a Studyset excluding analyses belonging to the given study IDs.
+
+        Parameters
+        ----------
+        study_ids : :obj:`str` or :obj:`list` of :obj:`str`
+            One or more study-level identifiers to exclude.
+
+        Returns
+        -------
+        Studyset
+            A new Studyset with analyses from the specified studies removed.
+        """
+        if isinstance(study_ids, str):
+            study_ids = [study_ids]
+        exclude = set(study_ids)
+        full_ids = [fid for fid in self.ids if fid.rsplit("-", 1)[0] not in exclude]
+        return self.filter_ids(full_ids)
 
     def filter_metadata(self, field, op, value):
         """Return a Studyset filtered by one metadata field."""
@@ -1011,15 +997,40 @@ class Studyset:
         keep = keep.fillna(False)
         return self.filter_ids(metadata_df.loc[keep, "id"].tolist())
 
-    def slice(self, analyses):
-        """Create a new Studyset with only requested analyses.
+    def slice(self, ids=None, *, analyses=None, filter_level="analysis"):
+        """Create a new Studyset keeping only the requested IDs.
 
         Parameters
         ----------
-        analyses : :obj:`list` of :obj:`str` or :obj:`str`
-            Requested analysis IDs.
+        ids : :obj:`str` or :obj:`list` of :obj:`str`, optional
+            Identifiers to keep. Can also be passed via the deprecated
+            ``analyses`` keyword for backwards compatibility.
+        analyses : :obj:`str` or :obj:`list` of :obj:`str`, optional
+            Deprecated alias for *ids*.  Will be removed in a future release.
+        filter_level : ``"analysis"`` or ``"study"``, optional
+            When ``"analysis"`` (default), *ids* are treated as analysis-level
+            identifiers (full ``<study_id>-<analysis_id>`` strings or short
+            analysis IDs).  When ``"study"``, *ids* are treated as study-level
+            identifiers and every analysis belonging to those studies is kept.
+
+        Returns
+        -------
+        Studyset
+            A new Studyset containing only the matching analyses.
         """
-        return self.filter_ids(analyses)
+        if ids is None and analyses is not None:
+            ids = analyses
+        elif ids is None and analyses is None:
+            raise TypeError("slice() requires at least one of 'ids' or 'analyses'")
+
+        if filter_level == "study":
+            return self.filter_study_ids(ids)
+        elif filter_level == "analysis":
+            return self.filter_ids(ids)
+        else:
+            raise ValueError(
+                f"filter_level must be 'analysis' or 'study', got {filter_level!r}"
+            )
 
     def merge(self, right):
         """Merge a separate Studyset into the current one.
@@ -1060,11 +1071,7 @@ class Studyset:
 
                 # Keep metadata from left unless missing
                 left_study["metadata"].update(
-                    {
-                        k: v
-                        for k, v in right_metadata.items()
-                        if k not in left_study["metadata"]
-                    }
+                    {k: v for k, v in right_metadata.items() if k not in left_study["metadata"]}
                 )
 
                 # Keep basic info from left unless empty
@@ -1224,9 +1231,7 @@ class Studyset:
         if is_tabular:
             return self._generic_column_getter("texts", ids=target_ids, column=text_type)
 
-        return {
-            analysis.id: analysis.texts for analysis in self._iter_selected_analyses(analyses)
-        }
+        return {analysis.id: analysis.texts for analysis in self._iter_selected_analyses(analyses)}
 
     def get_images(self, analyses=None, imtype=None, ids=None):
         """Get image paths or collect nested Image objects by short analysis IDs."""
