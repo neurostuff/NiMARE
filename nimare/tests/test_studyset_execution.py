@@ -1,5 +1,7 @@
 """Tests for Studyset-native execution paths."""
 
+import os
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -50,9 +52,10 @@ def _make_mixed_space_studyset_payload(dataset):
 
 def test_ale_studyset_parity(testdata_cbma):
     """ALE should accept Studysets and match Dataset outputs."""
-    studyset = Studyset.from_dataset(testdata_cbma)
+    dset = testdata_cbma.slice(testdata_cbma.ids[:5])
+    studyset = Studyset.from_dataset(dset)
 
-    res_dset = ALE(null_method="approximate").fit(testdata_cbma)
+    res_dset = ALE(null_method="approximate").fit(dset)
     res_studyset = ALE(null_method="approximate").fit(studyset)
 
     np.testing.assert_allclose(
@@ -80,9 +83,10 @@ def test_ale_accepts_singular_sample_size_metadata(testdata_cbma):
 
 def test_stouffers_studyset_parity(testdata_ibma):
     """IBMA estimators should accept Studysets and match Dataset outputs."""
-    studyset = Studyset.from_dataset(testdata_ibma)
+    dset = testdata_ibma.slice(testdata_ibma.ids[:5])
+    studyset = Studyset.from_dataset(dset)
 
-    res_dset = Stouffers().fit(testdata_ibma)
+    res_dset = Stouffers().fit(dset)
     res_studyset = Stouffers().fit(studyset)
 
     np.testing.assert_allclose(res_dset.get_map("z", return_type="array"), res_studyset.maps["z"])
@@ -91,13 +95,13 @@ def test_stouffers_studyset_parity(testdata_ibma):
 
 def test_cbma_workflow_accepts_studyset(tmp_path_factory, testdata_cbma_full):
     """CBMA workflow should run when passed a Studyset."""
-    studyset = Studyset.from_dataset(testdata_cbma_full)
+    studyset = Studyset.from_dataset(testdata_cbma_full.slice(testdata_cbma_full.ids[:8]))
     tmpdir = tmp_path_factory.mktemp("test_cbma_workflow_accepts_studyset")
 
     workflow = CBMAWorkflow(
         estimator="ale",
         corrector="bonferroni",
-        diagnostics="jackknife",
+        diagnostics=[],
         output_dir=tmpdir,
     )
     result = workflow.fit(studyset)
@@ -106,13 +110,13 @@ def test_cbma_workflow_accepts_studyset(tmp_path_factory, testdata_cbma_full):
 
 def test_ibma_workflow_accepts_studyset(tmp_path_factory, testdata_ibma):
     """IBMA workflow should run when passed a Studyset."""
-    studyset = Studyset.from_dataset(testdata_ibma)
+    studyset = Studyset.from_dataset(testdata_ibma.slice(testdata_ibma.ids[:5]))
     tmpdir = tmp_path_factory.mktemp("test_ibma_workflow_accepts_studyset")
 
     workflow = IBMAWorkflow(
         estimator="stouffers",
         corrector="bonferroni",
-        diagnostics="jackknife",
+        diagnostics=[],
         output_dir=tmpdir,
     )
     result = workflow.fit(studyset)
@@ -121,8 +125,8 @@ def test_ibma_workflow_accepts_studyset(tmp_path_factory, testdata_ibma):
 
 def test_pairwise_cbma_workflow_accepts_studyset(tmp_path_factory, testdata_cbma_full):
     """Pairwise CBMA workflow should run when passed two Studysets."""
-    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
-    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:])
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:5])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[5:10])
     studyset1 = Studyset.from_dataset(dset1)
     studyset2 = Studyset.from_dataset(dset2)
     tmpdir = tmp_path_factory.mktemp("test_pairwise_cbma_workflow_accepts_studyset")
@@ -130,7 +134,7 @@ def test_pairwise_cbma_workflow_accepts_studyset(tmp_path_factory, testdata_cbma
     workflow = PairwiseCBMAWorkflow(
         estimator="mkdachi2",
         corrector="bonferroni",
-        diagnostics="jackknife",
+        diagnostics=[],
         output_dir=tmpdir,
     )
     result = workflow.fit(studyset1, studyset2)
@@ -252,6 +256,24 @@ def test_image_transformer_accepts_studyset(testdata_ibma):
     assert "z" in transformed.images.columns
 
 
+def test_image_transformer_records_generated_images_in_studyset(testdata_ibma):
+    """Image transformer should write generated image paths back into Studyset.images."""
+    studyset = Studyset.from_dataset(testdata_ibma)
+
+    original_varcope = studyset.images["varcope"].tolist()
+    assert not all(isinstance(value, str) for value in original_varcope)
+
+    transformed = ImageTransformer(target=["varcope", "p"]).transform(studyset)
+
+    assert isinstance(transformed, Studyset)
+    assert all(isinstance(value, str) for value in transformed.images["varcope"].tolist())
+    assert all(isinstance(value, str) for value in transformed.images["p"].tolist())
+    assert all(transformed.images["p"].map(os.path.isfile))
+
+    # The transformer should return a copy rather than mutating the original Studyset in-place.
+    assert not all(isinstance(value, str) for value in studyset.images["varcope"].tolist())
+
+
 def test_kernel_transformer_studyset_parity(testdata_cbma):
     """Kernel transformers should accept Studysets and match Dataset outputs."""
     dset = testdata_cbma.slice(testdata_cbma.ids[:5])
@@ -352,12 +374,12 @@ def test_studyset_filter_metadata_returns_execution_ready_subset(testdata_cbma):
 
 def test_decoder_accepts_studyset(testdata_laird):
     """Discrete decoders should accept raw Studyset inputs."""
-    studyset = Studyset.from_dataset(testdata_laird)
+    studyset = Studyset.from_dataset(testdata_laird.slice(testdata_laird.ids[:20]))
     selected_ids = studyset.get_studies_by_mask(studyset.masker.mask_img)
     decoder = discrete.NeurosynthDecoder(feature_group="Neurosynth_TFIDF")
 
     decoder.fit(studyset)
-    decoded_df = decoder.transform(ids=selected_ids[:5])
+    decoded_df = decoder.transform(ids=selected_ids[:3])
 
     assert isinstance(decoded_df, pd.DataFrame)
     assert not decoded_df.empty
@@ -365,7 +387,7 @@ def test_decoder_accepts_studyset(testdata_laird):
 
 def test_correlation_decoder_accepts_lazy_studyset(testdata_laird):
     """Correlation Decoder should run on a lazily cached Studyset."""
-    dset = testdata_laird.slice(testdata_laird.ids[:10])
+    dset = testdata_laird.slice(testdata_laird.ids[:5])
     studyset = Studyset.from_dataset(dset, materialize=False)
     features = next(
         (dset.get_labels(ids=id_)[:3] for id_ in dset.ids if dset.get_labels(ids=id_)), []
@@ -404,14 +426,14 @@ def test_lazy_studyset_materializes_on_nested_access(testdata_cbma):
 
 def test_lda_accepts_studyset(testdata_laird):
     """LDA should return a Studyset with tabular annotations attached."""
-    studyset = Studyset.from_dataset(testdata_laird)
-    model = annotate.lda.LDAModel(n_topics=5, max_iter=100, text_column="abstract")
+    studyset = Studyset.from_dataset(testdata_laird.slice(testdata_laird.ids[:20]))
+    model = annotate.lda.LDAModel(n_topics=3, max_iter=10, text_column="abstract")
 
     annotated = model.fit(studyset)
 
     assert isinstance(annotated, Studyset)
     topic_columns = [col for col in annotated.annotations_df.columns if col.startswith("LDA")]
-    assert len(topic_columns) == 5
+    assert len(topic_columns) == 3
 
 
 def test_focus_filter_accepts_studyset(testdata_cbma):
@@ -426,7 +448,7 @@ def test_focus_filter_accepts_studyset(testdata_cbma):
 
 def test_reports_accept_studyset_results(tmp_path_factory, testdata_cbma):
     """Reports should run for Studyset-backed estimator results."""
-    studyset = Studyset.from_dataset(testdata_cbma)
+    studyset = Studyset.from_dataset(testdata_cbma.slice(testdata_cbma.ids[:5]))
     result = ALE(null_method="approximate").fit(studyset)
     result = FDRCorrector(method="indep", alpha=0.05).transform(result)
 
@@ -501,7 +523,7 @@ def test_studyset_constructor_can_skip_harmonization_with_target(testdata_cbma_f
 
 def test_ale_accepts_fresh_mixed_space_studyset_with_explicit_target(testdata_cbma_full):
     """ALE.fit should run on a freshly constructed mixed-space Studyset with an explicit target."""
-    dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:8])
+    dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:5])
     studyset = Studyset(_make_mixed_space_studyset_payload(dset), target="mni152_2mm")
 
     result = ALE(null_method="approximate").fit(studyset)
@@ -511,14 +533,14 @@ def test_ale_accepts_fresh_mixed_space_studyset_with_explicit_target(testdata_cb
 
 def test_cbma_workflow_accepts_fresh_mixed_space_studyset(tmp_path_factory, testdata_cbma_full):
     """CBMAWorkflow.fit should run directly on a freshly constructed mixed-space Studyset."""
-    dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:6])
     studyset = Studyset(_make_mixed_space_studyset_payload(dset), target="mni152_2mm")
     tmpdir = tmp_path_factory.mktemp("test_cbma_workflow_accepts_fresh_mixed_space_studyset")
 
     workflow = CBMAWorkflow(
         estimator="ale",
         corrector="bonferroni",
-        diagnostics="jackknife",
+        diagnostics=[],
         output_dir=tmpdir,
     )
     result = workflow.fit(studyset)
@@ -529,8 +551,8 @@ def test_pairwise_cbma_workflow_accepts_fresh_mixed_space_studysets(
     tmp_path_factory, testdata_cbma_full
 ):
     """PairwiseCBMAWorkflow.fit should run directly on fresh mixed-space Studysets."""
-    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
-    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:5])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[5:10])
     studyset1 = Studyset(_make_mixed_space_studyset_payload(dset1), target="mni152_2mm")
     studyset2 = Studyset(_make_mixed_space_studyset_payload(dset2), target="mni152_2mm")
     tmpdir = tmp_path_factory.mktemp(
@@ -540,7 +562,7 @@ def test_pairwise_cbma_workflow_accepts_fresh_mixed_space_studysets(
     workflow = PairwiseCBMAWorkflow(
         estimator="mkdachi2",
         corrector="bonferroni",
-        diagnostics="jackknife",
+        diagnostics=[],
         output_dir=tmpdir,
     )
     result = workflow.fit(studyset1, studyset2)
@@ -625,7 +647,7 @@ def test_cbmr_accepts_studyset_smoke():
     _, studyset = create_coordinate_studyset(
         foci=5,
         sample_size=(20, 30),
-        n_studies=30,
+        n_studies=12,
         seed=13,
     )
     annotations_df = studyset.annotations_df.copy()

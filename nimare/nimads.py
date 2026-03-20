@@ -205,6 +205,12 @@ class Studyset:
                 n_studies = 0
         return str(" ".join(["Studyset:", self.name, "::", f"studies: {n_studies}"]))
 
+    def __setstate__(self, state):
+        """Restore state and re-install mutation tracking after unpickling."""
+        self.__dict__.update(state)
+        if self._studies is not None:
+            self._install_mutation_tracking()
+
     def _initialize_from_store(self, store, execution_profile, selection_full_ids=None):
         """Initialize Studyset state from a canonical store and execution profile."""
         self.id = store.studyset_id
@@ -682,7 +688,7 @@ class Studyset:
 
     def get_labels(self, ids=None):
         """Extract labels present in the Studyset's analysis-level annotations."""
-        if ids is not None and not isinstance(ids, list):
+        if ids is not None and not isinstance(ids, (list, tuple, np.ndarray)):
             ids = [ids]
 
         result = [c for c in self.annotations_df.columns if c not in self._id_cols]
@@ -1502,6 +1508,12 @@ class Study:
         """My Simple representation."""
         return str(" ".join([self.name, f"analyses: {len(self.analyses)}"]))
 
+    def __getstate__(self):
+        """Drop live mutation callbacks before pickling."""
+        state = self.__dict__.copy()
+        state["_on_mutate"] = None
+        return state
+
     def get_analyses(self):
         """Collect Analyses from the Study.
 
@@ -1582,6 +1594,12 @@ class Analysis:
         super().__setattr__(name, value)
         if cb is not None and name in self._TRACKED_ATTRS:
             cb()
+
+    def __getstate__(self):
+        """Drop live mutation callbacks before pickling."""
+        state = self.__dict__.copy()
+        state["_on_mutate"] = None
+        return state
 
     def __repr__(self):
         """My Simple representation."""

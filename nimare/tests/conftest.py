@@ -119,6 +119,18 @@ def testdata_laird():
 
 
 @pytest.fixture(scope="session")
+def testdata_laird_studyset():
+    """Load Neurosynth Laird data as a Studyset."""
+    from nimare.nimads import Studyset
+
+    studyset = Studyset(
+        os.path.join(get_test_data_path(), "neurosynth_laird_studyset.json"),
+        target="mni152_2mm",
+    )
+    return studyset
+
+
+@pytest.fixture(scope="session")
 def mni_mask():
     """Load MNI mask for testing."""
     return nib.load(
