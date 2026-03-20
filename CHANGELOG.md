@@ -2,7 +2,22 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.9.1...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.11.0...HEAD)
+
+## [0.11.0](https://github.com/neurostuff/NiMARE/compare/0.9.1...0.11.0) - 2026-03-20
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+* [ENH] Refactor/studyset native core by @jdkent in https://github.com/neurostuff/NiMARE/pull/974
+* [DOCS] reference studyset instead of dataset in documentation by @jdkent in https://github.com/neurostuff/NiMARE/pull/979
+* [REF/ENH] Optimize Jackknife cluster summaries by reusing array-space cluster context by @jdkent in https://github.com/neurostuff/NiMARE/pull/978
+* [DOCS] update documentation to state valid combinations of parameters by @jdkent in https://github.com/neurostuff/NiMARE/pull/981
+* [ENH] optimize gclda and lda by @jdkent in https://github.com/neurostuff/NiMARE/pull/982
+* [ENH] correlation decoder performance by @jdkent in https://github.com/neurostuff/NiMARE/pull/983
+* [ENH] load neurosynth studyset efficiently for processing by @jdkent in https://github.com/neurostuff/NiMARE/pull/985
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.10.0...0.11.0
 
 ## [0.9.1](https://github.com/neurostuff/NiMARE/compare/0.9.0...0.9.1) - 2026-03-17
 
