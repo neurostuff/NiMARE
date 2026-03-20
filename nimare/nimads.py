@@ -37,6 +37,57 @@ def _validate_studyset_source(source):
         raise InvalidStudysetError("Studyset 'studies' field must be a list")
 
 
+class _NotifyDict(dict):
+    """Dict subclass that fires a callback on any mutation."""
+
+    __slots__ = ("_on_mutate",)
+
+    def __init__(self, data, on_mutate):
+        super().__init__(data)
+        self._on_mutate = on_mutate
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        self._on_mutate()
+
+    def __delitem__(self, key):
+        super().__delitem__(key)
+        self._on_mutate()
+
+    def update(self, *args, **kwargs):
+        super().update(*args, **kwargs)
+        self._on_mutate()
+
+    def pop(self, *args):
+        result = super().pop(*args)
+        self._on_mutate()
+        return result
+
+    def clear(self):
+        super().clear()
+        self._on_mutate()
+
+    def setdefault(self, key, default=None):
+        if key not in self:
+            super().__setitem__(key, default)
+            self._on_mutate()
+            return default
+        return self[key]
+
+    def __ior__(self, other):
+        super().update(other)
+        self._on_mutate()
+        return self
+
+    def __reduce__(self):
+        # Pickle as a plain dict so unpickled copies don't carry dead callbacks.
+        return (dict, (list(self.items()),))
+
+    def __deepcopy__(self, memo):
+        # Deepcopy as a plain dict; the owning Studyset re-installs tracking.
+        return dict(deepcopy(list(self.items()), memo))
+
+
 class Studyset:
     """A collection of studies for meta-analysis.
 
@@ -125,7 +176,8 @@ class Studyset:
         self._revision = 0
         self._studies = None
         self._annotations = None
-        self._store_needs_sync = False
+        self._store_revision = 0
+        self._graph_identity = ()
 
     @classmethod
     def _from_store(cls, store, execution_profile, selection_full_ids=None):
@@ -204,6 +256,7 @@ class Studyset:
         self, *, target=None, mask=None, basepath=None, copy_tables=False
     ):
         """Return Dataset-compatible execution tables for the current selection."""
+        self._ensure_store_synced()
         execution_profile = self._copy_execution_profile(
             target=target,
             mask=mask,
@@ -233,7 +286,6 @@ class Studyset:
     @studies.setter
     def studies(self, studies):
         self._studies = studies
-        self._store_needs_sync = True
         self.touch()
 
     @property
@@ -264,7 +316,6 @@ class Studyset:
             loaded_annotations = [self._coerce_annotation(annotations)]
 
         self._annotations = (self._annotations or []) + loaded_annotations
-        self._store_needs_sync = True
         self.touch()
 
     @annotations.setter
@@ -277,8 +328,12 @@ class Studyset:
             self._annotations = [a for a in self._annotations if a.id != annotation_id]
         else:
             self._annotations = []
-        self._store_needs_sync = True
         self.touch()
+
+    def _mark_dirty(self):
+        """Flag the materialized graph as modified without rebuilding the store."""
+        self._revision += 1
+        self._projection_cache = {}
 
     def touch(self):
         """Invalidate Studyset-derived caches after in-place mutation."""
@@ -294,8 +349,9 @@ class Studyset:
             self.id = self._studyset_store.studyset_id
             self.name = self._studyset_store.studyset_name or self.name
             self._selection_full_ids = None
-        self._store_needs_sync = False
+            self._install_mutation_tracking()
         self._revision += 1
+        self._store_revision = self._revision
         self._projection_cache = {}
 
     def materialize(self):
@@ -309,7 +365,35 @@ class Studyset:
         self._annotations = [
             Annotation(annotation, self) for annotation in source.get("annotations", [])
         ]
+        self._install_mutation_tracking()
+        self._store_revision = self._revision
         return self
+
+    def _install_mutation_tracking(self):
+        """Wire up change-detection callbacks on mutable nested containers."""
+        studyset_ref = weakref.ref(self)
+
+        def _on_mutate():
+            ss = studyset_ref()
+            if ss is not None:
+                ss._mark_dirty()
+
+        for study in self._studies or []:
+            for analysis in study.analyses:
+                if not isinstance(analysis.annotations, _NotifyDict):
+                    analysis.annotations = _NotifyDict(analysis.annotations, _on_mutate)
+                if not isinstance(analysis.metadata, _NotifyDict):
+                    analysis.metadata = _NotifyDict(analysis.metadata, _on_mutate)
+
+        self._graph_identity = self._snapshot_graph_identity()
+
+    def _snapshot_graph_identity(self):
+        """Return a fingerprint of container object identities in the graph."""
+        return tuple(
+            (id(analysis.annotations), id(analysis.metadata))
+            for study in (self._studies or [])
+            for analysis in study.analyses
+        )
 
     @property
     def space(self):
@@ -476,7 +560,6 @@ class Studyset:
             elif overwrite:
                 analysis.annotations = {}
 
-        self._store_needs_sync = True
         self.touch()
 
     def _generic_column_getter(self, attr, ids=None, column=None, ignore_columns=None):
@@ -818,7 +901,6 @@ class Studyset:
         # Old Analysis objects are gone; Annotation notes hold dead weak references.
         # Clear top-level annotations so touch() can rebuild cleanly.
         studyset._annotations = []
-        studyset._store_needs_sync = True
         studyset.touch()
         return studyset
 
@@ -829,8 +911,7 @@ class Studyset:
 
     def to_dict(self):
         """Return a dictionary representation of the Studyset."""
-        if self._studies is not None:
-            self._ensure_store_synced()
+        self._ensure_store_synced()
         return self._studyset_store.selected_source_dict(self._selection_full_ids)
 
     def to_dataset(self):
@@ -857,6 +938,8 @@ class Studyset:
 
         self.__dict__.update(loaded_data.__dict__)
         self._projection_cache = {}
+        if self._studies is not None:
+            self._install_mutation_tracking()
         return self
 
     def save(self, filename):
@@ -879,15 +962,24 @@ class Studyset:
 
     def copy(self):
         """Create a copy of the Studyset."""
-        return deepcopy(self)
+        result = deepcopy(self)
+        if result._studies is not None:
+            result._install_mutation_tracking()
+        return result
 
     def _ensure_store_synced(self):
-        """Rebuild the store from the materialized graph if it may be stale.
+        """Rebuild the store from the materialized graph if it is stale.
 
-        This is conservative: any materialized graph triggers a sync because
-        users may have mutated Study/Analysis objects directly.
+        The store is considered stale when the materialized graph has been
+        mutated since the last rebuild, tracked by comparing
+        ``_store_revision`` to ``_revision``.  Attribute replacement on
+        nested objects (e.g. ``analysis.metadata = {}``) is caught by a
+        lightweight identity-snapshot comparison.
         """
-        if self._studies is not None:
+        if self._studies is not None and (
+            self._store_revision < self._revision
+            or self._graph_identity != self._snapshot_graph_identity()
+        ):
             self.touch()
 
     def filter_ids(self, ids):

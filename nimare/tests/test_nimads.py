@@ -271,7 +271,6 @@ def test_get_analyses_by_label(example_nimads_studyset):
         if i < 2:
             selected_ids.append(analysis.id)
 
-    studyset.touch()
     results = studyset.get_analyses_by_label("custom_label", label_threshold=0.5)
 
     assert isinstance(results, list)
