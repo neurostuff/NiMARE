@@ -2,7 +2,19 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.11.0...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.11.1...HEAD)
+
+## [0.11.1](https://github.com/neurostuff/NiMARE/compare/0.11.0...0.11.1) - 2026-03-20
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+The first iteration of improvements to studysets as a first class data container for running with estimators/transformers and all functions within NiMARE.
+
+### What's Changed
+
+* [REF] refactor studyset for use-cases by @jdkent in https://github.com/neurostuff/NiMARE/pull/986
+* [FIX] fix pickling for a materialized studyset by @jdkent in https://github.com/neurostuff/NiMARE/pull/987
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.11.0...0.11.1
 
 ## [0.11.0](https://github.com/neurostuff/NiMARE/compare/0.9.1...0.11.0) - 2026-03-20
 
