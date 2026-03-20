@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import os
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Callable, Optional
@@ -353,7 +354,7 @@ def _resolve_image_table(images_df, basepath):
                 continue
 
             is_remote = "://" in image_value
-            is_relative = not is_remote and not image_value.startswith("/")
+            is_relative = not is_remote and not os.path.isabs(image_value)
             if is_relative:
                 resolved.at[idx, f"{image_type}__relative"] = image_value
                 if basepath:

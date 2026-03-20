@@ -21,6 +21,8 @@ from nimare.utils import (
 
 LGR = logging.getLogger(__name__)
 
+_UNSET = object()
+
 
 def _validate_studyset_source(source):
     """Validate the minimal schema required to construct a Studyset."""
@@ -112,12 +114,15 @@ class Studyset:
     def __init__(
         self,
         source,
-        target=None,
+        target=_UNSET,
         mask=None,
         annotations=None,
         basepath=None,
         harmonize_coordinates=True,
     ):
+        if target is _UNSET:
+            target = "mni152_2mm"
+
         # load source as json
         if isinstance(source, str):
             with open(source, "r+") as f:
@@ -158,7 +163,10 @@ class Studyset:
             n_studies = len(self._studies)
         else:
             ids = self._current_store().selected_ids(self._selection_full_ids)
-            n_studies = len(set(fid.rsplit("-", 1)[0] for fid in ids))
+            if ids is not None and len(ids) > 0:
+                n_studies = len(set(fid.rsplit("-", 1)[0] for fid in ids))
+            else:
+                n_studies = 0
         return str(" ".join(["Studyset:", self.name, "::", f"studies: {n_studies}"]))
 
     def _initialize_from_store(self, store, execution_profile, selection_full_ids=None):

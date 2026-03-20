@@ -154,6 +154,9 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
         # Determine output filename, if file can be generated
         if out_dir is None:
             options = [r for r in row.values if isinstance(r, str) and op.isfile(r)]
+            if not options:
+                LGR.warning(f"No existing image files for {id_}, skipping {target} transform.")
+                continue
             id_out_dir = op.dirname(options[0])
         else:
             id_out_dir = out_dir
@@ -474,7 +477,7 @@ class ImagesToCoordinates(NiMAREBase):
         # only the generated coordinates ('demolish')
         coordinates_df = _dict_to_coordinates(coordinates_dict, space)
         meta_df = _dict_to_df(
-            pd.DataFrame(dataset._ids),
+            pd.DataFrame(dataset.ids),
             coordinates_dict,
             "metadata",
         )
@@ -552,14 +555,16 @@ class StandardizeField(NiMAREBase):
         if len(numerical_metadata) == 0:
             raise ValueError("No numerical metadata found.")
 
-        moderators = dataset.annotations_df[numerical_metadata]
+        annot_df = dataset.annotations_df
+        moderators = annot_df[numerical_metadata]
         standardize_moderators = moderators - np.mean(moderators, axis=0)
         standardize_moderators /= np.std(standardize_moderators, axis=0)
         if isinstance(self.fields, str):
             column_name = "standardized_" + self.fields
         elif isinstance(self.fields, list):
             column_name = ["standardized_" + moderator for moderator in numerical_metadata]
-        dataset.annotations_df[column_name] = standardize_moderators
+        annot_df[column_name] = standardize_moderators
+        dataset.annotations_df = annot_df
 
         return dataset
 

@@ -24,6 +24,9 @@ exclude = '''
 '''
 
 [tool.pytest.ini_options]
+testpaths = [
+    "nimare/tests",
+]
 markers = [
     "performance_smoke: mark smoke tests that measure performance",
     "performance_estimators: mark tests that measure estimator performance",
