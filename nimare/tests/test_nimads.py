@@ -299,12 +299,12 @@ def test_get_analyses_by_metadata(example_nimads_studyset):
 
 
 def test_get_studies_by_coordinate(example_nimads_studyset):
-    """Test the StudysetView-style coordinate search wrapper."""
+    """Test the direct Studyset coordinate search wrapper."""
     studyset = nimads.Studyset(example_nimads_studyset)
     xyz = [[0, 0, 0]]
 
     results = studyset.get_studies_by_coordinate(xyz, r=10)
-    expected = studyset.view().get_studies_by_coordinate(xyz, r=10)
+    expected = studyset.get_studies_by_coordinate(xyz, r=10)
 
     assert isinstance(results, list)
     assert set(results) == set(expected)

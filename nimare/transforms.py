@@ -13,7 +13,7 @@ from nilearn.reporting import get_clusters_table
 from scipy import stats
 
 from nimare.base import NiMAREBase
-from nimare.studyset import ensure_studyset_view
+from nimare.studyset import normalize_collection
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _dict_to_coordinates,
@@ -57,8 +57,7 @@ class ImageTransformer(NiMAREBase):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
-                or :obj:`~nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
             A collection containing images and relevant metadata.
 
         Returns
@@ -73,7 +72,7 @@ class ImageTransformer(NiMAREBase):
         from nimare.dataset import Dataset
 
         if not isinstance(dataset, Dataset):
-            dataset = ensure_studyset_view(dataset)
+            dataset = normalize_collection(dataset)
 
         # Using attribute check instead of type check to allow fake Datasets for testing.
         if not hasattr(dataset, "slice"):
@@ -363,8 +362,7 @@ class ImagesToCoordinates(NiMAREBase):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
-                or :obj:`~nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
             Collection with z maps and/or p maps
             that can be converted to coordinates.
 
@@ -382,7 +380,7 @@ class ImagesToCoordinates(NiMAREBase):
         from nimare.dataset import Dataset
 
         if not isinstance(dataset, Dataset):
-            dataset = ensure_studyset_view(dataset)
+            dataset = normalize_collection(dataset)
 
         # relevant variables from dataset
         space = dataset.space
@@ -533,7 +531,7 @@ class StandardizeField(NiMAREBase):
         from nimare.dataset import Dataset
 
         if not isinstance(dataset, Dataset):
-            dataset = ensure_studyset_view(dataset)
+            dataset = normalize_collection(dataset)
         # update a copy of the dataset
         dataset = dataset.copy()
 

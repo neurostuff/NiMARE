@@ -5,7 +5,8 @@ from abc import abstractmethod
 
 from nimare.base import NiMAREBase
 from nimare.dataset import Dataset
-from nimare.studyset import StudysetView, ensure_studyset_view
+from nimare.nimads import Studyset
+from nimare.studyset import normalize_collection
 
 LGR = logging.getLogger(__name__)
 
@@ -90,8 +91,7 @@ class Decoder(NiMAREBase):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
-                or :obj:`~nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
             Studyset-backed collection object to analyze.
         drop_invalid : :obj:`bool`, default=True
             Whether to automatically ignore any studies without the required data or not.
@@ -109,8 +109,8 @@ class Decoder(NiMAREBase):
         Selection of features based on requested features and feature group is performed in
         `Decoder._preprocess_input`.
         """
-        if not isinstance(dataset, (Dataset, StudysetView)):
-            dataset = ensure_studyset_view(dataset)
+        if not isinstance(dataset, (Dataset, Studyset)):
+            dataset = normalize_collection(dataset)
 
         self._collect_inputs(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)

@@ -17,7 +17,7 @@ from joblib import Memory
 from nimare.base import NiMAREBase
 from nimare.dataset import Dataset
 from nimare.meta.utils import compute_ale_ma, compute_kda_ma, get_ale_kernel
-from nimare.studyset import ensure_studyset_view
+from nimare.studyset import normalize_collection
 from nimare.utils import _add_metadata_to_dataframe, _mask_img_to_bool, mm2vox
 
 LGR = logging.getLogger(__name__)
@@ -98,7 +98,7 @@ class KernelTransformer(NiMAREBase):
         Parameters
         ----------
         dataset : :obj:`~nimare.dataset.Dataset`, :obj:`~nimare.nimads.Studyset`, \
-                :obj:`~nimare.studyset.StudysetView`, or :obj:`pandas.DataFrame`
+                or :obj:`pandas.DataFrame`
             Collection for which to make images. Can be a DataFrame if necessary.
         masker : img_like or None, optional
             Mask to apply to MA maps. Required if ``dataset`` is a DataFrame.
@@ -152,7 +152,7 @@ class KernelTransformer(NiMAREBase):
             coordinates[["i", "j", "k"]] = mm2vox(dataset[["x", "y", "z"]], mask.affine)
         else:
             if not isinstance(dataset, Dataset):
-                dataset = ensure_studyset_view(dataset)
+                dataset = normalize_collection(dataset)
 
             masker = dataset.masker if not masker else masker
             mask = masker.mask_img

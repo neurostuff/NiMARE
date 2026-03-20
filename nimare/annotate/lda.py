@@ -8,7 +8,7 @@ from nimare.annotate.text import _generate_weights
 from nimare.base import NiMAREBase
 from nimare.dataset import Dataset
 from nimare.nimads import Studyset
-from nimare.studyset import StudysetView, ensure_studyset_view
+from nimare.studyset import normalize_collection
 from nimare.utils import DEFAULT_FLOAT_DTYPE, _check_ncores
 
 
@@ -86,8 +86,7 @@ class LDAModel(NiMAREBase):
 
         Parameters
         ----------
-        dset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
-                or :obj:`~nimare.dataset.Dataset`
+        dset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
             A Studyset-backed collection with, at minimum, text available in the
             ``self.text_column`` column of its ``texts`` table.
 
@@ -111,12 +110,10 @@ class LDAModel(NiMAREBase):
             in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         source = dset
-        if isinstance(dset, Studyset):
-            tabular_source = dset.view()
-        elif isinstance(dset, (Dataset, StudysetView)):
+        if isinstance(dset, (Dataset, Studyset)):
             tabular_source = dset
         else:
-            tabular_source = ensure_studyset_view(dset)
+            tabular_source = normalize_collection(dset)
             source = tabular_source
 
         counts, vocabulary, study_ids = _generate_weights(
@@ -163,7 +160,10 @@ class LDAModel(NiMAREBase):
             "p_topic_g_word_df": topic_word_weights_df,
         }
 
-        annotations = tabular_source.annotations.copy()
+        if isinstance(tabular_source, Studyset):
+            annotations = tabular_source.annotations_df.copy()
+        else:
+            annotations = tabular_source.annotations.copy()
         annotations = pd.merge(annotations, doc_topic_weights_df, left_on="id", right_index=True)
         new_dset = source.copy()
         if isinstance(new_dset, Studyset):

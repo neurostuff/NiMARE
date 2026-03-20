@@ -13,7 +13,7 @@ from nimare.io import (
     convert_sleuth_to_dataset,
     convert_sleuth_to_nimads_dict,
 )
-from nimare.studyset import ensure_studyset_view
+from nimare.studyset import normalize_collection
 
 
 def test_annotation_splitting_boolean(example_nimads_studyset, example_nimads_annotation):
@@ -407,5 +407,5 @@ def test_convert_dataset_to_studyset_preserves_execution_context():
     assert studyset._nimare_space == dset.space
     assert studyset._nimare_masker is dset.masker
 
-    view = ensure_studyset_view(studyset)
+    view = normalize_collection(studyset)
     assert set(view.ids) == set(dset.ids)

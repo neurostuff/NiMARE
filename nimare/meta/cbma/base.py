@@ -18,7 +18,7 @@ from nimare.meta.kernel import KernelTransformer
 from nimare.meta.utils import _calculate_cluster_measures, _get_last_bin
 from nimare.results import MetaResult
 from nimare.stats import null_to_p, nullhist_to_p
-from nimare.studyset import ensure_studyset_view
+from nimare.studyset import normalize_collection
 from nimare.transforms import p_to_z
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
@@ -287,8 +287,7 @@ class CBMAEstimator(Estimator):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
-                or :obj:`~nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
             Collection object to analyze.
         drop_invalid : :obj:`bool`, optional
             Whether to automatically ignore any studies without the required data or not.
@@ -303,7 +302,7 @@ class CBMAEstimator(Estimator):
         :obj:`~nimare.results.MetaResult`
             Results of Estimator fitting.
         """
-        dataset = ensure_studyset_view(dataset)
+        dataset = normalize_collection(dataset)
         self._clear_precomputed_ma_inputs()
         self._collect_inputs(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)
@@ -1069,8 +1068,8 @@ class PairwiseCBMAEstimator(CBMAEstimator):
 
         Parameters
         ----------
-        dataset1/dataset2 : :obj:`~nimare.nimads.Studyset`, \
-                :obj:`~nimare.studyset.StudysetView`, or :obj:`~nimare.dataset.Dataset`
+        dataset1/dataset2 : :obj:`~nimare.nimads.Studyset` or \
+                :obj:`~nimare.dataset.Dataset`
             Collection objects to analyze.
         ma_maps1/ma_maps2 : :obj:`sparse._coo.core.COO`, optional
             Precomputed study-wise MA maps aligned to ``dataset1`` and ``dataset2``,
@@ -1091,8 +1090,8 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         "fitting" methods are implemented as `_fit`, although users should
         call `fit`.
         """
-        dataset1 = ensure_studyset_view(dataset1)
-        dataset2 = ensure_studyset_view(dataset2)
+        dataset1 = normalize_collection(dataset1)
+        dataset2 = normalize_collection(dataset2)
         self._clear_precomputed_ma_inputs()
 
         # Reproduce fit() for dataset1 to collect and process inputs.

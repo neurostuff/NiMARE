@@ -1,7 +1,5 @@
 """Tests for Studyset-native execution paths."""
 
-import copy
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -11,16 +9,41 @@ from nimare.correct import FDRCorrector
 from nimare.decode import continuous, discrete
 from nimare.diagnostics import FocusFilter
 from nimare.generate import create_coordinate_studyset
-from nimare.io import convert_nimads_to_dataset
+from nimare.io import convert_dataset_to_nimads_dict, convert_nimads_to_dataset
 from nimare.meta.cbma import ALE
 from nimare.meta.ibma import Stouffers
-from nimare.meta.kernel import ALEKernel, MKDAKernel
+from nimare.meta.kernel import MKDAKernel
 from nimare.nimads import Studyset
 from nimare.reports.base import run_reports
-from nimare.studyset import StudysetView, ensure_studyset_view
+from nimare.studyset import normalize_collection
 from nimare.transforms import ImageTransformer
-from nimare.utils import get_template
+from nimare.utils import get_template, mni2tal
 from nimare.workflows import CBMAWorkflow, IBMAWorkflow, PairwiseCBMAWorkflow
+
+
+def _make_mixed_space_studyset_payload(dataset):
+    """Convert alternating analyses to Talairach coordinates in a Studyset payload."""
+    payload = convert_dataset_to_nimads_dict(dataset)
+    converted_analyses = 0
+    analysis_index = 0
+
+    for study in payload["studies"]:
+        for analysis in study["analyses"]:
+            if not analysis["points"]:
+                continue
+
+            if analysis_index % 2 == 0:
+                coords = np.asarray([point["coordinates"] for point in analysis["points"]], dtype=float)
+                tal_coords = mni2tal(coords)
+                for point, tal_coord in zip(analysis["points"], tal_coords):
+                    point["space"] = "TAL"
+                    point["coordinates"] = tal_coord.tolist()
+                converted_analyses += 1
+
+            analysis_index += 1
+
+    assert converted_analyses > 0
+    return payload
 
 
 def test_ale_studyset_parity(testdata_cbma):
@@ -144,8 +167,8 @@ def test_dataset_studyset_roundtrip_preserves_core_tables(testdata_ibma):
     assert "custom_text" in roundtrip.texts.columns
 
 
-def test_ensure_studyset_view_reflects_dataset_edits(testdata_ibma):
-    """Dataset edits should be reflected in subsequent Studyset views."""
+def test_normalize_collection_reflects_dataset_edits(testdata_ibma):
+    """Dataset edits should be reflected in subsequent normalized collections."""
     dset = testdata_ibma.slice(testdata_ibma.ids[:5])
     image_cols = [
         col
@@ -155,19 +178,19 @@ def test_ensure_studyset_view_reflects_dataset_edits(testdata_ibma):
     image_col = next((col for col in image_cols if dset.images[col].notnull().any()), None)
     assert image_col is not None
 
-    view1 = ensure_studyset_view(dset)
+    view1 = normalize_collection(dset)
     assert view1.images[image_col].notnull().any()
 
     dset.images.loc[:, image_col] = None
-    view2 = ensure_studyset_view(dset)
+    view2 = normalize_collection(dset)
     if image_col in view2.images.columns:
         assert not view2.images[image_col].notnull().any()
     else:
         assert image_col not in view2.images.columns
 
 
-def test_ensure_studyset_view_avoids_dataset_to_studyset_rebuild(monkeypatch, testdata_cbma):
-    """Dataset inputs should use the direct StudysetView fast path."""
+def test_normalize_collection_avoids_dataset_to_studyset_rebuild(monkeypatch, testdata_cbma):
+    """Dataset inputs should avoid unnecessary Studyset rebuilding."""
 
     def _fail_from_dataset(cls, dataset):
         raise AssertionError("Studyset.from_dataset should not be called for Dataset inputs")
@@ -175,7 +198,7 @@ def test_ensure_studyset_view_avoids_dataset_to_studyset_rebuild(monkeypatch, te
     monkeypatch.setattr(Studyset, "from_dataset", classmethod(_fail_from_dataset))
 
     dset = testdata_cbma.slice(testdata_cbma.ids[:5])
-    view = ensure_studyset_view(dset)
+    view = normalize_collection(dset)
 
     assert len(view.ids) == 5
     assert set(view.ids) == set(dset.ids)
@@ -196,7 +219,7 @@ def test_studyset_from_dataset_caches_independent_tables(testdata_ibma):
     studyset = Studyset.from_dataset(dset)
     dset.images.loc[:, image_col] = None
 
-    view = ensure_studyset_view(studyset)
+    view = normalize_collection(studyset)
     assert image_col in view.images.columns
     assert view.images[image_col].notnull().any()
 
@@ -250,9 +273,9 @@ def test_kernel_transformer_dataset_fast_path(monkeypatch, testdata_cbma):
     kernel = MKDAKernel()
 
     def _fail(dataset):
-        raise AssertionError("Dataset inputs should not be normalized through StudysetView")
+        raise AssertionError("Dataset inputs should not be normalized through a Studyset wrapper")
 
-    monkeypatch.setattr("nimare.meta.kernel.ensure_studyset_view", _fail)
+    monkeypatch.setattr("nimare.meta.kernel.normalize_collection", _fail)
 
     output = kernel.transform(dset, return_type="summary_array")
 
@@ -289,6 +312,42 @@ def test_studyset_slice_accepts_analysis_ids(testdata_cbma):
     )
 
 
+def test_studyset_filter_annotations_returns_execution_ready_subset(testdata_cbma):
+    """Annotation filtering should return a directly executable Studyset subset."""
+    studyset = Studyset.from_dataset(testdata_cbma.slice(testdata_cbma.ids[:5]))
+    annotations_df = pd.DataFrame({"id": studyset.ids, "include": [1.0, 0.0, 1.0, 0.0, 1.0]})
+
+    studyset.annotations_df = annotations_df
+    filtered = studyset.filter_annotations("include", threshold=0.5)
+
+    assert set(filtered.ids) == set(studyset.ids[[0, 2, 4]])
+    assert filtered.is_execution_ready
+    result = ALE(null_method="approximate").fit(filtered)
+    assert "stat" in result.maps
+
+
+def test_studyset_filter_metadata_returns_execution_ready_subset(testdata_cbma):
+    """Metadata filtering should preserve Studyset execution readiness."""
+    studyset = Studyset.from_dataset(testdata_cbma.slice(testdata_cbma.ids[:5]))
+    expected_ids = set()
+
+    for study in studyset.studies:
+        for analysis in study.analyses:
+            full_id = f"{study.id}-{analysis.id}"
+            keep = len(expected_ids) < 2 and bool(analysis.points)
+            analysis.metadata["group"] = "keep" if keep else "drop"
+            if keep:
+                expected_ids.add(full_id)
+    studyset.touch()
+
+    filtered = studyset.filter_metadata("group", "==", "keep")
+
+    assert set(filtered.ids) == expected_ids
+    assert filtered.is_execution_ready
+    result = ALE(null_method="approximate").fit(filtered)
+    assert "stat" in result.maps
+
+
 def test_decoder_accepts_studyset(testdata_laird):
     """Discrete decoders should accept raw Studyset inputs."""
     studyset = Studyset.from_dataset(testdata_laird)
@@ -318,17 +377,14 @@ def test_correlation_decoder_accepts_lazy_studyset(testdata_laird):
 
 
 def test_lazy_studyset_view_slice_uses_cached_tables(testdata_ibma):
-    """Cached-table Studysets should support view slicing without nested studies."""
+    """Cached-table Studysets should slice directly without nested materialization."""
     dset = testdata_ibma.slice(testdata_ibma.ids[:5])
     studyset = Studyset.from_dataset(dset, materialize=False)
-    view = ensure_studyset_view(studyset)
-
-    sliced = view.slice(dset.ids[:2])
+    sliced = studyset.slice(dset.ids[:2])
 
     assert not studyset.is_materialized
     assert set(sliced.ids) == set(dset.ids[:2])
     assert set(sliced.metadata["id"].unique()) == set(dset.ids[:2])
-    assert sliced.studyset is None
 
 
 def test_lazy_studyset_materializes_on_nested_access(testdata_cbma):
@@ -357,12 +413,12 @@ def test_lda_accepts_studyset(testdata_laird):
 
 
 def test_focus_filter_accepts_studyset(testdata_cbma):
-    """Ensure FocusFilter accepts Studysets and returns a filtered StudysetView."""
+    """Ensure FocusFilter accepts Studysets and returns a filtered Studyset."""
     studyset = Studyset.from_dataset(testdata_cbma.slice(testdata_cbma.ids[:5]))
 
     filtered = FocusFilter().transform(studyset)
 
-    assert isinstance(filtered, StudysetView)
+    assert isinstance(filtered, Studyset)
     assert set(filtered.coordinates["id"].unique()).issubset(set(studyset.ids))
 
 
@@ -377,98 +433,187 @@ def test_reports_accept_studyset_results(tmp_path_factory, testdata_cbma):
     assert (out_dir / "report.html").is_file()
 
 
-def test_ale_from_nimads_studyset_infers_default_mask(example_nimads_studyset):
-    """ALE should run on direct NIMADS Studysets by inferring a default mask from space."""
-    studyset = Studyset(example_nimads_studyset)
-    result = ALE(
-        null_method="approximate",
-        kernel_transformer=ALEKernel(sample_size=20),
-    ).fit(studyset)
+def test_studyset_constructor_target_harmonizes_mixed_coordinate_spaces(testdata_cbma_full):
+    """Studyset(target=...) should transform mixed TAL/MNI points into one execution space."""
+    dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:6])
+    studyset = Studyset(_make_mixed_space_studyset_payload(dset), target="mni152_2mm")
+
+    expected = dset.coordinates.copy()
+    actual = studyset.coordinates.copy()
+
+    assert studyset.space == "mni152_2mm"
+    assert studyset.masker is not None
+    assert set(actual["space"].unique()) == {"mni152_2mm"}
+    assert set(actual["id"].unique()) == set(expected["id"].unique())
+    for id_ in expected["id"].unique():
+        expected_coords = sorted(
+            map(
+                tuple,
+                np.round(
+                    expected.loc[expected["id"] == id_, ["x", "y", "z"]].to_numpy(),
+                    decimals=8,
+                ),
+            )
+        )
+        actual_coords = sorted(
+            map(
+                tuple,
+                np.round(
+                    actual.loc[actual["id"] == id_, ["x", "y", "z"]].to_numpy(),
+                    decimals=8,
+                ),
+            )
+        )
+        assert actual_coords == expected_coords
+    assert all(
+        point.space == "mni152_2mm"
+        for study in studyset.studies
+        for analysis in study.analyses
+        for point in analysis.points
+    )
+
+
+def test_studyset_constructor_target_none_preserves_mixed_coordinate_spaces(testdata_cbma_full):
+    """Studyset(target=None) should preserve source spaces and not auto-pick a target."""
+    dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:6])
+    studyset = Studyset(_make_mixed_space_studyset_payload(dset), target=None)
+
+    assert studyset.space is None
+    assert studyset.masker is None
+    assert set(studyset.coordinates["space"].unique()) == {"MNI", "TAL"}
+
+
+def test_studyset_constructor_can_skip_harmonization_with_target(testdata_cbma_full):
+    """Studyset should allow a target context without coordinate harmonization when requested."""
+    dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:6])
+    studyset = Studyset(
+        _make_mixed_space_studyset_payload(dset),
+        target="mni152_2mm",
+        harmonize_coordinates=False,
+    )
+
+    assert studyset.space == "mni152_2mm"
+    assert studyset.masker is not None
+    assert set(studyset.coordinates["space"].unique()) == {"MNI", "TAL"}
+
+
+def test_ale_accepts_fresh_mixed_space_studyset_with_explicit_target(testdata_cbma_full):
+    """ALE.fit should run on a freshly constructed mixed-space Studyset with an explicit target."""
+    dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:8])
+    studyset = Studyset(_make_mixed_space_studyset_payload(dset), target="mni152_2mm")
+
+    result = ALE(null_method="approximate").fit(studyset)
+
     assert "stat" in result.maps
 
 
+def test_cbma_workflow_accepts_fresh_mixed_space_studyset(
+    tmp_path_factory, testdata_cbma_full
+):
+    """CBMAWorkflow.fit should run directly on a freshly constructed mixed-space Studyset."""
+    dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    studyset = Studyset(_make_mixed_space_studyset_payload(dset), target="mni152_2mm")
+    tmpdir = tmp_path_factory.mktemp("test_cbma_workflow_accepts_fresh_mixed_space_studyset")
+
+    workflow = CBMAWorkflow(
+        estimator="ale",
+        corrector="bonferroni",
+        diagnostics="jackknife",
+        output_dir=tmpdir,
+    )
+    result = workflow.fit(studyset)
+    assert "z" in result.maps
+
+
+def test_pairwise_cbma_workflow_accepts_fresh_mixed_space_studysets(
+    tmp_path_factory, testdata_cbma_full
+):
+    """PairwiseCBMAWorkflow.fit should run directly on fresh mixed-space Studysets."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+    studyset1 = Studyset(_make_mixed_space_studyset_payload(dset1), target="mni152_2mm")
+    studyset2 = Studyset(_make_mixed_space_studyset_payload(dset2), target="mni152_2mm")
+    tmpdir = tmp_path_factory.mktemp(
+        "test_pairwise_cbma_workflow_accepts_fresh_mixed_space_studysets"
+    )
+
+    workflow = PairwiseCBMAWorkflow(
+        estimator="mkdachi2",
+        corrector="bonferroni",
+        diagnostics="jackknife",
+        output_dir=tmpdir,
+    )
+    result = workflow.fit(studyset1, studyset2)
+    assert "z_desc-uniformity" in result.maps
+
+
 def test_studyset_constructor_preserves_execution_context(example_nimads_studyset):
-    """Studyset constructor target/mask arguments should drive StudysetView execution context."""
+    """Studyset constructor target/mask arguments should drive direct execution context."""
     mask = get_template("mni152_2mm", mask="brain")
     studyset = Studyset(example_nimads_studyset, target="mni152_2mm", mask=mask)
+    normalized = normalize_collection(studyset)
 
-    view = ensure_studyset_view(studyset)
+    assert normalized is studyset
+    assert studyset.space == "mni152_2mm"
+    assert studyset.masker is not None
+    assert np.array_equal(studyset.masker.mask_img.affine, mask.affine)
 
-    assert view.space == "mni152_2mm"
-    assert view.masker is not None
-    assert np.array_equal(view.masker.mask_img.affine, mask.affine)
 
-
-def test_studyset_view_handles_empty_annotations_and_texts():
+def test_studyset_handles_empty_annotations_and_texts():
     """Empty Studysets should expose Dataset-like empty annotation/text tables."""
-    view = StudysetView({"id": "empty", "name": "", "studies": []})
+    studyset = Studyset({"id": "empty", "name": "", "studies": []})
 
-    assert view.annotations.empty
-    assert list(view.annotations.columns) == ["id", "study_id", "contrast_id"]
+    assert studyset.annotations_df.empty
+    assert list(studyset.annotations_df.columns) == ["id", "study_id", "contrast_id"]
 
-    assert view.texts.empty
-    assert list(view.texts.columns) == ["id", "study_id", "contrast_id"]
+    assert studyset.texts.empty
+    assert list(studyset.texts.columns) == ["id", "study_id", "contrast_id"]
 
 
 def test_studyset_view_slice_preserves_materialized_tables(testdata_ibma):
-    """Slicing a StudysetView should retain already-materialized cached tables."""
+    """Slicing a Studyset should retain materialized projected tables."""
     studyset = Studyset.from_dataset(testdata_ibma.slice(testdata_ibma.ids[:5]))
-    view = ensure_studyset_view(studyset)
-    target_ids = set(view.ids[:2])
+    target_ids = set(studyset.ids[:2])
 
-    _ = view.images
-    _ = view.metadata
-    _ = view.texts
-    _ = view.annotations
+    _ = studyset.images
+    _ = studyset.metadata
+    _ = studyset.texts
+    _ = studyset.annotations_df
 
-    sliced = view.slice(sorted(target_ids))
+    sliced = studyset.slice(sorted(target_ids))
 
-    assert sliced._ids is not None
-    assert sliced._images is not None
-    assert sliced._metadata is not None
-    assert sliced._texts is not None
-    assert sliced._annotations is not None
     assert set(sliced.ids) == target_ids
     assert set(sliced.images["id"].unique()).issubset(target_ids)
     assert set(sliced.metadata["id"].unique()).issubset(target_ids)
 
 
-def test_ensure_studyset_view_rebuilds_after_view_mutation(testdata_cbma):
-    """ensure_studyset_view should not reuse a previously mutated cached StudysetView."""
+def test_studyset_copy_isolates_table_mutation(testdata_cbma):
+    """Mutating projected tables on a Studyset copy should not affect the original."""
     studyset = Studyset.from_dataset(testdata_cbma.slice(testdata_cbma.ids[:5]))
+    copied = studyset.copy()
+    n_coords = studyset.coordinates.shape[0]
 
-    view1 = ensure_studyset_view(studyset)
-    n_coords = view1.coordinates.shape[0]
-    # Simulate in-place mutations performed by transformers/diagnostics.
-    view1.coordinates = view1.coordinates.iloc[:1].copy()
+    copied.coordinates = copied.coordinates.iloc[:1].copy()
 
-    view2 = ensure_studyset_view(studyset)
-    assert view2.coordinates.shape[0] == n_coords
+    assert studyset.coordinates.shape[0] == n_coords
 
 
-def test_ensure_studyset_view_refreshes_after_studyset_touch(testdata_cbma):
-    """Studyset.touch should invalidate cached views and refresh derived tables."""
+def test_studyset_touch_refreshes_derived_tables(testdata_cbma):
+    """Studyset.touch should invalidate cached tables and refresh derived tables."""
     studyset = Studyset.from_dataset(testdata_cbma.slice(testdata_cbma.ids[:5]))
-    view1 = ensure_studyset_view(studyset)
-    n_ids_before = len(view1.ids)
+    n_ids_before = len(studyset.ids)
 
     studyset.studies[0].analyses = []
     studyset.touch()
 
-    view2 = ensure_studyset_view(studyset)
-    assert len(view2.ids) < n_ids_before
+    assert len(studyset.ids) < n_ids_before
 
 
-def test_studyset_view_deepcopy_reuses_underlying_studyset(testdata_cbma):
-    """Deep-copying a StudysetView should not recursively copy the Studyset graph."""
+def test_normalize_collection_passes_through_studyset(testdata_cbma):
+    """normalize_collection should pass Studyset inputs through directly."""
     studyset = Studyset.from_dataset(testdata_cbma.slice(testdata_cbma.ids[:5]))
-    view = ensure_studyset_view(studyset)
-
-    copied = copy.deepcopy(view)
-
-    assert copied is not view
-    assert copied.studyset is studyset
-    assert copied.coordinates is view.coordinates
+    normalized = normalize_collection(studyset)
+    assert normalized is studyset
 
 
 def test_cbmr_accepts_studyset_smoke():

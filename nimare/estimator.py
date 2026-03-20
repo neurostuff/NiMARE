@@ -5,8 +5,10 @@ from abc import abstractmethod
 from joblib import Memory
 
 from nimare.base import NiMAREBase
+from nimare.dataset import Dataset
+from nimare.nimads import Studyset
 from nimare.results import MetaResult
-from nimare.studyset import StudysetView, ensure_studyset_view
+from nimare.studyset import normalize_collection
 
 
 class Estimator(NiMAREBase):
@@ -65,8 +67,8 @@ class Estimator(NiMAREBase):
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
             in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
-        if not isinstance(dataset, StudysetView):
-            dataset = ensure_studyset_view(dataset)
+        if not isinstance(dataset, (Dataset, Studyset)):
+            dataset = normalize_collection(dataset)
 
         if not hasattr(dataset, "slice"):
             raise ValueError(
@@ -132,8 +134,7 @@ class Estimator(NiMAREBase):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
-                or :obj:`~nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
             Collection object to analyze.
         drop_invalid : :obj:`bool`, optional
             Whether to automatically ignore any studies without the required data or not.
@@ -158,7 +159,7 @@ class Estimator(NiMAREBase):
         "fitting" methods are implemented as `_fit`, although users should
         call `fit`.
         """
-        dataset = ensure_studyset_view(dataset)
+        dataset = normalize_collection(dataset)
         self._collect_inputs(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)
         maps, tables, description = self._cache(self._fit, func_memory_level=1)(dataset)
