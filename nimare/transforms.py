@@ -182,6 +182,11 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
             new_images_df.loc[new_images_df["id"] == id_, target] = new_file
         else:
             new_images_df.loc[new_images_df["id"] == id_, target] = None
+
+    # Ensure the target column exists even when every study was skipped.
+    if target not in new_images_df.columns:
+        new_images_df[target] = None
+
     return new_images_df
 
 

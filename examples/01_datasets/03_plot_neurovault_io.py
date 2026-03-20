@@ -98,6 +98,12 @@ from nimare.meta.ibma import Fishers
 # images during the fitting process.
 meta = Fishers(resample=True)
 
+# Drop studies that have no Z map (e.g. collections with no downloadable images).
+has_z = studyset.images["z"].notnull()
+valid_ids = studyset.images.loc[has_z, "id"].tolist()
+if valid_ids:
+    studyset = studyset.filter_ids(valid_ids)
+
 meta_res = meta.fit(studyset)
 
 fig, ax = plt.subplots()
