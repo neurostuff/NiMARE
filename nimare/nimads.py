@@ -1112,9 +1112,7 @@ class Studyset:
         elif filter_level == "analysis":
             return self.filter_ids(ids)
         else:
-            raise ValueError(
-                f"filter_level must be 'analysis' or 'study', got {filter_level!r}"
-            )
+            raise ValueError(f"filter_level must be 'analysis' or 'study', got {filter_level!r}")
 
     def merge(self, right):
         """Merge a separate Studyset into the current one.
@@ -1417,7 +1415,7 @@ class Study:
         self.metadata = source.get("metadata", {}) or {}
         self.analyses = [Analysis(a, study=self) for a in source.get("analyses", [])]
 
-    def __setattr__(self, name, value):
+    def __setattr__(self, name, value):  # noqa: D105
         cb = getattr(self, "_on_mutate", None)
         if cb is not None and name in self._DICT_ATTRS:
             if isinstance(value, dict) and not isinstance(value, _NotifyDict):
@@ -1483,7 +1481,9 @@ class Analysis:
     Should the images attribute be a list instead, if the Images contain type information?
     """
 
-    _TRACKED_ATTRS = frozenset({"annotations", "metadata", "texts", "points", "images", "conditions"})
+    _TRACKED_ATTRS = frozenset(
+        {"annotations", "metadata", "texts", "points", "images", "conditions"}
+    )
     _DICT_ATTRS = frozenset({"annotations", "metadata", "texts"})
 
     def __init__(self, source, study=None):
@@ -1504,7 +1504,7 @@ class Analysis:
         self.texts = texts if isinstance(texts, dict) else {}
         self._study = weakref.proxy(study) if study else None
 
-    def __setattr__(self, name, value):
+    def __setattr__(self, name, value):  # noqa: D105
         cb = getattr(self, "_on_mutate", None)
         if cb is not None and name in self._DICT_ATTRS:
             if isinstance(value, dict) and not isinstance(value, _NotifyDict):
