@@ -110,6 +110,37 @@ def test_studyset_from_dataset_preserves_inferred_image_basepath(tmp_path):
     assert studyset.images.loc[0, "z__relative"] == str(Path("contrast_z.nii.gz"))
 
 
+def test_studyset_copy_preserves_projected_image_columns(tmp_path):
+    """Studyset.copy should preserve derived image columns stored in the projection cache."""
+    image_dir = tmp_path / "images"
+    image_dir.mkdir()
+    z_file = image_dir / "contrast_z.nii.gz"
+    z_file.write_text("placeholder")
+    varcope_file = image_dir / "contrast_varcope.nii.gz"
+    varcope_file.write_text("placeholder")
+
+    source = {
+        "study1": {
+            "contrasts": {
+                "contrast1": {
+                    "images": {"z": str(z_file)},
+                    "metadata": {"sample_sizes": [20]},
+                }
+            }
+        }
+    }
+
+    studyset = nimads.Studyset.from_dataset(Dataset(source))
+    images = studyset.images.copy()
+    images["varcope"] = str(varcope_file)
+    studyset.images = images
+
+    copied = studyset.copy()
+
+    assert "varcope" in copied.images.columns
+    assert copied.images.loc[0, "varcope"] == str(varcope_file)
+
+
 def test_studyset_init(example_nimads_studyset):
     """Test Studyset initialization."""
     # Test initialization with dict

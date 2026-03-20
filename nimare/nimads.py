@@ -1019,7 +1019,10 @@ class Studyset:
             self._selection_full_ids.copy() if self._selection_full_ids is not None else None
         )
         result._execution_profile = self._execution_profile
-        result._projection_cache = {}
+        result._projection_cache = {
+            key: self._copy_table_cache(table_cache)
+            for key, table_cache in self._projection_cache.items()
+        }
         result._revision = self._revision
         result._store_revision = self._store_revision
         if self._studies is not None:
