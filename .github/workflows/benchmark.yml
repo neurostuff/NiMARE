@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: "3.14"
       - uses: actions/checkout@v3
       - run: git fetch origin $GITHUB_BASE_REF:base $GITHUB_REF:pr
       - run: pip install asv virtualenv
