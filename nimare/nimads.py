@@ -177,7 +177,6 @@ class Studyset:
         self._studies = None
         self._annotations = None
         self._store_revision = 0
-        self._graph_identity = ()
 
     @classmethod
     def _from_store(cls, store, execution_profile, selection_full_ids=None):
@@ -379,21 +378,19 @@ class Studyset:
                 ss._mark_dirty()
 
         for study in self._studies or []:
+            study._on_mutate = _on_mutate
             for analysis in study.analyses:
-                if not isinstance(analysis.annotations, _NotifyDict):
-                    analysis.annotations = _NotifyDict(analysis.annotations, _on_mutate)
-                if not isinstance(analysis.metadata, _NotifyDict):
-                    analysis.metadata = _NotifyDict(analysis.metadata, _on_mutate)
-
-        self._graph_identity = self._snapshot_graph_identity()
-
-    def _snapshot_graph_identity(self):
-        """Return a fingerprint of container object identities in the graph."""
-        return tuple(
-            (id(analysis.annotations), id(analysis.metadata))
-            for study in (self._studies or [])
-            for analysis in study.analyses
-        )
+                analysis._on_mutate = _on_mutate
+                # Wrap existing plain dicts so in-place mutations are detected.
+                for attr in Analysis._DICT_ATTRS:
+                    val = getattr(analysis, attr, None)
+                    if isinstance(val, dict) and not isinstance(val, _NotifyDict):
+                        super(Analysis, analysis).__setattr__(attr, _NotifyDict(val, _on_mutate))
+            # Same for Study dict attrs.
+            for attr in Study._DICT_ATTRS:
+                val = getattr(study, attr, None)
+                if isinstance(val, dict) and not isinstance(val, _NotifyDict):
+                    super(Study, study).__setattr__(attr, _NotifyDict(val, _on_mutate))
 
     @property
     def space(self):
@@ -972,14 +969,9 @@ class Studyset:
 
         The store is considered stale when the materialized graph has been
         mutated since the last rebuild, tracked by comparing
-        ``_store_revision`` to ``_revision``.  Attribute replacement on
-        nested objects (e.g. ``analysis.metadata = {}``) is caught by a
-        lightweight identity-snapshot comparison.
+        ``_store_revision`` to ``_revision``.
         """
-        if self._studies is not None and (
-            self._store_revision < self._revision
-            or self._graph_identity != self._snapshot_graph_identity()
-        ):
+        if self._studies is not None and self._store_revision < self._revision:
             self.touch()
 
     def filter_ids(self, ids):
@@ -1409,7 +1401,11 @@ class Study:
         An analysis represents a contrast with statistical results.
     """
 
+    _TRACKED_ATTRS = frozenset({"metadata", "analyses"})
+    _DICT_ATTRS = frozenset({"metadata"})
+
     def __init__(self, source):
+        self._on_mutate = None
         self.id = source["id"]
         self.name = source.get("name", "")
         self.description = source.get("description", "")
@@ -1420,6 +1416,15 @@ class Study:
         self.year = source.get("year", None)
         self.metadata = source.get("metadata", {}) or {}
         self.analyses = [Analysis(a, study=self) for a in source.get("analyses", [])]
+
+    def __setattr__(self, name, value):
+        cb = getattr(self, "_on_mutate", None)
+        if cb is not None and name in self._DICT_ATTRS:
+            if isinstance(value, dict) and not isinstance(value, _NotifyDict):
+                value = _NotifyDict(value, cb)
+        super().__setattr__(name, value)
+        if cb is not None and name in self._TRACKED_ATTRS:
+            cb()
 
     def __repr__(self):
         """My Simple representation."""
@@ -1478,7 +1483,11 @@ class Analysis:
     Should the images attribute be a list instead, if the Images contain type information?
     """
 
+    _TRACKED_ATTRS = frozenset({"annotations", "metadata", "texts", "points", "images", "conditions"})
+    _DICT_ATTRS = frozenset({"annotations", "metadata", "texts"})
+
     def __init__(self, source, study=None):
+        self._on_mutate = None
         self.id = source["id"]
         self.name = source["name"]
         conditions = source.get("conditions", []) or [{"name": "default", "description": ""}]
@@ -1494,6 +1503,15 @@ class Analysis:
         texts = source.get("texts", {}) or {}
         self.texts = texts if isinstance(texts, dict) else {}
         self._study = weakref.proxy(study) if study else None
+
+    def __setattr__(self, name, value):
+        cb = getattr(self, "_on_mutate", None)
+        if cb is not None and name in self._DICT_ATTRS:
+            if isinstance(value, dict) and not isinstance(value, _NotifyDict):
+                value = _NotifyDict(value, cb)
+        super().__setattr__(name, value)
+        if cb is not None and name in self._TRACKED_ATTRS:
+            cb()
 
     def __repr__(self):
         """My Simple representation."""
