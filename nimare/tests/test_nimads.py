@@ -3,6 +3,7 @@
 import json
 import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -77,6 +78,36 @@ def test_slice_preserves_metadata_and_annotations(
     for analysis_id in selected_ids:
         original_note = next(n.note for n in annotation.notes if n.analysis.id == analysis_id)
         assert sliced_annotation_notes[analysis_id] == original_note
+
+
+def test_studyset_from_dataset_preserves_inferred_image_basepath(tmp_path):
+    """Studyset.from_dataset should resolve images when Dataset only has inferred basepath."""
+    image_dir = tmp_path / "images"
+    image_dir.mkdir()
+    image_file = image_dir / "contrast_z.nii.gz"
+    image_file.write_text("placeholder")
+
+    source = {
+        "study1": {
+            "contrasts": {
+                "contrast1": {
+                    "images": {"z": str(image_file)},
+                    "metadata": {"sample_sizes": [20]},
+                }
+            }
+        }
+    }
+
+    dataset = Dataset(source)
+    assert dataset.basepath is None
+    assert dataset.images.loc[0, "z"] == str(image_file)
+    assert dataset.images.loc[0, "z__relative"] == str(Path("contrast_z.nii.gz"))
+
+    studyset = nimads.Studyset.from_dataset(dataset)
+
+    assert studyset.basepath == str(image_dir)
+    assert studyset.images.loc[0, "z"] == str(image_file)
+    assert studyset.images.loc[0, "z__relative"] == str(Path("contrast_z.nii.gz"))
 
 
 def test_studyset_init(example_nimads_studyset):

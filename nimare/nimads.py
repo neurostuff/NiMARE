@@ -39,6 +39,42 @@ def _validate_studyset_source(source):
         raise InvalidStudysetError("Studyset 'studies' field must be a list")
 
 
+def _infer_dataset_basepath(dataset):
+    """Infer a Dataset base path from paired absolute and relative image columns."""
+    basepath = getattr(dataset, "basepath", None)
+    if basepath:
+        return os.path.abspath(basepath)
+
+    images = getattr(dataset, "images", None)
+    if images is None or images.empty:
+        return None
+
+    candidate_basepaths = []
+    for rel_col in [col for col in images.columns if col.endswith("__relative")]:
+        abs_col = rel_col[: -len("__relative")]
+        if abs_col not in images.columns:
+            continue
+
+        for relative_path, absolute_path in zip(images[rel_col], images[abs_col]):
+            if not isinstance(relative_path, str) or not relative_path:
+                continue
+            if not isinstance(absolute_path, str) or not absolute_path:
+                continue
+            if not os.path.isabs(absolute_path):
+                continue
+            if not absolute_path.endswith(relative_path):
+                continue
+
+            candidate_basepaths.append(
+                absolute_path[: -len(relative_path)].rstrip(os.sep) or os.sep
+            )
+
+    if not candidate_basepaths:
+        return None
+
+    return os.path.commonpath(candidate_basepaths)
+
+
 class _NotifyDict(dict):
     """Dict subclass that fires a callback on any mutation."""
 
@@ -764,7 +800,7 @@ class Studyset:
         self._set_execution_context(
             space=dataset.space,
             masker=dataset.masker,
-            basepath=dataset.basepath,
+            basepath=_infer_dataset_basepath(dataset),
         )
 
     @classmethod
@@ -818,6 +854,8 @@ class Studyset:
     @classmethod
     def from_dataset(cls, dataset, *, materialize=True):
         """Create a Studyset from a NiMARE Dataset."""
+        dataset_basepath = _infer_dataset_basepath(dataset)
+
         if not materialize:
             from nimare.studyset import _snapshot_dataset_tables
 
@@ -843,7 +881,7 @@ class Studyset:
                 studyset_id="nimads_from_dataset",
                 target=dataset.space,
                 mask=dataset.masker,
-                basepath=dataset.basepath,
+                basepath=dataset_basepath,
                 materializer=_materializer,
             )
             return studyset
@@ -855,7 +893,7 @@ class Studyset:
             nimads,
             target=dataset.space,
             mask=dataset.masker,
-            basepath=dataset.basepath,
+            basepath=dataset_basepath,
         )
         studyset._attach_dataset_context(dataset)
         return studyset
