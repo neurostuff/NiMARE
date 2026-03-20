@@ -3,6 +3,7 @@
 import copy
 import json
 import os.path as op
+import pickle
 import warnings
 
 import nibabel as nib
@@ -11,7 +12,134 @@ import pytest
 
 import nimare
 from nimare import dataset
+from nimare.nimads import Studyset
 from nimare.tests.utils import get_test_data_path
+
+# ---------------------------------------------------------------------------
+# Helpers for the parameterized smoke test
+# ---------------------------------------------------------------------------
+
+
+def _make_dataset():
+    """Create a Dataset from neurosynth test data."""
+    db_file = op.join(get_test_data_path(), "neurosynth_dset.json")
+    dset = dataset.Dataset(db_file)
+    dset.update_path(get_test_data_path())
+    return dset
+
+
+def _make_studyset():
+    """Create a Studyset from neurosynth_laird test data."""
+    ss = Studyset(
+        op.join(get_test_data_path(), "neurosynth_laird_studyset.json"),
+        target="mni152_2mm",
+    )
+    return ss
+
+
+@pytest.fixture(params=["dataset", "studyset"])
+def dset_or_studyset(request):
+    """Parameterized fixture returning either a Dataset or Studyset."""
+    if request.param == "dataset":
+        return _make_dataset()
+    return _make_studyset()
+
+
+# ---------------------------------------------------------------------------
+# Parameterized tests exercising shared Dataset / Studyset API
+# ---------------------------------------------------------------------------
+
+
+def test_smoke_ids(dset_or_studyset):
+    """Both Dataset and Studyset expose a non‑empty ``ids`` array."""
+    obj = dset_or_studyset
+    assert len(obj.ids) > 0
+
+
+def test_smoke_masker(dset_or_studyset):
+    """Both Dataset and Studyset expose a masker with a valid mask image."""
+    obj = dset_or_studyset
+    assert obj.masker is not None
+    # NiftiMasker stores the fitted mask in mask_img_
+    assert not nib.is_proxy(obj.masker.mask_img_.dataobj)
+
+
+def test_smoke_get_methods(dset_or_studyset):
+    """get_images / get_labels / get_metadata / get_texts return lists."""
+    obj = dset_or_studyset
+    methods = [obj.get_images, obj.get_labels, obj.get_metadata, obj.get_texts]
+    for method in methods:
+        assert isinstance(method(), list)
+        assert isinstance(method(ids=obj.ids[:5]), list)
+        assert isinstance(method(ids=obj.ids[0]), list)
+
+
+def test_smoke_get_studies_by_label(dset_or_studyset):
+    """get_studies_by_label returns a list and rejects unknown labels."""
+    obj = dset_or_studyset
+    labels = obj.get_labels()
+    assert len(labels) > 0
+    result = obj.get_studies_by_label(labels[0])
+    assert isinstance(result, list)
+
+    with pytest.raises(ValueError):
+        obj.get_studies_by_label("this_label_does_not_exist_xyz")
+
+
+def test_smoke_get_studies_by_coordinate(dset_or_studyset):
+    """get_studies_by_coordinate returns a list."""
+    obj = dset_or_studyset
+    result = obj.get_studies_by_coordinate(np.array([[20, 20, 20]]))
+    assert isinstance(result, list)
+
+
+def test_smoke_get_studies_by_mask(dset_or_studyset):
+    """get_studies_by_mask returns a list."""
+    obj = dset_or_studyset
+    mask_data = np.zeros(obj.masker.mask_img.shape, np.int32)
+    mask_data[40, 40, 40] = 1
+    mask_img = nib.Nifti1Image(mask_data, obj.masker.mask_img.affine)
+    result = obj.get_studies_by_mask(mask_img)
+    assert isinstance(result, list)
+
+
+def test_smoke_slice_merge(dset_or_studyset):
+    """Slice and merge round‑trip preserves type."""
+    obj = dset_or_studyset
+    obj1 = obj.slice(obj.ids[:5])
+    obj2 = obj.slice(obj.ids[5:])
+    assert type(obj1) is type(obj)
+    merged = obj1.merge(obj2)
+    assert type(merged) is type(obj)
+
+
+def test_smoke_copy(dset_or_studyset):
+    """Copy returns an independent instance of the same type."""
+    obj = dset_or_studyset
+    copied = obj.copy()
+    assert type(copied) is type(obj)
+    assert copied is not obj
+
+
+def test_smoke_pickle_roundtrip(dset_or_studyset, tmp_path):
+    """Both Dataset and Studyset survive a pickle round‑trip."""
+    obj = dset_or_studyset
+    if isinstance(obj, Studyset):
+        _ = obj.studies
+    pkl_file = tmp_path / "roundtrip.pkl"
+    with open(pkl_file, "wb") as f:
+        pickle.dump(obj, f)
+    with open(pkl_file, "rb") as f:
+        restored = pickle.load(f)
+
+    assert type(restored) is type(obj)
+    np.testing.assert_array_equal(restored.ids, obj.ids)
+    assert len(restored.get_labels()) == len(obj.get_labels())
+
+
+# ---------------------------------------------------------------------------
+# Dataset-only tests
+# ---------------------------------------------------------------------------
 
 
 def test_dataset_smoke():

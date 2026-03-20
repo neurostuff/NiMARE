@@ -2,9 +2,11 @@
 
 import json
 import os
+import pickle
 import tempfile
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from nimare import nimads
@@ -224,6 +226,51 @@ def test_studyset_save_load(example_nimads_studyset):
         assert len(new_studyset.studies) == len(studyset.studies)
     finally:
         os.unlink(tmp_path)
+
+
+def test_studyset_pickle_roundtrip(example_nimads_studyset):
+    """Studyset objects must survive a pickle dump/load round-trip."""
+    studyset = nimads.Studyset(example_nimads_studyset)
+    _ = studyset.studies
+
+    data = pickle.dumps(studyset)
+    restored = pickle.loads(data)
+
+    assert isinstance(restored, nimads.Studyset)
+    assert restored.id == studyset.id
+    assert restored.name == studyset.name
+    assert len(restored.studies) == len(studyset.studies)
+
+    # Verify that the restored object is still functional
+    np.testing.assert_array_equal(restored.ids, studyset.ids)
+    assert not restored.coordinates.empty
+    assert restored.coordinates.shape == studyset.coordinates.shape
+
+    # Verify nested mutations still invalidate caches after unpickling.
+    revision = restored._revision
+    analysis = next(a for study in restored.studies for a in study.analyses)
+    analysis.metadata["pickle_roundtrip"] = True
+    assert restored._revision > revision
+
+
+def test_studyset_pickle_roundtrip_with_projection(tmp_path):
+    """Studyset with execution context (target/masker) survives pickle."""
+    studyset_file = os.path.join(get_test_data_path(), "neurosynth_laird_studyset.json")
+    studyset = nimads.Studyset(studyset_file, target="mni152_2mm")
+
+    # Access tables to trigger projection cache
+    _ = studyset.coordinates
+    _ = studyset.ids
+    _ = studyset.studies
+
+    data = pickle.dumps(studyset)
+    restored = pickle.loads(data)
+
+    assert isinstance(restored, nimads.Studyset)
+    np.testing.assert_array_equal(restored.ids, studyset.ids)
+    assert restored.space == "mni152_2mm"
+    assert restored.masker is not None
+    assert not restored.coordinates.empty
 
 
 def test_studyset_to_dict(example_nimads_studyset):

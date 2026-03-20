@@ -16,6 +16,8 @@ Here, we present the structure of the JSON/dict input format to create a
    For the preferred workflow, see :ref:`nimads_object`.
 """
 
+# sphinx_gallery_thumbnail_path = '_static/nimare_favicon.png'
+
 ###############################################################################
 # Data Structure
 # -----------------------------------------------------------------------------
