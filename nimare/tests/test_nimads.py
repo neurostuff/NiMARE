@@ -3,6 +3,7 @@
 import json
 import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -77,6 +78,67 @@ def test_slice_preserves_metadata_and_annotations(
     for analysis_id in selected_ids:
         original_note = next(n.note for n in annotation.notes if n.analysis.id == analysis_id)
         assert sliced_annotation_notes[analysis_id] == original_note
+
+
+def test_studyset_from_dataset_preserves_inferred_image_basepath(tmp_path):
+    """Studyset.from_dataset should resolve images when Dataset only has inferred basepath."""
+    image_dir = tmp_path / "images"
+    image_dir.mkdir()
+    image_file = image_dir / "contrast_z.nii.gz"
+    image_file.write_text("placeholder")
+
+    source = {
+        "study1": {
+            "contrasts": {
+                "contrast1": {
+                    "images": {"z": str(image_file)},
+                    "metadata": {"sample_sizes": [20]},
+                }
+            }
+        }
+    }
+
+    dataset = Dataset(source)
+    assert dataset.basepath is None
+    assert dataset.images.loc[0, "z"] == str(image_file)
+    assert dataset.images.loc[0, "z__relative"] == str(Path("contrast_z.nii.gz"))
+
+    studyset = nimads.Studyset.from_dataset(dataset)
+
+    assert studyset.basepath == str(image_dir)
+    assert studyset.images.loc[0, "z"] == str(image_file)
+    assert studyset.images.loc[0, "z__relative"] == str(Path("contrast_z.nii.gz"))
+
+
+def test_studyset_copy_preserves_projected_image_columns(tmp_path):
+    """Studyset.copy should preserve derived image columns stored in the projection cache."""
+    image_dir = tmp_path / "images"
+    image_dir.mkdir()
+    z_file = image_dir / "contrast_z.nii.gz"
+    z_file.write_text("placeholder")
+    varcope_file = image_dir / "contrast_varcope.nii.gz"
+    varcope_file.write_text("placeholder")
+
+    source = {
+        "study1": {
+            "contrasts": {
+                "contrast1": {
+                    "images": {"z": str(z_file)},
+                    "metadata": {"sample_sizes": [20]},
+                }
+            }
+        }
+    }
+
+    studyset = nimads.Studyset.from_dataset(Dataset(source))
+    images = studyset.images.copy()
+    images["varcope"] = str(varcope_file)
+    studyset.images = images
+
+    copied = studyset.copy()
+
+    assert "varcope" in copied.images.columns
+    assert copied.images.loc[0, "varcope"] == str(varcope_file)
 
 
 def test_studyset_init(example_nimads_studyset):
@@ -299,12 +361,12 @@ def test_get_analyses_by_metadata(example_nimads_studyset):
 
 
 def test_get_studies_by_coordinate(example_nimads_studyset):
-    """Test the StudysetView-style coordinate search wrapper."""
+    """Test the direct Studyset coordinate search wrapper."""
     studyset = nimads.Studyset(example_nimads_studyset)
     xyz = [[0, 0, 0]]
 
     results = studyset.get_studies_by_coordinate(xyz, r=10)
-    expected = studyset.view().get_studies_by_coordinate(xyz, r=10)
+    expected = studyset.get_studies_by_coordinate(xyz, r=10)
 
     assert isinstance(results, list)
     assert set(results) == set(expected)

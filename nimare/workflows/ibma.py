@@ -5,7 +5,7 @@ import logging
 from nimare.correct import FDRCorrector
 from nimare.diagnostics import Jackknife
 from nimare.meta.ibma import IBMAEstimator, Stouffers
-from nimare.studyset import ensure_studyset_view
+from nimare.studyset import normalize_collection
 from nimare.transforms import ImageTransformer
 from nimare.workflows.base import Workflow
 
@@ -80,8 +80,7 @@ class IBMAWorkflow(Workflow):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
-                or :obj:`~nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
             Collection to analyze.
 
         Returns
@@ -93,7 +92,7 @@ class IBMAWorkflow(Workflow):
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
             in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
-        dataset = ensure_studyset_view(dataset)
+        dataset = normalize_collection(dataset)
 
         # Calculate missing images. Possible targets: {"z", "p", "beta", "varcope"}.
         # Infer from self.estimator._required_inputs

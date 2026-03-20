@@ -16,7 +16,8 @@ from nimare.base import NiMAREBase
 from nimare.dataset import Dataset
 from nimare.meta.cbma.base import PairwiseCBMAEstimator
 from nimare.meta.ibma import IBMAEstimator
-from nimare.studyset import StudysetView, ensure_studyset_view
+from nimare.nimads import Studyset
+from nimare.studyset import normalize_collection
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
@@ -682,15 +683,14 @@ class FocusFilter(NiMAREBase):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
+        dataset : :obj:`~nimare.nimads.Studyset`, \
                 or :obj:`~nimare.dataset.Dataset`
             The collection to filter.
 
         Returns
         -------
-        dataset : :obj:`~nimare.dataset.Dataset` or :obj:`~nimare.studyset.StudysetView`
-            The filtered collection. Dataset inputs preserve the Dataset fast path; Studyset
-            inputs return a filtered StudysetView.
+        dataset : :obj:`~nimare.dataset.Dataset` or :obj:`~nimare.nimads.Studyset`
+            The filtered collection.
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
@@ -698,10 +698,10 @@ class FocusFilter(NiMAREBase):
         """
         if isinstance(dataset, Dataset):
             filtered = dataset
-        elif isinstance(dataset, StudysetView):
+        elif isinstance(dataset, Studyset):
             filtered = dataset.copy()
         else:
-            filtered = ensure_studyset_view(dataset).copy()
+            filtered = normalize_collection(dataset).copy()
 
         masker = self.masker or filtered.masker
         # use 0 or 1 to indicate if voxels are in the mask

@@ -73,8 +73,7 @@ class CBMAWorkflow(Workflow):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
-                or :obj:`~nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
             Collection to analyze.
 
         Returns
@@ -147,8 +146,8 @@ class PairwiseCBMAWorkflow(Workflow):
 
         Parameters
         ----------
-        dataset1/dataset2 : :obj:`~nimare.nimads.Studyset`, \
-                :obj:`~nimare.studyset.StudysetView`, or :obj:`~nimare.dataset.Dataset`
+        dataset1/dataset2 : :obj:`~nimare.nimads.Studyset` or \
+                :obj:`~nimare.dataset.Dataset`
             Collection objects to analyze.
 
         Returns

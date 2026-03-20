@@ -225,6 +225,20 @@ class Dataset(NiMAREBase):
         self.__annotations = df.sort_values(by="id")
 
     @property
+    def annotations_df(self):
+        """:class:`pandas.DataFrame`: Alias for :attr:`annotations`.
+
+        Provides a unified tabular annotation interface shared with
+        :class:`~nimare.nimads.Studyset`.
+        """
+        return self.__annotations
+
+    @annotations_df.setter
+    def annotations_df(self, df):
+        _validate_df(df)
+        self.__annotations = df.sort_values(by="id")
+
+    @property
     def coordinates(self):
         """:class:`pandas.DataFrame`: Coordinates in the dataset.
 
@@ -299,7 +313,7 @@ class Dataset(NiMAREBase):
         .. warning::
             This legacy Dataset method will be deprecated in a future release.
             Prefer :meth:`~nimare.nimads.Studyset.slice` for nested Studysets or
-            :meth:`~nimare.studyset.StudysetView.slice` for Dataset-like tabular slicing.
+            :meth:`~nimare.nimads.Studyset.slice` for Studyset-backed tabular slicing.
 
         Parameters
         ----------
@@ -395,7 +409,7 @@ class Dataset(NiMAREBase):
         .. warning::
             This legacy Dataset method will be deprecated in a future release.
             Prefer :meth:`~nimare.nimads.Studyset.get` or
-            :meth:`~nimare.studyset.StudysetView.get`.
+            :meth:`~nimare.nimads.Studyset.get`.
 
         Parameters
         ----------
@@ -528,7 +542,7 @@ class Dataset(NiMAREBase):
         .. warning::
             This legacy Dataset method will be deprecated in a future release.
             Prefer :meth:`~nimare.nimads.Studyset.get_labels` or
-            :meth:`~nimare.studyset.StudysetView.get_labels`.
+            :meth:`~nimare.nimads.Studyset.get_labels`.
 
         Parameters
         ----------
@@ -557,7 +571,7 @@ class Dataset(NiMAREBase):
 
         .. warning::
             This legacy Dataset method will be deprecated in a future release.
-            Prefer :meth:`~nimare.studyset.StudysetView.get_texts`.
+            Prefer :meth:`~nimare.nimads.Studyset.get_texts`.
 
         Parameters
         ----------
@@ -581,7 +595,7 @@ class Dataset(NiMAREBase):
 
         .. warning::
             This legacy Dataset method will be deprecated in a future release.
-            Prefer :meth:`~nimare.studyset.StudysetView.get_metadata`.
+            Prefer :meth:`~nimare.nimads.Studyset.get_metadata`.
 
         Parameters
         ----------
@@ -605,7 +619,7 @@ class Dataset(NiMAREBase):
 
         .. warning::
             This legacy Dataset method will be deprecated in a future release.
-            Prefer :meth:`~nimare.studyset.StudysetView.get_images`.
+            Prefer :meth:`~nimare.nimads.Studyset.get_images`.
 
         Parameters
         ----------

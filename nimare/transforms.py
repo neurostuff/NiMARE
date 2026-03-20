@@ -13,7 +13,7 @@ from nilearn.reporting import get_clusters_table
 from scipy import stats
 
 from nimare.base import NiMAREBase
-from nimare.studyset import ensure_studyset_view
+from nimare.studyset import normalize_collection
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _dict_to_coordinates,
@@ -57,8 +57,7 @@ class ImageTransformer(NiMAREBase):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
-                or :obj:`~nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
             A collection containing images and relevant metadata.
 
         Returns
@@ -73,7 +72,7 @@ class ImageTransformer(NiMAREBase):
         from nimare.dataset import Dataset
 
         if not isinstance(dataset, Dataset):
-            dataset = ensure_studyset_view(dataset)
+            dataset = normalize_collection(dataset)
 
         # Using attribute check instead of type check to allow fake Datasets for testing.
         if not hasattr(dataset, "slice"):
@@ -155,6 +154,9 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
         # Determine output filename, if file can be generated
         if out_dir is None:
             options = [r for r in row.values if isinstance(r, str) and op.isfile(r)]
+            if not options:
+                LGR.warning(f"No existing image files for {id_}, skipping {target} transform.")
+                continue
             id_out_dir = op.dirname(options[0])
         else:
             id_out_dir = out_dir
@@ -180,6 +182,11 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
             new_images_df.loc[new_images_df["id"] == id_, target] = new_file
         else:
             new_images_df.loc[new_images_df["id"] == id_, target] = None
+
+    # Ensure the target column exists even when every study was skipped.
+    if target not in new_images_df.columns:
+        new_images_df[target] = None
+
     return new_images_df
 
 
@@ -363,8 +370,7 @@ class ImagesToCoordinates(NiMAREBase):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.nimads.Studyset`, :obj:`~nimare.studyset.StudysetView`, \
-                or :obj:`~nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
             Collection with z maps and/or p maps
             that can be converted to coordinates.
 
@@ -382,7 +388,7 @@ class ImagesToCoordinates(NiMAREBase):
         from nimare.dataset import Dataset
 
         if not isinstance(dataset, Dataset):
-            dataset = ensure_studyset_view(dataset)
+            dataset = normalize_collection(dataset)
 
         # relevant variables from dataset
         space = dataset.space
@@ -476,7 +482,7 @@ class ImagesToCoordinates(NiMAREBase):
         # only the generated coordinates ('demolish')
         coordinates_df = _dict_to_coordinates(coordinates_dict, space)
         meta_df = _dict_to_df(
-            pd.DataFrame(dataset._ids),
+            pd.DataFrame(dataset.ids),
             coordinates_dict,
             "metadata",
         )
@@ -533,19 +539,20 @@ class StandardizeField(NiMAREBase):
         from nimare.dataset import Dataset
 
         if not isinstance(dataset, Dataset):
-            dataset = ensure_studyset_view(dataset)
+            dataset = normalize_collection(dataset)
         # update a copy of the dataset
         dataset = dataset.copy()
 
         categorical_metadata, numerical_metadata = [], []
         for metadata_name in self.fields:
             if np.array_equal(
-                dataset.annotations[metadata_name], dataset.annotations[metadata_name].astype(str)
+                dataset.annotations_df[metadata_name],
+                dataset.annotations_df[metadata_name].astype(str),
             ):
                 categorical_metadata.append(metadata_name)
             elif np.array_equal(
-                dataset.annotations[metadata_name],
-                dataset.annotations[metadata_name].astype(float),
+                dataset.annotations_df[metadata_name],
+                dataset.annotations_df[metadata_name].astype(float),
             ):
                 numerical_metadata.append(metadata_name)
         if len(categorical_metadata) > 0:
@@ -553,14 +560,16 @@ class StandardizeField(NiMAREBase):
         if len(numerical_metadata) == 0:
             raise ValueError("No numerical metadata found.")
 
-        moderators = dataset.annotations[numerical_metadata]
+        annot_df = dataset.annotations_df
+        moderators = annot_df[numerical_metadata]
         standardize_moderators = moderators - np.mean(moderators, axis=0)
         standardize_moderators /= np.std(standardize_moderators, axis=0)
         if isinstance(self.fields, str):
             column_name = "standardized_" + self.fields
         elif isinstance(self.fields, list):
             column_name = ["standardized_" + moderator for moderator in numerical_metadata]
-        dataset.annotations[column_name] = standardize_moderators
+        annot_df[column_name] = standardize_moderators
+        dataset.annotations_df = annot_df
 
         return dataset
 

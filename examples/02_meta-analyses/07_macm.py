@@ -29,7 +29,6 @@ from nimare.nimads import Studyset
 # saved as a NiMARE Studyset.
 studyset_file = "neurosynth_studyset_with_abstracts.json"
 studyset = Studyset(studyset_file, target="mni152_2mm")
-studyset_view = studyset.view()
 
 ###############################################################################
 # Define a region of interest
@@ -47,18 +46,18 @@ roi_img = image.math_img(f"img1 == {roi_val}", img1=img)
 # Select studies with a reported coordinate in the ROI
 # -----------------------------------------------------------------------------
 roi_ids = studyset.get_studies_by_mask(roi_img)
-studyset_sel = studyset_view.slice(roi_ids)
+studyset_sel = studyset.slice(roi_ids)
 print(
-    f"{len(roi_ids)}/{len(studyset_view.ids)} studies report at least one coordinate in the ROI"
+    f"{len(roi_ids)}/{len(studyset.ids)} studies report at least one coordinate in the ROI"
 )
 
 ###############################################################################
 # Select studies with *no* reported coordinates in the ROI
 # -----------------------------------------------------------------------------
-no_roi_ids = list(set(studyset_view.ids).difference(roi_ids))
-studyset_unsel = studyset_view.slice(no_roi_ids)
+no_roi_ids = list(set(studyset.ids).difference(roi_ids))
+studyset_unsel = studyset.slice(no_roi_ids)
 print(
-    f"{len(no_roi_ids)}/{len(studyset_view.ids)} studies report zero coordinates in the ROI"
+    f"{len(no_roi_ids)}/{len(studyset.ids)} studies report zero coordinates in the ROI"
 )
 
 
