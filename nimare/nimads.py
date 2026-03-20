@@ -967,9 +967,30 @@ class Studyset:
 
     def copy(self):
         """Create a copy of the Studyset."""
-        result = deepcopy(self)
-        if result._studies is not None:
+        return deepcopy(self)
+
+    def __deepcopy__(self, memo):
+        """Deep-copy the Studyset, sharing the immutable store to avoid expensive recursion."""
+        result = object.__new__(Studyset)
+        memo[id(self)] = result
+        result.id = self.id
+        result.name = self.name
+        # The store is never mutated in-place; touch() replaces it entirely.
+        result._studyset_store = self._studyset_store
+        result._selection_full_ids = (
+            self._selection_full_ids.copy() if self._selection_full_ids is not None else None
+        )
+        result._execution_profile = self._execution_profile
+        result._projection_cache = {}
+        result._revision = self._revision
+        result._store_revision = self._store_revision
+        if self._studies is not None:
+            result._studies = deepcopy(self._studies, memo)
+            result._annotations = deepcopy(self._annotations, memo)
             result._install_mutation_tracking()
+        else:
+            result._studies = None
+            result._annotations = None
         return result
 
     def _ensure_store_synced(self):
