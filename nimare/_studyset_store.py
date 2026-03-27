@@ -521,27 +521,29 @@ class StudysetStore:
         *,
         annotation_payloads=None,
         materializer=None,
+        normalize_metadata=True,
     ):
         """Create a store directly from Dataset-like tables."""
         metadata_df = table_cache.get("metadata")
         if metadata_df is not None:
             metadata_df = metadata_df.copy()
-            sample_size_cols = [
-                col for col in ("sample_sizes", "sample_size") if col in metadata_df.columns
-            ]
-            if sample_size_cols:
-                normalized_sample_sizes = [
-                    _extract_coerced_sample_sizes(
-                        [
-                            ("sample_sizes", row.get("sample_sizes")),
-                            ("sample_size", row.get("sample_size")),
-                        ]
-                    )
-                    for row in metadata_df.to_dict(orient="records")
+            if normalize_metadata:
+                sample_size_cols = [
+                    col for col in ("sample_sizes", "sample_size") if col in metadata_df.columns
                 ]
-                metadata_df = metadata_df.drop(columns=sample_size_cols)
-                if any(value is not None for value in normalized_sample_sizes):
-                    metadata_df["sample_sizes"] = normalized_sample_sizes
+                if sample_size_cols:
+                    normalized_sample_sizes = [
+                        _extract_coerced_sample_sizes(
+                            [
+                                ("sample_sizes", row.get("sample_sizes")),
+                                ("sample_size", row.get("sample_size")),
+                            ]
+                        )
+                        for row in metadata_df.to_dict(orient="records")
+                    ]
+                    metadata_df = metadata_df.drop(columns=sample_size_cols)
+                    if any(value is not None for value in normalized_sample_sizes):
+                        metadata_df["sample_sizes"] = normalized_sample_sizes
 
         tables = {
             "studies": pd.DataFrame(columns=["study_id", "name", "authors", "publication"]),

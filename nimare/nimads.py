@@ -825,6 +825,8 @@ class Studyset:
         mask=None,
         basepath=None,
         materializer=None,
+        normalize_metadata=True,
+        seed_table_cache=False,
     ):
         """Create a lightweight Studyset backed by precomputed Dataset-style tables."""
         execution_profile = StudysetExecutionProfile(
@@ -837,11 +839,25 @@ class Studyset:
             studyset_name,
             table_cache,
             materializer=materializer,
+            normalize_metadata=normalize_metadata,
         )
         studyset = cls._from_store(store, execution_profile)
         # Seed the projection cache so the first property access doesn't rebuild.
         cache_key = studyset._cache_key(execution_profile)
-        studyset._projection_cache[cache_key] = store.projected_tables(execution_profile)
+        if seed_table_cache:
+            studyset._projection_cache[cache_key] = {
+                "ids": table_cache.get("ids"),
+                "coordinates": table_cache.get("coordinates"),
+                "images": table_cache.get("images"),
+                "metadata": table_cache.get("metadata"),
+                "annotations": table_cache.get("annotations"),
+                "texts": table_cache.get("texts"),
+                "space": execution_profile.target,
+                "masker": execution_profile.masker,
+                "basepath": execution_profile.basepath,
+            }
+        else:
+            studyset._projection_cache[cache_key] = store.projected_tables(execution_profile)
         return studyset
 
     @classmethod
@@ -884,6 +900,8 @@ class Studyset:
                 mask=dataset.masker,
                 basepath=dataset_basepath,
                 materializer=_materializer,
+                normalize_metadata=False,
+                seed_table_cache=True,
             )
             return studyset
 

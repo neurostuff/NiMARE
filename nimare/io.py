@@ -1536,21 +1536,36 @@ def convert_dataset_to_nimads_dict(
             else pd.DataFrame(columns=["id", "study_id", "contrast_id"])
         )
 
+    def _first_rows_by_id(df):
+        if df is None or df.empty:
+            return {}
+        return df.drop_duplicates(subset="id", keep="first").set_index("id", drop=False).to_dict(
+            orient="index"
+        )
+
+    md_by_id = _first_rows_by_id(md)
+    image_by_id = _first_rows_by_id(images_df)
+    annotation_by_id = _first_rows_by_id(annotations_df)
+    text_by_id = _first_rows_by_id(texts_df)
+    coords_by_id = {
+        id_: group.reset_index(drop=True)
+        for id_, group in coords.groupby("id", sort=False)
+    }
+
     for id_ in dataset.ids:
-        md_rows = md.loc[md["id"] == id_]
-        crows = coords.loc[coords["id"] == id_]
-        if md_rows.empty and crows.empty:
+        md_row = md_by_id.get(id_)
+        crows = coords_by_id.get(id_)
+        if md_row is None and crows is None:
             continue
 
-        row = md_rows.iloc[0] if not md_rows.empty else crows.iloc[0]
+        row = md_row if md_row is not None else crows.iloc[0].to_dict()
         study_id = str(row["study_id"])
         contrast_id = str(row["contrast_id"])
 
         study_name = study_id
-        if not md_rows.empty:
-            md_row = md_rows.iloc[0]
+        if md_row is not None:
             for study_name_col in ("study_name", "title"):
-                value = md_row.get(study_name_col, None)
+                value = md_row.get(study_name_col)
                 if isinstance(value, str) and value.strip():
                     study_name = value
                     break
@@ -1566,20 +1581,18 @@ def convert_dataset_to_nimads_dict(
                 "analyses": [],
             }
 
-        if not md_rows.empty:
-            md_row = md_rows.iloc[0]
-            authors = md_row.get("authors", None)
+        if md_row is not None:
+            authors = md_row.get("authors")
             if isinstance(authors, str) and authors.strip():
                 studies[study_id]["authors"] = authors
-            publication = md_row.get("journal", md_row.get("publication", None))
+            publication = md_row.get("journal", md_row.get("publication"))
             if isinstance(publication, str) and publication.strip():
                 studies[study_id]["publication"] = publication
 
         analysis_name = contrast_id
-        if not md_rows.empty:
-            md_row = md_rows.iloc[0]
+        if md_row is not None:
             for analysis_name_col in ("analysis_name", "contrast_name", "name"):
-                value = md_row.get(analysis_name_col, None)
+                value = md_row.get(analysis_name_col)
                 if isinstance(value, str) and value.strip():
                     analysis_name = value
                     break
@@ -1595,25 +1608,21 @@ def convert_dataset_to_nimads_dict(
             "metadata": {},
         }
 
-        if not md_rows.empty:
-            md_row = md_rows.iloc[0]
-            for col in md_row.index:
+        if md_row is not None:
+            for col, value in md_row.items():
                 if col in id_cols:
                     continue
-                value = md_row[col]
                 if _is_missing(value):
                     continue
                 analysis["metadata"][col] = _to_serializable(value)
 
         # Collect annotations for this analysis.
-        annotation_rows = annotations_df.loc[annotations_df["id"] == id_]
-        if not annotation_rows.empty:
-            annotation_row = annotation_rows.iloc[0]
+        annotation_row = annotation_by_id.get(id_)
+        if annotation_row is not None:
             annotation_dict = {}
-            for col in annotation_row.index:
+            for col, value in annotation_row.items():
                 if col in id_cols:
                     continue
-                value = annotation_row[col]
                 if _is_missing(value):
                     continue
                 annotation_dict[col] = _to_serializable(value)
@@ -1621,14 +1630,12 @@ def convert_dataset_to_nimads_dict(
                 analysis["annotations"] = annotation_dict
 
         # Collect texts for this analysis.
-        text_rows = texts_df.loc[texts_df["id"] == id_]
-        if not text_rows.empty:
-            text_row = text_rows.iloc[0]
+        text_row = text_by_id.get(id_)
+        if text_row is not None:
             text_dict = {}
-            for col in text_row.index:
+            for col, value in text_row.items():
                 if col in id_cols:
                     continue
-                value = text_row[col]
                 if _is_missing(value):
                     continue
                 text_dict[col] = _to_serializable(value)
@@ -1636,9 +1643,8 @@ def convert_dataset_to_nimads_dict(
                 analysis["texts"] = text_dict
 
         # Collect image metadata for this analysis.
-        image_rows = images_df.loc[images_df["id"] == id_]
-        if not image_rows.empty:
-            image_row = image_rows.iloc[0]
+        image_row = image_by_id.get(id_)
+        if image_row is not None:
             image_space = image_row.get("space", dataset.space)
             if isinstance(image_space, str):
                 image_space_lower = image_space.lower()
@@ -1684,6 +1690,9 @@ def convert_dataset_to_nimads_dict(
                 )
 
         # Collect points for this analysis in order of appearance
+        if crows is None:
+            crows = pd.DataFrame(columns=list(coordinate_core_cols))
+
         coordinate_extra_cols = [col for col in crows.columns if col not in coordinate_core_cols]
         point_value_cols = {
             col: _coordinate_column_to_point_value_kind(col)
