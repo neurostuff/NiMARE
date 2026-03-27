@@ -2,7 +2,21 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.11.1...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.11.2...HEAD)
+
+## [0.11.2](https://github.com/neurostuff/NiMARE/compare/0.11.1...0.11.2) - 2026-03-27
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+* [DOC] update dev installation and contributor links by @lyraluoyu in https://github.com/neurostuff/NiMARE/pull/984
+* [FIX] studyset regressions by @jdkent in https://github.com/neurostuff/NiMARE/pull/989
+
+### New Contributors
+
+* @lyraluoyu made their first contribution in https://github.com/neurostuff/NiMARE/pull/984
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.11.1...0.11.2
 
 ## [0.11.1](https://github.com/neurostuff/NiMARE/compare/0.11.0...0.11.1) - 2026-03-20
 
