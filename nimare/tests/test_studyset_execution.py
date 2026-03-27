@@ -81,6 +81,28 @@ def test_ale_accepts_singular_sample_size_metadata(testdata_cbma):
     assert "stat" in result.maps
 
 
+def test_studyset_metadata_coerces_sample_size_fields(example_nimads_studyset):
+    """Studyset.metadata should normalize singular and string-valued sample size metadata."""
+    studyset = Studyset(example_nimads_studyset)
+    study = next(study for study in studyset.studies if study.analyses)
+    analysis = study.analyses[0]
+    analysis_id = f"{study.id}-{analysis.id}"
+
+    study.metadata.clear()
+    analysis.metadata.clear()
+    study.metadata["sample_size"] = "12"
+    analysis.metadata["sample_sizes"] = 5
+
+    metadata_row = studyset.metadata.loc[studyset.metadata["id"] == analysis_id].iloc[0]
+    assert metadata_row["sample_sizes"] == [12]
+    assert "sample_size" not in studyset.metadata.columns
+
+    analysis.metadata["sample_sizes"] = ["6", "7.5"]
+
+    metadata_row = studyset.metadata.loc[studyset.metadata["id"] == analysis_id].iloc[0]
+    assert metadata_row["sample_sizes"] == [6, 7.5]
+
+
 def test_stouffers_studyset_parity(testdata_ibma):
     """IBMA estimators should accept Studysets and match Dataset outputs."""
     dset = testdata_ibma.slice(testdata_ibma.ids[:5])
