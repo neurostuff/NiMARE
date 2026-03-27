@@ -48,9 +48,9 @@ def _rows_to_df(rows, columns, *, normalize_none_strings=False):
         return pd.DataFrame(columns=columns)
     df = pd.DataFrame(rows)
     if normalize_none_strings:
-        df = df.apply(lambda col: col.map(lambda value: np.nan if value == "None" else value))
         for col in df.columns:
-            df[col] = df[col].astype(object).where(pd.notnull(df[col]), None)
+            if pd.api.types.is_object_dtype(df[col]) or pd.api.types.is_string_dtype(df[col]):
+                df[col] = df[col].map(lambda value: None if value == "None" else value)
     sort_col = "id" if "id" in df.columns else columns[0]
     return df.sort_values(by=sort_col).reset_index(drop=True)
 
