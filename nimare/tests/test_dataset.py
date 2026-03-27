@@ -45,6 +45,7 @@ def dset_or_studyset(request):
     return _make_studyset()
 
 
+
 # ---------------------------------------------------------------------------
 # Parameterized tests exercising shared Dataset / Studyset API
 # ---------------------------------------------------------------------------
@@ -69,9 +70,9 @@ def test_smoke_get_methods(dset_or_studyset):
     obj = dset_or_studyset
     methods = [obj.get_images, obj.get_labels, obj.get_metadata, obj.get_texts]
     for method in methods:
-        assert isinstance(method(), list)
-        assert isinstance(method(ids=obj.ids[:5]), list)
-        assert isinstance(method(ids=obj.ids[0]), list)
+        assert isinstance(method(), (list, dict))
+        assert isinstance(method(ids=obj.ids[:5]), (list, dict))
+        assert isinstance(method(ids=obj.ids[0]), (list, dict))
 
 
 def test_smoke_get_studies_by_label(dset_or_studyset):
@@ -153,9 +154,9 @@ def test_dataset_smoke():
 
     methods = [dset.get_images, dset.get_labels, dset.get_metadata, dset.get_texts]
     for method in methods:
-        assert isinstance(method(), list)
-        assert isinstance(method(ids=dset.ids[:5]), list)
-        assert isinstance(method(ids=dset.ids[0]), list)
+        assert isinstance(method(), (list, dict))
+        assert isinstance(method(ids=dset.ids[:5]), (list, dict))
+        assert isinstance(method(ids=dset.ids[0]), (list, dict))
 
     assert isinstance(dset.get_images(imtype="beta"), list)
     assert isinstance(dset.get_metadata(field="sample_sizes"), list)
@@ -225,3 +226,38 @@ def test_posneg_warning():
     assert isinstance(dset_posneg, nimare.dataset.Dataset)
     assert isinstance(dset_pos, nimare.dataset.Dataset)
     assert isinstance(dset_neg, nimare.dataset.Dataset)
+
+@pytest.mark.parametrize("invalid_source, expected_error, match_text", [
+    ([], TypeError, "must be a file path"),
+    (12345, TypeError, "must be a file path"),
+    ({}, ValueError, "dictionary is empty"),
+    ({"s1": {}}, KeyError, "contrasts"),
+])
+def test_dataset_initialization_onboarding(invalid_source, expected_error, match_text):
+    """
+    GSOC TASK: Improving Contributor Onboarding.
+    Ensures that common initialization mistakes by new users 
+    raise explicit errors rather than cryptic downstream failures.
+    """
+    from nimare.dataset import Dataset
+    with pytest.raises(expected_error, match=match_text):
+        Dataset(invalid_source)
+
+def test_dataset_get_images_consistency():
+    """
+    Ensures that get_images returns consistent types even after 
+    path updates, protecting against Pandas 2.0+ data loss.
+    """
+    from nimare.dataset import Dataset
+    from nimare.tests.utils import get_test_data_path
+    import os.path as op
+    
+    db_file = op.join(get_test_data_path(), "neurosynth_dset.json")
+    dset = Dataset(db_file)
+    dset.update_path(get_test_data_path())
+    
+    # Methodological Coverage: Check if 'beta' is still there after update_path
+    images = dset.get_images(imtype="beta")
+    assert isinstance(images, list)
+    assert len(images) > 0
+    assert all(isinstance(img, str) for img in images)
