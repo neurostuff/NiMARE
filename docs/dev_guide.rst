@@ -91,7 +91,7 @@ Making Changes
 ````````````
 
 Please follow the instructions specified in the 
-`Contributing Guide <https://github.com/neurostuff/NiMARE/blob/main/CONTRIBUTING.md>`_.
+:doc:`contributing`.
 
 Labeling PRs
 ````````````
