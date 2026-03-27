@@ -30,6 +30,31 @@ DEFAULT_MAP_TYPE_CONVERSION = {
     "p map": "p",
 }
 
+COORDINATE_METADATA_PREFIX = "coordinate_"
+POINT_RELATIONSHIP_COLUMNS = ("kind", "label_id", "image")
+_COORDINATE_VALUE_KIND_MAP = {
+    "z_stat": "Z",
+    "t_stat": "T",
+    "beta": "beta",
+    "variance": "variance",
+    "varcope": "variance",
+    "se": "SE",
+    "p": "p",
+}
+_POINT_VALUE_COLUMN_MAP = {
+    "z": "z_stat",
+    "z-stat": "z_stat",
+    "z_stat": "z_stat",
+    "t": "t_stat",
+    "t-stat": "t_stat",
+    "t_stat": "t_stat",
+    "beta": "beta",
+    "variance": "variance",
+    "varcope": "variance",
+    "se": "se",
+    "p": "p",
+}
+
 
 def _parse_feature_filename_entities(features_file):
     """Extract vocab/source/type entities from a Neurosynth-style feature filename."""
@@ -49,6 +74,117 @@ def _parse_feature_filename_entities(features_file):
             )
         matches[entity] = match.group(1)
     return matches["vocab"], matches["source"], matches["type"]
+
+
+def _is_missing_sample_size_value(value):
+    """Return True when a sample-size value should be treated as missing."""
+    return value is None or (
+        not isinstance(value, (list, tuple, dict)) and pd.isna(value)
+    )
+
+
+def _coerce_sample_sizes_list(value):
+    """Coerce a ``sample_sizes`` value to a numeric list when possible."""
+    if _is_missing_sample_size_value(value):
+        return None
+
+    if not isinstance(value, (list, tuple)):
+        LGR.warning(f"Expected sample_sizes to be list or tuple, but got {type(value)}.")
+        return None
+
+    if not value:
+        return None
+
+    coerced = []
+    for i, sample_size_value in enumerate(value):
+        if _is_missing_sample_size_value(sample_size_value):
+            LGR.warning(f"Expected sample_sizes[{i}] to be numeric, but got missing data.")
+            return None
+        if not isinstance(sample_size_value, (int, float)):
+            LGR.warning(
+                f"Expected sample_sizes[{i}] to be numeric, but got "
+                f"{type(sample_size_value)}. Attempting to convert to numeric."
+            )
+        try:
+            coerced.append(int(sample_size_value))
+        except (ValueError, TypeError):
+            try:
+                coerced.append(float(sample_size_value))
+            except (ValueError, TypeError):
+                LGR.warning(
+                    f"Could not convert {sample_size_value} to numeric from type "
+                    f"{type(sample_size_value)}."
+                )
+                return None
+
+    return coerced
+
+
+def _coerce_sample_size_scalar(value):
+    """Coerce a scalar ``sample_size`` value to a one-element numeric list."""
+    if _is_missing_sample_size_value(value) or not value:
+        return None
+
+    if not isinstance(value, (int, float)):
+        LGR.warning(
+            f"Expected sample_size to be numeric, but got {type(value)}."
+            " Attempting to convert to numeric."
+        )
+    try:
+        return [int(value)]
+    except (ValueError, TypeError):
+        try:
+            return [float(value)]
+        except (ValueError, TypeError):
+            LGR.warning(f"Could not convert {value} to numeric from type {type(value)}.")
+            return None
+
+
+def _extract_coerced_sample_sizes(candidates):
+    """Return the first valid sample-size candidate as a numeric list."""
+    sample_sizes = None
+    for key, raw_value in candidates:
+        if key == "sample_sizes":
+            sample_sizes = _coerce_sample_sizes_list(raw_value)
+        else:
+            sample_sizes = _coerce_sample_size_scalar(raw_value)
+
+        if sample_sizes:
+            return sample_sizes
+
+    return None
+
+
+def _coordinate_metadata_key(column):
+    """Return the reserved metadata key used to persist per-coordinate extras."""
+    return f"{COORDINATE_METADATA_PREFIX}{column}"
+
+
+def _point_value_kind_to_coordinate_column(kind):
+    """Map a NIMADS point-value kind to a Dataset-style coordinate column."""
+    if _is_missing(kind):
+        return None
+
+    normalized = str(kind).strip().lower().replace(" ", "_")
+    return _POINT_VALUE_COLUMN_MAP.get(normalized, f"value_{normalized}")
+
+
+def _coordinate_column_to_point_value_kind(column):
+    """Map a Dataset coordinate column to a NIMADS point-value kind."""
+    return _COORDINATE_VALUE_KIND_MAP.get(column)
+
+
+def _extract_coordinate_row_metadata(metadata, n_points):
+    """Extract per-coordinate arrays serialized into analysis metadata."""
+    coordinate_rows = {}
+    coordinate_keys = set()
+    for key, value in (metadata or {}).items():
+        if not isinstance(key, str) or not key.startswith(COORDINATE_METADATA_PREFIX):
+            continue
+        if isinstance(value, list) and len(value) == n_points:
+            coordinate_rows[key[len(COORDINATE_METADATA_PREFIX) :]] = value
+            coordinate_keys.add(key)
+    return coordinate_rows, coordinate_keys
 
 
 def convert_nimads_to_dataset(studyset, annotation=None):
@@ -79,6 +215,14 @@ def convert_nimads_to_dataset(studyset, annotation=None):
     def _analysis_to_dict(study, analysis):
         study_name = study.name or study.id
         analysis_name = analysis.name or analysis.id
+        n_points = len(analysis.points)
+        point_space = analysis.points[0].space if analysis.points else "UNKNOWN"
+        if isinstance(point_space, str):
+            point_space_lower = point_space.lower()
+            if "mni" in point_space_lower or "ale" in point_space_lower:
+                point_space = "MNI"
+            elif "tal" in point_space_lower:
+                point_space = "TAL"
         metadata = {
             "authors": study.authors,
             "journal": study.publication,
@@ -86,20 +230,50 @@ def convert_nimads_to_dataset(studyset, annotation=None):
             "analysis_name": analysis_name,
             "name": f"{study_name}-{analysis_name}",
         }
-        combined_metadata = analysis.get_metadata()
+        combined_metadata = analysis.get_metadata().copy()
+        coordinate_metadata, coordinate_metadata_keys = _extract_coordinate_row_metadata(
+            combined_metadata,
+            n_points,
+        )
         # Preserve existing sample-size parsing behavior below by avoiding direct passthrough.
         combined_metadata.pop("sample_sizes", None)
         combined_metadata.pop("sample_size", None)
+        for key in coordinate_metadata_keys:
+            combined_metadata.pop(key, None)
         metadata.update(combined_metadata)
+
+        coords = {
+            "space": point_space,
+            "x": [p.x for p in analysis.points] or [None],
+            "y": [p.y for p in analysis.points] or [None],
+            "z": [p.z for p in analysis.points] or [None],
+        }
+        for column in POINT_RELATIONSHIP_COLUMNS:
+            values = [getattr(point, column, None) for point in analysis.points]
+            if any(not _is_missing(value) for value in values):
+                coords[column] = values
+
+        point_value_columns = {}
+        for i_point, point in enumerate(analysis.points):
+            for point_value in getattr(point, "values", []) or []:
+                if not isinstance(point_value, dict):
+                    continue
+                column = _point_value_kind_to_coordinate_column(point_value.get("kind"))
+                value = point_value.get("value")
+                if column is None or _is_missing(value):
+                    continue
+                point_value_columns.setdefault(column, [None] * n_points)
+                point_value_columns[column][i_point] = value
+        for column, values in point_value_columns.items():
+            coords[column] = values
+
+        for column, values in coordinate_metadata.items():
+            if any(not _is_missing(value) for value in values):
+                coords[column] = values
 
         result = {
             "metadata": metadata,
-            "coords": {
-                "space": analysis.points[0].space if analysis.points else "UNKNOWN",
-                "x": [p.x for p in analysis.points] or [None],
-                "y": [p.y for p in analysis.points] or [None],
-                "z": [p.z for p in analysis.points] or [None],
-            },
+            "coords": coords,
         }
 
         # Carry image paths through conversion when available.
@@ -139,62 +313,11 @@ def convert_nimads_to_dataset(studyset, annotation=None):
         if analysis.texts:
             result["text"] = analysis.texts
 
-        def _coerce_sample_sizes_list(value):
-            if value is None:
-                return None
-
-            if not isinstance(value, (list, tuple)):
-                LGR.warning(f"Expected sample_sizes to be list or tuple, but got {type(value)}.")
-                return None
-
-            if not value:
-                return None
-
-            coerced = []
-            for i, sample_size_value in enumerate(value):
-                if not isinstance(sample_size_value, (int, float)):
-                    LGR.warning(
-                        f"Expected sample_sizes[{i}] to be numeric, but got "
-                        f"{type(sample_size_value)}. Attempting to convert to numeric."
-                    )
-                try:
-                    coerced.append(int(sample_size_value))
-                except (ValueError, TypeError):
-                    try:
-                        coerced.append(float(sample_size_value))
-                    except (ValueError, TypeError):
-                        LGR.warning(
-                            f"Could not convert {sample_size_value} to numeric from type "
-                            f"{type(sample_size_value)}."
-                        )
-                        return None
-
-            return coerced
-
-        def _coerce_sample_size_scalar(value):
-            if not value:
-                return None
-
-            if not isinstance(value, (int, float)):
-                LGR.warning(
-                    f"Expected sample_size to be numeric, but got {type(value)}."
-                    " Attempting to convert to numeric."
-                )
-            try:
-                return [int(value)]
-            except (ValueError, TypeError):
-                try:
-                    return [float(value)]
-                except (ValueError, TypeError):
-                    LGR.warning(f"Could not convert {value} to numeric from type {type(value)}.")
-                    return None
-
         # Sample size priority order:
         # 1) sample_size in annotations
         # 2) sample_sizes in annotations
         # 3) sample_size(s) in analysis metadata
         # 4) sample_size(s) in study metadata
-        sample_sizes = None
         candidates = [
             ("sample_size", labels.get("sample_size") if labels else None),
             ("sample_sizes", labels.get("sample_sizes") if labels else None),
@@ -203,16 +326,9 @@ def convert_nimads_to_dataset(studyset, annotation=None):
             ("sample_sizes", study.metadata.get("sample_sizes")),
             ("sample_size", study.metadata.get("sample_size")),
         ]
-
-        for key, raw_value in candidates:
-            if key == "sample_sizes":
-                sample_sizes = _coerce_sample_sizes_list(raw_value)
-            else:
-                sample_sizes = _coerce_sample_size_scalar(raw_value)
-
-            if sample_sizes:
-                result["metadata"]["sample_sizes"] = sample_sizes
-                break
+        sample_sizes = _extract_coerced_sample_sizes(candidates)
+        if sample_sizes:
+            result["metadata"]["sample_sizes"] = sample_sizes
 
         return result
 
@@ -1334,6 +1450,21 @@ def _to_serializable(value: Any) -> Any:
     return value
 
 
+def _coerce_coordinate_extra_value(value: Any) -> Any:
+    """Best-effort conversion of Dataset coordinate extras to JSON scalars."""
+    value = _to_serializable(value)
+    if not isinstance(value, str):
+        return value
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return value
+
+
 def convert_dataset_to_nimads_dict(
     dataset: Dataset,
     *,
@@ -1365,6 +1496,7 @@ def convert_dataset_to_nimads_dict(
         NIMADS Studyset dictionary.
     """
     id_cols = {"id", "study_id", "contrast_id"}
+    coordinate_core_cols = id_cols | {"x", "y", "z", "space"}
 
     # Build studies in the deterministic order of dataset.ids (sorted in Dataset)
     studies: Dict[str, Dict[str, Any]] = {}
@@ -1552,6 +1684,25 @@ def convert_dataset_to_nimads_dict(
                 )
 
         # Collect points for this analysis in order of appearance
+        coordinate_extra_cols = [col for col in crows.columns if col not in coordinate_core_cols]
+        point_value_cols = {
+            col: _coordinate_column_to_point_value_kind(col)
+            for col in coordinate_extra_cols
+            if _coordinate_column_to_point_value_kind(col) is not None
+        }
+        coordinate_metadata_cols = [
+            col
+            for col in coordinate_extra_cols
+            if col not in POINT_RELATIONSHIP_COLUMNS and col not in point_value_cols
+        ]
+        for col in coordinate_metadata_cols:
+            serialized = [
+                None if _is_missing(value) else _coerce_coordinate_extra_value(value)
+                for value in crows[col].tolist()
+            ]
+            if any(value is not None for value in serialized):
+                analysis["metadata"][_coordinate_metadata_key(col)] = serialized
+
         for _, crow in crows.iterrows():
             if (
                 _is_missing(crow.get("x"))
@@ -1567,12 +1718,25 @@ def convert_dataset_to_nimads_dict(
                     sp = "MNI"
                 elif "tal" in spl:
                     sp = "TAL"
-            analysis["points"].append(
-                {
-                    "space": sp,
-                    "coordinates": [float(crow["x"]), float(crow["y"]), float(crow["z"])],
-                }
-            )
+            point = {
+                "space": sp,
+                "coordinates": [float(crow["x"]), float(crow["y"]), float(crow["z"])],
+            }
+            for col in POINT_RELATIONSHIP_COLUMNS:
+                value = crow.get(col)
+                if not _is_missing(value):
+                    point[col] = _to_serializable(value)
+
+            point_values = []
+            for col, kind in point_value_cols.items():
+                value = crow.get(col)
+                if _is_missing(value):
+                    continue
+                point_values.append({"kind": kind, "value": _coerce_coordinate_extra_value(value)})
+            if point_values:
+                point["values"] = point_values
+
+            analysis["points"].append(point)
 
         studies[study_id]["analyses"].append(analysis)
 

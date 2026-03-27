@@ -11,7 +11,13 @@ from typing import Callable, Optional
 import numpy as np
 import pandas as pd
 
-from nimare.io import DEFAULT_MAP_TYPE_CONVERSION
+from nimare.io import (
+    DEFAULT_MAP_TYPE_CONVERSION,
+    POINT_RELATIONSHIP_COLUMNS,
+    _extract_coerced_sample_sizes,
+    _extract_coordinate_row_metadata,
+    _point_value_kind_to_coordinate_column,
+)
 from nimare.utils import (
     _transform_coordinates_to_space,
     _try_prepend,
@@ -36,11 +42,17 @@ def _coordinate_space_family(space):
     return None
 
 
-def _rows_to_df(rows, columns):
+def _rows_to_df(rows, columns, *, normalize_none_strings=False):
     """Build a sorted DataFrame from row dictionaries."""
     if not rows:
         return pd.DataFrame(columns=columns)
     df = pd.DataFrame(rows)
+    if normalize_none_strings:
+        df = df.apply(
+            lambda col: col.map(lambda value: np.nan if value == "None" else value)
+        )
+        for col in df.columns:
+            df[col] = df[col].astype(object).where(pd.notnull(df[col]), None)
     sort_col = "id" if "id" in df.columns else columns[0]
     return df.sort_values(by=sort_col).reset_index(drop=True)
 
@@ -276,8 +288,28 @@ def _build_tables_from_source(source_dict):
                 "journal": study.get("publication", ""),
                 "name": f"{study_name}-{analysis_name}",
             }
-            combined_metadata = copy.deepcopy(study.get("metadata", {}) or {})
-            combined_metadata.update(copy.deepcopy(analysis.get("metadata", {}) or {}))
+            study_metadata = study.get("metadata", {}) or {}
+            analysis_metadata = analysis.get("metadata", {}) or {}
+            coordinate_metadata, coordinate_metadata_keys = _extract_coordinate_row_metadata(
+                analysis_metadata,
+                len(analysis.get("points", []) or []),
+            )
+            combined_metadata = copy.deepcopy(study_metadata)
+            combined_metadata.update(copy.deepcopy(analysis_metadata))
+            combined_metadata.pop("sample_sizes", None)
+            combined_metadata.pop("sample_size", None)
+            for key in coordinate_metadata_keys:
+                combined_metadata.pop(key, None)
+            sample_sizes = _extract_coerced_sample_sizes(
+                [
+                    ("sample_sizes", analysis_metadata.get("sample_sizes")),
+                    ("sample_size", analysis_metadata.get("sample_size")),
+                    ("sample_sizes", study_metadata.get("sample_sizes")),
+                    ("sample_size", study_metadata.get("sample_size")),
+                ]
+            )
+            if sample_sizes:
+                combined_metadata["sample_sizes"] = sample_sizes
             metadata_row.update(combined_metadata)
             metadata_rows.append(metadata_row)
 
@@ -308,17 +340,32 @@ def _build_tables_from_source(source_dict):
                     image_row["space"] = image.get("space")
             image_rows.append(image_row)
 
-            for point in analysis.get("points", []) or []:
+            for i_point, point in enumerate(analysis.get("points", []) or []):
                 coords = point.get("coordinates", [None, None, None])
-                coordinate_rows.append(
-                    {
-                        **base_row,
-                        "x": float(coords[0]),
-                        "y": float(coords[1]),
-                        "z": float(coords[2]),
-                        "space": point.get("space"),
-                    }
-                )
+                coordinate_row = {
+                    **base_row,
+                    "x": float(coords[0]),
+                    "y": float(coords[1]),
+                    "z": float(coords[2]),
+                    "space": point.get("space"),
+                }
+                for column in POINT_RELATIONSHIP_COLUMNS:
+                    value = point.get(column)
+                    if value is not None:
+                        coordinate_row[column] = value
+
+                for point_value in point.get("values", []) or []:
+                    if not isinstance(point_value, dict):
+                        continue
+                    column = _point_value_kind_to_coordinate_column(point_value.get("kind"))
+                    value = point_value.get("value")
+                    if column is not None and value is not None:
+                        coordinate_row[column] = value
+
+                for column, values in coordinate_metadata.items():
+                    coordinate_row[column] = values[i_point]
+
+                coordinate_rows.append(coordinate_row)
 
     ids = np.sort(np.asarray(ids, dtype=str))
     return {
@@ -326,10 +373,10 @@ def _build_tables_from_source(source_dict):
         "analyses": _rows_to_df(analyses_rows, _ID_COLS + ["name"]),
         "ids": ids,
         "coordinates": _rows_to_df(coordinate_rows, _ID_COLS + ["x", "y", "z", "space"]),
-        "images": _rows_to_df(image_rows, _ID_COLS),
-        "metadata": _rows_to_df(metadata_rows, _ID_COLS),
-        "annotations": _rows_to_df(annotation_rows, _ID_COLS),
-        "texts": _rows_to_df(text_rows, _ID_COLS),
+        "images": _rows_to_df(image_rows, _ID_COLS, normalize_none_strings=True),
+        "metadata": _rows_to_df(metadata_rows, _ID_COLS, normalize_none_strings=True),
+        "annotations": _rows_to_df(annotation_rows, _ID_COLS, normalize_none_strings=True),
+        "texts": _rows_to_df(text_rows, _ID_COLS, normalize_none_strings=True),
     }
 
 
@@ -476,13 +523,33 @@ class StudysetStore:
         materializer=None,
     ):
         """Create a store directly from Dataset-like tables."""
+        metadata_df = table_cache.get("metadata")
+        if metadata_df is not None:
+            metadata_df = metadata_df.copy()
+            sample_size_cols = [
+                col for col in ("sample_sizes", "sample_size") if col in metadata_df.columns
+            ]
+            if sample_size_cols:
+                normalized_sample_sizes = [
+                    _extract_coerced_sample_sizes(
+                        [
+                            ("sample_sizes", row.get("sample_sizes")),
+                            ("sample_size", row.get("sample_size")),
+                        ]
+                    )
+                    for row in metadata_df.to_dict(orient="records")
+                ]
+                metadata_df = metadata_df.drop(columns=sample_size_cols)
+                if any(value is not None for value in normalized_sample_sizes):
+                    metadata_df["sample_sizes"] = normalized_sample_sizes
+
         tables = {
             "studies": pd.DataFrame(columns=["study_id", "name", "authors", "publication"]),
             "analyses": pd.DataFrame(columns=_ID_COLS + ["name"]),
             "ids": np.sort(np.asarray(table_cache.get("ids", []), dtype=str)),
             "coordinates": table_cache.get("coordinates"),
             "images": table_cache.get("images"),
-            "metadata": table_cache.get("metadata"),
+            "metadata": metadata_df,
             "annotations": table_cache.get("annotations"),
             "texts": table_cache.get("texts"),
         }

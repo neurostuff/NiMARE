@@ -141,6 +141,45 @@ def test_studyset_copy_preserves_projected_image_columns(tmp_path):
 
     assert "varcope" in copied.images.columns
     assert copied.images.loc[0, "varcope"] == str(varcope_file)
+    assert "varcope__relative" in copied.images.columns
+    assert copied.images.loc[0, "varcope__relative"] == "contrast_varcope.nii.gz"
+
+
+def test_studyset_from_dataset_materialized_preserves_point_values_and_coordinate_metadata():
+    """Materialized Studysets should preserve coordinate-side data through NIMADS points."""
+    source = {
+        "study1": {
+            "contrasts": {
+                "contrast1": {
+                    "coords": {
+                        "space": "MNI",
+                        "x": [1, 2],
+                        "y": [3, 4],
+                        "z": [5, 6],
+                        "z_stat": [7.0, 8.0],
+                        "cluster_size": [11, 12],
+                    },
+                    "metadata": {"sample_sizes": [20]},
+                }
+            }
+        }
+    }
+
+    dataset = Dataset(source)
+    studyset = nimads.Studyset.from_dataset(dataset, materialize=True)
+    lazy_studyset = nimads.Studyset.from_dataset(dataset, materialize=False)
+    analysis = studyset.studies[0].analyses[0]
+
+    assert analysis.points[0].values == [{"kind": "Z", "value": 7.0}]
+    assert analysis.metadata["coordinate_cluster_size"] == [11, 12]
+    assert list(studyset.coordinates["z_stat"]) == [7.0, 8.0]
+    assert list(studyset.coordinates["cluster_size"]) == [11, 12]
+    assert list(lazy_studyset.coordinates["z_stat"]) == [7.0, 8.0]
+    assert [int(value) for value in lazy_studyset.coordinates["cluster_size"]] == [11, 12]
+
+    roundtrip = studyset.to_dataset()
+    assert list(roundtrip.coordinates["z_stat"]) == [7.0, 8.0]
+    assert [int(value) for value in roundtrip.coordinates["cluster_size"]] == [11, 12]
 
 
 def test_studyset_init(example_nimads_studyset):
@@ -337,6 +376,55 @@ def test_studyset_merge(example_nimads_studyset):
     # Test invalid merge
     with pytest.raises(ValueError):
         studyset1.merge("not a studyset")
+
+
+def test_studyset_merge_preserves_execution_target():
+    """Merging Studysets should preserve the left-hand execution context."""
+    source = {
+        "study1": {
+            "contrasts": {
+                "contrast1": {
+                    "coords": {"space": "TAL", "x": [0], "y": [0], "z": [0]},
+                    "metadata": {"sample_sizes": [20]},
+                }
+            }
+        }
+    }
+    studyset = nimads.Studyset.from_dataset(Dataset(source, target="ale_2mm"))
+
+    merged = studyset.merge(studyset.copy())
+
+    assert merged.space == "ale_2mm"
+    assert merged.masker is not None
+
+
+def test_studyset_init_normalizes_literal_none_strings():
+    """Studyset tabular views should normalize literal \"None\" strings like Dataset does."""
+    source = {
+        "id": "studyset",
+        "studies": [
+            {
+                "id": "study1",
+                "analyses": [
+                    {
+                        "id": "analysis1",
+                        "name": "analysis1",
+                        "metadata": {"foo": "None"},
+                        "annotations": {"bar": "None"},
+                        "texts": {"abstract": "None"},
+                        "points": [],
+                        "images": [],
+                    }
+                ],
+            }
+        ],
+    }
+
+    studyset = nimads.Studyset(source)
+
+    assert studyset.metadata.loc[0, "foo"] is None
+    assert studyset.annotations_df.loc[0, "bar"] is None
+    assert studyset.texts.loc[0, "abstract"] is None
 
 
 def test_get_analyses_by_coordinate(example_nimads_studyset):

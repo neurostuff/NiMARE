@@ -16,6 +16,8 @@ from nimare.exceptions import InvalidStudysetError
 from nimare.io import convert_nimads_to_dataset
 from nimare.utils import (
     _mask_img_to_bool,
+    _validate_df,
+    _validate_images_df,
     mm2vox,
 )
 
@@ -525,6 +527,9 @@ class Studyset:
         """Replace one projected execution table for this Studyset."""
         if not isinstance(df, pd.DataFrame):
             raise TypeError(f"{attr} must be a pandas DataFrame")
+        _validate_df(df)
+        if attr == "images":
+            df = _validate_images_df(df)
 
         table_cache = self._get_projected_table_cache(copy_tables=True)
         table_cache[attr] = df.sort_values(by="id").reset_index(drop=True)
@@ -836,17 +841,7 @@ class Studyset:
         studyset = cls._from_store(store, execution_profile)
         # Seed the projection cache so the first property access doesn't rebuild.
         cache_key = studyset._cache_key(execution_profile)
-        studyset._projection_cache[cache_key] = {
-            "ids": table_cache.get("ids"),
-            "coordinates": table_cache.get("coordinates"),
-            "images": table_cache.get("images"),
-            "metadata": table_cache.get("metadata"),
-            "annotations": table_cache.get("annotations"),
-            "texts": table_cache.get("texts"),
-            "space": execution_profile.target,
-            "masker": execution_profile.masker,
-            "basepath": execution_profile.basepath,
-        }
+        studyset._projection_cache[cache_key] = store.projected_tables(execution_profile)
         return studyset
 
     @classmethod
@@ -1247,7 +1242,13 @@ class Studyset:
                 merged_source["studies"].append(right_study)
 
         # Create new merged studyset
-        merged = self.__class__(source=merged_source)
+        merged = self.__class__(
+            source=merged_source,
+            target=self.space,
+            mask=self.masker,
+            basepath=self.basepath,
+            harmonize_coordinates=self._execution_profile.coordinate_space_policy == "harmonize",
+        )
 
         # Merge annotations, preferring left's annotations for conflicts
         existing_annot_ids = {a.id for a in self.annotations}
@@ -1805,10 +1806,15 @@ class Point:
     """
 
     def __init__(self, source):
-        self.space = source["space"]
-        self.x = source["coordinates"][0]
-        self.y = source["coordinates"][1]
-        self.z = source["coordinates"][2]
+        coordinates = source.get("coordinates", [None, None, None])
+        self.space = source.get("space")
+        self.x = coordinates[0]
+        self.y = coordinates[1]
+        self.z = coordinates[2]
+        self.kind = source.get("kind")
+        self.label_id = source.get("label_id")
+        self.image = source.get("image")
+        self.values = deepcopy(source.get("values", []) or [])
 
     def __repr__(self):
         """My Simple representation."""
@@ -1816,4 +1822,13 @@ class Point:
 
     def to_dict(self):
         """Convert the Point to a dictionary."""
-        return {"space": self.space, "coordinates": [self.x, self.y, self.z]}
+        point_dict = {"space": self.space, "coordinates": [self.x, self.y, self.z]}
+        if self.kind is not None:
+            point_dict["kind"] = self.kind
+        if self.label_id is not None:
+            point_dict["label_id"] = self.label_id
+        if self.image is not None:
+            point_dict["image"] = self.image
+        if self.values:
+            point_dict["values"] = deepcopy(self.values)
+        return point_dict
