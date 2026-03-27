@@ -84,7 +84,7 @@ class Dataset(NiMAREBase):
         elif isinstance(source, dict):
             # GSOC FIX: Raise error for empty dictionaries to help onboarding
             if not source:
-                raise KeyError("The provided dictionary is empty. A valid NiMARE dataset requires study keys.")
+                raise ValueError("The provided dictionary is empty. A valid NiMARE dataset requires study keys.")
             data = source
         else:
             # GSOC FIX: Use TypeError instead of generic Exception for invalid input types
@@ -499,7 +499,7 @@ class Dataset(NiMAREBase):
         ids = _listify(ids)
 
         available_types = [c for c in df.columns if c not in ignore_columns]
-        available_types = list(set(available_types))
+        available_types = list(dict.fromkeys(available_types))
         if column is not None:
             if column in df.columns:
                 target_col = column
@@ -558,7 +558,6 @@ class Dataset(NiMAREBase):
                     else:
                         result[v] = col.values.flatten().tolist()
 
-            result = list(result.keys())
         # -------- RETURN -------- #
 
         if return_first:

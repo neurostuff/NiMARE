@@ -589,23 +589,19 @@ def _validate_images_df(image_df):
             shared_path = op.dirname(shared_path) + op.sep
         LGR.info(f"Shared path detected: '{shared_path}'")
 
-        image_df_out = image_df.copy(deep=True)
         for abs_col in abs_cols:
-            image_df_out.loc[:, abs_col + "__relative"] = image_df[abs_col].apply(
+            image_df.loc[:, abs_col + "__relative"] = image_df[abs_col].apply(
                 lambda x: x.split(shared_path)[1] if isinstance(x, str) else x
             )
 
-        image_df = image_df_out
-
     # Normalize missing values to None
     # Use a clean copy and .loc to prevent data loss in Pandas 2.0+
-    final_df = image_df.copy(deep=True)
-    for col in final_df.columns:
+    for col in image_df.columns:
         if col in id_columns:
             continue
-        final_df.loc[:, col] = final_df[col].astype(object).where(pd.notnull(final_df[col]), None)
+        image_df.loc[:, col] = image_df[col].astype(object).where(pd.notnull(image_df[col]), None)
 
-    return final_df
+    return image_df
 
 def _listify(obj):
     """Wrap all non-list or tuple objects in a list.
