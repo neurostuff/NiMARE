@@ -78,9 +78,7 @@ def _parse_feature_filename_entities(features_file):
 
 def _is_missing_sample_size_value(value):
     """Return True when a sample-size value should be treated as missing."""
-    return value is None or (
-        not isinstance(value, (list, tuple, dict)) and pd.isna(value)
-    )
+    return value is None or (not isinstance(value, (list, tuple, dict)) and pd.isna(value))
 
 
 def _coerce_sample_sizes_list(value):
@@ -1539,8 +1537,10 @@ def convert_dataset_to_nimads_dict(
     def _first_rows_by_id(df):
         if df is None or df.empty:
             return {}
-        return df.drop_duplicates(subset="id", keep="first").set_index("id", drop=False).to_dict(
-            orient="index"
+        return (
+            df.drop_duplicates(subset="id", keep="first")
+            .set_index("id", drop=False)
+            .to_dict(orient="index")
         )
 
     md_by_id = _first_rows_by_id(md)
@@ -1548,8 +1548,7 @@ def convert_dataset_to_nimads_dict(
     annotation_by_id = _first_rows_by_id(annotations_df)
     text_by_id = _first_rows_by_id(texts_df)
     coords_by_id = {
-        id_: group.reset_index(drop=True)
-        for id_, group in coords.groupby("id", sort=False)
+        id_: group.reset_index(drop=True) for id_, group in coords.groupby("id", sort=False)
     }
 
     for id_ in dataset.ids:

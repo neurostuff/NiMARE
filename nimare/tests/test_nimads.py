@@ -399,7 +399,7 @@ def test_studyset_merge_preserves_execution_target():
 
 
 def test_studyset_init_normalizes_literal_none_strings():
-    """Studyset tabular views should normalize literal \"None\" strings like Dataset does."""
+    """Studyset tabular views should normalize literal "None" strings like Dataset does."""
     source = {
         "id": "studyset",
         "studies": [
