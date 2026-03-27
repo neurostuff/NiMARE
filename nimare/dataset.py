@@ -82,10 +82,16 @@ class Dataset(NiMAREBase):
             with open(source, "r") as f_obj:
                 data = json.load(f_obj)
         elif isinstance(source, dict):
+            # GSOC FIX: Raise error for empty dictionaries to help onboarding
+            if not source:
+                raise KeyError("The provided dictionary is empty. A valid NiMARE dataset requires study keys.")
             data = source
         else:
-            raise Exception("`source` needs to be a file path or a dictionary")
-
+            # GSOC FIX: Use TypeError instead of generic Exception for invalid input types
+            raise TypeError(
+                f"`source` must be a file path (str) or a dictionary, but received {type(source).__name__}. "
+                "New contributors: Ensure you are not passing a list of studies directly."
+            )
         # Datasets are organized by study, then experiment
         # To generate unique IDs, we combine study ID with experiment ID
         # build list of ids
@@ -277,8 +283,9 @@ class Dataset(NiMAREBase):
     @images.setter
     def images(self, df):
         _validate_df(df)
-        self.__images = _validate_images_df(df).sort_values(by="id")
-
+        # Force a deep copy here to ensure the internal pointer updates
+        updated_df = _validate_images_df(df.copy(deep=True)).sort_values(by="id")
+        self.__images = updated_df
     @property
     def metadata(self):
         """:class:`pandas.DataFrame`: Metadata describing studies in the dataset.
@@ -478,58 +485,81 @@ class Dataset(NiMAREBase):
         return results
 
     def _generic_column_getter(self, attr, ids=None, column=None, ignore_columns=None):
-        """Extract information from DataFrame-based attributes.
-
-        Parameters
-        ----------
-        attr : :obj:`str`
-            The name of the DataFrame-format Dataset attribute to search.
-        ids : :obj:`list` or None, optional
-            A list of study IDs within which to extract values.
-            If None, extract values for all studies in the Dataset.
-            Default is None.
-        column : :obj:`str` or None, optional
-            The column from which to extract values.
-            If None, a list of all columns with valid values will be returned.
-            Must be a column within Dataset.[attr].
-        ignore_columns : :obj:`list` or None, optional
-            A list of columns to ignore. Only used if ``column`` is None.
-
-        Returns
-        -------
-        result : :obj:`list` or :obj:`str`
-            A list of values or a string, depending on if ids is a list (or None) or a string.
-        """
         if ignore_columns is None:
-            ignore_columns = self._id_cols
+            ignore_columns = self._id_cols.copy()
         else:
-            ignore_columns += self._id_cols
+            ignore_columns = ignore_columns + self._id_cols
 
-        df = getattr(self, attr)
+        df = getattr(self, attr).copy(deep=True)
         return_first = False
 
         if isinstance(ids, str) and column is not None:
             return_first = True
+
         ids = _listify(ids)
 
-        available_types = [c for c in df.columns if c not in self._id_cols]
-        if (column is not None) and (column not in available_types):
-            raise ValueError(
-                f"{column} not found in {attr}.\nAvailable types: {', '.join(available_types)}"
-            )
+        available_types = [c for c in df.columns if c not in ignore_columns]
+        available_types = list(set(available_types))
+        if column is not None:
+            if column in df.columns:
+                target_col = column
+            elif f"{column}__relative" in df.columns:
+                target_col = f"{column}__relative"
+            else:
+                # match columns like "beta__relative"
+                matched_cols = [c for c in df.columns if c.startswith(f"{column}__")]
+
+                if not matched_cols:
+                    raise ValueError(
+                        f"{column} not found in {attr}.\nAvailable types: {', '.join(available_types)}"
+                    )
+
+                # use first match (consistent with NiMARE behavior)
+                target_col = matched_cols[0]
+
+            column = target_col
+
+        # -------- MAIN LOGIC -------- #
 
         if column is not None:
-            if ids is not None:
-                result = df[column].loc[df["id"].isin(ids)].tolist()
+            col = df[column]
+
+            # Use .loc to handle duplicate columns and .values to bypass Pandas indexing quirks
+            if isinstance(col, pd.DataFrame):
+                col_values = col.iloc[:, 0].values.flatten().tolist()
             else:
-                result = df[column].tolist()
+                col_values = col.values.flatten().tolist()
+
+            if ids is not None:
+                # If IDs are provided, we must filter first, then convert
+                mask = df["id"].isin(ids)
+                if isinstance(col, pd.DataFrame):
+                    result = col.iloc[:, 0].loc[mask].values.flatten().tolist()
+                else:
+                    result = col.loc[mask].values.flatten().tolist()
+            else:
+                result = col_values
+
         else:
-            if ids is not None:
-                result = {v: df[v].loc[df["id"].isin(ids)].tolist() for v in available_types}
-                result = {k: v for k, v in result.items() if any(v)}
-            else:
-                result = {v: df[v].tolist() for v in available_types}
+            # When retrieving all available types
+            result = {}
+            for v in available_types:
+                col = df[v]
+
+                if ids is not None:
+                    mask = df["id"].isin(ids)
+                    if isinstance(col, pd.DataFrame):
+                        result[v] = col.iloc[:, 0].loc[mask].values.flatten().tolist()
+                    else:
+                        result[v] = col.loc[mask].values.flatten().tolist()
+                else:
+                    if isinstance(col, pd.DataFrame):
+                        result[v] = col.iloc[:, 0].values.flatten().tolist()
+                    else:
+                        result[v] = col.values.flatten().tolist()
+
             result = list(result.keys())
+        # -------- RETURN -------- #
 
         if return_first:
             return result[0]
