@@ -3,6 +3,7 @@
 import copy
 import inspect
 import json
+import gzip
 import logging
 import os.path as op
 import warnings
@@ -79,8 +80,12 @@ class Dataset(NiMAREBase):
 
     def __init__(self, source, target="mni152_2mm", mask=None):
         if isinstance(source, str):
-            with open(source, "r") as f_obj:
-                data = json.load(f_obj)
+            if source.endswith(".gz"):
+                with gzip.open(source, "rt") as f_obj: 
+                    data = json.load(f_obj)
+            else:
+                with open(source, "r") as f_obj:
+                    data = json.load(f_obj)
         elif isinstance(source, dict):
             data = source
         else:
@@ -512,29 +517,44 @@ class Dataset(NiMAREBase):
             return_first = True
         ids = _listify(ids)
 
-        available_types = [c for c in df.columns if c not in self._id_cols]
-        if (column is not None) and (column not in available_types):
-            raise ValueError(
-                f"{column} not found in {attr}.\nAvailable types: {', '.join(available_types)}"
-            )
+        all_cols = [c for c in df.columns if c not in self._id_cols]
 
         if column is not None:
+            matches = [c for c in all_cols if c == column or c.startswith(column)]
+            if not matches:
+                raise ValueError(
+                    f"{column} not found in {attr}.\nAvailable types: {', '.join(all_cols)}"
+                )
+            target_col = matches[0]
+            
+            subset = df[target_col]
             if ids is not None:
-                result = df[column].loc[df["id"].isin(ids)].tolist()
+                subset = subset.loc[df["id"].isin(ids)]
+            
+            if isinstance(subset, pd.DataFrame):
+                result = subset.iloc[:, 0].tolist()
             else:
-                result = df[column].tolist()
+                result = subset.tolist()
         else:
-            if ids is not None:
-                result = {v: df[v].loc[df["id"].isin(ids)].tolist() for v in available_types}
-                result = {k: v for k, v in result.items() if any(v)}
-            else:
-                result = {v: df[v].tolist() for v in available_types}
-            result = list(result.keys())
+            available_types = [c for c in all_cols if c not in (ignore_columns or [])]
+            
+            result = {}
+            for v in available_types:
+                subset = df[v]
+                if ids is not None:
+                    subset = subset.loc[df["id"].isin(ids)]
+                
+                if isinstance(subset, pd.DataFrame):
+                    result[v] = subset.iloc[:, 0].tolist()
+                else:
+                    result[v] = subset.tolist()
+            
+            result = [k for k, v in result.items() if any(v is not None for v in v)]
 
-        if return_first:
+        if return_first and isinstance(result, list) and len(result) > 0:
             return result[0]
-        else:
-            return result
+
+        return result
 
     def get_labels(self, ids=None):
         """Extract list of labels for which studies in Dataset have annotations.

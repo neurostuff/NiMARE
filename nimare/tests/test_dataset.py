@@ -2,6 +2,7 @@
 
 import copy
 import json
+import gzip
 import os.path as op
 import pickle
 import warnings
@@ -176,6 +177,22 @@ def test_dataset_smoke():
     assert isinstance(dset1, dataset.Dataset)
     dset_merged = dset1.merge(dset2)
     assert isinstance(dset_merged, dataset.Dataset)
+
+
+def test_dataset_load_compressed_json(tmp_path):
+    src = op.join(get_test_data_path(), "neurosynth_dset.json")
+    dst = tmp_path / "neurosynth_dset.json.gz"
+
+    with open(src, "r") as f_in:
+        data = json.load(f_in)
+
+    with gzip.open(dst, "wt") as f_out:
+        json.dump(data, f_out)
+
+    dset = dataset.Dataset(str(dst))
+
+    assert isinstance(dset, dataset.Dataset)
+    assert len(dset.ids) > 0
 
 
 def test_empty_dset():

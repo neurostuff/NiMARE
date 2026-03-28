@@ -557,7 +557,7 @@ def _validate_images_df(image_df):
     # Find out which columns have full paths and which have relative paths
     abs_cols = []
     for col in file_cols:
-        files = image_df[col].tolist()
+        files = image_df[col].values.tolist()
         abspaths = [f == op.abspath(f) for f in files if isinstance(f, str)]
         if all(abspaths):
             abs_cols.append(col)
@@ -587,9 +587,7 @@ def _validate_images_df(image_df):
 
         image_df_out = image_df.copy()  # To avoid SettingWithCopyWarning
         for abs_col in abs_cols:
-            image_df_out[abs_col + "__relative"] = image_df[abs_col].apply(
-                lambda x: x.split(shared_path)[1] if isinstance(x, str) else x
-            )
+            image_df_out[abs_col + "__relative"] = image_df[abs_col].iloc[:, 0]
 
         image_df = image_df_out
 
