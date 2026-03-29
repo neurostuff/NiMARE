@@ -1,4 +1,5 @@
 """Tests for gzip file handling in NiMARE."""
+
 import gzip
 import json
 
