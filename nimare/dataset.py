@@ -89,7 +89,7 @@ class Dataset(NiMAREBase):
         elif isinstance(source, dict):
             data = source
         else:
-            raise Exception("`source` needs to be a file path or a dictionary")
+            raise TypeError("`source` needs to be a file path or a dictionary")
 
         # Datasets are organized by study, then experiment
         # To generate unique IDs, we combine study ID with experiment ID

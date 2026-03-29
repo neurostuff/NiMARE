@@ -9,7 +9,7 @@ from nimare.nimads import Studyset
 
 
 def write_json_gz(path, data):
-    """Helper: write json or gz file."""
+    """Write json or gz file."""
     if str(path).endswith(".gz"):
         with gzip.open(path, "wt", encoding="utf-8") as f:
             json.dump(data, f)
@@ -20,7 +20,6 @@ def write_json_gz(path, data):
 
 def test_gzip_loading(tmp_path):
     """Test that Dataset and Studyset can be loaded from .json.gz files."""
-
     # ---- Mock Dataset ----
     dataset_mock = {
         "study-01": {
