@@ -171,7 +171,7 @@ class Studyset:
                 with open(source, "r", encoding="utf-8") as f:
                     source = json.load(f)
         else:
-            raise TypeError("`source` needs to be a file path or a dictionary")
+            raise Exception("`source` needs to be a file path or a dictionary")
 
         _validate_studyset_source(source)
 
