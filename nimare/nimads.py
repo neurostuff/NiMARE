@@ -1,7 +1,7 @@
 """NIMADS-related classes for NiMARE."""
 
-import json
 import gzip
+import json
 import logging
 import operator
 import os
@@ -173,7 +173,7 @@ class Studyset:
         elif isinstance(source, dict):
             pass
         else:
-            raise Exception("`source` needs to be a file path or a dictionary")
+            raise TypeError("`source` needs to be a file path or a dictionary")
 
         _validate_studyset_source(source)
 

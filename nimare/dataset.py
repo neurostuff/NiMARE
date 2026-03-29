@@ -1,9 +1,9 @@
 """Classes for representing datasets of images and/or coordinates."""
 
 import copy
+import gzip
 import inspect
 import json
-import gzip
 import logging
 import os.path as op
 import warnings
@@ -89,7 +89,7 @@ class Dataset(NiMAREBase):
         elif isinstance(source, dict):
             data = source
         else:
-            raise Exception("`source` needs to be a file path or a dictionary")
+            raise TypeError("`source` needs to be a file path or a dictionary")
 
         # Datasets are organized by study, then experiment
         # To generate unique IDs, we combine study ID with experiment ID
