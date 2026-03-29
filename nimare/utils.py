@@ -560,9 +560,9 @@ def _validate_images_df(image_df):
     for col in file_cols:
         # Compatibility fix: ensure we treat the column as a Series even in modern Pandas
         if isinstance(image_df[col], pd.DataFrame):
-            files = image_df[col].iloc[:, 0].values.flatten().tolist()
+            files = image_df[col].iloc[:, 0].to_numpy().flatten().tolist()
         else:
-            files = image_df[col].values.flatten().tolist()
+            files = image_df[col].to_numpy().flatten().tolist()
 
         abspaths = [f == op.abspath(f) for f in files if isinstance(f, str)]
         if all(abspaths):

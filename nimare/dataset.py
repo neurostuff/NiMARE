@@ -524,19 +524,19 @@ class Dataset(NiMAREBase):
         if column is not None:
             col = df[column]
 
-            # Use .loc to handle duplicate columns and .values to bypass Pandas indexing quirks
+            # Use .loc to handle duplicate columns and .to_numpy() to bypass Pandas indexing quirks
             if isinstance(col, pd.DataFrame):
-                col_values = col.iloc[:, 0].values.flatten().tolist()
+                col_values = col.iloc[:, 0].to_numpy().flatten().tolist()
             else:
-                col_values = col.values.flatten().tolist()
+                col_values = col.to_numpy().flatten().tolist()
 
             if ids is not None:
                 # If IDs are provided, we must filter first, then convert
                 mask = df["id"].isin(ids)
                 if isinstance(col, pd.DataFrame):
-                    result = col.iloc[:, 0].loc[mask].values.flatten().tolist()
+                    result = col.iloc[:, 0].loc[mask].to_numpy().flatten().tolist()
                 else:
-                    result = col.loc[mask].values.flatten().tolist()
+                    result = col.loc[mask].to_numpy().flatten().tolist()
             else:
                 result = col_values
 
@@ -549,14 +549,14 @@ class Dataset(NiMAREBase):
                 if ids is not None:
                     mask = df["id"].isin(ids)
                     if isinstance(col, pd.DataFrame):
-                        result[v] = col.iloc[:, 0].loc[mask].values.flatten().tolist()
+                        result[v] = col.iloc[:, 0].loc[mask].to_numpy().flatten().tolist()
                     else:
-                        result[v] = col.loc[mask].values.flatten().tolist()
+                        result[v] = col.loc[mask].to_numpy().flatten().tolist()
                 else:
                     if isinstance(col, pd.DataFrame):
-                        result[v] = col.iloc[:, 0].values.flatten().tolist()
+                        result[v] = col.iloc[:, 0].to_numpy().flatten().tolist()
                     else:
-                        result[v] = col.values.flatten().tolist()
+                        result[v] = col.to_numpy().flatten().tolist()
 
         # -------- RETURN -------- #
 

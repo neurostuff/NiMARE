@@ -45,7 +45,6 @@ def dset_or_studyset(request):
     return _make_studyset()
 
 
-
 # ---------------------------------------------------------------------------
 # Parameterized tests exercising shared Dataset / Studyset API
 # ---------------------------------------------------------------------------
@@ -260,4 +259,4 @@ def test_dataset_get_images_consistency():
     images = dset.get_images(imtype="beta")
     assert isinstance(images, list)
     assert len(images) > 0
-    assert all(isinstance(img, str) for img in images)
+    assert all(isinstance(img, str) for img in images)
