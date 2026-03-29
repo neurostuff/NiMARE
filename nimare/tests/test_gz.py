@@ -3,6 +3,8 @@
 import gzip
 import json
 
+import numpy as np
+
 from nimare.dataset import Dataset
 from nimare.nimads import Studyset
 
@@ -45,6 +47,7 @@ def test_gzip_loading(tmp_path):
                 "analyses": [
                     {
                         "id": "a1",
+                        "name": "a1",
                         "coordinates": {
                             "x": [0],
                             "y": [0],
@@ -73,11 +76,11 @@ def test_gzip_loading(tmp_path):
     ds_normal = Dataset(str(ds_json))
     ds_compressed = Dataset(str(ds_gz))
 
-    assert ds_normal.ids == ds_compressed.ids
+    assert np.array_equal(ds_normal.ids, ds_compressed.ids)
 
     # ---- Test Studyset loading ----
     ss_normal = Studyset(str(ss_json))
     ss_compressed = Studyset(str(ss_gz))
 
-    assert ss_normal is not None
-    assert ss_compressed is not None
+    assert ss_normal.id == ss_compressed.id
+    assert len(ss_normal.studies) == len(ss_compressed.studies)
