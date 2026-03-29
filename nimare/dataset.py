@@ -3,6 +3,7 @@
 import copy
 import inspect
 import json
+import gzip
 import logging
 import os.path as op
 import warnings
@@ -79,8 +80,12 @@ class Dataset(NiMAREBase):
 
     def __init__(self, source, target="mni152_2mm", mask=None):
         if isinstance(source, str):
-            with open(source, "r") as f_obj:
-                data = json.load(f_obj)
+            if source.endswith(".gz"):
+                with gzip.open(source, "rt", encoding="utf-8") as f_obj:
+                    data = json.load(f_obj)
+            else:
+                with open(source, "r", encoding="utf-8") as f_obj:
+                    data = json.load(f_obj)
         elif isinstance(source, dict):
             data = source
         else:

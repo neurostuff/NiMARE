@@ -1,6 +1,7 @@
 """NIMADS-related classes for NiMARE."""
 
 import json
+import gzip
 import logging
 import operator
 import os
@@ -163,8 +164,16 @@ class Studyset:
 
         # load source as json
         if isinstance(source, str):
-            with open(source, "r+") as f:
-                source = json.load(f)
+            if source.endswith(".gz"):
+                with gzip.open(source, "rt", encoding="utf-8") as f:
+                    source = json.load(f)
+            else:
+                with open(source, "r", encoding="utf-8") as f:
+                    source = json.load(f)
+        elif isinstance(source, dict):
+            pass
+        else:
+            raise Exception("`source` needs to be a file path or a dictionary")
 
         _validate_studyset_source(source)
 
