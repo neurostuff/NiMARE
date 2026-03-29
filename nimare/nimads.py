@@ -170,6 +170,8 @@ class Studyset:
             else:
                 with open(source, "r", encoding="utf-8") as f:
                     source = json.load(f)
+        elif isinstance(source, dict):
+            pass
         else:
             raise Exception("`source` needs to be a file path or a dictionary")
 
