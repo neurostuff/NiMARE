@@ -1,8 +1,6 @@
+"""Tests for gzip file handling in NiMARE."""
 import gzip
 import json
-from pathlib import Path
-
-import pytest
 
 from nimare.dataset import Dataset
 from nimare.nimads import Studyset
