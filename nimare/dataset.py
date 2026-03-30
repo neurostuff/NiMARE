@@ -84,7 +84,9 @@ class Dataset(NiMAREBase):
         elif isinstance(source, dict):
             # GSOC FIX: Raise error for empty dictionaries to help onboarding
             if not source:
-                raise ValueError("The provided dictionary is empty. A valid NiMARE dataset requires study keys.")
+                raise ValueError(
+                    "The provided dictionary is empty. A valid NiMARE dataset requires study keys."
+                )
             data = source
         else:
             # GSOC FIX: Use TypeError instead of generic Exception for invalid input types
@@ -286,6 +288,7 @@ class Dataset(NiMAREBase):
         # Force a deep copy here to ensure the internal pointer updates
         updated_df = _validate_images_df(df.copy(deep=True)).sort_values(by="id")
         self.__images = updated_df
+
     @property
     def metadata(self):
         """:class:`pandas.DataFrame`: Metadata describing studies in the dataset.
@@ -524,21 +527,15 @@ class Dataset(NiMAREBase):
         if column is not None:
             col = df[column]
 
-            # Use .loc to handle duplicate columns and .to_numpy() to bypass Pandas indexing quirks
+            # Handle duplicate columns safely
             if isinstance(col, pd.DataFrame):
-                col_values = col.iloc[:, 0].to_numpy().flatten().tolist()
-            else:
-                col_values = col.to_numpy().flatten().tolist()
+                col = col.iloc[:, 0]
 
             if ids is not None:
-                # If IDs are provided, we must filter first, then convert
                 mask = df["id"].isin(ids)
-                if isinstance(col, pd.DataFrame):
-                    result = col.iloc[:, 0].loc[mask].to_numpy().flatten().tolist()
-                else:
-                    result = col.loc[mask].to_numpy().flatten().tolist()
+                result = col.loc[mask].tolist()
             else:
-                result = col_values
+                result = col.tolist()
 
         else:
             # When retrieving all available types
@@ -546,17 +543,15 @@ class Dataset(NiMAREBase):
             for v in available_types:
                 col = df[v]
 
+                # Handle duplicate columns safely
+                if isinstance(col, pd.DataFrame):
+                    col = col.iloc[:, 0]
+
                 if ids is not None:
                     mask = df["id"].isin(ids)
-                    if isinstance(col, pd.DataFrame):
-                        result[v] = col.iloc[:, 0].loc[mask].to_numpy().flatten().tolist()
-                    else:
-                        result[v] = col.loc[mask].to_numpy().flatten().tolist()
+                    result[v] = col.loc[mask].tolist()
                 else:
-                    if isinstance(col, pd.DataFrame):
-                        result[v] = col.iloc[:, 0].to_numpy().flatten().tolist()
-                    else:
-                        result[v] = col.to_numpy().flatten().tolist()
+                    result[v] = col.tolist()
 
         # -------- RETURN -------- #
 
