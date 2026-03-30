@@ -543,8 +543,10 @@ def _validate_images_df(image_df):
     image_df : :class:`pandas.DataFrame`
         DataFrame with updated paths and columns.
     """
+    image_df = image_df.copy(deep=True)
     valid_suffixes = [".brik", ".head", ".nii", ".img", ".hed"]
     id_columns = set(["id", "study_id", "contrast_id"])
+
     # Find columns in the DataFrame with images
     file_cols = []
     for col in set(image_df.columns) - id_columns:
@@ -557,13 +559,18 @@ def _validate_images_df(image_df):
     # Find out which columns have full paths and which have relative paths
     abs_cols = []
     for col in file_cols:
-        files = image_df[col].tolist()
+        # Compatibility fix: ensure we treat the column as a Series even in modern Pandas
+        if isinstance(image_df[col], pd.DataFrame):
+            files = image_df[col].iloc[:, 0].to_numpy().flatten().tolist()
+        else:
+            files = image_df[col].to_numpy().flatten().tolist()
+
         abspaths = [f == op.abspath(f) for f in files if isinstance(f, str)]
         if all(abspaths):
             abs_cols.append(col)
         elif not any(abspaths):
             if not col.endswith("__relative"):
-                image_df = image_df.rename(columns={col: col + "__relative"})
+                image_df[col + "__relative"] = image_df[col]
         else:
             raise ValueError(
                 f"Mix of absolute and relative paths detected for images in column '{col}'"
@@ -575,30 +582,25 @@ def _validate_images_df(image_df):
         all_files = [f for f in all_files if isinstance(f, str)]
 
         if len(all_files) == 1:
-            # In the odd case where there's only one absolute path
             shared_path = op.dirname(all_files[0]) + op.sep
         else:
             shared_path = _find_stem(all_files)
 
-        # Get parent *directory* if shared path includes common prefix.
         if not shared_path.endswith(op.sep):
             shared_path = op.dirname(shared_path) + op.sep
         LGR.info(f"Shared path detected: '{shared_path}'")
 
-        image_df_out = image_df.copy()  # To avoid SettingWithCopyWarning
         for abs_col in abs_cols:
-            image_df_out[abs_col + "__relative"] = image_df[abs_col].apply(
+            image_df.loc[:, abs_col + "__relative"] = image_df[abs_col].apply(
                 lambda x: x.split(shared_path)[1] if isinstance(x, str) else x
             )
 
-        image_df = image_df_out
-
-    # Normalize missing values to None (avoid NaN floats in path columns).
-    # Pandas may keep float dtypes; force object to retain None.
+    # Normalize missing values to None
+    # Use a clean copy and .loc to prevent data loss in Pandas 2.0+
     for col in image_df.columns:
         if col in id_columns:
             continue
-        image_df[col] = image_df[col].astype(object).where(pd.notnull(image_df[col]), None)
+        image_df.loc[:, col] = image_df[col].astype(object).where(pd.notnull(image_df[col]), None)
 
     return image_df
 

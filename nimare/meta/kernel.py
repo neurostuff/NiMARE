@@ -149,7 +149,7 @@ class KernelTransformer(NiMAREBase):
 
             # Calculate IJK. Must assume that the masker is in same space,
             # but has different affine, from original IJK.
-            coordinates[["i", "j", "k"]] = mm2vox(dataset[["x", "y", "z"]], mask.affine)
+            coordinates[["i", "j", "k"]] = mm2vox(dataset[["x", "y", "z"]].to_numpy(), mask.affine)
         else:
             if not isinstance(dataset, Dataset):
                 dataset = normalize_collection(dataset)
@@ -308,8 +308,8 @@ class ALEKernel(KernelTransformer):
         super().__init__(memory=memory, memory_level=memory_level)
 
     def _transform(self, mask, coordinates, return_type="sparse"):
-        ijks = coordinates[["i", "j", "k"]].values
-        exp_idx = coordinates["id"].values
+        ijks = coordinates[["i", "j", "k"]].to_numpy()
+        exp_idx = coordinates["id"].to_numpy().flatten()
 
         use_dict = True
         kernel = None
@@ -317,7 +317,7 @@ class ALEKernel(KernelTransformer):
             sample_sizes = self.sample_size
             use_dict = False
         elif self.fwhm is None:
-            sample_sizes = coordinates["sample_size"].values
+            sample_sizes = coordinates["sample_size"].to_numpy().flatten()
         else:
             sample_sizes = None
 
@@ -419,8 +419,8 @@ class KDAKernel(KernelTransformer):
 
     def _transform(self, mask, coordinates, return_type="sparse"):
         """Return type can either be sparse or summary_array."""
-        ijks = coordinates[["i", "j", "k"]].values
-        exp_idx = coordinates["id"].values
+        ijks = coordinates[["i", "j", "k"]].to_numpy()
+        exp_idx = coordinates["id"].to_numpy().flatten()
         if return_type == "sparse":
             sum_across_studies = False
         elif return_type == "summary_array":

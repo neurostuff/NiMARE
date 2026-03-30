@@ -2001,6 +2001,17 @@ def convert_neurovault_to_dataset(
 
     dataset = Dataset(dataset_dict, **dset_kwargs)
 
+    # Ensure all expected image column pairs (base + __relative) exist
+    images_df = dataset.images
+    for col in ["beta", "t", "varcope", "z"]:
+        rel_col = f"{col}__relative"
+
+        if rel_col in images_df.columns and col not in images_df.columns:
+            images_df[col] = None
+
+        if col in images_df.columns and rel_col not in images_df.columns:
+            images_df[rel_col] = None
+
     return dataset
 
 

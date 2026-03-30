@@ -1,0 +1,10 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.13.2, pytest-9.0.2, pluggy-1.6.0
+rootdir: C:\Users\aishw\NiMARE
+configfile: pyproject.toml
+plugins: anyio-4.11.0, langsmith-0.4.41, cov-7.1.0
+collected 26 items
+
+nimare\tests\test_dataset.py ..........................                  [100%]
+
+============================= 26 passed in 10.03s =============================
