@@ -218,8 +218,13 @@ def create_neurovault_dataset(
     images_df = dataset.images
     for col in ["beta", "t", "varcope", "z"]:
         rel_col = f"{col}__relative"
+
+        # Ensure BOTH exist
         if rel_col in images_df.columns and col not in images_df.columns:
             images_df[col] = None
+
+        if col in images_df.columns and rel_col not in images_df.columns:
+            images_df[rel_col] = None
 
     return dataset
 
@@ -250,7 +255,20 @@ def create_neurovault_studyset(
         map_type_conversion=map_type_conversion,
         **dset_kwargs,
     )
-    return Studyset.from_dataset(dataset)
+    studyset = Studyset.from_dataset(dataset)
+
+    # Ensure all expected image column pairs (base + __relative) exist
+    images_df = studyset.images
+    for col in ["beta", "t", "varcope", "z"]:
+        rel_col = f"{col}__relative"
+
+        if rel_col in images_df.columns and col not in images_df.columns:
+            images_df[col] = None
+
+        if col in images_df.columns and rel_col not in images_df.columns:
+            images_df[rel_col] = None
+
+    return studyset
 
 
 def _create_source(foci, sample_sizes, space="MNI"):

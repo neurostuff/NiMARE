@@ -528,6 +528,7 @@ def _validate_df(df):
     assert isinstance(df, pd.DataFrame)
     assert "id" in df.columns
 
+
 def _validate_images_df(image_df):
     """Check and update image paths in DataFrame.
 
@@ -569,7 +570,7 @@ def _validate_images_df(image_df):
             abs_cols.append(col)
         elif not any(abspaths):
             if not col.endswith("__relative"):
-                image_df = image_df.rename(columns={col: col + "__relative"})
+                image_df[col + "__relative"] = image_df[col]
         else:
             raise ValueError(
                 f"Mix of absolute and relative paths detected for images in column '{col}'"
@@ -602,6 +603,7 @@ def _validate_images_df(image_df):
         image_df.loc[:, col] = image_df[col].astype(object).where(pd.notnull(image_df[col]), None)
 
     return image_df
+
 
 def _listify(obj):
     """Wrap all non-list or tuple objects in a list.
