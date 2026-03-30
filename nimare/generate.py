@@ -215,6 +215,12 @@ def create_neurovault_dataset(
     transformer = ImageTransformer(target="z")
     dataset = transformer.transform(dataset)
 
+    images_df = dataset.images
+    for col in ["beta", "t", "varcope"]:
+        rel_col = f"{col}__relative"
+        if rel_col in images_df.columns and col not in images_df.columns:
+            images_df[col] = None
+
     return dataset
 
 
