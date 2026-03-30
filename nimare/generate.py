@@ -216,7 +216,7 @@ def create_neurovault_dataset(
     dataset = transformer.transform(dataset)
 
     images_df = dataset.images
-    for col in ["beta", "t", "varcope"]:
+    for col in ["beta", "t", "varcope", "z"]:
         rel_col = f"{col}__relative"
         if rel_col in images_df.columns and col not in images_df.columns:
             images_df[col] = None
