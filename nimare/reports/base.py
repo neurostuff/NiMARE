@@ -434,7 +434,11 @@ class Reportlet(Element):
             contents = None
             html_anchor = src.relative_to(out_dir)
             if ext == ".html":
-                contents = IFRAME_SNIPPET.format(html_anchor) if iframe else src.read_text()
+                contents = (
+                    IFRAME_SNIPPET.format(html_anchor)
+                    if iframe
+                    else src.read_text(encoding="utf-8")
+                )
                 if dropdown:
                     contents = (
                         f"<details><summary>Advanced ({self.title})</summary>{contents}</details>"
@@ -630,7 +634,7 @@ class Report:
     def _load_config(self, config):
         from yaml import safe_load as load
 
-        settings = load(config.read_text())
+        settings = load(config.read_text(encoding="utf-8"))
         self.packagename = settings.get("package", None)
 
         self.index(settings["sections"])
