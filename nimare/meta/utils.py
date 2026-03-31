@@ -304,7 +304,7 @@ def _get_mask_flat_to_masked(mask_img):
 
 
 def _coo_to_masked_csr(ma_values, mask_img, mask_flat_to_masked=None):
-    """Convert 4D ALE MA maps to a study-by-voxel CSR matrix within the analysis mask."""
+    """Convert legacy COO ALE MA maps to a study-by-voxel CSR matrix within the mask."""
     if sp_sparse.isspmatrix_csr(ma_values):
         return ma_values, mask_flat_to_masked
 

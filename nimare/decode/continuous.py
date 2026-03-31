@@ -287,7 +287,7 @@ class CorrelationDecoder(Decoder):
         }
 
     def _subset_precomputed_ma_maps(self, selected_ids):
-        """Return a study-sliced sparse MA map tensor for the requested ids."""
+        """Return a study-sliced sparse MA map matrix for the requested ids."""
         if self._precomputed_ma_maps_ is None:
             return None
 
@@ -295,7 +295,7 @@ class CorrelationDecoder(Decoder):
         return self._precomputed_ma_maps_[study_indices]
 
     def _ma_maps_to_masked_matrix(self, ma_maps, masker):
-        """Convert 4D sparse MA maps to a study-by-voxel CSR matrix within the mask."""
+        """Convert sparse MA maps into a study-by-voxel CSR matrix within the mask."""
         if sp_sparse.issparse(ma_maps):
             return ma_maps.tocsr()
 
