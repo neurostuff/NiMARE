@@ -20,7 +20,6 @@ from nimare.tests.utils import get_test_data_path
 from nimare.transforms import p_to_z
 from nimare.utils import vox2mm
 
-
 SIMULATED_ALE_REGRESSION_DATASETS = [
     pytest.param(
         {
@@ -71,9 +70,9 @@ def _dense_ale_reference(ma_values):
         n_nonzero_voxels = np.count_nonzero(study_ma_values)
         n_zero_voxels = n_mask_voxels - n_nonzero_voxels
 
-        exp_hist = np.histogram(study_ma_values[study_ma_values > 0], bins=bin_edges, density=False)[
-            0
-        ].astype(float)
+        exp_hist = np.histogram(
+            study_ma_values[study_ma_values > 0], bins=bin_edges, density=False
+        )[0].astype(float)
         exp_hist[0] += n_zero_voxels
         exp_hist /= exp_hist.sum()
 
@@ -91,7 +90,13 @@ def _dense_ale_reference(ma_values):
 
     p_values = nullhist_to_p(stat_values, ale_hist, hist_bins)
     z_values = p_to_z(p_values, tail="one")
-    return {"stat": stat_values, "p": p_values, "z": z_values, "hist_bins": hist_bins, "hist": ale_hist}
+    return {
+        "stat": stat_values,
+        "p": p_values,
+        "z": z_values,
+        "hist_bins": hist_bins,
+        "hist": ale_hist,
+    }
 
 
 def _prepare_ale_inputs(dataset, kernel_transformer=None):
@@ -437,7 +442,9 @@ def test_ALE_masked_csr_kernel_matches_masked_array(kernel_transformer, sample_s
     assert sp_sparse.isspmatrix_csr(csr)
     assert csr.shape == dense.shape
     np.testing.assert_allclose(csr.toarray(), dense, rtol=1e-5, atol=5e-7)
-    np.testing.assert_allclose(np.asarray(csr.max(axis=1).todense()).ravel(), dense.max(axis=1), rtol=1e-5, atol=5e-7)
+    np.testing.assert_allclose(
+        np.asarray(csr.max(axis=1).todense()).ravel(), dense.max(axis=1), rtol=1e-5, atol=5e-7
+    )
 
 
 def test_ALE_precomputed_ma_maps_match_generated_fast_path():
@@ -480,6 +487,7 @@ def test_ALE_precomputed_ma_maps_match_generated_fast_path():
 
 def test_ALE_custom_kernel_subclass_uses_masked_csr_fast_path():
     """ALEKernel subclasses should use the masked-CSR fast path in ALE."""
+
     class CustomALEKernel(ale.ALEKernel):
         pass
 
@@ -499,7 +507,9 @@ def test_ALE_custom_kernel_subclass_uses_masked_csr_fast_path():
         generate_description=False,
     )
     result = _assert_custom_kernel_subclass_uses_masked_csr(meta, (dataset,))
-    expected = _dense_ale_reference(meta.kernel_transformer.transform(dataset, return_type="array"))
+    expected = _dense_ale_reference(
+        meta.kernel_transformer.transform(dataset, return_type="array")
+    )
 
     np.testing.assert_allclose(
         result.get_map("stat", return_type="array"),
@@ -828,7 +838,9 @@ def test_ALESubtraction_masked_sparse_summary_matches_coo():
 
     ma_maps = sub_meta._collect_ma_maps(coords_key="coordinates1")
     summary = sub_meta._compute_summarystat_est(ma_maps)
-    np.testing.assert_allclose(summary, sub_meta._compute_summarystat_est(ma_maps), rtol=1e-5, atol=2e-7)
+    np.testing.assert_allclose(
+        summary, sub_meta._compute_summarystat_est(ma_maps), rtol=1e-5, atol=2e-7
+    )
 
 
 def test_ALESubtraction_requires_sparse_matrix_inputs():

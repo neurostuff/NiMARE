@@ -78,7 +78,9 @@ def _collect_masked_ma_maps(estimator, coords_key="coordinates", maps_key="ma_ma
     estimator._study_max_ma_values = None
 
     if maps_key in estimator.inputs_:
-        ma_values = _require_masked_csr(estimator.inputs_[maps_key], source=f"Precomputed {maps_key}")
+        ma_values = _require_masked_csr(
+            estimator.inputs_[maps_key], source=f"Precomputed {maps_key}"
+        )
         estimator._study_max_ma_values = _csr_row_max(ma_values)
         return ma_values
 
@@ -90,7 +92,9 @@ def _collect_masked_ma_maps(estimator, coords_key="coordinates", maps_key="ma_ma
         ),
         source=f"Generated {maps_key}",
     )
-    estimator._study_max_ma_values = _csr_row_max(ma_values).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+    estimator._study_max_ma_values = _csr_row_max(ma_values).astype(
+        DEFAULT_FLOAT_DTYPE, copy=False
+    )
     return ma_values
 
 
@@ -316,7 +320,9 @@ class ALE(CBMAEstimator):
         return super()._compute_summarystat(data)
 
     def _compute_summarystat_est(self, ma_values):
-        ma_values = _require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
+        ma_values = (
+            _require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
+        )
         stat_values = _compute_ale_summarystat(ma_values)
         if sp_sparse.isspmatrix(ma_values):
             self.__n_mask_voxels = stat_values.shape[0]
@@ -746,10 +752,14 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
     def _combine_ma_maps(self, ma_maps1, ma_maps2):
         """Combine two MA map collections while preserving efficient sparse formats."""
-        return sp_sparse.vstack((_require_masked_csr(ma_maps1), _require_masked_csr(ma_maps2)), format="csr")
+        return sp_sparse.vstack(
+            (_require_masked_csr(ma_maps1), _require_masked_csr(ma_maps2)), format="csr"
+        )
 
     def _compute_summarystat_est(self, ma_values):
-        return _compute_ale_summarystat(_require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values)
+        return _compute_ale_summarystat(
+            _require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
+        )
 
     def _run_permutation(self, i_iter, n_grp1, ma_arr, iter_diff_values):
         """Run a single permutations of the ALESubtraction null distribution procedure.
@@ -1299,13 +1309,17 @@ class SCALE(CBMAEstimator):
         Returns masked array of ALE values and 1XnBins null distribution.
         """
         if isinstance(data, pd.DataFrame):
-            ma_values = self.kernel_transformer.transform(data, masker=self.masker, return_type="sparse")
+            ma_values = self.kernel_transformer.transform(
+                data, masker=self.masker, return_type="sparse"
+            )
         elif isinstance(data, np.ndarray) or sp_sparse.isspmatrix(data):
             ma_values = data
         else:
             raise ValueError(f"Unsupported data type '{type(data)}'")
 
-        return _compute_ale_summarystat(_require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values)
+        return _compute_ale_summarystat(
+            _require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
+        )
 
     def _scale_to_p(self, stat_values, scale_values):
         """Compute p- and z-values.

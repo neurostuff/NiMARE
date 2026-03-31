@@ -6,8 +6,9 @@ import nibabel as nib
 import numpy as np
 from joblib import Memory, Parallel, delayed
 from pymare.stats import fdr
-from scipy import ndimage, special
+from scipy import ndimage
 from scipy import sparse as sp_sparse
+from scipy import special
 from scipy.stats import chi2
 from tqdm.auto import tqdm
 

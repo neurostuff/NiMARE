@@ -270,7 +270,9 @@ def test_MKDADensity_csr_summarystat_matches_dense(testdata_cbma):
 
 def test_MKDADensity_precomputed_masked_csr_matches_generated_fast_path(testdata_cbma):
     """MKDADensity should accept precomputed masked-CSR MA maps."""
-    baseline = MKDADensity(null_method="approximate", generate_description=False).fit(testdata_cbma)
+    baseline = MKDADensity(null_method="approximate", generate_description=False).fit(
+        testdata_cbma
+    )
 
     meta = MKDADensity(null_method="approximate", generate_description=False)
     meta.masker = testdata_cbma.masker
