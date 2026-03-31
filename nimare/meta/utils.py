@@ -303,145 +303,191 @@ def _get_mask_flat_to_masked(mask_img):
     return mask_flat_to_masked
 
 
+def _coo_to_masked_csr(ma_values, mask_img, mask_flat_to_masked=None):
+    """Convert 4D ALE MA maps to a study-by-voxel CSR matrix within the analysis mask."""
+    if sp_sparse.isspmatrix_csr(ma_values):
+        return ma_values, mask_flat_to_masked
 
-def compute_ale_ma(mask, ijks, kernel=None, exp_idx=None, sample_sizes=None, use_dict=False):
-    """Generate ALE modeled activation (MA) maps.
+    if not isinstance(ma_values, sparse._coo.core.COO):
+        return ma_values, mask_flat_to_masked
 
-    Replaces the values around each focus in ijk with the contrast-specific
-    kernel. Takes the element-wise maximum when looping through foci, which
-    accounts for foci which are near to one another and may have overlapping
-    kernels.
+    if mask_flat_to_masked is None:
+        mask_flat_to_masked = _get_mask_flat_to_masked(mask_img)
 
-    .. versionchanged:: 0.0.12
+    flat_voxels = np.ravel_multi_index(ma_values.coords[1:], dims=mask_img.shape)
+    rows = ma_values.coords[0].astype(np.int32, copy=False)
+    cols = mask_flat_to_masked[flat_voxels]
+    valid_mask = cols >= 0
+    data = ma_values.data.astype(DEFAULT_FLOAT_DTYPE, copy=False)
+    n_voxels = int(mask_flat_to_masked.max()) + 1 if mask_flat_to_masked.size else 0
+    csr = sp_sparse.csr_matrix(
+        (data[valid_mask], (rows[valid_mask], cols[valid_mask])),
+        shape=(ma_values.shape[0], n_voxels),
+        dtype=DEFAULT_FLOAT_DTYPE,
+    )
+    csr.sort_indices()
+    return csr, mask_flat_to_masked
 
-        * This function now returns a 4D sparse array.
-        * `shape` parameter has been removed. That information is now extracted
-          from the new parameter `mask`.
-        * Replace `ijk` with `ijks`.
-        * New parameters: `exp_idx`, `sample_sizes`, and `use_dict`.
 
-    Parameters
-    ----------
-    mask : img_like
-        Mask to extract the MA maps shape (typically (91, 109, 91)) and voxel dimension.
-        The mask is applied to the coordinates before creating the kernel_data.
-    ijks : array-like
-        Indices of foci. Each row is a coordinate, with the three columns
-        corresponding to index in each of three dimensions.
-    kernel : array-like, or None, optional
-        3D array of smoothing kernel. Typically of shape (30, 30, 30).
-    exp_idx : array_like
-        Optional indices of experiments. If passed, must be of same length as
-        ijks. Each unique value identifies all coordinates in ijk that come from
-        the same experiment. If None passed, it is assumed that all coordinates
-        come from the same experiment.
-    sample_sizes : array_like, :obj:`int` or None, optional
-        Array of smaple sizes or sample size, used to derive FWHM for Gaussian kernel.
-    use_dict : :obj:`bool`, optional
-        If True, empty kernels dictionary is used to retain the kernel for each element of
-        sample_sizes. If False and sample_sizes is int, the ale kernel is calculated for
-        sample_sizes. If False and sample_sizes is None, the unique kernels is used.
+def _kernel_to_sparse_support(kernel):
+    """Convert a dense ALE kernel to sparse offsets and values."""
+    nonzero_idx = np.array(np.where(kernel > 0), dtype=np.int32)
+    center = np.floor(np.array(kernel.shape) / 2.0).astype(np.int32)[:, None]
+    offsets = (nonzero_idx - center).T.astype(np.int32, copy=False)
+    values = kernel[tuple(nonzero_idx)].astype(DEFAULT_FLOAT_DTYPE, copy=False)
+    return offsets, values
+
+
+@jit(nopython=True, cache=True)
+def _convolve_ale_kernel_to_masked_cols(
+    offsets,
+    kernel_values,
+    peaks,
+    shape,
+    mask_flat_to_masked,
+    flat_stride_x,
+    flat_stride_y,
+):
+    """Expand sparse ALE kernel support around study peaks and keep in-mask voxels only."""
+    max_entries = peaks.shape[0] * offsets.shape[0]
+    cols = np.empty(max_entries, dtype=np.int32)
+    vals = np.empty(max_entries, dtype=kernel_values.dtype)
+    n_entries = 0
+
+    for peak_idx in range(peaks.shape[0]):
+        peak = peaks[peak_idx]
+        for kernel_idx in range(offsets.shape[0]):
+            x = offsets[kernel_idx, 0] + peak[0]
+            y = offsets[kernel_idx, 1] + peak[1]
+            z = offsets[kernel_idx, 2] + peak[2]
+            if (
+                (x >= 0)
+                and (y >= 0)
+                and (z >= 0)
+                and (x < shape[0])
+                and (y < shape[1])
+                and (z < shape[2])
+            ):
+                flat_idx = x * flat_stride_x + y * flat_stride_y + z
+                masked_col = mask_flat_to_masked[flat_idx]
+                if masked_col >= 0:
+                    cols[n_entries] = masked_col
+                    vals[n_entries] = kernel_values[kernel_idx]
+                    n_entries += 1
+
+    return cols[:n_entries], vals[:n_entries]
+
+
+def compute_ale_ma(
+    mask,
+    ijks,
+    kernel=None,
+    exp_idx=None,
+    sample_sizes=None,
+    use_dict=False,
+):
+    """Generate masked ALE MA maps directly as a study-by-voxel CSR matrix.
 
     Returns
     -------
-    kernel_data : :obj:`sparse._coo.core.COO`
-        4D sparse array. If `exp_idx` is none, a 3d array in the same
-        shape as the `shape` argument is returned. If `exp_idx` is passed, a 4d array
-        is returned, where the first dimension has size equal to the number of
-        unique experiments, and the remaining 3 dimensions are equal to `shape`.
+    kernel_data : :class:`scipy.sparse.csr_matrix`
+        Study-by-masked-voxel CSR matrix of ALE MA values.
+    max_ma_values : :class:`numpy.ndarray`
+        Row-wise maxima for each study MA map.
+    mask_flat_to_masked : :class:`numpy.ndarray`
+        Lookup array mapping flattened full-volume voxel indices to masked voxel indices.
     """
     if use_dict:
         if kernel is not None:
             warnings.warn("The kernel provided will be replace by an empty dictionary.")
-        kernels = {}  # retain kernels in dictionary to speed things up
+        kernel_supports = {}
         if not isinstance(sample_sizes, np.ndarray):
             raise ValueError("To use a kernel dictionary sample_sizes must be a list.")
     elif sample_sizes is not None:
         if not isinstance(sample_sizes, int):
             raise ValueError("If use_dict is False, sample_sizes provided must be integer.")
+        _, kernel = get_ale_kernel(mask, sample_size=sample_sizes)
+        kernel_support = _kernel_to_sparse_support(kernel)
     else:
         if kernel is None:
             raise ValueError("3D array of smoothing kernel must be provided.")
+        kernel_support = _kernel_to_sparse_support(kernel)
 
     if exp_idx is None:
-        exp_idx = np.ones(len(ijks))
+        exp_idx = np.ones(len(ijks), dtype=np.int32)
 
-    shape = mask.shape
-    mask_data = _mask_img_to_bool(mask)
+    ijks = ijks.astype(np.int32, copy=False)
+    shape = np.array(mask.shape, dtype=np.int32)
+    flat_stride_y = shape[2]
+    flat_stride_x = shape[1] * shape[2]
+    mask_flat_to_masked = _get_mask_flat_to_masked(mask)
 
     exp_idx_uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
     n_studies = len(exp_idx_uniq)
+    n_voxels = int(mask_flat_to_masked.max()) + 1 if mask_flat_to_masked.size else 0
 
-    kernel_shape = (n_studies,) + shape
-    all_exp = []
-    all_coords = []
-    all_data = []
+    indptr = [0]
+    indices_parts = []
+    data_parts = []
+    max_ma_values = np.zeros(n_studies, dtype=DEFAULT_FLOAT_DTYPE)
+
     for i_exp, _ in enumerate(exp_idx_uniq):
-        # Index peaks by experiment
         curr_exp_idx = exp_idx == i_exp
-        ijk = ijks[curr_exp_idx]
+        study_ijks = ijks[curr_exp_idx]
 
         if use_dict:
-            # Get sample_size from input
             sample_size = sample_sizes[curr_exp_idx][0]
-            if sample_size not in kernels.keys():
+            if sample_size not in kernel_supports:
                 _, kernel = get_ale_kernel(mask, sample_size=sample_size)
-                kernels[sample_size] = kernel
-            else:
-                kernel = kernels[sample_size]
-        elif sample_sizes is not None:
-            _, kernel = get_ale_kernel(mask, sample_size=sample_sizes)
+                kernel_supports[sample_size] = _kernel_to_sparse_support(kernel)
+            offsets, kernel_values = kernel_supports[sample_size]
+        else:
+            offsets, kernel_values = kernel_support
 
-        mid = int(np.floor(kernel.shape[0] / 2.0))
-        mid1 = mid + 1
-        ma_values = np.zeros(shape)
-        for j_peak in range(ijk.shape[0]):
-            i, j, k = ijk[j_peak, :]
-            xl = max(i - mid, 0)
-            xh = min(i + mid1, ma_values.shape[0])
-            yl = max(j - mid, 0)
-            yh = min(j + mid1, ma_values.shape[1])
-            zl = max(k - mid, 0)
-            zh = min(k + mid1, ma_values.shape[2])
-            xlk = mid - (i - xl)
-            xhk = mid - (i - xh)
-            ylk = mid - (j - yl)
-            yhk = mid - (j - yh)
-            zlk = mid - (k - zl)
-            zhk = mid - (k - zh)
+        cols, vals = _convolve_ale_kernel_to_masked_cols(
+            offsets,
+            kernel_values,
+            study_ijks,
+            shape,
+            mask_flat_to_masked,
+            flat_stride_x,
+            flat_stride_y,
+        )
 
-            if (
-                (xl >= 0)
-                & (xh >= 0)
-                & (yl >= 0)
-                & (yh >= 0)
-                & (zl >= 0)
-                & (zh >= 0)
-                & (xlk >= 0)
-                & (xhk >= 0)
-                & (ylk >= 0)
-                & (yhk >= 0)
-                & (zlk >= 0)
-                & (zhk >= 0)
-            ):
-                ma_values[xl:xh, yl:yh, zl:zh] = np.maximum(
-                    ma_values[xl:xh, yl:yh, zl:zh], kernel[xlk:xhk, ylk:yhk, zlk:zhk]
-                )
-        # Set voxel outside the mask to zero.
-        ma_values[~mask_data] = 0
-        nonzero_idx = np.where(ma_values > 0)
+        if cols.size:
+            order = np.argsort(cols, kind="mergesort")
+            cols = cols[order]
+            vals = vals[order]
+            starts = np.flatnonzero(np.r_[True, cols[1:] != cols[:-1]])
+            cols = cols[starts]
+            vals = np.maximum.reduceat(vals, starts).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+            indices_parts.append(cols)
+            data_parts.append(vals)
+            indptr.append(indptr[-1] + cols.shape[0])
+            max_ma_values[i_exp] = vals.max()
+        else:
+            indptr.append(indptr[-1])
 
-        all_exp.append(np.full(nonzero_idx[0].shape[0], i_exp))
-        all_coords.append(np.vstack(nonzero_idx))
-        all_data.append(ma_values[nonzero_idx])
+    indices = (
+        np.concatenate(indices_parts).astype(np.int32, copy=False)
+        if indices_parts
+        else np.array([], dtype=np.int32)
+    )
+    data = (
+        np.concatenate(data_parts).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        if data_parts
+        else np.array([], dtype=DEFAULT_FLOAT_DTYPE)
+    )
+    indptr = np.array(indptr, dtype=np.int64)
 
-    exp = np.hstack(all_exp)
-    coords = np.vstack((exp.flatten(), np.hstack(all_coords)))
-    data = np.hstack(all_data).flatten()
+    kernel_data = sp_sparse.csr_matrix(
+        (data, indices, indptr),
+        shape=(n_studies, n_voxels),
+        dtype=DEFAULT_FLOAT_DTYPE,
+    )
+    kernel_data.sort_indices()
 
-    kernel_data = sparse.COO(coords, data, shape=kernel_shape, has_duplicates=False, sorted=True)
-
-    return kernel_data
+    return kernel_data, max_ma_values, mask_flat_to_masked
 
 
 def get_ale_kernel(img, sample_size=None, fwhm=None):

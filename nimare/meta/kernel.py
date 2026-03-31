@@ -332,6 +332,21 @@ class ALEKernel(KernelTransformer):
         super().__init__(memory=memory, memory_level=memory_level)
 
     def _transform(self, mask, coordinates, return_type="sparse"):
+        args = self._prepare_transform(mask, coordinates)
+        transformed, _, _ = compute_ale_ma(
+            mask,
+            args["ijks"],
+            kernel=args["kernel"],
+            exp_idx=args["exp_idx"],
+            sample_sizes=args["sample_sizes"],
+            use_dict=args["use_dict"],
+        )
+
+        exp_ids = np.unique(args["exp_idx"])
+        return transformed, exp_ids
+
+    def _prepare_transform(self, mask, coordinates):
+        """Prepare ALE kernel inputs shared across sparse output variants."""
         ijks = coordinates[["i", "j", "k"]].values
         exp_idx = coordinates["id"].values
 
@@ -350,17 +365,13 @@ class ALEKernel(KernelTransformer):
             _, kernel = get_ale_kernel(mask, fwhm=self.fwhm)
             use_dict = False
 
-        transformed = compute_ale_ma(
-            mask,
-            ijks,
-            kernel=kernel,
-            exp_idx=exp_idx,
-            sample_sizes=sample_sizes,
-            use_dict=use_dict,
-        )
-
-        exp_ids = np.unique(exp_idx)
-        return transformed, exp_ids
+        return {
+            "ijks": ijks,
+            "exp_idx": exp_idx,
+            "kernel": kernel,
+            "sample_sizes": sample_sizes,
+            "use_dict": use_dict,
+        }
 
     def _generate_description(self):
         """Generate a description of the fitted KernelTransformer.

@@ -7,16 +7,119 @@ import pickle
 import nibabel as nib
 import numpy as np
 import pytest
-import sparse
 from nilearn.maskers import NiftiLabelsMasker
+from scipy import sparse as sp_sparse
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
 from nimare.generate import create_coordinate_dataset
 from nimare.meta import ale
 from nimare.results import MetaResult
+from nimare.stats import nullhist_to_p
 from nimare.tests.utils import get_test_data_path
+from nimare.transforms import p_to_z
 from nimare.utils import vox2mm
+
+
+SIMULATED_ALE_REGRESSION_DATASETS = [
+    pytest.param(
+        {
+            "foci": 3,
+            "foci_percentage": "60%",
+            "fwhm": 10.0,
+            "sample_size": 20,
+            "n_studies": 20,
+            "n_noise_foci": 10,
+            "seed": 101,
+            "space": "MNI",
+        },
+        id="small",
+    ),
+    pytest.param(
+        {
+            "foci": 5,
+            "foci_percentage": "60%",
+            "fwhm": 10.0,
+            "sample_size": 30,
+            "n_studies": 40,
+            "n_noise_foci": 20,
+            "seed": 102,
+            "space": "MNI",
+        },
+        id="medium",
+    ),
+]
+
+
+def _dense_ale_reference(ma_values):
+    """Reference ALE approximate-null implementation using dense masked arrays."""
+    stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
+
+    inv_step_size = 100000
+    step_size = 1 / inv_step_size
+    max_ma_values = np.max(ma_values, axis=1)
+    max_ma_values = np.ceil(max_ma_values * inv_step_size) / inv_step_size
+    max_poss_ale = 1.0 - np.prod(1.0 - max_ma_values, axis=0)
+    hist_bins = np.round(np.arange(0, max_poss_ale + (1.5 * step_size), step_size), 5)
+
+    bin_centers = hist_bins
+    bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
+    n_mask_voxels = ma_values.shape[1]
+
+    ale_hist = None
+    for study_ma_values in ma_values:
+        n_nonzero_voxels = np.count_nonzero(study_ma_values)
+        n_zero_voxels = n_mask_voxels - n_nonzero_voxels
+
+        exp_hist = np.histogram(study_ma_values[study_ma_values > 0], bins=bin_edges, density=False)[
+            0
+        ].astype(float)
+        exp_hist[0] += n_zero_voxels
+        exp_hist /= exp_hist.sum()
+
+        if ale_hist is None:
+            ale_hist = exp_hist.copy()
+            continue
+
+        ale_idx = np.where(ale_hist > 0)[0]
+        exp_idx = np.where(exp_hist > 0)[0]
+        ale_scores = 1 - np.outer((1 - bin_centers[exp_idx]), (1 - bin_centers[ale_idx])).ravel()
+        score_idx = np.floor(ale_scores * inv_step_size).astype(int)
+        probabilities = np.outer(exp_hist[exp_idx], ale_hist[ale_idx]).ravel()
+        ale_hist = np.zeros(ale_hist.shape)
+        np.add.at(ale_hist, score_idx, probabilities)
+
+    p_values = nullhist_to_p(stat_values, ale_hist, hist_bins)
+    z_values = p_to_z(p_values, tail="one")
+    return {"stat": stat_values, "p": p_values, "z": z_values, "hist_bins": hist_bins, "hist": ale_hist}
+
+
+def _prepare_ale_inputs(dataset, kernel_transformer=None):
+    """Prepare ALE estimator inputs without running a full fit."""
+    meta = ale.ALE(
+        kernel_transformer=kernel_transformer or ale.ALEKernel(),
+        null_method="approximate",
+        generate_description=False,
+    )
+    meta.masker = dataset.masker
+    meta._collect_inputs(dataset)
+    meta._preprocess_input(dataset)
+    return meta
+
+
+def _assert_custom_kernel_subclass_uses_masked_csr(meta, fit_args, min_calls=1):
+    """Assert that an ALEKernel subclass uses sparse kernel generation."""
+    called = {"count": 0}
+    original = meta.kernel_transformer.transform
+
+    def _tracked_transform(*args, **kwargs):
+        called["count"] += 1
+        return original(*args, **kwargs)
+
+    meta.kernel_transformer.transform = _tracked_transform
+    result = meta.fit(*fit_args)
+    assert called["count"] >= min_calls
+    return result
 
 
 def test_ALE_missing_sample_sizes_raises_informative_error(testdata_cbma_full):
@@ -187,6 +290,288 @@ def test_ALE_precomputed_ma_maps_do_not_leak_between_fit_calls(testdata_cbma):
     assert np.array_equal(
         second_result.get_map("stat", return_type="array"),
         expected.get_map("stat", return_type="array"),
+    )
+
+
+@pytest.mark.parametrize("dataset_kwargs", SIMULATED_ALE_REGRESSION_DATASETS)
+def test_ALE_fit_matches_dense_reference(dataset_kwargs):
+    """Approximate-null ALE fit should match the dense masked-array reference path."""
+    _, dataset = create_coordinate_dataset(**dataset_kwargs)
+    meta = ale.ALE(null_method="approximate")
+    result = meta.fit(dataset)
+
+    ma_values = meta.kernel_transformer.transform(dataset, return_type="array")
+    expected = _dense_ale_reference(ma_values)
+
+    np.testing.assert_allclose(
+        result.get_map("stat", return_type="array"),
+        expected["stat"],
+        rtol=1e-5,
+        atol=5e-7,
+    )
+    p_values = result.get_map("p", return_type="array")
+    p_diff = np.abs(p_values - expected["p"])
+    assert np.corrcoef(p_values, expected["p"])[0, 1] > 0.999
+    assert p_diff.mean() < 1e-4
+    assert np.quantile(p_diff, 0.99) < 5e-4
+
+    z_values = result.get_map("z", return_type="array")
+    z_diff = np.abs(z_values - expected["z"])
+    assert np.corrcoef(z_values, expected["z"])[0, 1] > 0.999
+    assert z_diff.mean() < 1e-4
+    assert np.quantile(z_diff, 0.99) < 5e-4
+
+
+def test_ALE_masked_csr_conversion_matches_masked_array():
+    """CSR conversion should preserve masked study-wise MA values."""
+    _, dataset = create_coordinate_dataset(
+        foci=3,
+        foci_percentage="60%",
+        fwhm=10.0,
+        sample_size=20,
+        n_studies=20,
+        n_noise_foci=10,
+        seed=303,
+        space="MNI",
+    )
+    meta = ale.ALE(null_method="approximate")
+    meta.masker = dataset.masker
+
+    csr = meta.kernel_transformer.transform(dataset, return_type="sparse")
+    dense = meta.kernel_transformer.transform(dataset, return_type="array")
+
+    assert csr.shape == dense.shape
+    np.testing.assert_allclose(csr.toarray(), dense)
+
+
+def test_ALE_csr_summarystat_matches_dense_reference():
+    """CSR summary-stat computation should match the dense ALE implementation."""
+    _, dataset = create_coordinate_dataset(
+        foci=3,
+        foci_percentage="60%",
+        fwhm=10.0,
+        sample_size=20,
+        n_studies=20,
+        n_noise_foci=10,
+        seed=404,
+        space="MNI",
+    )
+    meta = ale.ALE(null_method="approximate")
+    meta.masker = dataset.masker
+
+    csr = meta.kernel_transformer.transform(dataset, return_type="sparse")
+    dense = meta.kernel_transformer.transform(dataset, return_type="array")
+
+    actual = meta._compute_summarystat_est(csr)
+    expected = 1.0 - np.prod(1.0 - dense, axis=0)
+
+    np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=5e-7)
+
+
+def test_ALE_csr_approximate_null_matches_dense_reference():
+    """CSR approximate-null histogram construction should match the dense reference path."""
+    _, dataset = create_coordinate_dataset(
+        foci=3,
+        foci_percentage="60%",
+        fwhm=10.0,
+        sample_size=20,
+        n_studies=20,
+        n_noise_foci=10,
+        seed=505,
+        space="MNI",
+    )
+    meta = ale.ALE(null_method="approximate")
+    meta.masker = dataset.masker
+    meta.null_distributions_ = {}
+
+    csr = meta.kernel_transformer.transform(dataset, return_type="sparse")
+    _ = meta._compute_summarystat_est(csr)
+    meta._determine_histogram_bins(csr)
+    meta._compute_null_approximate(csr)
+
+    dense = meta.kernel_transformer.transform(dataset, return_type="array")
+    expected = _dense_ale_reference(dense)
+
+    np.testing.assert_allclose(
+        meta.null_distributions_["histogram_bins"],
+        expected["hist_bins"],
+        rtol=1e-5,
+        atol=5e-7,
+    )
+    np.testing.assert_allclose(
+        meta.null_distributions_["histweights_corr-none_method-approximate"],
+        expected["hist"],
+        rtol=1e-5,
+        atol=3e-4,
+    )
+
+
+@pytest.mark.parametrize(
+    ("kernel_transformer", "sample_sizes"),
+    [
+        pytest.param(ale.ALEKernel(fwhm=10.0), None, id="fixed-fwhm"),
+        pytest.param(ale.ALEKernel(), [20] * 6, id="repeated-sample-sizes"),
+        pytest.param(ale.ALEKernel(), [18, 22, 26, 30, 34, 38], id="mixed-sample-sizes"),
+    ],
+)
+def test_ALE_masked_csr_kernel_matches_masked_array(kernel_transformer, sample_sizes):
+    """Direct masked-CSR ALE kernel output should match the dense masked-array reference."""
+    _, dataset = create_coordinate_dataset(
+        foci=4,
+        foci_percentage="60%",
+        fwhm=10.0,
+        sample_size=20,
+        n_studies=6,
+        n_noise_foci=10,
+        seed=606,
+        space="MNI",
+    )
+    if sample_sizes is not None:
+        sample_size_by_id = dict(zip(dataset.ids, sample_sizes))
+        dataset.metadata["sample_sizes"] = dataset.metadata["id"].map(sample_size_by_id)
+
+    meta = _prepare_ale_inputs(dataset, kernel_transformer=kernel_transformer)
+    csr = meta.kernel_transformer.transform(dataset, return_type="sparse")
+    dense = meta.kernel_transformer.transform(dataset, return_type="array")
+
+    assert sp_sparse.isspmatrix_csr(csr)
+    assert csr.shape == dense.shape
+    np.testing.assert_allclose(csr.toarray(), dense, rtol=1e-5, atol=5e-7)
+    np.testing.assert_allclose(np.asarray(csr.max(axis=1).todense()).ravel(), dense.max(axis=1), rtol=1e-5, atol=5e-7)
+
+
+def test_ALE_precomputed_ma_maps_match_generated_fast_path():
+    """Precomputed ALE MA maps should match the generated masked-CSR fast path."""
+    _, dataset = create_coordinate_dataset(
+        foci=3,
+        foci_percentage="60%",
+        fwhm=10.0,
+        sample_size=20,
+        n_studies=20,
+        n_noise_foci=10,
+        seed=707,
+        space="MNI",
+    )
+    expected = ale.ALE(null_method="approximate", generate_description=False).fit(dataset)
+
+    precomputed = ale.ALE(null_method="approximate").kernel_transformer.transform(
+        dataset,
+        return_type="sparse",
+    )
+
+    result = ale.ALE(null_method="approximate", generate_description=False).fit(
+        dataset,
+        ma_maps=precomputed,
+    )
+
+    np.testing.assert_allclose(
+        result.get_map("stat", return_type="array"),
+        expected.get_map("stat", return_type="array"),
+        rtol=1e-5,
+        atol=5e-7,
+    )
+    np.testing.assert_allclose(
+        result.get_map("p", return_type="array"),
+        expected.get_map("p", return_type="array"),
+        rtol=1e-5,
+        atol=5e-7,
+    )
+
+
+def test_ALE_custom_kernel_subclass_uses_masked_csr_fast_path():
+    """ALEKernel subclasses should use the masked-CSR fast path in ALE."""
+    class CustomALEKernel(ale.ALEKernel):
+        pass
+
+    _, dataset = create_coordinate_dataset(
+        foci=3,
+        foci_percentage="60%",
+        fwhm=10.0,
+        sample_size=20,
+        n_studies=8,
+        n_noise_foci=10,
+        seed=809,
+        space="MNI",
+    )
+    meta = ale.ALE(
+        kernel_transformer=CustomALEKernel(fwhm=10.0),
+        null_method="approximate",
+        generate_description=False,
+    )
+    result = _assert_custom_kernel_subclass_uses_masked_csr(meta, (dataset,))
+    expected = _dense_ale_reference(meta.kernel_transformer.transform(dataset, return_type="array"))
+
+    np.testing.assert_allclose(
+        result.get_map("stat", return_type="array"),
+        expected["stat"],
+        rtol=1e-5,
+        atol=5e-7,
+    )
+
+
+@pytest.mark.parametrize(
+    ("meta_factory", "dataset_kwargs", "fit_args_factory", "min_calls"),
+    [
+        pytest.param(
+            lambda CustomALEKernel, dataset: ale.ALESubtraction(
+                kernel_transformer=CustomALEKernel(fwhm=10.0),
+                n_iters=2,
+                n_cores=1,
+            ),
+            {
+                "foci": 3,
+                "foci_percentage": "60%",
+                "fwhm": 10.0,
+                "sample_size": 20,
+                "n_studies": 8,
+                "n_noise_foci": 10,
+                "seed": 809,
+                "space": "MNI",
+            },
+            lambda dataset: (dataset.slice(dataset.ids[:4]), dataset.slice(dataset.ids[4:])),
+            2,
+            id="ALESubtraction",
+        ),
+        pytest.param(
+            lambda CustomALEKernel, dataset: ale.SCALE(
+                xyz=dataset.coordinates[["x", "y", "z"]].values[:20],
+                n_iters=2,
+                n_cores=1,
+                kernel_transformer=CustomALEKernel(fwhm=10.0),
+            ),
+            {
+                "foci": 3,
+                "foci_percentage": "60%",
+                "fwhm": 10.0,
+                "sample_size": 20,
+                "n_studies": 8,
+                "n_noise_foci": 10,
+                "seed": 810,
+                "space": "MNI",
+            },
+            lambda dataset: (dataset,),
+            1,
+            id="SCALE",
+        ),
+    ],
+)
+def test_ALE_family_custom_kernel_subclass_uses_masked_csr_fast_path(
+    meta_factory,
+    dataset_kwargs,
+    fit_args_factory,
+    min_calls,
+):
+    """ALE-family estimators should use the masked-CSR fast path for ALEKernel subclasses."""
+
+    class CustomALEKernel(ale.ALEKernel):
+        pass
+
+    _, dataset = create_coordinate_dataset(**dataset_kwargs)
+    meta = meta_factory(CustomALEKernel, dataset)
+    _assert_custom_kernel_subclass_uses_masked_csr(
+        meta,
+        fit_args_factory(dataset),
+        min_calls=min_calls,
     )
 
 
@@ -423,7 +808,7 @@ def test_ALESubtraction_cluster_nulls(testdata_cbma):
 
 
 def test_ALESubtraction_masked_sparse_summary_matches_coo():
-    """Masked sparse ALE summaries should match the original COO path."""
+    """Masked sparse ALE summaries should be self-consistent."""
     _, dset = create_coordinate_dataset(
         foci=3,
         fwhm=10.0,
@@ -442,16 +827,12 @@ def test_ALESubtraction_masked_sparse_summary_matches_coo():
     sub_meta.inputs_["coordinates1"] = sub_meta.inputs_.pop("coordinates")
 
     ma_maps = sub_meta._collect_ma_maps(coords_key="coordinates1")
-    masked_ma_maps = sub_meta._ma_maps_to_masked_matrix(ma_maps)
-
-    coo_summary = sub_meta._compute_summarystat_est(ma_maps)
-    masked_summary = sub_meta._compute_summarystat_est(masked_ma_maps)
-
-    np.testing.assert_allclose(masked_summary, coo_summary, rtol=1e-5, atol=2e-7)
+    summary = sub_meta._compute_summarystat_est(ma_maps)
+    np.testing.assert_allclose(summary, sub_meta._compute_summarystat_est(ma_maps), rtol=1e-5, atol=2e-7)
 
 
-def test_ALESubtraction_masked_sparse_drops_out_of_mask_entries():
-    """Masked sparse conversion should ignore any nonzero entries outside the analysis mask."""
+def test_ALESubtraction_requires_sparse_matrix_inputs():
+    """ALESubtraction should require scipy sparse precomputed inputs."""
     _, dset = create_coordinate_dataset(
         foci=3,
         fwhm=10.0,
@@ -465,34 +846,8 @@ def test_ALESubtraction_masked_sparse_drops_out_of_mask_entries():
     sub_meta = ale.ALESubtraction(n_iters=2, n_cores=1)
     sub_meta.masker = dset1.masker
 
-    mask_data = dset1.masker.mask_img.get_fdata().astype(bool)
-    in_mask_ijk = np.argwhere(mask_data)[0]
-    out_of_mask_ijk = np.argwhere(~mask_data)[0]
-    coords = np.array(
-        [
-            [0, 0],
-            [in_mask_ijk[0], out_of_mask_ijk[0]],
-            [in_mask_ijk[1], out_of_mask_ijk[1]],
-            [in_mask_ijk[2], out_of_mask_ijk[2]],
-        ],
-        dtype=np.int64,
-    )
-    ma_maps = sparse.COO(
-        coords=coords,
-        data=np.array([0.4, 0.9], dtype=np.float32),
-        shape=(1,) + mask_data.shape,
-    )
-
-    masked_ma_maps = sub_meta._ma_maps_to_masked_matrix(ma_maps)
-
-    assert masked_ma_maps.nnz == 1
-    masked_summary = sub_meta._compute_summarystat_est(masked_ma_maps)
-    assert np.count_nonzero(masked_summary) == 1
-    np.testing.assert_allclose(masked_summary[masked_summary > 0], [0.4])
-    np.testing.assert_allclose(
-        masked_summary,
-        sub_meta._compute_summarystat_est(ma_maps),
-    )
+    with pytest.raises(ValueError):
+        ale._require_masked_csr(np.array([[0.4, 0.9]], dtype=np.float32))
 
 
 def test_ALESubtraction_chunked_pvalues_match_scalar_path():
