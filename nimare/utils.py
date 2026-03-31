@@ -5,6 +5,7 @@ import inspect
 import json
 import logging
 import multiprocessing as mp
+import ntpath
 import os
 import os.path as op
 import re
@@ -543,11 +544,36 @@ def _validate_images_df(image_df):
     image_df : :class:`pandas.DataFrame`
         DataFrame with updated paths and columns.
     """
+    image_df = image_df.copy()
+
     valid_suffixes = [".brik", ".head", ".nii", ".img", ".hed"]
     id_columns = set(["id", "study_id", "contrast_id"])
+
+    if image_df.columns.has_duplicates:
+        merged_columns = {}
+        for col in dict.fromkeys(image_df.columns):
+            values = image_df.loc[:, col]
+            if isinstance(values, pd.DataFrame):
+                merged_columns[col] = values.bfill(axis=1).iloc[:, 0]
+            else:
+                merged_columns[col] = values
+        image_df = pd.DataFrame(merged_columns, index=image_df.index)
+
+    def _is_absolute_path(value):
+        if not isinstance(value, str):
+            return False
+        return op.isabs(value) or ntpath.isabs(value)
+
+    def _path_module_for(value):
+        if ntpath.isabs(value):
+            return ntpath
+        return op
+
     # Find columns in the DataFrame with images
     file_cols = []
-    for col in set(image_df.columns) - id_columns:
+    for col in image_df.columns:
+        if col in id_columns:
+            continue
         vals = [v for v in image_df[col].values if isinstance(v, str)]
         fc = any([any([vs in v for vs in valid_suffixes]) for v in vals])
         if fc:
@@ -558,7 +584,7 @@ def _validate_images_df(image_df):
     abs_cols = []
     for col in file_cols:
         files = image_df[col].tolist()
-        abspaths = [f == op.abspath(f) for f in files if isinstance(f, str)]
+        abspaths = [_is_absolute_path(f) for f in files if isinstance(f, str)]
         if all(abspaths):
             abs_cols.append(col)
         elif not any(abspaths):
@@ -573,23 +599,32 @@ def _validate_images_df(image_df):
     if len(abs_cols):
         all_files = list(np.ravel(image_df[abs_cols].values))
         all_files = [f for f in all_files if isinstance(f, str)]
+        pathmod = _path_module_for(all_files[0])
 
         if len(all_files) == 1:
             # In the odd case where there's only one absolute path
-            shared_path = op.dirname(all_files[0]) + op.sep
+            shared_path = pathmod.dirname(pathmod.normpath(all_files[0])) + pathmod.sep
         else:
-            shared_path = _find_stem(all_files)
-
-        # Get parent *directory* if shared path includes common prefix.
-        if not shared_path.endswith(op.sep):
-            shared_path = op.dirname(shared_path) + op.sep
+            shared_path = pathmod.commonpath(
+                [pathmod.dirname(pathmod.normpath(f)) for f in all_files]
+            )
+            shared_path = shared_path + pathmod.sep
         LGR.info(f"Shared path detected: '{shared_path}'")
 
         image_df_out = image_df.copy()  # To avoid SettingWithCopyWarning
         for abs_col in abs_cols:
-            image_df_out[abs_col + "__relative"] = image_df[abs_col].apply(
-                lambda x: x.split(shared_path)[1] if isinstance(x, str) else x
+            rel_col = abs_col + "__relative"
+            relative_paths = image_df[abs_col].apply(
+                lambda x: (
+                    pathmod.relpath(pathmod.normpath(x), shared_path) if isinstance(x, str) else x
+                )
             )
+            if rel_col in image_df_out.columns:
+                image_df_out[rel_col] = image_df_out[rel_col].where(
+                    image_df_out[rel_col].notnull(), relative_paths
+                )
+            else:
+                image_df_out[rel_col] = relative_paths
 
         image_df = image_df_out
 
@@ -729,7 +764,8 @@ def use_memmap(logger, n_files=1):
                 self.memmap_filenames, filenames = [], []
                 for i_file in range(n_files):
                     start_time = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
-                    _, filename = mkstemp(prefix=self.__class__.__name__, suffix=start_time)
+                    fd, filename = mkstemp(prefix=self.__class__.__name__, suffix=start_time)
+                    os.close(fd)
                     logger.debug(f"Temporary file written to {filename}")
                     self.memmap_filenames.append(filename)
                     filenames.append(filename)
