@@ -13,18 +13,69 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 from joblib import Memory
+from scipy import sparse as sp_sparse
 
 from nimare.base import NiMAREBase
 from nimare.dataset import Dataset
-from nimare.meta.utils import compute_ale_ma, compute_kda_ma, get_ale_kernel
+from nimare.meta.utils import (
+    compute_ale_ma,
+    compute_kda_ma,
+    get_ale_kernel,
+)
 from nimare.studyset import normalize_collection
 from nimare.utils import _add_metadata_to_dataframe, _mask_img_to_bool, mm2vox
 
 LGR = logging.getLogger(__name__)
 
 
+def _sparse_maps_to_summary_array(sparse_maps):
+    """Collapse sparse MA maps across studies into a 1D summary array."""
+    return np.asarray(sparse_maps.sum(axis=0)).ravel()
+
+
+def _sparse_maps_to_array(sparse_maps):
+    """Convert masked sparse MA maps into a dense study-by-voxel array."""
+    return sparse_maps.toarray()
+
+
+def _sparse_maps_to_images(sparse_maps, exp_ids, mask, mask_data):
+    """Reconstruct one full-volume image per study from masked sparse MA maps."""
+    imgs = []
+    mask_data_flat = mask_data.reshape(-1)
+    for i_exp, _ in enumerate(exp_ids):
+        kernel_row = np.asarray(sparse_maps.getrow(i_exp).todense()).ravel()
+        kernel_data = np.zeros(mask_data_flat.shape[0], dtype=kernel_row.dtype)
+        kernel_data[mask_data_flat] = kernel_row
+        kernel_data = kernel_data.reshape(mask.shape)
+        img = nib.Nifti1Image(kernel_data, mask.affine, dtype=kernel_data.dtype)
+        imgs.append(img)
+    return imgs
+
+
+def _dense_maps_to_array_or_images(kernel_maps, exp_ids, mask, mask_data, return_type):
+    """Reconstruct dense kernel outputs into arrays or images."""
+    outputs = []
+    for i_exp, _ in enumerate(exp_ids):
+        kernel_data = kernel_maps[i_exp].todense()
+
+        if return_type == "array":
+            outputs.append(kernel_data[mask_data])
+        elif return_type == "image":
+            kernel_data *= mask_data
+            img = nib.Nifti1Image(kernel_data, mask.affine, dtype=kernel_data.dtype)
+            outputs.append(img)
+
+    if return_type == "array":
+        return np.vstack(outputs)
+    return outputs
+
+
 class KernelTransformer(NiMAREBase):
     """Base class for modeled activation-generating methods in :mod:`~nimare.meta.kernel`.
+
+    .. versionchanged:: 0.12.0
+
+        - Standardize CBMA sparse outputs as 2D study-by-masked-voxel sparse matrices.
 
     .. versionchanged:: 0.2.1
 
@@ -112,10 +163,9 @@ class KernelTransformer(NiMAREBase):
         Returns
         -------
         imgs : (C x V) :class:`numpy.ndarray` or :obj:`list` of :class:`nibabel.Nifti1Image` \
-               or :class:`~nimare.dataset.Dataset`
-            If return_type is 'sparse', a 4D sparse array (E x S), where E is
-            the number of unique experiments, and the remaining 3 dimensions are
-            equal to `shape` of the images.
+               or sparse matrix
+            If return_type is 'sparse', the kernel-specific sparse representation is returned.
+            For ALE, KDA, and MKDA this is a study-by-masked-voxel CSR matrix.
             If return_type is 'array', a 2D numpy array (C x V), where C is
             contrast and V is voxel.
             If return_type is 'summary_array', a 1D numpy array (V,) containing
@@ -192,28 +242,26 @@ class KernelTransformer(NiMAREBase):
 
         transformed_maps = self._cache(self._transform, func_memory_level=2)(*args)
 
-        if return_type == "sparse" or return_type == "summary_array":
-            return transformed_maps[0]
+        kernel_maps, exp_ids = transformed_maps
+        if return_type == "sparse":
+            return kernel_maps
+        if return_type == "summary_array":
+            if sp_sparse.issparse(kernel_maps):
+                return _sparse_maps_to_summary_array(kernel_maps)
+            return kernel_maps
 
-        imgs = []
-        # Loop over exp ids since sparse._coo.core.COO is not iterable
-        for i_exp, _ in enumerate(transformed_maps[1]):
-            kernel_data = transformed_maps[0][i_exp].todense()
-
+        if sp_sparse.issparse(kernel_maps):
             if return_type == "array":
-                img = kernel_data[mask_data]
-                imgs.append(img)
-            elif return_type == "image":
-                kernel_data *= mask_data
-                img = nib.Nifti1Image(kernel_data, mask.affine, dtype=kernel_data.dtype)
-                imgs.append(img)
+                return _sparse_maps_to_array(kernel_maps)
+            return _sparse_maps_to_images(kernel_maps, exp_ids, mask, mask_data)
 
-        del kernel_data, transformed_maps
-
-        if return_type == "array":
-            return np.vstack(imgs)
-        elif return_type == "image":
-            return imgs
+        return _dense_maps_to_array_or_images(
+            kernel_maps,
+            exp_ids,
+            mask,
+            mask_data,
+            return_type,
+        )
 
     def _transform(self, mask, coordinates, return_type="sparse"):
         """Apply the kernel's unique transformer.
@@ -228,26 +276,24 @@ class KernelTransformer(NiMAREBase):
             Additionally, individual kernels may require other columns
             (e.g., "sample_size" for ALE).
         return_type : {'sparse', 'summary_array'}, optional
-            Whether to return a 4D sparse matrix ('sparse') where each contrast map is
-            saved separately or a 1D numpy array ('summary_array') where the contrast maps
-            are combined.
+            Whether to return the kernel's sparse representation ('sparse') or a 1D numpy
+            array ('summary_array') where the contrast maps are combined.
+            For ALE, KDA, and MKDA, the sparse representation is a study-by-masked-voxel
+            CSR matrix.
             Default is 'sparse'.
 
         Returns
         -------
-        transformed_maps : N-length list of (3D array, str) tuples or (4D array, 1D array) tuple
+        transformed_maps : object
             Transformed data, containing one element for each study.
 
-            -   Case 1: A kernel that is not an (M)KDAKernel
-                Each list entry is composed of a 3D array (the MA map) and the study's ID.
+            -   Case 1: ``return_type='sparse'``
+                A length-2 tuple with the kernel's sparse representation and a numpy array of
+                study IDs. For ALE, KDA, and MKDA, this sparse representation is a study-by-
+                masked-voxel CSR matrix.
 
-            -   Case 2: (M)KDAKernel
-                There is a length-2 tuple with a 4D numpy array of the shape (N, X, Y, Z),
-                containing all of the MA maps, and a numpy array of shape (N,) with the study IDs.
-
-            -  Case 3: A kernel with return_type='summary_array'.
-                The transformed data is a 1D numpy array of shape (X, Y, Z) containing the
-                summary measure for each voxel.
+            -   Case 2: ``return_type='summary_array'``
+                A 1D numpy array of shape ``(V,)`` containing the summary measure for each voxel.
         """
         pass
 
@@ -308,6 +354,21 @@ class ALEKernel(KernelTransformer):
         super().__init__(memory=memory, memory_level=memory_level)
 
     def _transform(self, mask, coordinates, return_type="sparse"):
+        args = self._prepare_transform(mask, coordinates)
+        transformed, _, _ = compute_ale_ma(
+            mask,
+            args["ijks"],
+            kernel=args["kernel"],
+            exp_idx=args["exp_idx"],
+            sample_sizes=args["sample_sizes"],
+            use_dict=args["use_dict"],
+        )
+
+        exp_ids = np.unique(args["exp_idx"])
+        return transformed, exp_ids
+
+    def _prepare_transform(self, mask, coordinates):
+        """Prepare ALE kernel inputs shared across sparse output variants."""
         ijks = coordinates[["i", "j", "k"]].values
         exp_idx = coordinates["id"].values
 
@@ -326,17 +387,13 @@ class ALEKernel(KernelTransformer):
             _, kernel = get_ale_kernel(mask, fwhm=self.fwhm)
             use_dict = False
 
-        transformed = compute_ale_ma(
-            mask,
-            ijks,
-            kernel=kernel,
-            exp_idx=exp_idx,
-            sample_sizes=sample_sizes,
-            use_dict=use_dict,
-        )
-
-        exp_ids = np.unique(exp_idx)
-        return transformed, exp_ids
+        return {
+            "ijks": ijks,
+            "exp_idx": exp_idx,
+            "kernel": kernel,
+            "sample_sizes": sample_sizes,
+            "use_dict": use_dict,
+        }
 
     def _generate_description(self):
         """Generate a description of the fitted KernelTransformer.
@@ -422,21 +479,26 @@ class KDAKernel(KernelTransformer):
         ijks = coordinates[["i", "j", "k"]].values
         exp_idx = coordinates["id"].values
         if return_type == "sparse":
-            sum_across_studies = False
+            transformed, _ = compute_kda_ma(
+                mask,
+                ijks,
+                self.r,
+                self.value,
+                exp_idx,
+                sum_overlap=self._sum_overlap,
+            )
         elif return_type == "summary_array":
-            sum_across_studies = True
+            transformed = compute_kda_ma(
+                mask,
+                ijks,
+                self.r,
+                self.value,
+                exp_idx,
+                sum_overlap=self._sum_overlap,
+                sum_across_studies=True,
+            )
         else:
             raise ValueError('Argument "return_type" must be "sparse" or "summary_array".')
-
-        transformed = compute_kda_ma(
-            mask,
-            ijks,
-            self.r,
-            self.value,
-            exp_idx,
-            sum_overlap=self._sum_overlap,
-            sum_across_studies=sum_across_studies,
-        )
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
 

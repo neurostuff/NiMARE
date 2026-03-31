@@ -9,7 +9,13 @@ from nimare.dataset import Dataset
 from nimare.io import convert_neurovault_to_dataset
 from nimare.meta.utils import compute_ale_ma, get_ale_kernel
 from nimare.transforms import ImageTransformer
-from nimare.utils import DEFAULT_FLOAT_DTYPE, get_template, mm2vox, vox2mm
+from nimare.utils import (
+    DEFAULT_FLOAT_DTYPE,
+    _mask_img_to_bool,
+    get_template,
+    mm2vox,
+    vox2mm,
+)
 
 # defaults for creating a neurovault dataset
 NEUROVAULT_IDS = (8836, 8838, 8893, 8895, 8892, 8891, 8962, 8894, 8956, 8854, 9000)
@@ -341,12 +347,16 @@ def _create_foci(foci, foci_percentage, fwhm, n_studies, n_noise_foci, rng, spac
 
     # create a probability map for each peak
     kernel = get_ale_kernel(template_img, fwhm)[1]
+    template_mask = _mask_img_to_bool(template_img)
+
+    def _peak_probability_map(peak):
+        peak_ma_map, _, _ = compute_ale_ma(template_img, np.atleast_2d(peak), kernel=kernel)
+        prob_map = np.zeros(template_mask.size, dtype=DEFAULT_FLOAT_DTYPE)
+        prob_map[template_mask.reshape(-1)] = peak_ma_map.toarray().ravel()
+        return sparse.COO.from_numpy(prob_map.reshape(template_data.shape))
+
     foci_prob_maps = {
-        tuple(peak): compute_ale_ma(template_img, np.atleast_2d(peak), kernel=kernel).reshape(
-            template_data.shape
-        )
-        for peak in ground_truth_foci_ijks
-        if peak.size
+        tuple(peak): _peak_probability_map(peak) for peak in ground_truth_foci_ijks if peak.size
     }
 
     # get study specific instances of each foci

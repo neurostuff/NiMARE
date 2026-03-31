@@ -8,7 +8,6 @@ import warnings
 import nibabel as nib
 import numpy as np
 import pandas as pd
-import sparse
 from joblib import Memory, Parallel, delayed
 from scipy import ndimage
 from scipy import sparse as sp_sparse
@@ -16,6 +15,7 @@ from tqdm.auto import tqdm
 
 from nimare import _version
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare.meta.cbma.utils import collect_csr_ma_maps, require_masked_csr
 from nimare.meta.kernel import ALEKernel
 from nimare.meta.utils import _calculate_cluster_measures
 from nimare.stats import null_to_p, nullhist_to_p
@@ -23,7 +23,6 @@ from nimare.transforms import p_to_z
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
-    _mask_img_to_bool,
     use_memmap,
 )
 
@@ -34,6 +33,48 @@ __version__ = _version.get_versions()["version"]
 ALE_SUBTRACTION_PVALUE_CHUNK_SIZE = 8192
 # Benchmarked SCALE chunk sizes: 256, 512, 1024, 2048, 4096.
 SCALE_PVALUE_CHUNK_SIZE = 1024
+
+
+def _csr_row_max(ma_values):
+    """Compute row-wise maxima for a CSR matrix without densifying it."""
+    ma_values = ma_values.tocsr(copy=False)
+    max_values = np.zeros(ma_values.shape[0], dtype=DEFAULT_FLOAT_DTYPE)
+    for i_row in range(ma_values.shape[0]):
+        start = ma_values.indptr[i_row]
+        end = ma_values.indptr[i_row + 1]
+        if start != end:
+            max_values[i_row] = ma_values.data[start:end].max()
+    return max_values
+
+
+def _compute_ale_summarystat(ma_values):
+    """Compute ALE summary statistics from dense arrays or masked CSR matrices."""
+    if sp_sparse.isspmatrix(ma_values):
+        ma_values = ma_values.tocsr(copy=False)
+        log_sums = np.bincount(
+            ma_values.indices,
+            weights=np.log1p(-ma_values.data),
+            minlength=ma_values.shape[1],
+        )
+        stat_values = 1.0 - np.exp(log_sums)
+        return stat_values.astype(DEFAULT_FLOAT_DTYPE, copy=False)
+
+    if isinstance(ma_values, np.ndarray):
+        stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
+        return stat_values
+
+    raise ValueError(f"Unsupported data type '{type(ma_values)}'")
+
+
+def _collect_masked_ma_maps(estimator, coords_key="coordinates", maps_key="ma_maps"):
+    """Collect ALE-family MA maps in masked CSR form."""
+    estimator._study_max_ma_values = None
+
+    ma_values = collect_csr_ma_maps(estimator, coords_key=coords_key, maps_key=maps_key)
+    estimator._study_max_ma_values = _csr_row_max(ma_values).astype(
+        DEFAULT_FLOAT_DTYPE, copy=False
+    )
+    return ma_values
 
 
 class ALE(CBMAEstimator):
@@ -222,25 +263,29 @@ class ALE(CBMAEstimator):
         )
         return description
 
+    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", return_type="sparse"):
+        """Collect ALE MA maps in the masked sparse format used by the estimator."""
+        if return_type != "sparse":
+            return super()._collect_ma_maps(
+                coords_key=coords_key,
+                maps_key=maps_key,
+                return_type=return_type,
+            )
+
+        return _collect_masked_ma_maps(self, coords_key=coords_key, maps_key=maps_key)
+
+    def _compute_summarystat(self, data):
+        """Compute ALE summary statistics from input data."""
+        if sp_sparse.isspmatrix(data):
+            return self._compute_summarystat_est(data)
+
+        return super()._compute_summarystat(data)
+
     def _compute_summarystat_est(self, ma_values):
-        if isinstance(ma_values, sparse._coo.core.COO):
-            log_ma = ma_values.copy()
-            log_ma.data = np.log1p(-log_ma.data)
-            stat_values = 1.0 - np.exp(log_ma.sum(axis=0))
-        else:
-            stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
-
-        # np.array type is used by _determine_histogram_bins to calculate max_poss_ale
-        if isinstance(stat_values, sparse._coo.core.COO):
-            # NOTE: This may not work correctly with a non-NiftiMasker.
-            mask_data = _mask_img_to_bool(self.masker.mask_img)
-
-            stat_values = stat_values.todense().reshape(-1)  # Indexing a .reshape(-1) is faster
-            stat_values = stat_values[mask_data.reshape(-1)]
-
-            # This is used by _compute_null_approximate
+        ma_values = require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
+        stat_values = _compute_ale_summarystat(ma_values)
+        if sp_sparse.isspmatrix(ma_values):
             self.__n_mask_voxels = stat_values.shape[0]
-
         return stat_values
 
     def _determine_histogram_bins(self, ma_maps):
@@ -248,14 +293,22 @@ class ALE(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps : :obj:`sparse._coo.core.COO`
-            MA maps.
+        ma_maps : scipy.sparse matrix
+            Masked study-by-voxel MA maps.
 
         Notes
         -----
         This method adds one entry to the null_distributions_ dict attribute: "histogram_bins".
         """
-        if not isinstance(ma_maps, sparse._coo.core.COO):
+        if not hasattr(self, "null_distributions_"):
+            self.null_distributions_ = {}
+
+        if sp_sparse.isspmatrix(ma_maps):
+            ma_maps = require_masked_csr(ma_maps)
+            max_ma_values = getattr(self, "_study_max_ma_values", None)
+            if max_ma_values is None or max_ma_values.shape[0] != ma_maps.shape[0]:
+                max_ma_values = _csr_row_max(ma_maps)
+        else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         # Determine bins for null distribution histogram
@@ -263,9 +316,6 @@ class ALE(CBMAEstimator):
         # Assuming values of 0, .001, .002, etc., bins are -.0005-.0005, .0005-.0015, etc.
         INV_STEP_SIZE = 100000
         step_size = 1 / INV_STEP_SIZE
-        # Need to convert to dense because np.ceil is too slow with sparse
-        max_ma_values = ma_maps.max(axis=[1, 2, 3]).todense()
-
         # round up based on resolution
         max_ma_values = np.ceil(max_ma_values * INV_STEP_SIZE) / INV_STEP_SIZE
         max_poss_ale = self._compute_summarystat(max_ma_values)
@@ -278,8 +328,8 @@ class ALE(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps : :obj:`sparse._coo.core.COO`
-            MA maps.
+        ma_maps : scipy.sparse matrix
+            Masked study-by-voxel MA maps.
 
         Notes
         -----
@@ -288,7 +338,9 @@ class ALE(CBMAEstimator):
             - "histogram_bins"
             - "histweights_corr-none_method-approximate"
         """
-        if not isinstance(ma_maps, sparse._coo.core.COO):
+        if sp_sparse.isspmatrix(ma_maps):
+            ma_maps = require_masked_csr(ma_maps)
+        else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         assert "histogram_bins" in self.null_distributions_.keys()
@@ -302,12 +354,13 @@ class ALE(CBMAEstimator):
 
         n_exp = ma_maps.shape[0]
         data = ma_maps.data
-        coords = ma_maps.coords
+        indptr = ma_maps.indptr
 
         ale_hist = None
         for exp_idx in range(n_exp):
-            # The first column of coords is the fourth dimension of the dense array
-            study_ma_values = data[coords[0, :] == exp_idx]
+            start = indptr[exp_idx]
+            end = indptr[exp_idx + 1]
+            study_ma_values = data[start:end]
 
             n_nonzero_voxels = study_ma_values.shape[0]
             n_zero_voxels = self.__n_mask_voxels - n_nonzero_voxels
@@ -545,16 +598,16 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.masker = self.masker or dataset1.masker
         self.null_distributions_ = {}
 
-        ma_maps1 = self._collect_ma_maps(
+        ma_maps1 = _collect_masked_ma_maps(
+            self,
             maps_key="ma_maps1",
             coords_key="coordinates1",
         )
-        ma_maps1 = self._ma_maps_to_masked_matrix(ma_maps1)
-        ma_maps2 = self._collect_ma_maps(
+        ma_maps2 = _collect_masked_ma_maps(
+            self,
             maps_key="ma_maps2",
             coords_key="coordinates2",
         )
-        ma_maps2 = self._ma_maps_to_masked_matrix(ma_maps2)
 
         # Get ALE values for the two groups and difference scores
         grp1_ale_values = self._compute_summarystat_est(ma_maps1)
@@ -657,62 +710,16 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         return maps, {}, description
 
-    def _ma_maps_to_masked_matrix(self, ma_values):
-        """Convert 4D MA maps to a study-by-voxel CSR matrix within the analysis mask."""
-        if sp_sparse.isspmatrix_csr(ma_values):
-            return ma_values
-
-        if not isinstance(ma_values, sparse._coo.core.COO):
-            return ma_values
-
-        shape = self.masker.mask_img.shape
-        if not hasattr(self, "_mask_flat_to_masked"):
-            mask_data = _mask_img_to_bool(self.masker.mask_img).reshape(-1)
-            self._mask_flat_to_masked = np.full(mask_data.shape[0], -1, dtype=np.int32)
-            self._mask_flat_to_masked[mask_data] = np.arange(mask_data.sum(), dtype=np.int32)
-
-        flat_voxels = np.ravel_multi_index(ma_values.coords[1:], dims=shape)
-        rows = ma_values.coords[0].astype(np.int32, copy=False)
-        cols = self._mask_flat_to_masked[flat_voxels]
-        data = ma_values.data.astype(DEFAULT_FLOAT_DTYPE, copy=False)
-        valid_mask = cols >= 0
-        rows = rows[valid_mask]
-        cols = cols[valid_mask]
-        data = data[valid_mask]
-        return sp_sparse.csr_matrix(
-            (data, (rows, cols)),
-            shape=(ma_values.shape[0], int(self._mask_flat_to_masked.max()) + 1),
-            dtype=DEFAULT_FLOAT_DTYPE,
-        )
-
     def _combine_ma_maps(self, ma_maps1, ma_maps2):
         """Combine two MA map collections while preserving efficient sparse formats."""
-        if sp_sparse.isspmatrix_csr(ma_maps1) and sp_sparse.isspmatrix_csr(ma_maps2):
-            return sp_sparse.vstack((ma_maps1, ma_maps2), format="csr")
-
-        return sparse.concatenate((ma_maps1, ma_maps2))
+        return sp_sparse.vstack(
+            (require_masked_csr(ma_maps1), require_masked_csr(ma_maps2)), format="csr"
+        )
 
     def _compute_summarystat_est(self, ma_values):
-        if sp_sparse.isspmatrix(ma_values):
-            log_ma = ma_values.copy()
-            log_ma.data = np.log1p(-log_ma.data)
-            stat_values = 1.0 - np.exp(np.asarray(log_ma.sum(axis=0)).ravel())
-            stat_values = stat_values.astype(DEFAULT_FLOAT_DTYPE, copy=False)
-        elif isinstance(ma_values, sparse._coo.core.COO):
-            log_ma = ma_values.copy()
-            log_ma.data = np.log1p(-log_ma.data)
-            stat_values = 1.0 - np.exp(log_ma.sum(axis=0))
-        else:
-            stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
-
-        if isinstance(stat_values, sparse._coo.core.COO):
-            # NOTE: This may not work correctly with a non-NiftiMasker.
-            mask_data = _mask_img_to_bool(self.masker.mask_img)
-
-            stat_values = stat_values.todense().reshape(-1)  # Indexing a .reshape(-1) is faster
-            stat_values = stat_values[mask_data.reshape(-1)]
-
-        return stat_values
+        return _compute_ale_summarystat(
+            require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
+        )
 
     def _run_permutation(self, i_iter, n_grp1, ma_arr, iter_diff_values):
         """Run a single permutations of the ALESubtraction null distribution procedure.
@@ -852,16 +859,16 @@ class ALESubtraction(PairwiseCBMAEstimator):
                 UserWarning,
             )
 
-            ma_maps1 = self._collect_ma_maps(
+            ma_maps1 = _collect_masked_ma_maps(
+                self,
                 maps_key="ma_maps1",
                 coords_key="coordinates1",
             )
-            ma_maps1 = self._ma_maps_to_masked_matrix(ma_maps1)
-            ma_maps2 = self._collect_ma_maps(
+            ma_maps2 = _collect_masked_ma_maps(
+                self,
                 maps_key="ma_maps2",
                 coords_key="coordinates2",
             )
-            ma_maps2 = self._ma_maps_to_masked_matrix(ma_maps2)
 
             n_grp1 = ma_maps1.shape[0]
             n_voxels = stat_values.shape[0]
@@ -1194,13 +1201,15 @@ class SCALE(CBMAEstimator):
         self.masker = self.masker or dataset.masker
         self.null_distributions_ = {}
 
-        ma_values = self._collect_ma_maps(
-            coords_key="coordinates",
-            maps_key="ma_maps",
-        )
+        ma_values = _collect_masked_ma_maps(self, coords_key="coordinates", maps_key="ma_maps")
 
         # Determine bins for null distribution histogram
-        max_ma_values = ma_values.max(axis=[1, 2, 3]).todense()
+        if sp_sparse.isspmatrix(ma_values):
+            max_ma_values = getattr(self, "_study_max_ma_values", None)
+            if max_ma_values is None or max_ma_values.shape[0] != ma_values.shape[0]:
+                max_ma_values = _csr_row_max(ma_values)
+        else:
+            max_ma_values = ma_values.max(axis=[1, 2, 3]).todense()
 
         max_poss_ale = self._compute_summarystat_est(max_ma_values)
         self.null_distributions_["histogram_bins"] = np.round(
@@ -1263,21 +1272,14 @@ class SCALE(CBMAEstimator):
             ma_values = self.kernel_transformer.transform(
                 data, masker=self.masker, return_type="sparse"
             )
-        elif isinstance(data, (np.ndarray, sparse._coo.core.COO)):
+        elif isinstance(data, np.ndarray) or sp_sparse.isspmatrix(data):
             ma_values = data
         else:
             raise ValueError(f"Unsupported data type '{type(data)}'")
 
-        stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
-
-        if isinstance(stat_values, sparse._coo.core.COO):
-            # NOTE: This may not work correctly with a non-NiftiMasker.
-            mask_data = _mask_img_to_bool(self.masker.mask_img)
-
-            stat_values = stat_values.todense().reshape(-1)  # Indexing a .reshape(-1) is faster
-            stat_values = stat_values[mask_data.reshape(-1)]
-
-        return stat_values
+        return _compute_ale_summarystat(
+            require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
+        )
 
     def _scale_to_p(self, stat_values, scale_values):
         """Compute p- and z-values.

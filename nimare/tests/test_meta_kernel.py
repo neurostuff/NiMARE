@@ -197,12 +197,7 @@ def test_MKDA_kernel_sum_across(testdata_cbma):
         coordinates, masker=testdata_cbma.masker, return_type="summary_array"
     )
 
-    summary_sparse_ma_map = sparse_ma_maps.sum(axis=0)
-    mask_data = testdata_cbma.masker.mask_img.get_fdata().astype(bool)
-
-    # Indexing the sparse array is slow, perform masking in the dense array
-    summary_sparse_ma_map = summary_sparse_ma_map.todense().reshape(-1)
-    summary_sparse_ma_map = summary_sparse_ma_map[mask_data.reshape(-1)]
+    summary_sparse_ma_map = np.asarray(sparse_ma_maps.sum(axis=0)).ravel()
 
     assert (
         np.testing.assert_array_equal(summary_map, summary_sparse_ma_map.astype(np.int32)) is None
