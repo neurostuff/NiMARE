@@ -41,6 +41,10 @@ class CBMAEstimator(Estimator):
         Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
         a future release. Prefer :class:`~nimare.nimads.Studyset`.
 
+    .. versionchanged:: 0.12.0
+
+        * Standardize sparse MA maps as 2D study-by-masked-voxel matrices across CBMA methods.
+
     .. versionchanged:: 0.0.12
 
         * Remove *low_memory* option
@@ -292,7 +296,7 @@ class CBMAEstimator(Estimator):
         drop_invalid : :obj:`bool`, optional
             Whether to automatically ignore any studies without the required data or not.
             Default is False.
-        ma_maps : :obj:`sparse._coo.core.COO`, optional
+        ma_maps : scipy sparse matrix or sparse array, optional
             Precomputed study-wise MA maps aligned to the study ids in ``dataset``.
             When provided, the estimator will reuse these maps instead of recomputing them from
             coordinates.
@@ -346,9 +350,9 @@ class CBMAEstimator(Estimator):
 
         Returns
         -------
-        ma_maps : :obj:`sparse._coo.core.COO`
-            Return a 4D sparse array of shape
-            (n_studies, mask.shape) with MA maps.
+        ma_maps : scipy sparse matrix or sparse array
+            Return precomputed or generated MA maps in the kernel transformer's sparse format.
+            For ALE, KDA, and MKDA this is a study-by-masked-voxel sparse matrix.
         """
         if maps_key in self.inputs_:
             LGR.debug("Using precomputed MA maps from inputs (%s).", maps_key)
@@ -392,7 +396,7 @@ class CBMAEstimator(Estimator):
 
         Parameters
         ----------
-        data : array, sparse._coo.core.COO, pandas.DataFrame, or list of img_like
+        data : array, sparse matrix, sparse array, pandas.DataFrame, or list of img_like
             Data from which to estimate summary statistics.
             The data can be:
             (1) a 1d contrast-len or 2d contrast-by-voxel array of MA values,
@@ -1027,6 +1031,10 @@ class CBMAEstimator(Estimator):
 class PairwiseCBMAEstimator(CBMAEstimator):
     """Base class for pairwise coordinate-based meta-analysis methods.
 
+    .. versionchanged:: 0.12.0
+
+        - Standardize sparse MA maps as 2D study-by-masked-voxel matrices across CBMA methods.
+
     .. versionchanged:: 0.0.12
 
         - Use a 4D sparse array for modeled activation maps.
@@ -1073,7 +1081,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         dataset1/dataset2 : :obj:`~nimare.nimads.Studyset` or \
                 :obj:`~nimare.dataset.Dataset`
             Collection objects to analyze.
-        ma_maps1/ma_maps2 : :obj:`sparse._coo.core.COO`, optional
+        ma_maps1/ma_maps2 : scipy sparse matrix or sparse array, optional
             Precomputed study-wise MA maps aligned to ``dataset1`` and ``dataset2``,
             respectively. When provided, the estimator will reuse these maps instead of
             recomputing them from coordinates.

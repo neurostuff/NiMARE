@@ -31,6 +31,10 @@ LGR = logging.getLogger(__name__)
 class KernelTransformer(NiMAREBase):
     """Base class for modeled activation-generating methods in :mod:`~nimare.meta.kernel`.
 
+    .. versionchanged:: 0.12.0
+
+        - Standardize CBMA sparse outputs as 2D study-by-masked-voxel sparse matrices.
+
     .. versionchanged:: 0.2.1
 
         - Add return_type='summary_array' option to transform method.
@@ -117,10 +121,9 @@ class KernelTransformer(NiMAREBase):
         Returns
         -------
         imgs : (C x V) :class:`numpy.ndarray` or :obj:`list` of :class:`nibabel.Nifti1Image` \
-               or :class:`~nimare.dataset.Dataset`
-            If return_type is 'sparse', a 4D sparse array (E x S), where E is
-            the number of unique experiments, and the remaining 3 dimensions are
-            equal to `shape` of the images.
+               or sparse matrix
+            If return_type is 'sparse', the kernel-specific sparse representation is returned.
+            For ALE, KDA, and MKDA this is a study-by-masked-voxel CSR matrix.
             If return_type is 'array', a 2D numpy array (C x V), where C is
             contrast and V is voxel.
             If return_type is 'summary_array', a 1D numpy array (V,) containing
@@ -252,26 +255,27 @@ class KernelTransformer(NiMAREBase):
             Additionally, individual kernels may require other columns
             (e.g., "sample_size" for ALE).
         return_type : {'sparse', 'summary_array'}, optional
-            Whether to return a 4D sparse matrix ('sparse') where each contrast map is
-            saved separately or a 1D numpy array ('summary_array') where the contrast maps
-            are combined.
+            Whether to return the kernel's sparse representation ('sparse') or a 1D numpy
+            array ('summary_array') where the contrast maps are combined.
+            For ALE, KDA, and MKDA, the sparse representation is a study-by-masked-voxel
+            CSR matrix.
             Default is 'sparse'.
 
         Returns
         -------
-        transformed_maps : N-length list of (3D array, str) tuples or (4D array, 1D array) tuple
+        transformed_maps : object
             Transformed data, containing one element for each study.
 
             -   Case 1: A kernel that is not an (M)KDAKernel
                 Each list entry is composed of a 3D array (the MA map) and the study's ID.
 
             -   Case 2: (M)KDAKernel
-                There is a length-2 tuple with a 4D numpy array of the shape (N, X, Y, Z),
-                containing all of the MA maps, and a numpy array of shape (N,) with the study IDs.
+                There is a length-2 tuple with a sparse matrix or array containing all MA maps,
+                and a numpy array of shape (N,) with the study IDs.
 
             -  Case 3: A kernel with return_type='summary_array'.
-                The transformed data is a 1D numpy array of shape (X, Y, Z) containing the
-                summary measure for each voxel.
+                The transformed data is a 1D numpy array of shape (V,) containing the summary
+                measure for each voxel.
         """
         pass
 
