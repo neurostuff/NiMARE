@@ -53,7 +53,7 @@ def _local_neurosynth_manifest():
 
 
 @patch("nimare.extract.extract.urlopen", side_effect=mock_urlopen)
-def test_fetch_neurosynth(tmp_path_factory):
+def test_fetch_neurosynth(mock_url, tmp_path_factory):
     """Smoke test for extract.fetch_neurosynth.
 
     Taken from the Neurosynth Python package.

@@ -5,6 +5,7 @@ import inspect
 import json
 import logging
 import multiprocessing as mp
+import ntpath
 import os
 import os.path as op
 import re
@@ -543,11 +544,44 @@ def _validate_images_df(image_df):
     image_df : :class:`pandas.DataFrame`
         DataFrame with updated paths and columns.
     """
+    image_df = image_df.copy(deep=False)
+
     valid_suffixes = [".brik", ".head", ".nii", ".img", ".hed"]
     id_columns = set(["id", "study_id", "contrast_id"])
+
+    if image_df.columns.has_duplicates:
+        merged_columns = {}
+        for col in dict.fromkeys(image_df.columns):
+            values = image_df.loc[:, col]
+            if isinstance(values, pd.DataFrame):
+                merged_columns[col] = values.bfill(axis=1).iloc[:, 0]
+            else:
+                merged_columns[col] = values
+        image_df = pd.DataFrame(merged_columns, index=image_df.index)
+
+    def _is_absolute_path(value):
+        if not isinstance(value, str):
+            return False
+        if not value:
+            return False
+        if value[0] == "/":
+            return True
+        if value.startswith("\\\\") or value.startswith("//"):
+            return True
+        return len(value) > 2 and value[1] == ":" and value[2] in ("\\", "/")
+
+    def _path_module_for(value):
+        if len(value) > 1 and value[1] == ":":
+            return ntpath
+        if value.startswith("\\"):
+            return ntpath
+        return op
+
     # Find columns in the DataFrame with images
     file_cols = []
-    for col in set(image_df.columns) - id_columns:
+    for col in image_df.columns:
+        if col in id_columns:
+            continue
         vals = [v for v in image_df[col].values if isinstance(v, str)]
         fc = any([any([vs in v for vs in valid_suffixes]) for v in vals])
         if fc:
@@ -558,7 +592,7 @@ def _validate_images_df(image_df):
     abs_cols = []
     for col in file_cols:
         files = image_df[col].tolist()
-        abspaths = [f == op.abspath(f) for f in files if isinstance(f, str)]
+        abspaths = [_is_absolute_path(f) for f in files if isinstance(f, str)]
         if all(abspaths):
             abs_cols.append(col)
         elif not any(abspaths):
@@ -570,28 +604,52 @@ def _validate_images_df(image_df):
             )
 
     # Set relative paths from absolute ones
-    if len(abs_cols):
-        all_files = list(np.ravel(image_df[abs_cols].values))
-        all_files = [f for f in all_files if isinstance(f, str)]
+    for abs_col in abs_cols:
+        rel_col = abs_col + "__relative"
+        abs_values = image_df[abs_col].tolist()
 
-        if len(all_files) == 1:
-            # In the odd case where there's only one absolute path
-            shared_path = op.dirname(all_files[0]) + op.sep
+        if rel_col in image_df.columns:
+            rel_values = image_df[rel_col].tolist()
+            missing_relative = any(
+                isinstance(abs_val, str) and (not isinstance(rel_val, str) or not rel_val)
+                for abs_val, rel_val in zip(abs_values, rel_values)
+            )
+            if not missing_relative:
+                continue
         else:
-            shared_path = _find_stem(all_files)
+            rel_values = [None] * len(abs_values)
 
-        # Get parent *directory* if shared path includes common prefix.
-        if not shared_path.endswith(op.sep):
-            shared_path = op.dirname(shared_path) + op.sep
+        string_files = [f for f in abs_values if isinstance(f, str)]
+        if not string_files:
+            continue
+
+        pathmod = _path_module_for(string_files[0])
+        normalized_files = [pathmod.normpath(f) if isinstance(f, str) else f for f in abs_values]
+        string_dirs = [pathmod.dirname(f) for f in normalized_files if isinstance(f, str)]
+
+        if len(string_dirs) == 1:
+            shared_path = string_dirs[0].rstrip(pathmod.sep) + pathmod.sep
+        else:
+            shared_path = pathmod.commonprefix(string_dirs)
+            if not shared_path.endswith(pathmod.sep):
+                shared_path = pathmod.dirname(shared_path)
+            shared_path = shared_path.rstrip(pathmod.sep) + pathmod.sep
+
         LGR.info(f"Shared path detected: '{shared_path}'")
 
-        image_df_out = image_df.copy()  # To avoid SettingWithCopyWarning
-        for abs_col in abs_cols:
-            image_df_out[abs_col + "__relative"] = image_df[abs_col].apply(
-                lambda x: x.split(shared_path)[1] if isinstance(x, str) else x
-            )
+        relative_values = []
+        for norm_value, rel_value in zip(normalized_files, rel_values):
+            if isinstance(rel_value, str) and rel_value:
+                relative_values.append(rel_value)
+            elif isinstance(norm_value, str):
+                if shared_path and norm_value.startswith(shared_path):
+                    relative_values.append(norm_value[len(shared_path) :])
+                else:
+                    relative_values.append(pathmod.basename(norm_value))
+            else:
+                relative_values.append(rel_value)
 
-        image_df = image_df_out
+        image_df[rel_col] = relative_values
 
     # Normalize missing values to None (avoid NaN floats in path columns).
     # Pandas may keep float dtypes; force object to retain None.
@@ -729,7 +787,8 @@ def use_memmap(logger, n_files=1):
                 self.memmap_filenames, filenames = [], []
                 for i_file in range(n_files):
                     start_time = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
-                    _, filename = mkstemp(prefix=self.__class__.__name__, suffix=start_time)
+                    fd, filename = mkstemp(prefix=self.__class__.__name__, suffix=start_time)
+                    os.close(fd)
                     logger.debug(f"Temporary file written to {filename}")
                     self.memmap_filenames.append(filename)
                     filenames.append(filename)

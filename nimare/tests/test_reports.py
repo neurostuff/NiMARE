@@ -1,6 +1,7 @@
 """Test nimare.reports."""
 
 import os.path as op
+from pathlib import Path
 
 import pytest
 
@@ -8,7 +9,7 @@ from nimare.correct import FWECorrector
 from nimare.diagnostics import FocusCounter, Jackknife
 from nimare.meta.cbma import ALESubtraction
 from nimare.meta.ibma import FixedEffectsHedges, Stouffers
-from nimare.reports.base import run_reports
+from nimare.reports.base import Reportlet, run_reports
 from nimare.workflows import CBMAWorkflow, IBMAWorkflow, PairwiseCBMAWorkflow
 
 
@@ -158,6 +159,26 @@ def test_reports_alesubtraction_montecarlo_uses_pairwise_mass_map(
 
     summary_file = op.join(tmpdir, "figures", "corrector_figure-summary.html")
     assert op.isfile(summary_file)
-    with open(summary_file) as fo:
+    with open(summary_file, encoding="utf-8") as fo:
         summary_text = fo.read()
     assert "z_desc-group1MinusGroup2Mass_level-cluster_corr-FWE_method-montecarlo" in summary_text
+
+
+def test_reportlet_reads_utf8_html(tmp_path):
+    """Reportlets should read generated HTML fragments as UTF-8 on all platforms."""
+    expected_text = "caf\u00e9 \u2014 \u4f60\u597d"
+    figures_dir = tmp_path / "figures"
+    figures_dir.mkdir()
+    html_file = figures_dir / "utf8_fragment.html"
+    html_file.write_text(f"<div>{expected_text}</div>", encoding="utf-8")
+
+    reportlet = Reportlet(
+        Path(tmp_path),
+        config={
+            "name": "utf8_fragment",
+            "bids": {"value": "utf8_fragment", "suffix": "html"},
+        },
+    )
+
+    assert len(reportlet.components) == 1
+    assert expected_text in reportlet.components[0][0]
