@@ -1,6 +1,8 @@
 """Plot figures for report."""
 
 import matplotlib as mpl
+
+mpl.use("Agg", force=True)
 import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt

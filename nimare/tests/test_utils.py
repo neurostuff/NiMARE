@@ -6,6 +6,7 @@ import os.path as op
 
 import nibabel as nib
 import numpy as np
+import pandas as pd
 import pytest
 
 from nimare import utils
@@ -145,6 +146,25 @@ def test_use_memmap(caplog, has_low_memory, memory_limit):
         assert not os.path.isfile(my_class.memmap_filenames[0])
         # test when a function is called a new memmap file is created
         assert first_memmap_filename != my_class.memmap_filenames[0]
+
+
+def test_validate_images_df_preserves_existing_relative_columns():
+    """Absolute image columns should not duplicate an existing relative column."""
+    image_df = pd.DataFrame(
+        {
+            "id": ["study-1"],
+            "study_id": ["study"],
+            "contrast_id": ["1"],
+            "beta": ["C:/Users/runneradmin/nimare/tests/data/orig/study_beta.nii.gz"],
+            "beta__relative": ["orig/study_beta.nii.gz"],
+        }
+    )
+
+    validated = utils._validate_images_df(image_df)
+
+    assert validated.columns.tolist().count("beta__relative") == 1
+    assert validated.loc[0, "beta"] == image_df.loc[0, "beta"]
+    assert validated.loc[0, "beta__relative"] == "orig/study_beta.nii.gz"
 
 
 def test_tal2mni():
