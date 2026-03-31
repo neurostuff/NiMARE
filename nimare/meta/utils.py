@@ -6,8 +6,9 @@ import numpy as np
 import sparse
 from numba import jit
 from scipy import ndimage
+from scipy import sparse as sp_sparse
 
-from nimare.utils import _mask_img_to_bool, unique_rows
+from nimare.utils import DEFAULT_FLOAT_DTYPE, _mask_img_to_bool, unique_rows
 
 # based on local benchmarks, tested 20, 30, 40, 50, 100, 200 studies
 # sorting provides speed benefits starting betwee 30 and 40 studies
@@ -126,12 +127,15 @@ def compute_kda_ma(
 ):
     """Compute (M)KDA modeled activation (MA) map.
 
+    .. versionchanged:: 0.2.2
+
+        * Return masked study-by-voxel CSR matrices for sparse outputs.
+        * `shape` and `vox_dims` parameters have been removed. That information is now extracted
+          from the new parameter `mask`.
+
     .. versionchanged:: 0.0.12
 
         * Remove low-memory option in favor of sparse arrays.
-        * Return 4D sparse array.
-        * `shape` and `vox_dims` parameters have been removed. That information is now extracted
-          from the new parameter `mask`.
 
     .. versionadded:: 0.0.4
 
@@ -161,30 +165,29 @@ def compute_kda_ma(
 
     Returns
     -------
-    kernel_data : :obj:`sparse._coo.core.COO`
-        4D sparse array. If `exp_idx` is none, a 3d array in the same
-        shape as the `shape` argument is returned. If `exp_idx` is passed, a 4d array
-        is returned, where the first dimension has size equal to the number of
-        unique experiments, and the remaining 3 dimensions are equal to `shape`.
+    kernel_data : :obj:`numpy.ndarray` or tuple
+        If ``sum_across_studies`` is True, returns a masked 1D summary array.
+        Otherwise returns a tuple of:
+
+        1. A masked study-by-voxel CSR matrix of shape ``(n_studies, n_mask_voxels)``
+        2. An array mapping flattened full-volume voxel indices to masked voxel indices.
     """
     if sum_overlap and sum_across_studies:
         raise NotImplementedError("sum_overlap and sum_across_studies cannot both be True.")
 
-    # recast ijks to int32 to reduce memory footprint
-    ijks = ijks.astype(np.int32)
+    if exp_idx is None:
+        exp_idx = np.ones(len(ijks), dtype=np.int32)
+
+    ijks = ijks.astype(np.int32, copy=False)
     shape = mask.shape
     vox_dims = mask.header.get_zooms()
-
     max_shape = np.array(shape, dtype=np.int32)
     mask_data = _mask_img_to_bool(mask)
-
-    if exp_idx is None:
-        exp_idx = np.ones(len(ijks))
+    mask_flat_to_masked = _get_mask_flat_to_masked(mask)
+    n_voxels = int(mask_data.sum())
 
     exp_idx_uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
     n_studies = len(exp_idx_uniq)
-
-    kernel_shape = (n_studies,) + shape
 
     n_dim = ijks.shape[1]
     xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(n_dim)]
@@ -208,73 +211,97 @@ def compute_kda_ma(
         kernel_data = all_values[mask_data.reshape(-1)]
 
     else:
-        # Determine which experiments to use occupancy vs. unique-rows.
-        # Occupancy is more efficient when there are many foci per experiment;
-        # unique-rows is more efficient when there are few foci per experiment.
         exp_counts = np.bincount(exp_idx, minlength=n_studies)
-        use_occ_by_exp = exp_counts >= KDA_OCCUPANCY_MIN_FOCI
+        use_occ_by_exp = (not sum_overlap) & (exp_counts >= KDA_OCCUPANCY_MIN_FOCI)
+        flat_stride_y = shape[2]
+        flat_stride_x = shape[1] * shape[2]
+        indptr = [0]
+        indices_parts = []
+        data_parts = []
+        value = DEFAULT_FLOAT_DTYPE(value)
 
-        all_coords = []
-        # Loop over experiments
         for i_exp, _ in enumerate(exp_idx_uniq):
             curr_exp_idx = exp_idx == i_exp
             use_occ = use_occ_by_exp[i_exp]
+
             if sum_overlap:
-                # Convolve with sphere (allow duplicates when overlaps occur)
                 all_spheres = _convolve_sphere(kernel, ijks, curr_exp_idx, max_shape)
-                # Apply mask
-                sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
-                all_spheres = all_spheres[sphere_idx_inside_mask, :]
-                all_coords.append(all_spheres)
+                if all_spheres.size:
+                    flat_coords = (
+                        all_spheres[:, 0] * flat_stride_x
+                        + all_spheres[:, 1] * flat_stride_y
+                        + all_spheres[:, 2]
+                    )
+                    cols = mask_flat_to_masked[flat_coords]
+                    cols = cols[cols >= 0]
+                    if cols.size:
+                        cols, counts = np.unique(cols, return_counts=True)
+                        vals = counts.astype(DEFAULT_FLOAT_DTYPE, copy=False) * value
+                    else:
+                        cols = np.array([], dtype=np.int32)
+                        vals = np.array([], dtype=DEFAULT_FLOAT_DTYPE)
+                else:
+                    cols = np.array([], dtype=np.int32)
+                    vals = np.array([], dtype=DEFAULT_FLOAT_DTYPE)
             elif use_occ:
-                # Convolve with sphere and deduplicate via occupancy mask
                 occ = _convolve_sphere_to_mask(kernel, ijks, curr_exp_idx, max_shape)
-                # Apply mask
                 occ &= mask_data
-                # Combine experiment id with coordinates
-                all_coords.append(np.column_stack(np.where(occ)))
+                flat_occ = np.flatnonzero(occ.reshape(-1))
+                cols = mask_flat_to_masked[flat_occ]
+                vals = np.full(cols.shape[0], value, dtype=DEFAULT_FLOAT_DTYPE)
             else:
-                # Convolve with sphere and deduplicate via unique rows
                 all_spheres = _convolve_sphere(kernel, ijks, curr_exp_idx, max_shape)
-                all_spheres = unique_rows(all_spheres)
-                # Apply mask
-                sphere_idx_inside_mask = np.where(mask_data[tuple(all_spheres.T)])[0]
-                all_spheres = all_spheres[sphere_idx_inside_mask, :]
-                all_coords.append(all_spheres)
+                if all_spheres.size:
+                    all_spheres = unique_rows(all_spheres)
+                    flat_coords = (
+                        all_spheres[:, 0] * flat_stride_x
+                        + all_spheres[:, 1] * flat_stride_y
+                        + all_spheres[:, 2]
+                    )
+                    cols = mask_flat_to_masked[flat_coords]
+                    cols = cols[cols >= 0]
+                    cols.sort()
+                    vals = np.full(cols.shape[0], value, dtype=DEFAULT_FLOAT_DTYPE)
+                else:
+                    cols = np.array([], dtype=np.int32)
+                    vals = np.array([], dtype=DEFAULT_FLOAT_DTYPE)
 
-        # Add exp_idx to coordinates
-        exp_shapes = [coords.shape[0] for coords in all_coords]
-        exp_indicator = np.repeat(np.arange(len(exp_shapes)), exp_shapes)
+            cols = cols.astype(np.int32, copy=False)
+            vals = vals.astype(DEFAULT_FLOAT_DTYPE, copy=False)
+            indices_parts.append(cols)
+            data_parts.append(vals)
+            indptr.append(indptr[-1] + cols.shape[0])
 
-        all_coords = np.vstack(all_coords).T
-        all_coords = np.insert(all_coords, 0, exp_indicator, axis=0)
-
-        kernel_data = sparse.COO(
-            all_coords, data=value, has_duplicates=sum_overlap, shape=kernel_shape
+        indices = (
+            np.concatenate(indices_parts).astype(np.int32, copy=False)
+            if indices_parts
+            else np.array([], dtype=np.int32)
         )
+        data = (
+            np.concatenate(data_parts).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+            if data_parts
+            else np.array([], dtype=DEFAULT_FLOAT_DTYPE)
+        )
+        indptr = np.array(indptr, dtype=np.int64)
 
-        # Sort coordinates by experiment index for faster per-experiment access.
-        # Also compute exp_ptr (CSR-style offsets) for downstream consumers.
-        # Sorting is beneficial above ~40 studies based on
-        # local benchmark sweep (20/30/40/50/100/200).
-        if n_studies >= KDA_SORT_MIN_STUDIES:
-            exp_idx = kernel_data.coords[0]
-            if exp_idx.size:
-                order = np.argsort(exp_idx, kind="mergesort")
-                coords_sorted = kernel_data.coords[:, order]
-                data_sorted = kernel_data.data[order]
-                kernel_data = sparse.COO(
-                    coords_sorted,
-                    data=data_sorted,
-                    has_duplicates=sum_overlap,
-                    shape=kernel_shape,
-                )
-                exp_counts = np.bincount(coords_sorted[0], minlength=n_studies)
-                kernel_data._exp_ptr = np.concatenate(
-                    [np.array([0], dtype=np.int64), np.cumsum(exp_counts, dtype=np.int64)]
-                )
+        kernel_data = sp_sparse.csr_matrix(
+            (data, indices, indptr),
+            shape=(n_studies, n_voxels),
+            dtype=DEFAULT_FLOAT_DTYPE,
+        )
+        kernel_data.sort_indices()
+        kernel_data = kernel_data, mask_flat_to_masked
 
     return kernel_data
+
+
+def _get_mask_flat_to_masked(mask_img):
+    """Map flattened full-volume voxel indices to masked voxel indices."""
+    mask_data = _mask_img_to_bool(mask_img).reshape(-1)
+    mask_flat_to_masked = np.full(mask_data.shape[0], -1, dtype=np.int32)
+    mask_flat_to_masked[mask_data] = np.arange(mask_data.sum(), dtype=np.int32)
+    return mask_flat_to_masked
+
 
 
 def compute_ale_ma(mask, ijks, kernel=None, exp_idx=None, sample_sizes=None, use_dict=False):

@@ -3,6 +3,7 @@
 import logging
 
 import numpy as np
+from scipy import sparse as sp_sparse
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
@@ -239,6 +240,57 @@ def test_MKDADensity_approximate_montecarlo_convergence(testdata_cbma_full):
     # Correlation must be near unity and mean difference should be tiny
     assert np.corrcoef(p_approximate, p_montecarlo)[0, 1] > 0.98
     assert (p_approximate - p_montecarlo).mean() < 1e-3
+
+
+def test_MKDADensity_masked_csr_kernel_matches_masked_array(testdata_cbma):
+    """Direct masked-CSR MKDA kernel output should match the dense masked array."""
+    meta = MKDADensity(generate_description=False)
+    csr = meta.kernel_transformer.transform(testdata_cbma, return_type="sparse")
+    dense = meta.kernel_transformer.transform(testdata_cbma, return_type="array")
+
+    assert sp_sparse.isspmatrix_csr(csr)
+    np.testing.assert_allclose(csr.toarray(), dense)
+
+
+def test_MKDADensity_csr_summarystat_matches_dense(testdata_cbma):
+    """Masked-CSR MKDA summary stats should match the dense path."""
+    meta = MKDADensity(generate_description=False)
+    meta.masker = testdata_cbma.masker
+    meta._collect_inputs(testdata_cbma)
+    meta._preprocess_input(testdata_cbma)
+
+    ma_maps = meta.kernel_transformer.transform(testdata_cbma, return_type="sparse")
+    dense = meta.kernel_transformer.transform(testdata_cbma, return_type="array")
+    meta.weight_vec_ = meta._compute_weights(ma_maps)
+
+    csr_summary = meta._compute_summarystat_est(ma_maps)
+    dense_summary = meta._compute_summarystat_est(dense)
+    np.testing.assert_allclose(csr_summary, dense_summary)
+
+
+def test_MKDADensity_precomputed_masked_csr_matches_generated_fast_path(testdata_cbma):
+    """MKDADensity should accept precomputed masked-CSR MA maps."""
+    baseline = MKDADensity(null_method="approximate", generate_description=False).fit(testdata_cbma)
+
+    meta = MKDADensity(null_method="approximate", generate_description=False)
+    meta.masker = testdata_cbma.masker
+    meta._collect_inputs(testdata_cbma)
+    meta._preprocess_input(testdata_cbma)
+    precomputed = meta.kernel_transformer.transform(testdata_cbma, return_type="sparse")
+
+    result = MKDADensity(null_method="approximate", generate_description=False).fit(
+        testdata_cbma,
+        ma_maps=precomputed,
+    )
+
+    np.testing.assert_allclose(
+        result.get_map("stat", return_type="array"),
+        baseline.get_map("stat", return_type="array"),
+    )
+    np.testing.assert_allclose(
+        result.get_map("p", return_type="array"),
+        baseline.get_map("p", return_type="array"),
+    )
 
 
 def test_KDA_approximate_montecarlo_convergence(testdata_cbma_full):

@@ -411,7 +411,7 @@ class CBMAEstimator(Estimator):
             )
         elif isinstance(data, list):
             ma_values = self.masker.transform(data)
-        elif isinstance(data, (np.ndarray, sparse._coo.core.COO)):
+        elif isinstance(data, np.ndarray) or sp_sparse.issparse(data):
             ma_values = data
         else:
             raise ValueError(f"Unsupported data type '{type(data)}'")
@@ -569,7 +569,9 @@ class CBMAEstimator(Estimator):
         --------
         This method is only retained for testing and algorithm development.
         """
-        if isinstance(ma_maps, sparse._coo.core.COO):
+        if sp_sparse.issparse(ma_maps):
+            ma_maps = ma_maps.toarray()
+        elif isinstance(ma_maps, sparse._coo.core.COO):
             masker = self.dataset.masker if not self.masker else self.masker
             mask = masker.mask_img
             mask_data = _mask_img_to_bool(mask)

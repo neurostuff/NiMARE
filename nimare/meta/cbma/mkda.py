@@ -4,10 +4,10 @@ import logging
 
 import nibabel as nib
 import numpy as np
-import sparse
 from joblib import Memory, Parallel, delayed
 from pymare.stats import fdr
 from scipy import ndimage, special
+from scipy import sparse as sp_sparse
 from scipy.stats import chi2
 from tqdm.auto import tqdm
 
@@ -26,6 +26,13 @@ __version__ = _version.get_versions()["version"]
 def _chi2_sf_1dof(stat_values):
     """Survival function for chi-square statistics with one degree of freedom."""
     return special.erfc(np.sqrt(stat_values / 2.0))
+
+
+def _require_masked_csr(ma_values, source="MA maps"):
+    """Require MKDA-family sparse MA maps to be scipy CSR matrices."""
+    if not sp_sparse.isspmatrix(ma_values):
+        raise ValueError(f"{source} must be a scipy sparse matrix, not {type(ma_values)}.")
+    return ma_values.tocsr(copy=False)
 
 
 class MKDADensity(CBMAEstimator):
@@ -221,18 +228,40 @@ class MKDADensity(CBMAEstimator):
         assert weight_vec.shape[0] == ma_values.shape[0]
         return weight_vec
 
+    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", return_type="sparse"):
+        """Collect MKDA MA maps in masked CSR form."""
+        if return_type != "sparse":
+            return super()._collect_ma_maps(
+                coords_key=coords_key,
+                maps_key=maps_key,
+                return_type=return_type,
+            )
+
+        return _require_masked_csr(
+            super()._collect_ma_maps(
+                coords_key=coords_key,
+                maps_key=maps_key,
+                return_type=return_type,
+            ),
+            source=f"Collected {maps_key}",
+        )
+
+    def _compute_summarystat(self, data):
+        """Compute summary statistics from dense arrays or masked CSR matrices."""
+        if sp_sparse.isspmatrix(data):
+            ma_values = data.tocsr(copy=False)
+            return self._compute_summarystat_est(ma_values)
+
+        return super()._compute_summarystat(data)
+
     def _compute_summarystat_est(self, ma_values):
-        ma_values = ma_values.reshape((ma_values.shape[0], -1))
-        stat_values = ma_values.T.dot(self.weight_vec_)
-
-        if isinstance(ma_values, sparse._coo.core.COO):
-            # NOTE: This may not work correctly with a non-NiftiMasker.
-            mask_data = _mask_img_to_bool(self.masker.mask_img)
-
-            stat_values = stat_values[mask_data.reshape(-1)].ravel()
-            # This is used by _compute_null_approximate
-            self.__n_mask_voxels = stat_values.shape[0]
+        if sp_sparse.isspmatrix(ma_values):
+            ma_values = _require_masked_csr(ma_values)
+            stat_values = np.asarray(ma_values.T.dot(self.weight_vec_)).ravel()
+            self.__n_mask_voxels = ma_values.shape[1]
         else:
+            ma_values = ma_values.reshape((ma_values.shape[0], -1))
+            stat_values = ma_values.T.dot(self.weight_vec_)
             # np.array type is used by _compute_null_reduced_montecarlo
             stat_values = stat_values.ravel()
 
@@ -243,37 +272,22 @@ class MKDADensity(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps : :obj:`sparse._coo.core.COO`
-            MA maps.
-            The ma_maps can be a 4d sparse array of MA maps,
+        ma_maps : scipy.sparse matrix
+            Masked study-by-voxel MA maps.
 
         Notes
         -----
         This method adds two entries to the null_distributions_ dict attribute: "histogram_bins",
         and "histogram_means" only if ``null_method == "approximate"``.
         """
-        if not isinstance(ma_maps, sparse._coo.core.COO):
-            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
-
-        n_exp = ma_maps.shape[0]
-        prop_active = np.zeros(n_exp)
-        data = ma_maps.data
-        coords = ma_maps.coords
-        exp_ptr = getattr(ma_maps, "_exp_ptr", None)
-        for exp_idx in range(n_exp):
-            # The first column of coords is the fourth dimension of the dense array
-            if exp_ptr is not None:
-                start = exp_ptr[exp_idx]
-                end = exp_ptr[exp_idx + 1]
-                study_ma_values = data[start:end]
-            else:
-                study_ma_values = data[coords[0, :] == exp_idx]
-
+        if sp_sparse.isspmatrix(ma_maps):
+            ma_maps = _require_masked_csr(ma_maps)
             if self.__n_mask_voxels == 0:
-                prop_active[exp_idx] = 0.0
+                prop_active = np.zeros(ma_maps.shape[0], dtype=float)
             else:
-                # Mean including zero voxels is equivalent to sum / total voxels.
-                prop_active[exp_idx] = study_ma_values.sum() / self.__n_mask_voxels
+                prop_active = np.asarray(ma_maps.sum(axis=1)).ravel() / self.__n_mask_voxels
+        else:
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
         self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
 
@@ -1230,11 +1244,11 @@ class KDA(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps : :obj:`numpy.ndarray` or :obj:`sparse._coo.core.COO`
+        ma_maps : :obj:`numpy.ndarray` or scipy.sparse matrix
             MA maps.
             The ma_maps can be:
             (1) a 1d contrast-len or 2d contrast-by-voxel array of MA values,
-            or (2) a 4d sparse array of MA maps,
+            or (2) a masked study-by-voxel sparse matrix of MA maps,
 
         Returns
         -------
@@ -1242,16 +1256,9 @@ class KDA(CBMAEstimator):
             OF values. One value per voxel.
         """
         # OF is just a sum of MA values.
-        if isinstance(ma_values, sparse._coo.core.COO):
-            # NOTE: This may not work correctly with a non-NiftiMasker.
-            mask_data = _mask_img_to_bool(self.masker.mask_img)
-
-            stat_values = ma_values.sum(axis=0)
-
-            stat_values = stat_values.todense().reshape(-1)
-            stat_values = stat_values[mask_data.reshape(-1)]
-
-            # This is used by _compute_null_approximate
+        if sp_sparse.isspmatrix(ma_values):
+            ma_values = _require_masked_csr(ma_values)
+            stat_values = np.asarray(ma_values.sum(axis=0)).ravel()
             self.__n_mask_voxels = stat_values.shape[0]
         else:
             # np.array type is used by _determine_histogram_bins to calculate max_poss_value
@@ -1264,15 +1271,17 @@ class KDA(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps : :obj:`sparse._coo.core.COO`
-            MA maps.
+        ma_maps : scipy.sparse matrix
+            Masked study-by-voxel MA maps.
 
         Notes
         -----
         This method adds one entry to the null_distributions_ dict attribute: "histogram_bins".
         """
-        if not isinstance(ma_maps, sparse._coo.core.COO):
+        if not sp_sparse.isspmatrix(ma_maps):
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
+
+        ma_maps = _require_masked_csr(ma_maps)
 
         # assumes that groupby results in same order as MA maps
         n_foci_per_study = self.inputs_["coordinates"].groupby("id").size().values
@@ -1297,7 +1306,7 @@ class KDA(CBMAEstimator):
             # The maximum possible MA value is the max value from each MA map,
             # unlike the case with a summation-based kernel.
             # Need to convert to dense because np.ceil is too slow with sparse
-            max_ma_values = ma_maps.max(axis=[1, 2, 3]).todense()
+            max_ma_values = np.asarray(ma_maps.max(axis=1).todense()).ravel()
 
             # round up based on resolution
             # hardcoding 1000 here because figuring out what to round to was difficult.
@@ -1318,16 +1327,18 @@ class KDA(CBMAEstimator):
 
         Parameters
         ----------
-        ma_maps : :obj:`sparse._coo.core.COO`
-            MA maps.
+        ma_maps : scipy.sparse matrix
+            Masked study-by-voxel MA maps.
 
         Notes
         -----
         This method adds two entries to the null_distributions_ dict attribute:
         "histogram_bins" and "histogram_weights".
         """
-        if not isinstance(ma_maps, sparse._coo.core.COO):
+        if not sp_sparse.isspmatrix(ma_maps):
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
+
+        ma_maps = _require_masked_csr(ma_maps)
 
         # Derive bin edges from histogram bin centers for numpy histogram function
         bin_centers = self.null_distributions_["histogram_bins"]
@@ -1340,10 +1351,11 @@ class KDA(CBMAEstimator):
         n_bins = bin_centers.shape[0]
         ma_hists = np.zeros((n_exp, n_bins))
         data = ma_maps.data
-        coords = ma_maps.coords
+        indptr = ma_maps.indptr
         for exp_idx in range(n_exp):
-            # The first column of coords is the fourth dimension of the dense array
-            study_ma_values = data[coords[0, :] == exp_idx]
+            start = indptr[exp_idx]
+            end = indptr[exp_idx + 1]
+            study_ma_values = data[start:end]
 
             n_nonzero_voxels = study_ma_values.shape[0]
             n_zero_voxels = self.__n_mask_voxels - n_nonzero_voxels

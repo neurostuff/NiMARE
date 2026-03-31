@@ -46,14 +46,18 @@ def _create_signal_mask(ground_truth_foci_ijks, mask):
         to be significant within the brain.
     """
     # area where I'm reasonably certain there are significant results
-    sig_prob_map = compute_kda_ma(mask, ground_truth_foci_ijks, r=2, value=1, sum_overlap=False)
-    sig_prob_map = sig_prob_map[0].todense()
+    sig_prob_map, _ = compute_kda_ma(mask, ground_truth_foci_ijks, r=2, value=1, sum_overlap=False)
+    sig_prob_row = np.asarray(sig_prob_map.getrow(0).toarray()).ravel()
+    sig_prob_map = np.zeros(mask.shape, dtype=sig_prob_row.dtype)
+    sig_prob_map[mask.get_fdata().astype(bool)] = sig_prob_row
 
     # area where I'm reasonably certain there are not significant results
-    nonsig_prob_map = compute_kda_ma(
+    nonsig_prob_map, _ = compute_kda_ma(
         mask, ground_truth_foci_ijks, r=14, value=1, sum_overlap=False
     )
-    nonsig_prob_map = nonsig_prob_map[0].todense()
+    nonsig_prob_row = np.asarray(nonsig_prob_map.getrow(0).toarray()).ravel()
+    nonsig_prob_map = np.zeros(mask.shape, dtype=nonsig_prob_row.dtype)
+    nonsig_prob_map[mask.get_fdata().astype(bool)] = nonsig_prob_row
 
     sig_map = nib.Nifti1Image((sig_prob_map == 1).astype(np.int32), affine=mask.affine)
     nonsig_map = nib.Nifti1Image((nonsig_prob_map == 0).astype(np.int32), affine=mask.affine)

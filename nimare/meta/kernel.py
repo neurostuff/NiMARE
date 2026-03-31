@@ -13,10 +13,15 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 from joblib import Memory
+from scipy import sparse as sp_sparse
 
 from nimare.base import NiMAREBase
 from nimare.dataset import Dataset
-from nimare.meta.utils import compute_ale_ma, compute_kda_ma, get_ale_kernel
+from nimare.meta.utils import (
+    compute_ale_ma,
+    compute_kda_ma,
+    get_ale_kernel,
+)
 from nimare.studyset import normalize_collection
 from nimare.utils import _add_metadata_to_dataframe, _mask_img_to_bool, mm2vox
 
@@ -192,11 +197,30 @@ class KernelTransformer(NiMAREBase):
 
         transformed_maps = self._cache(self._transform, func_memory_level=2)(*args)
 
-        if return_type == "sparse" or return_type == "summary_array":
+        if return_type == "sparse":
+            return transformed_maps[0]
+        if return_type == "summary_array":
+            if sp_sparse.issparse(transformed_maps[0]):
+                return np.asarray(transformed_maps[0].sum(axis=0)).ravel()
             return transformed_maps[0]
 
+        if sp_sparse.issparse(transformed_maps[0]):
+            if return_type == "array":
+                return transformed_maps[0].toarray()
+
+            imgs = []
+            mask_data_flat = mask_data.reshape(-1)
+            for i_exp, _ in enumerate(transformed_maps[1]):
+                kernel_row = np.asarray(transformed_maps[0].getrow(i_exp).todense()).ravel()
+                kernel_data = np.zeros(mask_data_flat.shape[0], dtype=kernel_row.dtype)
+                kernel_data[mask_data_flat] = kernel_row
+                kernel_data = kernel_data.reshape(mask.shape)
+                img = nib.Nifti1Image(kernel_data, mask.affine, dtype=kernel_data.dtype)
+                imgs.append(img)
+            return imgs
+
         imgs = []
-        # Loop over exp ids since sparse._coo.core.COO is not iterable
+        # Loop over experiment ids to rebuild one image per study.
         for i_exp, _ in enumerate(transformed_maps[1]):
             kernel_data = transformed_maps[0][i_exp].todense()
 
@@ -422,21 +446,26 @@ class KDAKernel(KernelTransformer):
         ijks = coordinates[["i", "j", "k"]].values
         exp_idx = coordinates["id"].values
         if return_type == "sparse":
-            sum_across_studies = False
+            transformed, _ = compute_kda_ma(
+                mask,
+                ijks,
+                self.r,
+                self.value,
+                exp_idx,
+                sum_overlap=self._sum_overlap,
+            )
         elif return_type == "summary_array":
-            sum_across_studies = True
+            transformed = compute_kda_ma(
+                mask,
+                ijks,
+                self.r,
+                self.value,
+                exp_idx,
+                sum_overlap=self._sum_overlap,
+                sum_across_studies=True,
+            )
         else:
             raise ValueError('Argument "return_type" must be "sparse" or "summary_array".')
-
-        transformed = compute_kda_ma(
-            mask,
-            ijks,
-            self.r,
-            self.value,
-            exp_idx,
-            sum_overlap=self._sum_overlap,
-            sum_across_studies=sum_across_studies,
-        )
         exp_ids = np.unique(exp_idx)
         return transformed, exp_ids
 
