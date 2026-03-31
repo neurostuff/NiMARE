@@ -2,7 +2,19 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.11.2...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.12.0...HEAD)
+
+## [0.12.0](https://github.com/neurostuff/NiMARE/compare/0.11.2...0.12.0) - 2026-03-31
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+Official support for windows install in this release, and more optimizations for ALE in particular to help with heavy loads on AWS.
+
+### What's Changed
+
+* [CI] add windows by @jdkent in https://github.com/neurostuff/NiMARE/pull/995
+* [REF] optimize kernels with compressed sparse row data representation by @jdkent in https://github.com/neurostuff/NiMARE/pull/996
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.11.2...0.12.0
 
 ## [0.11.2](https://github.com/neurostuff/NiMARE/compare/0.11.1...0.11.2) - 2026-03-27
 
