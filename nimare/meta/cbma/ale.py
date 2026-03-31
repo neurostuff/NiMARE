@@ -15,6 +15,7 @@ from tqdm.auto import tqdm
 
 from nimare import _version
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare.meta.cbma.utils import collect_csr_ma_maps, require_masked_csr
 from nimare.meta.kernel import ALEKernel
 from nimare.meta.utils import _calculate_cluster_measures
 from nimare.stats import null_to_p, nullhist_to_p
@@ -46,13 +47,6 @@ def _csr_row_max(ma_values):
     return max_values
 
 
-def _require_masked_csr(ma_values, source="MA maps"):
-    """Require ALE-family sparse MA maps to be scipy CSR matrices."""
-    if not sp_sparse.isspmatrix(ma_values):
-        raise ValueError(f"{source} must be a scipy sparse matrix, not {type(ma_values)}.")
-    return ma_values.tocsr(copy=False)
-
-
 def _compute_ale_summarystat(ma_values):
     """Compute ALE summary statistics from dense arrays or masked CSR matrices."""
     if sp_sparse.isspmatrix(ma_values):
@@ -76,21 +70,7 @@ def _collect_masked_ma_maps(estimator, coords_key="coordinates", maps_key="ma_ma
     """Collect ALE-family MA maps in masked CSR form."""
     estimator._study_max_ma_values = None
 
-    if maps_key in estimator.inputs_:
-        ma_values = _require_masked_csr(
-            estimator.inputs_[maps_key], source=f"Precomputed {maps_key}"
-        )
-        estimator._study_max_ma_values = _csr_row_max(ma_values)
-        return ma_values
-
-    ma_values = _require_masked_csr(
-        estimator.kernel_transformer.transform(
-            estimator.inputs_[coords_key],
-            masker=estimator.masker,
-            return_type="sparse",
-        ),
-        source=f"Generated {maps_key}",
-    )
+    ma_values = collect_csr_ma_maps(estimator, coords_key=coords_key, maps_key=maps_key)
     estimator._study_max_ma_values = _csr_row_max(ma_values).astype(
         DEFAULT_FLOAT_DTYPE, copy=False
     )
@@ -302,9 +282,7 @@ class ALE(CBMAEstimator):
         return super()._compute_summarystat(data)
 
     def _compute_summarystat_est(self, ma_values):
-        ma_values = (
-            _require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
-        )
+        ma_values = require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
         stat_values = _compute_ale_summarystat(ma_values)
         if sp_sparse.isspmatrix(ma_values):
             self.__n_mask_voxels = stat_values.shape[0]
@@ -326,7 +304,7 @@ class ALE(CBMAEstimator):
             self.null_distributions_ = {}
 
         if sp_sparse.isspmatrix(ma_maps):
-            ma_maps = _require_masked_csr(ma_maps)
+            ma_maps = require_masked_csr(ma_maps)
             max_ma_values = getattr(self, "_study_max_ma_values", None)
             if max_ma_values is None or max_ma_values.shape[0] != ma_maps.shape[0]:
                 max_ma_values = _csr_row_max(ma_maps)
@@ -361,7 +339,7 @@ class ALE(CBMAEstimator):
             - "histweights_corr-none_method-approximate"
         """
         if sp_sparse.isspmatrix(ma_maps):
-            ma_maps = _require_masked_csr(ma_maps)
+            ma_maps = require_masked_csr(ma_maps)
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
@@ -735,12 +713,12 @@ class ALESubtraction(PairwiseCBMAEstimator):
     def _combine_ma_maps(self, ma_maps1, ma_maps2):
         """Combine two MA map collections while preserving efficient sparse formats."""
         return sp_sparse.vstack(
-            (_require_masked_csr(ma_maps1), _require_masked_csr(ma_maps2)), format="csr"
+            (require_masked_csr(ma_maps1), require_masked_csr(ma_maps2)), format="csr"
         )
 
     def _compute_summarystat_est(self, ma_values):
         return _compute_ale_summarystat(
-            _require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
+            require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
         )
 
     def _run_permutation(self, i_iter, n_grp1, ma_arr, iter_diff_values):
@@ -1300,7 +1278,7 @@ class SCALE(CBMAEstimator):
             raise ValueError(f"Unsupported data type '{type(data)}'")
 
         return _compute_ale_summarystat(
-            _require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
+            require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
         )
 
     def _scale_to_p(self, stat_values, scale_values):

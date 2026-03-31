@@ -28,6 +28,48 @@ from nimare.utils import _add_metadata_to_dataframe, _mask_img_to_bool, mm2vox
 LGR = logging.getLogger(__name__)
 
 
+def _sparse_maps_to_summary_array(sparse_maps):
+    """Collapse sparse MA maps across studies into a 1D summary array."""
+    return np.asarray(sparse_maps.sum(axis=0)).ravel()
+
+
+def _sparse_maps_to_array(sparse_maps):
+    """Convert masked sparse MA maps into a dense study-by-voxel array."""
+    return sparse_maps.toarray()
+
+
+def _sparse_maps_to_images(sparse_maps, exp_ids, mask, mask_data):
+    """Reconstruct one full-volume image per study from masked sparse MA maps."""
+    imgs = []
+    mask_data_flat = mask_data.reshape(-1)
+    for i_exp, _ in enumerate(exp_ids):
+        kernel_row = np.asarray(sparse_maps.getrow(i_exp).todense()).ravel()
+        kernel_data = np.zeros(mask_data_flat.shape[0], dtype=kernel_row.dtype)
+        kernel_data[mask_data_flat] = kernel_row
+        kernel_data = kernel_data.reshape(mask.shape)
+        img = nib.Nifti1Image(kernel_data, mask.affine, dtype=kernel_data.dtype)
+        imgs.append(img)
+    return imgs
+
+
+def _dense_maps_to_array_or_images(kernel_maps, exp_ids, mask, mask_data, return_type):
+    """Reconstruct dense kernel outputs into arrays or images."""
+    outputs = []
+    for i_exp, _ in enumerate(exp_ids):
+        kernel_data = kernel_maps[i_exp].todense()
+
+        if return_type == "array":
+            outputs.append(kernel_data[mask_data])
+        elif return_type == "image":
+            kernel_data *= mask_data
+            img = nib.Nifti1Image(kernel_data, mask.affine, dtype=kernel_data.dtype)
+            outputs.append(img)
+
+    if return_type == "array":
+        return np.vstack(outputs)
+    return outputs
+
+
 class KernelTransformer(NiMAREBase):
     """Base class for modeled activation-generating methods in :mod:`~nimare.meta.kernel`.
 
@@ -200,47 +242,26 @@ class KernelTransformer(NiMAREBase):
 
         transformed_maps = self._cache(self._transform, func_memory_level=2)(*args)
 
+        kernel_maps, exp_ids = transformed_maps
         if return_type == "sparse":
-            return transformed_maps[0]
+            return kernel_maps
         if return_type == "summary_array":
-            if sp_sparse.issparse(transformed_maps[0]):
-                return np.asarray(transformed_maps[0].sum(axis=0)).ravel()
-            return transformed_maps[0]
+            if sp_sparse.issparse(kernel_maps):
+                return _sparse_maps_to_summary_array(kernel_maps)
+            return kernel_maps
 
-        if sp_sparse.issparse(transformed_maps[0]):
+        if sp_sparse.issparse(kernel_maps):
             if return_type == "array":
-                return transformed_maps[0].toarray()
+                return _sparse_maps_to_array(kernel_maps)
+            return _sparse_maps_to_images(kernel_maps, exp_ids, mask, mask_data)
 
-            imgs = []
-            mask_data_flat = mask_data.reshape(-1)
-            for i_exp, _ in enumerate(transformed_maps[1]):
-                kernel_row = np.asarray(transformed_maps[0].getrow(i_exp).todense()).ravel()
-                kernel_data = np.zeros(mask_data_flat.shape[0], dtype=kernel_row.dtype)
-                kernel_data[mask_data_flat] = kernel_row
-                kernel_data = kernel_data.reshape(mask.shape)
-                img = nib.Nifti1Image(kernel_data, mask.affine, dtype=kernel_data.dtype)
-                imgs.append(img)
-            return imgs
-
-        imgs = []
-        # Loop over experiment ids to rebuild one image per study.
-        for i_exp, _ in enumerate(transformed_maps[1]):
-            kernel_data = transformed_maps[0][i_exp].todense()
-
-            if return_type == "array":
-                img = kernel_data[mask_data]
-                imgs.append(img)
-            elif return_type == "image":
-                kernel_data *= mask_data
-                img = nib.Nifti1Image(kernel_data, mask.affine, dtype=kernel_data.dtype)
-                imgs.append(img)
-
-        del kernel_data, transformed_maps
-
-        if return_type == "array":
-            return np.vstack(imgs)
-        elif return_type == "image":
-            return imgs
+        return _dense_maps_to_array_or_images(
+            kernel_maps,
+            exp_ids,
+            mask,
+            mask_data,
+            return_type,
+        )
 
     def _transform(self, mask, coordinates, return_type="sparse"):
         """Apply the kernel's unique transformer.

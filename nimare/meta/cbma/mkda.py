@@ -14,6 +14,7 @@ from tqdm.auto import tqdm
 
 from nimare import _version
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare.meta.cbma.utils import collect_csr_ma_maps, require_masked_csr
 from nimare.meta.kernel import KDAKernel, MKDAKernel
 from nimare.meta.utils import _calculate_cluster_measures
 from nimare.stats import null_to_p, one_way, two_way
@@ -27,13 +28,6 @@ __version__ = _version.get_versions()["version"]
 def _chi2_sf_1dof(stat_values):
     """Survival function for chi-square statistics with one degree of freedom."""
     return special.erfc(np.sqrt(stat_values / 2.0))
-
-
-def _require_masked_csr(ma_values, source="MA maps"):
-    """Require MKDA-family sparse MA maps to be scipy CSR matrices."""
-    if not sp_sparse.isspmatrix(ma_values):
-        raise ValueError(f"{source} must be a scipy sparse matrix, not {type(ma_values)}.")
-    return ma_values.tocsr(copy=False)
 
 
 class MKDADensity(CBMAEstimator):
@@ -238,14 +232,7 @@ class MKDADensity(CBMAEstimator):
                 return_type=return_type,
             )
 
-        return _require_masked_csr(
-            super()._collect_ma_maps(
-                coords_key=coords_key,
-                maps_key=maps_key,
-                return_type=return_type,
-            ),
-            source=f"Collected {maps_key}",
-        )
+        return collect_csr_ma_maps(self, coords_key=coords_key, maps_key=maps_key)
 
     def _compute_summarystat(self, data):
         """Compute summary statistics from dense arrays or masked CSR matrices."""
@@ -257,7 +244,7 @@ class MKDADensity(CBMAEstimator):
 
     def _compute_summarystat_est(self, ma_values):
         if sp_sparse.isspmatrix(ma_values):
-            ma_values = _require_masked_csr(ma_values)
+            ma_values = require_masked_csr(ma_values)
             stat_values = np.asarray(ma_values.T.dot(self.weight_vec_)).ravel()
             self.__n_mask_voxels = ma_values.shape[1]
         else:
@@ -282,7 +269,7 @@ class MKDADensity(CBMAEstimator):
         and "histogram_means" only if ``null_method == "approximate"``.
         """
         if sp_sparse.isspmatrix(ma_maps):
-            ma_maps = _require_masked_csr(ma_maps)
+            ma_maps = require_masked_csr(ma_maps)
             if self.__n_mask_voxels == 0:
                 prop_active = np.zeros(ma_maps.shape[0], dtype=float)
             else:
@@ -1258,7 +1245,7 @@ class KDA(CBMAEstimator):
         """
         # OF is just a sum of MA values.
         if sp_sparse.isspmatrix(ma_values):
-            ma_values = _require_masked_csr(ma_values)
+            ma_values = require_masked_csr(ma_values)
             stat_values = np.asarray(ma_values.sum(axis=0)).ravel()
             self.__n_mask_voxels = stat_values.shape[0]
         else:
@@ -1281,8 +1268,6 @@ class KDA(CBMAEstimator):
         """
         if not sp_sparse.isspmatrix(ma_maps):
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
-
-        ma_maps = _require_masked_csr(ma_maps)
 
         # assumes that groupby results in same order as MA maps
         n_foci_per_study = self.inputs_["coordinates"].groupby("id").size().values
@@ -1338,8 +1323,6 @@ class KDA(CBMAEstimator):
         """
         if not sp_sparse.isspmatrix(ma_maps):
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
-
-        ma_maps = _require_masked_csr(ma_maps)
 
         # Derive bin edges from histogram bin centers for numpy histogram function
         bin_centers = self.null_distributions_["histogram_bins"]
