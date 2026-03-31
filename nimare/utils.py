@@ -544,7 +544,7 @@ def _validate_images_df(image_df):
     image_df : :class:`pandas.DataFrame`
         DataFrame with updated paths and columns.
     """
-    image_df = image_df.copy()
+    image_df = image_df.copy(deep=False)
 
     valid_suffixes = [".brik", ".head", ".nii", ".img", ".hed"]
     id_columns = set(["id", "study_id", "contrast_id"])
@@ -562,10 +562,18 @@ def _validate_images_df(image_df):
     def _is_absolute_path(value):
         if not isinstance(value, str):
             return False
-        return op.isabs(value) or ntpath.isabs(value)
+        if not value:
+            return False
+        if value[0] == "/":
+            return True
+        if value.startswith("\\\\") or value.startswith("//"):
+            return True
+        return len(value) > 2 and value[1] == ":" and value[2] in ("\\", "/")
 
     def _path_module_for(value):
-        if ntpath.isabs(value):
+        if len(value) > 1 and value[1] == ":":
+            return ntpath
+        if value.startswith("\\"):
             return ntpath
         return op
 
@@ -596,37 +604,52 @@ def _validate_images_df(image_df):
             )
 
     # Set relative paths from absolute ones
-    if len(abs_cols):
-        all_files = list(np.ravel(image_df[abs_cols].values))
-        all_files = [f for f in all_files if isinstance(f, str)]
-        pathmod = _path_module_for(all_files[0])
+    for abs_col in abs_cols:
+        rel_col = abs_col + "__relative"
+        abs_values = image_df[abs_col].tolist()
 
-        if len(all_files) == 1:
-            # In the odd case where there's only one absolute path
-            shared_path = pathmod.dirname(pathmod.normpath(all_files[0])) + pathmod.sep
-        else:
-            shared_path = pathmod.commonpath(
-                [pathmod.dirname(pathmod.normpath(f)) for f in all_files]
+        if rel_col in image_df.columns:
+            rel_values = image_df[rel_col].tolist()
+            missing_relative = any(
+                isinstance(abs_val, str) and (not isinstance(rel_val, str) or not rel_val)
+                for abs_val, rel_val in zip(abs_values, rel_values)
             )
-            shared_path = shared_path + pathmod.sep
+            if not missing_relative:
+                continue
+        else:
+            rel_values = [None] * len(abs_values)
+
+        string_files = [f for f in abs_values if isinstance(f, str)]
+        if not string_files:
+            continue
+
+        pathmod = _path_module_for(string_files[0])
+        normalized_files = [pathmod.normpath(f) if isinstance(f, str) else f for f in abs_values]
+        string_dirs = [pathmod.dirname(f) for f in normalized_files if isinstance(f, str)]
+
+        if len(string_dirs) == 1:
+            shared_path = string_dirs[0].rstrip(pathmod.sep) + pathmod.sep
+        else:
+            shared_path = pathmod.commonprefix(string_dirs)
+            if not shared_path.endswith(pathmod.sep):
+                shared_path = pathmod.dirname(shared_path)
+            shared_path = shared_path.rstrip(pathmod.sep) + pathmod.sep
+
         LGR.info(f"Shared path detected: '{shared_path}'")
 
-        image_df_out = image_df.copy()  # To avoid SettingWithCopyWarning
-        for abs_col in abs_cols:
-            rel_col = abs_col + "__relative"
-            relative_paths = image_df[abs_col].apply(
-                lambda x: (
-                    pathmod.relpath(pathmod.normpath(x), shared_path) if isinstance(x, str) else x
-                )
-            )
-            if rel_col in image_df_out.columns:
-                image_df_out[rel_col] = image_df_out[rel_col].where(
-                    image_df_out[rel_col].notnull(), relative_paths
-                )
+        relative_values = []
+        for norm_value, rel_value in zip(normalized_files, rel_values):
+            if isinstance(rel_value, str) and rel_value:
+                relative_values.append(rel_value)
+            elif isinstance(norm_value, str):
+                if shared_path and norm_value.startswith(shared_path):
+                    relative_values.append(norm_value[len(shared_path) :])
+                else:
+                    relative_values.append(pathmod.basename(norm_value))
             else:
-                image_df_out[rel_col] = relative_paths
+                relative_values.append(rel_value)
 
-        image_df = image_df_out
+        image_df[rel_col] = relative_values
 
     # Normalize missing values to None (avoid NaN floats in path columns).
     # Pandas may keep float dtypes; force object to retain None.
