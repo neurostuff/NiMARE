@@ -12,6 +12,14 @@ concurrency:
   group: testing-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  PYTEST_COMMON_ARGS: --cov-append --cov-report=xml --cov=nimare nimare
+  PYTEST_UNIT_MARKERS: not performance_estimators and not performance_correctors and not performance_smoke and not cbmr_importerror
+  PYTEST_PERFORMANCE_ESTIMATORS_MARKERS: performance_estimators
+  PYTEST_PERFORMANCE_CORRECTORS_MARKERS: performance_correctors
+  PYTEST_PERFORMANCE_SMOKE_MARKERS: performance_smoke
+  PYTEST_CBMR_IMPORTERROR_MARKERS: cbmr_importerror
+
 jobs:
   # Determine if tests should be run based on commit message.
   check_skip:
@@ -54,7 +62,7 @@ jobs:
         run: python -m pip install -e .[tests,cbmr]
       - name: "Run tests"
         shell: bash {0}
-        run: python -m pytest -m "not performance_estimators and not performance_correctors and not performance_smoke and not cbmr_importerror" --cov-append --cov-report=xml --cov=nimare nimare
+        run: python -m pytest -m "${PYTEST_UNIT_MARKERS}" ${PYTEST_COMMON_ARGS}
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -86,7 +94,7 @@ jobs:
         run: python -m pip install -e .[minimum,tests,cbmr]
       - name: "Run tests"
         shell: bash {0}
-        run: python -m pytest -m "not performance_estimators and not performance_correctors and not performance_smoke and not cbmr_importerror" --cov-append --cov-report=xml --cov=nimare nimare
+        run: python -m pytest -m "${PYTEST_UNIT_MARKERS}" ${PYTEST_COMMON_ARGS}
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -118,7 +126,7 @@ jobs:
         run: python -m pip install -e .[tests,cbmr]
       - name: "Run tests"
         shell: bash {0}
-        run: python -m pytest -m "performance_estimators" --cov-append --cov-report=xml --cov=nimare nimare
+        run: python -m pytest -m "${PYTEST_PERFORMANCE_ESTIMATORS_MARKERS}" ${PYTEST_COMMON_ARGS}
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -150,7 +158,7 @@ jobs:
         run: python -m pip install -e .[tests,cbmr]
       - name: "Run tests"
         shell: bash {0}
-        run: python -m pytest -m "performance_correctors" --cov-append --cov-report=xml --cov=nimare nimare
+        run: python -m pytest -m "${PYTEST_PERFORMANCE_CORRECTORS_MARKERS}" ${PYTEST_COMMON_ARGS}
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -182,7 +190,7 @@ jobs:
         run: python -m pip install -e .[tests,cbmr]
       - name: "Run tests"
         shell: bash {0}
-        run: python -m pytest -m "performance_smoke" --cov-append --cov-report=xml --cov=nimare nimare
+        run: python -m pytest -m "${PYTEST_PERFORMANCE_SMOKE_MARKERS}" ${PYTEST_COMMON_ARGS}
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -214,7 +222,7 @@ jobs:
         run: python -m pip install -e .[tests]
       - name: "Run tests"
         shell: bash {0}
-        run: python -m pytest -m "cbmr_importerror" --cov-append --cov-report=xml --cov=nimare nimare
+        run: python -m pytest -m "${PYTEST_CBMR_IMPORTERROR_MARKERS}" ${PYTEST_COMMON_ARGS}
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
