@@ -9,7 +9,6 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 from joblib import Memory, Parallel, delayed
-from nilearn.maskers import NiftiMasker
 from scipy import ndimage
 from scipy import sparse as sp_sparse
 from tqdm.auto import tqdm
@@ -284,36 +283,19 @@ class ALE(CBMAEstimator):
         )
         return description
 
-    def _fit(self, dataset):
-        """Perform ALE on dataset, using a masked CSR path for approximate null fits."""
-        if not self.null_method.startswith("approximate"):
-            return super()._fit(dataset)
-
-        self.dataset = dataset
-        self.masker = self.masker or dataset.masker
-
-        if not isinstance(self.masker, NiftiMasker):
-            raise ValueError(
-                f"A {type(self.masker)} mask has been detected. "
-                "Only NiftiMaskers are allowed for this Estimator."
+    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", return_type="sparse"):
+        """Collect ALE MA maps in the masked sparse format used by the estimator."""
+        if return_type != "sparse":
+            return super()._collect_ma_maps(
+                coords_key=coords_key,
+                maps_key=maps_key,
+                return_type=return_type,
             )
 
-        self.null_distributions_ = {}
-
-        ma_values = _collect_masked_ma_maps(self, coords_key="coordinates", maps_key="ma_maps")
-
-        self.weight_vec_ = self._compute_weights(ma_values)
-        stat_values = self._compute_summarystat(ma_values)
-        self._determine_histogram_bins(ma_values)
-        self._compute_null_approximate(ma_values)
-        p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
-
-        maps = {"stat": stat_values, "p": p_values, "z": z_values}
-        description = self._description_text()
-        return maps, {}, description
+        return _collect_masked_ma_maps(self, coords_key=coords_key, maps_key=maps_key)
 
     def _compute_summarystat(self, data):
-        """Accept CSR matrices directly in the optimized approximate-null ALE path."""
+        """Compute ALE summary statistics from input data."""
         if sp_sparse.isspmatrix(data):
             return self._compute_summarystat_est(data)
 

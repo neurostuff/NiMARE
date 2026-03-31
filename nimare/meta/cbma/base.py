@@ -299,7 +299,8 @@ class CBMAEstimator(Estimator):
         ma_maps : scipy sparse matrix or sparse array, optional
             Precomputed study-wise MA maps aligned to the study ids in ``dataset``.
             When provided, the estimator will reuse these maps instead of recomputing them from
-            coordinates.
+            coordinates. These are typically 2D study-by-masked-voxel
+            sparse matrices.
 
         Returns
         -------
@@ -352,7 +353,7 @@ class CBMAEstimator(Estimator):
         -------
         ma_maps : scipy sparse matrix or sparse array
             Return precomputed or generated MA maps in the kernel transformer's sparse format.
-            For ALE, KDA, and MKDA this is a study-by-masked-voxel sparse matrix.
+            This is a study-by-masked-voxel sparse matrix.
         """
         if maps_key in self.inputs_:
             LGR.debug("Using precomputed MA maps from inputs (%s).", maps_key)
@@ -400,7 +401,7 @@ class CBMAEstimator(Estimator):
             Data from which to estimate summary statistics.
             The data can be:
             (1) a 1d contrast-len or 2d contrast-by-voxel array of MA values,
-            (2) a 4d sparse array of MA maps,
+            (2) a masked study-by-voxel sparse representation of MA maps,
             (3) a DataFrame containing coordinates to produce MA values,
             or (4) a list of imgs containing MA values.
 
@@ -1084,7 +1085,8 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         ma_maps1/ma_maps2 : scipy sparse matrix or sparse array, optional
             Precomputed study-wise MA maps aligned to ``dataset1`` and ``dataset2``,
             respectively. When provided, the estimator will reuse these maps instead of
-            recomputing them from coordinates.
+            recomputing them from coordinates. These are typically 2D
+            study-by-masked-voxel sparse matrices.
 
         Returns
         -------
