@@ -875,7 +875,9 @@ class CBMAEstimator(Estimator):
             )
             rand_ijk = null_ijk[rand_idx, :]
             iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
-            iter_df = self.inputs_["coordinates"].drop(columns=["x", "y", "z"], errors="ignore").copy()
+            iter_df = (
+                self.inputs_["coordinates"].drop(columns=["x", "y", "z"], errors="ignore").copy()
+            )
             parallel_kwargs = {"return_as": "generator", "n_jobs": n_cores}
             if getattr(self, "_permutation_parallel_backend", None) is not None:
                 parallel_kwargs["backend"] = self._permutation_parallel_backend

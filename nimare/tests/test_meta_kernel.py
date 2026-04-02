@@ -206,8 +206,12 @@ def test_kernel_dataframe_with_precomputed_ijk_matches_xyz(testdata_cbma, kern, 
     coords_ijk = coords_ijk.drop(columns=["x", "y", "z"])
 
     kern_instance = kern(**kwargs)
-    expected = kern_instance.transform(coords_xyz, masker=testdata_cbma.masker, return_type="array")
-    observed = kern_instance.transform(coords_ijk, masker=testdata_cbma.masker, return_type="array")
+    expected = kern_instance.transform(
+        coords_xyz, masker=testdata_cbma.masker, return_type="array"
+    )
+    observed = kern_instance.transform(
+        coords_ijk, masker=testdata_cbma.masker, return_type="array"
+    )
 
     assert np.array_equal(expected, observed)
 
