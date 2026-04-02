@@ -1,5 +1,6 @@
 """Test NiMADS functionality."""
 
+import json
 import os
 import pickle
 import tempfile

@@ -32,7 +32,7 @@ def _validate_studyset_source(source):
     """Validate the minimal schema required to construct a Studyset."""
     if isinstance(source, (str, Path)):
         return
-    
+
     if not isinstance(source, dict):
         raise InvalidStudysetError("Studyset source must be a dictionary or JSON path")
 
