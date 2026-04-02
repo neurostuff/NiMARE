@@ -1,9 +1,7 @@
 """Classes for representing datasets of images and/or coordinates."""
 
 import copy
-import gzip
 import inspect
-import json
 import logging
 import os.path as op
 import warnings
@@ -24,6 +22,7 @@ from nimare.utils import (
     _validate_images_df,
     get_masker,
     get_template,
+    load_json,
     mm2vox,
 )
 
@@ -80,12 +79,7 @@ class Dataset(NiMAREBase):
 
     def __init__(self, source, target="mni152_2mm", mask=None):
         if isinstance(source, str):
-            if source.endswith(".gz"):
-                with gzip.open(source, "rt", encoding="utf-8") as f_obj:
-                    data = json.load(f_obj)
-            else:
-                with open(source, "r", encoding="utf-8") as f_obj:
-                    data = json.load(f_obj)
+            data = load_json(source)
         elif isinstance(source, dict):
             data = source
         else:

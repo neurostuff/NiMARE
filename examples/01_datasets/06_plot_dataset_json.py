@@ -130,15 +130,13 @@ Here, we present the structure of the JSON/dict input format to create a
 # -----------------------------------------------------------------------------
 # Load the example dataset JSON file
 
-import json
 import os
 
-from nimare.utils import get_resource_path
+from nimare.utils import get_resource_path, load_json
 
 dset_file = os.path.join(get_resource_path(), "nidm_pain_dset.json")
 
-with open(dset_file, "r") as f_obj:
-    data = json.load(f_obj)
+data = load_json(dset_file)
 
 ###############################################################################
 # Example of accessing coordinates for a study

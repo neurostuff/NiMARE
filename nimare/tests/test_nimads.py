@@ -1,6 +1,5 @@
 """Test NiMADS functionality."""
 
-import json
 import os
 import pickle
 import tempfile
@@ -12,6 +11,7 @@ import pytest
 from nimare import nimads
 from nimare.dataset import Dataset
 from nimare.tests.utils import get_test_data_path
+from nimare.utils import load_json
 
 
 def test_load_nimads(example_nimads_studyset, example_nimads_annotation):
@@ -336,8 +336,7 @@ def test_studyset_to_nimads(example_nimads_studyset):
         assert os.path.exists(tmp_path)
 
         # Verify the saved file can be loaded
-        with open(tmp_path, "r") as f:
-            saved_data = json.load(f)
+        saved_data = load_json(tmp_path)
 
         assert saved_data["id"] == studyset.id
         assert saved_data["name"] == studyset.name
