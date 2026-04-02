@@ -188,6 +188,30 @@ def test_ALEKernel_memory(testdata_cbma, tmp_path_factory):
     assert np.array_equal(ma_maps_cached_fast, ma_maps)
 
 
+@pytest.mark.parametrize(
+    "kern, kwargs",
+    [
+        (kernel.ALEKernel, {"sample_size": 20}),
+        (kernel.MKDAKernel, {"r": 4, "value": 1}),
+        (kernel.KDAKernel, {"r": 4, "value": 1}),
+    ],
+)
+def test_kernel_dataframe_with_precomputed_ijk_matches_xyz(testdata_cbma, kern, kwargs):
+    """DataFrame kernel transforms may use precomputed matrix indices directly."""
+    coords_xyz = testdata_cbma.coordinates.copy()
+    coords_ijk = coords_xyz.copy()
+    coords_ijk[["i", "j", "k"]] = mm2vox(
+        coords_ijk[["x", "y", "z"]], testdata_cbma.masker.mask_img.affine
+    )
+    coords_ijk = coords_ijk.drop(columns=["x", "y", "z"])
+
+    kern_instance = kern(**kwargs)
+    expected = kern_instance.transform(coords_xyz, masker=testdata_cbma.masker, return_type="array")
+    observed = kern_instance.transform(coords_ijk, masker=testdata_cbma.masker, return_type="array")
+
+    assert np.array_equal(expected, observed)
+
+
 def test_MKDA_kernel_sum_across(testdata_cbma):
     """Test if creating a summary array is equivalent to summing across the sparse array."""
     kern = kernel.MKDAKernel(r=10, value=1)

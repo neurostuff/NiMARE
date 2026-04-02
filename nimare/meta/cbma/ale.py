@@ -8,6 +8,7 @@ import warnings
 import nibabel as nib
 import numpy as np
 import pandas as pd
+from numba import jit
 from joblib import Memory, Parallel, delayed
 from scipy import ndimage
 from scipy import sparse as sp_sparse
@@ -64,6 +65,44 @@ def _compute_ale_summarystat(ma_values):
         return stat_values
 
     raise ValueError(f"Unsupported data type '{type(ma_values)}'")
+
+
+@jit(nopython=True, cache=True)
+def _study_ma_histogram(study_ma_values, n_zero_voxels, inv_step_size, n_bins):
+    """Bin one study's nonzero ALE values onto the fixed approximate-null grid."""
+    exp_hist = np.zeros(n_bins, dtype=np.float64)
+    for i_val in range(study_ma_values.shape[0]):
+        idx = int(np.floor(study_ma_values[i_val] * inv_step_size))
+        if idx < 0:
+            idx = 0
+        elif idx >= n_bins:
+            idx = n_bins - 1
+        exp_hist[idx] += 1.0
+
+    exp_hist[0] += n_zero_voxels
+    hist_sum = exp_hist.sum()
+    if hist_sum > 0:
+        exp_hist /= hist_sum
+    return exp_hist
+
+
+@jit(nopython=True, cache=True)
+def _update_ale_histogram(ale_idx, ale_probs, exp_idx, exp_probs, bin_centers, inv_step_size, n_bins):
+    """Combine two nonzero ALE histograms without allocating dense outer-product temporaries."""
+    out = np.zeros(n_bins, dtype=np.float64)
+    for i_exp in range(exp_idx.shape[0]):
+        exp_center = bin_centers[exp_idx[i_exp]]
+        exp_prob = exp_probs[i_exp]
+        exp_one_minus = 1.0 - exp_center
+        for i_ale in range(ale_idx.shape[0]):
+            score = 1.0 - exp_one_minus * (1.0 - bin_centers[ale_idx[i_ale]])
+            score_idx = int(np.floor(score * inv_step_size))
+            if score_idx < 0:
+                score_idx = 0
+            elif score_idx >= n_bins:
+                score_idx = n_bins - 1
+            out[score_idx] += exp_prob * ale_probs[i_ale]
+    return out
 
 
 def _collect_masked_ma_maps(estimator, coords_key="coordinates", maps_key="ma_maps"):
@@ -349,8 +388,7 @@ class ALE(CBMAEstimator):
         bin_centers = self.null_distributions_["histogram_bins"]
         step_size = bin_centers[1] - bin_centers[0]
         inv_step_size = 1 / step_size
-        bin_edges = bin_centers - (step_size / 2)
-        bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
+        n_bins = bin_centers.shape[0]
 
         n_exp = ma_maps.shape[0]
         data = ma_maps.data
@@ -365,11 +403,12 @@ class ALE(CBMAEstimator):
             n_nonzero_voxels = study_ma_values.shape[0]
             n_zero_voxels = self.__n_mask_voxels - n_nonzero_voxels
 
-            exp_hist = np.histogram(study_ma_values, bins=bin_edges, density=False)[0].astype(
-                float
+            exp_hist = _study_ma_histogram(
+                study_ma_values.astype(np.float64, copy=False),
+                n_zero_voxels,
+                inv_step_size,
+                n_bins,
             )
-            exp_hist[0] += n_zero_voxels
-            exp_hist /= exp_hist.sum()
 
             if ale_hist is None:
                 ale_hist = exp_hist.copy()
@@ -378,19 +417,15 @@ class ALE(CBMAEstimator):
             # Find histogram bins with nonzero values for each histogram.
             ale_idx = np.where(ale_hist > 0)[0]
             exp_idx = np.where(exp_hist > 0)[0]
-
-            # Compute output MA values, ale_hist indices, and probabilities
-            ale_scores = (
-                1 - np.outer((1 - bin_centers[exp_idx]), (1 - bin_centers[ale_idx])).ravel()
+            ale_hist = _update_ale_histogram(
+                ale_idx.astype(np.int64, copy=False),
+                ale_hist[ale_idx].astype(np.float64, copy=False),
+                exp_idx.astype(np.int64, copy=False),
+                exp_hist[exp_idx].astype(np.float64, copy=False),
+                bin_centers.astype(np.float64, copy=False),
+                inv_step_size,
+                n_bins,
             )
-            score_idx = np.floor(ale_scores * inv_step_size).astype(int)
-            probabilities = np.outer(exp_hist[exp_idx], ale_hist[ale_idx]).ravel()
-
-            # Reset histogram and set probabilities.
-            # Use at() instead of setting values directly (ale_hist[score_idx] = probabilities)
-            # because there can be redundant values in score_idx.
-            ale_hist = np.zeros(ale_hist.shape)
-            np.add.at(ale_hist, score_idx, probabilities)
 
         self.null_distributions_["histweights_corr-none_method-approximate"] = ale_hist
 
