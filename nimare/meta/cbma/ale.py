@@ -387,7 +387,7 @@ class ALE(CBMAEstimator):
 
         assert "histogram_bins" in self.null_distributions_.keys()
 
-        # Derive bin edges from histogram bin centers for numpy histogram function
+        # Reuse the fixed histogram grid derived earlier in _determine_histogram_bins.
         bin_centers = self.null_distributions_["histogram_bins"].astype(np.float64, copy=False)
         step_size = bin_centers[1] - bin_centers[0]
         inv_step_size = 1 / step_size

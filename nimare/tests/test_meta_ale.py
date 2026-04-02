@@ -112,6 +112,36 @@ def _prepare_ale_inputs(dataset, kernel_transformer=None):
     return meta
 
 
+def _study_ma_histogram_reference(study_ma_values, n_zero_voxels, mask_voxel_recip, inv_step_size, n_bins):
+    """Reference implementation for ALE study-histogram binning."""
+    exp_hist = np.zeros(n_bins, dtype=np.float64)
+    for value in study_ma_values:
+        idx = int(np.floor(value * inv_step_size))
+        idx = min(max(idx, 0), n_bins - 1)
+        exp_hist[idx] += 1.0
+
+    exp_hist[0] += n_zero_voxels
+    exp_hist *= mask_voxel_recip
+    return exp_hist
+
+
+def _update_ale_histogram_reference(
+    ale_idx, ale_probs, exp_idx, exp_probs, bin_centers, inv_step_size, n_bins
+):
+    """Reference implementation for ALE histogram updates."""
+    out = np.zeros(n_bins, dtype=np.float64)
+    for i_exp in range(exp_idx.shape[0]):
+        exp_center = bin_centers[exp_idx[i_exp]]
+        exp_prob = exp_probs[i_exp]
+        exp_one_minus = 1.0 - exp_center
+        for i_ale in range(ale_idx.shape[0]):
+            score = 1.0 - exp_one_minus * (1.0 - bin_centers[ale_idx[i_ale]])
+            score_idx = int(np.floor(score * inv_step_size))
+            score_idx = min(max(score_idx, 0), n_bins - 1)
+            out[score_idx] += exp_prob * ale_probs[i_ale]
+    return out
+
+
 def test_ALE_missing_sample_sizes_raises_informative_error(testdata_cbma_full):
     """Raise a helpful error listing ids when sample sizes are missing."""
     dset = copy.deepcopy(testdata_cbma_full)
@@ -372,6 +402,69 @@ def test_ALE_csr_approximate_null_matches_dense_reference():
         rtol=1e-5,
         atol=3e-4,
     )
+
+
+def test_ALE_study_ma_histogram_edge_bins():
+    """Study histogram binning should match the legacy floor-based implementation at edges."""
+    inv_step_size = 10.0
+    n_bins = 11
+    n_zero_voxels = 3
+    mask_voxel_recip = 1.0 / (n_zero_voxels + 6)
+    study_ma_values = np.array(
+        [0.0, 0.099999999, 0.1, 0.199999999, 0.9, 0.999999999],
+        dtype=np.float64,
+    )
+
+    actual = ale._study_ma_histogram(
+        study_ma_values,
+        n_zero_voxels,
+        mask_voxel_recip,
+        inv_step_size,
+        n_bins,
+    )
+    expected = _study_ma_histogram_reference(
+        study_ma_values,
+        n_zero_voxels,
+        mask_voxel_recip,
+        inv_step_size,
+        n_bins,
+    )
+
+    np.testing.assert_allclose(actual, expected)
+
+
+def test_ALE_update_histogram_edge_bins():
+    """Histogram updates should match the legacy floor-based implementation at bin edges."""
+    bin_centers = np.linspace(0.0, 1.0, 11, dtype=np.float64)
+    inv_step_size = 10.0
+    n_bins = bin_centers.shape[0]
+    ale_idx = np.array([0, 1, 9, 10], dtype=np.int64)
+    exp_idx = np.array([0, 1, 9, 10], dtype=np.int64)
+    ale_probs = np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float64)
+    exp_probs = np.array([0.4, 0.3, 0.2, 0.1], dtype=np.float64)
+    out = np.empty(n_bins, dtype=np.float64)
+
+    actual = ale._update_ale_histogram(
+        ale_idx,
+        ale_probs,
+        exp_idx,
+        exp_probs,
+        bin_centers,
+        inv_step_size,
+        n_bins,
+        out,
+    )
+    expected = _update_ale_histogram_reference(
+        ale_idx,
+        ale_probs,
+        exp_idx,
+        exp_probs,
+        bin_centers,
+        inv_step_size,
+        n_bins,
+    )
+
+    np.testing.assert_allclose(actual, expected)
 
 
 @pytest.mark.parametrize(

@@ -151,6 +151,9 @@ class KernelTransformer(NiMAREBase):
         dataset : :obj:`~nimare.dataset.Dataset`, :obj:`~nimare.nimads.Studyset`, \
                 or :obj:`pandas.DataFrame`
             Collection for which to make images. Can be a DataFrame if necessary.
+            DataFrame inputs may provide precomputed matrix indices in ``i``, ``j``, and ``k``.
+            When those columns are present, they are used directly and ``x``, ``y``, and ``z``
+            are ignored.
         masker : img_like or None, optional
             Mask to apply to MA maps. Required if ``dataset`` is a DataFrame.
             If None, the input collection's masker attribute will be used.
