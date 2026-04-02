@@ -112,7 +112,9 @@ def _prepare_ale_inputs(dataset, kernel_transformer=None):
     return meta
 
 
-def _study_ma_histogram_reference(study_ma_values, n_zero_voxels, mask_voxel_recip, inv_step_size, n_bins):
+def _study_ma_histogram_reference(
+    study_ma_values, n_zero_voxels, mask_voxel_recip, inv_step_size, n_bins
+):
     """Reference implementation for ALE study-histogram binning."""
     exp_hist = np.zeros(n_bins, dtype=np.float64)
     for value in study_ma_values:
