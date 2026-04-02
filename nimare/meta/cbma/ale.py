@@ -68,9 +68,7 @@ def _compute_ale_summarystat(ma_values):
 
 
 @jit(nopython=True, cache=True)
-def _study_ma_histogram(
-    study_ma_values, n_zero_voxels, mask_voxel_recip, inv_step_size, n_bins
-):
+def _study_ma_histogram(study_ma_values, n_zero_voxels, mask_voxel_recip, inv_step_size, n_bins):
     """Bin one study's nonzero ALE values onto the fixed approximate-null grid."""
     exp_hist = np.zeros(n_bins, dtype=np.float64)
     for i_val in range(study_ma_values.shape[0]):
@@ -395,7 +393,6 @@ class ALE(CBMAEstimator):
         inv_step_size = 1 / step_size
         n_bins = bin_centers.shape[0]
         mask_voxel_recip = 1.0 / self.__n_mask_voxels
-
         n_exp = ma_maps.shape[0]
         data = ma_maps.data
         indptr = ma_maps.indptr
