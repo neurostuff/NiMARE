@@ -197,7 +197,7 @@ def test_ALEKernel_memory(testdata_cbma, tmp_path_factory):
     ],
 )
 def test_kernel_dataframe_with_precomputed_ijk_matches_xyz(testdata_cbma, kern, kwargs):
-    """DataFrame kernel transforms may use precomputed matrix indices directly."""
+    """Dataframe kernel transforms may use precomputed matrix indices directly."""
     coords_xyz = testdata_cbma.coordinates.copy()
     coords_ijk = coords_xyz.copy()
     coords_ijk[["i", "j", "k"]] = mm2vox(

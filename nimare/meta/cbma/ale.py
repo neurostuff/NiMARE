@@ -8,8 +8,8 @@ import warnings
 import nibabel as nib
 import numpy as np
 import pandas as pd
-from numba import jit
 from joblib import Memory, Parallel, delayed
+from numba import jit
 from scipy import ndimage
 from scipy import sparse as sp_sparse
 from tqdm.auto import tqdm
