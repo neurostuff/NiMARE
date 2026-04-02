@@ -6,6 +6,7 @@ import operator
 import os
 import weakref
 from copy import deepcopy
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -18,6 +19,7 @@ from nimare.utils import (
     _mask_img_to_bool,
     _validate_df,
     _validate_images_df,
+    load_json,
     mm2vox,
 )
 
@@ -28,6 +30,9 @@ _UNSET = object()
 
 def _validate_studyset_source(source):
     """Validate the minimal schema required to construct a Studyset."""
+    if isinstance(source, (str, Path)):
+        return
+
     if not isinstance(source, dict):
         raise InvalidStudysetError("Studyset source must be a dictionary or JSON path")
 
@@ -163,8 +168,7 @@ class Studyset:
 
         # load source as json
         if isinstance(source, str):
-            with open(source, "r+") as f:
-                source = json.load(f)
+            source = load_json(source)
 
         _validate_studyset_source(source)
 
@@ -350,8 +354,7 @@ class Studyset:
         if isinstance(annotation, dict):
             return Annotation(annotation, self)
         if isinstance(annotation, str):
-            with open(annotation, "r+") as f:
-                return Annotation(json.load(f), self)
+            return Annotation(load_json(annotation), self)
         if isinstance(annotation, Annotation):
             return annotation
         raise TypeError(f"Unsupported annotation type: {type(annotation)}")
@@ -863,8 +866,7 @@ class Studyset:
     @classmethod
     def from_nimads(cls, filename):
         """Create a Studyset from a NIMADS JSON file."""
-        with open(filename, "r+") as fn:
-            nimads = json.load(fn)
+        nimads = load_json(filename)
 
         return cls(nimads)
 

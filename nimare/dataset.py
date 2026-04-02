@@ -2,7 +2,6 @@
 
 import copy
 import inspect
-import json
 import logging
 import os.path as op
 import warnings
@@ -23,6 +22,7 @@ from nimare.utils import (
     _validate_images_df,
     get_masker,
     get_template,
+    load_json,
     mm2vox,
 )
 
@@ -79,12 +79,11 @@ class Dataset(NiMAREBase):
 
     def __init__(self, source, target="mni152_2mm", mask=None):
         if isinstance(source, str):
-            with open(source, "r") as f_obj:
-                data = json.load(f_obj)
+            data = load_json(source)
         elif isinstance(source, dict):
             data = source
         else:
-            raise Exception("`source` needs to be a file path or a dictionary")
+            raise TypeError("`source` needs to be a file path or a dictionary")
 
         # Datasets are organized by study, then experiment
         # To generate unique IDs, we combine study ID with experiment ID

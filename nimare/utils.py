@@ -1,6 +1,7 @@
 """Utility functions for NiMARE."""
 
 import datetime
+import gzip
 import inspect
 import json
 import logging
@@ -60,6 +61,16 @@ def get_resource_path():
     Based on function by Yaroslav Halchenko used in Neurosynth Python package.
     """
     return op.abspath(op.join(op.dirname(__file__), "resources") + op.sep)
+
+
+def load_json(source):
+    """Load a JSON file (plain or gzipped) and return parsed content."""
+    source_str = str(source)
+    if source_str.endswith(".gz"):
+        with gzip.open(source, "rt", encoding="utf-8") as f_obj:
+            return json.load(f_obj)
+    with open(source, "r", encoding="utf-8") as f_obj:
+        return json.load(f_obj)
 
 
 def get_template(space="mni152_2mm", mask=None):
@@ -1315,8 +1326,7 @@ def load_nimads(studyset, annotation=None):
     if isinstance(studyset, dict):
         studyset = Studyset(studyset)
     elif isinstance(studyset, str):
-        with open(studyset, "r") as f:
-            studyset = Studyset(json.load(f))
+        studyset = Studyset(load_json(studyset))
     elif isinstance(studyset, Studyset):
         pass
     else:

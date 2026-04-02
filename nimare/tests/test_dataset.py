@@ -1,7 +1,6 @@
 """Test nimare.dataset (Dataset IO/transformations)."""
 
 import copy
-import json
 import os.path as op
 import pickle
 import warnings
@@ -14,6 +13,7 @@ import nimare
 from nimare import dataset
 from nimare.nimads import Studyset
 from nimare.tests.utils import get_test_data_path
+from nimare.utils import load_json
 
 # ---------------------------------------------------------------------------
 # Helpers for the parameterized smoke test
@@ -188,8 +188,7 @@ def test_empty_dset():
 def test_posneg_warning():
     """Smoke test for nimare.dataset.Dataset initialization with positive and negative z_stat."""
     db_file = op.join(get_test_data_path(), "neurosynth_dset.json")
-    with open(db_file, "r") as f_obj:
-        data = json.load(f_obj)
+    data = load_json(db_file)
 
     data_pos_zstats = copy.deepcopy(data)
     data_neg_zstats = copy.deepcopy(data)

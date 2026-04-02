@@ -1,7 +1,6 @@
 """Tools for downloading datasets."""
 
 import itertools
-import json
 import logging
 import os
 import os.path as op
@@ -22,7 +21,7 @@ from nimare.extract.utils import (
     _get_dataset_dir,
     _longify,
 )
-from nimare.utils import get_resource_path
+from nimare.utils import get_resource_path, load_json
 
 LGR = logging.getLogger(__name__)
 
@@ -61,8 +60,7 @@ def _find_entities(filename, search_pairs, log=False):
 def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
     """Fetch generic database."""
     res_dir = get_resource_path()
-    with open(op.join(res_dir, "database_file_manifest.json"), "r") as fo:
-        database_file_manifest = json.load(fo)
+    database_file_manifest = load_json(op.join(res_dir, "database_file_manifest.json"))
 
     out_dir = op.abspath(out_dir)
     os.makedirs(out_dir, exist_ok=True)

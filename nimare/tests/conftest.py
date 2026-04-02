@@ -1,7 +1,6 @@
 """Generate fixtures for tests."""
 
 import copy
-import json
 import os
 from shutil import copyfile
 
@@ -15,7 +14,7 @@ from requests import request
 import nimare
 from nimare.generate import create_coordinate_dataset
 from nimare.tests.utils import get_test_data_path
-from nimare.utils import get_resource_path
+from nimare.utils import get_resource_path, load_json
 
 # Only enable the following once in a while for a check for SettingWithCopyWarnings
 # pd.options.mode.chained_assignment = "raise"
@@ -197,8 +196,7 @@ def sample_size_nimads_studyset():
         response = request("GET", url)
         with open(out_file, "wb") as f:
             f.write(response.content)
-    with open(out_file, "r") as f:
-        studyset = json.load(f)
+    studyset = load_json(out_file)
     return studyset
 
 
@@ -211,8 +209,7 @@ def _example_nimads_studyset_data():
         response = request("GET", url)
         with open(out_file, "wb") as f:
             f.write(response.content)
-    with open(out_file, "r") as f:
-        studyset = json.load(f)
+    studyset = load_json(out_file)
     return studyset
 
 
@@ -231,8 +228,7 @@ def example_nimads_annotation():
         response = request("GET", url)
         with open(out_file, "wb") as f:
             f.write(response.content)
-    with open(out_file, "r") as f:
-        annotation = json.load(f)
+    annotation = load_json(out_file)
     return annotation
 
 
