@@ -1,5 +1,6 @@
 """NIMADS-related classes for NiMARE."""
 
+import json
 import logging
 import operator
 import os
