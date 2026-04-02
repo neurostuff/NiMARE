@@ -28,7 +28,6 @@ from nimare.utils import (
     _mask_img_to_bool,
     get_masker,
     mm2vox,
-    vox2mm,
 )
 
 LGR = logging.getLogger(__name__)
@@ -590,7 +589,7 @@ class CBMAEstimator(Estimator):
         null_dist = self._compute_summarystat(iter_ma_values)
         self.null_distributions_["values_corr-none_method-reducedMontecarlo"] = null_dist
 
-    def _compute_null_montecarlo_permutation(self, iter_xyz, iter_df, bin_edges=None):
+    def _compute_null_montecarlo_permutation(self, iter_ijk, iter_df, bin_edges=None):
         """Run a single Monte Carlo permutation of a dataset.
 
         Does the shared work between uncorrected stat-to-p conversion and vFWE.
@@ -610,8 +609,8 @@ class CBMAEstimator(Estimator):
         # be safe.
         iter_df = iter_df.copy()
 
-        iter_xyz = np.squeeze(iter_xyz)
-        iter_df[["x", "y", "z"]] = iter_xyz
+        iter_ijk = np.squeeze(iter_ijk)
+        iter_df[["i", "j", "k"]] = iter_ijk
 
         iter_ma_maps = self.kernel_transformer.transform(
             iter_df, masker=self.masker, return_type="sparse"
@@ -655,9 +654,8 @@ class CBMAEstimator(Estimator):
             size=(self.inputs_["coordinates"].shape[0], n_iters),
         )
         rand_ijk = null_ijk[rand_idx, :]
-        rand_xyz = vox2mm(rand_ijk, self.masker.mask_img.affine)
-        iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
-        iter_df = self.inputs_["coordinates"].copy()
+        iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
+        iter_df = self.inputs_["coordinates"].drop(columns=["x", "y", "z"], errors="ignore").copy()
         parallel_kwargs = {"return_as": "generator", "n_jobs": n_cores}
         if getattr(self, "_permutation_parallel_backend", None) is not None:
             parallel_kwargs["backend"] = self._permutation_parallel_backend
@@ -669,7 +667,7 @@ class CBMAEstimator(Estimator):
 
         perm_histograms = Parallel(**parallel_kwargs)(
             delayed(self._compute_null_montecarlo_permutation)(
-                iter_xyzs[i_iter],
+                iter_ijks[i_iter],
                 iter_df=iter_df,
                 bin_edges=bin_edges,
             )
@@ -693,7 +691,7 @@ class CBMAEstimator(Estimator):
 
     def _correct_fwe_montecarlo_permutation(
         self,
-        iter_xyz,
+        iter_ijk,
         iter_df,
         conn,
         voxel_thresh,
@@ -705,9 +703,9 @@ class CBMAEstimator(Estimator):
 
         Parameters
         ----------
-        iter_xyz : :obj:`numpy.ndarray` of shape (C, 3)
-            The permuted coordinates. One row for each peak.
-            Columns correspond to x, y, and z coordinates.
+        iter_ijk : :obj:`numpy.ndarray` of shape (C, 3)
+            The permuted matrix indices. One row for each peak.
+            Columns correspond to i, j, and k coordinates.
         iter_df : :obj:`pandas.DataFrame`
             The coordinates DataFrame, to be filled with the permuted coordinates in ``iter_xyz``
             before permutation MA maps are generated.
@@ -727,8 +725,8 @@ class CBMAEstimator(Estimator):
         """
         iter_df = iter_df.copy()
 
-        iter_xyz = np.squeeze(iter_xyz)
-        iter_df[["x", "y", "z"]] = iter_xyz
+        iter_ijk = np.squeeze(iter_ijk)
+        iter_df[["i", "j", "k"]] = iter_ijk
 
         iter_ma_maps = self.kernel_transformer.transform(
             iter_df, masker=self.masker, return_type="sparse"
@@ -864,10 +862,7 @@ class CBMAEstimator(Estimator):
                     "Running permutations from scratch."
                 )
 
-            null_xyz = vox2mm(
-                np.vstack(np.where(_mask_img_to_bool(self.masker.mask_img))).T,
-                self.masker.mask_img.affine,
-            )
+            null_ijk = np.vstack(np.where(_mask_img_to_bool(self.masker.mask_img))).T
 
             n_cores = _check_ncores(n_cores)
 
@@ -875,12 +870,14 @@ class CBMAEstimator(Estimator):
             ss_thresh = self._p_to_summarystat(voxel_thresh)
 
             rand_idx = np.random.choice(
-                null_xyz.shape[0],
+                null_ijk.shape[0],
                 size=(self.inputs_["coordinates"].shape[0], n_iters),
             )
-            rand_xyz = null_xyz[rand_idx, :]
-            iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
-            iter_df = self.inputs_["coordinates"].copy()
+            rand_ijk = null_ijk[rand_idx, :]
+            iter_ijks = np.split(rand_ijk, rand_ijk.shape[1], axis=1)
+            iter_df = (
+                self.inputs_["coordinates"].drop(columns=["x", "y", "z"], errors="ignore").copy()
+            )
             parallel_kwargs = {"return_as": "generator", "n_jobs": n_cores}
             if getattr(self, "_permutation_parallel_backend", None) is not None:
                 parallel_kwargs["backend"] = self._permutation_parallel_backend
@@ -890,7 +887,7 @@ class CBMAEstimator(Estimator):
 
             perm_results = Parallel(**parallel_kwargs)(
                 delayed(self._correct_fwe_montecarlo_permutation)(
-                    iter_xyzs[i_iter],
+                    iter_ijks[i_iter],
                     iter_df=iter_df,
                     conn=conn,
                     voxel_thresh=ss_thresh,
