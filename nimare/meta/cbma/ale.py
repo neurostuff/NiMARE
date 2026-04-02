@@ -68,11 +68,13 @@ def _compute_ale_summarystat(ma_values):
 
 
 @jit(nopython=True, cache=True)
-def _study_ma_histogram(study_ma_values, n_zero_voxels, inv_step_size, n_bins):
+def _study_ma_histogram(
+    study_ma_values, n_zero_voxels, mask_voxel_recip, inv_step_size, n_bins
+):
     """Bin one study's nonzero ALE values onto the fixed approximate-null grid."""
     exp_hist = np.zeros(n_bins, dtype=np.float64)
     for i_val in range(study_ma_values.shape[0]):
-        idx = int(np.floor(study_ma_values[i_val] * inv_step_size))
+        idx = int(study_ma_values[i_val] * inv_step_size)
         if idx < 0:
             idx = 0
         elif idx >= n_bins:
@@ -80,28 +82,31 @@ def _study_ma_histogram(study_ma_values, n_zero_voxels, inv_step_size, n_bins):
         exp_hist[idx] += 1.0
 
     exp_hist[0] += n_zero_voxels
-    hist_sum = exp_hist.sum()
-    if hist_sum > 0:
-        exp_hist /= hist_sum
+    exp_hist *= mask_voxel_recip
     return exp_hist
 
 
 @jit(nopython=True, cache=True)
-def _update_ale_histogram(ale_idx, ale_probs, exp_idx, exp_probs, bin_centers, inv_step_size, n_bins):
-    """Combine two nonzero ALE histograms without allocating dense outer-product temporaries."""
-    out = np.zeros(n_bins, dtype=np.float64)
+def _update_ale_histogram(
+    ale_idx, ale_probs, exp_idx, exp_probs, bin_centers, inv_step_size, n_bins, out
+):
+    """Combine two nonzero ALE histograms using a reusable output buffer."""
+    for i_bin in range(n_bins):
+        out[i_bin] = 0.0
+
     for i_exp in range(exp_idx.shape[0]):
         exp_center = bin_centers[exp_idx[i_exp]]
         exp_prob = exp_probs[i_exp]
         exp_one_minus = 1.0 - exp_center
         for i_ale in range(ale_idx.shape[0]):
             score = 1.0 - exp_one_minus * (1.0 - bin_centers[ale_idx[i_ale]])
-            score_idx = int(np.floor(score * inv_step_size))
+            score_idx = int(score * inv_step_size)
             if score_idx < 0:
                 score_idx = 0
             elif score_idx >= n_bins:
                 score_idx = n_bins - 1
             out[score_idx] += exp_prob * ale_probs[i_ale]
+
     return out
 
 
@@ -385,16 +390,18 @@ class ALE(CBMAEstimator):
         assert "histogram_bins" in self.null_distributions_.keys()
 
         # Derive bin edges from histogram bin centers for numpy histogram function
-        bin_centers = self.null_distributions_["histogram_bins"]
+        bin_centers = self.null_distributions_["histogram_bins"].astype(np.float64, copy=False)
         step_size = bin_centers[1] - bin_centers[0]
         inv_step_size = 1 / step_size
         n_bins = bin_centers.shape[0]
+        mask_voxel_recip = 1.0 / self.__n_mask_voxels
 
         n_exp = ma_maps.shape[0]
         data = ma_maps.data
         indptr = ma_maps.indptr
 
         ale_hist = None
+        tmp_hist = np.zeros(n_bins, dtype=np.float64)
         for exp_idx in range(n_exp):
             start = indptr[exp_idx]
             end = indptr[exp_idx + 1]
@@ -404,8 +411,9 @@ class ALE(CBMAEstimator):
             n_zero_voxels = self.__n_mask_voxels - n_nonzero_voxels
 
             exp_hist = _study_ma_histogram(
-                study_ma_values.astype(np.float64, copy=False),
+                study_ma_values,
                 n_zero_voxels,
+                mask_voxel_recip,
                 inv_step_size,
                 n_bins,
             )
@@ -414,18 +422,19 @@ class ALE(CBMAEstimator):
                 ale_hist = exp_hist.copy()
                 continue
 
-            # Find histogram bins with nonzero values for each histogram.
             ale_idx = np.where(ale_hist > 0)[0]
-            exp_idx = np.where(exp_hist > 0)[0]
-            ale_hist = _update_ale_histogram(
-                ale_idx.astype(np.int64, copy=False),
-                ale_hist[ale_idx].astype(np.float64, copy=False),
-                exp_idx.astype(np.int64, copy=False),
-                exp_hist[exp_idx].astype(np.float64, copy=False),
-                bin_centers.astype(np.float64, copy=False),
+            exp_hist_idx = np.where(exp_hist > 0)[0]
+            _update_ale_histogram(
+                ale_idx,
+                ale_hist[ale_idx],
+                exp_hist_idx,
+                exp_hist[exp_hist_idx],
+                bin_centers,
                 inv_step_size,
                 n_bins,
+                tmp_hist,
             )
+            ale_hist, tmp_hist = tmp_hist, ale_hist
 
         self.null_distributions_["histweights_corr-none_method-approximate"] = ale_hist
 
