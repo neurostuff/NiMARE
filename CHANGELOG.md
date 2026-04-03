@@ -2,7 +2,19 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.12.0...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.13.0...HEAD)
+
+## [0.13.0](https://github.com/neurostuff/NiMARE/compare/0.12.0...0.13.0) - 2026-04-03
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+More performance enhancements to be more efficient on cloud and thanks to @lyraluoyu for the flexible loading of json or json.gz (compressed) nimads files.
+
+### What's Changed
+
+* [ENH] Add gzip JSON support and test by @lyraluoyu in https://github.com/neurostuff/NiMARE/pull/992
+* [ENH] make ALE/FWE faster by @jdkent in https://github.com/neurostuff/NiMARE/pull/999
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.12.0...0.13.0
 
 ## [0.12.0](https://github.com/neurostuff/NiMARE/compare/0.11.2...0.12.0) - 2026-03-31
 
