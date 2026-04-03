@@ -17,7 +17,6 @@ import joblib
 import nibabel as nib
 import numpy as np
 import pandas as pd
-import sparse
 from nilearn.maskers import NiftiMasker
 
 LGR = logging.getLogger(__name__)
@@ -1394,51 +1393,34 @@ def b_spline_bases(masker_voxels, spacing, margin=10):
     X : :obj:`numpy.ndarray`
         2-D ndarray (n_voxel x n_spline_bases) only keeps with within-brain voxels
     """
-    # dim_mask = masker_voxels.shape
-    # n_brain_voxel = np.sum(masker_voxels)
+    mask = np.asanyarray(masker_voxels).astype(bool, copy=False)
+
     # remove the blank space around the brain mask
-    xx = np.where(np.apply_over_axes(np.sum, masker_voxels, [1, 2]) > 0)[0]
-    yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
-    zz = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 1]) > 0)[2]
+    xx = np.where(mask.sum(axis=(1, 2)) > 0)[0]
+    yy = np.where(mask.sum(axis=(0, 2)) > 0)[0]
+    zz = np.where(mask.sum(axis=(0, 1)) > 0)[0]
 
     x_spline = coef_spline_bases(xx, spacing, margin)
     y_spline = coef_spline_bases(yy, spacing, margin)
     z_spline = coef_spline_bases(zz, spacing, margin)
-    x_spline_coords = x_spline.nonzero()
-    y_spline_coords = y_spline.nonzero()
-    z_spline_coords = z_spline.nonzero()
-    x_spline_sparse = sparse.COO(x_spline_coords, x_spline[x_spline_coords], shape=x_spline.shape)
-    y_spline_sparse = sparse.COO(y_spline_coords, y_spline[y_spline_coords], shape=y_spline.shape)
-    z_spline_sparse = sparse.COO(z_spline_coords, z_spline[z_spline_coords], shape=z_spline.shape)
 
-    # create spatial design matrix by tensor product of spline bases in 3 dimesion
-    # Row sums of X are all 1=> There is no need to re-normalise X
-    X = np.kron(np.kron(x_spline_sparse, y_spline_sparse), z_spline_sparse)
-    # remove the voxels outside brain mask
-    axis_dim = [xx.shape[0], yy.shape[0], zz.shape[0]]
-    brain_voxels_index = [
-        (z - np.min(zz))
-        + axis_dim[2] * (y - np.min(yy))
-        + axis_dim[1] * axis_dim[2] * (x - np.min(xx))
-        for x in xx
-        for y in yy
-        for z in zz
-        if masker_voxels[x, y, z] == 1
+    cropped_mask = mask[
+        np.min(xx) : np.max(xx) + 1,
+        np.min(yy) : np.max(yy) + 1,
+        np.min(zz) : np.max(zz) + 1,
     ]
-    X = X[brain_voxels_index, :].todense()
-    # remove tensor product basis that have no support in the brain
-    x_df, y_df, z_df = x_spline.shape[1], y_spline.shape[1], z_spline.shape[1]
-    support_basis = []
-    # find and remove weakly supported B-spline bases
-    for bx in range(x_df):
-        for by in range(y_df):
-            for bz in range(z_df):
-                basis_index = bz + z_df * by + z_df * y_df * bx
-                basis_coef = X[:, basis_index]
-                if np.max(basis_coef) >= 0.1:
-                    support_basis.append(basis_index)
-    X = X[:, support_basis]
+    brain_coords = np.argwhere(cropped_mask)
 
+    # Build the masked design matrix directly instead of materializing the
+    # full sparse Kronecker product and then indexing into it.
+    x_rows = x_spline[brain_coords[:, 0]]
+    y_rows = y_spline[brain_coords[:, 1]]
+    z_rows = z_spline[brain_coords[:, 2]]
+    xy_rows = (x_rows[:, :, None] * y_rows[:, None, :]).reshape(brain_coords.shape[0], -1)
+    X = (xy_rows[:, :, None] * z_rows[:, None, :]).reshape(brain_coords.shape[0], -1)
+
+    # remove tensor product bases with weak support in the brain
+    X = X[:, np.max(X, axis=0) >= 0.1]
     return X
 
 
