@@ -157,6 +157,66 @@ def _calculate_cluster_measures_reference(arr3d, threshold, conn, tail="upper"):
     return max_size, max_mass
 
 
+def _alediff_to_p_voxel_reference(i_voxel, stat_value, voxel_null):
+    """Reference scalar ALE subtraction p-value implementation."""
+    p_value = null_to_p(stat_value, voxel_null, tail="two", symmetric=False)
+    return p_value, i_voxel
+
+
+def _alediff_to_p_values_reference(stat_values, iter_diff_values, chunk_size):
+    """Reference chunked ALE subtraction p-value/sign implementation."""
+    n_iters, n_voxels = iter_diff_values.shape
+    smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
+    p_values = np.empty(n_voxels, dtype=np.float32)
+    diff_signs = np.empty(n_voxels, dtype=np.float32)
+
+    for start in range(0, n_voxels, chunk_size):
+        stop = min(start + chunk_size, n_voxels)
+        null_chunk = np.asarray(iter_diff_values[:, start:stop])
+        stat_chunk = np.asarray(stat_values[start:stop], dtype=null_chunk.dtype)
+
+        left_tail = 1.0 - (np.count_nonzero(null_chunk < stat_chunk[None, :], axis=0) / n_iters)
+        right_tail = 1.0 - (np.count_nonzero(null_chunk > stat_chunk[None, :], axis=0) / n_iters)
+        p_chunk = 2.0 * np.minimum(left_tail, right_tail)
+        p_values[start:stop] = np.maximum(
+            smallest_value, np.minimum(p_chunk, 1.0 - smallest_value)
+        ).astype(np.float32, copy=False)
+        diff_signs[start:stop] = np.sign(stat_chunk - np.median(null_chunk, axis=0))
+
+    return p_values, diff_signs
+
+
+def _scale_to_p_values_reference(stat_values, scale_values, chunk_size):
+    """Reference chunked SCALE empirical p-value implementation."""
+    n_voxels = stat_values.shape[0]
+    n_iters = scale_values.shape[0]
+    p_values = np.empty(n_voxels, dtype=np.float32)
+    smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
+
+    for start in range(0, n_voxels, chunk_size):
+        stop = min(start + chunk_size, n_voxels)
+        null_chunk = np.asarray(scale_values[:, start:stop])
+        p_chunk = np.count_nonzero(null_chunk >= stat_values[None, start:stop], axis=0).astype(
+            np.float32, copy=False
+        )
+        p_chunk /= n_iters
+        p_values[start:stop] = np.maximum(
+            smallest_value, np.minimum(p_chunk, 1.0 - smallest_value)
+        )
+
+    return p_values
+
+
+def _scale_counts_to_p_values_reference(exceedance_counts, n_iters):
+    """Reference streamed-count SCALE p-value implementation."""
+    p_values = exceedance_counts.astype(np.float32, copy=False) / n_iters
+    smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
+    return np.maximum(smallest_value, np.minimum(p_values, 1.0 - smallest_value)).astype(
+        np.float32,
+        copy=False,
+    )
+
+
 def _update_ale_histogram_reference(
     ale_idx, ale_probs, exp_idx, exp_probs, bin_centers, inv_step_size, n_bins
 ):
@@ -827,14 +887,13 @@ def test_calculate_cluster_measures_matches_reference(tail):
 def test_ALESubtraction_chunked_pvalues_match_scalar_path():
     """Chunked p-value conversion should match the scalar implementation."""
     rng = np.random.default_rng(4)
-    sub_meta = ale.ALESubtraction(n_iters=5, n_cores=1)
 
     stat_values = rng.normal(size=17).astype(np.float32)
     iter_diff_values = rng.normal(size=(13, 17)).astype(np.float32)
 
     scalar_p = np.array(
         [
-            sub_meta._alediff_to_p_voxel(
+            _alediff_to_p_voxel_reference(
                 i_voxel, stat_values[i_voxel], iter_diff_values[:, i_voxel]
             )[0]
             for i_voxel in range(stat_values.shape[0])
@@ -842,9 +901,7 @@ def test_ALESubtraction_chunked_pvalues_match_scalar_path():
     ).reshape(-1)
     scalar_sign = np.sign(stat_values - np.median(iter_diff_values, axis=0))
 
-    chunked_p, chunked_sign = sub_meta._alediff_to_p_values(
-        stat_values, iter_diff_values, chunk_size=4
-    )
+    chunked_p, chunked_sign = _alediff_to_p_values_reference(stat_values, iter_diff_values, 4)
 
     np.testing.assert_allclose(chunked_p, scalar_p)
     np.testing.assert_array_equal(chunked_sign, scalar_sign)
@@ -853,14 +910,11 @@ def test_ALESubtraction_chunked_pvalues_match_scalar_path():
 def test_ALESubtraction_streamed_tail_counts_match_chunked_path():
     """Streamed ALE subtraction tail counts should match chunked null evaluation."""
     rng = np.random.default_rng(14)
-    sub_meta = ale.ALESubtraction(n_iters=5, n_cores=1)
 
     stat_values = rng.normal(size=31).astype(np.float32)
     iter_diff_values = rng.normal(size=(17, 31)).astype(np.float32)
 
-    chunked_p, chunked_sign = sub_meta._alediff_to_p_values(
-        stat_values, iter_diff_values, chunk_size=7
-    )
+    chunked_p, chunked_sign = _alediff_to_p_values_reference(stat_values, iter_diff_values, 7)
 
     left_counts = np.count_nonzero(iter_diff_values >= stat_values[None, :], axis=0).astype(
         np.uint32
@@ -963,8 +1017,6 @@ def test_SCALE_cluster_fwe_not_supported(testdata_cbma):
 def test_SCALE_chunked_pvalues_match_scalar_path():
     """Chunked SCALE p-value conversion should match the scalar implementation."""
     rng = np.random.default_rng(7)
-    meta = ale.SCALE(xyz=np.zeros((1, 3)), n_iters=5, n_cores=1)
-
     stat_values = rng.uniform(0.0, 0.8, size=9).astype(np.float32)
     scale_values = rng.uniform(0.0, 0.8, size=(13, 9)).astype(np.float32)
     scale_values[scale_values < 0.2] = 0
@@ -976,7 +1028,7 @@ def test_SCALE_chunked_pvalues_match_scalar_path():
         ]
     ).reshape(-1)
 
-    chunked_p = meta._scale_to_p_values(stat_values, scale_values, chunk_size=4)
+    chunked_p = _scale_to_p_values_reference(stat_values, scale_values, chunk_size=4)
 
     np.testing.assert_allclose(chunked_p, scalar_p)
 
@@ -984,16 +1036,14 @@ def test_SCALE_chunked_pvalues_match_scalar_path():
 def test_SCALE_exceedance_counts_match_permutation_matrix_path():
     """Streamed SCALE exceedance counts should match direct permutation p-values."""
     rng = np.random.default_rng(17)
-    meta = ale.SCALE(xyz=np.zeros((1, 3)), n_iters=11, n_cores=1)
-
     stat_values = rng.uniform(0.0, 0.8, size=9).astype(np.float32)
     scale_values = rng.uniform(0.0, 0.8, size=(11, 9)).astype(np.float32)
 
-    matrix_p = meta._scale_to_p_values(stat_values, scale_values)
+    matrix_p = _scale_to_p_values_reference(stat_values, scale_values, chunk_size=4)
     exceedance_counts = np.count_nonzero(scale_values >= stat_values[None, :], axis=0).astype(
         np.uint32
     )
-    count_p = meta._scale_counts_to_p_values(exceedance_counts)
+    count_p = _scale_counts_to_p_values_reference(exceedance_counts, scale_values.shape[0])
 
     np.testing.assert_allclose(count_p, matrix_p)
 

@@ -35,11 +35,6 @@ from nimare.utils import (
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
 
-# Benchmarked ALESubtraction chunk sizes: 512, 1024, 2048, 4096, 8192, 16384.
-ALE_SUBTRACTION_PVALUE_CHUNK_SIZE = 8192
-# Benchmarked SCALE chunk sizes: 256, 512, 1024, 2048, 4096.
-SCALE_PVALUE_CHUNK_SIZE = 1024
-
 
 def _csr_row_max(ma_values):
     """Compute row-wise maxima for a CSR matrix without densifying it."""
@@ -133,8 +128,12 @@ def _finalize_alediff_tail_counts(left_counts, right_counts, n_iters):
 def _collect_masked_ma_maps(estimator, coords_key="coordinates", maps_key="ma_maps"):
     """Collect ALE-family MA maps in masked CSR form."""
     estimator._study_max_ma_values = None
+    return collect_csr_ma_maps(estimator, coords_key=coords_key, maps_key=maps_key)
 
-    ma_values = collect_csr_ma_maps(estimator, coords_key=coords_key, maps_key=maps_key)
+
+def _collect_ale_masked_ma_maps(estimator, coords_key="coordinates", maps_key="ma_maps"):
+    """Collect ALE MA maps and cache per-study maxima for approximate-null binning."""
+    ma_values = _collect_masked_ma_maps(estimator, coords_key=coords_key, maps_key=maps_key)
     estimator._study_max_ma_values = _csr_row_max(ma_values).astype(
         DEFAULT_FLOAT_DTYPE, copy=False
     )
@@ -202,8 +201,8 @@ class ALE(CBMAEstimator):
     masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker object.
     inputs_ : :obj:`dict`
-        Inputs to the Estimator. For ALESubtraction, this includes edited coordinate DataFrames
-        for both groups, stored under ``coordinates1`` and ``coordinates2``.
+        Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
+        This is an edited version of the dataset's coordinates DataFrame.
     null_distributions_ : :obj:`dict` of :class:`numpy.ndarray`
         Null distributions for the uncorrected summary-statistic-to-p-value conversion and any
         multiple-comparisons correction methods.
@@ -336,7 +335,7 @@ class ALE(CBMAEstimator):
                 return_type=return_type,
             )
 
-        return _collect_masked_ma_maps(self, coords_key=coords_key, maps_key=maps_key)
+        return _collect_ale_masked_ma_maps(self, coords_key=coords_key, maps_key=maps_key)
 
     def _compute_summarystat(self, data):
         """Compute ALE summary statistics from input data."""
@@ -808,50 +807,6 @@ class ALESubtraction(PairwiseCBMAEstimator):
         iter_grp2_ale_values = self._compute_summarystat_est(ma_arr[id_idx[n_grp1:], :])
         return i_iter, iter_grp1_ale_values - iter_grp2_ale_values
 
-    def _alediff_to_p_voxel(self, i_voxel, stat_value, voxel_null):
-        """Compute one voxel's p-value from its specific null distribution.
-
-        Notes
-        -----
-        In cases with differently-sized groups, the ALE-difference values will be biased and
-        skewed, but the null distributions will be too, so symmetric should be False.
-        """
-        p_value = null_to_p(stat_value, voxel_null, tail="two", symmetric=False)
-        return p_value, i_voxel
-
-    def _alediff_to_p_values(
-        self,
-        stat_values,
-        iter_diff_values,
-        chunk_size=ALE_SUBTRACTION_PVALUE_CHUNK_SIZE,
-    ):
-        """Compute voxelwise p-values and signs in chunks to avoid per-voxel task overhead."""
-        n_iters, n_voxels = iter_diff_values.shape
-        smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
-        p_values = np.empty(n_voxels, dtype=DEFAULT_FLOAT_DTYPE)
-        diff_signs = np.empty(n_voxels, dtype=DEFAULT_FLOAT_DTYPE)
-
-        for start in tqdm(
-            range(0, n_voxels, chunk_size), total=int(np.ceil(n_voxels / chunk_size))
-        ):
-            stop = min(start + chunk_size, n_voxels)
-            null_chunk = np.asarray(iter_diff_values[:, start:stop])
-            stat_chunk = np.asarray(stat_values[start:stop], dtype=null_chunk.dtype)
-
-            left_tail = 1.0 - (
-                np.count_nonzero(null_chunk < stat_chunk[None, :], axis=0) / n_iters
-            )
-            right_tail = 1.0 - (
-                np.count_nonzero(null_chunk > stat_chunk[None, :], axis=0) / n_iters
-            )
-            p_chunk = 2.0 * np.minimum(left_tail, right_tail)
-            p_values[start:stop] = np.maximum(
-                smallest_value, np.minimum(p_chunk, 1.0 - smallest_value)
-            ).astype(DEFAULT_FLOAT_DTYPE, copy=False)
-            diff_signs[start:stop] = np.sign(stat_chunk - np.median(null_chunk, axis=0))
-
-        return p_values, diff_signs
-
     def correct_fwe_montecarlo(
         self,
         result,
@@ -1118,6 +1073,11 @@ class SCALE(CBMAEstimator):
         Use direct empirical voxelwise permutation p-values and add voxel-level Monte Carlo
         family-wise error correction.
 
+    .. versionchanged:: 0.14.0
+
+        Stream permutation exceedance counts instead of retaining a full voxelwise permutation
+        null matrix in the main SCALE fit path.
+
     .. versionchanged:: 0.2.1
 
         - New parameters: ``memory`` and ``memory_level`` for memory caching.
@@ -1227,9 +1187,6 @@ class SCALE(CBMAEstimator):
         self.xyz = xyz
         self.n_iters = n_iters
         self.n_cores = _check_ncores(n_cores)
-        # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
-        # a Dataset with pre-generated MA maps is provided.
-        self.memory_limit = "100mb"
 
     def _generate_description(self):
         if (
@@ -1256,7 +1213,6 @@ class SCALE(CBMAEstimator):
         )
         return description
 
-    @use_memmap(LGR, n_files=2)
     def _fit(self, dataset):
         """Perform specific coactivation likelihood estimation meta-analysis on dataset.
 
@@ -1348,62 +1304,29 @@ class SCALE(CBMAEstimator):
         }
 
     def _scale_to_p(self, stat_values, scale_values):
-        """Compute p- and z-values.
+        """Compute p- and z-values from voxelwise exceedance counts.
 
         Parameters
         ----------
         stat_values : (V) array
-            ALE values.
-        scale_values : (I x V) array or (V,) array
-            Permutation ALE values or voxelwise exceedance counts.
+            ALE values. Included for API consistency with other estimators.
+        scale_values : (V,) array
+            Voxelwise exceedance counts from SCALE permutations.
 
         Returns
         -------
         p_values : (V) array
         z_values : (V) array
         """
-        p_values = self._scale_to_p_values(stat_values, scale_values)
-        z_values = p_to_z(p_values, tail="one")
-        return p_values, z_values
-
-    def _scale_to_p_values(
-        self,
-        stat_values,
-        scale_values,
-        chunk_size=SCALE_PVALUE_CHUNK_SIZE,
-    ):
-        """Compute direct empirical SCALE p-values from permutations or exceedance counts."""
-        if getattr(scale_values, "ndim", None) == 1:
-            return self._scale_counts_to_p_values(scale_values)
-
-        n_voxels = stat_values.shape[0]
-        n_iters = scale_values.shape[0]
-        p_values = np.empty(n_voxels, dtype=DEFAULT_FLOAT_DTYPE)
-        smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
-
-        for start in tqdm(
-            range(0, n_voxels, chunk_size), total=int(np.ceil(n_voxels / chunk_size))
-        ):
-            stop = min(start + chunk_size, n_voxels)
-            null_chunk = np.asarray(scale_values[:, start:stop])
-            p_chunk = np.count_nonzero(null_chunk >= stat_values[None, start:stop], axis=0).astype(
-                DEFAULT_FLOAT_DTYPE, copy=False
-            )
-            p_chunk /= n_iters
-            p_values[start:stop] = np.maximum(
-                smallest_value, np.minimum(p_chunk, 1.0 - smallest_value)
-            )
-
-        return p_values
-
-    def _scale_counts_to_p_values(self, exceedance_counts):
-        """Convert voxelwise exceedance counts into empirical p-values."""
-        p_values = exceedance_counts.astype(DEFAULT_FLOAT_DTYPE, copy=False) / self.n_iters
+        del stat_values
+        p_values = scale_values.astype(DEFAULT_FLOAT_DTYPE, copy=False) / self.n_iters
         smallest_value = np.maximum(np.finfo(float).eps, 1.0 / self.n_iters)
-        return np.maximum(smallest_value, np.minimum(p_values, 1.0 - smallest_value)).astype(
+        p_values = np.maximum(smallest_value, np.minimum(p_values, 1.0 - smallest_value)).astype(
             DEFAULT_FLOAT_DTYPE,
             copy=False,
         )
+        z_values = p_to_z(p_values, tail="one")
+        return p_values, z_values
 
     def _run_permutation(self, iter_idx, voxel_ijk, iter_df, permutation_args=None):
         """Run a single random SCALE permutation of a dataset."""
