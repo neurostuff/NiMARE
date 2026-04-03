@@ -1063,14 +1063,14 @@ def test_SCALE_optimized_permutation_matches_dataframe_path(testdata_cbma):
     iter_df = meta.inputs_["coordinates"].copy()
     permutation_args = meta._prepare_permutation_args(iter_df)
     voxel_ijk = mm2vox(meta.xyz, meta.masker.mask_img.affine).astype(np.int32, copy=False)
-    iter_idx = np.arange(iter_df.shape[0]) % voxel_ijk.shape[0]
+    sampled_voxel_idx = np.arange(iter_df.shape[0]) % voxel_ijk.shape[0]
 
     optimized = meta._run_permutation(
-        iter_idx, voxel_ijk, iter_df, permutation_args=permutation_args
+        sampled_voxel_idx, voxel_ijk, iter_df, permutation_args=permutation_args
     )
 
     legacy_df = iter_df.copy()
-    legacy_df[["x", "y", "z"]] = meta.xyz[iter_idx, :]
+    legacy_df[["x", "y", "z"]] = meta.xyz[sampled_voxel_idx, :]
     drop_cols = [col for col in ("i", "j", "k") if col in legacy_df.columns]
     if drop_cols:
         legacy_df = legacy_df.drop(columns=drop_cols)

@@ -1235,11 +1235,13 @@ class SCALE(CBMAEstimator):
 
         del ma_values
 
-        iter_df, voxel_ijk, permutation_args, rand_idx = self._prepare_permutations(self.n_iters)
+        iter_df, voxel_ijk, permutation_args, sampled_voxel_idx = self._prepare_permutations(
+            self.n_iters
+        )
         exceedance_counts = np.zeros(stat_values.shape[0], dtype=np.uint32)
 
         for iter_values in self._iterate_permuted_stats(
-            rand_idx, voxel_ijk, iter_df, permutation_args, self.n_cores
+            sampled_voxel_idx, voxel_ijk, iter_df, permutation_args, self.n_cores
         ):
             exceedance_counts += iter_values >= stat_values
 
@@ -1274,8 +1276,8 @@ class SCALE(CBMAEstimator):
         iter_df = self.inputs_["coordinates"].copy()
         voxel_ijk = mm2vox(self.xyz, self.masker.mask_img.affine).astype(np.int32, copy=False)
         permutation_args = self._prepare_permutation_args(iter_df)
-        rand_idx = np.random.choice(voxel_ijk.shape[0], size=(iter_df.shape[0], n_iters))
-        return iter_df, voxel_ijk, permutation_args, rand_idx
+        sampled_voxel_idx = np.random.choice(voxel_ijk.shape[0], size=(iter_df.shape[0], n_iters))
+        return iter_df, voxel_ijk, permutation_args, sampled_voxel_idx
 
     def _prepare_permutation_args(self, coordinates):
         """Prepare static ALE kernel inputs for SCALE permutations."""
@@ -1328,12 +1330,12 @@ class SCALE(CBMAEstimator):
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
 
-    def _run_permutation(self, iter_idx, voxel_ijk, iter_df, permutation_args=None):
-        """Run a single random SCALE permutation of a dataset."""
+    def _run_permutation(self, sampled_voxel_idx, voxel_ijk, iter_df, permutation_args=None):
+        """Run a single random SCALE permutation from sampled voxel-row indices."""
         if permutation_args is not None:
             ma_values, _, _ = compute_ale_ma(
                 self.masker.mask_img,
-                voxel_ijk[iter_idx, :],
+                voxel_ijk[sampled_voxel_idx, :],
                 kernel=permutation_args["kernel"],
                 exp_idx=permutation_args["exp_idx"],
                 sample_sizes=permutation_args["sample_sizes"],
@@ -1342,16 +1344,20 @@ class SCALE(CBMAEstimator):
             return _compute_ale_summarystat(ma_values)
 
         iter_df = iter_df.copy()
-        iter_df[["i", "j", "k"]] = voxel_ijk[iter_idx, :]
+        iter_df[["i", "j", "k"]] = voxel_ijk[sampled_voxel_idx, :]
         stat_values = self._compute_summarystat_est(iter_df)
         return stat_values
 
-    def _iterate_permuted_stats(self, rand_idx, voxel_ijk, iter_df, permutation_args, n_cores):
+    def _iterate_permuted_stats(
+        self, sampled_voxel_idx, voxel_ijk, iter_df, permutation_args, n_cores
+    ):
         """Yield permuted SCALE statistic maps for a fixed permutation schedule."""
         if n_cores == 1:
-            for i_iter in tqdm(range(rand_idx.shape[1]), total=rand_idx.shape[1]):
+            for i_iter in tqdm(
+                range(sampled_voxel_idx.shape[1]), total=sampled_voxel_idx.shape[1]
+            ):
                 yield self._run_permutation(
-                    rand_idx[:, i_iter],
+                    sampled_voxel_idx[:, i_iter],
                     voxel_ijk,
                     iter_df,
                     permutation_args=permutation_args,
@@ -1365,14 +1371,14 @@ class SCALE(CBMAEstimator):
         yield from tqdm(
             Parallel(**parallel_kwargs)(
                 delayed(self._run_permutation)(
-                    rand_idx[:, i_iter],
+                    sampled_voxel_idx[:, i_iter],
                     voxel_ijk,
                     iter_df,
                     permutation_args=permutation_args,
                 )
-                for i_iter in range(rand_idx.shape[1])
+                for i_iter in range(sampled_voxel_idx.shape[1])
             ),
-            total=rand_idx.shape[1],
+            total=sampled_voxel_idx.shape[1],
         )
 
     def correct_fwe_montecarlo(
@@ -1403,12 +1409,16 @@ class SCALE(CBMAEstimator):
             )
 
         stat_values = result.get_map("stat", return_type="array")
-        iter_df, voxel_ijk, permutation_args, rand_idx = self._prepare_permutations(n_iters)
+        iter_df, voxel_ijk, permutation_args, sampled_voxel_idx = self._prepare_permutations(
+            n_iters
+        )
         fwe_voxel_max = np.empty(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
         n_cores = _check_ncores(n_cores)
 
         for i_iter, iter_values in enumerate(
-            self._iterate_permuted_stats(rand_idx, voxel_ijk, iter_df, permutation_args, n_cores)
+            self._iterate_permuted_stats(
+                sampled_voxel_idx, voxel_ijk, iter_df, permutation_args, n_cores
+            )
         ):
             fwe_voxel_max[i_iter] = np.max(iter_values)
 
