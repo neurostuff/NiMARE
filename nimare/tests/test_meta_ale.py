@@ -1048,24 +1048,33 @@ def test_ALESubtraction_low_memory_reuses_sample_chunk(monkeypatch, testdata_cbm
     estimate = meta._estimate_group_ma_bytes("coordinates1")
     assert calls["count"] == 1
 
-    ma_group, stat_values, temp_files = meta._collect_chunked_ma_maps(
-        coords_key="coordinates1",
-        chunk_rows=estimate.sample_n_studies,
-        prefix="ALESubtractionReuseSample",
-        estimate=estimate,
-    )
+    def _collect_and_cleanup():
+        ma_group, stat_values, temp_files = meta._collect_chunked_ma_maps(
+            coords_key="coordinates1",
+            chunk_rows=estimate.sample_n_studies,
+            prefix="ALESubtractionReuseSample",
+            estimate=estimate,
+        )
+        n_rows = ma_group.shape[0]
+        n_voxels = ma_group.shape[1]
+        stat_len = stat_values.shape[0]
+
+        store = ale._PairwiseMAStore(
+            group1=ma_group,
+            group2=sp_sparse.csr_matrix((0, n_voxels), dtype=np.float32),
+            group1_stat=stat_values,
+            group2_stat=np.zeros(n_voxels, dtype=np.float32),
+            temp_files=temp_files,
+        )
+        del ma_group
+        store.close()
+        return n_rows, n_voxels, stat_len
+
+    n_rows, n_voxels, stat_len = _collect_and_cleanup()
 
     assert calls["count"] == 1
-    assert ma_group.shape[0] == estimate.sample_n_studies
-    assert stat_values.shape[0] == ma_group.shape[1]
-
-    ale._PairwiseMAStore(
-        group1=ma_group,
-        group2=sp_sparse.csr_matrix((0, ma_group.shape[1]), dtype=np.float32),
-        group1_stat=stat_values,
-        group2_stat=np.zeros(ma_group.shape[1], dtype=np.float32),
-        temp_files=temp_files,
-    ).close()
+    assert n_rows == estimate.sample_n_studies
+    assert stat_len == n_voxels
 
 
 def test_ALESubtraction_pairwise_store_close_releases_refs_before_cleanup(monkeypatch):
