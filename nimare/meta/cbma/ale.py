@@ -1,8 +1,10 @@
 """CBMA methods from the activation likelihood estimation (ALE) family."""
 
+import gc
 import logging
 import os
 import tempfile
+import time
 import warnings
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -106,9 +108,16 @@ class _PairwiseMAStore:
 
     def close(self):
         """Release memmap-backed arrays and delete temporary files."""
+        temp_files = list(self.temp_files)
         _close_csr_memmaps(self.group1)
         _close_csr_memmaps(self.group2)
-        _cleanup_temp_files(self.temp_files)
+        self.group1 = None
+        self.group2 = None
+        self.group1_stat = None
+        self.group2_stat = None
+        self.temp_files = []
+        gc.collect()
+        _cleanup_temp_files(temp_files)
 
 
 def _is_chunked_group(ma_values):
@@ -321,7 +330,15 @@ def _cleanup_temp_files(filenames):
     """Remove temporary files created for memmap-backed arrays."""
     for filename in filenames:
         if filename and os.path.isfile(filename):
-            os.remove(filename)
+            for i_try in range(5):
+                try:
+                    os.remove(filename)
+                    break
+                except PermissionError:
+                    if i_try == 4:
+                        raise
+                    gc.collect()
+                    time.sleep(0.05)
 
 
 def _iter_study_id_chunks(coordinates, chunk_rows):

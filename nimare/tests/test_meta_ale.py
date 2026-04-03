@@ -1011,6 +1011,40 @@ def test_ALESubtraction_low_memory_chunk_rows_scale_with_available_ram():
     assert few_rows >= 1
 
 
+def test_ALESubtraction_pairwise_store_close_releases_refs_before_cleanup(monkeypatch):
+    """Pairwise MA store should drop memmap-backed references before file cleanup."""
+    store = ale._PairwiseMAStore(
+        group1=object(),
+        group2=object(),
+        group1_stat=np.zeros(1, dtype=np.float32),
+        group2_stat=np.zeros(1, dtype=np.float32),
+        temp_files=["dummy.mmap"],
+    )
+
+    monkeypatch.setattr(ale, "_close_csr_memmaps", lambda _: None)
+
+    observed = {}
+
+    def _wrapped_cleanup(filenames):
+        observed["filenames"] = filenames
+        observed["group1"] = store.group1
+        observed["group2"] = store.group2
+        observed["group1_stat"] = store.group1_stat
+        observed["group2_stat"] = store.group2_stat
+        observed["temp_files"] = store.temp_files
+
+    monkeypatch.setattr(ale, "_cleanup_temp_files", _wrapped_cleanup)
+
+    store.close()
+
+    assert observed["filenames"] == ["dummy.mmap"]
+    assert observed["group1"] is None
+    assert observed["group2"] is None
+    assert observed["group1_stat"] is None
+    assert observed["group2_stat"] is None
+    assert observed["temp_files"] == []
+
+
 def test_ALESubtraction_low_memory_auto_activates(monkeypatch, testdata_cbma):
     """Auto low-memory mode should spill MA maps when available RAM is tiny."""
     dset1 = testdata_cbma.slice(testdata_cbma.ids[:3])
