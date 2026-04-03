@@ -2,7 +2,18 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.13.0...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.14.0...HEAD)
+
+## [0.14.0](https://github.com/neurostuff/NiMARE/compare/0.13.0...0.14.0) - 2026-04-03
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+Attempt to make ALESubtraction more memory efficient and upgrade SCALE to have empirical null and FWECorrector implemented.
+
+### What's Changed
+
+* [ENH] ale subtraction scale improvements by @jdkent in https://github.com/neurostuff/NiMARE/pull/1002
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.13.0...0.14.0
 
 ## [0.13.0](https://github.com/neurostuff/NiMARE/compare/0.12.0...0.13.0) - 2026-04-03
 
