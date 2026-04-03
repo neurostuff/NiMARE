@@ -8,17 +8,19 @@ import nibabel as nib
 import numpy as np
 import pytest
 from nilearn.maskers import NiftiLabelsMasker
+from scipy import ndimage
 from scipy import sparse as sp_sparse
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
 from nimare.generate import create_coordinate_dataset
 from nimare.meta import ale
+from nimare.meta.utils import _calculate_cluster_measures
 from nimare.results import MetaResult
-from nimare.stats import nullhist_to_p
+from nimare.stats import null_to_p, nullhist_to_p
 from nimare.tests.utils import get_test_data_path
 from nimare.transforms import p_to_z
-from nimare.utils import vox2mm
+from nimare.utils import mm2vox, vox2mm
 
 SIMULATED_ALE_REGRESSION_DATASETS = [
     pytest.param(
@@ -125,6 +127,94 @@ def _study_ma_histogram_reference(
     exp_hist[0] += n_zero_voxels
     exp_hist *= mask_voxel_recip
     return exp_hist
+
+
+def _calculate_cluster_measures_reference(arr3d, threshold, conn, tail="upper"):
+    """Reference implementation for cluster size/mass measurement."""
+    arr3d = arr3d.copy()
+    if tail == "upper":
+        arr3d[arr3d <= threshold] = 0
+    else:
+        arr3d[np.abs(arr3d) <= threshold] = 0
+
+    labeled_arr3d, _ = ndimage.label(arr3d > 0, conn)
+
+    if tail == "two":
+        n_positive_clusters = np.max(labeled_arr3d)
+        temp_labeled_arr3d, _ = ndimage.label(arr3d < 0, conn)
+        temp_labeled_arr3d[temp_labeled_arr3d > 0] += n_positive_clusters
+        labeled_arr3d = labeled_arr3d + temp_labeled_arr3d
+
+    clust_sizes = np.bincount(labeled_arr3d.ravel())
+
+    max_mass = 0.0
+    for unique_val in np.arange(1, clust_sizes.shape[0]):
+        ss_vals = np.abs(arr3d[labeled_arr3d == unique_val]) - threshold
+        max_mass = np.maximum(max_mass, np.sum(ss_vals))
+
+    clust_sizes = clust_sizes[1:]
+    max_size = np.max(clust_sizes) if clust_sizes.size else 0
+    return max_size, max_mass
+
+
+def _alediff_to_p_voxel_reference(i_voxel, stat_value, voxel_null):
+    """Reference scalar ALE subtraction p-value implementation."""
+    p_value = null_to_p(stat_value, voxel_null, tail="two", symmetric=False)
+    return p_value, i_voxel
+
+
+def _alediff_to_p_values_reference(stat_values, iter_diff_values, chunk_size):
+    """Reference chunked ALE subtraction p-value/sign implementation."""
+    n_iters, n_voxels = iter_diff_values.shape
+    smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
+    p_values = np.empty(n_voxels, dtype=np.float32)
+    diff_signs = np.empty(n_voxels, dtype=np.float32)
+
+    for start in range(0, n_voxels, chunk_size):
+        stop = min(start + chunk_size, n_voxels)
+        null_chunk = np.asarray(iter_diff_values[:, start:stop])
+        stat_chunk = np.asarray(stat_values[start:stop], dtype=null_chunk.dtype)
+
+        left_tail = 1.0 - (np.count_nonzero(null_chunk < stat_chunk[None, :], axis=0) / n_iters)
+        right_tail = 1.0 - (np.count_nonzero(null_chunk > stat_chunk[None, :], axis=0) / n_iters)
+        p_chunk = 2.0 * np.minimum(left_tail, right_tail)
+        p_values[start:stop] = np.maximum(
+            smallest_value, np.minimum(p_chunk, 1.0 - smallest_value)
+        ).astype(np.float32, copy=False)
+        diff_signs[start:stop] = np.sign(stat_chunk - np.median(null_chunk, axis=0))
+
+    return p_values, diff_signs
+
+
+def _scale_to_p_values_reference(stat_values, scale_values, chunk_size):
+    """Reference chunked SCALE empirical p-value implementation."""
+    n_voxels = stat_values.shape[0]
+    n_iters = scale_values.shape[0]
+    p_values = np.empty(n_voxels, dtype=np.float32)
+    smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
+
+    for start in range(0, n_voxels, chunk_size):
+        stop = min(start + chunk_size, n_voxels)
+        null_chunk = np.asarray(scale_values[:, start:stop])
+        p_chunk = np.count_nonzero(null_chunk >= stat_values[None, start:stop], axis=0).astype(
+            np.float32, copy=False
+        )
+        p_chunk /= n_iters
+        p_values[start:stop] = np.maximum(
+            smallest_value, np.minimum(p_chunk, 1.0 - smallest_value)
+        )
+
+    return p_values
+
+
+def _scale_counts_to_p_values_reference(exceedance_counts, n_iters):
+    """Reference streamed-count SCALE p-value implementation."""
+    p_values = exceedance_counts.astype(np.float32, copy=False) / n_iters
+    smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
+    return np.maximum(smallest_value, np.minimum(p_values, 1.0 - smallest_value)).astype(
+        np.float32,
+        copy=False,
+    )
 
 
 def _update_ale_histogram_reference(
@@ -775,17 +865,35 @@ def test_ALESubtraction_cluster_nulls(testdata_cbma):
     )
 
 
+@pytest.mark.parametrize("tail", ["upper", "two"])
+def test_calculate_cluster_measures_matches_reference(tail):
+    """Cluster size/mass helper should match the legacy implementation."""
+    rng = np.random.default_rng(31)
+    arr3d = rng.normal(size=(9, 10, 11)).astype(np.float32)
+    threshold = 0.75
+    conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
+
+    expected_size, expected_mass = _calculate_cluster_measures_reference(
+        arr3d, threshold, conn, tail=tail
+    )
+    actual_size, actual_mass = _calculate_cluster_measures(
+        arr3d.copy(), threshold, conn, tail=tail
+    )
+
+    assert actual_size == expected_size
+    np.testing.assert_allclose(actual_mass, expected_mass)
+
+
 def test_ALESubtraction_chunked_pvalues_match_scalar_path():
     """Chunked p-value conversion should match the scalar implementation."""
     rng = np.random.default_rng(4)
-    sub_meta = ale.ALESubtraction(n_iters=5, n_cores=1)
 
     stat_values = rng.normal(size=17).astype(np.float32)
     iter_diff_values = rng.normal(size=(13, 17)).astype(np.float32)
 
     scalar_p = np.array(
         [
-            sub_meta._alediff_to_p_voxel(
+            _alediff_to_p_voxel_reference(
                 i_voxel, stat_values[i_voxel], iter_diff_values[:, i_voxel]
             )[0]
             for i_voxel in range(stat_values.shape[0])
@@ -793,12 +901,33 @@ def test_ALESubtraction_chunked_pvalues_match_scalar_path():
     ).reshape(-1)
     scalar_sign = np.sign(stat_values - np.median(iter_diff_values, axis=0))
 
-    chunked_p, chunked_sign = sub_meta._alediff_to_p_values(
-        stat_values, iter_diff_values, chunk_size=4
-    )
+    chunked_p, chunked_sign = _alediff_to_p_values_reference(stat_values, iter_diff_values, 4)
 
     np.testing.assert_allclose(chunked_p, scalar_p)
     np.testing.assert_array_equal(chunked_sign, scalar_sign)
+
+
+def test_ALESubtraction_streamed_tail_counts_match_chunked_path():
+    """Streamed ALE subtraction tail counts should match chunked null evaluation."""
+    rng = np.random.default_rng(14)
+
+    stat_values = rng.normal(size=31).astype(np.float32)
+    iter_diff_values = rng.normal(size=(17, 31)).astype(np.float32)
+
+    chunked_p, chunked_sign = _alediff_to_p_values_reference(stat_values, iter_diff_values, 7)
+
+    left_counts = np.count_nonzero(iter_diff_values >= stat_values[None, :], axis=0).astype(
+        np.uint32
+    )
+    right_counts = np.count_nonzero(iter_diff_values <= stat_values[None, :], axis=0).astype(
+        np.uint32
+    )
+    streamed_p, streamed_sign = ale._finalize_alediff_tail_counts(
+        left_counts, right_counts, iter_diff_values.shape[0]
+    )
+
+    np.testing.assert_allclose(streamed_p, chunked_p)
+    np.testing.assert_array_equal(streamed_sign, chunked_sign)
 
 
 def test_ALESubtraction_fwe_description_branches(testdata_cbma):
@@ -855,32 +984,99 @@ def test_SCALE_smoke(testdata_cbma, tmp_path_factory):
     assert isinstance(results.get_map("z", return_type="image"), nib.Nifti1Image)
     assert isinstance(results.get_map("z", return_type="array"), np.ndarray)
 
+    corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
+    corr_results = corr.transform(results)
+    assert isinstance(corr_results, nimare.results.MetaResult)
+    assert "z_level-voxel_corr-FWE_method-montecarlo" in corr_results.maps
+    assert "logp_level-voxel_corr-FWE_method-montecarlo" in corr_results.maps
+    assert "z_desc-size_level-cluster_corr-FWE_method-montecarlo" not in corr_results.maps
+    assert isinstance(
+        corr_results.get_map("z_level-voxel_corr-FWE_method-montecarlo", return_type="array"),
+        np.ndarray,
+    )
+
     meta.save(out_file)
     assert os.path.isfile(out_file)
+
+
+def test_SCALE_cluster_fwe_not_supported(testdata_cbma):
+    """SCALE should reject cluster-level Monte Carlo FWE correction."""
+    dset = testdata_cbma.slice(testdata_cbma.ids[:3])
+    xyz = vox2mm(
+        np.vstack(np.where(testdata_cbma.masker.mask_img.get_fdata())).T,
+        testdata_cbma.masker.mask_img.affine,
+    )[:20, :]
+    meta = ale.SCALE(xyz, n_iters=2, n_cores=1)
+    results = meta.fit(dset)
+    corr = FWECorrector(method="montecarlo", n_iters=2, n_cores=1, vfwe_only=False)
+
+    with pytest.raises(NotImplementedError, match="voxel-level Monte Carlo FWE correction"):
+        corr.transform(results)
 
 
 def test_SCALE_chunked_pvalues_match_scalar_path():
     """Chunked SCALE p-value conversion should match the scalar implementation."""
     rng = np.random.default_rng(7)
-    meta = ale.SCALE(xyz=np.zeros((1, 3)), n_iters=5, n_cores=1)
-    meta.null_distributions_ = {"histogram_bins": np.linspace(0, 1, 11)}
-
     stat_values = rng.uniform(0.0, 0.8, size=9).astype(np.float32)
     scale_values = rng.uniform(0.0, 0.8, size=(13, 9)).astype(np.float32)
     scale_values[scale_values < 0.2] = 0
 
     scalar_p = np.array(
         [
-            meta._scale_to_p_voxel(i_voxel, stat_values[i_voxel], scale_values[:, i_voxel].copy())[
-                0
-            ]
+            null_to_p(stat_values[i_voxel], scale_values[:, i_voxel].copy(), tail="upper")
             for i_voxel in range(stat_values.shape[0])
         ]
     ).reshape(-1)
 
-    chunked_p = meta._scale_to_p_values(stat_values, scale_values, chunk_size=4)
+    chunked_p = _scale_to_p_values_reference(stat_values, scale_values, chunk_size=4)
 
     np.testing.assert_allclose(chunked_p, scalar_p)
+
+
+def test_SCALE_exceedance_counts_match_permutation_matrix_path():
+    """Streamed SCALE exceedance counts should match direct permutation p-values."""
+    rng = np.random.default_rng(17)
+    stat_values = rng.uniform(0.0, 0.8, size=9).astype(np.float32)
+    scale_values = rng.uniform(0.0, 0.8, size=(11, 9)).astype(np.float32)
+
+    matrix_p = _scale_to_p_values_reference(stat_values, scale_values, chunk_size=4)
+    exceedance_counts = np.count_nonzero(scale_values >= stat_values[None, :], axis=0).astype(
+        np.uint32
+    )
+    count_p = _scale_counts_to_p_values_reference(exceedance_counts, scale_values.shape[0])
+
+    np.testing.assert_allclose(count_p, matrix_p)
+
+
+def test_SCALE_optimized_permutation_matches_dataframe_path(testdata_cbma):
+    """Optimized SCALE permutation path should match the legacy DataFrame path."""
+    mask_data = testdata_cbma.masker.mask_img.get_fdata().astype(bool)
+    xyz = vox2mm(np.vstack(np.where(mask_data)).T, testdata_cbma.masker.mask_img.affine)[:50, :]
+    meta = ale.SCALE(xyz=xyz, n_iters=5, n_cores=1)
+    meta.dataset = testdata_cbma
+    meta.masker = testdata_cbma.masker
+    meta.null_distributions_ = {}
+    meta._clear_precomputed_ma_inputs()
+    meta._collect_inputs(testdata_cbma)
+    meta._preprocess_input(testdata_cbma)
+
+    iter_df = meta.inputs_["coordinates"].copy()
+    permutation_args = meta._prepare_permutation_args(iter_df)
+    voxel_ijk = mm2vox(meta.xyz, meta.masker.mask_img.affine).astype(np.int32, copy=False)
+    sampled_voxel_idx = np.arange(iter_df.shape[0]) % voxel_ijk.shape[0]
+
+    optimized = meta._run_permutation(
+        sampled_voxel_idx, voxel_ijk, iter_df, permutation_args=permutation_args
+    )
+
+    legacy_df = iter_df.copy()
+    legacy_df[["x", "y", "z"]] = meta.xyz[sampled_voxel_idx, :]
+    drop_cols = [col for col in ("i", "j", "k") if col in legacy_df.columns]
+    if drop_cols:
+        legacy_df = legacy_df.drop(columns=drop_cols)
+    legacy = meta._compute_summarystat_est(legacy_df)
+
+    np.testing.assert_allclose(optimized, legacy)
 
 
 def test_ALE_non_nifti_masker(testdata_cbma):
