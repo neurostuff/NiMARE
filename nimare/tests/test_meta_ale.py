@@ -849,6 +849,9 @@ def test_ALESubtraction_init_vfwe_voxel_thresh_logic():
     sub_meta = ale.ALESubtraction(vfwe_only=False, voxel_thresh="0.01")
     assert sub_meta.vfwe_only is False
 
+    with pytest.raises(ValueError, match="low_memory must be False, True, or 'auto'"):
+        ale.ALESubtraction(low_memory="sometimes")
+
 
 def test_ALESubtraction_cluster_nulls(testdata_cbma):
     """Verify optional cluster nulls are computed for ALESubtraction."""
@@ -928,6 +931,229 @@ def test_ALESubtraction_streamed_tail_counts_match_chunked_path():
 
     np.testing.assert_allclose(streamed_p, chunked_p)
     np.testing.assert_array_equal(streamed_sign, chunked_sign)
+
+
+def test_ALESubtraction_partitioned_summarystat_matches_combined_path():
+    """Partitioned ALE summary stats should match the stacked sparse path."""
+    rng = np.random.default_rng(19)
+    n_grp1 = 5
+    n_grp2 = 7
+    n_voxels = 29
+
+    ma_maps1 = sp_sparse.random(
+        n_grp1,
+        n_voxels,
+        density=0.2,
+        format="csr",
+        random_state=19,
+        data_rvs=lambda n: rng.uniform(0.01, 0.5, size=n).astype(np.float32),
+    )
+    ma_maps2 = sp_sparse.random(
+        n_grp2,
+        n_voxels,
+        density=0.25,
+        format="csr",
+        random_state=23,
+        data_rvs=lambda n: rng.uniform(0.01, 0.5, size=n).astype(np.float32),
+    )
+
+    ma_arr = sp_sparse.vstack((ma_maps1, ma_maps2), format="csr")
+    total_idx = np.arange(n_grp1 + n_grp2)
+    rng.shuffle(total_idx)
+
+    expected_grp1 = ale._compute_ale_summarystat(ma_arr[total_idx[:n_grp1], :])
+    expected_grp2 = ale._compute_ale_summarystat(ma_arr[total_idx[n_grp1:], :])
+
+    actual_grp1 = ale._compute_partition_ale_summarystat(
+        ma_maps1, ma_maps2, total_idx[:n_grp1], n_grp1
+    )
+    actual_grp2 = ale._compute_partition_ale_summarystat(
+        ma_maps1, ma_maps2, total_idx[n_grp1:], n_grp1
+    )
+
+    np.testing.assert_allclose(actual_grp1, expected_grp1)
+    np.testing.assert_allclose(actual_grp2, expected_grp2)
+
+
+def test_ALESubtraction_partitioned_summarystat_validates_inputs():
+    """Partitioned ALE summary stats should fail fast on mismatched MA groups."""
+    ma_maps1 = sp_sparse.eye(3, 5, format="csr", dtype=np.float32)
+    ma_maps2 = sp_sparse.eye(4, 6, format="csr", dtype=np.float32)
+
+    with pytest.raises(ValueError, match="same number of voxels"):
+        ale._compute_partition_ale_summarystat(ma_maps1, ma_maps2, np.array([0, 1]), 3)
+
+    ma_maps2 = sp_sparse.eye(4, 5, format="csr", dtype=np.float32)
+    with pytest.raises(ValueError, match="n_grp1 must match"):
+        ale._compute_partition_ale_summarystat(ma_maps1, ma_maps2, np.array([0, 1]), 2)
+
+    with pytest.raises(IndexError, match="out-of-bounds"):
+        ale._compute_partition_ale_summarystat(ma_maps1, ma_maps2, np.array([7]), 3)
+
+
+def test_ALESubtraction_low_memory_matches_standard_path(testdata_cbma):
+    """Forced low-memory mode should preserve ALE subtraction results."""
+    dset1 = testdata_cbma.slice(testdata_cbma.ids[:3])
+    dset2 = testdata_cbma.slice(testdata_cbma.ids[3:6])
+
+    standard = ale.ALESubtraction(n_iters=2, n_cores=1, low_memory=False).fit(dset1, dset2)
+    low_memory = ale.ALESubtraction(n_iters=2, n_cores=1, low_memory=True).fit(dset1, dset2)
+
+    for map_name in (
+        "stat_desc-group1MinusGroup2",
+        "p_desc-group1MinusGroup2",
+        "z_desc-group1MinusGroup2",
+        "logp_desc-group1MinusGroup2",
+    ):
+        np.testing.assert_allclose(
+            standard.get_map(map_name, return_type="array"),
+            low_memory.get_map(map_name, return_type="array"),
+        )
+
+    np.testing.assert_allclose(
+        standard.estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"],
+        low_memory.estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"],
+    )
+
+
+def test_ALESubtraction_low_memory_chunk_rows_scale_with_available_ram():
+    """Chunk size should shrink when available RAM shrinks."""
+    meta = ale.ALESubtraction()
+
+    many_rows = meta._determine_chunk_rows(1000.0, available_bytes=512 * 1024**2)
+    few_rows = meta._determine_chunk_rows(1000.0, available_bytes=8 * 1024**2)
+
+    assert many_rows > few_rows
+    assert few_rows >= 1
+
+
+def test_ALESubtraction_low_memory_reuses_sample_chunk(monkeypatch, testdata_cbma):
+    """Chunked MA collection should reuse the sampled MA chunk when chunk_rows permits."""
+    dset = testdata_cbma.slice(testdata_cbma.ids[:3])
+    meta = ale.ALESubtraction(n_iters=1, n_cores=1, low_memory=True)
+    meta.masker = dset.masker
+    meta._collect_inputs(dset, drop_invalid=True)
+    meta._preprocess_input(dset)
+    meta.inputs_["coordinates1"] = meta.inputs_.pop("coordinates")
+
+    original_transform = meta.kernel_transformer.transform
+    calls = {"count": 0}
+
+    def _wrapped_transform(*args, **kwargs):
+        calls["count"] += 1
+        return original_transform(*args, **kwargs)
+
+    monkeypatch.setattr(meta.kernel_transformer, "transform", _wrapped_transform)
+
+    estimate = meta._estimate_group_ma_bytes("coordinates1")
+    assert calls["count"] == 1
+
+    def _collect_and_cleanup():
+        ma_group, stat_values, temp_files = meta._collect_chunked_ma_maps(
+            coords_key="coordinates1",
+            chunk_rows=estimate.sample_n_studies,
+            prefix="ALESubtractionReuseSample",
+            estimate=estimate,
+        )
+        n_rows = ma_group.shape[0]
+        n_voxels = ma_group.shape[1]
+        stat_len = stat_values.shape[0]
+
+        store = ale._PairwiseMAStore(
+            group1=ma_group,
+            group2=sp_sparse.csr_matrix((0, n_voxels), dtype=np.float32),
+            group1_stat=stat_values,
+            group2_stat=np.zeros(n_voxels, dtype=np.float32),
+            temp_files=temp_files,
+        )
+        del ma_group
+        store.close()
+        return n_rows, n_voxels, stat_len
+
+    n_rows, n_voxels, stat_len = _collect_and_cleanup()
+
+    assert calls["count"] == 1
+    assert n_rows == estimate.sample_n_studies
+    assert stat_len == n_voxels
+
+
+def test_ALESubtraction_pairwise_store_close_releases_refs_before_cleanup(monkeypatch):
+    """Pairwise MA store should drop memmap-backed references before file cleanup."""
+    store = ale._PairwiseMAStore(
+        group1=object(),
+        group2=object(),
+        group1_stat=np.zeros(1, dtype=np.float32),
+        group2_stat=np.zeros(1, dtype=np.float32),
+        temp_files=["dummy.mmap"],
+    )
+
+    monkeypatch.setattr(ale, "_close_csr_memmaps", lambda _: None)
+
+    observed = {}
+
+    def _wrapped_cleanup(filenames):
+        observed["filenames"] = filenames
+        observed["group1"] = store.group1
+        observed["group2"] = store.group2
+        observed["group1_stat"] = store.group1_stat
+        observed["group2_stat"] = store.group2_stat
+        observed["temp_files"] = store.temp_files
+
+    monkeypatch.setattr(ale, "_cleanup_temp_files", _wrapped_cleanup)
+
+    store.close()
+
+    assert observed["filenames"] == ["dummy.mmap"]
+    assert observed["group1"] is None
+    assert observed["group2"] is None
+    assert observed["group1_stat"] is None
+    assert observed["group2_stat"] is None
+    assert observed["temp_files"] == []
+
+
+def test_ALESubtraction_low_memory_auto_activates(monkeypatch, testdata_cbma):
+    """Auto low-memory mode should spill MA maps when available RAM is tiny."""
+    dset1 = testdata_cbma.slice(testdata_cbma.ids[:3])
+    dset2 = testdata_cbma.slice(testdata_cbma.ids[3:6])
+
+    calls = []
+    original = ale._csr_to_memmap
+
+    def _wrapped(ma_values, prefix):
+        calls.append(prefix)
+        return original(ma_values, prefix)
+
+    monkeypatch.setattr(ale, "_get_available_memory_bytes", lambda: 1)
+    monkeypatch.setattr(ale, "_csr_to_memmap", _wrapped)
+
+    ale.ALESubtraction(n_iters=2, n_cores=1, low_memory="auto").fit(dset1, dset2)
+
+    assert any(call.startswith("ALESubtractionGroup1Chunk") for call in calls)
+    assert any(call.startswith("ALESubtractionGroup2Chunk") for call in calls)
+
+
+def test_ALESubtraction_low_memory_auto_activates_during_fwe_recompute(monkeypatch, testdata_cbma):
+    """Auto low-memory mode should also activate in the FWE recomputation branch."""
+    dset1 = testdata_cbma.slice(testdata_cbma.ids[:3])
+    dset2 = testdata_cbma.slice(testdata_cbma.ids[3:6])
+
+    estimator = ale.ALESubtraction(n_iters=1, n_cores=1, low_memory="auto")
+    result = estimator.fit(dset1, dset2)
+
+    calls = []
+    original = ale._csr_to_memmap
+
+    def _wrapped(ma_values, prefix):
+        calls.append(prefix)
+        return original(ma_values, prefix)
+
+    monkeypatch.setattr(ale, "_get_available_memory_bytes", lambda: 1)
+    monkeypatch.setattr(ale, "_csr_to_memmap", _wrapped)
+
+    estimator.correct_fwe_montecarlo(result, n_iters=2, n_cores=1, vfwe_only=True)
+
+    assert any(call.startswith("ALESubtractionGroup1Chunk") for call in calls)
+    assert any(call.startswith("ALESubtractionGroup2Chunk") for call in calls)
 
 
 def test_ALESubtraction_fwe_description_branches(testdata_cbma):

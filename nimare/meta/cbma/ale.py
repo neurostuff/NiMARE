@@ -1,9 +1,14 @@
 """CBMA methods from the activation likelihood estimation (ALE) family."""
 
+import gc
 import logging
 import os
 import tempfile
+import time
 import warnings
+from contextlib import contextmanager
+from dataclasses import dataclass
+from itertools import chain
 
 import nibabel as nib
 import numpy as np
@@ -65,6 +70,135 @@ def _compute_ale_summarystat(ma_values):
         return stat_values
 
     raise ValueError(f"Unsupported data type '{type(ma_values)}'")
+
+
+@dataclass
+class _ChunkedCSRGroup:
+    """Disk-backed study-by-voxel CSR chunks for one MA-map group."""
+
+    chunks: list
+    row_offsets: np.ndarray
+    shape: tuple
+
+
+@dataclass
+class _PairwiseMAStore:
+    """Pairwise ALESubtraction MA-map storage with a common permutation interface."""
+
+    group1: object
+    group2: object
+    group1_stat: np.ndarray
+    group2_stat: np.ndarray
+    temp_files: list
+
+    @property
+    def n_group1(self):
+        return self.group1.shape[0]
+
+    @property
+    def n_total(self):
+        return self.group1.shape[0] + self.group2.shape[0]
+
+    @property
+    def n_voxels(self):
+        return self.group1.shape[1]
+
+    def compute_partition_summarystat(self, row_idx):
+        """Compute ALE summary statistics for a selected set of study rows."""
+        return _compute_partition_ale_summarystat(self.group1, self.group2, row_idx, self.n_group1)
+
+    def close(self):
+        """Release memmap-backed arrays and delete temporary files."""
+        temp_files = list(self.temp_files)
+        _close_csr_memmaps(self.group1)
+        _close_csr_memmaps(self.group2)
+        self.group1 = None
+        self.group2 = None
+        self.group1_stat = None
+        self.group2_stat = None
+        self.temp_files = []
+        gc.collect()
+        _cleanup_temp_files(temp_files)
+
+
+@dataclass
+class _GroupMAEstimate:
+    """Projected CSR footprint for one MA-map group plus an optional reusable sample chunk."""
+
+    total_bytes: float
+    bytes_per_study: float
+    sample_ma: object
+    sample_n_studies: int
+
+
+def _is_chunked_group(ma_values):
+    """Return True when MA values are stored as chunked CSR blocks."""
+    return isinstance(ma_values, _ChunkedCSRGroup)
+
+
+def _accumulate_csr_log_sums(ma_values, log_sums):
+    """Accumulate ALE log-sums from a CSR matrix into an existing buffer."""
+    if ma_values.nnz:
+        log_sums += np.bincount(
+            ma_values.indices,
+            weights=np.log1p(-ma_values.data),
+            minlength=ma_values.shape[1],
+        )
+
+
+def _compute_partition_ale_summarystat(ma_maps1, ma_maps2, row_idx, n_grp1):
+    """Compute ALE summary stats for rows selected across two CSR or chunked MA groups."""
+    row_idx = np.asarray(row_idx)
+    if row_idx.ndim != 1:
+        row_idx = row_idx.reshape(-1)
+    if not np.issubdtype(row_idx.dtype, np.integer):
+        raise TypeError(f"row_idx must contain integers; got dtype {row_idx.dtype}.")
+    if ma_maps1.shape[1] != ma_maps2.shape[1]:
+        raise ValueError(
+            "Group MA maps must share the same number of voxels; "
+            f"got {ma_maps1.shape[1]} and {ma_maps2.shape[1]}."
+        )
+    if ma_maps1.shape[0] != n_grp1:
+        raise ValueError(
+            "n_grp1 must match the number of rows in group 1 MA maps; "
+            f"got n_grp1={n_grp1} and ma_maps1.shape[0]={ma_maps1.shape[0]}."
+        )
+    n_total_rows = ma_maps1.shape[0] + ma_maps2.shape[0]
+    if row_idx.size and (np.any(row_idx < 0) or np.any(row_idx >= n_total_rows)):
+        raise IndexError(
+            "row_idx contains out-of-bounds study indices for the provided MA groups; "
+            f"valid range is [0, {n_total_rows - 1}]."
+        )
+
+    n_voxels = ma_maps1.shape[1]
+    log_sums = np.zeros(n_voxels, dtype=np.float64)
+
+    grp1_idx = row_idx[row_idx < n_grp1]
+    if grp1_idx.size:
+        if _is_chunked_group(ma_maps1):
+            chunk_ids = np.searchsorted(ma_maps1.row_offsets[1:], grp1_idx, side="right")
+            for i_chunk in np.unique(chunk_ids):
+                local_idx = grp1_idx[chunk_ids == i_chunk] - ma_maps1.row_offsets[i_chunk]
+                grp1_maps = ma_maps1.chunks[i_chunk][local_idx, :]
+                _accumulate_csr_log_sums(grp1_maps, log_sums)
+        else:
+            grp1_maps = require_masked_csr(ma_maps1, source="Group 1 MA maps")[grp1_idx, :]
+            _accumulate_csr_log_sums(grp1_maps, log_sums)
+
+    grp2_idx = row_idx[row_idx >= n_grp1] - n_grp1
+    if grp2_idx.size:
+        if _is_chunked_group(ma_maps2):
+            chunk_ids = np.searchsorted(ma_maps2.row_offsets[1:], grp2_idx, side="right")
+            for i_chunk in np.unique(chunk_ids):
+                local_idx = grp2_idx[chunk_ids == i_chunk] - ma_maps2.row_offsets[i_chunk]
+                grp2_maps = ma_maps2.chunks[i_chunk][local_idx, :]
+                _accumulate_csr_log_sums(grp2_maps, log_sums)
+        else:
+            grp2_maps = require_masked_csr(ma_maps2, source="Group 2 MA maps")[grp2_idx, :]
+            _accumulate_csr_log_sums(grp2_maps, log_sums)
+
+    stat_values = 1.0 - np.exp(log_sums)
+    return stat_values.astype(DEFAULT_FLOAT_DTYPE, copy=False)
 
 
 @jit(nopython=True, cache=True)
@@ -138,6 +272,110 @@ def _collect_ale_masked_ma_maps(estimator, coords_key="coordinates", maps_key="m
         DEFAULT_FLOAT_DTYPE, copy=False
     )
     return ma_values
+
+
+def _estimate_csr_nbytes(ma_values):
+    """Estimate the in-memory footprint of a CSR matrix."""
+    ma_values = require_masked_csr(ma_values)
+    return ma_values.data.nbytes + ma_values.indices.nbytes + ma_values.indptr.nbytes
+
+
+def _get_available_memory_bytes():
+    """Best-effort estimate of currently available system memory."""
+    try:
+        page_size = os.sysconf("SC_PAGE_SIZE")
+        available_pages = os.sysconf("SC_AVPHYS_PAGES")
+    except (AttributeError, OSError, ValueError):
+        return None
+
+    if page_size <= 0 or available_pages <= 0:
+        return None
+    return int(page_size * available_pages)
+
+
+def _determine_low_memory_chunk_bytes(available_bytes=None):
+    """Choose a target per-chunk MA-map budget from available RAM."""
+    if available_bytes is None:
+        available_bytes = _get_available_memory_bytes()
+
+    if available_bytes is None:
+        return 256 * 1024**2
+
+    return max(1 * 1024**2, min(512 * 1024**2, int(available_bytes * 0.1)))
+
+
+def _copy_array_to_memmap(arr, filename):
+    """Copy an array into a disk-backed memmap with the same dtype and shape."""
+    arr = np.asarray(arr)
+    mapped = np.memmap(filename, dtype=arr.dtype, mode="w+", shape=arr.shape)
+    mapped[...] = arr
+    return mapped
+
+
+def _csr_to_memmap(ma_values, prefix):
+    """Copy a CSR matrix into disk-backed arrays and return a CSR view plus temp files."""
+    ma_values = require_masked_csr(ma_values)
+
+    filenames = []
+    for suffix in ("data", "indices", "indptr"):
+        fd, filename = tempfile.mkstemp(prefix=f"{prefix}_{suffix}_", suffix=".mmap")
+        os.close(fd)
+        filenames.append(filename)
+
+    data = _copy_array_to_memmap(ma_values.data, filenames[0])
+    indices = _copy_array_to_memmap(ma_values.indices, filenames[1])
+    indptr = _copy_array_to_memmap(ma_values.indptr, filenames[2])
+    mapped = sp_sparse.csr_matrix(
+        (data, indices, indptr),
+        shape=ma_values.shape,
+        copy=False,
+    )
+    return mapped, filenames
+
+
+def _close_memmap_array(arr):
+    """Close a numpy memmap backing file when present."""
+    mmap_obj = getattr(arr, "_mmap", None)
+    if mmap_obj is not None:
+        mmap_obj.close()
+
+
+def _close_csr_memmaps(ma_values):
+    """Close memmap-backed CSR arrays when present."""
+    if _is_chunked_group(ma_values):
+        for chunk in ma_values.chunks:
+            _close_csr_memmaps(chunk)
+        return
+
+    if not sp_sparse.isspmatrix(ma_values):
+        return
+
+    _close_memmap_array(ma_values.data)
+    _close_memmap_array(ma_values.indices)
+    _close_memmap_array(ma_values.indptr)
+
+
+def _cleanup_temp_files(filenames):
+    """Remove temporary files created for memmap-backed arrays."""
+    for filename in filenames:
+        if filename and os.path.isfile(filename):
+            for i_try in range(5):
+                try:
+                    os.remove(filename)
+                    break
+                except PermissionError:
+                    if i_try == 4:
+                        raise
+                    gc.collect()
+                    time.sleep(0.05)
+
+
+def _iter_study_id_chunks(coordinates, chunk_rows, start_idx=0):
+    """Yield coordinate subsets spanning up to ``chunk_rows`` studies each."""
+    study_ids = np.unique(coordinates["id"].values)
+    for start in range(start_idx, study_ids.size, chunk_rows):
+        chunk_ids = study_ids[start : start + chunk_rows]
+        yield coordinates[coordinates["id"].isin(chunk_ids)]
 
 
 class ALE(CBMAEstimator):
@@ -494,6 +732,14 @@ class ALESubtraction(PairwiseCBMAEstimator):
     voxel_thresh : :obj:`float`, default=0.001
         Uncorrected voxel-level p-value threshold used for cluster-defining threshold when
         cluster nulls are computed.
+    low_memory : {False, True, "auto"}, default="auto"
+        Best-effort strategy for reducing resident memory used by study-wise MA maps during
+        permutations. When ALESubtraction generates MA maps from coordinates, low-memory mode
+        builds each group's CSR MA maps chunk by chunk and stores the chunks as disk-backed
+        memmaps before permutation-based resampling. If "auto", only activate this behavior when
+        the projected combined MA-map footprint exceeds roughly half of the currently available
+        system memory. Precomputed MA maps are used as provided and do not participate in this
+        chunked path.
     vfwe_only : :obj:`bool`, default=True
         If True, only compute voxel-level null information. If False, also compute and retain
         cluster size and mass null distributions from the permutation maps.
@@ -553,6 +799,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         kernel_transformer=ALEKernel,
         n_iters=5000,
         voxel_thresh=0.001,
+        low_memory="auto",
         vfwe_only=True,
         memory=Memory(location=None, verbose=0),
         memory_level=0,
@@ -578,12 +825,19 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.dataset2 = None
         self.n_iters = n_iters
         self.voxel_thresh = voxel_thresh
+        self.low_memory = low_memory
         self.vfwe_only = vfwe_only
         self.n_cores = _check_ncores(n_cores)
         self._permutation_parallel_backend = "threading"
+        self._low_memory_fraction = 0.5
         # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
         # a Dataset with pre-generated MA maps is provided.
         self.memory_limit = "100mb"
+
+        if self.low_memory not in (False, True, "auto"):
+            raise ValueError(
+                "low_memory must be False, True, or 'auto'; " f"got {self.low_memory!r}."
+            )
 
         if not self.vfwe_only:
             if self.voxel_thresh is None:
@@ -659,103 +913,59 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.dataset2 = dataset2
         self.masker = self.masker or dataset1.masker
         self.null_distributions_ = {}
-
-        ma_maps1 = _collect_masked_ma_maps(
-            self,
-            maps_key="ma_maps1",
-            coords_key="coordinates1",
-        )
-        ma_maps2 = _collect_masked_ma_maps(
-            self,
-            maps_key="ma_maps2",
-            coords_key="coordinates2",
-        )
-
-        # Get ALE values for the two groups and difference scores
-        grp1_ale_values = self._compute_summarystat_est(ma_maps1)
-        grp2_ale_values = self._compute_summarystat_est(ma_maps2)
-        diff_ale_values = grp1_ale_values - grp2_ale_values
-        del grp1_ale_values, grp2_ale_values
-
-        n_grp1 = ma_maps1.shape[0]
-        n_voxels = diff_ale_values.shape[0]
-
-        # Combine the MA maps into a single array to draw from for null distribution
-        ma_arr = self._combine_ma_maps(ma_maps1, ma_maps2)
-
-        del ma_maps1, ma_maps2
-
-        left_counts = np.zeros(n_voxels, dtype=np.uint32)
-        right_counts = np.zeros(n_voxels, dtype=np.uint32)
-        iter_abs_max = np.empty(self.n_iters, dtype=DEFAULT_FLOAT_DTYPE)
         iter_diff_values = None
-        if not self.vfwe_only:
-            # Cluster-level nulls still require access to all permutation maps.
-            iter_diff_values = np.memmap(
-                self.memmap_filenames[2],
-                dtype=DEFAULT_FLOAT_DTYPE,
-                mode="w+",
-                shape=(self.n_iters, n_voxels),
-            )
-        parallel_kwargs = {
-            "return_as": "generator",
-            "n_jobs": self.n_cores,
-            "backend": self._permutation_parallel_backend,
-        }
 
-        for i_iter, iter_diff in tqdm(
-            Parallel(**parallel_kwargs)(
-                delayed(self._run_permutation)(i_iter, n_grp1, ma_arr)
-                for i_iter in range(self.n_iters)
-            ),
-            total=self.n_iters,
-        ):
-            left_counts += iter_diff >= diff_ale_values
-            right_counts += iter_diff <= diff_ale_values
-            iter_abs_max[i_iter] = np.max(np.abs(iter_diff))
-            if iter_diff_values is not None:
-                iter_diff_values[i_iter, :] = iter_diff
+        with self._managed_pairwise_ma_store(
+            maps_key1="ma_maps1",
+            coords_key1="coordinates1",
+            maps_key2="ma_maps2",
+            coords_key2="coordinates2",
+        ) as ma_store:
+            diff_ale_values = ma_store.group1_stat - ma_store.group2_stat
 
-        p_values, diff_signs = _finalize_alediff_tail_counts(
-            left_counts, right_counts, self.n_iters
-        )
-        self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = iter_abs_max
+            try:
+                if not self.vfwe_only:
+                    # Cluster-level nulls still require access to all permutation maps.
+                    iter_diff_values = np.memmap(
+                        self.memmap_filenames[2],
+                        dtype=DEFAULT_FLOAT_DTYPE,
+                        mode="w+",
+                        shape=(self.n_iters, ma_store.n_voxels),
+                    )
 
-        if not self.vfwe_only:
-            if self.voxel_thresh is None:
-                raise ValueError("voxel_thresh must be provided when vfwe_only is False.")
-
-            # Determine a summary-statistic threshold from the pooled null distribution.
-            # Use absolute values to align with two-sided inference.
-            ss_thresh = np.quantile(np.abs(iter_diff_values), 1 - self.voxel_thresh)
-            self.null_distributions_[
-                "summary_stat_thresh_level-voxel_corr-fwe_method-montecarlo"
-            ] = ss_thresh
-
-            conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
-            iter_max_sizes = np.zeros(self.n_iters, dtype=DEFAULT_FLOAT_DTYPE)
-            iter_max_masses = np.zeros(self.n_iters, dtype=DEFAULT_FLOAT_DTYPE)
-
-            for i_iter in range(self.n_iters):
-                iter_map = self.masker.inverse_transform(iter_diff_values[i_iter, :]).get_fdata(
-                    dtype=DEFAULT_FLOAT_DTYPE
+                iter_abs_max, p_values, diff_signs = self._run_null_permutations(
+                    ma_store,
+                    n_iters=self.n_iters,
+                    n_cores=self.n_cores,
+                    diff_ale_values=diff_ale_values,
+                    iter_diff_values=iter_diff_values,
                 )
-                iter_max_sizes[i_iter], iter_max_masses[i_iter] = _calculate_cluster_measures(
-                    iter_map, ss_thresh, conn, tail="two"
+                self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = (
+                    iter_abs_max
                 )
 
-            self.null_distributions_[
-                "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
-            ] = iter_max_sizes
-            self.null_distributions_[
-                "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
-            ] = iter_max_masses
+                if not self.vfwe_only:
+                    if self.voxel_thresh is None:
+                        raise ValueError("voxel_thresh must be provided when vfwe_only is False.")
 
-        if isinstance(iter_diff_values, np.memmap):
-            LGR.debug(f"Closing memmap at {iter_diff_values.filename}")
-            iter_diff_values._mmap.close()
-
-        del iter_diff_values
+                    ss_thresh, iter_max_sizes, iter_max_masses = self._compute_cluster_nulls(
+                        iter_diff_values,
+                        voxel_thresh=self.voxel_thresh,
+                        n_iters=self.n_iters,
+                    )
+                    self.null_distributions_[
+                        "summary_stat_thresh_level-voxel_corr-fwe_method-montecarlo"
+                    ] = ss_thresh
+                    self.null_distributions_[
+                        "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+                    ] = iter_max_sizes
+                    self.null_distributions_[
+                        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+                    ] = iter_max_masses
+            finally:
+                if isinstance(iter_diff_values, np.memmap):
+                    LGR.debug(f"Closing memmap at {iter_diff_values.filename}")
+                    iter_diff_values._mmap.close()
 
         z_arr = p_to_z(p_values, tail="two") * diff_signs
         logp_arr = -np.log10(p_values)
@@ -775,23 +985,16 @@ class ALESubtraction(PairwiseCBMAEstimator):
             require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
         )
 
-    def _combine_ma_maps(self, ma_maps1, ma_maps2):
-        """Combine two MA map collections while preserving efficient sparse formats."""
-        return sp_sparse.vstack(
-            (require_masked_csr(ma_maps1), require_masked_csr(ma_maps2)), format="csr"
-        )
-
-    def _run_permutation(self, i_iter, n_grp1, ma_arr):
+    def _run_permutation(self, i_iter, ma_store):
         """Run a single permutation of the ALESubtraction null distribution procedure.
 
         Parameters
         ----------
         i_iter : :obj:`int`
             The iteration number.
-        n_grp1 : :obj:`int`
-            The number of experiments in the first group (of two, total).
-        ma_arr : :obj:`numpy.ndarray` of shape (E, V)
-            The voxel-wise (V) modeled activation values for all experiments E.
+        ma_store : :class:`_PairwiseMAStore`
+            Pairwise MA-map storage containing either in-memory CSR matrices or chunked
+            disk-backed CSR groups.
 
         Returns
         -------
@@ -801,11 +1004,243 @@ class ALESubtraction(PairwiseCBMAEstimator):
             The null ALE-difference scores for one permutation.
         """
         gen = np.random.default_rng(seed=i_iter)
-        id_idx = np.arange(ma_arr.shape[0])
+        id_idx = np.arange(ma_store.n_total)
         gen.shuffle(id_idx)
-        iter_grp1_ale_values = self._compute_summarystat_est(ma_arr[id_idx[:n_grp1], :])
-        iter_grp2_ale_values = self._compute_summarystat_est(ma_arr[id_idx[n_grp1:], :])
+        iter_grp1_ale_values = ma_store.compute_partition_summarystat(id_idx[: ma_store.n_group1])
+        iter_grp2_ale_values = ma_store.compute_partition_summarystat(id_idx[ma_store.n_group1 :])
         return i_iter, iter_grp1_ale_values - iter_grp2_ale_values
+
+    def _iterate_permutation_diffs(self, ma_store, n_iters, n_cores):
+        """Yield permutation difference maps for one pairwise MA store."""
+        parallel_kwargs = {
+            "return_as": "generator",
+            "n_jobs": _check_ncores(n_cores),
+            "backend": self._permutation_parallel_backend,
+        }
+        return tqdm(
+            Parallel(**parallel_kwargs)(
+                delayed(self._run_permutation)(i_iter, ma_store) for i_iter in range(n_iters)
+            ),
+            total=n_iters,
+        )
+
+    def _run_null_permutations(
+        self, ma_store, n_iters, n_cores, diff_ale_values=None, iter_diff_values=None
+    ):
+        """Run Monte Carlo null permutations and optionally stream ALE-difference tail counts."""
+        iter_abs_max = np.empty(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+        left_counts = right_counts = None
+
+        if diff_ale_values is not None:
+            left_counts = np.zeros(ma_store.n_voxels, dtype=np.uint32)
+            right_counts = np.zeros(ma_store.n_voxels, dtype=np.uint32)
+
+        for i_iter, iter_diff in self._iterate_permutation_diffs(ma_store, n_iters, n_cores):
+            iter_abs_max[i_iter] = np.max(np.abs(iter_diff))
+            if diff_ale_values is not None:
+                left_counts += iter_diff >= diff_ale_values
+                right_counts += iter_diff <= diff_ale_values
+            if iter_diff_values is not None:
+                iter_diff_values[i_iter, :] = iter_diff
+
+        p_values = diff_signs = None
+        if diff_ale_values is not None:
+            p_values, diff_signs = _finalize_alediff_tail_counts(
+                left_counts, right_counts, n_iters
+            )
+
+        return iter_abs_max, p_values, diff_signs
+
+    def _compute_cluster_nulls(self, iter_diff_values, voxel_thresh, n_iters):
+        """Compute cluster-forming threshold and cluster null summaries from permutation maps."""
+        ss_thresh = np.quantile(np.abs(iter_diff_values), 1 - voxel_thresh)
+        conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
+        iter_max_sizes = np.zeros(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+        iter_max_masses = np.zeros(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+
+        for i_iter in range(n_iters):
+            iter_map = self.masker.inverse_transform(iter_diff_values[i_iter, :]).get_fdata(
+                dtype=DEFAULT_FLOAT_DTYPE
+            )
+            iter_max_sizes[i_iter], iter_max_masses[i_iter] = _calculate_cluster_measures(
+                iter_map, ss_thresh, conn, tail="two"
+            )
+
+        return ss_thresh, iter_max_sizes, iter_max_masses
+
+    def _should_use_low_memory(self, projected_nbytes):
+        """Determine whether best-effort chunked MA-map storage should be used."""
+        if self.low_memory is True:
+            return True
+        if self.low_memory is False:
+            return False
+
+        available_bytes = _get_available_memory_bytes()
+        if available_bytes is None:
+            return False
+        return projected_nbytes >= (available_bytes * self._low_memory_fraction)
+
+    def _estimate_group_ma_bytes(self, coords_key):
+        """Estimate total CSR bytes and bytes per study for one MA-map group."""
+        coordinates = self.inputs_[coords_key]
+        sample_n_studies = min(32, len(np.unique(coordinates["id"].values)))
+        sample_df = next(_iter_study_id_chunks(coordinates, chunk_rows=sample_n_studies))
+        sample_ma = require_masked_csr(
+            self.kernel_transformer.transform(
+                sample_df,
+                masker=self.masker,
+                return_type="sparse",
+            ),
+            source=f"Generated sample for {coords_key}",
+        )
+        bytes_per_study = _estimate_csr_nbytes(sample_ma) / max(sample_ma.shape[0], 1)
+        total_bytes = bytes_per_study * len(np.unique(coordinates["id"].values))
+        return _GroupMAEstimate(
+            total_bytes=total_bytes,
+            bytes_per_study=bytes_per_study,
+            sample_ma=sample_ma,
+            sample_n_studies=sample_n_studies,
+        )
+
+    def _determine_chunk_rows(self, bytes_per_study, available_bytes=None):
+        """Determine how many studies to transform per chunk in low-memory mode."""
+        chunk_bytes = _determine_low_memory_chunk_bytes(available_bytes=available_bytes)
+        return max(1, int(chunk_bytes / max(bytes_per_study, 1.0)))
+
+    def _collect_chunked_ma_maps(self, coords_key, chunk_rows, prefix, estimate=None):
+        """Collect one MA-map group into memmap-backed CSR chunks."""
+        temp_files = []
+        chunked_maps = []
+        row_offsets = [0]
+        log_sums = None
+        coordinates = self.inputs_[coords_key]
+        start_idx = 0
+
+        if estimate is not None and estimate.sample_ma is not None:
+            if estimate.sample_n_studies <= chunk_rows:
+                start_idx = estimate.sample_n_studies
+                initial_chunks = [estimate.sample_ma]
+            else:
+                initial_chunks = []
+        else:
+            initial_chunks = []
+
+        chunk_iter = (
+            require_masked_csr(
+                self.kernel_transformer.transform(
+                    chunk_df,
+                    masker=self.masker,
+                    return_type="sparse",
+                ),
+                source=f"Generated {coords_key} chunk",
+            )
+            for chunk_df in _iter_study_id_chunks(coordinates, chunk_rows, start_idx=start_idx)
+        )
+
+        for i_chunk, chunk_ma in enumerate(chain(initial_chunks, chunk_iter)):
+            if log_sums is None:
+                log_sums = np.zeros(chunk_ma.shape[1], dtype=np.float64)
+
+            _accumulate_csr_log_sums(chunk_ma, log_sums)
+            chunk_ma, chunk_files = _csr_to_memmap(chunk_ma, prefix=f"{prefix}{i_chunk:04d}")
+            temp_files.extend(chunk_files)
+            chunked_maps.append(chunk_ma)
+            row_offsets.append(row_offsets[-1] + chunk_ma.shape[0])
+
+        if log_sums is None:
+            raise ValueError(f"No studies were available for {coords_key}.")
+
+        stat_values = (1.0 - np.exp(log_sums)).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        ma_group = _ChunkedCSRGroup(
+            chunks=chunked_maps,
+            row_offsets=np.asarray(row_offsets, dtype=np.int64),
+            shape=(row_offsets[-1], log_sums.shape[0]),
+        )
+        return ma_group, stat_values, temp_files
+
+    def _prepare_pairwise_ma_maps(self, maps_key1, coords_key1, maps_key2, coords_key2):
+        """Collect pairwise MA maps and optionally spill coordinate-generated maps to disk."""
+        temp_files = []
+
+        if maps_key1 in self.inputs_ or maps_key2 in self.inputs_:
+            if self.low_memory is not False:
+                LGR.info(
+                    "ALESubtraction low-memory chunking is only applied when MA maps are "
+                    "generated from coordinates; using precomputed MA maps without chunking."
+                )
+            ma_maps1 = _collect_masked_ma_maps(self, maps_key=maps_key1, coords_key=coords_key1)
+            ma_maps2 = _collect_masked_ma_maps(self, maps_key=maps_key2, coords_key=coords_key2)
+            grp1_ale_values = self._compute_summarystat_est(ma_maps1)
+            grp2_ale_values = self._compute_summarystat_est(ma_maps2)
+            return _PairwiseMAStore(
+                group1=ma_maps1,
+                group2=ma_maps2,
+                group1_stat=grp1_ale_values,
+                group2_stat=grp2_ale_values,
+                temp_files=temp_files,
+            )
+
+        grp1_estimate = self._estimate_group_ma_bytes(coords_key1)
+        grp2_estimate = self._estimate_group_ma_bytes(coords_key2)
+        combined_nbytes = grp1_estimate.total_bytes + grp2_estimate.total_bytes
+
+        if self._should_use_low_memory(combined_nbytes):
+            available_bytes = _get_available_memory_bytes()
+            chunk_rows1 = self._determine_chunk_rows(
+                grp1_estimate.bytes_per_study, available_bytes=available_bytes
+            )
+            chunk_rows2 = self._determine_chunk_rows(
+                grp2_estimate.bytes_per_study, available_bytes=available_bytes
+            )
+            LGR.info(
+                "ALESubtraction low-memory chunked mode activated for permutation MA maps "
+                "(projected %.2f GB; chunk_rows=%d/%d).",
+                combined_nbytes / float(1024**3),
+                chunk_rows1,
+                chunk_rows2,
+            )
+            ma_maps1, grp1_ale_values, group1_files = self._collect_chunked_ma_maps(
+                coords_key=coords_key1,
+                chunk_rows=chunk_rows1,
+                prefix="ALESubtractionGroup1Chunk",
+                estimate=grp1_estimate,
+            )
+            ma_maps2, grp2_ale_values, group2_files = self._collect_chunked_ma_maps(
+                coords_key=coords_key2,
+                chunk_rows=chunk_rows2,
+                prefix="ALESubtractionGroup2Chunk",
+                estimate=grp2_estimate,
+            )
+            temp_files.extend(group1_files)
+            temp_files.extend(group2_files)
+            return _PairwiseMAStore(
+                group1=ma_maps1,
+                group2=ma_maps2,
+                group1_stat=grp1_ale_values,
+                group2_stat=grp2_ale_values,
+                temp_files=temp_files,
+            )
+
+        ma_maps1 = _collect_masked_ma_maps(self, maps_key=maps_key1, coords_key=coords_key1)
+        ma_maps2 = _collect_masked_ma_maps(self, maps_key=maps_key2, coords_key=coords_key2)
+        grp1_ale_values = self._compute_summarystat_est(ma_maps1)
+        grp2_ale_values = self._compute_summarystat_est(ma_maps2)
+        return _PairwiseMAStore(
+            group1=ma_maps1,
+            group2=ma_maps2,
+            group1_stat=grp1_ale_values,
+            group2_stat=grp2_ale_values,
+            temp_files=temp_files,
+        )
+
+    @contextmanager
+    def _managed_pairwise_ma_store(self, maps_key1, coords_key1, maps_key2, coords_key2):
+        """Yield pairwise MA-map storage and guarantee cleanup on exit."""
+        ma_store = self._prepare_pairwise_ma_maps(maps_key1, coords_key1, maps_key2, coords_key2)
+        try:
+            yield ma_store
+        finally:
+            ma_store.close()
 
     def correct_fwe_montecarlo(
         self,
@@ -877,88 +1312,55 @@ class ALESubtraction(PairwiseCBMAEstimator):
                 UserWarning,
             )
 
-            ma_maps1 = _collect_masked_ma_maps(
-                self,
-                maps_key="ma_maps1",
-                coords_key="coordinates1",
-            )
-            ma_maps2 = _collect_masked_ma_maps(
-                self,
-                maps_key="ma_maps2",
-                coords_key="coordinates2",
-            )
-
-            n_grp1 = ma_maps1.shape[0]
-            n_voxels = stat_values.shape[0]
-            ma_arr = self._combine_ma_maps(ma_maps1, ma_maps2)
-
-            del ma_maps1, ma_maps2
-
-            n_cores = _check_ncores(n_cores)
-
-            vfwe_null = np.empty(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
             iter_diff_values = None
             tmp_path = None
-            if not vfwe_only:
-                fd, tmp_path = tempfile.mkstemp(prefix="ALESubtractionFWE", suffix=".mmap")
-                os.close(fd)
-                iter_diff_values = np.memmap(
-                    tmp_path,
-                    dtype=DEFAULT_FLOAT_DTYPE,
-                    mode="w+",
-                    shape=(n_iters, n_voxels),
-                )
-            parallel_kwargs = {
-                "return_as": "generator",
-                "n_jobs": n_cores,
-                "backend": self._permutation_parallel_backend,
-            }
-
-            try:
-                for i_iter, iter_diff in tqdm(
-                    Parallel(**parallel_kwargs)(
-                        delayed(self._run_permutation)(i_iter, n_grp1, ma_arr)
-                        for i_iter in range(n_iters)
-                    ),
-                    total=n_iters,
-                ):
-                    vfwe_null[i_iter] = np.max(np.abs(iter_diff))
-                    if iter_diff_values is not None:
-                        iter_diff_values[i_iter, :] = iter_diff
-
-                self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = (
-                    vfwe_null
-                )
-
-                if not vfwe_only:
-                    ss_thresh = np.quantile(np.abs(iter_diff_values), 1 - voxel_thresh)
-                    self.null_distributions_[
-                        "summary_stat_thresh_level-voxel_corr-fwe_method-montecarlo"
-                    ] = ss_thresh
-
-                    conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
-                    iter_max_sizes = np.zeros(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
-                    iter_max_masses = np.zeros(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
-
-                    for i_iter in range(n_iters):
-                        iter_map = self.masker.inverse_transform(
-                            iter_diff_values[i_iter, :]
-                        ).get_fdata(dtype=DEFAULT_FLOAT_DTYPE)
-                        iter_max_sizes[i_iter], iter_max_masses[i_iter] = (
-                            _calculate_cluster_measures(iter_map, ss_thresh, conn, tail="two")
+            with self._managed_pairwise_ma_store(
+                maps_key1="ma_maps1",
+                coords_key1="coordinates1",
+                maps_key2="ma_maps2",
+                coords_key2="coordinates2",
+            ) as ma_store:
+                try:
+                    if not vfwe_only:
+                        fd, tmp_path = tempfile.mkstemp(prefix="ALESubtractionFWE", suffix=".mmap")
+                        os.close(fd)
+                        iter_diff_values = np.memmap(
+                            tmp_path,
+                            dtype=DEFAULT_FLOAT_DTYPE,
+                            mode="w+",
+                            shape=(n_iters, stat_values.shape[0]),
                         )
 
-                    self.null_distributions_[
-                        "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
-                    ] = iter_max_sizes
-                    self.null_distributions_[
-                        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
-                    ] = iter_max_masses
-            finally:
-                if isinstance(iter_diff_values, np.memmap):
-                    iter_diff_values._mmap.close()
-                if os.path.isfile(tmp_path):
-                    os.remove(tmp_path)
+                    vfwe_null, _, _ = self._run_null_permutations(
+                        ma_store,
+                        n_iters=n_iters,
+                        n_cores=n_cores,
+                        iter_diff_values=iter_diff_values,
+                    )
+                    self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = (
+                        vfwe_null
+                    )
+
+                    if not vfwe_only:
+                        ss_thresh, iter_max_sizes, iter_max_masses = self._compute_cluster_nulls(
+                            iter_diff_values,
+                            voxel_thresh=voxel_thresh,
+                            n_iters=n_iters,
+                        )
+                        self.null_distributions_[
+                            "summary_stat_thresh_level-voxel_corr-fwe_method-montecarlo"
+                        ] = ss_thresh
+                        self.null_distributions_[
+                            "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+                        ] = iter_max_sizes
+                        self.null_distributions_[
+                            "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+                        ] = iter_max_masses
+                finally:
+                    if isinstance(iter_diff_values, np.memmap):
+                        iter_diff_values._mmap.close()
+                    if tmp_path and os.path.isfile(tmp_path):
+                        os.remove(tmp_path)
 
         vfwe_null = self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]
         p_vfwe_vals = null_to_p(np.abs(stat_values), vfwe_null, tail="upper")
