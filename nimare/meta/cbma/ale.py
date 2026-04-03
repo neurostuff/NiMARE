@@ -8,6 +8,7 @@ import time
 import warnings
 from contextlib import contextmanager
 from dataclasses import dataclass
+from itertools import chain
 
 import nibabel as nib
 import numpy as np
@@ -120,6 +121,16 @@ class _PairwiseMAStore:
         _cleanup_temp_files(temp_files)
 
 
+@dataclass
+class _GroupMAEstimate:
+    """Projected CSR footprint for one MA-map group plus an optional reusable sample chunk."""
+
+    total_bytes: float
+    bytes_per_study: float
+    sample_ma: object
+    sample_n_studies: int
+
+
 def _is_chunked_group(ma_values):
     """Return True when MA values are stored as chunked CSR blocks."""
     return isinstance(ma_values, _ChunkedCSRGroup)
@@ -140,6 +151,24 @@ def _compute_partition_ale_summarystat(ma_maps1, ma_maps2, row_idx, n_grp1):
     row_idx = np.asarray(row_idx)
     if row_idx.ndim != 1:
         row_idx = row_idx.reshape(-1)
+    if not np.issubdtype(row_idx.dtype, np.integer):
+        raise TypeError(f"row_idx must contain integers; got dtype {row_idx.dtype}.")
+    if ma_maps1.shape[1] != ma_maps2.shape[1]:
+        raise ValueError(
+            "Group MA maps must share the same number of voxels; "
+            f"got {ma_maps1.shape[1]} and {ma_maps2.shape[1]}."
+        )
+    if ma_maps1.shape[0] != n_grp1:
+        raise ValueError(
+            "n_grp1 must match the number of rows in group 1 MA maps; "
+            f"got n_grp1={n_grp1} and ma_maps1.shape[0]={ma_maps1.shape[0]}."
+        )
+    n_total_rows = ma_maps1.shape[0] + ma_maps2.shape[0]
+    if row_idx.size and (np.any(row_idx < 0) or np.any(row_idx >= n_total_rows)):
+        raise IndexError(
+            "row_idx contains out-of-bounds study indices for the provided MA groups; "
+            f"valid range is [0, {n_total_rows - 1}]."
+        )
 
     n_voxels = ma_maps1.shape[1]
     log_sums = np.zeros(n_voxels, dtype=np.float64)
@@ -341,10 +370,10 @@ def _cleanup_temp_files(filenames):
                     time.sleep(0.05)
 
 
-def _iter_study_id_chunks(coordinates, chunk_rows):
+def _iter_study_id_chunks(coordinates, chunk_rows, start_idx=0):
     """Yield coordinate subsets spanning up to ``chunk_rows`` studies each."""
     study_ids = np.unique(coordinates["id"].values)
-    for start in range(0, study_ids.size, chunk_rows):
+    for start in range(start_idx, study_ids.size, chunk_rows):
         chunk_ids = study_ids[start : start + chunk_rows]
         yield coordinates[coordinates["id"].isin(chunk_ids)]
 
@@ -1054,11 +1083,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
     def _estimate_group_ma_bytes(self, coords_key):
         """Estimate total CSR bytes and bytes per study for one MA-map group."""
         coordinates = self.inputs_[coords_key]
-        sample_df = next(
-            _iter_study_id_chunks(
-                coordinates, chunk_rows=min(32, len(np.unique(coordinates["id"].values)))
-            )
-        )
+        sample_n_studies = min(32, len(np.unique(coordinates["id"].values)))
+        sample_df = next(_iter_study_id_chunks(coordinates, chunk_rows=sample_n_studies))
         sample_ma = require_masked_csr(
             self.kernel_transformer.transform(
                 sample_df,
@@ -1069,20 +1095,36 @@ class ALESubtraction(PairwiseCBMAEstimator):
         )
         bytes_per_study = _estimate_csr_nbytes(sample_ma) / max(sample_ma.shape[0], 1)
         total_bytes = bytes_per_study * len(np.unique(coordinates["id"].values))
-        return total_bytes, bytes_per_study
+        return _GroupMAEstimate(
+            total_bytes=total_bytes,
+            bytes_per_study=bytes_per_study,
+            sample_ma=sample_ma,
+            sample_n_studies=sample_n_studies,
+        )
 
     def _determine_chunk_rows(self, bytes_per_study, available_bytes=None):
         """Determine how many studies to transform per chunk in low-memory mode."""
         chunk_bytes = _determine_low_memory_chunk_bytes(available_bytes=available_bytes)
         return max(1, int(chunk_bytes / max(bytes_per_study, 1.0)))
 
-    def _collect_chunked_ma_maps(self, coords_key, chunk_rows, prefix):
+    def _collect_chunked_ma_maps(self, coords_key, chunk_rows, prefix, estimate=None):
         """Collect one MA-map group into memmap-backed CSR chunks."""
         temp_files = []
         chunked_maps = []
         row_offsets = [0]
         log_sums = None
         coordinates = self.inputs_[coords_key]
+        start_idx = 0
+
+        if estimate is not None and estimate.sample_ma is not None:
+            if estimate.sample_n_studies <= chunk_rows:
+                start_idx = estimate.sample_n_studies
+                initial_chunks = [estimate.sample_ma]
+            else:
+                initial_chunks = []
+        else:
+            initial_chunks = []
+
         chunk_iter = (
             require_masked_csr(
                 self.kernel_transformer.transform(
@@ -1092,10 +1134,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
                 ),
                 source=f"Generated {coords_key} chunk",
             )
-            for chunk_df in _iter_study_id_chunks(coordinates, chunk_rows)
+            for chunk_df in _iter_study_id_chunks(coordinates, chunk_rows, start_idx=start_idx)
         )
 
-        for i_chunk, chunk_ma in enumerate(chunk_iter):
+        for i_chunk, chunk_ma in enumerate(chain(initial_chunks, chunk_iter)):
             if log_sums is None:
                 log_sums = np.zeros(chunk_ma.shape[1], dtype=np.float64)
 
@@ -1138,17 +1180,17 @@ class ALESubtraction(PairwiseCBMAEstimator):
                 temp_files=temp_files,
             )
 
-        grp1_bytes, grp1_bytes_per_study = self._estimate_group_ma_bytes(coords_key1)
-        grp2_bytes, grp2_bytes_per_study = self._estimate_group_ma_bytes(coords_key2)
-        combined_nbytes = grp1_bytes + grp2_bytes
+        grp1_estimate = self._estimate_group_ma_bytes(coords_key1)
+        grp2_estimate = self._estimate_group_ma_bytes(coords_key2)
+        combined_nbytes = grp1_estimate.total_bytes + grp2_estimate.total_bytes
 
         if self._should_use_low_memory(combined_nbytes):
             available_bytes = _get_available_memory_bytes()
             chunk_rows1 = self._determine_chunk_rows(
-                grp1_bytes_per_study, available_bytes=available_bytes
+                grp1_estimate.bytes_per_study, available_bytes=available_bytes
             )
             chunk_rows2 = self._determine_chunk_rows(
-                grp2_bytes_per_study, available_bytes=available_bytes
+                grp2_estimate.bytes_per_study, available_bytes=available_bytes
             )
             LGR.info(
                 "ALESubtraction low-memory chunked mode activated for permutation MA maps "
@@ -1161,11 +1203,13 @@ class ALESubtraction(PairwiseCBMAEstimator):
                 coords_key=coords_key1,
                 chunk_rows=chunk_rows1,
                 prefix="ALESubtractionGroup1Chunk",
+                estimate=grp1_estimate,
             )
             ma_maps2, grp2_ale_values, group2_files = self._collect_chunked_ma_maps(
                 coords_key=coords_key2,
                 chunk_rows=chunk_rows2,
                 prefix="ALESubtractionGroup2Chunk",
+                estimate=grp2_estimate,
             )
             temp_files.extend(group1_files)
             temp_files.extend(group2_files)

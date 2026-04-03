@@ -975,6 +975,22 @@ def test_ALESubtraction_partitioned_summarystat_matches_combined_path():
     np.testing.assert_allclose(actual_grp2, expected_grp2)
 
 
+def test_ALESubtraction_partitioned_summarystat_validates_inputs():
+    """Partitioned ALE summary stats should fail fast on mismatched MA groups."""
+    ma_maps1 = sp_sparse.eye(3, 5, format="csr", dtype=np.float32)
+    ma_maps2 = sp_sparse.eye(4, 6, format="csr", dtype=np.float32)
+
+    with pytest.raises(ValueError, match="same number of voxels"):
+        ale._compute_partition_ale_summarystat(ma_maps1, ma_maps2, np.array([0, 1]), 3)
+
+    ma_maps2 = sp_sparse.eye(4, 5, format="csr", dtype=np.float32)
+    with pytest.raises(ValueError, match="n_grp1 must match"):
+        ale._compute_partition_ale_summarystat(ma_maps1, ma_maps2, np.array([0, 1]), 2)
+
+    with pytest.raises(IndexError, match="out-of-bounds"):
+        ale._compute_partition_ale_summarystat(ma_maps1, ma_maps2, np.array([7]), 3)
+
+
 def test_ALESubtraction_low_memory_matches_standard_path(testdata_cbma):
     """Forced low-memory mode should preserve ALE subtraction results."""
     dset1 = testdata_cbma.slice(testdata_cbma.ids[:3])
@@ -1009,6 +1025,42 @@ def test_ALESubtraction_low_memory_chunk_rows_scale_with_available_ram():
 
     assert many_rows > few_rows
     assert few_rows >= 1
+
+
+def test_ALESubtraction_low_memory_reuses_sample_chunk(monkeypatch, testdata_cbma):
+    """Chunked MA collection should reuse the sampled MA chunk when chunk_rows permits."""
+    dset = testdata_cbma.slice(testdata_cbma.ids[:3])
+    meta = ale.ALESubtraction(n_iters=1, n_cores=1, low_memory=True)
+    meta.masker = dset.masker
+    meta._collect_inputs(dset, drop_invalid=True)
+    meta._preprocess_input(dset)
+    meta.inputs_["coordinates1"] = meta.inputs_.pop("coordinates")
+
+    original_transform = meta.kernel_transformer.transform
+    calls = {"count": 0}
+
+    def _wrapped_transform(*args, **kwargs):
+        calls["count"] += 1
+        return original_transform(*args, **kwargs)
+
+    monkeypatch.setattr(meta.kernel_transformer, "transform", _wrapped_transform)
+
+    estimate = meta._estimate_group_ma_bytes("coordinates1")
+    assert calls["count"] == 1
+
+    ma_group, stat_values, temp_files = meta._collect_chunked_ma_maps(
+        coords_key="coordinates1",
+        chunk_rows=estimate.sample_n_studies,
+        prefix="ALESubtractionReuseSample",
+        estimate=estimate,
+    )
+
+    assert calls["count"] == 1
+    assert ma_group.shape[0] == estimate.sample_n_studies
+    assert stat_values.shape[0] == ma_group.shape[1]
+
+    ale._close_csr_memmaps(ma_group)
+    ale._cleanup_temp_files(temp_files)
 
 
 def test_ALESubtraction_pairwise_store_close_releases_refs_before_cleanup(monkeypatch):
