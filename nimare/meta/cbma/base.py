@@ -589,22 +589,8 @@ class CBMAEstimator(Estimator):
         null_dist = self._compute_summarystat(iter_ma_values)
         self.null_distributions_["values_corr-none_method-reducedMontecarlo"] = null_dist
 
-    def _compute_null_montecarlo_permutation(self, iter_ijk, iter_df, bin_edges=None):
-        """Run a single Monte Carlo permutation of a dataset.
-
-        Does the shared work between uncorrected stat-to-p conversion and vFWE.
-
-        Parameters
-        ----------
-        params : tuple
-            A tuple containing 2 elements, respectively providing (1) the permuted
-            coordinates and (2) the original coordinate DataFrame.
-
-        Returns
-        -------
-        counts : 1D array_like
-            Weights associated with the attribute `null_distributions_["histogram_bins"]`.
-        """
+    def _compute_permutation_summarystat(self, iter_ijk, iter_df):
+        """Compute one permuted summary-statistic map from matrix indices."""
         # Not sure if joblib will automatically use a copy of the object, but I'll make a copy to
         # be safe.
         iter_df = iter_df.copy()
@@ -618,6 +604,11 @@ class CBMAEstimator(Estimator):
         iter_ss_map = self._compute_summarystat(iter_ma_maps)
 
         del iter_ma_maps
+        return iter_ss_map
+
+    def _compute_null_montecarlo_permutation(self, iter_ijk, iter_df, bin_edges=None):
+        """Run a single Monte Carlo permutation for the uncorrected null histogram."""
+        iter_ss_map = self._compute_permutation_summarystat(iter_ijk, iter_df)
 
         # Reuse shared histogram edges when available to avoid per-permutation allocation.
         if bin_edges is None:
@@ -723,17 +714,7 @@ class CBMAEstimator(Estimator):
             and maximum cluster mass for the permuted dataset.
             If ``vfwe_only`` is True, the latter two values will be None.
         """
-        iter_df = iter_df.copy()
-
-        iter_ijk = np.squeeze(iter_ijk)
-        iter_df[["i", "j", "k"]] = iter_ijk
-
-        iter_ma_maps = self.kernel_transformer.transform(
-            iter_df, masker=self.masker, return_type="sparse"
-        )
-        iter_ss_map = self._compute_summarystat(iter_ma_maps)
-
-        del iter_ma_maps
+        iter_ss_map = self._compute_permutation_summarystat(iter_ijk, iter_df)
 
         # Voxel-level inference
         iter_max_value = np.max(iter_ss_map)

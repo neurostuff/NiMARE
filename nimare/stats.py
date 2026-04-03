@@ -262,9 +262,7 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
 
     # Get p-values by getting the value_bins-th value in null_distribution
     if voxelwise_null:
-        # Pair each test value with its associated null distribution
-        for i_voxel, voxel_idx in enumerate(idx):
-            p_values[voxel_idx] = null_distribution[value_bins[i_voxel], voxel_idx]
+        p_values[idx] = null_distribution[value_bins, idx]
     else:
         p_values[idx] = null_distribution[value_bins]
 

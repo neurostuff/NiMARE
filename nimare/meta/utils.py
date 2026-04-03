@@ -559,32 +559,26 @@ def _calculate_cluster_measures(arr3d, threshold, conn, tail="upper"):
     else:
         arr3d[np.abs(arr3d) <= threshold] = 0
 
-    labeled_arr3d = np.empty(arr3d.shape, int)
-    labeled_arr3d, _ = ndimage.label(arr3d > 0, conn)
+    mass_values = np.abs(arr3d) - threshold
+
+    def _max_cluster_stats(mask):
+        labeled_arr3d, n_clusters = ndimage.label(mask, conn)
+        if not n_clusters:
+            return 0, 0.0
+
+        cluster_ids = np.arange(1, n_clusters + 1)
+        cluster_sizes = np.bincount(labeled_arr3d.ravel())[1:]
+        cluster_masses = np.asarray(
+            ndimage.sum(mass_values, labels=labeled_arr3d, index=cluster_ids)
+        )
+        return np.max(cluster_sizes), np.max(cluster_masses)
+
+    max_size, max_mass = _max_cluster_stats(arr3d > 0)
 
     if tail == "two":
-        # Label positive and negative clusters separately
-        n_positive_clusters = np.max(labeled_arr3d)
-        temp_labeled_arr3d, _ = ndimage.label(arr3d < 0, conn)
-        temp_labeled_arr3d[temp_labeled_arr3d > 0] += n_positive_clusters
-        labeled_arr3d = labeled_arr3d + temp_labeled_arr3d
-        del temp_labeled_arr3d
-
-    clust_sizes = np.bincount(labeled_arr3d.flatten())
-    clust_vals = np.arange(0, clust_sizes.shape[0])
-
-    # Cluster mass-based inference
-    max_mass = 0
-    for unique_val in clust_vals[1:]:
-        ss_vals = np.abs(arr3d[labeled_arr3d == unique_val]) - threshold
-        max_mass = np.maximum(max_mass, np.sum(ss_vals))
-
-    # Cluster size-based inference
-    clust_sizes = clust_sizes[1:]  # First cluster is zeros in matrix
-    if clust_sizes.size:
-        max_size = np.max(clust_sizes)
-    else:
-        max_size = 0
+        neg_max_size, neg_max_mass = _max_cluster_stats(arr3d < 0)
+        max_size = max(max_size, neg_max_size)
+        max_mass = max(max_mass, neg_max_mass)
 
     return max_size, max_mass
 

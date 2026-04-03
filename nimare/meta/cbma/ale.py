@@ -18,12 +18,17 @@ from nimare import _version
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.cbma.utils import collect_csr_ma_maps, require_masked_csr
 from nimare.meta.kernel import ALEKernel
-from nimare.meta.utils import _calculate_cluster_measures
-from nimare.stats import null_to_p, nullhist_to_p
+from nimare.meta.utils import (
+    _calculate_cluster_measures,
+    compute_ale_ma,
+    get_ale_kernel,
+)
+from nimare.stats import null_to_p
 from nimare.transforms import p_to_z
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
+    mm2vox,
     use_memmap,
 )
 
@@ -108,6 +113,23 @@ def _update_ale_histogram(
     return out
 
 
+def _finalize_alediff_tail_counts(left_counts, right_counts, n_iters):
+    """Convert ALE subtraction tail counts into p-values and z-map signs."""
+    left_tail = left_counts / n_iters
+    right_tail = right_counts / n_iters
+    smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
+    p_values = 2.0 * np.minimum(left_tail, right_tail)
+    p_values = np.maximum(smallest_value, np.minimum(p_values, 1.0 - smallest_value)).astype(
+        DEFAULT_FLOAT_DTYPE,
+        copy=False,
+    )
+    diff_signs = np.sign(right_counts.astype(np.int64) - left_counts.astype(np.int64)).astype(
+        DEFAULT_FLOAT_DTYPE,
+        copy=False,
+    )
+    return p_values, diff_signs
+
+
 def _collect_masked_ma_maps(estimator, coords_key="coordinates", maps_key="ma_maps"):
     """Collect ALE-family MA maps in masked CSR form."""
     estimator._study_max_ma_values = None
@@ -180,8 +202,8 @@ class ALE(CBMAEstimator):
     masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker object.
     inputs_ : :obj:`dict`
-        Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
-        This is an edited version of the dataset's coordinates DataFrame.
+        Inputs to the Estimator. For ALESubtraction, this includes edited coordinate DataFrames
+        for both groups, stored under ``coordinates1`` and ``coordinates2``.
     null_distributions_ : :obj:`dict` of :class:`numpy.ndarray`
         Null distributions for the uncorrected summary-statistic-to-p-value conversion and any
         multiple-comparisons correction methods.
@@ -496,8 +518,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
     masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker object.
     inputs_ : :obj:`dict`
-        Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
-        This is an edited version of the dataset's coordinates DataFrame.
+        Inputs to the Estimator. For ALESubtraction, this includes edited coordinate DataFrames
+        for both groups, stored under ``coordinates1`` and ``coordinates2``.
 
     Notes
     -----
@@ -664,43 +686,41 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         del ma_maps1, ma_maps2
 
-        # Calculate null distribution for each voxel based on group-assignment randomization
-        # Use a memmapped 2D array
-        iter_diff_values = np.memmap(
-            self.memmap_filenames[2],
-            dtype=DEFAULT_FLOAT_DTYPE,
-            mode="w+",
-            shape=(self.n_iters, n_voxels),
-        )
+        left_counts = np.zeros(n_voxels, dtype=np.uint32)
+        right_counts = np.zeros(n_voxels, dtype=np.uint32)
+        iter_abs_max = np.empty(self.n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+        iter_diff_values = None
+        if not self.vfwe_only:
+            # Cluster-level nulls still require access to all permutation maps.
+            iter_diff_values = np.memmap(
+                self.memmap_filenames[2],
+                dtype=DEFAULT_FLOAT_DTYPE,
+                mode="w+",
+                shape=(self.n_iters, n_voxels),
+            )
         parallel_kwargs = {
             "return_as": "generator",
             "n_jobs": self.n_cores,
             "backend": self._permutation_parallel_backend,
         }
 
-        _ = [
-            r
-            for r in tqdm(
-                Parallel(**parallel_kwargs)(
-                    delayed(self._run_permutation)(i_iter, n_grp1, ma_arr, iter_diff_values)
-                    for i_iter in range(self.n_iters)
-                ),
-                total=self.n_iters,
-            )
-        ]
+        for i_iter, iter_diff in tqdm(
+            Parallel(**parallel_kwargs)(
+                delayed(self._run_permutation)(i_iter, n_grp1, ma_arr)
+                for i_iter in range(self.n_iters)
+            ),
+            total=self.n_iters,
+        ):
+            left_counts += iter_diff >= diff_ale_values
+            right_counts += iter_diff <= diff_ale_values
+            iter_abs_max[i_iter] = np.max(np.abs(iter_diff))
+            if iter_diff_values is not None:
+                iter_diff_values[i_iter, :] = iter_diff
 
-        # Determine p-values based on voxel-wise null distributions
-        # I know that joblib probably preserves order of outputs, but I'm paranoid, so we track
-        # the iteration as well and sort the resulting p-value array based on that.
-        p_values, diff_signs = self._alediff_to_p_values(diff_ale_values, iter_diff_values)
-
-        # Save per-iteration max statistics for voxel-level FWE correction.
-        # Use max absolute values to align with two-sided inference.
-        iter_max = np.max(iter_diff_values, axis=1)
-        iter_min = np.min(iter_diff_values, axis=1)
-        self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = np.maximum(
-            np.abs(iter_max), np.abs(iter_min)
+        p_values, diff_signs = _finalize_alediff_tail_counts(
+            left_counts, right_counts, self.n_iters
         )
+        self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = iter_abs_max
 
         if not self.vfwe_only:
             if self.voxel_thresh is None:
@@ -751,21 +771,19 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         return maps, {}, description
 
+    def _compute_summarystat_est(self, ma_values):
+        return _compute_ale_summarystat(
+            require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
+        )
+
     def _combine_ma_maps(self, ma_maps1, ma_maps2):
         """Combine two MA map collections while preserving efficient sparse formats."""
         return sp_sparse.vstack(
             (require_masked_csr(ma_maps1), require_masked_csr(ma_maps2)), format="csr"
         )
 
-    def _compute_summarystat_est(self, ma_values):
-        return _compute_ale_summarystat(
-            require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
-        )
-
-    def _run_permutation(self, i_iter, n_grp1, ma_arr, iter_diff_values):
-        """Run a single permutations of the ALESubtraction null distribution procedure.
-
-        This method writes out a single row to the memmapped array in ``iter_diff_values``.
+    def _run_permutation(self, i_iter, n_grp1, ma_arr):
+        """Run a single permutation of the ALESubtraction null distribution procedure.
 
         Parameters
         ----------
@@ -775,16 +793,20 @@ class ALESubtraction(PairwiseCBMAEstimator):
             The number of experiments in the first group (of two, total).
         ma_arr : :obj:`numpy.ndarray` of shape (E, V)
             The voxel-wise (V) modeled activation values for all experiments E.
-        iter_diff_values : :obj:`numpy.memmap` of shape (I, V)
-            The null distribution of ALE-difference scores, with one row per iteration (I)
-            and one column per voxel (V).
+
+        Returns
+        -------
+        i_iter : :obj:`int`
+            The iteration number.
+        iter_diff_values : :obj:`numpy.ndarray` of shape (V,)
+            The null ALE-difference scores for one permutation.
         """
         gen = np.random.default_rng(seed=i_iter)
         id_idx = np.arange(ma_arr.shape[0])
         gen.shuffle(id_idx)
         iter_grp1_ale_values = self._compute_summarystat_est(ma_arr[id_idx[:n_grp1], :])
         iter_grp2_ale_values = self._compute_summarystat_est(ma_arr[id_idx[n_grp1:], :])
-        iter_diff_values[i_iter, :] = iter_grp1_ale_values - iter_grp2_ale_values
+        return i_iter, iter_grp1_ale_values - iter_grp2_ale_values
 
     def _alediff_to_p_voxel(self, i_voxel, stat_value, voxel_null):
         """Compute one voxel's p-value from its specific null distribution.
@@ -919,14 +941,18 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
             n_cores = _check_ncores(n_cores)
 
-            fd, tmp_path = tempfile.mkstemp(prefix="ALESubtractionFWE", suffix=".mmap")
-            os.close(fd)
-            iter_diff_values = np.memmap(
-                tmp_path,
-                dtype=DEFAULT_FLOAT_DTYPE,
-                mode="w+",
-                shape=(n_iters, n_voxels),
-            )
+            vfwe_null = np.empty(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+            iter_diff_values = None
+            tmp_path = None
+            if not vfwe_only:
+                fd, tmp_path = tempfile.mkstemp(prefix="ALESubtractionFWE", suffix=".mmap")
+                os.close(fd)
+                iter_diff_values = np.memmap(
+                    tmp_path,
+                    dtype=DEFAULT_FLOAT_DTYPE,
+                    mode="w+",
+                    shape=(n_iters, n_voxels),
+                )
             parallel_kwargs = {
                 "return_as": "generator",
                 "n_jobs": n_cores,
@@ -934,22 +960,16 @@ class ALESubtraction(PairwiseCBMAEstimator):
             }
 
             try:
-                _ = [
-                    r
-                    for r in tqdm(
-                        Parallel(**parallel_kwargs)(
-                            delayed(self._run_permutation)(
-                                i_iter, n_grp1, ma_arr, iter_diff_values
-                            )
-                            for i_iter in range(n_iters)
-                        ),
-                        total=n_iters,
-                    )
-                ]
-
-                iter_max = np.max(iter_diff_values, axis=1)
-                iter_min = np.min(iter_diff_values, axis=1)
-                vfwe_null = np.maximum(np.abs(iter_max), np.abs(iter_min))
+                for i_iter, iter_diff in tqdm(
+                    Parallel(**parallel_kwargs)(
+                        delayed(self._run_permutation)(i_iter, n_grp1, ma_arr)
+                        for i_iter in range(n_iters)
+                    ),
+                    total=n_iters,
+                ):
+                    vfwe_null[i_iter] = np.max(np.abs(iter_diff))
+                    if iter_diff_values is not None:
+                        iter_diff_values[i_iter, :] = iter_diff
 
                 self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = (
                     vfwe_null
@@ -1093,6 +1113,11 @@ class SCALE(CBMAEstimator):
 
     This method was originally introduced in :footcite:t:`langner2014meta`.
 
+    .. versionchanged:: 0.14.0
+
+        Use direct empirical voxelwise permutation p-values and add voxel-level Monte Carlo
+        family-wise error correction.
+
     .. versionchanged:: 0.2.1
 
         - New parameters: ``memory`` and ``memory_level`` for memory caching.
@@ -1151,10 +1176,16 @@ class SCALE(CBMAEstimator):
             The voxel-wise null distributions used by this Estimator are very large, so they are
             not retained as Estimator attributes.
 
-        If :meth:`fit` is applied:
+        If :meth:`correct_fwe_montecarlo` is applied:
 
-            -   ``histogram_bins``: Array of bin centers for the null distribution histogram,
-                ranging from zero to the maximum possible summary statistic value for the Dataset.
+            -   ``values_level-voxel_corr-fwe_method-montecarlo``: The maximum summary statistic
+                value from each SCALE permutation. An array of shape ``(n_iters,)``.
+
+    Notes
+    -----
+    SCALE uses voxel-specific empirical null distributions derived from the supplied reference
+    coordinate pool. NiMARE therefore supports voxel-level Monte Carlo FWE correction for SCALE,
+    but does not implement cluster-level Monte Carlo FWE correction.
 
     References
     ----------
@@ -1244,54 +1275,19 @@ class SCALE(CBMAEstimator):
 
         ma_values = _collect_masked_ma_maps(self, coords_key="coordinates", maps_key="ma_maps")
 
-        # Determine bins for null distribution histogram
-        if sp_sparse.isspmatrix(ma_values):
-            max_ma_values = getattr(self, "_study_max_ma_values", None)
-            if max_ma_values is None or max_ma_values.shape[0] != ma_values.shape[0]:
-                max_ma_values = _csr_row_max(ma_values)
-        else:
-            max_ma_values = ma_values.max(axis=[1, 2, 3]).todense()
-
-        max_poss_ale = self._compute_summarystat_est(max_ma_values)
-        self.null_distributions_["histogram_bins"] = np.round(
-            np.arange(0, max_poss_ale + 0.001, 0.0001), 4
-        )
-
         stat_values = self._compute_summarystat_est(ma_values)
 
         del ma_values
 
-        iter_df = self.inputs_["coordinates"].copy()
-        rand_idx = np.random.choice(self.xyz.shape[0], size=(iter_df.shape[0], self.n_iters))
-        rand_xyz = self.xyz[rand_idx, :]
-        iter_xyzs = np.split(rand_xyz, rand_xyz.shape[1], axis=1)
+        iter_df, voxel_ijk, permutation_args, rand_idx = self._prepare_permutations(self.n_iters)
+        exceedance_counts = np.zeros(stat_values.shape[0], dtype=np.uint32)
 
-        perm_scale_values = np.memmap(
-            self.memmap_filenames[1],
-            dtype=stat_values.dtype,
-            mode="w+",
-            shape=(self.n_iters, stat_values.shape[0]),
-        )
-        _ = [
-            r
-            for r in tqdm(
-                Parallel(return_as="generator", n_jobs=self.n_cores)(
-                    delayed(self._run_permutation)(
-                        i_iter, iter_xyzs[i_iter], iter_df, perm_scale_values
-                    )
-                    for i_iter in range(self.n_iters)
-                ),
-                total=self.n_iters,
-            )
-        ]
+        for iter_values in self._iterate_permuted_stats(
+            rand_idx, voxel_ijk, iter_df, permutation_args, self.n_cores
+        ):
+            exceedance_counts += iter_values >= stat_values
 
-        p_values, z_values = self._scale_to_p(stat_values, perm_scale_values)
-
-        if isinstance(perm_scale_values, np.memmap):
-            LGR.debug(f"Closing memmap at {perm_scale_values.filename}")
-            perm_scale_values._mmap.close()
-
-        del perm_scale_values
+        p_values, z_values = self._scale_to_p(stat_values, exceedance_counts)
 
         logp_values = -np.log10(p_values)
         logp_values[np.isinf(logp_values)] = -np.log10(np.finfo(float).eps)
@@ -1303,12 +1299,7 @@ class SCALE(CBMAEstimator):
         return maps, {}, description
 
     def _compute_summarystat_est(self, data):
-        """Generate ALE-value array and null distribution from a list of contrasts.
-
-        For ALEs on the original dataset, computes the null distribution.
-        For permutation ALEs and all SCALEs, just computes ALE values.
-        Returns masked array of ALE values and 1XnBins null distribution.
-        """
+        """Generate SCALE ALE summary statistics from contrast data."""
         if isinstance(data, pd.DataFrame):
             ma_values = self.kernel_transformer.transform(
                 data, masker=self.masker, return_type="sparse"
@@ -1322,6 +1313,40 @@ class SCALE(CBMAEstimator):
             require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
         )
 
+    def _prepare_permutations(self, n_iters):
+        """Prepare shared SCALE permutation inputs."""
+        iter_df = self.inputs_["coordinates"].copy()
+        voxel_ijk = mm2vox(self.xyz, self.masker.mask_img.affine).astype(np.int32, copy=False)
+        permutation_args = self._prepare_permutation_args(iter_df)
+        rand_idx = np.random.choice(voxel_ijk.shape[0], size=(iter_df.shape[0], n_iters))
+        return iter_df, voxel_ijk, permutation_args, rand_idx
+
+    def _prepare_permutation_args(self, coordinates):
+        """Prepare static ALE kernel inputs for SCALE permutations."""
+        if not isinstance(self.kernel_transformer, ALEKernel):
+            return None
+
+        use_dict = True
+        kernel = None
+        if self.kernel_transformer.sample_size is not None:
+            sample_sizes = self.kernel_transformer.sample_size
+            use_dict = False
+        elif self.kernel_transformer.fwhm is None:
+            sample_sizes = coordinates["sample_size"].values
+        else:
+            sample_sizes = None
+
+        if self.kernel_transformer.fwhm is not None:
+            _, kernel = get_ale_kernel(self.masker.mask_img, fwhm=self.kernel_transformer.fwhm)
+            use_dict = False
+
+        return {
+            "exp_idx": coordinates["id"].values,
+            "sample_sizes": sample_sizes,
+            "use_dict": use_dict,
+            "kernel": kernel,
+        }
+
     def _scale_to_p(self, stat_values, scale_values):
         """Compute p- and z-values.
 
@@ -1329,17 +1354,13 @@ class SCALE(CBMAEstimator):
         ----------
         stat_values : (V) array
             ALE values.
-        scale_values : (I x V) array
-            Permutation ALE values.
+        scale_values : (I x V) array or (V,) array
+            Permutation ALE values or voxelwise exceedance counts.
 
         Returns
         -------
         p_values : (V) array
         z_values : (V) array
-
-        Notes
-        -----
-        This method also uses the "histogram_bins" element in the null_distributions_ attribute.
         """
         p_values = self._scale_to_p_values(stat_values, scale_values)
         z_values = p_to_z(p_values, tail="one")
@@ -1351,83 +1372,141 @@ class SCALE(CBMAEstimator):
         scale_values,
         chunk_size=SCALE_PVALUE_CHUNK_SIZE,
     ):
-        """Compute SCALE p-values in chunks to avoid per-voxel scheduling overhead."""
-        histogram_bins = self.null_distributions_["histogram_bins"]
-        n_bins = len(histogram_bins)
+        """Compute direct empirical SCALE p-values from permutations or exceedance counts."""
+        if getattr(scale_values, "ndim", None) == 1:
+            return self._scale_counts_to_p_values(scale_values)
+
         n_voxels = stat_values.shape[0]
+        n_iters = scale_values.shape[0]
         p_values = np.empty(n_voxels, dtype=DEFAULT_FLOAT_DTYPE)
+        smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
 
         for start in tqdm(
             range(0, n_voxels, chunk_size), total=int(np.ceil(n_voxels / chunk_size))
         ):
             stop = min(start + chunk_size, n_voxels)
             null_chunk = np.asarray(scale_values[:, start:stop])
-            n_chunk_voxels = stop - start
-
-            histogram_weights = np.zeros((n_bins, n_chunk_voxels), dtype=np.int32)
-            zero_mask = null_chunk == 0
-            histogram_weights[0, :] = np.sum(zero_mask, axis=0)
-
-            valid_mask = ~zero_mask
-            if np.any(valid_mask):
-                bin_idx = np.searchsorted(histogram_bins, null_chunk[valid_mask], side="right") - 1
-                bin_idx = np.clip(bin_idx, 0, n_bins - 2)
-                voxel_idx = np.broadcast_to(
-                    np.arange(n_chunk_voxels, dtype=np.int32),
-                    null_chunk.shape,
-                )[valid_mask]
-                np.add.at(histogram_weights[1:, :], (bin_idx, voxel_idx), 1)
-
-            hist_arg = histogram_weights[:, 0] if n_chunk_voxels == 1 else histogram_weights
-            p_values[start:stop] = np.atleast_1d(
-                nullhist_to_p(
-                    stat_values[start:stop],
-                    hist_arg,
-                    histogram_bins,
-                )
-            ).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+            p_chunk = np.count_nonzero(null_chunk >= stat_values[None, start:stop], axis=0).astype(
+                DEFAULT_FLOAT_DTYPE, copy=False
+            )
+            p_chunk /= n_iters
+            p_values[start:stop] = np.maximum(
+                smallest_value, np.minimum(p_chunk, 1.0 - smallest_value)
+            )
 
         return p_values
 
-    def _scale_to_p_voxel(self, i_voxel, stat_value, voxel_null):
-        """Compute one voxel's p-value from its specific null distribution."""
-        scale_zeros = voxel_null == 0
-        n_zeros = np.sum(scale_zeros)
-        voxel_null[scale_zeros] = np.nan
-        scale_hist = np.empty(len(self.null_distributions_["histogram_bins"]))
-        scale_hist[0] = n_zeros
-
-        scale_hist[1:] = np.histogram(
-            a=voxel_null,
-            bins=self.null_distributions_["histogram_bins"],
-            range=(
-                np.min(self.null_distributions_["histogram_bins"]),
-                np.max(self.null_distributions_["histogram_bins"]),
-            ),
-            density=False,
-        )[0]
-
-        p_value = nullhist_to_p(
-            stat_value,
-            scale_hist,
-            self.null_distributions_["histogram_bins"],
+    def _scale_counts_to_p_values(self, exceedance_counts):
+        """Convert voxelwise exceedance counts into empirical p-values."""
+        p_values = exceedance_counts.astype(DEFAULT_FLOAT_DTYPE, copy=False) / self.n_iters
+        smallest_value = np.maximum(np.finfo(float).eps, 1.0 / self.n_iters)
+        return np.maximum(smallest_value, np.minimum(p_values, 1.0 - smallest_value)).astype(
+            DEFAULT_FLOAT_DTYPE,
+            copy=False,
         )
-        return p_value, i_voxel
 
-    def _run_permutation(self, i_row, iter_xyz, iter_df, perm_scale_values):
+    def _run_permutation(self, iter_idx, voxel_ijk, iter_df, permutation_args=None):
         """Run a single random SCALE permutation of a dataset."""
-        iter_xyz = np.squeeze(iter_xyz)
-        iter_df[["x", "y", "z"]] = iter_xyz
+        if permutation_args is not None:
+            ma_values, _, _ = compute_ale_ma(
+                self.masker.mask_img,
+                voxel_ijk[iter_idx, :],
+                kernel=permutation_args["kernel"],
+                exp_idx=permutation_args["exp_idx"],
+                sample_sizes=permutation_args["sample_sizes"],
+                use_dict=permutation_args["use_dict"],
+            )
+            return _compute_ale_summarystat(ma_values)
+
+        iter_df = iter_df.copy()
+        iter_df[["i", "j", "k"]] = voxel_ijk[iter_idx, :]
         stat_values = self._compute_summarystat_est(iter_df)
-        perm_scale_values[i_row, :] = stat_values
+        return stat_values
 
-    def correct_fwe_montecarlo(self):
-        """Perform Monte Carlo-based FWE correction.
+    def _iterate_permuted_stats(self, rand_idx, voxel_ijk, iter_df, permutation_args, n_cores):
+        """Yield permuted SCALE statistic maps for a fixed permutation schedule."""
+        if n_cores == 1:
+            for i_iter in tqdm(range(rand_idx.shape[1]), total=rand_idx.shape[1]):
+                yield self._run_permutation(
+                    rand_idx[:, i_iter],
+                    voxel_ijk,
+                    iter_df,
+                    permutation_args=permutation_args,
+                )
+            return
 
-        Warnings
-        --------
-        This method is not implemented for this class.
-        """
-        raise NotImplementedError(
-            f"The {type(self)} class does not support `correct_fwe_montecarlo`."
+        parallel_kwargs = {
+            "return_as": "generator",
+            "n_jobs": n_cores,
+        }
+        yield from tqdm(
+            Parallel(**parallel_kwargs)(
+                delayed(self._run_permutation)(
+                    rand_idx[:, i_iter],
+                    voxel_ijk,
+                    iter_df,
+                    permutation_args=permutation_args,
+                )
+                for i_iter in range(rand_idx.shape[1])
+            ),
+            total=rand_idx.shape[1],
         )
+
+    def correct_fwe_montecarlo(
+        self,
+        result,
+        voxel_thresh=None,
+        n_iters=5000,
+        n_cores=1,
+        vfwe_only=True,
+    ):
+        """Perform voxel-level Monte Carlo FWE correction for SCALE.
+
+        Notes
+        -----
+        This method implements only voxel-level max-statistic correction.
+        Cluster-level Monte Carlo FWE correction is not implemented for SCALE because the method
+        uses voxel-specific empirical null distributions rather than a single global null model.
+        """
+        if not vfwe_only:
+            raise NotImplementedError(
+                "SCALE only supports voxel-level Monte Carlo FWE correction. "
+                "Cluster-level FWE is not implemented."
+            )
+        if voxel_thresh is not None:
+            LGR.warning(
+                "Ignoring voxel_thresh for SCALE Monte Carlo FWE correction; "
+                "only voxel-level max-stat inference is supported."
+            )
+
+        stat_values = result.get_map("stat", return_type="array")
+        iter_df, voxel_ijk, permutation_args, rand_idx = self._prepare_permutations(n_iters)
+        fwe_voxel_max = np.empty(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+        n_cores = _check_ncores(n_cores)
+
+        for i_iter, iter_values in enumerate(
+            self._iterate_permuted_stats(rand_idx, voxel_ijk, iter_df, permutation_args, n_cores)
+        ):
+            fwe_voxel_max[i_iter] = np.max(iter_values)
+
+        p_vfwe_values = null_to_p(stat_values, fwe_voxel_max, tail="upper")
+        z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
+        logp_vfwe_values = -np.log10(p_vfwe_values)
+        logp_vfwe_values[np.isinf(logp_vfwe_values)] = -np.log10(np.finfo(float).eps)
+
+        self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = fwe_voxel_max
+
+        maps = {
+            "logp_level-voxel": logp_vfwe_values,
+            "z_level-voxel": z_vfwe_values,
+        }
+        description = (
+            "Family-wise error correction was performed for SCALE using a voxel-level Monte Carlo "
+            "max-statistic procedure. "
+            "In this procedure, null datasets are generated by replacing dataset coordinates with "
+            "coordinates randomly sampled from the SCALE reference coordinate pool, and the "
+            f"maximum ALE summary statistic is retained. This procedure was repeated {n_iters} "
+            "times to build a voxel-level FWE null distribution. "
+            "Cluster-level Monte Carlo FWE correction is not implemented for SCALE."
+        )
+        return maps, {}, description
