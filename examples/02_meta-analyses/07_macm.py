@@ -83,12 +83,20 @@ plotting.plot_stat_map(
 # SCALE
 # -----------------------------------------------------------------------------
 # Another good option for a MACM analysis is the SCALE algorithm, which was
-# designed specifically for MACM. Unfortunately, SCALE does not support
-# multiple-comparisons correction.
+# designed specifically for MACM.
+# NiMARE supports voxel-level Monte Carlo FWE correction for SCALE, but not
+# cluster-level correction.
 
 # First, we must define our null model of reported coordinates in the literature.
 # We will use the coordinates in Neurosynth
 xyz = studyset.coordinates[["x", "y", "z"]].values
 scale = SCALE(xyz=xyz, n_iters=10000, n_cores=1, kernel__n=20)
 results = scale.fit(studyset_sel)
-plotting.plot_stat_map(results.get_map("z"), draw_cross=False, cmap="RdBu_r", symmetric_cbar=True)
+corr = FWECorrector(method="montecarlo", n_iters=10000, n_cores=1)
+cres = corr.transform(results)
+plotting.plot_stat_map(
+    cres.get_map("z_level-voxel_corr-FWE_method-montecarlo"),
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+)

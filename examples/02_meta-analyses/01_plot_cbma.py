@@ -192,6 +192,7 @@ pprint(results.bibtex_)
 #
 #   import numpy as np
 #
+#   from nimare.correct import FWECorrector
 #   from nimare.meta.cbma.ale import SCALE
 #   from nimare.utils import vox2mm
 #
@@ -202,6 +203,8 @@ pprint(results.bibtex_)
 #
 #   meta = SCALE(xyz=xyz, n_iters=10)
 #   results = meta.fit(dset)
+#   corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=1)
+#   cres = corr.transform(results)
 
 ###############################################################################
 # ALE-Based Subtraction Analysis
