@@ -1059,8 +1059,13 @@ def test_ALESubtraction_low_memory_reuses_sample_chunk(monkeypatch, testdata_cbm
     assert ma_group.shape[0] == estimate.sample_n_studies
     assert stat_values.shape[0] == ma_group.shape[1]
 
-    ale._close_csr_memmaps(ma_group)
-    ale._cleanup_temp_files(temp_files)
+    ale._PairwiseMAStore(
+        group1=ma_group,
+        group2=sp_sparse.csr_matrix((0, ma_group.shape[1]), dtype=np.float32),
+        group1_stat=stat_values,
+        group2_stat=np.zeros(ma_group.shape[1], dtype=np.float32),
+        temp_files=temp_files,
+    ).close()
 
 
 def test_ALESubtraction_pairwise_store_close_releases_refs_before_cleanup(monkeypatch):
