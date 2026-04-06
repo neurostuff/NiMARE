@@ -15,7 +15,7 @@ except ImportError:
 else:
     TORCH_INSTALLED = True
     from nimare.meta import models
-    from nimare.meta.cbmr import CBMREstimator, CBMRInference
+    from nimare.meta.cbmr import CBMREstimator, CBMRInference, CBMRResult
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
@@ -76,23 +76,10 @@ def cbmr_result(testdata_cbmr_simulated, model):
 @pytest.fixture(scope="session")
 def inference_results(testdata_cbmr_simulated, cbmr_result):
     """Test inference results for CBMR estimator."""
-    inference = CBMRInference(device="cpu")
-    inference.fit(cbmr_result)
-    t_con_groups = inference.create_contrast(
-        [
-            "DepressionYes-DepressionNo",
-        ],
-        source="groups",
+    return cbmr_result.infer(
+        group_contrasts=[("DepressionYes", "DepressionNo")],
+        moderator_contrasts=[("standardized_sample_sizes", "standardized_avg_age")],
     )
-    t_con_moderators = inference.create_contrast(
-        ["standardized_sample_sizes-standardized_avg_age"],
-        source="moderators",
-    )
-    contrast_result = inference.transform(
-        t_con_groups=t_con_groups, t_con_moderators=t_con_moderators
-    )
-
-    return contrast_result
 
 
 @pytest.fixture(
@@ -110,7 +97,33 @@ def corrector(request):
 
 def test_cbmr_estimator(cbmr_result):
     """Unit test for CBMR estimator."""
+    assert isinstance(cbmr_result, CBMRResult)
     assert isinstance(cbmr_result, nimare.results.MetaResult)
+    assert cbmr_result.available_groups()
+
+
+def test_cbmr_result_interface_lists_inference_inputs(cbmr_result):
+    """CBMR results should expose discoverable group and moderator names."""
+    description = cbmr_result.describe_inference_inputs()
+
+    assert description["groups"] == cbmr_result.available_groups()
+    assert description["moderators"] == cbmr_result.available_moderators()
+
+
+def test_cbmr_result_helpers_run_inference(cbmr_result):
+    """Verify that CBMRResult supports a result-centered inference workflow."""
+    homogeneity_result = cbmr_result.test_groups()
+    comparison_result = cbmr_result.compare_groups([("DepressionYes", "DepressionNo")])
+    moderator_result = cbmr_result.test_moderators()
+    moderator_comparison_result = cbmr_result.compare_moderators(
+        [("standardized_sample_sizes", "standardized_avg_age")]
+    )
+
+    assert isinstance(homogeneity_result, CBMRResult)
+    assert "z_group-DepressionYes" in homogeneity_result.maps
+    assert "z_group-DepressionYes-DepressionNo" in comparison_result.maps
+    assert "p_standardized_sample_sizes" in moderator_result.tables
+    assert "p_standardized_sample_sizes-standardized_avg_age" in moderator_comparison_result.tables
 
 
 def test_cbmr_fit_is_repeatable(testdata_cbmr_simulated):
@@ -256,6 +269,7 @@ def test_cbmr_summary_tables_match_legacy_from_dict_construction(cbmr_result):
 
 def test_cbmr_inference(inference_results):
     """Unit test for CBMR inference."""
+    assert isinstance(inference_results, CBMRResult)
     assert isinstance(inference_results, nimare.results.MetaResult)
 
 

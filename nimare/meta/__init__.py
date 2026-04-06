@@ -1,7 +1,8 @@
 """Coordinate-, image-, and effect-size-based meta-analysis estimators."""
 
-from . import ibma, kernel
+from . import cbmr, ibma, kernel, models
 from .cbma import ALE, KDA, SCALE, ALESubtraction, MKDAChi2, MKDADensity, ale, mkda
+from .cbmr import CBMREstimator, CBMRInference, CBMRResult
 from .ibma import (
     DerSimonianLaird,
     Fishers,
@@ -21,6 +22,9 @@ __all__ = [
     "MKDADensity",
     "MKDAChi2",
     "KDA",
+    "CBMREstimator",
+    "CBMRInference",
+    "CBMRResult",
     "DerSimonianLaird",
     "Fishers",
     "Hedges",
@@ -34,6 +38,8 @@ __all__ = [
     "KDAKernel",
     "kernel",
     "ibma",
+    "cbmr",
+    "models",
     "ale",
     "mkda",
 ]
