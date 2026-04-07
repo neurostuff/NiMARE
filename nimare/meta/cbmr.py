@@ -345,10 +345,10 @@ class CBMREstimator(Estimator):
                 " Clustered NB model \\citep{geoffroy2001poisson} can also accommodate "
                 "over-dispersion in foci counts. "
                 "In the NB model, the latent random variable introduces independent variation "
-                "at each voxel. While in the Clustered NB model, we assert the random effects are not "
-                "independent voxelwise effects, but rather latent characteristics of each "
-                "experiment, and represent a shared effect over the entire brain for a given "
-                "experiment."
+                "at each voxel. While in the Clustered NB model, we assert the random effects "
+                "are not independent voxelwise effects, but rather latent characteristics of "
+                "each experiment, and represent a shared effect over the entire brain for a "
+                "given experiment."
             )
 
         model_description = (
@@ -360,9 +360,7 @@ class CBMREstimator(Estimator):
         optimization_description = (
             "CBMR is fitted via maximizing the log-likelihood function with L-BFGS algorithm, with"
             f" learning rate {self.lr}, learning rate decay {self.lr_decay} and "
-            f"tolerance {self.tol}."
-            + penalty_str
-            + f" The optimization is run on {self.device}."
+            f"tolerance {self.tol}." + penalty_str + f" The optimization is run on {self.device}."
             f" The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
             f"{len(self.inputs_['id'])} experiments."
         )
