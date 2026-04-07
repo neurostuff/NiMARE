@@ -27,6 +27,7 @@ from nimare.utils import (
     _check_type,
     _mask_img_to_bool,
     get_masker,
+    get_masker_mask_image,
     mm2vox,
     validate_coordinate_spaces,
 )
@@ -140,19 +141,16 @@ class CBMAEstimator(Estimator):
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
             in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
-        masker = self.masker or dataset.masker
-        if masker is None:
-            raise ValueError(
+        validate_coordinate_spaces(self.inputs_["coordinates"])
+        masker, mask_img = get_masker_mask_image(
+            self.masker,
+            dataset=dataset,
+            message=(
                 "A masker is required for coordinate-based meta-analysis. "
                 "Provide a `mask` to the Estimator (e.g., ALE(mask=...)) or initialize the "
                 "Dataset with a `target` and/or `mask` so `dataset.masker` is defined."
-            )
-
-        validate_coordinate_spaces(self.inputs_["coordinates"])
-
-        mask_img = masker.mask_img or masker.labels_img
-        if isinstance(mask_img, str):
-            mask_img = nib.load(mask_img)
+            ),
+        )
 
         for name, (type_, _) in self._required_inputs.items():
             if type_ == "coordinates":

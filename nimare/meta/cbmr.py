@@ -5,7 +5,6 @@ import logging
 import re
 from functools import wraps
 
-import nibabel as nib
 import numpy as np
 import pandas as pd
 import scipy
@@ -21,11 +20,11 @@ from nimare import _version
 from nimare.estimator import Estimator
 from nimare.meta import models
 from nimare.results import MetaResult
-from nimare.studyset import normalize_collection
 from nimare.utils import (
     b_spline_bases,
     dummy_encoding_moderators,
     get_masker,
+    get_masker_mask_image,
     mm2vox,
     seed_torch,
     validate_coordinate_spaces,
@@ -39,6 +38,31 @@ DEFAULT_GROUP_NAME = "Default"
 def _uses_cuda(device):
     """Return whether the provided device string targets CUDA."""
     return str(device).startswith("cuda")
+
+
+def _is_named_pairwise_contrast(contrast):
+    """Return whether a contrast uses tuple shorthand like (A, B)."""
+    return (
+        isinstance(contrast, tuple)
+        and len(contrast) == 2
+        and all(isinstance(part, str) for part in contrast)
+    )
+
+
+def _normalize_named_pairwise_contrasts(contrasts):
+    """Convert tuple shorthand like (A, B) into the legacy string form."""
+    if contrasts is None:
+        return None
+    if isinstance(contrasts, str) or _is_named_pairwise_contrast(contrasts):
+        contrasts = [contrasts]
+
+    normalized = []
+    for contrast in contrasts:
+        if _is_named_pairwise_contrast(contrast):
+            normalized.append(f"{contrast[0]}-{contrast[1]}")
+        else:
+            normalized.append(contrast)
+    return normalized
 
 
 class CBMRResult(MetaResult):
@@ -74,30 +98,6 @@ class CBMRResult(MetaResult):
             "groups": self.groups,
             "moderators": self.moderators,
         }
-
-    @staticmethod
-    def _is_named_pairwise_contrast(contrast):
-        return (
-            isinstance(contrast, tuple)
-            and len(contrast) == 2
-            and all(isinstance(part, str) for part in contrast)
-        )
-
-    @classmethod
-    def _normalize_pairwise_contrasts(cls, contrasts):
-        """Convert tuple shorthand like (A, B) into the legacy 'A-B' form."""
-        if contrasts is None:
-            return None
-        if isinstance(contrasts, str) or cls._is_named_pairwise_contrast(contrasts):
-            contrasts = [contrasts]
-
-        normalized = []
-        for contrast in contrasts:
-            if cls._is_named_pairwise_contrast(contrast):
-                normalized.append(f"{contrast[0]}-{contrast[1]}")
-            else:
-                normalized.append(contrast)
-        return normalized
 
     def get_inference(self, device=None):
         """Return a fitted inference engine for advanced CBMR use cases."""
@@ -137,7 +137,7 @@ class CBMRResult(MetaResult):
 
     def compare_groups(self, contrasts, device=None):
         """Run pairwise group-comparison tests using names or (group_a, group_b) tuples."""
-        group_contrasts = self._normalize_pairwise_contrasts(contrasts)
+        group_contrasts = _normalize_named_pairwise_contrasts(contrasts)
         return self.infer(
             group_contrasts=group_contrasts,
             moderator_contrasts=False,
@@ -159,7 +159,7 @@ class CBMRResult(MetaResult):
         """Run pairwise moderator-comparison tests using names or tuples."""
         if not self.moderators:
             raise ValueError("This CBMR result does not include experiment-level moderators.")
-        moderator_contrasts = self._normalize_pairwise_contrasts(contrasts)
+        moderator_contrasts = _normalize_named_pairwise_contrasts(contrasts)
         return self.infer(
             group_contrasts=False,
             moderator_contrasts=moderator_contrasts,
@@ -373,35 +373,10 @@ class CBMREstimator(Estimator):
         description = model_description + "\n" + optimization_description
         return description
 
-    def fit(self, dataset, drop_invalid=True):
-        """Fit the estimator and return a CBMR-specific result object."""
-        dataset = normalize_collection(dataset)
-        self._collect_inputs(dataset, drop_invalid=drop_invalid)
-        self._preprocess_input(dataset)
-        maps, tables, description = self._cache(self._fit, func_memory_level=1)(dataset)
-        if not self.generate_description:
-            description = ""
-
-        if hasattr(self, "masker") and self.masker is not None:
-            masker = self.masker
-        else:
-            masker = dataset.masker
-
-        return CBMRResult(self, mask=masker, maps=maps, tables=tables, description=description)
-
-    def _get_mask_img(self, dataset):
-        """Select the masker and mask image for a fit."""
+    def _make_result(self, dataset, maps=None, tables=None, description=""):
+        """Construct a CBMR-specific result object."""
         masker = self.masker or dataset.masker
-        if masker is None:
-            raise ValueError(
-                "A masker is required for coordinate-based meta-analysis. "
-                "Provide a `mask` to the Estimator or initialize the Dataset with a `target` "
-                "and/or `mask` so `dataset.masker` is defined."
-            )
-        mask_img = masker.mask_img or masker.labels_img
-        if isinstance(mask_img, str):
-            mask_img = nib.load(mask_img)
-        return masker, mask_img
+        return CBMRResult(self, mask=masker, maps=maps, tables=tables, description=description)
 
     @staticmethod
     def _build_mask_lookup(mask_data):
@@ -637,7 +612,15 @@ class CBMREstimator(Estimator):
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
             in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
-        masker, mask_img = self._get_mask_img(dataset)
+        masker, mask_img = get_masker_mask_image(
+            self.masker,
+            dataset=dataset,
+            message=(
+                "A masker is required for coordinate-based meta-analysis. "
+                "Provide a `mask` to the Estimator or initialize the Dataset with a `target` "
+                "and/or `mask` so `dataset.masker` is defined."
+            ),
+        )
         validate_coordinate_spaces(self.inputs_["coordinates"])
         mask_data, mask_lookup, n_mask_voxels = self._initialize_spatial_inputs(masker, mask_img)
         filtered_coordinates = self._filter_coordinates_to_mask(
@@ -919,30 +902,6 @@ class CBMRInference(object):
 
             setattr(self, "{}_regular_expression".format(attr), reg_expr)
 
-    @staticmethod
-    def _is_named_pairwise_contrast(contrast):
-        return (
-            isinstance(contrast, tuple)
-            and len(contrast) == 2
-            and all(isinstance(part, str) for part in contrast)
-        )
-
-    @classmethod
-    def _normalize_named_contrasts(cls, contrast_name):
-        """Normalize shorthand pairwise contrasts into the legacy string representation."""
-        if contrast_name is None:
-            return None
-        if isinstance(contrast_name, str) or cls._is_named_pairwise_contrast(contrast_name):
-            contrast_name = [contrast_name]
-
-        normalized = []
-        for contrast in contrast_name:
-            if cls._is_named_pairwise_contrast(contrast):
-                normalized.append(f"{contrast[0]}-{contrast[1]}")
-            else:
-                normalized.append(contrast)
-        return normalized
-
     @_check_fit
     def create_contrast(self, contrast_name, source="groups"):
         """Create contrast matrix for generalized hypothesis testing (GLH).
@@ -966,7 +925,7 @@ class CBMRInference(object):
         contrast_name : :obj:`~string`
             Name of contrast in GLH.
         """
-        contrast_name = self._normalize_named_contrasts(contrast_name)
+        contrast_name = _normalize_named_pairwise_contrasts(contrast_name)
         contrast_matrix = {}
         if source == "groups":  # contrast matrix for spatial intensity
             for contrast in contrast_name:
@@ -1105,7 +1064,7 @@ class CBMRInference(object):
         if isinstance(t_con_regressor, dict):
             return list(t_con_regressor.values()), list(t_con_regressor.keys())
 
-        if isinstance(t_con_regressor, str) or self._is_named_pairwise_contrast(t_con_regressor):
+        if isinstance(t_con_regressor, str) or _is_named_pairwise_contrast(t_con_regressor):
             named_contrasts = self.create_contrast(t_con_regressor, source=source)
             return list(named_contrasts.values()), list(named_contrasts.keys())
 
@@ -1129,7 +1088,7 @@ class CBMRInference(object):
             isinstance(t_con_regressor, list)
             and bool(t_con_regressor)
             and all(
-                isinstance(con_regressor, str) or self._is_named_pairwise_contrast(con_regressor)
+                isinstance(con_regressor, str) or _is_named_pairwise_contrast(con_regressor)
                 for con_regressor in t_con_regressor
             )
         )

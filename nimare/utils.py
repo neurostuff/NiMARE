@@ -233,6 +233,21 @@ def get_masker(mask, memory=joblib.Memory(location=None, verbose=0), memory_leve
     return mask
 
 
+def get_masker_mask_image(masker=None, dataset=None, message=None):
+    """Resolve a masker together with its backing mask image."""
+    masker = masker or getattr(dataset, "masker", None)
+    if masker is None:
+        raise ValueError(message or "A masker is required.")
+
+    mask_img = getattr(masker, "mask_img", None) or getattr(masker, "labels_img", None)
+    if mask_img is None:
+        raise ValueError("Resolved masker does not define a mask image.")
+    if isinstance(mask_img, str):
+        mask_img = nib.load(mask_img)
+
+    return masker, mask_img
+
+
 def vox2mm(ijk, affine):
     """Convert matrix subscripts to coordinates.
 

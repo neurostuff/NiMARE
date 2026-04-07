@@ -129,6 +129,11 @@ class Estimator(NiMAREBase):
         """
         pass
 
+    def _make_result(self, dataset, maps=None, tables=None, description=""):
+        """Construct the fitted result object for this estimator."""
+        masker = getattr(self, "masker", None) or dataset.masker
+        return MetaResult(self, mask=masker, maps=maps, tables=tables, description=description)
+
     def fit(self, dataset, drop_invalid=True):
         """Fit Estimator to a Studyset-backed collection.
 
@@ -166,9 +171,4 @@ class Estimator(NiMAREBase):
         if not self.generate_description:
             description = ""
 
-        if hasattr(self, "masker") and self.masker is not None:
-            masker = self.masker
-        else:
-            masker = dataset.masker
-
-        return MetaResult(self, mask=masker, maps=maps, tables=tables, description=description)
+        return self._make_result(dataset, maps=maps, tables=tables, description=description)

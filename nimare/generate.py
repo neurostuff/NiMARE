@@ -22,6 +22,13 @@ NEUROVAULT_IDS = (8836, 8838, 8893, 8895, 8892, 8891, 8962, 8894, 8956, 8854, 90
 CONTRAST_OF_INTEREST = {"animal": "as-Animal"}
 
 
+def _studyset_from_dataset(dataset):
+    """Convert a Dataset into a Studyset."""
+    from nimare.nimads import Studyset
+
+    return Studyset.from_dataset(dataset)
+
+
 def create_coordinate_dataset(
     foci=1,
     foci_percentage="100%",
@@ -145,8 +152,6 @@ def create_coordinate_studyset(
         Generated foci in xyz (mm) coordinates.
     studyset : :class:`~nimare.nimads.Studyset`
     """
-    from nimare.nimads import Studyset
-
     ground_truth_foci, dataset = create_coordinate_dataset(
         foci=foci,
         foci_percentage=foci_percentage,
@@ -157,8 +162,7 @@ def create_coordinate_studyset(
         seed=seed,
         space=space,
     )
-    studyset = Studyset.from_dataset(dataset)
-    return ground_truth_foci, studyset
+    return ground_truth_foci, _studyset_from_dataset(dataset)
 
 
 def create_neurovault_dataset(
@@ -241,8 +245,6 @@ def create_neurovault_studyset(
     :obj:`~nimare.nimads.Studyset`
         Studyset object containing experiment information from NeuroVault.
     """
-    from nimare.nimads import Studyset
-
     dataset = create_neurovault_dataset(
         collection_ids=collection_ids,
         contrasts=contrasts,
@@ -250,7 +252,7 @@ def create_neurovault_studyset(
         map_type_conversion=map_type_conversion,
         **dset_kwargs,
     )
-    return Studyset.from_dataset(dataset)
+    return _studyset_from_dataset(dataset)
 
 
 def _create_source(foci, sample_sizes, space="MNI"):
