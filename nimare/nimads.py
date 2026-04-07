@@ -761,34 +761,37 @@ class Studyset:
         return list(self.coordinates.loc[in_mask, "id"].unique())
 
     def get_studies_by_coordinate(self, xyz, r=None, n=None):
-        """Extract full analysis IDs with at least one focus near the requested coordinates."""
-        from scipy.spatial.distance import cdist
+    """Extract full analysis IDs with at least one focus near the requested coordinates."""
 
-        if self.coordinates.empty:
-            return []
+    from scipy.spatial.distance import cdist
 
-        xyz = np.array(xyz)
-        assert xyz.ndim == 2 and xyz.shape[1] == 3, "xyz must be (n, 3)"
-        if r is None and n is None:
-            raise ValueError("Either 'r' or 'n' must be provided")
-        distances = cdist(xyz, self.coordinates[["x", "y", "z"]].values)
+    if self.coordinates.empty:
+        return []
 
-# If radius-based query
-        if r is not None:
-             mask = np.any(distances <= r, axis=0)
-             return list(self.coordinates.loc[mask, "id"].unique())
+    xyz = np.array(xyz)
 
-# If nearest-n query
-        if n is not None:
-    # get minimum distance for each coordinate point
-             min_dist = distances.min(axis=0)
+    # Validate shape
+    assert xyz.ndim == 2 and xyz.shape[1] == 3, "xyz must be (n, 3)"
 
-    # sort indices by distance
-             nearest_idx = np.argsort(min_dist)[:min(n, len(min_dist))]
+    # Handle default case (mentor suggestion)
+    if r is None and n is None:
+        r = 20
 
-            selected_ids = self.coordinates.iloc[nearest_idx]["id"]
-            return list(pd.unique(selected_ids))
-     # NOTE: nearest_idx refers to coordinate rows, not unique studies
+    # Compute distances
+    distances = cdist(xyz, self.coordinates[["x", "y", "z"]].values)
+
+    # If radius-based query
+    if r is not None:
+        mask = np.any(distances <= r, axis=0)
+        return list(self.coordinates.loc[mask, "id"].unique())
+
+    # If nearest-n query
+    if n is not None:
+        min_dist = distances.min(axis=0)
+        nearest_idx = np.argsort(min_dist)[: min(n, len(min_dist))]
+        selected_ids = self.coordinates.iloc[nearest_idx]["id"]
+        return list(pd.unique(selected_ids))
+    # NOTE: nearest_idx refers to coordinate rows, not unique studies
 
     def _set_execution_context(self, *, space=None, masker=None, basepath=None):
         """Update cached execution context used by Studyset projections."""
