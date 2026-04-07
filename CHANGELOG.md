@@ -2,7 +2,20 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.14.0...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.15.0...HEAD)
+
+## [0.15.0](https://github.com/neurostuff/NiMARE/compare/0.14.0...0.15.0) - 2026-04-07
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+- make ALESubtraction more usable on limited resources (like on AWS)
+- refactor CBMR to make it more user friendly and efficient (5-10x speedup)
+
+### What's Changed
+
+* [ENH] add a low memory condition for ALESubtraction by @jdkent in https://github.com/neurostuff/NiMARE/pull/1004
+* [REF] CBMR internal and public API refactor by @jdkent in https://github.com/neurostuff/NiMARE/pull/1005
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.14.0...0.15.0
 
 ## [0.14.0](https://github.com/neurostuff/NiMARE/compare/0.13.0...0.14.0) - 2026-04-03
 
