@@ -763,18 +763,38 @@ class Studyset:
         in_mask = mask_data[dset_ijk[:, 0], dset_ijk[:, 1], dset_ijk[:, 2]] > 0
         return list(self.coordinates.loc[in_mask, "id"].unique())
 
-    def get_studies_by_coordinate(self, xyz, r=20):
-        """Extract full analysis IDs with at least one focus near the requested coordinates."""
-        from scipy.spatial.distance import cdist
+    def get_studies_by_coordinate(self, xyz, r=None, n=None):
+    """Extract full analysis IDs with at least one focus near the requested coordinates."""
 
-        if self.coordinates.empty:
-            return []
+    from scipy.spatial.distance import cdist
 
-        xyz = np.array(xyz)
-        assert xyz.shape[1] == 3 and xyz.ndim == 2
-        distances = cdist(xyz, self.coordinates[["x", "y", "z"]].values)
-        distances = np.any(distances <= r, axis=0)
-        return list(self.coordinates.loc[distances, "id"].unique())
+    if self.coordinates.empty:
+        return []
+
+    xyz = np.array(xyz)
+
+    # Validate shape
+    assert xyz.ndim == 2 and xyz.shape[1] == 3, "xyz must be (n, 3)"
+
+    # Handle default case (fallback when both r and n are None)
+    if r is None and n is None:
+        r = 20
+
+    # Compute distances
+    distances = cdist(xyz, self.coordinates[["x", "y", "z"]].values)
+
+    # If radius-based query
+    if r is not None:
+        mask = np.any(distances <= r, axis=0)
+        return list(self.coordinates.loc[mask, "id"].unique())
+
+    # If nearest-n query
+    if n is not None:
+        min_dist = distances.min(axis=0)
+        nearest_idx = np.argsort(min_dist)[: min(n, len(min_dist))]
+        selected_ids = self.coordinates.iloc[nearest_idx]["id"]
+        return list(pd.unique(selected_ids))
+    # NOTE: nearest_idx refers to coordinate rows, not unique studies
 
     def _set_execution_context(self, *, space=None, masker=None, basepath=None):
         """Update cached execution context used by Studyset projections."""
