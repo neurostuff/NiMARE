@@ -773,7 +773,7 @@ class Studyset:
     # Validate shape
     assert xyz.ndim == 2 and xyz.shape[1] == 3, "xyz must be (n, 3)"
 
-    # Handle default case (mentor suggestion)
+    # Handle default case (fallback when both r and n are None)
     if r is None and n is None:
         r = 20
 
