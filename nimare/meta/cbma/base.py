@@ -28,6 +28,7 @@ from nimare.utils import (
     _mask_img_to_bool,
     get_masker,
     mm2vox,
+    validate_coordinate_spaces,
 )
 
 LGR = logging.getLogger(__name__)
@@ -147,21 +148,7 @@ class CBMAEstimator(Estimator):
                 "Dataset with a `target` and/or `mask` so `dataset.masker` is defined."
             )
 
-        coord_spaces = self.inputs_["coordinates"]["space"].dropna().unique()
-        if coord_spaces.size == 0:
-            raise ValueError(
-                "Coordinate space information is missing from the Dataset. "
-                "Ensure the Dataset coordinates include a valid 'space' column."
-            )
-        if coord_spaces.size > 1:
-            shown = ", ".join(map(str, coord_spaces[:10]))
-            suffix = "..." if coord_spaces.size > 10 else ""
-            raise ValueError(
-                "Mixed coordinate spaces detected in the Dataset (space column contains more than "
-                f"one value: {shown}{suffix}). Provide a target space when creating the Dataset "
-                "to harmonize coordinates, or convert coordinates to a common space before "
-                "running a meta-analysis."
-            )
+        validate_coordinate_spaces(self.inputs_["coordinates"])
 
         mask_img = masker.mask_img or masker.labels_img
         if isinstance(mask_img, str):

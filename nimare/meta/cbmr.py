@@ -11,7 +11,7 @@ import pandas as pd
 import scipy
 
 try:
-    import torch
+    import torch  # type: ignore[import-not-found]
 except ImportError as e:
     raise ImportError(
         "Torch is required to use `CBMR` classes. Install with `pip install 'nimare[cbmr]'`."
@@ -23,15 +23,17 @@ from nimare.meta import models
 from nimare.results import MetaResult
 from nimare.studyset import normalize_collection
 from nimare.utils import (
-    DEFAULT_FLOAT_DTYPE,
     b_spline_bases,
     dummy_encoding_moderators,
     get_masker,
     mm2vox,
+    seed_torch,
+    validate_coordinate_spaces,
 )
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
+DEFAULT_GROUP_NAME = "Default"
 
 
 def _uses_cuda(device):
@@ -66,19 +68,11 @@ class CBMRResult(MetaResult):
         new.metadata = copy.deepcopy(self.metadata)
         return new
 
-    def available_groups(self):
-        """Return the fitted groups that can be used in CBMR contrasts."""
-        return list(self.groups)
-
-    def available_moderators(self):
-        """Return the fitted moderators that can be used in CBMR contrasts."""
-        return list(self.moderators)
-
     def describe_inference_inputs(self):
         """Summarize the fitted groups and moderators for follow-up inference."""
         return {
-            "groups": self.available_groups(),
-            "moderators": self.available_moderators(),
+            "groups": self.groups,
+            "moderators": self.moderators,
         }
 
     @staticmethod
@@ -134,7 +128,7 @@ class CBMRResult(MetaResult):
 
     def test_groups(self, groups=None, device=None):
         """Run one-group spatial homogeneity tests for the requested groups."""
-        group_contrasts = self.available_groups() if groups is None else groups
+        group_contrasts = list(self.groups) if groups is None else groups
         return self.infer(
             group_contrasts=group_contrasts,
             moderator_contrasts=False,
@@ -154,7 +148,7 @@ class CBMRResult(MetaResult):
         """Test whether the requested moderator effects differ from zero."""
         if not self.moderators:
             raise ValueError("This CBMR result does not include experiment-level moderators.")
-        moderator_contrasts = self.available_moderators() if moderators is None else moderators
+        moderator_contrasts = list(self.moderators) if moderators is None else moderators
         return self.infer(
             group_contrasts=False,
             moderator_contrasts=moderator_contrasts,
@@ -205,13 +199,11 @@ class CBMREstimator(Estimator):
                                 relative to Poisson (there's an group-wise overdispersion parameter
                                 shared by all experiments and all voxels to index excess variance).
 
-        ClusteredNegativeBinomial This method is also an efficient but less
-                    accurate approach. Clustered NB model is
-                    "random effect" Poisson model, which asserts
-                    that the random effects are latent
-                    characteristics of each experiment, and
-                    represent a shared effect over the entire brain
-                    for a given experiment.
+        ClusteredNegativeBinomial This method is also an efficient but less accurate approach.
+                    Clustered NB model is a "random effect" Poisson model, which
+                    asserts that the random effects are latent characteristics of
+                    each experiment, and represent a shared effect over the entire
+                    brain for a given experiment.
         ======================= =================================================================
     penalty: :obj:`~bool`, optional
     Currently, the only available option is Firth-type penalty, which penalizes
@@ -238,6 +230,8 @@ class CBMREstimator(Estimator):
     device: :obj:`string`, optional
         Device type ('cpu' or 'cuda') represents the device on which operations will be allocated
         Default is 'cpu'
+    random_state : :obj:`int`, optional
+        Random seed used for torch-based weight initialization. Default is None.
     **kwargs
         Keyword arguments. Arguments for the Estimator can be assigned here,
         Another optional argument is ``mask``.
@@ -280,6 +274,7 @@ class CBMREstimator(Estimator):
         lr_decay=0.999,
         tol=1e-9,
         device="cpu",
+        random_state=None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -300,13 +295,11 @@ class CBMREstimator(Estimator):
         self.lr_decay = lr_decay
         self.tol = tol
         self.device = device
+        self.random_state = random_state
         if _uses_cuda(self.device) and not torch.cuda.is_available():
             LGR.debug("cuda not found, use device cpu")
             self.device = "cpu"
         self.model.device = self.device
-
-        # Initialize optimisation parameters
-        self.iter = 0
 
     def _generate_description(self):
         """Generate a description of the Estimator instance.
@@ -410,24 +403,6 @@ class CBMREstimator(Estimator):
             mask_img = nib.load(mask_img)
         return masker, mask_img
 
-    def _validate_coordinates(self):
-        """Validate coordinate space metadata consistently with other CBMA estimators."""
-        coord_spaces = self.inputs_["coordinates"]["space"].dropna().unique()
-        if coord_spaces.size == 0:
-            raise ValueError(
-                "Coordinate space information is missing from the Dataset. "
-                "Ensure the Dataset coordinates include a valid 'space' column."
-            )
-        if coord_spaces.size > 1:
-            shown = ", ".join(map(str, coord_spaces[:10]))
-            suffix = "..." if coord_spaces.size > 10 else ""
-            raise ValueError(
-                "Mixed coordinate spaces detected in the Dataset (space column contains more than "
-                f"one value: {shown}{suffix}). Provide a target space when creating the Dataset "
-                "to harmonize coordinates, or convert coordinates to a common space before "
-                "running a meta-analysis."
-            )
-
     @staticmethod
     def _build_mask_lookup(mask_data):
         """Return a flat-index lookup from full image space to masked voxel space."""
@@ -503,7 +478,7 @@ class CBMREstimator(Estimator):
     def _assign_group_labels(self, experiment_annotations):
         """Attach normalized group labels to the aligned experiment table."""
         if self.group_categories is None:
-            experiment_annotations[self._group_column] = "Default"
+            experiment_annotations[self._group_column] = DEFAULT_GROUP_NAME
         elif isinstance(self.group_categories, str):
             if self.group_categories not in experiment_annotations.columns:
                 raise ValueError(
@@ -663,7 +638,7 @@ class CBMREstimator(Estimator):
             in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
         masker, mask_img = self._get_mask_img(dataset)
-        self._validate_coordinates()
+        validate_coordinate_spaces(self.inputs_["coordinates"])
         mask_data, mask_lookup, n_mask_voxels = self._initialize_spatial_inputs(masker, mask_img)
         filtered_coordinates = self._filter_coordinates_to_mask(
             self.inputs_["coordinates"],
@@ -707,9 +682,7 @@ class CBMREstimator(Estimator):
             "spatial_coef_dim": self.inputs_["coef_spline_bases"].shape[1],
             "moderators_coef_dim": len(self.moderators) if self.moderators else None,
         }
-        torch.manual_seed(100)
-        if _uses_cuda(self.device):
-            torch.cuda.manual_seed_all(100)
+        seed_torch(self.random_state, self.device)
         self.model.init_weights(**init_weight_kwargs)
 
         moderators_by_group = self.inputs_["moderators_by_group"] if self.moderators else None
@@ -795,20 +768,13 @@ class CBMRInference(object):
         """Create an inference result copy without deep-copying all stored arrays and tables."""
         copied_result = copy.copy(result)
         copied_result.estimator = copy.deepcopy(result.estimator)
-        copied_result.maps = {}
-        for map_name, map_ in result.maps.items():
-            copied_map = np.array(map_, copy=True)
-            if (
-                np.issubdtype(copied_map.dtype, np.floating)
-                and copied_map.dtype != DEFAULT_FLOAT_DTYPE
-            ):
-                copied_map = copied_map.astype(DEFAULT_FLOAT_DTYPE)
-            copied_result.maps[map_name] = copied_map
-
+        copied_result.maps = {
+            map_name: np.array(map_, copy=True) for map_name, map_ in result.maps.items()
+        }
         copied_result.tables = {
             table_name: table.copy(deep=True) for table_name, table in result.tables.items()
         }
-        copied_result.metadata = dict(result.metadata)
+        copied_result.metadata = copy.deepcopy(result.metadata)
         return copied_result
 
     def _reset_inference_caches(self):

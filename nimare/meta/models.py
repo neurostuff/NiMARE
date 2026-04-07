@@ -376,7 +376,6 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         foci_per_experiment : :obj:`dict`
             Dictionary of group-wise number of foci per experiment.
         """
-        torch.manual_seed(100)
         tensor_inputs = self._prepare_tensor_inputs(
             coef_spline_bases,
             moderators_by_group,

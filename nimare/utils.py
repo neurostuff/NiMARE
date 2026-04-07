@@ -19,6 +19,11 @@ import numpy as np
 import pandas as pd
 from nilearn.maskers import NiftiMasker
 
+try:
+    import torch  # type: ignore[import-not-found]
+except ImportError:
+    torch = None
+
 LGR = logging.getLogger(__name__)
 DEFAULT_FLOAT_DTYPE = np.float32
 
@@ -51,6 +56,35 @@ def _check_ncores(n_cores):
         )
         n_cores = mp.cpu_count()
     return n_cores
+
+
+def validate_coordinate_spaces(coordinates):
+    """Validate that all coordinates belong to a single declared space."""
+    coord_spaces = coordinates["space"].dropna().unique()
+    if coord_spaces.size == 0:
+        raise ValueError(
+            "Coordinate space information is missing from the Dataset. "
+            "Ensure the Dataset coordinates include a valid 'space' column."
+        )
+    if coord_spaces.size > 1:
+        shown = ", ".join(map(str, coord_spaces[:10]))
+        suffix = "..." if coord_spaces.size > 10 else ""
+        raise ValueError(
+            "Mixed coordinate spaces detected in the Dataset (space column contains more than "
+            f"one value: {shown}{suffix}). Provide a target space when creating the Dataset "
+            "to harmonize coordinates, or convert coordinates to a common space before "
+            "running a meta-analysis."
+        )
+
+
+def seed_torch(seed, device="cpu"):
+    """Seed torch RNGs when torch is available and a seed is provided."""
+    if seed is None or torch is None:
+        return
+
+    torch.manual_seed(seed)
+    if str(device).startswith("cuda") and torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 def get_resource_path():
@@ -1411,8 +1445,7 @@ def b_spline_bases(masker_voxels, spacing, margin=10):
     ]
     brain_coords = np.argwhere(cropped_mask)
 
-    # Build the masked design matrix directly instead of materializing the
-    # full sparse Kronecker product and then indexing into it.
+    # Build tensor-product spline rows only for in-mask voxels.
     x_rows = x_spline[brain_coords[:, 0]]
     y_rows = y_spline[brain_coords[:, 1]]
     z_rows = z_spline[brain_coords[:, 2]]

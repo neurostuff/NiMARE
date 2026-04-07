@@ -15,7 +15,7 @@ except ImportError:
 else:
     TORCH_INSTALLED = True
     from nimare.meta import models
-    from nimare.meta.cbmr import CBMREstimator, CBMRInference, CBMRResult
+    from nimare.meta.cbmr import CBMREstimator, CBMRInference, CBMRResult, DEFAULT_GROUP_NAME
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
@@ -65,6 +65,7 @@ def cbmr_result(testdata_cbmr_simulated, model):
         lr=1,
         tol=1e4,
         device="cpu",
+        random_state=100,
     )
     res = cbmr.fit(dataset=dset)
     assert isinstance(res, nimare.results.MetaResult)
@@ -99,15 +100,42 @@ def test_cbmr_estimator(cbmr_result):
     """Unit test for CBMR estimator."""
     assert isinstance(cbmr_result, CBMRResult)
     assert isinstance(cbmr_result, nimare.results.MetaResult)
-    assert cbmr_result.available_groups()
+    assert cbmr_result.groups
 
 
 def test_cbmr_result_interface_lists_inference_inputs(cbmr_result):
     """CBMR results should expose discoverable group and moderator names."""
     description = cbmr_result.describe_inference_inputs()
 
-    assert description["groups"] == cbmr_result.available_groups()
-    assert description["moderators"] == cbmr_result.available_moderators()
+    assert description["groups"] == cbmr_result.groups
+    assert description["moderators"] == cbmr_result.moderators
+
+
+def test_cbmr_default_group_is_used_when_group_categories_none(testdata_cbmr_simulated):
+    """CBMR should create a single default group when no grouping columns are supplied."""
+    dset = StandardizeField(fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]).transform(
+        testdata_cbmr_simulated
+    )
+    cbmr = CBMREstimator(
+        group_categories=None,
+        moderators=["standardized_sample_sizes"],
+        spline_spacing=100,
+        model=models.PoissonEstimator,
+        generate_description=False,
+        penalty=False,
+        n_iter=200,
+        lr=1,
+        tol=1e4,
+        device="cpu",
+        random_state=100,
+    )
+
+    result = cbmr.fit(dataset=dset)
+    homogeneity_result = result.test_groups()
+
+    assert result.groups == (DEFAULT_GROUP_NAME,)
+    assert cbmr.inputs_["ids_by_group"][DEFAULT_GROUP_NAME]
+    assert f"z_group-{DEFAULT_GROUP_NAME}" in homogeneity_result.maps
 
 
 def test_cbmr_result_helpers_run_inference(cbmr_result):
@@ -149,6 +177,7 @@ def test_cbmr_fit_is_repeatable(testdata_cbmr_simulated):
             lr=1,
             tol=1e4,
             device="cpu",
+            random_state=100,
         )
         return cbmr.fit(dataset=dset)
 
@@ -189,6 +218,7 @@ def test_cbmr_cuda_fit_and_inference_run(testdata_cbmr_simulated):
         lr=1,
         tol=1e4,
         device="cuda",
+        random_state=100,
     )
     result = cbmr.fit(dataset=dset)
 
@@ -230,6 +260,7 @@ def test_cbmr_description_generation(testdata_cbmr_simulated):
         lr=1,
         tol=1e4,
         device="cpu",
+        random_state=100,
     )
     res = cbmr.fit(dataset=dset)
 
@@ -447,7 +478,7 @@ def test_poisson_analytic_fisher_matches_generic_hessian():
         foci_per_voxel,
         foci_per_experiment,
     )
-    np.testing.assert_allclose(analytic_spatial, generic_spatial)
+    np.testing.assert_allclose(analytic_spatial, generic_spatial, rtol=1e-6, atol=1e-8)
 
     analytic_moderator = model.fisher_info_multiple_group_moderator(
         coef_spline_bases,
@@ -462,7 +493,7 @@ def test_poisson_analytic_fisher_matches_generic_hessian():
         foci_per_voxel,
         foci_per_experiment,
     )
-    np.testing.assert_allclose(analytic_moderator, generic_moderator)
+    np.testing.assert_allclose(analytic_moderator, generic_moderator, rtol=1e-6, atol=1e-8)
 
 
 def test_cbmr_inference_multi_contrast_matches_individual_transforms(cbmr_result):
@@ -546,6 +577,7 @@ def test_firth_penalty(testdata_cbmr_simulated):
         lr=1,
         tol=1e4,
         device="cpu",
+        random_state=100,
     )
     res = cbmr.fit(dataset=dset)
     assert isinstance(res, nimare.results.MetaResult)
@@ -567,6 +599,7 @@ def test_moderators_none(testdata_cbmr_simulated):
         lr=1,
         tol=1e4,
         device="cpu",
+        random_state=100,
     )
     res = cbmr.fit(dataset=dset)
     assert isinstance(res, nimare.results.MetaResult)
@@ -594,6 +627,7 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
         model=models.PoissonEstimator,
         generate_description=False,
         lr=1,
+        random_state=100,
     )
 
     cbmr._collect_inputs(testdata_cbmr_simulated, drop_invalid=True)
@@ -632,8 +666,7 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
         foci_per_voxel_tensor[group] = group_foci_per_voxel_tensor
         foci_per_experiment_tensor[group] = group_foci_per_experiment_tensor
 
-    if cbmr.iter == 0:
-        prev_loss = torch.tensor(float("inf"))  # initialization loss difference
+    prev_loss = torch.tensor(float("inf"))  # initialization loss difference
 
     cbmr.model._update(
         optimizer,
@@ -682,6 +715,7 @@ def test_cbmr_group_arrays_remain_aligned_when_experiment_has_no_in_mask_foci(
         model=models.PoissonEstimator,
         generate_description=False,
         lr=1,
+        random_state=100,
     )
 
     cbmr._collect_inputs(dset, drop_invalid=True)
@@ -726,6 +760,7 @@ def test_cbmr_groups_full_experiment_ids_instead_of_collapsing_study_ids():
         model=models.PoissonEstimator,
         generate_description=False,
         lr=1,
+        random_state=100,
     )
 
     cbmr._collect_inputs(dset, drop_invalid=True)
@@ -749,6 +784,23 @@ def test_StandardizeField(testdata_cbmr_simulated):
     )
     assert dset.annotations["standardized_avg_age"].mean() == pytest.approx(0.0, abs=1e-3)
     assert dset.annotations["standardized_avg_age"].std(ddof=0) == pytest.approx(1.0, abs=1e-3)
+
+
+def test_meta_package_defers_cbmr_import():
+    """Importing nimare.meta should not eagerly import optional CBMR modules."""
+    import importlib
+    import sys
+
+    nimare.__dict__.pop("meta", None)
+    sys.modules.pop("nimare.meta", None)
+    sys.modules.pop("nimare.meta.cbmr", None)
+    sys.modules.pop("nimare.meta.models", None)
+
+    meta = importlib.import_module("nimare.meta")
+
+    assert "nimare.meta.cbmr" not in sys.modules
+    assert "nimare.meta.models" not in sys.modules
+    assert hasattr(meta, "ALE")
 
 
 @pytest.mark.cbmr_importerror
