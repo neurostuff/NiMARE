@@ -17,8 +17,12 @@ import joblib
 import nibabel as nib
 import numpy as np
 import pandas as pd
-import sparse
 from nilearn.maskers import NiftiMasker
+
+try:
+    import torch  # type: ignore[import-not-found]
+except ImportError:
+    torch = None
 
 LGR = logging.getLogger(__name__)
 DEFAULT_FLOAT_DTYPE = np.float32
@@ -52,6 +56,35 @@ def _check_ncores(n_cores):
         )
         n_cores = mp.cpu_count()
     return n_cores
+
+
+def validate_coordinate_spaces(coordinates):
+    """Validate that all coordinates belong to a single declared space."""
+    coord_spaces = coordinates["space"].dropna().unique()
+    if coord_spaces.size == 0:
+        raise ValueError(
+            "Coordinate space information is missing from the Dataset. "
+            "Ensure the Dataset coordinates include a valid 'space' column."
+        )
+    if coord_spaces.size > 1:
+        shown = ", ".join(map(str, coord_spaces[:10]))
+        suffix = "..." if coord_spaces.size > 10 else ""
+        raise ValueError(
+            "Mixed coordinate spaces detected in the Dataset (space column contains more than "
+            f"one value: {shown}{suffix}). Provide a target space when creating the Dataset "
+            "to harmonize coordinates, or convert coordinates to a common space before "
+            "running a meta-analysis."
+        )
+
+
+def seed_torch(seed, device="cpu"):
+    """Seed torch RNGs when torch is available and a seed is provided."""
+    if seed is None or torch is None:
+        return
+
+    torch.manual_seed(seed)
+    if str(device).startswith("cuda") and torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 def get_resource_path():
@@ -198,6 +231,21 @@ def get_masker(mask, memory=joblib.Memory(location=None, verbose=0), memory_leve
         mask.fit()
 
     return mask
+
+
+def get_masker_mask_image(masker=None, dataset=None, message=None):
+    """Resolve a masker together with its backing mask image."""
+    masker = masker or getattr(dataset, "masker", None)
+    if masker is None:
+        raise ValueError(message or "A masker is required.")
+
+    mask_img = getattr(masker, "mask_img", None) or getattr(masker, "labels_img", None)
+    if mask_img is None:
+        raise ValueError("Resolved masker does not define a mask image.")
+    if isinstance(mask_img, str):
+        mask_img = nib.load(mask_img)
+
+    return masker, mask_img
 
 
 def vox2mm(ijk, affine):
@@ -937,15 +985,15 @@ def _add_metadata_to_dataframe(
 
     Parameters
     ----------
-    dataset : :obj:`~nimare.dataset.Dataset`
-        Dataset containing study IDs and metadata to feed into dataframe.
+    dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
+        Collection containing study IDs and metadata to feed into dataframe.
     dataframe : :obj:`pandas.DataFrame`
-        DataFrame containing study IDs, into which Dataset metadata will be merged.
+        DataFrame containing study IDs, into which collection metadata will be merged.
     metadata_field : :obj:`str` or iterable of :obj:`str`
         Metadata field or fallback fields in ``dataset``. The first available field will be used.
     target_column : :obj:`str`
         Name of the column that will be added to ``dataframe``, containing information from the
-        Dataset.
+        collection.
     filter_func : :obj:`function`, optional
         Function to apply to the metadata so that it fits as a column in a DataFrame.
         Default is ``numpy.mean``.
@@ -1394,51 +1442,33 @@ def b_spline_bases(masker_voxels, spacing, margin=10):
     X : :obj:`numpy.ndarray`
         2-D ndarray (n_voxel x n_spline_bases) only keeps with within-brain voxels
     """
-    # dim_mask = masker_voxels.shape
-    # n_brain_voxel = np.sum(masker_voxels)
+    mask = np.asanyarray(masker_voxels).astype(bool, copy=False)
+
     # remove the blank space around the brain mask
-    xx = np.where(np.apply_over_axes(np.sum, masker_voxels, [1, 2]) > 0)[0]
-    yy = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 2]) > 0)[1]
-    zz = np.where(np.apply_over_axes(np.sum, masker_voxels, [0, 1]) > 0)[2]
+    xx = np.where(mask.sum(axis=(1, 2)) > 0)[0]
+    yy = np.where(mask.sum(axis=(0, 2)) > 0)[0]
+    zz = np.where(mask.sum(axis=(0, 1)) > 0)[0]
 
     x_spline = coef_spline_bases(xx, spacing, margin)
     y_spline = coef_spline_bases(yy, spacing, margin)
     z_spline = coef_spline_bases(zz, spacing, margin)
-    x_spline_coords = x_spline.nonzero()
-    y_spline_coords = y_spline.nonzero()
-    z_spline_coords = z_spline.nonzero()
-    x_spline_sparse = sparse.COO(x_spline_coords, x_spline[x_spline_coords], shape=x_spline.shape)
-    y_spline_sparse = sparse.COO(y_spline_coords, y_spline[y_spline_coords], shape=y_spline.shape)
-    z_spline_sparse = sparse.COO(z_spline_coords, z_spline[z_spline_coords], shape=z_spline.shape)
 
-    # create spatial design matrix by tensor product of spline bases in 3 dimesion
-    # Row sums of X are all 1=> There is no need to re-normalise X
-    X = np.kron(np.kron(x_spline_sparse, y_spline_sparse), z_spline_sparse)
-    # remove the voxels outside brain mask
-    axis_dim = [xx.shape[0], yy.shape[0], zz.shape[0]]
-    brain_voxels_index = [
-        (z - np.min(zz))
-        + axis_dim[2] * (y - np.min(yy))
-        + axis_dim[1] * axis_dim[2] * (x - np.min(xx))
-        for x in xx
-        for y in yy
-        for z in zz
-        if masker_voxels[x, y, z] == 1
+    cropped_mask = mask[
+        np.min(xx) : np.max(xx) + 1,
+        np.min(yy) : np.max(yy) + 1,
+        np.min(zz) : np.max(zz) + 1,
     ]
-    X = X[brain_voxels_index, :].todense()
-    # remove tensor product basis that have no support in the brain
-    x_df, y_df, z_df = x_spline.shape[1], y_spline.shape[1], z_spline.shape[1]
-    support_basis = []
-    # find and remove weakly supported B-spline bases
-    for bx in range(x_df):
-        for by in range(y_df):
-            for bz in range(z_df):
-                basis_index = bz + z_df * by + z_df * y_df * bx
-                basis_coef = X[:, basis_index]
-                if np.max(basis_coef) >= 0.1:
-                    support_basis.append(basis_index)
-    X = X[:, support_basis]
+    brain_coords = np.argwhere(cropped_mask)
 
+    # Build tensor-product spline rows only for in-mask voxels.
+    x_rows = x_spline[brain_coords[:, 0]]
+    y_rows = y_spline[brain_coords[:, 1]]
+    z_rows = z_spline[brain_coords[:, 2]]
+    xy_rows = (x_rows[:, :, None] * y_rows[:, None, :]).reshape(brain_coords.shape[0], -1)
+    X = (xy_rows[:, :, None] * z_rows[:, None, :]).reshape(brain_coords.shape[0], -1)
+
+    # remove tensor product bases with weak support in the brain
+    X = X[:, np.max(X, axis=0) >= 0.1]
     return X
 
 

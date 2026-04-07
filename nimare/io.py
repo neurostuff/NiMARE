@@ -1927,7 +1927,13 @@ def convert_neurovault_to_dataset(
     dataset_dict = {}
     for coll_name, nv_coll in collection_ids.items():
         nv_url = f"https://neurovault.org/api/collections/{nv_coll}/images/?format=json"
-        images = requests.get(nv_url).json()
+        images = _get_json_with_retries(
+            nv_url,
+            error_message=(
+                f"Failed to retrieve NeuroVault collection {nv_coll}. "
+                "The NeuroVault API returned an invalid or incomplete response."
+            ),
+        )
         if "Not found" in images.get("detail", ""):
             raise ValueError(
                 f"Collection {nv_coll} not found. "
@@ -1963,7 +1969,8 @@ def convert_neurovault_to_dataset(
                 )
 
                 if not filename.exists():
-                    r = requests.get(img_dict["file"])
+                    r = requests.get(img_dict["file"], timeout=30)
+                    r.raise_for_status()
                     with open(filename, "wb") as f:
                         f.write(r.content)
 
@@ -2002,6 +2009,31 @@ def convert_neurovault_to_dataset(
     dataset = Dataset(dataset_dict, **dset_kwargs)
 
     return dataset
+
+
+def _get_json_with_retries(url, *, error_message, max_attempts=3, timeout=30):
+    """Fetch JSON from a remote endpoint with limited retries for transient failures."""
+    last_error = None
+    for _ in range(max_attempts):
+        try:
+            response = requests.get(url, timeout=timeout)
+            try:
+                payload = response.json()
+            except json.JSONDecodeError as exc:
+                if response.status_code == 404:
+                    return {"detail": "Not found"}
+                last_error = exc
+                continue
+
+            if response.status_code == 404:
+                return payload if isinstance(payload, dict) else {"detail": "Not found"}
+
+            response.raise_for_status()
+            return payload
+        except requests.RequestException as exc:
+            last_error = exc
+
+    raise ValueError(f"{error_message} Last error: {last_error}") from last_error
 
 
 def _resolve_sample_size(sample_sizes):

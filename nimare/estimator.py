@@ -12,14 +12,16 @@ from nimare.studyset import normalize_collection
 
 
 class Estimator(NiMAREBase):
-    """Estimators take in Datasets and return MetaResults.
+    """Estimators take in collections and return fitted result objects.
 
     All Estimators must have a ``_fit`` method implemented, which applies algorithm-specific
-    methods to a Dataset and returns a dictionary of arrays to be converted into a MetaResult.
+    methods to a collection and returns a dictionary of arrays to be converted into a fitted
+    result object.
 
     Users will interact with the ``_fit`` method by calling the user-facing ``fit`` method.
     ``fit`` takes in a ``Dataset``, calls ``_collect_inputs``, then ``_preprocess_input``,
-    then ``_fit``, and finally converts the dictionary returned by ``_fit`` into a ``MetaResult``.
+    then ``_fit``, and finally converts the dictionary returned by ``_fit`` into a result
+    object via ``_make_result``.
 
     .. warning::
         Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
@@ -51,7 +53,7 @@ class Estimator(NiMAREBase):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.dataset.Dataset`
+        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
         drop_invalid : :obj:`bool`, default=True
             Whether to automatically drop any studies in the Dataset without valid data or not.
             Default is True.
@@ -111,8 +113,8 @@ class Estimator(NiMAREBase):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.dataset.Dataset`
-            The Dataset
+        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
+            The collection to preprocess.
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
@@ -129,8 +131,16 @@ class Estimator(NiMAREBase):
         """
         pass
 
+    def _make_result(self, dataset, maps=None, tables=None, description=""):
+        """Construct the fitted result object for this estimator.
+
+        Subclasses may override this to return a specialized ``MetaResult`` subclass.
+        """
+        masker = getattr(self, "masker", None) or dataset.masker
+        return MetaResult(self, mask=masker, maps=maps, tables=tables, description=description)
+
     def fit(self, dataset, drop_invalid=True):
-        """Fit Estimator to a Studyset-backed collection.
+        """Fit Estimator to a collection.
 
         Parameters
         ----------
@@ -138,12 +148,12 @@ class Estimator(NiMAREBase):
             Collection object to analyze.
         drop_invalid : :obj:`bool`, optional
             Whether to automatically ignore any studies without the required data or not.
-            Default is False.
+            Default is True.
 
         Returns
         -------
         :obj:`~nimare.results.MetaResult`
-            Results of Estimator fitting.
+            Result of Estimator fitting. Subclasses may return a ``MetaResult`` subclass.
 
         Attributes
         ----------
@@ -166,9 +176,4 @@ class Estimator(NiMAREBase):
         if not self.generate_description:
             description = ""
 
-        if hasattr(self, "masker") and self.masker is not None:
-            masker = self.masker
-        else:
-            masker = dataset.masker
-
-        return MetaResult(self, mask=masker, maps=maps, tables=tables, description=description)
+        return self._make_result(dataset, maps=maps, tables=tables, description=description)

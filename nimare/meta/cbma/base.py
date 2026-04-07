@@ -27,7 +27,9 @@ from nimare.utils import (
     _check_type,
     _mask_img_to_bool,
     get_masker,
+    get_masker_mask_image,
     mm2vox,
+    validate_coordinate_spaces,
 )
 
 LGR = logging.getLogger(__name__)
@@ -123,8 +125,8 @@ class CBMAEstimator(Estimator):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.dataset.Dataset`
-            In this method, the Dataset is used to (1) select the appropriate mask image,
+        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
+            In this method, the collection is used to (1) select the appropriate mask image,
             and (2) extract sample size metadata and place it into the coordinates input.
 
         Attributes
@@ -139,33 +141,16 @@ class CBMAEstimator(Estimator):
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
             in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
-        masker = self.masker or dataset.masker
-        if masker is None:
-            raise ValueError(
+        validate_coordinate_spaces(self.inputs_["coordinates"])
+        masker, mask_img = get_masker_mask_image(
+            self.masker,
+            dataset=dataset,
+            message=(
                 "A masker is required for coordinate-based meta-analysis. "
                 "Provide a `mask` to the Estimator (e.g., ALE(mask=...)) or initialize the "
                 "Dataset with a `target` and/or `mask` so `dataset.masker` is defined."
-            )
-
-        coord_spaces = self.inputs_["coordinates"]["space"].dropna().unique()
-        if coord_spaces.size == 0:
-            raise ValueError(
-                "Coordinate space information is missing from the Dataset. "
-                "Ensure the Dataset coordinates include a valid 'space' column."
-            )
-        if coord_spaces.size > 1:
-            shown = ", ".join(map(str, coord_spaces[:10]))
-            suffix = "..." if coord_spaces.size > 10 else ""
-            raise ValueError(
-                "Mixed coordinate spaces detected in the Dataset (space column contains more than "
-                f"one value: {shown}{suffix}). Provide a target space when creating the Dataset "
-                "to harmonize coordinates, or convert coordinates to a common space before "
-                "running a meta-analysis."
-            )
-
-        mask_img = masker.mask_img or masker.labels_img
-        if isinstance(mask_img, str):
-            mask_img = nib.load(mask_img)
+            ),
+        )
 
         for name, (type_, _) in self._required_inputs.items():
             if type_ == "coordinates":
@@ -231,8 +216,8 @@ class CBMAEstimator(Estimator):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.dataset.Dataset`
-            Dataset to analyze.
+        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
+            Collection to analyze.
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
@@ -286,7 +271,7 @@ class CBMAEstimator(Estimator):
             self.inputs_.pop(key, None)
 
     def fit(self, dataset, drop_invalid=True, ma_maps=None):
-        """Fit Estimator to a Studyset-backed collection.
+        """Fit Estimator to a collection.
 
         Parameters
         ----------
@@ -294,7 +279,7 @@ class CBMAEstimator(Estimator):
             Collection object to analyze.
         drop_invalid : :obj:`bool`, optional
             Whether to automatically ignore any studies without the required data or not.
-            Default is False.
+            Default is True.
         ma_maps : scipy sparse matrix or sparse array, optional
             Precomputed study-wise MA maps aligned to the study ids in ``dataset``.
             When provided, the estimator will reuse these maps instead of recomputing them from
@@ -1053,7 +1038,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         raise NotImplementedError
 
     def fit(self, dataset1, dataset2, drop_invalid=True, ma_maps1=None, ma_maps2=None):
-        """Fit Estimator to two Studyset-backed collections.
+        """Fit Estimator to two collections.
 
         Parameters
         ----------

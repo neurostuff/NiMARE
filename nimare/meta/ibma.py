@@ -31,6 +31,7 @@ from nimare.utils import (
     _check_ncores,
     _filter_kwargs,
     get_masker,
+    get_masker_mask_image,
 )
 
 LGR = logging.getLogger(__name__)
@@ -104,11 +105,7 @@ class IBMAEstimator(Estimator):
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
             in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
-        masker = self.masker or dataset.masker
-
-        mask_img = masker.mask_img or masker.labels_img
-        if isinstance(mask_img, str):
-            mask_img = nib.load(mask_img)
+        masker, mask_img = get_masker_mask_image(self.masker, dataset=dataset)
 
         # Reserve the key for the correlation matrix
         self.inputs_["corr_matrix"] = None

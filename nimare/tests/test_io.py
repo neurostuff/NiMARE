@@ -1,6 +1,7 @@
 """Test nimare.io (Dataset IO/transformations)."""
 
 import copy
+import json
 import os
 
 import pytest
@@ -587,6 +588,47 @@ def test_convert_neurovault_to_dataset(kwargs):
         for img_type in kwargs.get("map_type_conversion").values():
             assert not dset.images[img_type].empty
             assert len(set(dset.images[img_type])) == len(dset.images[img_type])
+
+
+def test_convert_neurovault_to_dataset_retries_collection_json(monkeypatch, tmp_path):
+    """Transient JSON parsing failures should not mask empty-contrast errors."""
+
+    class _MockResponse:
+        def __init__(self, *, payload=None, json_error=False, status_code=200, content=b""):
+            self._payload = payload
+            self._json_error = json_error
+            self.status_code = status_code
+            self.content = content
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise io.requests.HTTPError(f"HTTP {self.status_code}")
+
+        def json(self):
+            if self._json_error:
+                raise json.JSONDecodeError("Expecting value", "", 0)
+            return self._payload
+
+    call_count = {"count": 0}
+
+    def _mock_get(url, timeout=30):
+        call_count["count"] += 1
+        assert url.endswith("/images/?format=json")
+        if call_count["count"] == 1:
+            return _MockResponse(json_error=True)
+        return _MockResponse(payload={"results": []})
+
+    monkeypatch.setattr(io.requests, "get", _mock_get)
+
+    with pytest.raises(ValueError) as excinfo:
+        io.convert_neurovault_to_dataset(
+            collection_ids=(8836,),
+            contrasts={"crab_people": "cannot hurt you because they do not exist"},
+            img_dir=tmp_path,
+        )
+
+    assert "No images were found for contrast crab_people" in str(excinfo.value)
+    assert call_count["count"] == 2
 
 
 @pytest.mark.parametrize(
