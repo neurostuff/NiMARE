@@ -985,15 +985,15 @@ def _add_metadata_to_dataframe(
 
     Parameters
     ----------
-    dataset : :obj:`~nimare.dataset.Dataset`
-        Dataset containing study IDs and metadata to feed into dataframe.
+    dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
+        Collection containing study IDs and metadata to feed into dataframe.
     dataframe : :obj:`pandas.DataFrame`
-        DataFrame containing study IDs, into which Dataset metadata will be merged.
+        DataFrame containing study IDs, into which collection metadata will be merged.
     metadata_field : :obj:`str` or iterable of :obj:`str`
         Metadata field or fallback fields in ``dataset``. The first available field will be used.
     target_column : :obj:`str`
         Name of the column that will be added to ``dataframe``, containing information from the
-        Dataset.
+        collection.
     filter_func : :obj:`function`, optional
         Function to apply to the metadata so that it fits as a column in a DataFrame.
         Default is ``numpy.mean``.

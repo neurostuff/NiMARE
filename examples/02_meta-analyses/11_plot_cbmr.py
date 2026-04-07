@@ -76,7 +76,7 @@ studyset.annotations_df = annotations_df
 ###############################################################################
 # Estimation of group-specific spatial intensity functions
 # -----------------------------------------------------------------------------
-# CBMR can generate estimation of group-specific spatial internsity
+# CBMR can generate estimates of group-specific spatial intensity
 # functions for multiple groups simultaneously, with different group-specific
 # spatial regression coefficients.
 #
@@ -85,7 +85,7 @@ studyset.annotations_df = annotations_df
 # of moderators (shared by all groups).
 #
 # Note that study-level moderators can only have global effects instead of localized
-# effects within CBMR framework. In the scenario that there're multiple subgroups
+# effects within CBMR framework. In the scenario that there are multiple subgroups
 # within a group (e.g., indexed as subgroup-1 to subgroup-n, but one or more of them
 # don't have enough number of studies to be inferred as a separate group). Using
 # categorical encoding, CBMR can interpret the subgroups as categorical moderators
@@ -226,7 +226,7 @@ plot_stat_map(
 # Areas with significant p-values are highlighted (under significance level :math:`0.05`).
 
 ###############################################################################
-# Perform fasle discovery rate (FDR) correction on spatial homogeneity test
+# Perform false discovery rate (FDR) correction on spatial homogeneity test
 # -----------------------------------------------------------------------------
 # The default FDR correction method is "indep", using Benjamini-Hochberg(BH) procedure.
 from nimare.correct import FDRCorrector
@@ -349,19 +349,20 @@ plot_stat_map(
 ###############################################################################
 # GLH testing with contrast matrix specified
 # -----------------------------------------------------------------------------
-# CBMR supports more flexible GLH test by specifying a contrast matrix.
-# For example, group comparison test `2xgroup_0-1xgroup_1-1xgroup_2` can be
-# represented as `t_con_group=[2, -1, -1, 0]`, as an input in `compute_contrast`
-# function. Multiple independent GLH tests can be conducted simultaneously by
-# including multiple contrast vectors/matrices in `t_con_group`.
+# CBMR supports more flexible GLH tests by specifying contrast vectors or matrices
+# directly through the result-level `infer` API. For example, the group comparison
+# `2xgroup_0-1xgroup_1-1xgroup_2` can be represented as
+# `group_contrasts=[[2, -1, -1, 0]]`. Multiple independent GLH tests can be
+# conducted simultaneously by including multiple contrast vectors or matrices in
+# `group_contrasts`.
 #
-# CBMR also allows simultaneous GLH tests (consisting of multiple contrast vectors)
-# when it's represented as one of elements in `t_con_group` (datatype: list).
+# CBMR also allows simultaneous GLH tests consisting of multiple contrast vectors,
+# represented as one element of `group_contrasts`.
 # Only if all of null hypotheses are rejected at voxel level, p-values are significant.
-# For example, `t_con_group=[[1,-1,0,0], [1,0,-1,0], [0,0,1,-1]]` is used for testing
-# the equality of spatial intensity estimation among all of four groups (finding the
-# consistent activation regions). Note that only :math:`n-1` contrast vectors are necessary
-# for testing the equality of :math:`n` groups.
+# For example, `[[1, -1, 0, 0], [1, 0, -1, 0], [0, 0, 1, -1]]` tests the equality
+# of spatial intensity estimates across all four groups (finding consistent activation
+# regions). Note that only :math:`n-1` contrast vectors are necessary for testing the
+# equality of :math:`n` groups.
 
 contrast_result = results.infer(
     group_contrasts=[[[1, -1, 0, 0], [1, 0, -1, 0], [0, 0, 1, -1]]],
@@ -387,8 +388,8 @@ print("The contrast matrix of GLH_0 is {}".format(contrast_result.metadata["GLH_
 ###############################################################################
 # GLH testing for study-level moderators
 # -----------------------------------------------------------------------------
-# CBMR framework can estimate global study-level moderator effects,
-# and allows inference on the existence of m.
+# The CBMR framework can estimate global study-level moderator effects and allows
+# inference on whether those moderator effects differ from zero.
 contrast_result = results.test_moderators()
 print(contrast_result.tables["moderators_regression_coef"])
 print(
@@ -414,13 +415,14 @@ contrast_result = results.compare_moderators(
     [("standardized_sample_sizes", "standardized_avg_age")]
 )
 print(
-    "P-values of difference in two moderator effectors (`sample_size-avg_age`) is {}".format(
+    "P-values of the difference between two moderator effects (`sample_size-avg_age`) is {}".format(
         contrast_result.tables["p_standardized_sample_sizes-standardized_avg_age"]
     )
 )
 
 ###############################################################################
 # CBMR also allows flexible contrasts between study-level covariates.
-# For example, we can write `contrast_name` (an input to `create_contrast`
-# function) as `standardized_sample_sizes-standardized_avg_age` when exploring
-# if the moderator effects of `sample_sizes` and `avg_age` are equivalent.
+# For example, we can express the comparison
+# `standardized_sample_sizes-standardized_avg_age` directly through
+# `results.compare_moderators(...)` when exploring whether the moderator effects
+# of `sample_sizes` and `avg_age` are equivalent.

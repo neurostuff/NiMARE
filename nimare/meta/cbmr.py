@@ -179,12 +179,12 @@ class CBMREstimator(Estimator):
     Parameters
     ----------
     group_categories : :obj:`~str` or obj:`~list` or obj:`~None`, optional
-        CBMR allows dataset to be categorized into mutiple groups, according to group categories.
-        Default is one-group CBMR.
+        CBMR allows a collection to be categorized into multiple groups according to one or more
+        group categories. Default is one-group CBMR.
     moderators : :obj:`~str` or obj:`~list` or obj:`~None`, optional
         CBMR can accommodate experiment-level moderators (e.g. sample size, year of publication).
         Default is CBMR without experiment-level moderators.
-    model : : :obj:`~nimare.meta.models.GeneralLinearModel`, optional
+    model : :obj:`~nimare.meta.models.GeneralLinearModel`, optional
         Stochastic models in CBMR. The available options are
 
         ======================= ==================================================================
@@ -196,7 +196,7 @@ class CBMREstimator(Estimator):
         NegativeBinomial        This method might be slower and less stable, but slightly more
                                 accurate. Negative Binomial (NB) model asserts foci counts follow
                                 a NB distribution, and allows for anticipated excess variance
-                                relative to Poisson (there's an group-wise overdispersion parameter
+                                relative to Poisson (there's a group-wise overdispersion parameter
                                 shared by all experiments and all voxels to index excess variance).
 
         ClusteredNegativeBinomial This method is also an efficient but less accurate approach.
@@ -205,31 +205,28 @@ class CBMREstimator(Estimator):
                     each experiment, and represent a shared effect over the entire
                     brain for a given experiment.
         ======================= =================================================================
-    penalty: :obj:`~bool`, optional
-    Currently, the only available option is Firth-type penalty, which penalizes
-    likelihood function by Jeffrey's invariant prior and guarantees convergent
-    estimates.
-    spline_spacing: :obj:`~int`, optional
-    Spatial structure of foci counts is parameterized by coefficient of cubic B-spline bases
-    in CBMR. Spatial smoothness in CBMR is determined by spline spacing, which is shared across
-    x,y,z dimension.
-    Default is 10 (20mm with 2mm brain atlas template).
-    n_iters: :obj:`int`, optional
-        Number of iterations limit in optimisation of log-likelihood function.
-        Default is 10000.
+    penalty : :obj:`~bool`, optional
+        Currently, the only available option is Firth-type penalty, which penalizes the
+        likelihood function by Jeffreys' invariant prior and encourages convergence.
+    spline_spacing : :obj:`~int`, optional
+        Spatial structure of foci counts is parameterized by the coefficients of cubic
+        B-spline bases in CBMR. Spatial smoothness in CBMR is determined by spline spacing,
+        which is shared across the x, y, and z dimensions. Default is 10.
+    n_iter : :obj:`int`, optional
+        Number of iterations allowed in the log-likelihood optimization.
+        Default is 2000.
     lr: :obj:`float`, optional
         Learning rate in optimization of log-likelihood function.
-        Default is 1e-2 for Poisson and clustered NB model, and 1e-3 for NB model.
+        Default is 1.
     lr_decay: :obj:`float`, optional
         Multiplicative factor of learning rate decay.
         Default is 0.999.
     tol: :obj:`float`, optional
-        Stopping criteria w.r.t difference of log-likelihood function in two consecutive
-        iterations.
-        Default is 1e-2
+        Stopping criterion based on the change in log-likelihood between two consecutive
+        iterations. Default is 1e-9.
     device: :obj:`string`, optional
-        Device type ('cpu' or 'cuda') represents the device on which operations will be allocated
-        Default is 'cpu'
+        Device type ('cpu' or 'cuda') representing where operations will be allocated.
+        Default is 'cpu'.
     random_state : :obj:`int`, optional
         Random seed used for torch-based weight initialization. Default is None.
     **kwargs
@@ -241,21 +238,21 @@ class CBMREstimator(Estimator):
     masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker object.
     inputs_ : :obj:`dict`
-        Inputs to the Estimator. For CBMR estimators, there is only multiple keys:
+        Inputs to the Estimator. For CBMR estimators, this includes the following keys:
         coordinates,
-        mask_img (Niftiimage of brain mask),
-        id (experiment id),
-        ids_by_group (experiment id categorized by groups),
-        all_group_moderators (experiment-level moderators categorized by groups if exist),
-        coef_spline_bases (spatial matrix of coefficient of cubic B-spline
-        bases in x,y,z dimension),
-        foci_per_voxel (voxelwise sum of foci count across experiments, categorized by groups),
-        foci_per_experiment (experiment-wise sum of foci count across space, categorized by
+        mask_img (brain mask image),
+        id (experiment ids),
+        ids_by_group (experiment ids categorized by groups),
+        moderators_by_group (experiment-level moderators categorized by groups, if present),
+        coef_spline_bases (spatial matrix of cubic B-spline coefficients in x, y, and z),
+        foci_per_voxel (voxelwise sum of foci counts across experiments, categorized by groups),
+        foci_per_experiment (experiment-wise sum of foci counts across space, categorized by
         groups).
 
     Notes
     -----
-    Available correction methods: :meth:`~nimare.meta.cbmr.CBMRInference`.
+    Follow-up inference is exposed through :class:`~nimare.meta.cbmr.CBMRResult` and
+    :class:`~nimare.meta.cbmr.CBMRInference`.
     """
 
     _required_inputs = {"coordinates": ("coordinates", None)}
@@ -330,10 +327,10 @@ class CBMREstimator(Estimator):
         if type(self.model).__name__ == "PoissonEstimator":
             model_str = (
                 " Here, Poisson model \\citep{eisenberg1966general} is the most basic CBMR model. "
-                "It's based on the assumption that foci arise from a realisation of a (continues) "
+                "It's based on the assumption that foci arise from a realisation of a continuous "
                 "inhomogeneous Poisson process, so that the (discrete) voxel-wise foci counts will"
                 " be independently distributed as Poisson random variables, with rate equal to the"
-                " integral of (true, unobserved, continous) intensity function over each voxels"
+                " integral of the true, unobserved, continuous intensity function over each voxel."
             )
         elif type(self.model).__name__ == "NegativeBinomialEstimator":
             model_str = (
@@ -341,14 +338,14 @@ class CBMREstimator(Estimator):
                 "Poisson model with over-dispersion. "
                 "It's a more flexible model, but more difficult to estimate. In practice, foci"
                 "counts often display over-dispersion (the variance of response variable"
-                "substantially exceeeds the mean), which is not captured by Poisson model."
+                " substantially exceeds the mean), which is not captured by the Poisson model."
             )
         elif type(self.model).__name__ == "ClusteredNegativeBinomialEstimator":
             model_str = (
                 " Clustered NB model \\citep{geoffroy2001poisson} can also accommodate "
                 "over-dispersion in foci counts. "
-                "In NB model, the latent random variable introduces indepdentent variation"
-                "at each voxel. While in Clustered NB model, we assert the random effects are not "
+                "In the NB model, the latent random variable introduces independent variation "
+                "at each voxel. While in the Clustered NB model, we assert the random effects are not "
                 "independent voxelwise effects, but rather latent characteristics of each "
                 "experiment, and represent a shared effect over the entire brain for a given "
                 "experiment."
@@ -363,7 +360,7 @@ class CBMREstimator(Estimator):
         optimization_description = (
             "CBMR is fitted via maximizing the log-likelihood function with L-BFGS algorithm, with"
             f" learning rate {self.lr}, learning rate decay {self.lr_decay} and "
-            + "tolerance {self.tol}."
+            f"tolerance {self.tol}."
             + penalty_str
             + f" The optimization is run on {self.device}."
             f" The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
@@ -585,8 +582,8 @@ class CBMREstimator(Estimator):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.dataset.Dataset`
-            In this method, the Dataset is used to (1) select the appropriate mask image,
+        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
+            In this method, the collection is used to (1) select the appropriate mask image,
             (2) categorize experiments into multiple groups according to group categories in
             annotations,
             (3) summarize group-wise experiment id, moderators (if exist), foci per voxel, foci
@@ -596,12 +593,12 @@ class CBMREstimator(Estimator):
         Attributes
         ----------
         inputs_ : :obj:`dict`
-            Specifically, (1) a "mask_img" key will be added (Niftiimage of brain mask),
+            Specifically, (1) a "mask_img" key will be added (brain mask image),
             (2) an 'id' key will be added (id of all experiments in the dataset),
             (3) a 'coef_spline_bases' key will be added (spatial matrix of coefficient of cubic
             B-spline bases in x,y,z dimension),
             (4) an 'ids_by_group' key will be added (experiment id categorized by groups),
-            (5) an 'moderators_by_group' key will be added (experiment-level moderators categorized
+            (5) a 'moderators_by_group' key will be added (experiment-level moderators categorized
             by groups) if experiment-level moderators are considered,
             (6) an 'foci_per_voxel' key will be added (voxelwise sum of foci count across
             experiments, categorized by groups),
@@ -652,8 +649,8 @@ class CBMREstimator(Estimator):
 
         Parameters
         ----------
-        dataset : :obj:`~nimare.dataset.Dataset`
-            Dataset to analyze.
+        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
+            Collection to analyze.
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
@@ -682,43 +679,18 @@ class CBMREstimator(Estimator):
 
 
 class CBMRInference(object):
-    """Statistical inference on outcomes of CBMR.
+    """Statistical inference on fitted CBMR results.
 
     Notes
     -----
     The CBMR API design now centers inference on :class:`CBMRResult`. This class remains the
-    lower-level implementation used by those result helpers.
+    lower-level implementation used by those result helpers and by advanced users who want to
+    call :meth:`fit` and :meth:`transform` directly.
 
     .. versionadded:: 0.1.0
 
-    (intensity estimation and experiment-level moderator regressors)
-
     Parameters
     ----------
-    result : :obj:`~nimare.cbmr.CBMREstimator`
-        Results of optimized regression coefficients of CBMR, as well as their
-        standard error in `tables`. Results of estimated spatial intensity function
-        (per experiment) in `maps`.
-    t_con_groups : :obj:`~bool` or obj:`~list` or obj:`~None`, optional
-        Contrast matrix for homogeneity test or group comparison on estimated spatial
-        intensity function.
-        For boolean inputs, no statistical inference will be conducted for spatial intensity
-        if `t_con_groups` is False, and spatial homogeneity test for groupwise intensity
-        function will be conducted if `t_con_groups` is True.
-        For list inputs, generialized linear hypothesis (GLH) testing will be conducted for
-        each element independently. We also allow any element of `t_con_groups` in list type,
-        which represents GLH is conducted for all contrasts in this element simultaneously.
-        Default is homogeneity test on group-wise estimated intensity function.
-    t_con_moderators : :obj:`~bool` or obj:`~list` or obj:`~None`, optional
-        Contrast matrix for testing the existence of one or more
-        experiment-level moderator effects.
-        For boolean inputs, no statistical inference will be conducted for experiment-level
-        moderators if `t_con_moderators` is False, and statistical inference on the effect of each
-        experiment-level moderator will be conducted if `t_con_moderators` is True.
-        For list inputs, generialized linear hypothesis (GLH) testing will be conducted for
-        each element independently. We also allow any element of `t_con_moderators` in list type,
-        which represents GLH is conducted for all contrasts in this element simultaneously.
-        Default is statistical inference on the effect of each experiment-level moderator.
     device: :obj:`string`, optional
         Device type ('cpu' or 'cuda') represents the device on which operations will be allocated.
         Default is 'cpu'.
@@ -833,10 +805,9 @@ class CBMRInference(object):
 
         Parameters
         ----------
-        result : :obj:`~nimare.cbmr.CBMREstimator`
-            Results of optimized regression coefficients of CBMR, as well as their
-            standard error in `tables`. Results of estimated spatial intensity function
-            (per experiment) in `maps`.
+        result : :obj:`~nimare.meta.cbmr.CBMRResult`
+            Fitted CBMR result containing regression coefficient tables and spatial intensity
+            maps.
         """
         self.result = self._copy_result_for_inference(result)
         self._reset_inference_caches()
@@ -906,24 +877,15 @@ class CBMRInference(object):
     def create_contrast(self, contrast_name, source="groups"):
         """Create contrast matrix for generalized hypothesis testing (GLH).
 
-        (1) if `source` is "group", create contrast matrix for GLH on spatial intensity;
-        if `contrast_name` begins with 'homo_test_', followed by a valid group name,
-        create a contrast matrix for one-group homogeneity test on spatial intensity;
-        if `contrast_name` comes in the form of "group1VSgroup2", with valid group names
-        "group1" and "group2", create a contrast matrix for group comparison on estimated
-        group spatial intensity;
-        (2) if `source` is "moderator", create contrast matrix for GLH on
-        experiment-level moderators;
-        if `contrast_name` begins with 'moderator_', followed by a valid moderator name,
-        we create a contrast matrix for testing if the effect of this moderator exists;
-        if `contrast_name` comes in the form of "moderator1VSmoderator2", with valid moderator
-        names "modeator1" and "moderator2", we create a contrast matrix for testing if the
-        effect of these two moderators are different.
+        Named group contrasts may refer to a single group (for a homogeneity test) or a pairwise
+        comparison such as ``group_a-group_b``. Named moderator contrasts follow the same pattern.
 
         Parameters
         ----------
-        contrast_name : :obj:`~string`
-            Name of contrast in GLH.
+        contrast_name : :obj:`~string` or sequence of :obj:`~string`
+            Name or names of the contrasts to construct.
+        source : {"groups", "moderators"}, optional
+            Whether to build group or moderator contrasts.
         """
         contrast_name = _normalize_named_pairwise_contrasts(contrast_name)
         contrast_matrix = {}
@@ -981,12 +943,14 @@ class CBMRInference(object):
 
         Parameters
         ----------
-        t_con_groups : :obj:`~list`, optional
-            Contrast matrix for GLH on group-wise spatial intensity estimation.
-            Default is None (group-wise homogeneity test for all groups).
-        t_con_moderators : :obj:`~list`, optional
-            Contrast matrix for GLH on moderator effects.
-            Default is None (tests if moderator effects exist for all moderators).
+        t_con_groups : bool, dict, list, tuple, str, or None, optional
+            Group inference specification. Use ``None`` or ``True`` to test all groups,
+            ``False`` to skip group inference, named contrasts such as ``"group_a-group_b"`` or
+            ``("group_a", "group_b")`` for pairwise tests, a dict mapping names to contrast
+            arrays, or raw contrast arrays.
+        t_con_moderators : bool, dict, list, tuple, str, or None, optional
+            Moderator inference specification with the same accepted forms as
+            ``t_con_groups``.
         """
         self.t_con_groups = t_con_groups
         self.t_con_moderators = t_con_moderators
