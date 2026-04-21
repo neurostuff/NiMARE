@@ -2,7 +2,16 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.15.0...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.16.0...HEAD)
+
+## [0.16.0](https://github.com/neurostuff/NiMARE/compare/0.15.0...0.16.0) - 2026-04-21
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+* [ENH] make loading large studysets faster by @jdkent in https://github.com/neurostuff/NiMARE/pull/1007
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.15.0...0.16.0
 
 ## [0.15.0](https://github.com/neurostuff/NiMARE/compare/0.14.0...0.15.0) - 2026-04-07
 
