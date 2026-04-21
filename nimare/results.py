@@ -233,15 +233,23 @@ class MetaResult(NiMAREBase):
             else:
                 LGR.warning(f"Table {tabletype} is None. Not saving.")
 
+    def _set_description(self, desc):
+        self.__description = desc
+        self.bibtex_ = "" if not desc else get_description_references(desc)
+
     def copy(self):
         """Return copy of result object."""
-        new = MetaResult(
-            estimator=self.estimator,
-            corrector=self.corrector,
-            diagnostics=self.diagnostics,
-            mask=self.masker,
-            maps=copy.deepcopy(self.maps),
-            tables=copy.deepcopy(self.tables),
-            description=self.description_,
-        )
+        new = object.__new__(MetaResult)
+        # Deep copy the estimator so that corrected results can update estimator state
+        # without mutating the original MetaResult or estimator.
+        new.estimator = copy.deepcopy(self.estimator)
+        new.corrector = self.corrector
+        new.diagnostics = self.diagnostics
+        new.masker = self.masker
+        new.maps = copy.deepcopy(self.maps)
+        new.tables = copy.deepcopy(self.tables)
+        new.metadata = {}
+        # Bypass the description_ setter (which re-parses bibtex on every call).
+        # Both attributes are already computed and neither changes after fit.
+        new._set_description(self.description_)
         return new
