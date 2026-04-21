@@ -136,6 +136,10 @@ def _cached_default_masker(target):
 
 def _apply_annotation_payloads(source_dict, annotation_payloads):
     """Apply top-level annotation notes into analysis-level annotation dictionaries."""
+    if annotation_payloads is None:
+        return source_dict
+
+    annotation_payloads = _coerce_annotation_payloads(annotation_payloads)
     if not annotation_payloads:
         source_dict["annotations"] = []
         return source_dict
@@ -258,6 +262,8 @@ def _build_tables_from_source(source_dict):
 
     # Coordinate rows: collected as parallel column-arrays for fast DataFrame construction.
     # POINT_RELATIONSHIP_COLUMNS are collected as lists and only added when non-all-None.
+    # The resulting DataFrame is canonicalized by a stable sort on 'id', making
+    # coordinate ordering explicit while preserving original order for rows with identical ids.
     coord_ids_acc: list = []
     coord_study_ids_acc: list = []
     coord_contrast_ids_acc: list = []
@@ -548,11 +554,8 @@ class StudysetStore:
             target,
             harmonize_coordinates=harmonize_coordinates,
         )
-        annotation_payloads = (
-            _coerce_annotation_payloads(annotation_payloads)
-            if annotation_payloads is not None
-            else _coerce_annotation_payloads(source_dict.get("annotations", []))
-        )
+        if annotation_payloads is None:
+            annotation_payloads = source_dict.get("annotations", [])
         source_dict = _apply_annotation_payloads(source_dict, annotation_payloads)
         return cls(
             source_dict["id"],
