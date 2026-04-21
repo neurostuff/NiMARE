@@ -136,6 +136,10 @@ def _cached_default_masker(target):
 
 def _apply_annotation_payloads(source_dict, annotation_payloads):
     """Apply top-level annotation notes into analysis-level annotation dictionaries."""
+    if not annotation_payloads:
+        source_dict["annotations"] = []
+        return source_dict
+
     analysis_map = {}
     for study in source_dict.get("studies", []):
         for analysis in study.get("analyses", []):
@@ -247,11 +251,24 @@ def _build_tables_from_source(source_dict):
     studies_rows = []
     analyses_rows = []
     ids = []
-    coordinate_rows = []
     image_rows = []
     metadata_rows = []
     annotation_rows = []
     text_rows = []
+
+    # Coordinate rows: collected as parallel column-arrays for fast DataFrame construction.
+    # POINT_RELATIONSHIP_COLUMNS are collected as lists and only added when non-all-None.
+    coord_ids_acc: list = []
+    coord_study_ids_acc: list = []
+    coord_contrast_ids_acc: list = []
+    coord_xs: list = []
+    coord_ys: list = []
+    coord_zs: list = []
+    coord_spaces: list = []
+    prc_lists: dict = {col: [] for col in POINT_RELATIONSHIP_COLUMNS}
+    prc_seen: dict = {col: False for col in POINT_RELATIONSHIP_COLUMNS}
+    # Truly sparse extras (point values, coordinate_metadata): (row_index, {col: val})
+    coord_sparse_extras: list = []
 
     for study in source_dict.get("studies", []):
         study_id = str(study["id"])
@@ -286,29 +303,30 @@ def _build_tables_from_source(source_dict):
                 "journal": study.get("publication", ""),
                 "name": f"{study_name}-{analysis_name}",
             }
-            study_metadata = study.get("metadata", {}) or {}
-            analysis_metadata = analysis.get("metadata", {}) or {}
+            study_metadata = study.get("metadata") or {}
+            analysis_metadata = analysis.get("metadata") or {}
             coordinate_metadata, coordinate_metadata_keys = _extract_coordinate_row_metadata(
                 analysis_metadata,
                 len(analysis.get("points", []) or []),
             )
-            combined_metadata = copy.deepcopy(study_metadata)
-            combined_metadata.update(copy.deepcopy(analysis_metadata))
-            combined_metadata.pop("sample_sizes", None)
-            combined_metadata.pop("sample_size", None)
-            for key in coordinate_metadata_keys:
-                combined_metadata.pop(key, None)
-            sample_sizes = _extract_coerced_sample_sizes(
-                [
-                    ("sample_sizes", analysis_metadata.get("sample_sizes")),
-                    ("sample_size", analysis_metadata.get("sample_size")),
-                    ("sample_sizes", study_metadata.get("sample_sizes")),
-                    ("sample_size", study_metadata.get("sample_size")),
-                ]
-            )
-            if sample_sizes:
-                combined_metadata["sample_sizes"] = sample_sizes
-            metadata_row.update(combined_metadata)
+            if study_metadata or analysis_metadata:
+                combined_metadata = copy.deepcopy(study_metadata)
+                combined_metadata.update(copy.deepcopy(analysis_metadata))
+                combined_metadata.pop("sample_sizes", None)
+                combined_metadata.pop("sample_size", None)
+                for key in coordinate_metadata_keys:
+                    combined_metadata.pop(key, None)
+                sample_sizes = _extract_coerced_sample_sizes(
+                    [
+                        ("sample_sizes", analysis_metadata.get("sample_sizes")),
+                        ("sample_size", analysis_metadata.get("sample_size")),
+                        ("sample_sizes", study_metadata.get("sample_sizes")),
+                        ("sample_size", study_metadata.get("sample_size")),
+                    ]
+                )
+                if sample_sizes:
+                    combined_metadata["sample_sizes"] = sample_sizes
+                metadata_row.update(combined_metadata)
             metadata_rows.append(metadata_row)
 
             annotation_row = dict(base_row)
@@ -320,7 +338,9 @@ def _build_tables_from_source(source_dict):
             annotation_rows.append(annotation_row)
 
             text_row = dict(base_row)
-            text_row.update(copy.deepcopy(analysis.get("texts", {}) or {}))
+            texts = analysis.get("texts") or {}
+            if texts:
+                text_row.update(copy.deepcopy(texts))
             text_rows.append(text_row)
 
             image_row = dict(base_row)
@@ -340,37 +360,68 @@ def _build_tables_from_source(source_dict):
 
             for i_point, point in enumerate(analysis.get("points", []) or []):
                 coords = point.get("coordinates", [None, None, None])
-                coordinate_row = {
-                    **base_row,
-                    "x": float(coords[0]),
-                    "y": float(coords[1]),
-                    "z": float(coords[2]),
-                    "space": point.get("space"),
-                }
-                for column in POINT_RELATIONSHIP_COLUMNS:
-                    value = point.get(column)
-                    if value is not None:
-                        coordinate_row[column] = value
+                coord_ids_acc.append(full_id)
+                coord_study_ids_acc.append(study_id)
+                coord_contrast_ids_acc.append(contrast_id)
+                coord_xs.append(coords[0])
+                coord_ys.append(coords[1])
+                coord_zs.append(coords[2])
+                coord_spaces.append(point.get("space"))
 
+                for col in POINT_RELATIONSHIP_COLUMNS:
+                    val = point.get(col)
+                    prc_lists[col].append(val)
+                    if val is not None:
+                        prc_seen[col] = True
+
+                extra: dict = {}
                 for point_value in point.get("values", []) or []:
                     if not isinstance(point_value, dict):
                         continue
                     column = _point_value_kind_to_coordinate_column(point_value.get("kind"))
                     value = point_value.get("value")
                     if column is not None and value is not None:
-                        coordinate_row[column] = value
-
+                        extra[column] = value
                 for column, values in coordinate_metadata.items():
-                    coordinate_row[column] = values[i_point]
+                    extra[column] = values[i_point]
+                if extra:
+                    coord_sparse_extras.append((len(coord_ids_acc) - 1, extra))
 
-                coordinate_rows.append(coordinate_row)
+    n_coord = len(coord_ids_acc)
+    if n_coord:
+        coord_frame: dict = {
+            "id": coord_ids_acc,
+            "study_id": coord_study_ids_acc,
+            "contrast_id": coord_contrast_ids_acc,
+            "x": np.asarray(coord_xs, dtype=float),
+            "y": np.asarray(coord_ys, dtype=float),
+            "z": np.asarray(coord_zs, dtype=float),
+            "space": coord_spaces,
+        }
+        for col in POINT_RELATIONSHIP_COLUMNS:
+            if prc_seen[col]:
+                coord_frame[col] = prc_lists[col]
+        if coord_sparse_extras:
+            extra_cols: dict = {}
+            for row_idx, extra in coord_sparse_extras:
+                for col, val in extra.items():
+                    if col not in extra_cols:
+                        extra_cols[col] = [None] * n_coord
+                    extra_cols[col][row_idx] = val
+            coord_frame.update(extra_cols)
+        id_arr = np.asarray(coord_ids_acc, dtype=str)
+        coord_frame["id"] = id_arr
+        sort_order = np.argsort(id_arr, kind="stable")
+        coord_df = pd.DataFrame(coord_frame).iloc[sort_order].reset_index(drop=True)
+    else:
+        coord_df = pd.DataFrame(columns=_ID_COLS + ["x", "y", "z", "space"])
 
     ids = np.sort(np.asarray(ids, dtype=str))
     return {
         "studies": _rows_to_df(studies_rows, ["study_id", "name", "authors", "publication"]),
         "analyses": _rows_to_df(analyses_rows, _ID_COLS + ["name"]),
         "ids": ids,
-        "coordinates": _rows_to_df(coordinate_rows, _ID_COLS + ["x", "y", "z", "space"]),
+        "coordinates": coord_df,
         "images": _rows_to_df(image_rows, _ID_COLS, normalize_none_strings=True),
         "metadata": _rows_to_df(metadata_rows, _ID_COLS, normalize_none_strings=True),
         "annotations": _rows_to_df(annotation_rows, _ID_COLS, normalize_none_strings=True),
@@ -683,7 +734,7 @@ class StudysetStore:
             }
 
         if selected_full_ids is None:
-            return copy.deepcopy(source_dict)
+            return _structural_copy_source_dict(source_dict)
 
         selected_ids = set(self.selected_ids(selected_full_ids).tolist())
         if not selected_ids:

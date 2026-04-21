@@ -166,9 +166,11 @@ class Studyset:
         if target is _UNSET:
             target = "mni152_2mm"
 
-        # load source as json
+        # load source as json; track ownership so the structural copy can be skipped
+        _owned = False
         if isinstance(source, str):
             source = load_json(source)
+            _owned = True  # freshly parsed — no other reference exists
 
         _validate_studyset_source(source)
 
@@ -184,6 +186,7 @@ class Studyset:
             annotation_payloads=annotation_payloads,
             target=target,
             harmonize_coordinates=harmonize_coordinates,
+            _owned=_owned,
         )
         execution_profile = StudysetExecutionProfile(
             target=target,
@@ -929,21 +932,23 @@ class Studyset:
 
     def combine_analyses(self):
         """Combine analyses in Studyset."""
-        studyset = self.copy()
-        for study in studyset.studies:
-            if len(study.analyses) > 1:
-                source_lst = [analysis.to_dict() for analysis in study.analyses]
-                ids = [source["id"] for source in source_lst]
-                names = [source["name"] for source in source_lst]
-                conditions = [source.get("conditions", []) for source in source_lst]
-                images = [source.get("images", []) for source in source_lst]
-                points = [source.get("points", []) for source in source_lst]
-                weights = [source.get("weights", []) for source in source_lst]
-                metadata = [source.get("metadata", {}) for source in source_lst]
-                annotations = [source.get("annotations", {}) for source in source_lst]
-                texts = [source.get("texts", {}) for source in source_lst]
+        from nimare._studyset_store import StudysetStore
 
-                new_source = {
+        source_dict = self.to_dict()
+        for study in source_dict.get("studies", []):
+            analyses = study.get("analyses", [])
+            if len(analyses) > 1:
+                ids = [a["id"] for a in analyses]
+                names = [a.get("name", "") for a in analyses]
+                conditions = [a.get("conditions", []) for a in analyses]
+                images = [a.get("images", []) for a in analyses]
+                points = [a.get("points", []) for a in analyses]
+                weights = [a.get("weights", []) for a in analyses]
+                metadata = [a.get("metadata", {}) for a in analyses]
+                annotations = [a.get("annotations", {}) for a in analyses]
+                texts = [a.get("texts", {}) for a in analyses]
+
+                new_analysis = {
                     "id": "_".join(ids),
                     "name": "; ".join(names),
                     "conditions": [cond for c_list in conditions for cond in c_list],
@@ -957,16 +962,23 @@ class Studyset:
                 }
                 combined_texts = {k: v for text_dict in texts for k, v in text_dict.items()}
                 if combined_annotations:
-                    new_source["annotations"] = combined_annotations
+                    new_analysis["annotations"] = combined_annotations
                 if combined_texts:
-                    new_source["texts"] = combined_texts
-                study.analyses = [Analysis(new_source)]
+                    new_analysis["texts"] = combined_texts
+                study["analyses"] = [new_analysis]
 
-        # Old Analysis objects are gone; Annotation notes hold dead weak references.
-        # Clear top-level annotations so touch() can rebuild cleanly.
-        studyset._annotations = []
-        studyset.touch()
-        return studyset
+        # Drop annotation payloads: they reference pre-merge analysis IDs and
+        # can't be mapped to the new merged IDs, so clear them (matching the
+        # original copy+touch behaviour that set _annotations = []).
+        source_dict.pop("annotations", None)
+        store = StudysetStore.from_source_dict(
+            source_dict,
+            annotation_payloads=[],
+            target=None,
+            harmonize_coordinates=False,
+            _owned=True,
+        )
+        return self.__class__._from_store(store, self._copy_execution_profile())
 
     def to_nimads(self, filename):
         """Write the Studyset to a NIMADS JSON file."""

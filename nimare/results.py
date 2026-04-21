@@ -235,13 +235,18 @@ class MetaResult(NiMAREBase):
 
     def copy(self):
         """Return copy of result object."""
-        new = MetaResult(
-            estimator=self.estimator,
-            corrector=self.corrector,
-            diagnostics=self.diagnostics,
-            mask=self.masker,
-            maps=copy.deepcopy(self.maps),
-            tables=copy.deepcopy(self.tables),
-            description=self.description_,
-        )
+        new = object.__new__(MetaResult)
+        # estimator and corrector were already deepcopied in __init__; share references
+        # since neither is mutated after fit — only maps and tables change per corrector pass
+        new.estimator = self.estimator
+        new.corrector = self.corrector
+        new.diagnostics = self.diagnostics
+        new.masker = self.masker
+        new.maps = copy.deepcopy(self.maps)
+        new.tables = copy.deepcopy(self.tables)
+        new.metadata = {}
+        # Bypass the description_ setter (which re-parses bibtex on every call).
+        # Both attributes are already computed and neither changes after fit.
+        new._MetaResult__description = self._MetaResult__description
+        new.bibtex_ = self.bibtex_
         return new
