@@ -1,5 +1,6 @@
 """CBMA methods from the activation likelihood estimation (ALE) family."""
 
+import copy
 import gc
 import logging
 import os
@@ -8,7 +9,7 @@ import time
 import warnings
 from contextlib import contextmanager
 from dataclasses import dataclass
-from itertools import chain
+from itertools import chain, combinations
 
 import nibabel as nib
 import numpy as np
@@ -17,10 +18,13 @@ from joblib import Memory, Parallel, delayed
 from numba import jit
 from scipy import ndimage
 from scipy import sparse as sp_sparse
+from scipy.special import comb
+from scipy.stats import norm
 from tqdm.auto import tqdm
 
 from nimare import _version
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare.meta.cbma.predictive import PredictiveCutoffError, predict_cutoffs
 from nimare.meta.cbma.utils import collect_csr_ma_maps, require_masked_csr
 from nimare.meta.kernel import ALEKernel
 from nimare.meta.utils import (
@@ -28,7 +32,8 @@ from nimare.meta.utils import (
     compute_ale_ma,
     get_ale_kernel,
 )
-from nimare.stats import null_to_p
+from nimare.results import MetaResult
+from nimare.stats import null_to_p, safe_logp
 from nimare.transforms import p_to_z
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
@@ -257,6 +262,274 @@ def _finalize_alediff_tail_counts(left_counts, right_counts, n_iters):
         copy=False,
     )
     return p_values, diff_signs
+
+
+def _group_row_max(ma_values):
+    """Compute row-wise maxima for either a CSR matrix or a chunked CSR group."""
+    if sp_sparse.isspmatrix(ma_values):
+        return _csr_row_max(require_masked_csr(ma_values))
+    if _is_chunked_group(ma_values):
+        return np.concatenate([_csr_row_max(chunk) for chunk in ma_values.chunks]).astype(
+            DEFAULT_FLOAT_DTYPE,
+            copy=False,
+        )
+    raise ValueError(f"Unsupported MA map container '{type(ma_values)}'.")
+
+
+def _iter_group_study_values(ma_values):
+    """Yield per-study nonzero MA values for a CSR matrix or chunked CSR group."""
+    if sp_sparse.isspmatrix(ma_values):
+        ma_values = require_masked_csr(ma_values)
+        for i_row in range(ma_values.shape[0]):
+            start = ma_values.indptr[i_row]
+            end = ma_values.indptr[i_row + 1]
+            yield ma_values.data[start:end]
+        return
+
+    if _is_chunked_group(ma_values):
+        for chunk in ma_values.chunks:
+            chunk = require_masked_csr(chunk)
+            for i_row in range(chunk.shape[0]):
+                start = chunk.indptr[i_row]
+                end = chunk.indptr[i_row + 1]
+                yield chunk.data[start:end]
+        return
+
+    raise ValueError(f"Unsupported MA map container '{type(ma_values)}'.")
+
+
+def _compute_group_approximate_null(estimator, ma_maps):
+    """Populate ALE approximate-null state from a CSR or chunked MA group."""
+    estimator.null_distributions_ = {}
+    estimator._study_max_ma_values = _group_row_max(ma_maps)
+
+    inv_step_size = 100000
+    step_size = 1 / inv_step_size
+    max_ma_values = np.ceil(estimator._study_max_ma_values * inv_step_size) / inv_step_size
+    max_poss_ale = estimator._compute_summarystat(max_ma_values)
+    hist_bins = np.round(np.arange(0, max_poss_ale + (1.5 * step_size), step_size), 5)
+    estimator.null_distributions_["histogram_bins"] = hist_bins
+
+    bin_centers = hist_bins.astype(np.float64, copy=False)
+    step_size = bin_centers[1] - bin_centers[0]
+    inv_step_size = 1 / step_size
+    n_bins = bin_centers.shape[0]
+    mask_voxel_recip = 1.0 / estimator._ALE__n_mask_voxels
+
+    ale_hist = None
+    tmp_hist = np.zeros(n_bins, dtype=np.float64)
+    for study_ma_values in _iter_group_study_values(ma_maps):
+        n_nonzero_voxels = study_ma_values.shape[0]
+        n_zero_voxels = estimator._ALE__n_mask_voxels - n_nonzero_voxels
+        exp_hist = _study_ma_histogram(
+            study_ma_values,
+            n_zero_voxels,
+            mask_voxel_recip,
+            inv_step_size,
+            n_bins,
+        )
+        if ale_hist is None:
+            ale_hist = exp_hist.copy()
+            continue
+
+        ale_idx = np.where(ale_hist > 0)[0]
+        exp_hist_idx = np.where(exp_hist > 0)[0]
+        _update_ale_histogram(
+            ale_idx,
+            ale_hist[ale_idx],
+            exp_hist_idx,
+            exp_hist[exp_hist_idx],
+            bin_centers,
+            inv_step_size,
+            n_bins,
+            tmp_hist,
+        )
+        ale_hist, tmp_hist = tmp_hist, ale_hist
+
+    estimator.null_distributions_["histweights_corr-none_method-approximate"] = ale_hist
+
+
+def _prefix_ale_group_maps(maps, group_label):
+    """Rename one-sample ALE maps for storage inside a pairwise result."""
+    name_map = {
+        "stat": f"stat_desc-{group_label}",
+        "p": f"p_desc-{group_label}",
+        "z": f"z_desc-{group_label}",
+        "logp": f"logp_desc-{group_label}",
+        "p_level-voxel": f"p_desc-{group_label}_level-voxel",
+        "z_level-voxel": f"z_desc-{group_label}_level-voxel",
+        "logp_level-voxel": f"logp_desc-{group_label}_level-voxel",
+        "p_desc-size_level-cluster": f"p_desc-{group_label}Size_level-cluster",
+        "z_desc-size_level-cluster": f"z_desc-{group_label}Size_level-cluster",
+        "logp_desc-size_level-cluster": f"logp_desc-{group_label}Size_level-cluster",
+        "p_desc-mass_level-cluster": f"p_desc-{group_label}Mass_level-cluster",
+        "z_desc-mass_level-cluster": f"z_desc-{group_label}Mass_level-cluster",
+        "logp_desc-mass_level-cluster": f"logp_desc-{group_label}Mass_level-cluster",
+    }
+    return {name_map[key]: value for key, value in maps.items() if key in name_map}
+
+
+def _ale_uncorrected_group_maps(pairwise_estimator, ma_maps, group_label, stat_values=None):
+    """Compute uncorrected one-sample ALE maps for a pairwise group."""
+    temp_estimator = ALE(
+        kernel_transformer=copy.deepcopy(pairwise_estimator.kernel_transformer),
+        null_method="approximate",
+        memory=pairwise_estimator.memory,
+        memory_level=pairwise_estimator.memory_level,
+        n_cores=getattr(pairwise_estimator, "n_cores", 1),
+        mask=pairwise_estimator.masker,
+    )
+    temp_estimator.masker = pairwise_estimator.masker
+    if stat_values is None:
+        stat_values = _compute_ale_summarystat(ma_maps)
+    temp_estimator._ALE__n_mask_voxels = stat_values.shape[0]
+    _compute_group_approximate_null(temp_estimator, ma_maps)
+    p_values, z_values = temp_estimator._summarystat_to_p(stat_values, null_method="approximate")
+    maps = {
+        "stat": stat_values.astype(DEFAULT_FLOAT_DTYPE, copy=False),
+        "p": p_values.astype(DEFAULT_FLOAT_DTYPE, copy=False),
+        "z": z_values.astype(DEFAULT_FLOAT_DTYPE, copy=False),
+        "logp": safe_logp(p_values),
+    }
+    return _prefix_ale_group_maps(maps, group_label)
+
+
+def _generate_unique_subsamples(total_n, target_n, sample_n, random_state=None):
+    """Generate unique subsamples of study indices without replacement."""
+    if not 0 < target_n <= total_n:
+        raise ValueError(f"target_n must be between 1 and total_n ({total_n}); got {target_n}.")
+    max_combinations = int(comb(total_n, target_n, exact=True))
+    sample_n = min(int(sample_n), max_combinations)
+    rng = np.random.RandomState(random_state)
+
+    if sample_n == max_combinations and max_combinations <= 10000:
+        return [np.asarray(idx, dtype=np.int32) for idx in combinations(range(total_n), target_n)]
+
+    subsamples = set()
+    while len(subsamples) < sample_n:
+        sample = tuple(np.sort(rng.choice(total_n, size=target_n, replace=False)))
+        subsamples.add(sample)
+
+    return [np.asarray(sample, dtype=np.int32) for sample in sorted(subsamples)]
+
+
+def _validate_nonoverlapping_pairwise_datasets(dataset1, dataset2, estimator_name):
+    """Raise when pairwise datasets share study ids."""
+    overlap = set(dataset1.ids).intersection(dataset2.ids)
+    if overlap:
+        raise ValueError(
+            f"{estimator_name} requires non-overlapping datasets. Overlapping ids include: "
+            + ", ".join(sorted(list(overlap))[:10])
+        )
+
+
+def _resolve_balanced_target_n(dataset1, dataset2, target_n):
+    """Infer or validate the matched-size study count for balanced pairwise resampling."""
+    max_target_n = min(len(dataset1.ids), len(dataset2.ids))
+    resolved_target_n = target_n or max_target_n
+    if not 0 < resolved_target_n <= max_target_n:
+        raise ValueError(
+            "target_n must be between 1 and the smaller group size; " f"got {resolved_target_n}."
+        )
+    return resolved_target_n
+
+
+def _jale_threshold_z_clusters(z_values, masker, voxel_thresh, cluster_size_threshold=None):
+    """Apply JALE-style cluster thresholding to a z map in masked-array space."""
+    z_map = masker.inverse_transform(z_values).get_fdata(dtype=DEFAULT_FLOAT_DTYPE)
+    sig_arr = z_map > norm.ppf(1 - voxel_thresh)
+    labels, cluster_count = ndimage.label(sig_arr)
+    if cluster_count < 1:
+        return np.zeros_like(z_values), 0
+
+    voxel_count_clusters = np.bincount(labels[labels > 0])
+    max_clust = int(np.max(voxel_count_clusters)) if voxel_count_clusters.size else 0
+    if cluster_size_threshold is not None:
+        significant_clusters = voxel_count_clusters > cluster_size_threshold
+        sig_clust_labels = np.where(significant_clusters)[0]
+        z_map = z_map * np.isin(labels, sig_clust_labels)
+    return np.squeeze(masker.transform(nib.Nifti1Image(z_map, masker.mask_img.affine))), max_clust
+
+
+def _ale_approximate_z_from_ma(estimator, ma_maps):
+    """Compute ALE summary statistics and approximate-null z values for one MA collection."""
+    temp_estimator = copy.deepcopy(estimator)
+    temp_estimator.null_distributions_ = {}
+    temp_estimator._study_max_ma_values = _csr_row_max(ma_maps).astype(
+        DEFAULT_FLOAT_DTYPE,
+        copy=False,
+    )
+    stat_values = temp_estimator._compute_summarystat_est(ma_maps)
+    temp_estimator._determine_histogram_bins(ma_maps)
+    temp_estimator._compute_null_approximate(ma_maps)
+    _, z_values = temp_estimator._summarystat_to_p(stat_values, null_method="approximate")
+    return stat_values.astype(DEFAULT_FLOAT_DTYPE, copy=False), z_values.astype(
+        DEFAULT_FLOAT_DTYPE,
+        copy=False,
+    )
+
+
+def _masked_prior_columns(masker, prior_space="gm", gm_threshold=0.1):
+    """Return full-image and masked-space prior indicators from the active masker.
+
+    Parameters
+    ----------
+    prior_space : {"gm", "brain"}, optional
+        Voxel set used as the randomization prior. ``"gm"`` restricts sampling
+        to voxels with grey-matter probability above ``gm_threshold`` in the
+        mask image (the ICBM 10% GM probability map). ``"brain"`` includes
+        every non-zero voxel in the mask image, i.e. the whole-brain mask.
+        Default is ``"gm"``.
+    gm_threshold : float, optional
+        Intensity threshold applied when ``prior_space="gm"``. Default is 0.1.
+    """
+    mask_data = np.asanyarray(masker.mask_img.dataobj)
+    if prior_space == "gm":
+        prior_img = mask_data > gm_threshold
+    elif prior_space == "brain":
+        prior_img = mask_data > 0
+    else:
+        raise ValueError(f"prior_space must be 'gm' or 'brain'; got {prior_space!r}.")
+    prior_masked = np.squeeze(
+        masker.transform(nib.Nifti1Image(prior_img.astype(np.int8), masker.mask_img.affine))
+    ).astype(bool, copy=False)
+    return prior_img, prior_masked
+
+
+def _study_metadata_from_coordinates(coordinates):
+    """Extract per-study sample sizes and focus counts from an ALE coordinates table."""
+    grouped = coordinates.groupby("id", sort=False)
+    sample_sizes = grouped["sample_size"].mean().to_numpy(dtype=np.int32)
+    num_foci = grouped.size().to_numpy(dtype=np.int32)
+    return sample_sizes, num_foci
+
+
+def _random_ale_ma_from_metadata(mask_img, sample_sizes, num_foci, sample_space, rng):
+    """Generate a random ALE MA matrix using JALE-style foci counts and sample sizes."""
+    all_ijks = []
+    exp_idx = []
+    focus_sample_sizes = []
+    for i_study, (study_nsub, study_nfoci) in enumerate(zip(sample_sizes, num_foci)):
+        if hasattr(rng, "integers"):
+            focus_idx = rng.integers(sample_space.shape[0], size=int(study_nfoci))
+        else:
+            focus_idx = rng.randint(0, sample_space.shape[0], size=int(study_nfoci))
+        study_ijks = sample_space[focus_idx, :]
+        all_ijks.append(study_ijks)
+        exp_idx.extend([i_study] * int(study_nfoci))
+        focus_sample_sizes.extend([int(study_nsub)] * int(study_nfoci))
+
+    ijks = np.vstack(all_ijks).astype(np.int32, copy=False)
+    exp_idx = np.asarray(exp_idx, dtype=np.int32)
+    focus_sample_sizes = np.asarray(focus_sample_sizes, dtype=np.int32)
+    ma_maps, _, _ = compute_ale_ma(
+        mask_img,
+        ijks,
+        exp_idx=exp_idx,
+        sample_sizes=focus_sample_sizes,
+        use_dict=True,
+    )
+    return require_masked_csr(ma_maps)
 
 
 def _collect_masked_ma_maps(estimator, coords_key="coordinates", maps_key="ma_maps"):
@@ -694,6 +967,148 @@ class ALE(CBMAEstimator):
 
         self.null_distributions_["histweights_corr-none_method-approximate"] = ale_hist
 
+    def _predictive_counts(self):
+        """Return experiment-level subject and focus counts for predictive ALE cutoffs."""
+        coordinates = self.inputs_["coordinates"]
+        if "sample_size" not in coordinates.columns:
+            raise PredictiveCutoffError(
+                "ALE predictive cutoff requires per-experiment sample sizes in the fitted "
+                "coordinates. Fit ALE with sample sizes available in the dataset metadata."
+            )
+
+        grouped = coordinates.groupby("id", sort=False)
+        nsub = grouped["sample_size"].mean().to_numpy(dtype=float)
+        nfoci = grouped.size().to_numpy(dtype=float)
+        return grouped.ngroups, nsub, nfoci
+
+    def _threshold_clusters_by_size(self, stat_values, ss_thresh, cluster_size_thresh):
+        """Return a masked-array cluster map thresholded by statistic and cluster size."""
+        stat_map = self.masker.inverse_transform(stat_values).get_fdata(dtype=DEFAULT_FLOAT_DTYPE)
+        stat_map[stat_map <= ss_thresh] = 0
+        conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
+        labeled, _ = ndimage.label(stat_map > 0, conn)
+        if not labeled.any():
+            return np.zeros(stat_values.shape[0], dtype=bool)
+
+        _, idx, cluster_sizes = np.unique(labeled, return_inverse=True, return_counts=True)
+        cluster_sizes[0] = 0
+        keep = cluster_sizes[idx].reshape(labeled.shape) >= cluster_size_thresh
+        keep &= stat_map > 0
+        return np.squeeze(
+            self.masker.transform(
+                nib.Nifti1Image(keep.astype(np.int8), self.masker.mask_img.affine)
+            )
+        ).astype(bool, copy=False)
+
+    def correct_fwe_predictive(self, result):
+        """Apply JALE-style predictive vFWE and cFWE cutoffs to an ALE result."""
+        stat_values = result.get_map("stat", return_type="array")
+        p_values = result.get_map("p", return_type="array")
+        z_values = result.get_map("z", return_type="array")
+
+        nexp, nsub, nfoci = self._predictive_counts()
+        cutoffs = predict_cutoffs(nexp, nsub, nfoci)
+        self.null_distributions_["summary_stat_thresh_level-voxel_corr-fwe_method-predictive"] = (
+            cutoffs["vfwe"]
+        )
+        self.null_distributions_[
+            "summary_stat_thresh_desc-size_level-cluster_corr-fwe_method-predictive"
+        ] = float(cutoffs["cfwe"])
+
+        voxel_mask = stat_values >= cutoffs["vfwe"]
+        ss_thresh = self._p_to_summarystat(0.001)
+        cluster_mask = self._threshold_clusters_by_size(stat_values, ss_thresh, cutoffs["cfwe"])
+
+        one = np.array(1.0, dtype=DEFAULT_FLOAT_DTYPE)
+        eps = np.array(np.finfo(DEFAULT_FLOAT_DTYPE).eps, dtype=DEFAULT_FLOAT_DTYPE)
+        p_vfwe = np.where(voxel_mask, np.minimum(p_values, one), one).astype(
+            DEFAULT_FLOAT_DTYPE,
+            copy=False,
+        )
+        p_vfwe[voxel_mask] = np.maximum(p_vfwe[voxel_mask], eps)
+        p_cfwe = np.where(cluster_mask, np.minimum(p_values, one), one).astype(
+            DEFAULT_FLOAT_DTYPE,
+            copy=False,
+        )
+        p_cfwe[cluster_mask] = np.maximum(p_cfwe[cluster_mask], eps)
+
+        z_vfwe = np.where(voxel_mask, z_values, 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        z_cfwe = np.where(cluster_mask, z_values, 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        logp_vfwe = safe_logp(p_vfwe)
+        logp_cfwe = safe_logp(p_cfwe)
+
+        description = (
+            "Family-wise error correction was approximated with JALE-style predictive ALE "
+            "cutoffs. Voxel-level and cluster-size thresholds were predicted from experiment-"
+            "level subject and focus counts using packaged XGBoost regressors, and TFCE was not "
+            "used."
+        )
+        maps = {
+            "p_level-voxel": p_vfwe,
+            "z_level-voxel": z_vfwe,
+            "logp_level-voxel": logp_vfwe.astype(DEFAULT_FLOAT_DTYPE, copy=False),
+            "p_desc-size_level-cluster": p_cfwe,
+            "z_desc-size_level-cluster": z_cfwe,
+            "logp_desc-size_level-cluster": logp_cfwe.astype(DEFAULT_FLOAT_DTYPE, copy=False),
+        }
+        return maps, {}, description
+
+    def jale_corrected_map(
+        self,
+        result,
+        correction="cFWE",
+        voxel_thresh=0.001,
+        n_iters=None,
+        n_cores=1,
+        alpha=0.05,
+    ):
+        """Return a JALE-style thresholded main-effect map for contrast/probabilistic use.
+
+        Parameters
+        ----------
+        alpha : float, optional
+            Family-wise error rate. The ``(1 - alpha)`` percentile of the
+            permutation null is used as the significance threshold. Default
+            is 0.05.
+        """
+        if correction not in ("cFWE", "vFWE"):
+            raise ValueError("correction must be 'cFWE' or 'vFWE'.")
+        if not 0 < alpha < 1:
+            raise ValueError(f"alpha must be between 0 and 1; got {alpha}.")
+
+        self.correct_fwe_montecarlo(
+            result,
+            voxel_thresh=voxel_thresh,
+            n_iters=n_iters or self.n_iters or 5000,
+            n_cores=n_cores,
+            vfwe_only=(correction == "vFWE"),
+        )
+
+        percentile = 100.0 * (1.0 - alpha)
+        if correction == "vFWE":
+            stat_values = result.get_map("stat", return_type="array")
+            vfwe_threshold = np.percentile(
+                self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"],
+                percentile,
+            )
+            return np.where(stat_values > vfwe_threshold, stat_values, 0).astype(
+                DEFAULT_FLOAT_DTYPE,
+                copy=False,
+            )
+
+        z_values = result.get_map("z", return_type="array")
+        cluster_threshold = np.percentile(
+            self.null_distributions_["values_desc-size_level-cluster_corr-fwe_method-montecarlo"],
+            percentile,
+        )
+        corrected, _ = _jale_threshold_z_clusters(
+            z_values,
+            self.masker,
+            voxel_thresh=voxel_thresh,
+            cluster_size_threshold=cluster_threshold,
+        )
+        return corrected.astype(DEFAULT_FLOAT_DTYPE, copy=False)
+
 
 class ALESubtraction(PairwiseCBMAEstimator):
     """ALE subtraction analysis.
@@ -907,6 +1322,11 @@ class ALESubtraction(PairwiseCBMAEstimator):
         )
         return description
 
+    def _compute_summarystat_est(self, ma_values):
+        return _compute_ale_summarystat(
+            require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
+        )
+
     @use_memmap(LGR, n_files=3)
     def _fit(self, dataset1, dataset2):
         self.dataset1 = dataset1
@@ -967,8 +1387,22 @@ class ALESubtraction(PairwiseCBMAEstimator):
                     LGR.debug(f"Closing memmap at {iter_diff_values.filename}")
                     iter_diff_values._mmap.close()
 
+            group_maps = {}
+            for group_label, ma_maps, stat_group in (
+                ("group1", ma_store.group1, ma_store.group1_stat),
+                ("group2", ma_store.group2, ma_store.group2_stat),
+            ):
+                group_maps.update(
+                    _ale_uncorrected_group_maps(
+                        self,
+                        ma_maps,
+                        group_label,
+                        stat_values=stat_group,
+                    )
+                )
+
         z_arr = p_to_z(p_values, tail="two") * diff_signs
-        logp_arr = -np.log10(p_values)
+        logp_arr = safe_logp(p_values)
 
         maps = {
             "stat_desc-group1MinusGroup2": diff_ale_values,
@@ -976,38 +1410,20 @@ class ALESubtraction(PairwiseCBMAEstimator):
             "z_desc-group1MinusGroup2": z_arr,
             "logp_desc-group1MinusGroup2": logp_arr,
         }
+        maps.update(group_maps)
         description = self._description_text()
 
         return maps, {}, description
 
-    def _compute_summarystat_est(self, ma_values):
-        return _compute_ale_summarystat(
-            require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
-        )
-
     def _run_permutation(self, i_iter, ma_store):
-        """Run a single permutation of the ALESubtraction null distribution procedure.
-
-        Parameters
-        ----------
-        i_iter : :obj:`int`
-            The iteration number.
-        ma_store : :class:`_PairwiseMAStore`
-            Pairwise MA-map storage containing either in-memory CSR matrices or chunked
-            disk-backed CSR groups.
-
-        Returns
-        -------
-        i_iter : :obj:`int`
-            The iteration number.
-        iter_diff_values : :obj:`numpy.ndarray` of shape (V,)
-            The null ALE-difference scores for one permutation.
-        """
-        gen = np.random.default_rng(seed=i_iter)
-        id_idx = np.arange(ma_store.n_total)
-        gen.shuffle(id_idx)
-        iter_grp1_ale_values = ma_store.compute_partition_summarystat(id_idx[: ma_store.n_group1])
-        iter_grp2_ale_values = ma_store.compute_partition_summarystat(id_idx[ma_store.n_group1 :])
+        """Run a single permutation of the ALESubtraction null distribution procedure."""
+        group1_idx, group2_idx = self._permute_pairwise_group_indices(
+            n_total=ma_store.n_total,
+            n_group1=ma_store.n_group1,
+            seed=i_iter,
+        )
+        iter_grp1_ale_values = ma_store.compute_partition_summarystat(group1_idx)
+        iter_grp2_ale_values = ma_store.compute_partition_summarystat(group2_idx)
         return i_iter, iter_grp1_ale_values - iter_grp2_ale_values
 
     def _iterate_permutation_diffs(self, ma_store, n_iters, n_cores):
@@ -1242,6 +1658,63 @@ class ALESubtraction(PairwiseCBMAEstimator):
         finally:
             ma_store.close()
 
+    def _make_group_ale_estimator(self, group_label, n_iters, n_cores):
+        """Build a lightweight one-sample ALE estimator around stored group inputs."""
+        coords_suffix = "1" if group_label == "group1" else "2"
+        estimator = ALE(
+            kernel_transformer=copy.deepcopy(self.kernel_transformer),
+            null_method="approximate",
+            n_iters=n_iters,
+            n_cores=n_cores,
+            mask=self.masker,
+            memory=self.memory,
+            memory_level=self.memory_level,
+        )
+        estimator.masker = self.masker
+        estimator.null_distributions_ = {}
+        estimator.inputs_ = {
+            "coordinates": self.inputs_[f"coordinates{coords_suffix}"],
+            "id": self.inputs_[f"id{coords_suffix}"],
+        }
+        return estimator
+
+    def _correct_group_main_effects(
+        self,
+        result,
+        ma_store,
+        voxel_thresh,
+        n_iters,
+        n_cores,
+        vfwe_only=False,
+    ):
+        """Apply one-sample ALE FWE correction to stored group main-effect maps."""
+        group_maps = {}
+        for group_label, ma_maps in (("group1", ma_store.group1), ("group2", ma_store.group2)):
+            temp_estimator = self._make_group_ale_estimator(group_label, n_iters, n_cores)
+            temp_estimator._ALE__n_mask_voxels = result.get_map(
+                f"stat_desc-{group_label}", return_type="array"
+            ).shape[0]
+            _compute_group_approximate_null(temp_estimator, ma_maps)
+            group_result = MetaResult(
+                estimator=temp_estimator,
+                mask=self.masker,
+                maps={
+                    "stat": result.get_map(f"stat_desc-{group_label}", return_type="array"),
+                    "p": result.get_map(f"p_desc-{group_label}", return_type="array"),
+                    "z": result.get_map(f"z_desc-{group_label}", return_type="array"),
+                    "logp": result.get_map(f"logp_desc-{group_label}", return_type="array"),
+                },
+            )
+            corr_maps, _, _ = temp_estimator.correct_fwe_montecarlo(
+                group_result,
+                voxel_thresh=voxel_thresh,
+                n_iters=n_iters,
+                n_cores=n_cores,
+                vfwe_only=vfwe_only,
+            )
+            group_maps.update(_prefix_ale_group_maps(corr_maps, group_label))
+        return group_maps
+
     def correct_fwe_montecarlo(
         self,
         result,
@@ -1249,36 +1722,19 @@ class ALESubtraction(PairwiseCBMAEstimator):
         n_iters=None,
         n_cores=1,
         vfwe_only=False,
+        target="pairwise",
     ):
-        """Perform FWE correction using the max-value permutation method.
+        """Perform FWE correction using the max-value permutation method."""
+        if target not in ("pairwise", "main-effects", "all"):
+            raise ValueError(
+                "target must be one of {'pairwise', 'main-effects', 'all'}; " f"got {target!r}."
+            )
+        do_pairwise = target in ("pairwise", "all")
+        do_main_effects = target in ("main-effects", "all")
 
-        Only call this method from within a Corrector.
-
-        Parameters
-        ----------
-        result : :obj:`~nimare.results.MetaResult`
-            Result object from an ALE subtraction analysis.
-        voxel_thresh : :obj:`float`, default=0.001
-            Cluster-defining p-value threshold. Default is 0.001.
-        n_iters : :obj:`int`, optional
-            Number of iterations to build the voxel-level, cluster-size, and cluster-mass FWE
-            null distributions. If None, defaults to the Estimator's ``n_iters``.
-        n_cores : :obj:`int`, default=1
-            Number of cores to use for parallelization.
-            If <=0, defaults to using all available cores. Default is 1.
-        vfwe_only : :obj:`bool`, default=False
-            If True, only calculate the voxel-level FWE-corrected maps.
-
-        Returns
-        -------
-        maps : :obj:`dict`
-            Dictionary of corrected map arrays.
-        """
         stat_values = result.get_map("stat_desc-group1MinusGroup2", return_type="array")
         z_values = result.get_map("z_desc-group1MinusGroup2", return_type="array")
         sign = np.sign(z_values)
-        eps = np.spacing(1)
-
         if n_iters is None:
             n_iters = self.n_iters
         if voxel_thresh is None:
@@ -1298,8 +1754,9 @@ class ALESubtraction(PairwiseCBMAEstimator):
         )
 
         use_cached = requested == expected and has_vfwe_null and (vfwe_only or has_cluster_null)
+        group_corr_maps = {}
 
-        if not use_cached:
+        if do_pairwise and not use_cached:
             warnings.warn(
                 "ALESubtraction FWE correction is recomputing permutations because the "
                 "requested parameters do not match the estimator's cached null model "
@@ -1356,87 +1813,119 @@ class ALESubtraction(PairwiseCBMAEstimator):
                         self.null_distributions_[
                             "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
                         ] = iter_max_masses
+                    if do_main_effects:
+                        group_corr_maps = self._correct_group_main_effects(
+                            result,
+                            ma_store,
+                            voxel_thresh=voxel_thresh,
+                            n_iters=n_iters,
+                            n_cores=n_cores,
+                            vfwe_only=vfwe_only,
+                        )
+
                 finally:
                     if isinstance(iter_diff_values, np.memmap):
                         iter_diff_values._mmap.close()
                     if tmp_path and os.path.isfile(tmp_path):
                         os.remove(tmp_path)
-
-        vfwe_null = self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]
-        p_vfwe_vals = null_to_p(np.abs(stat_values), vfwe_null, tail="upper")
-        z_vfwe_vals = p_to_z(p_vfwe_vals, tail="two") * sign
-        logp_vfwe_vals = -np.log10(p_vfwe_vals)
-        logp_vfwe_vals[np.isinf(logp_vfwe_vals)] = -np.log10(eps)
-
-        maps = {
-            "p_desc-group1MinusGroup2_level-voxel": p_vfwe_vals,
-            "z_desc-group1MinusGroup2_level-voxel": z_vfwe_vals,
-            "logp_desc-group1MinusGroup2_level-voxel": logp_vfwe_vals,
-        }
-
-        if not vfwe_only:
-            csfwe_null = self.null_distributions_[
-                "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
-            ]
-            cmfwe_null = self.null_distributions_[
-                "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
-            ]
-            ss_thresh = self.null_distributions_[
-                "summary_stat_thresh_level-voxel_corr-fwe_method-montecarlo"
-            ]
-
-            stat_map = self.masker.inverse_transform(stat_values).get_fdata(
-                dtype=DEFAULT_FLOAT_DTYPE
-            )
-            stat_map[np.abs(stat_map) <= ss_thresh] = 0
-
-            conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
-            labeled_pos, _ = ndimage.label(stat_map > 0, conn)
-            labeled_neg, _ = ndimage.label(stat_map < 0, conn)
-            if labeled_pos.size:
-                labeled_neg[labeled_neg > 0] += labeled_pos.max()
-            labeled = labeled_pos + labeled_neg
-
-            cluster_labels, idx, cluster_sizes = np.unique(
-                labeled, return_inverse=True, return_counts=True
-            )
-            cluster_sizes[0] = 0
-
-            cluster_masses = np.zeros(cluster_labels.shape, dtype=DEFAULT_FLOAT_DTYPE)
-            for label in cluster_labels[1:]:
-                ss_vals = np.abs(stat_map[labeled == label]) - ss_thresh
-                cluster_masses[label] = np.sum(ss_vals)
-
-            p_cmfwe_vals = null_to_p(cluster_masses, cmfwe_null, tail="upper")
-            p_cmfwe_map = p_cmfwe_vals[idx].reshape(labeled.shape)
-            p_cmfwe_values = np.squeeze(
-                self.masker.transform(nib.Nifti1Image(p_cmfwe_map, self.masker.mask_img.affine))
-            )
-
-            p_csfwe_vals = null_to_p(cluster_sizes, csfwe_null, tail="upper")
-            p_csfwe_map = p_csfwe_vals[idx].reshape(labeled.shape)
-            p_csfwe_values = np.squeeze(
-                self.masker.transform(nib.Nifti1Image(p_csfwe_map, self.masker.mask_img.affine))
-            )
-
-            z_cmfwe_vals = p_to_z(p_cmfwe_values, tail="two") * sign
-            logp_cmfwe_vals = -np.log10(p_cmfwe_values)
-            logp_cmfwe_vals[np.isinf(logp_cmfwe_vals)] = -np.log10(eps)
-
-            z_csfwe_vals = p_to_z(p_csfwe_values, tail="two") * sign
-            logp_csfwe_vals = -np.log10(p_csfwe_values)
-            logp_csfwe_vals[np.isinf(logp_csfwe_vals)] = -np.log10(eps)
+        maps = {}
+        if do_pairwise:
+            vfwe_null = self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]
+            p_vfwe_vals = null_to_p(np.abs(stat_values), vfwe_null, tail="upper")
+            z_vfwe_vals = p_to_z(p_vfwe_vals, tail="two") * sign
+            logp_vfwe_vals = safe_logp(p_vfwe_vals)
 
             maps.update(
                 {
-                    "p_desc-group1MinusGroup2Mass_level-cluster": p_cmfwe_values,
-                    "z_desc-group1MinusGroup2Mass_level-cluster": z_cmfwe_vals,
-                    "logp_desc-group1MinusGroup2Mass_level-cluster": logp_cmfwe_vals,
-                    "p_desc-group1MinusGroup2Size_level-cluster": p_csfwe_values,
-                    "z_desc-group1MinusGroup2Size_level-cluster": z_csfwe_vals,
-                    "logp_desc-group1MinusGroup2Size_level-cluster": logp_csfwe_vals,
+                    "p_desc-group1MinusGroup2_level-voxel": p_vfwe_vals,
+                    "z_desc-group1MinusGroup2_level-voxel": z_vfwe_vals,
+                    "logp_desc-group1MinusGroup2_level-voxel": logp_vfwe_vals,
                 }
             )
+
+            if not vfwe_only:
+                csfwe_null = self.null_distributions_[
+                    "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+                ]
+                cmfwe_null = self.null_distributions_[
+                    "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+                ]
+                ss_thresh = self.null_distributions_[
+                    "summary_stat_thresh_level-voxel_corr-fwe_method-montecarlo"
+                ]
+
+                stat_map = self.masker.inverse_transform(stat_values).get_fdata(
+                    dtype=DEFAULT_FLOAT_DTYPE
+                )
+                stat_map[np.abs(stat_map) <= ss_thresh] = 0
+
+                conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
+                labeled_pos, _ = ndimage.label(stat_map > 0, conn)
+                labeled_neg, _ = ndimage.label(stat_map < 0, conn)
+                if labeled_pos.size:
+                    labeled_neg[labeled_neg > 0] += labeled_pos.max()
+                labeled = labeled_pos + labeled_neg
+
+                cluster_labels, idx, cluster_sizes = np.unique(
+                    labeled, return_inverse=True, return_counts=True
+                )
+                cluster_sizes[0] = 0
+
+                cluster_masses = np.zeros(cluster_labels.shape, dtype=DEFAULT_FLOAT_DTYPE)
+                for label in cluster_labels[1:]:
+                    ss_vals = np.abs(stat_map[labeled == label]) - ss_thresh
+                    cluster_masses[label] = np.sum(ss_vals)
+
+                p_cmfwe_vals = null_to_p(cluster_masses, cmfwe_null, tail="upper")
+                p_cmfwe_map = p_cmfwe_vals[idx].reshape(labeled.shape)
+                p_cmfwe_values = np.squeeze(
+                    self.masker.transform(
+                        nib.Nifti1Image(p_cmfwe_map, self.masker.mask_img.affine)
+                    )
+                )
+
+                p_csfwe_vals = null_to_p(cluster_sizes, csfwe_null, tail="upper")
+                p_csfwe_map = p_csfwe_vals[idx].reshape(labeled.shape)
+                p_csfwe_values = np.squeeze(
+                    self.masker.transform(
+                        nib.Nifti1Image(p_csfwe_map, self.masker.mask_img.affine)
+                    )
+                )
+
+                z_cmfwe_vals = p_to_z(p_cmfwe_values, tail="two") * sign
+                logp_cmfwe_vals = safe_logp(p_cmfwe_values)
+
+                z_csfwe_vals = p_to_z(p_csfwe_values, tail="two") * sign
+                logp_csfwe_vals = safe_logp(p_csfwe_values)
+
+                maps.update(
+                    {
+                        "p_desc-group1MinusGroup2Mass_level-cluster": p_cmfwe_values,
+                        "z_desc-group1MinusGroup2Mass_level-cluster": z_cmfwe_vals,
+                        "logp_desc-group1MinusGroup2Mass_level-cluster": logp_cmfwe_vals,
+                        "p_desc-group1MinusGroup2Size_level-cluster": p_csfwe_values,
+                        "z_desc-group1MinusGroup2Size_level-cluster": z_csfwe_vals,
+                        "logp_desc-group1MinusGroup2Size_level-cluster": logp_csfwe_vals,
+                    }
+                )
+
+        if do_main_effects:
+            if not (do_pairwise and not use_cached):
+                with self._managed_pairwise_ma_store(
+                    maps_key1="ma_maps1",
+                    coords_key1="coordinates1",
+                    maps_key2="ma_maps2",
+                    coords_key2="coordinates2",
+                ) as ma_store:
+                    group_corr_maps = self._correct_group_main_effects(
+                        result,
+                        ma_store,
+                        voxel_thresh=voxel_thresh,
+                        n_iters=n_iters,
+                        n_cores=n_cores,
+                        vfwe_only=vfwe_only,
+                    )
+            maps.update(group_corr_maps)
 
         if vfwe_only:
             description = (
@@ -1450,19 +1939,351 @@ class ALESubtraction(PairwiseCBMAEstimator):
             )
         else:
             description = (
-                "Family-wise error rate correction was performed using a Monte Carlo procedure "
-                "for ALE subtraction. "
+                "Family-wise error correction was performed using voxel-level and cluster-level "
+                "Monte Carlo procedures for ALE subtraction. "
                 "In this procedure, experiments from the two input datasets were randomly "
-                "reassigned between groups while preserving the original group sizes, and "
-                "maximum values were retained. "
+                "reassigned between groups while preserving the original group sizes, and the "
+                "maximum absolute ALE-difference value, cluster size, and cluster mass were "
+                "retained. "
                 f"This procedure was repeated {n_iters} times to build null distributions of "
                 "summary statistics, cluster sizes, and cluster masses. "
-                "Clusters for cluster-level correction were defined using face-wise connectivity "
-                f"and a voxel-level threshold of p < {voxel_thresh} from the uncorrected ALE-"
-                "difference null distribution."
+                f"Clusters were defined with face-wise connectivity at p < {voxel_thresh}."
+            )
+
+        if target == "main-effects":
+            description += (
+                " One-sample ALE Monte Carlo correction was also applied to the "
+                "stored group main-effect maps, without recomputing the pairwise "
+                "subtraction outputs."
+            )
+        elif target == "all":
+            description += (
+                " The same correction request also produced corrected maps for "
+                "the stored group main effects."
             )
 
         return maps, {}, description
+
+
+class BalancedALESubstraction(PairwiseCBMAEstimator):
+    """JALE-style balanced ALE subtraction with matched-size subsampling.
+
+    Parameters
+    ----------
+    null_method : {"random-foci", "label-permutation"}, optional
+        Method used to generate the null distribution of balanced differences.
+
+        ``"random-foci"`` (default) generates null MA maps by placing each
+        study's foci randomly within the ``prior_space`` while preserving
+        per-study sample-size and focus-count metadata. Because balanced
+        subsampling breaks label exchangeability, this is the statistically
+        coherent null for balanced subtractions.
+
+        ``"label-permutation"`` pools the prior-masked MA maps from both
+        groups, randomly reassigns study labels (preserving group sizes), and
+        computes the balanced difference. This directly tests group-label
+        exchangeability at the cost of assuming the spatial structure of each
+        study is fixed.
+    prior_space : {"gm", "brain"}, optional
+        Voxel set used both for restricting the balanced-difference computation
+        and (when ``null_method="random-foci"``) for drawing random foci.
+        ``"gm"`` uses mask-image intensity > 0.1 (the ICBM 10% GM probability
+        map); ``"brain"`` uses all non-zero voxels. Default is ``"gm"``.
+    alpha : float, optional
+        Family-wise error rate for the per-group cluster threshold used inside
+        ``_probabilistic_map`` and for the balanced-subtraction extrema
+        percentiles in ``_fit``. Default is 0.05.
+    """
+
+    def __init__(
+        self,
+        kernel_transformer=ALEKernel,
+        target_n=None,
+        n_subsamples=2500,
+        difference_iterations=1000,
+        n_iters=1000,
+        voxel_thresh=0.001,
+        null_method="random-foci",
+        prior_space="gm",
+        alpha=0.05,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+        n_cores=1,
+        random_state=None,
+        **kwargs,
+    ):
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
+        if null_method not in ("random-foci", "label-permutation"):
+            raise ValueError("null_method must be 'random-foci' or 'label-permutation'.")
+        if prior_space not in ("gm", "brain"):
+            raise ValueError("prior_space must be 'gm' or 'brain'.")
+        if not 0 < alpha < 1:
+            raise ValueError(f"alpha must be between 0 and 1; got {alpha}.")
+        self.target_n = target_n
+        self.n_subsamples = n_subsamples
+        self.difference_iterations = difference_iterations
+        self.n_iters = n_iters
+        self.voxel_thresh = voxel_thresh
+        self.null_method = null_method
+        self.prior_space = prior_space
+        self.alpha = alpha
+        self.n_cores = _check_ncores(n_cores)
+        self.random_state = random_state
+        self.dataset1 = None
+        self.dataset2 = None
+
+    def _generate_description(self):
+        return (
+            "A JALE-style balanced ALE subtraction was performed in NiMARE using matched-size "
+            "subsampling within groups, averaged balanced ALE differences, and Monte Carlo null "
+            "extrema from balanced resamples."
+        )
+
+    def _compute_summarystat_est(self, ma_values):
+        return _compute_ale_summarystat(
+            require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
+        )
+
+    def _probabilistic_map(self, dataset, target_n, seed):
+        estimator = ALE(
+            kernel_transformer=copy.deepcopy(self.kernel_transformer),
+            null_method="approximate",
+            n_iters=self.n_iters,
+            n_cores=self.n_cores,
+            mask=self.masker,
+            memory=self.memory,
+            memory_level=self.memory_level,
+        )
+        fitted = estimator.fit(dataset)
+        ma_maps = fitted.estimator._collect_ma_maps()
+        sample_sizes, num_foci = _study_metadata_from_coordinates(estimator.inputs_["coordinates"])
+        prior_img, prior_masked = _masked_prior_columns(
+            estimator.masker, prior_space=self.prior_space
+        )
+        sample_space = np.vstack(np.where(prior_img)).T.astype(np.int32, copy=False)
+        rng = np.random.RandomState(seed)
+
+        null_cluster_sizes = np.zeros(self.n_iters, dtype=np.int32)
+        for i_iter in range(self.n_iters):
+            if target_n < ma_maps.shape[0]:
+                subset = rng.permutation(ma_maps.shape[0])[:target_n]
+                subset_sample_sizes = sample_sizes[subset]
+                subset_num_foci = num_foci[subset]
+            else:
+                subset_sample_sizes = sample_sizes
+                subset_num_foci = num_foci
+            null_ma = _random_ale_ma_from_metadata(
+                estimator.masker.mask_img,
+                subset_sample_sizes,
+                subset_num_foci,
+                sample_space,
+                rng,
+            )
+            _, null_z = _ale_approximate_z_from_ma(estimator, null_ma)
+            _, null_cluster_sizes[i_iter] = _jale_threshold_z_clusters(
+                null_z,
+                estimator.masker,
+                voxel_thresh=self.voxel_thresh,
+                cluster_size_threshold=None,
+            )
+
+        cluster_threshold = np.percentile(null_cluster_sizes, 100.0 * (1.0 - self.alpha))
+        samples = _generate_unique_subsamples(ma_maps.shape[0], target_n, self.n_subsamples, seed)
+        prob_map = np.zeros(ma_maps.shape[1], dtype=DEFAULT_FLOAT_DTYPE)
+        for sample in samples:
+            _, z_values = _ale_approximate_z_from_ma(estimator, ma_maps[sample, :])
+            z_values, _ = _jale_threshold_z_clusters(
+                z_values,
+                estimator.masker,
+                voxel_thresh=self.voxel_thresh,
+                cluster_size_threshold=cluster_threshold,
+            )
+            prob_map += (z_values > 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        return (
+            (prob_map / len(samples)).astype(DEFAULT_FLOAT_DTYPE, copy=False),
+            ma_maps,
+            prior_masked,
+            sample_sizes,
+            num_foci,
+        )
+
+    def _mean_balanced_difference(self, ma_maps1, ma_maps2, target_n, n_iters, rng):
+        diff = np.zeros(ma_maps1.shape[1], dtype=DEFAULT_FLOAT_DTYPE)
+        for _ in range(n_iters):
+            idx1 = rng.choice(ma_maps1.shape[0], size=target_n, replace=False)
+            idx2 = rng.choice(ma_maps2.shape[0], size=target_n, replace=False)
+            diff += _compute_ale_summarystat(ma_maps1[idx1, :]) - _compute_ale_summarystat(
+                ma_maps2[idx2, :]
+            )
+        return (diff / float(n_iters)).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+
+    def _to_prior_dense(self, ma_maps, prior_masked):
+        """Materialize prior-masked MA maps in dense form for JALE-style extrema."""
+        prior_ma = ma_maps[:, prior_masked]
+        if sp_sparse.isspmatrix(prior_ma):
+            return prior_ma.toarray().astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        return np.asarray(prior_ma, dtype=DEFAULT_FLOAT_DTYPE)
+
+    def _null_balanced_extrema(
+        self,
+        sample_sizes1,
+        num_foci1,
+        sample_sizes2,
+        num_foci2,
+        prior_masked,
+        target_n,
+        rng,
+        sample_space=None,
+        prior_ma1=None,
+        prior_ma2=None,
+    ):
+        """Generate one null balanced-difference extremum pair.
+
+        Dispatches to random-foci or label-permutation based on
+        ``self.null_method``. ``sample_space`` must be supplied for
+        ``"random-foci"``; ``prior_ma1`` / ``prior_ma2`` must be supplied for
+        ``"label-permutation"``.
+        """
+        if self.null_method == "random-foci":
+            null_ma1 = _random_ale_ma_from_metadata(
+                self.masker.mask_img, sample_sizes1, num_foci1, sample_space, rng
+            )
+            null_ma2 = _random_ale_ma_from_metadata(
+                self.masker.mask_img, sample_sizes2, num_foci2, sample_space, rng
+            )
+            null_diff = self._mean_balanced_difference(
+                self._to_prior_dense(null_ma1, prior_masked),
+                self._to_prior_dense(null_ma2, prior_masked),
+                target_n,
+                self.difference_iterations,
+                rng,
+            )
+        else:  # "label-permutation"
+            n1 = prior_ma1.shape[0]
+            pooled = np.vstack([prior_ma1, prior_ma2])
+            perm = rng.permutation(pooled.shape[0])
+            null_diff = self._mean_balanced_difference(
+                pooled[perm[:n1], :],
+                pooled[perm[n1:], :],
+                target_n,
+                self.difference_iterations,
+                rng,
+            )
+        return float(np.min(null_diff)), float(np.max(null_diff))
+
+    def _fit(self, dataset1, dataset2):
+        _validate_nonoverlapping_pairwise_datasets(
+            dataset1,
+            dataset2,
+            estimator_name=type(self).__name__,
+        )
+
+        self.dataset1 = dataset1
+        self.dataset2 = dataset2
+        self.masker = self.masker or dataset1.masker
+        self.null_distributions_ = {}
+
+        target_n = _resolve_balanced_target_n(dataset1, dataset2, self.target_n)
+
+        prob1, ma_maps1, prior_masked1, sample_sizes1, num_foci1 = self._probabilistic_map(
+            dataset1, target_n, self.random_state
+        )
+        prob2, ma_maps2, prior_masked2, sample_sizes2, num_foci2 = self._probabilistic_map(
+            dataset2,
+            target_n,
+            None if self.random_state is None else self.random_state + 1,
+        )
+        prior_masked = prior_masked1 & prior_masked2
+        prior_ma1 = self._to_prior_dense(ma_maps1, prior_masked)
+        prior_ma2 = self._to_prior_dense(ma_maps2, prior_masked)
+
+        # Pre-compute sample_space once; only needed for random-foci null.
+        if self.null_method == "random-foci":
+            prior_img, _ = _masked_prior_columns(self.masker, prior_space=self.prior_space)
+            sample_space = np.vstack(np.where(prior_img)).T.astype(np.int32, copy=False)
+        else:
+            sample_space = None
+
+        rng = np.random.RandomState(self.random_state)
+        observed_prior = self._mean_balanced_difference(
+            prior_ma1,
+            prior_ma2,
+            target_n,
+            self.difference_iterations,
+            rng,
+        )
+        observed = np.zeros(ma_maps1.shape[1], dtype=DEFAULT_FLOAT_DTYPE)
+        observed[prior_masked] = observed_prior
+
+        min_null = np.zeros(self.n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+        max_null = np.zeros(self.n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+        for i_iter in range(self.n_iters):
+            min_null[i_iter], max_null[i_iter] = self._null_balanced_extrema(
+                sample_sizes1,
+                num_foci1,
+                sample_sizes2,
+                num_foci2,
+                prior_masked,
+                target_n,
+                rng,
+                sample_space=sample_space,
+                prior_ma1=prior_ma1,
+                prior_ma2=prior_ma2,
+            )
+
+        half_alpha = self.alpha / 2.0
+        low_threshold = np.percentile(min_null, 100.0 * half_alpha)
+        high_threshold = np.percentile(max_null, 100.0 * (1.0 - half_alpha))
+        smallest = np.maximum(np.finfo(DEFAULT_FLOAT_DTYPE).eps, 1.0 / float(self.n_iters))
+        p_map = np.ones(observed.shape[0], dtype=DEFAULT_FLOAT_DTYPE)
+        z_map = np.zeros(observed.shape[0], dtype=DEFAULT_FLOAT_DTYPE)
+
+        pos_mask = observed > high_threshold
+        neg_mask = observed < low_threshold
+        if np.any(pos_mask):
+            p_pos = np.maximum(
+                smallest,
+                np.array(
+                    [np.mean(max_null >= diff) for diff in observed[pos_mask]],
+                    dtype=DEFAULT_FLOAT_DTYPE,
+                ),
+            )
+            pos_idx = np.flatnonzero(pos_mask)
+            p_map[pos_idx] = p_pos
+            z_map[pos_idx] = p_to_z(p_pos, tail="one")
+        if np.any(neg_mask):
+            p_neg = np.maximum(
+                smallest,
+                np.array(
+                    [np.mean(min_null <= diff) for diff in observed[neg_mask]],
+                    dtype=DEFAULT_FLOAT_DTYPE,
+                ),
+            )
+            neg_idx = np.flatnonzero(neg_mask)
+            p_map[neg_idx] = np.minimum(p_map[neg_idx], p_neg)
+            z_map[neg_idx] = -p_to_z(p_neg, tail="one")
+
+        maps = {
+            "stat_desc-balancedGroup1MinusGroup2": observed.astype(
+                DEFAULT_FLOAT_DTYPE, copy=False
+            ),
+            "p_desc-balancedGroup1MinusGroup2": p_map,
+            "z_desc-balancedGroup1MinusGroup2": z_map.astype(DEFAULT_FLOAT_DTYPE, copy=False),
+            "logp_desc-balancedGroup1MinusGroup2": safe_logp(p_map),
+            "stat_desc-conjunction": np.minimum(prob1, prob2).astype(
+                DEFAULT_FLOAT_DTYPE, copy=False
+            ),
+            "prob_desc-group1": prob1,
+            "prob_desc-group2": prob2,
+        }
+        self.null_distributions_["values_desc-balancedMinNull_corr-none"] = min_null
+        self.null_distributions_["values_desc-balancedMaxNull_corr-none"] = max_null
+        return maps, {}, self._description_text()
 
 
 class SCALE(CBMAEstimator):
@@ -1649,8 +2470,7 @@ class SCALE(CBMAEstimator):
 
         p_values, z_values = self._scale_to_p(stat_values, exceedance_counts)
 
-        logp_values = -np.log10(p_values)
-        logp_values[np.isinf(logp_values)] = -np.log10(np.finfo(float).eps)
+        logp_values = safe_logp(p_values)
 
         # Write out unthresholded value images
         maps = {"stat": stat_values, "logp": logp_values, "z": z_values}
@@ -1826,8 +2646,7 @@ class SCALE(CBMAEstimator):
 
         p_vfwe_values = null_to_p(stat_values, fwe_voxel_max, tail="upper")
         z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
-        logp_vfwe_values = -np.log10(p_vfwe_values)
-        logp_vfwe_values[np.isinf(logp_vfwe_values)] = -np.log10(np.finfo(float).eps)
+        logp_vfwe_values = safe_logp(p_vfwe_values)
 
         self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = fwe_voxel_max
 

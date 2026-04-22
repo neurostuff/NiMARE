@@ -17,7 +17,7 @@ from nimare.estimator import Estimator
 from nimare.meta.kernel import KernelTransformer
 from nimare.meta.utils import _calculate_cluster_measures, _get_last_bin
 from nimare.results import MetaResult
-from nimare.stats import null_to_p, nullhist_to_p
+from nimare.stats import null_to_p, nullhist_to_p, safe_logp
 from nimare.studyset import normalize_collection
 from nimare.transforms import p_to_z
 from nimare.utils import (
@@ -26,6 +26,7 @@ from nimare.utils import (
     _check_ncores,
     _check_type,
     _mask_img_to_bool,
+    _prior_space_to_null_ijk,
     get_masker,
     get_masker_mask_image,
     mm2vox,
@@ -71,6 +72,13 @@ class CBMAEstimator(Estimator):
     memory_level : :obj:`int`, default=0
         Rough estimator of the amount of memory used by caching.
         Higher value means more memory for caching. Zero means no caching.
+    prior_space : {"gm", "brain"}, optional
+        Voxel set from which random null foci are drawn when building
+        Monte Carlo null distributions. ``"gm"`` restricts sampling to voxels
+        with mask-image intensity above 0.1 (the ICBM 10 % GM probability
+        map), matching the JALE convention. ``"brain"`` uses every non-zero
+        voxel in the mask. Has no effect when ``null_method="approximate"``.
+        Default is ``"gm"``.
     *args
         Optional arguments to the :obj:`~nimare.base.Estimator` __init__
         (called automatically).
@@ -91,8 +99,13 @@ class CBMAEstimator(Estimator):
         generate_description=True,
         *,
         mask=None,
+        prior_space="brain",
         **kwargs,
     ):
+        if prior_space not in ("gm", "brain"):
+            raise ValueError(f"prior_space must be 'gm' or 'brain'; got {prior_space!r}.")
+        self.prior_space = prior_space
+
         if mask is not None:
             mask = get_masker(mask, memory=memory, memory_level=memory_level)
         self.masker = mask
@@ -621,7 +634,7 @@ class CBMAEstimator(Estimator):
         "histweights_corr-none_method-montecarlo" and
         "histweights_level-voxel_corr-fwe_method-montecarlo".
         """
-        null_ijk = np.vstack(np.where(_mask_img_to_bool(self.masker.mask_img))).T
+        null_ijk = _prior_space_to_null_ijk(self.masker, prior_space=self.prior_space)
 
         n_cores = _check_ncores(n_cores)
 
@@ -828,7 +841,7 @@ class CBMAEstimator(Estimator):
                     "Running permutations from scratch."
                 )
 
-            null_ijk = np.vstack(np.where(_mask_img_to_bool(self.masker.mask_img))).T
+            null_ijk = _prior_space_to_null_ijk(self.masker, prior_space=self.prior_space)
 
             n_cores = _check_ncores(n_cores)
 
@@ -912,8 +925,7 @@ class CBMAEstimator(Estimator):
                         nib.Nifti1Image(p_cmfwe_map, self.masker.mask_img.affine)
                     )
                 )
-                logp_cmfwe_values = -np.log10(p_cmfwe_values)
-                logp_cmfwe_values[np.isinf(logp_cmfwe_values)] = -np.log10(np.finfo(float).eps)
+                logp_cmfwe_values = safe_logp(p_cmfwe_values)
                 z_cmfwe_values = p_to_z(p_cmfwe_values, tail="one")
 
                 # Cluster size-based inference
@@ -926,8 +938,7 @@ class CBMAEstimator(Estimator):
                         nib.Nifti1Image(p_csfwe_map, self.masker.mask_img.affine)
                     )
                 )
-                logp_csfwe_values = -np.log10(p_csfwe_values)
-                logp_csfwe_values[np.isinf(logp_csfwe_values)] = -np.log10(np.finfo(float).eps)
+                logp_csfwe_values = safe_logp(p_csfwe_values)
                 z_csfwe_values = p_to_z(p_csfwe_values, tail="one")
 
                 self.null_distributions_[
@@ -945,8 +956,7 @@ class CBMAEstimator(Estimator):
             )
 
         z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
-        logp_vfwe_values = -np.log10(p_vfwe_values)
-        logp_vfwe_values[np.isinf(logp_vfwe_values)] = -np.log10(np.finfo(float).eps)
+        logp_vfwe_values = safe_logp(p_vfwe_values)
 
         if vfwe_only:
             # Return unthresholded value images
@@ -1036,6 +1046,29 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         consistently.
         """
         raise NotImplementedError
+
+    @staticmethod
+    def _permute_pairwise_group_indices(n_total, n_group1, seed):
+        """Generate randomized group memberships for pairwise permutation tests.
+
+        Parameters
+        ----------
+        n_total : int
+            Total number of studies in the pooled dataset.
+        n_group1 : int
+            Number of studies in the first group.
+        seed : int
+            Seed for the random generator.
+
+        Returns
+        -------
+        group1_idx, group2_idx : :obj:`numpy.ndarray`
+            Integer index arrays for the permuted group assignments.
+        """
+        gen = np.random.default_rng(seed=seed)
+        id_idx = np.arange(n_total)
+        gen.shuffle(id_idx)
+        return id_idx[:n_group1], id_idx[n_group1:]
 
     def fit(self, dataset1, dataset2, drop_invalid=True, ma_maps1=None, ma_maps2=None):
         """Fit Estimator to two collections.

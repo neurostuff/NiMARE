@@ -3,6 +3,7 @@
 import logging
 
 import numpy as np
+import pytest
 from scipy import sparse as sp_sparse
 
 import nimare
@@ -95,12 +96,18 @@ def test_MKDAChi2_fdr(testdata_cbma):
     """Smoke test for MKDAChi2."""
     meta = MKDAChi2()
     results = meta.fit(testdata_cbma, testdata_cbma)
+    assert "z_desc-group1" in results.maps
+    assert "z_desc-group2" in results.maps
+    assert "p_desc-group1" in results.maps
+    assert "p_desc-group2" in results.maps
     corr = FDRCorrector(method="indep", alpha=0.001)
     corr_results = corr.transform(results)
     assert isinstance(results, nimare.results.MetaResult)
     assert isinstance(results.description_, str)
     assert isinstance(corr_results, nimare.results.MetaResult)
     assert isinstance(corr_results.description_, str)
+    assert "z_desc-group1_level-voxel_corr-FDR_method-indep" in corr_results.maps
+    assert "z_desc-group2_level-voxel_corr-FDR_method-indep" in corr_results.maps
 
     methods = FDRCorrector.inspect(results)
     assert methods == ["indep", "negcorr"]
@@ -127,6 +134,39 @@ def test_MKDAChi2_fwe_1core(testdata_cbma):
         "values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo"
         in corr_results.estimator.null_distributions_.keys()
     )
+    assert (
+        "values_desc-group2_level-voxel_corr-fwe_method-montecarlo"
+        in corr_results.estimator.null_distributions_.keys()
+    )
+    assert "z_desc-group1_level-voxel_corr-FWE_method-montecarlo" in corr_results.maps
+    assert "z_desc-group2_level-voxel_corr-FWE_method-montecarlo" in corr_results.maps
+
+
+def test_MKDAChi2_fwe_null_method_default_and_label_permutation(testdata_cbma):
+    """MKDAChi2 should default to label-permutation FWE and run the label-permutation path."""
+    meta = MKDAChi2()
+    assert meta.fwe_null_method == "label-permutation"
+
+    results = meta.fit(testdata_cbma, testdata_cbma)
+    corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
+    corr_results = corr.transform(results)
+
+    assert (
+        "values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo"
+        in corr_results.estimator.null_distributions_.keys()
+    )
+    assert (
+        "values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo"
+        in corr_results.estimator.null_distributions_.keys()
+    )
+
+
+def test_MKDAChi2_invalid_fwe_null_method():
+    """MKDAChi2 should reject unsupported FWE null methods."""
+    with pytest.raises(
+        ValueError, match="fwe_null_method must be 'label-permutation' or 'random-foci'"
+    ):
+        MKDAChi2(fwe_null_method="invalid")
 
 
 def test_MKDAChi2_precomputed_ma_maps_do_not_leak_between_fit_calls(testdata_cbma):

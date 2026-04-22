@@ -9,6 +9,7 @@ from pymare.stats import bonferroni, fdr
 
 from nimare.base import NiMAREBase
 from nimare.results import MetaResult
+from nimare.stats import safe_logp
 from nimare.transforms import p_to_z
 from nimare.utils import DEFAULT_FLOAT_DTYPE
 
@@ -109,7 +110,7 @@ class Corrector(NiMAREBase):
             corr_maps[z_map_name] = p_to_z(p) * np.sign(result.maps[z_map_name])
 
         if logp_map_name in result.maps:
-            corr_maps[logp_map_name] = -np.log10(p)
+            corr_maps[logp_map_name] = safe_logp(p)
 
         return corr_maps
 
@@ -273,7 +274,7 @@ class FWECorrector(Corrector):
 
     Parameters
     ----------
-    method : {'bonferoni', 'montecarlo'}
+    method : {'bonferoni', 'montecarlo', 'predictive'}
         The FWE correction to use. Note that the 'montecarlo' method is only available for
         a subset of Estimators. To determine what methods are available for the Estimator you're
         using, use :meth:`inspect`.
@@ -292,7 +293,7 @@ class FWECorrector(Corrector):
     _correction_method = "fwe"
 
     def __init__(self, method="bonferroni", n_iters=None, n_cores=1, **kwargs):
-        if method not in ("bonferroni", "montecarlo"):
+        if method not in ("bonferroni", "montecarlo", "predictive"):
             raise ValueError(f"Unsupported FWE correction method '{method}'")
 
         if method == "montecarlo":

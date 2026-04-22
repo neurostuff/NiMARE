@@ -17,9 +17,14 @@ from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.cbma.utils import collect_csr_ma_maps, require_masked_csr
 from nimare.meta.kernel import KDAKernel, MKDAKernel
 from nimare.meta.utils import _calculate_cluster_measures
-from nimare.stats import null_to_p, one_way, two_way
+from nimare.stats import null_to_p, one_way, safe_logp, two_way
 from nimare.transforms import p_to_z
-from nimare.utils import DEFAULT_FLOAT_DTYPE, _check_ncores, _mask_img_to_bool, vox2mm
+from nimare.utils import (
+    DEFAULT_FLOAT_DTYPE,
+    _check_ncores,
+    _prior_space_to_null_ijk,
+    vox2mm,
+)
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
@@ -405,6 +410,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         self,
         kernel_transformer=MKDAKernel,
         prior=0.5,
+        fwe_null_method="label-permutation",
         memory=Memory(location=None, verbose=0),
         memory_level=0,
         **kwargs,
@@ -416,6 +422,12 @@ class MKDAChi2(PairwiseCBMAEstimator):
                 "Expect suboptimal performance and beware bugs."
             )
 
+        if fwe_null_method not in ("label-permutation", "random-foci"):
+            raise ValueError(
+                "fwe_null_method must be 'label-permutation' or 'random-foci'; "
+                f"got {fwe_null_method!r}."
+            )
+
         # Add kernel transformer attribute and process keyword arguments
         super().__init__(
             kernel_transformer=kernel_transformer,
@@ -425,6 +437,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         )
 
         self.prior = prior
+        self.fwe_null_method = fwe_null_method
 
     def _generate_description(self):
         description = (
@@ -493,13 +506,20 @@ class MKDAChi2(PairwiseCBMAEstimator):
             pAgF_prior = self.prior * pAgF + (1 - self.prior) * pAgU
             pFgA_prior = pAgF * self.prior / pAgF_prior
 
-        # One-way chi-square test for uniformity of activation
+        eps = np.spacing(1)
+
+        # One-way chi-square test for uniformity of activation in each group
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels), n_selected)
         pAgF_p_vals = _chi2_sf_1dof(pAgF_chi2_vals)
+        pAgF_p_vals[pAgF_p_vals < eps] = eps
         pAgF_sign = np.sign(n_selected_active_voxels - np.mean(n_selected_active_voxels))
         pAgF_z = np.sqrt(pAgF_chi2_vals) * pAgF_sign
 
-        del pAgF_sign
+        pAgU_chi2_vals = one_way(np.squeeze(n_unselected_active_voxels), n_unselected)
+        pAgU_p_vals = _chi2_sf_1dof(pAgU_chi2_vals)
+        pAgU_p_vals[pAgU_p_vals < eps] = eps
+        pAgU_sign = np.sign(n_unselected_active_voxels - np.mean(n_unselected_active_voxels))
+        pAgU_z = np.sqrt(pAgU_chi2_vals) * pAgU_sign
 
         # Two-way chi-square for association of activation
         cells = np.squeeze(
@@ -520,13 +540,12 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         del n_selected_active_voxels, n_unselected_active_voxels
 
-        eps = np.spacing(1)
         pFgA_p_vals = _chi2_sf_1dof(pFgA_chi2_vals)
         pFgA_p_vals[pFgA_p_vals < eps] = eps
         pFgA_sign = np.sign(pAgF - pAgU).ravel()
         pFgA_z = np.sqrt(pFgA_chi2_vals) * pFgA_sign
 
-        del pFgA_sign, pAgU
+        del pAgF_sign, pAgU_sign, pFgA_sign
 
         maps = {
             "z_desc-uniformity": pAgF_z,
@@ -535,87 +554,82 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "chi2_desc-association": pFgA_chi2_vals,
             "p_desc-uniformity": pAgF_p_vals,
             "p_desc-association": pFgA_p_vals,
+            "logp_desc-uniformity": safe_logp(pAgF_p_vals),
+            "logp_desc-association": safe_logp(pFgA_p_vals),
             "prob_desc-A": pA,
             "prob_desc-AgF": pAgF,
+            "prob_desc-AgU": pAgU,
             "prob_desc-FgA": pFgA,
+            "prob_desc-group1": pAgF,
+            "prob_desc-group2": pAgU,
+            "chi2_desc-group1": pAgF_chi2_vals,
+            "chi2_desc-group2": pAgU_chi2_vals,
+            "p_desc-group1": pAgF_p_vals,
+            "p_desc-group2": pAgU_p_vals,
+            "z_desc-group1": pAgF_z,
+            "z_desc-group2": pAgU_z,
+            "logp_desc-group1": safe_logp(pAgF_p_vals),
+            "logp_desc-group2": safe_logp(pAgU_p_vals),
         }
 
         if self.prior:
             maps["prob_desc-AgF_prior"] = pAgF_prior
             maps["prob_desc-FgA_prior"] = pFgA_prior
 
+        del pAgU
+
         description = self._description_text()
         return maps, {}, description
 
-    def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2, conn, voxel_thresh):
-        """Run a single permutation of the Monte Carlo FWE correction procedure.
+    def _compute_chi2_perm_stats(
+        self,
+        n_selected_active_voxels,
+        n_selected,
+        n_unselected_active_voxels,
+        n_unselected,
+        conn,
+        voxel_thresh,
+    ):
+        """Compute per-permutation chi-square max statistics shared by both null strategies.
 
         Parameters
         ----------
-        iter_xyz1, iter_xyz2 : :obj:`numpy.ndarray`
-            Random coordinates for the permutation.
-        iter_df1, iter_df2 : :obj:`pandas.DataFrame`
-            DataFrames with as many rows as there are coordinates in each of the two datasets,
-            to be filled in with random coordinates for the permutation.
+        n_selected_active_voxels, n_unselected_active_voxels : :obj:`numpy.ndarray`
+            Per-voxel study counts for each group.
+        n_selected, n_unselected : :obj:`int`
+            Number of studies in each group.
         conn : :obj:`numpy.ndarray` of shape (3, 3, 3)
-            Connectivity matrix for defining clusters.
+            Connectivity matrix for cluster labeling.
         voxel_thresh : :obj:`float`
-            Uncorrected summary-statistic thresholded for defining clusters.
+            Summary-statistic cluster-defining threshold.
 
         Returns
         -------
-        pAgF_max_chi2_value : :obj:`float`
-            Forward inference maximum chi-squared value, for voxel-level FWE correction.
-        pAgF_max_size : :obj:`float`
-            Forward inference maximum cluster size, for cluster-level FWE correction.
-        pAgF_max_mass : :obj:`float`
-            Forward inference maximum cluster mass, for cluster-level FWE correction.
-        pFgA_max_chi2_value : :obj:`float`
-            Reverse inference maximum chi-squared value, for voxel-level FWE correction.
-        pFgA_max_size : :obj:`float`
-            Reverse inference maximum cluster size, for cluster-level FWE correction.
-        pFgA_max_mass : :obj:`float`
-            Reverse inference maximum cluster mass, for cluster-level FWE correction.
+        tuple of nine floats
+            (pAgF_max_chi2, pAgF_max_size, pAgF_max_mass,
+             pAgU_max_chi2, pAgU_max_size, pAgU_max_mass,
+             pFgA_max_chi2, pFgA_max_size, pFgA_max_mass)
         """
-        # Not sure if joblib will automatically use a copy of the object, but I'll make a copy to
-        # be safe.
-        iter_df1 = iter_df1.copy()
-        iter_df2 = iter_df2.copy()
-
-        iter_xyz1 = np.squeeze(iter_xyz1)
-        iter_xyz2 = np.squeeze(iter_xyz2)
-        iter_df1[["x", "y", "z"]] = iter_xyz1
-        iter_df2[["x", "y", "z"]] = iter_xyz2
-
-        # Generate MA maps and calculate count variables for first dataset
-        n_selected_active_voxels = self.kernel_transformer.transform(
-            iter_df1, self.masker, return_type="summary_array"
-        )
-
-        n_selected = self.dataset1.coordinates["id"].unique().shape[0]
-
-        # Generate MA maps and calculate count variables for second dataset
-        n_unselected_active_voxels = self.kernel_transformer.transform(
-            iter_df2, self.masker, return_type="summary_array"
-        )
-        n_unselected = self.dataset2.coordinates["id"].unique().shape[0]
-
-        # Currently unused conditional probabilities
-        # pAgF = n_selected_active_voxels / n_selected
-        # pAgU = n_unselected_active_voxels / n_unselected
+        n_selected_active_voxels = np.squeeze(n_selected_active_voxels)
+        n_unselected_active_voxels = np.squeeze(n_unselected_active_voxels)
 
         # One-way chi-square test for uniformity of activation
-        pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels), n_selected)
-
-        # Voxel-level inference
+        pAgF_chi2_vals = one_way(n_selected_active_voxels, n_selected)
         pAgF_max_chi2_value = np.max(np.abs(pAgF_chi2_vals))
-
-        # Cluster-level inference
         pAgF_chi2_map = self.masker.inverse_transform(pAgF_chi2_vals).get_fdata(
             dtype=DEFAULT_FLOAT_DTYPE
         )
         pAgF_max_size, pAgF_max_mass = _calculate_cluster_measures(
             pAgF_chi2_map, voxel_thresh, conn, tail="two"
+        )
+
+        pAgU_chi2_vals = one_way(n_unselected_active_voxels, n_unselected)
+        pAgU_max_chi2_value = np.max(np.abs(pAgU_chi2_vals))
+        pAgU_chi2_map = self.masker.inverse_transform(pAgU_chi2_vals).get_fdata(
+            dtype=DEFAULT_FLOAT_DTYPE
+        )
+        pAgU_max_size, pAgU_max_mass = _calculate_cluster_measures(
+            pAgU_chi2_map, voxel_thresh, conn, tail="two"
         )
 
         # Two-way chi-square for association of activation
@@ -631,11 +645,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             ).T
         )
         pFgA_chi2_vals = two_way(cells)
-
-        # Voxel-level inference
         pFgA_max_chi2_value = np.max(np.abs(pFgA_chi2_vals))
-
-        # Cluster-level inference
         pFgA_chi2_map = self.masker.inverse_transform(pFgA_chi2_vals).get_fdata(
             dtype=DEFAULT_FLOAT_DTYPE
         )
@@ -647,9 +657,105 @@ class MKDAChi2(PairwiseCBMAEstimator):
             pAgF_max_chi2_value,
             pAgF_max_size,
             pAgF_max_mass,
+            pAgU_max_chi2_value,
+            pAgU_max_size,
+            pAgU_max_mass,
             pFgA_max_chi2_value,
             pFgA_max_size,
             pFgA_max_mass,
+        )
+
+    def _run_fwe_permutation(self, iter_xyz1, iter_xyz2, iter_df1, iter_df2, conn, voxel_thresh):
+        """Run a single random-foci permutation of the Monte Carlo FWE correction procedure.
+
+        Parameters
+        ----------
+        iter_xyz1, iter_xyz2 : :obj:`numpy.ndarray`
+            Random coordinates for the permutation.
+        iter_df1, iter_df2 : :obj:`pandas.DataFrame`
+            DataFrames with as many rows as there are coordinates in each of the two datasets,
+            to be filled in with random coordinates for the permutation.
+        conn : :obj:`numpy.ndarray` of shape (3, 3, 3)
+            Connectivity matrix for defining clusters.
+        voxel_thresh : :obj:`float`
+            Uncorrected summary-statistic threshold for defining clusters.
+
+        Returns
+        -------
+        tuple of nine floats
+            (pAgF_max_chi2, pAgF_max_size, pAgF_max_mass,
+             pAgU_max_chi2, pAgU_max_size, pAgU_max_mass,
+             pFgA_max_chi2, pFgA_max_size, pFgA_max_mass)
+        """
+        iter_df1 = iter_df1.copy()
+        iter_df2 = iter_df2.copy()
+        iter_df1[["x", "y", "z"]] = np.squeeze(iter_xyz1)
+        iter_df2[["x", "y", "z"]] = np.squeeze(iter_xyz2)
+
+        n_selected_active_voxels = self.kernel_transformer.transform(
+            iter_df1, self.masker, return_type="summary_array"
+        )
+        n_selected = self.dataset1.coordinates["id"].unique().shape[0]
+        n_unselected_active_voxels = self.kernel_transformer.transform(
+            iter_df2, self.masker, return_type="summary_array"
+        )
+        n_unselected = self.dataset2.coordinates["id"].unique().shape[0]
+
+        return self._compute_chi2_perm_stats(
+            n_selected_active_voxels,
+            n_selected,
+            n_unselected_active_voxels,
+            n_unselected,
+            conn,
+            voxel_thresh,
+        )
+
+    def _run_label_perm_fwe_permutation(
+        self, i_iter, pooled_maps, n_selected, n_unselected, conn, voxel_thresh
+    ):
+        """Run a single label-permutation iteration of the Monte Carlo FWE correction procedure.
+
+        Pools the per-study MA maps from both groups, randomly reassigns study labels, and
+        computes chi-square null statistics — matching the ALESubtraction permutation design.
+
+        Parameters
+        ----------
+        i_iter : :obj:`int`
+            Iteration index used as the random seed (ensures reproducibility under joblib).
+        pooled_maps : :obj:`scipy.sparse.csr_matrix` of shape (n_studies, n_voxels)
+            Binary per-study MA maps from both groups stacked row-wise.
+        n_selected, n_unselected : :obj:`int`
+            Number of studies in each group; must sum to ``pooled_maps.shape[0]``.
+        conn : :obj:`numpy.ndarray` of shape (3, 3, 3)
+            Connectivity matrix for cluster labeling.
+        voxel_thresh : :obj:`float`
+            Summary-statistic cluster-defining threshold.
+
+        Returns
+        -------
+        tuple of nine floats
+            (pAgF_max_chi2, pAgF_max_size, pAgF_max_mass,
+             pAgU_max_chi2, pAgU_max_size, pAgU_max_mass,
+             pFgA_max_chi2, pFgA_max_size, pFgA_max_mass)
+        """
+        group1_idx, group2_idx = self._permute_pairwise_group_indices(
+            n_total=n_selected + n_unselected,
+            n_group1=n_selected,
+            seed=i_iter,
+        )
+
+        perm_group1 = pooled_maps[group1_idx, :]
+        perm_group2 = pooled_maps[group2_idx, :]
+        n_selected_active = np.asarray(perm_group1.sum(axis=0)).ravel()
+        n_unselected_active = np.asarray(perm_group2.sum(axis=0)).ravel()
+
+        return self._compute_chi2_perm_stats(
+            n_selected_active,
+            n_selected,
+            n_unselected_active,
+            n_unselected,
+            conn,
+            voxel_thresh,
         )
 
     def _apply_correction(self, stat_values, voxel_thresh, vfwe_null, csfwe_null, cmfwe_null):
@@ -840,28 +946,19 @@ class MKDAChi2(PairwiseCBMAEstimator):
         >>> corrector = FWECorrector(method='montecarlo', n_iters=5, n_cores=1)
         >>> cresult = corrector.transform(result)
         """
-        null_xyz = vox2mm(
-            np.vstack(np.where(_mask_img_to_bool(self.masker.mask_img))).T,
-            self.masker.mask_img.affine,
-        )
         pAgF_chi2_vals = result.get_map("chi2_desc-uniformity", return_type="array")
+        pAgU_chi2_vals = result.get_map("chi2_desc-group2", return_type="array")
         pFgA_chi2_vals = result.get_map("chi2_desc-association", return_type="array")
         pAgF_z_vals = result.get_map("z_desc-uniformity", return_type="array")
+        pAgU_z_vals = result.get_map("z_desc-group2", return_type="array")
         pFgA_z_vals = result.get_map("z_desc-association", return_type="array")
         pAgF_sign = np.sign(pAgF_z_vals)
+        pAgU_sign = np.sign(pAgU_z_vals)
         pFgA_sign = np.sign(pFgA_z_vals)
 
         n_cores = _check_ncores(n_cores)
-
         iter_df1 = self.inputs_["coordinates1"]
         iter_df2 = self.inputs_["coordinates2"]
-        rand_idx1 = np.random.choice(null_xyz.shape[0], size=(iter_df1.shape[0], n_iters))
-        rand_xyz1 = null_xyz[rand_idx1, :]
-        iter_xyzs1 = np.split(rand_xyz1, rand_xyz1.shape[1], axis=1)
-        rand_idx2 = np.random.choice(null_xyz.shape[0], size=(iter_df2.shape[0], n_iters))
-        rand_xyz2 = null_xyz[rand_idx2, :]
-        iter_xyzs2 = np.split(rand_xyz2, rand_xyz2.shape[1], axis=1)
-        eps = np.spacing(1)
 
         # Identify summary statistic corresponding to intensity threshold
         ss_thresh = chi2.isf(voxel_thresh, 1)
@@ -869,31 +966,76 @@ class MKDAChi2(PairwiseCBMAEstimator):
         # Define connectivity matrix for cluster labeling
         conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
 
-        perm_results = [
-            r
-            for r in tqdm(
-                Parallel(return_as="generator", n_jobs=n_cores)(
-                    delayed(self._run_fwe_permutation)(
-                        iter_xyz1=iter_xyzs1[i_iter],
-                        iter_xyz2=iter_xyzs2[i_iter],
-                        iter_df1=iter_df1,
-                        iter_df2=iter_df2,
-                        conn=conn,
-                        voxel_thresh=ss_thresh,
-                    )
-                    for i_iter in range(n_iters)
-                ),
-                total=n_iters,
+        if self.fwe_null_method == "label-permutation":
+            # Pool per-study binary MA maps from both groups and shuffle study labels each iter.
+            ma_maps1 = require_masked_csr(
+                self.kernel_transformer.transform(iter_df1, self.masker, return_type="sparse")
             )
-        ]
+            ma_maps2 = require_masked_csr(
+                self.kernel_transformer.transform(iter_df2, self.masker, return_type="sparse")
+            )
+            n_selected = ma_maps1.shape[0]
+            n_unselected = ma_maps2.shape[0]
+            pooled_maps = sp_sparse.vstack([ma_maps1, ma_maps2], format="csr")
+            del ma_maps1, ma_maps2
 
-        del rand_idx1, rand_xyz1, iter_xyzs1
-        del rand_idx2, rand_xyz2, iter_xyzs2
+            perm_results = [
+                r
+                for r in tqdm(
+                    Parallel(return_as="generator", n_jobs=n_cores)(
+                        delayed(self._run_label_perm_fwe_permutation)(
+                            i_iter=i_iter,
+                            pooled_maps=pooled_maps,
+                            n_selected=n_selected,
+                            n_unselected=n_unselected,
+                            conn=conn,
+                            voxel_thresh=ss_thresh,
+                        )
+                        for i_iter in range(n_iters)
+                    ),
+                    total=n_iters,
+                )
+            ]
+        else:  # "random-foci"
+            null_xyz = vox2mm(
+                _prior_space_to_null_ijk(self.masker, prior_space=self.prior_space),
+                self.masker.mask_img.affine,
+            )
+            rand_idx1 = np.random.choice(null_xyz.shape[0], size=(iter_df1.shape[0], n_iters))
+            rand_xyz1 = null_xyz[rand_idx1, :]
+            iter_xyzs1 = np.split(rand_xyz1, rand_xyz1.shape[1], axis=1)
+            rand_idx2 = np.random.choice(null_xyz.shape[0], size=(iter_df2.shape[0], n_iters))
+            rand_xyz2 = null_xyz[rand_idx2, :]
+            iter_xyzs2 = np.split(rand_xyz2, rand_xyz2.shape[1], axis=1)
+
+            perm_results = [
+                r
+                for r in tqdm(
+                    Parallel(return_as="generator", n_jobs=n_cores)(
+                        delayed(self._run_fwe_permutation)(
+                            iter_xyz1=iter_xyzs1[i_iter],
+                            iter_xyz2=iter_xyzs2[i_iter],
+                            iter_df1=iter_df1,
+                            iter_df2=iter_df2,
+                            conn=conn,
+                            voxel_thresh=ss_thresh,
+                        )
+                        for i_iter in range(n_iters)
+                    ),
+                    total=n_iters,
+                )
+            ]
+
+            del rand_idx1, rand_xyz1, iter_xyzs1
+            del rand_idx2, rand_xyz2, iter_xyzs2
 
         (
             pAgF_vfwe_null,
             pAgF_csfwe_null,
             pAgF_cmfwe_null,
+            pAgU_vfwe_null,
+            pAgU_csfwe_null,
+            pAgU_cmfwe_null,
             pFgA_vfwe_null,
             pFgA_csfwe_null,
             pFgA_cmfwe_null,
@@ -919,8 +1061,37 @@ class MKDAChi2(PairwiseCBMAEstimator):
         self.null_distributions_[
             "values_desc-pAgFmass_level-cluster_corr-fwe_method-montecarlo"
         ] = pAgF_cmfwe_null
+        self.null_distributions_["values_desc-group1_level-voxel_corr-fwe_method-montecarlo"] = (
+            pAgF_vfwe_null
+        )
+        self.null_distributions_[
+            "values_desc-group1size_level-cluster_corr-fwe_method-montecarlo"
+        ] = pAgF_csfwe_null
+        self.null_distributions_[
+            "values_desc-group1mass_level-cluster_corr-fwe_method-montecarlo"
+        ] = pAgF_cmfwe_null
 
         del pAgF_vfwe_null, pAgF_csfwe_null, pAgF_cmfwe_null
+
+        pAgU_p_vfwe_vals, pAgU_p_csfwe_vals, pAgU_p_cmfwe_vals = self._apply_correction(
+            pAgU_chi2_vals,
+            ss_thresh,
+            vfwe_null=pAgU_vfwe_null,
+            csfwe_null=pAgU_csfwe_null,
+            cmfwe_null=pAgU_cmfwe_null,
+        )
+
+        self.null_distributions_["values_desc-group2_level-voxel_corr-fwe_method-montecarlo"] = (
+            pAgU_vfwe_null
+        )
+        self.null_distributions_[
+            "values_desc-group2size_level-cluster_corr-fwe_method-montecarlo"
+        ] = pAgU_csfwe_null
+        self.null_distributions_[
+            "values_desc-group2mass_level-cluster_corr-fwe_method-montecarlo"
+        ] = pAgU_cmfwe_null
+
+        del pAgU_vfwe_null, pAgU_csfwe_null, pAgU_cmfwe_null
 
         # pFgA_FWE
         pFgA_p_vfwe_vals, pFgA_p_csfwe_vals, pFgA_p_cmfwe_vals = self._apply_correction(
@@ -946,25 +1117,27 @@ class MKDAChi2(PairwiseCBMAEstimator):
         # Convert p-values
         # pAgF
         pAgF_z_vfwe_vals = p_to_z(pAgF_p_vfwe_vals, tail="two") * pAgF_sign
-        pAgF_logp_vfwe_vals = -np.log10(pAgF_p_vfwe_vals)
-        pAgF_logp_vfwe_vals[np.isinf(pAgF_logp_vfwe_vals)] = -np.log10(eps)
+        pAgF_logp_vfwe_vals = safe_logp(pAgF_p_vfwe_vals)
         pAgF_z_cmfwe_vals = p_to_z(pAgF_p_cmfwe_vals, tail="two") * pAgF_sign
-        pAgF_logp_cmfwe_vals = -np.log10(pAgF_p_cmfwe_vals)
-        pAgF_logp_cmfwe_vals[np.isinf(pAgF_logp_cmfwe_vals)] = -np.log10(eps)
+        pAgF_logp_cmfwe_vals = safe_logp(pAgF_p_cmfwe_vals)
         pAgF_z_csfwe_vals = p_to_z(pAgF_p_csfwe_vals, tail="two") * pAgF_sign
-        pAgF_logp_csfwe_vals = -np.log10(pAgF_p_csfwe_vals)
-        pAgF_logp_csfwe_vals[np.isinf(pAgF_logp_csfwe_vals)] = -np.log10(eps)
+        pAgF_logp_csfwe_vals = safe_logp(pAgF_p_csfwe_vals)
+
+        # pAgU
+        pAgU_z_vfwe_vals = p_to_z(pAgU_p_vfwe_vals, tail="two") * pAgU_sign
+        pAgU_logp_vfwe_vals = safe_logp(pAgU_p_vfwe_vals)
+        pAgU_z_cmfwe_vals = p_to_z(pAgU_p_cmfwe_vals, tail="two") * pAgU_sign
+        pAgU_logp_cmfwe_vals = safe_logp(pAgU_p_cmfwe_vals)
+        pAgU_z_csfwe_vals = p_to_z(pAgU_p_csfwe_vals, tail="two") * pAgU_sign
+        pAgU_logp_csfwe_vals = safe_logp(pAgU_p_csfwe_vals)
 
         # pFgA
         pFgA_z_vfwe_vals = p_to_z(pFgA_p_vfwe_vals, tail="two") * pFgA_sign
-        pFgA_logp_vfwe_vals = -np.log10(pFgA_p_vfwe_vals)
-        pFgA_logp_vfwe_vals[np.isinf(pFgA_logp_vfwe_vals)] = -np.log10(eps)
+        pFgA_logp_vfwe_vals = safe_logp(pFgA_p_vfwe_vals)
         pFgA_z_cmfwe_vals = p_to_z(pFgA_p_cmfwe_vals, tail="two") * pFgA_sign
-        pFgA_logp_cmfwe_vals = -np.log10(pFgA_p_cmfwe_vals)
-        pFgA_logp_cmfwe_vals[np.isinf(pFgA_logp_cmfwe_vals)] = -np.log10(eps)
+        pFgA_logp_cmfwe_vals = safe_logp(pFgA_p_cmfwe_vals)
         pFgA_z_csfwe_vals = p_to_z(pFgA_p_csfwe_vals, tail="two") * pFgA_sign
-        pFgA_logp_csfwe_vals = -np.log10(pFgA_p_csfwe_vals)
-        pFgA_logp_csfwe_vals[np.isinf(pFgA_logp_csfwe_vals)] = -np.log10(eps)
+        pFgA_logp_csfwe_vals = safe_logp(pFgA_p_csfwe_vals)
 
         maps = {
             # uniformity analysis
@@ -977,6 +1150,25 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "p_desc-uniformitySize_level-cluster": pAgF_p_csfwe_vals,
             "z_desc-uniformitySize_level-cluster": pAgF_z_csfwe_vals,
             "logp_desc-uniformitySize_level-cluster": pAgF_logp_csfwe_vals,
+            "p_desc-group1_level-voxel": pAgF_p_vfwe_vals,
+            "z_desc-group1_level-voxel": pAgF_z_vfwe_vals,
+            "logp_desc-group1_level-voxel": pAgF_logp_vfwe_vals,
+            "p_desc-group1Mass_level-cluster": pAgF_p_cmfwe_vals,
+            "z_desc-group1Mass_level-cluster": pAgF_z_cmfwe_vals,
+            "logp_desc-group1Mass_level-cluster": pAgF_logp_cmfwe_vals,
+            "p_desc-group1Size_level-cluster": pAgF_p_csfwe_vals,
+            "z_desc-group1Size_level-cluster": pAgF_z_csfwe_vals,
+            "logp_desc-group1Size_level-cluster": pAgF_logp_csfwe_vals,
+            # group2 main-effect analysis
+            "p_desc-group2_level-voxel": pAgU_p_vfwe_vals,
+            "z_desc-group2_level-voxel": pAgU_z_vfwe_vals,
+            "logp_desc-group2_level-voxel": pAgU_logp_vfwe_vals,
+            "p_desc-group2Mass_level-cluster": pAgU_p_cmfwe_vals,
+            "z_desc-group2Mass_level-cluster": pAgU_z_cmfwe_vals,
+            "logp_desc-group2Mass_level-cluster": pAgU_logp_cmfwe_vals,
+            "p_desc-group2Size_level-cluster": pAgU_p_csfwe_vals,
+            "z_desc-group2Size_level-cluster": pAgU_z_csfwe_vals,
+            "logp_desc-group2Size_level-cluster": pAgU_logp_csfwe_vals,
             # association analysis
             "p_desc-association_level-voxel": pFgA_p_vfwe_vals,
             "z_desc-association_level-voxel": pFgA_z_vfwe_vals,
@@ -1028,20 +1220,35 @@ class MKDAChi2(PairwiseCBMAEstimator):
         >>> cresult = corrector.transform(result)
         """
         pAgF_p_vals = result.get_map("p_desc-uniformity", return_type="array")
+        pAgU_p_vals = result.get_map("p_desc-group2", return_type="array")
         pFgA_p_vals = result.get_map("p_desc-association", return_type="array")
         pAgF_z_vals = result.get_map("z_desc-uniformity", return_type="array")
+        pAgU_z_vals = result.get_map("z_desc-group2", return_type="array")
         pFgA_z_vals = result.get_map("z_desc-association", return_type="array")
         pAgF_sign = np.sign(pAgF_z_vals)
+        pAgU_sign = np.sign(pAgU_z_vals)
         pFgA_sign = np.sign(pFgA_z_vals)
         pAgF_p_FDR = fdr(pAgF_p_vals, q=alpha, method="bh")
         pAgF_z_FDR = p_to_z(pAgF_p_FDR, tail="two") * pAgF_sign
+        pAgU_p_FDR = fdr(pAgU_p_vals, q=alpha, method="bh")
+        pAgU_z_FDR = p_to_z(pAgU_p_FDR, tail="two") * pAgU_sign
 
         pFgA_p_FDR = fdr(pFgA_p_vals, q=alpha, method="bh")
         pFgA_z_FDR = p_to_z(pFgA_p_FDR, tail="two") * pFgA_sign
 
         maps = {
+            "p_desc-uniformity_level-voxel": pAgF_p_FDR,
             "z_desc-uniformity_level-voxel": pAgF_z_FDR,
+            "logp_desc-uniformity_level-voxel": safe_logp(pAgF_p_FDR),
+            "p_desc-group1_level-voxel": pAgF_p_FDR,
+            "z_desc-group1_level-voxel": pAgF_z_FDR,
+            "logp_desc-group1_level-voxel": safe_logp(pAgF_p_FDR),
+            "p_desc-group2_level-voxel": pAgU_p_FDR,
+            "z_desc-group2_level-voxel": pAgU_z_FDR,
+            "logp_desc-group2_level-voxel": safe_logp(pAgU_p_FDR),
+            "p_desc-association_level-voxel": pFgA_p_FDR,
             "z_desc-association_level-voxel": pFgA_z_FDR,
+            "logp_desc-association_level-voxel": safe_logp(pFgA_p_FDR),
         }
 
         description = ""

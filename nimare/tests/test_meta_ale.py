@@ -803,6 +803,10 @@ def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
         results.get_map("z_desc-group1MinusGroup2", return_type="image"), nib.Nifti1Image
     )
     assert isinstance(results.get_map("z_desc-group1MinusGroup2", return_type="array"), np.ndarray)
+    assert "z_desc-group1" in results.maps
+    assert "z_desc-group2" in results.maps
+    assert "p_desc-group1" in results.maps
+    assert "p_desc-group2" in results.maps
     assert (
         "values_level-voxel_corr-fwe_method-montecarlo"
         in results.estimator.null_distributions_.keys()
@@ -818,6 +822,32 @@ def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
 
     sub_meta.save(out_file)
     assert os.path.isfile(out_file)
+
+
+def test_ALESubtraction_group_maps_are_correctable(testdata_cbma):
+    """ALESubtraction should expose group maps to generic and estimator-specific correctors."""
+    results = ale.ALESubtraction(n_iters=2, n_cores=1).fit(testdata_cbma, testdata_cbma)
+
+    fdr_result = FDRCorrector(method="indep", alpha=0.05).transform(results)
+    assert "z_desc-group1_corr-FDR_method-indep" in fdr_result.maps
+    assert "z_desc-group2_corr-FDR_method-indep" in fdr_result.maps
+
+    pairwise_fwe = FWECorrector(
+        method="montecarlo", n_iters=2, n_cores=1, vfwe_only=True
+    ).transform(results)
+    assert "z_desc-group1MinusGroup2_level-voxel_corr-FWE_method-montecarlo" in pairwise_fwe.maps
+    assert "z_desc-group1_level-voxel_corr-FWE_method-montecarlo" not in pairwise_fwe.maps
+
+    fwe_result = FWECorrector(
+        method="montecarlo",
+        n_iters=2,
+        n_cores=1,
+        vfwe_only=True,
+        target="main-effects",
+    ).transform(results)
+    assert "z_desc-group1_level-voxel_corr-FWE_method-montecarlo" in fwe_result.maps
+    assert "z_desc-group2_level-voxel_corr-FWE_method-montecarlo" in fwe_result.maps
+    assert "z_desc-group1MinusGroup2_level-voxel_corr-FWE_method-montecarlo" not in fwe_result.maps
 
 
 def test_ALESubtraction_init_vfwe_voxel_thresh_logic():

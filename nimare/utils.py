@@ -33,6 +33,36 @@ def _mask_img_to_bool(mask_img):
     return np.asanyarray(mask_img.dataobj).astype(bool)
 
 
+def _prior_space_to_null_ijk(masker, prior_space="gm", gm_threshold=0.1):
+    """Return voxel IJK coordinates for the null randomization space.
+
+    Parameters
+    ----------
+    masker : :class:`~nilearn.maskers.NiftiMasker`
+        Fitted masker whose ``mask_img`` defines the analysis volume.
+    prior_space : {"gm", "brain"}, optional
+        Voxel set from which random null foci are sampled. ``"gm"`` restricts
+        sampling to voxels with mask-image intensity above ``gm_threshold``
+        (the ICBM 10 % GM probability map); ``"brain"`` uses every non-zero
+        voxel in the mask image. Default is ``"gm"``.
+    gm_threshold : float, optional
+        Intensity threshold applied when ``prior_space="gm"``. Default is 0.1.
+
+    Returns
+    -------
+    null_ijk : :class:`numpy.ndarray` of shape (N, 3)
+        Integer IJK coordinates of all voxels in the chosen prior space.
+    """
+    mask_data = np.asanyarray(masker.mask_img.dataobj)
+    if prior_space == "gm":
+        mask_bool = mask_data > gm_threshold
+    elif prior_space == "brain":
+        mask_bool = mask_data > 0
+    else:
+        raise ValueError(f"prior_space must be 'gm' or 'brain'; got {prior_space!r}.")
+    return np.vstack(np.where(mask_bool)).T
+
+
 def _filter_kwargs(func, kwargs):
     """Return kwargs limited to a callable's supported parameters."""
     signature = inspect.signature(func)

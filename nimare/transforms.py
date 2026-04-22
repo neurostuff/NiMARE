@@ -13,6 +13,7 @@ from nilearn.reporting import get_clusters_table
 from scipy import stats
 
 from nimare.base import NiMAREBase
+from nimare.results import MetaResult
 from nimare.studyset import normalize_collection
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
@@ -23,6 +24,138 @@ from nimare.utils import (
 )
 
 LGR = logging.getLogger(__name__)
+
+
+def _infer_pairwise_target_image(result):
+    """Infer a signed contrast map from a pairwise MetaResult."""
+    candidates = (
+        "z_desc-group1MinusGroup2Size_level-cluster",
+        "z_desc-group1MinusGroup2_level-voxel",
+        "z_desc-group1MinusGroup2",
+        "z_desc-associationSize_level-cluster",
+        "z_desc-association_level-voxel",
+        "z_desc-association",
+    )
+    for candidate in candidates:
+        if candidate in result.maps:
+            return candidate
+
+    available_maps = ", ".join(sorted(result.maps))
+    raise ValueError(
+        "Unable to infer a signed pairwise target map from the result. "
+        f"Available maps: {available_maps}."
+    )
+
+
+def _infer_main_effect_image(result):
+    """Infer a main-effect map from a single-sample MetaResult."""
+    candidates = (
+        "z_desc-size_level-cluster_corr-FWE_method-montecarlo",
+        "z_desc-size_level-cluster_corr-FWE_method-predictive",
+        "z_level-voxel_corr-FWE_method-montecarlo",
+        "z_level-voxel_corr-FWE_method-predictive",
+        "z_desc-size_level-cluster",
+        "z_level-voxel",
+        "z",
+    )
+    for candidate in candidates:
+        if candidate in result.maps:
+            return candidate
+
+    available_maps = ", ".join(sorted(result.maps))
+    raise ValueError(
+        "Unable to infer a main-effect map from the result. " f"Available maps: {available_maps}."
+    )
+
+
+def _append_suffix(map_name, suffix):
+    """Append a suffix to a map name."""
+    return f"{map_name}_{suffix}"
+
+
+class MaskedContrastTransformer(NiMAREBase):
+    """Apply Masking winner masking to a pairwise contrast MetaResult.
+
+    This transformer does not rerun inference. It applies a post hoc masking rule:
+    positive contrast values are retained only where group 1's main-effect map is positive,
+    negative contrast values are retained only where group 2's main-effect map is positive,
+    and an optional conjunction map is defined as the voxelwise minimum of the two main effects.
+
+    Parameters
+    ----------
+    target_image : :obj:`str` or None, optional
+        Signed pairwise contrast map from the pairwise result. If None, infer from available maps.
+    group1_image : :obj:`str` or None, optional
+        Main-effect map from the first single-sample result. If None, infer from available maps.
+    group2_image : :obj:`str` or None, optional
+        Main-effect map from the second single-sample result. If None, infer from available maps.
+    conjunction : :obj:`bool`, optional
+        If True, add a conjunction map defined as the voxelwise minimum of the two main effects.
+        Default is True.
+    """
+
+    def __init__(self, target_image=None, group1_image=None, group2_image=None, conjunction=True):
+        self.target_image = target_image
+        self.group1_image = group1_image
+        self.group2_image = group2_image
+        self.conjunction = conjunction
+
+    def transform(self, result, group1_result, group2_result):
+        """Apply Standard Masking and Conjunction Analysis."""
+        from nimare.meta.cbma.base import PairwiseCBMAEstimator
+
+        if not isinstance(result, MetaResult):
+            raise TypeError(f"result must be a MetaResult, not {type(result)}.")
+        if not isinstance(group1_result, MetaResult):
+            raise TypeError(f"group1_result must be a MetaResult, not {type(group1_result)}.")
+        if not isinstance(group2_result, MetaResult):
+            raise TypeError(f"group2_result must be a MetaResult, not {type(group2_result)}.")
+
+        if not isinstance(result.estimator, PairwiseCBMAEstimator):
+            raise TypeError(
+                "MaskedContrastTransformer requires a pairwise CBMA MetaResult as its first input."
+            )
+
+        target_image = self.target_image or _infer_pairwise_target_image(result)
+        group1_image = self.group1_image or _infer_main_effect_image(group1_result)
+        group2_image = self.group2_image or _infer_main_effect_image(group2_result)
+
+        target_values = result.get_map(target_image, return_type="array")
+        group1_values = group1_result.get_map(group1_image, return_type="array")
+        group2_values = group2_result.get_map(group2_image, return_type="array")
+
+        if not (target_values.shape[0] == group1_values.shape[0] == group2_values.shape[0]):
+            raise ValueError(
+                "result, group1_result, and group2_result must share the same masked voxel space. "
+                f"Got lengths {target_values.shape[0]}, {group1_values.shape[0]}, "
+                f"and {group2_values.shape[0]}."
+            )
+
+        pos_mask = group1_values > 0
+        neg_mask = group2_values > 0
+
+        masked_values = np.zeros(target_values.shape[0], dtype=DEFAULT_FLOAT_DTYPE)
+        masked_values[(target_values > 0) & pos_mask] = target_values[
+            (target_values > 0) & pos_mask
+        ]
+        masked_values[(target_values < 0) & neg_mask] = target_values[
+            (target_values < 0) & neg_mask
+        ]
+
+        result = result.copy()
+        masked_name = _append_suffix(target_image, "desc-winnerMasked")
+        result.maps[masked_name] = masked_values
+
+        if self.conjunction:
+            conjunction_name = _append_suffix(group1_image, "desc-conjunction")
+            result.maps[conjunction_name] = np.minimum(group1_values, group2_values).astype(
+                DEFAULT_FLOAT_DTYPE,
+                copy=False,
+            )
+        else:
+            conjunction_name = None
+
+        return result
 
 
 class ImageTransformer(NiMAREBase):
