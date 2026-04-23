@@ -17,7 +17,7 @@ from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.cbma.utils import collect_csr_ma_maps, require_masked_csr
 from nimare.meta.kernel import KDAKernel, MKDAKernel
 from nimare.meta.utils import _calculate_cluster_measures
-from nimare.stats import null_to_p, one_way, safe_logp, two_way
+from nimare.stats import null_to_p, one_way, safe_logp, two_way_counts
 from nimare.transforms import p_to_z
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
@@ -472,7 +472,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             return_type="summary_array",
         )
 
-        n_selected = self.dataset1.coordinates["id"].unique().shape[0]
+        n_selected = len(self.inputs_["id1"])
 
         # Generate MA maps and calculate count variables for second dataset
         n_unselected_active_voxels = self._collect_ma_maps(
@@ -480,7 +480,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             coords_key="coordinates2",
             return_type="summary_array",
         )
-        n_unselected = self.dataset2.coordinates["id"].unique().shape[0]
+        n_unselected = len(self.inputs_["id2"])
 
         n_mappables = n_selected + n_unselected
 
@@ -521,22 +521,14 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pAgU_sign = np.sign(n_unselected_active_voxels - np.mean(n_unselected_active_voxels))
         pAgU_z = np.sqrt(pAgU_chi2_vals) * pAgU_sign
 
-        # Two-way chi-square for association of activation
-        cells = np.squeeze(
-            np.array(
-                [
-                    [n_selected_active_voxels, n_unselected_active_voxels],
-                    [
-                        n_selected - n_selected_active_voxels,
-                        n_unselected - n_unselected_active_voxels,
-                    ],
-                ]
-            ).T
-        )
-
         del n_selected, n_unselected
 
-        pFgA_chi2_vals = two_way(cells)
+        pFgA_chi2_vals = two_way_counts(
+            n_selected_active_voxels,
+            n_unselected_active_voxels,
+            len(self.inputs_["id1"]),
+            len(self.inputs_["id2"]),
+        )
 
         del n_selected_active_voxels, n_unselected_active_voxels
 
@@ -544,6 +536,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pFgA_p_vals[pFgA_p_vals < eps] = eps
         pFgA_sign = np.sign(pAgF - pAgU).ravel()
         pFgA_z = np.sqrt(pFgA_chi2_vals) * pFgA_sign
+
+        pAgF_logp = safe_logp(pAgF_p_vals)
+        pAgU_logp = safe_logp(pAgU_p_vals)
+        pFgA_logp = safe_logp(pFgA_p_vals)
 
         del pAgF_sign, pAgU_sign, pFgA_sign
 
@@ -554,8 +550,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "chi2_desc-association": pFgA_chi2_vals,
             "p_desc-uniformity": pAgF_p_vals,
             "p_desc-association": pFgA_p_vals,
-            "logp_desc-uniformity": safe_logp(pAgF_p_vals),
-            "logp_desc-association": safe_logp(pFgA_p_vals),
+            "logp_desc-uniformity": pAgF_logp,
+            "logp_desc-association": pFgA_logp,
             "prob_desc-A": pA,
             "prob_desc-AgF": pAgF,
             "prob_desc-AgU": pAgU,
@@ -568,8 +564,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "p_desc-group2": pAgU_p_vals,
             "z_desc-group1": pAgF_z,
             "z_desc-group2": pAgU_z,
-            "logp_desc-group1": safe_logp(pAgF_p_vals),
-            "logp_desc-group2": safe_logp(pAgU_p_vals),
+            "logp_desc-group1": pAgF_logp,
+            "logp_desc-group2": pAgU_logp,
         }
 
         if self.prior:
@@ -632,19 +628,12 @@ class MKDAChi2(PairwiseCBMAEstimator):
             pAgU_chi2_map, voxel_thresh, conn, tail="two"
         )
 
-        # Two-way chi-square for association of activation
-        cells = np.squeeze(
-            np.array(
-                [
-                    [n_selected_active_voxels, n_unselected_active_voxels],
-                    [
-                        n_selected - n_selected_active_voxels,
-                        n_unselected - n_unselected_active_voxels,
-                    ],
-                ]
-            ).T
+        pFgA_chi2_vals = two_way_counts(
+            n_selected_active_voxels,
+            n_unselected_active_voxels,
+            n_selected,
+            n_unselected,
         )
-        pFgA_chi2_vals = two_way(cells)
         pFgA_max_chi2_value = np.max(np.abs(pFgA_chi2_vals))
         pFgA_chi2_map = self.masker.inverse_transform(pFgA_chi2_vals).get_fdata(
             dtype=DEFAULT_FLOAT_DTYPE
@@ -695,11 +684,11 @@ class MKDAChi2(PairwiseCBMAEstimator):
         n_selected_active_voxels = self.kernel_transformer.transform(
             iter_df1, self.masker, return_type="summary_array"
         )
-        n_selected = self.dataset1.coordinates["id"].unique().shape[0]
+        n_selected = len(self.inputs_["id1"])
         n_unselected_active_voxels = self.kernel_transformer.transform(
             iter_df2, self.masker, return_type="summary_array"
         )
-        n_unselected = self.dataset2.coordinates["id"].unique().shape[0]
+        n_unselected = len(self.inputs_["id2"])
 
         return self._compute_chi2_perm_stats(
             n_selected_active_voxels,
@@ -1236,19 +1225,23 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pFgA_p_FDR = fdr(pFgA_p_vals, q=alpha, method="bh")
         pFgA_z_FDR = p_to_z(pFgA_p_FDR, tail="two") * pFgA_sign
 
+        pAgF_logp_FDR = safe_logp(pAgF_p_FDR)
+        pAgU_logp_FDR = safe_logp(pAgU_p_FDR)
+        pFgA_logp_FDR = safe_logp(pFgA_p_FDR)
+
         maps = {
             "p_desc-uniformity_level-voxel": pAgF_p_FDR,
             "z_desc-uniformity_level-voxel": pAgF_z_FDR,
-            "logp_desc-uniformity_level-voxel": safe_logp(pAgF_p_FDR),
+            "logp_desc-uniformity_level-voxel": pAgF_logp_FDR,
             "p_desc-group1_level-voxel": pAgF_p_FDR,
             "z_desc-group1_level-voxel": pAgF_z_FDR,
-            "logp_desc-group1_level-voxel": safe_logp(pAgF_p_FDR),
+            "logp_desc-group1_level-voxel": pAgF_logp_FDR,
             "p_desc-group2_level-voxel": pAgU_p_FDR,
             "z_desc-group2_level-voxel": pAgU_z_FDR,
-            "logp_desc-group2_level-voxel": safe_logp(pAgU_p_FDR),
+            "logp_desc-group2_level-voxel": pAgU_logp_FDR,
             "p_desc-association_level-voxel": pFgA_p_FDR,
             "z_desc-association_level-voxel": pFgA_z_FDR,
-            "logp_desc-association_level-voxel": safe_logp(pFgA_p_FDR),
+            "logp_desc-association_level-voxel": pFgA_logp_FDR,
         }
 
         description = ""

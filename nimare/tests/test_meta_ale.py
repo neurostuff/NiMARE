@@ -1141,6 +1141,35 @@ def test_ALESubtraction_pairwise_store_close_releases_refs_before_cleanup(monkey
     assert observed["temp_files"] == []
 
 
+def test_close_memmap_array_closes_nested_memmap_base(tmp_path):
+    """Memmap cleanup should traverse ndarray view chains to the mmap owner."""
+    filename = tmp_path / "nested-view.mmap"
+    mapped = np.memmap(filename, dtype=np.float32, mode="w+", shape=(6,))
+    mapped[:] = np.arange(6, dtype=np.float32)
+    view = np.asarray(mapped)[1:5][::2]
+
+    ale._close_memmap_array(view)
+
+    assert mapped._mmap.closed
+
+
+def test_close_csr_memmaps_detaches_memmap_backing(tmp_path):
+    """CSR memmap cleanup should detach backing arrays before file deletion."""
+    ma_values = sp_sparse.csr_matrix(np.array([[1, 0, 2], [0, 3, 0]], dtype=np.float32))
+    mapped, filenames = ale._csr_to_memmap(ma_values, prefix="ALESubtractionUnit")
+
+    ale._close_csr_memmaps(mapped)
+
+    for arr in (mapped.data, mapped.indices, mapped.indptr):
+        base = arr
+        while base is not None:
+            assert getattr(base, "_mmap", None) is None
+            base = getattr(base, "base", None)
+
+    for filename in filenames:
+        os.remove(filename)
+
+
 def test_ALESubtraction_low_memory_auto_activates(monkeypatch, testdata_cbma):
     """Auto low-memory mode should spill MA maps when available RAM is tiny."""
     dset1 = testdata_cbma.slice(testdata_cbma.ids[:3])

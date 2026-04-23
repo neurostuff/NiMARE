@@ -1,7 +1,6 @@
 """Various statistical helper functions."""
 
 import logging
-import warnings
 
 import numpy as np
 
@@ -37,15 +36,55 @@ def one_way(data, n):
     -----
     Taken from Neurosynth.
     """
-    term = data.astype("float64")
-    no_term = n - term
-    t_exp = np.mean(term, 0)
-    t_exp = np.array([t_exp] * data.shape[0])
-    nt_exp = n - t_exp
-    t_mss = (term - t_exp) ** 2 / t_exp
-    nt_mss = (no_term - nt_exp) ** 2 / nt_exp
-    chi2 = t_mss + nt_mss
+    term = np.asarray(data, dtype=np.float64)
+    expected_term = np.mean(term, axis=0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        chi2 = (term - expected_term) ** 2 * n / (expected_term * (n - expected_term))
     return chi2
+
+
+def two_way_counts(selected, unselected, n_selected, n_unselected):
+    """Two-way chi-square test from paired study-count vectors.
+
+    Parameters
+    ----------
+    selected, unselected : (N,) array_like
+        Per-voxel active-study counts for the two groups.
+    n_selected, n_unselected : :obj:`int`
+        Number of studies in each group.
+
+    Returns
+    -------
+    chi_sq : :class:`numpy.ndarray`
+        Chi-square values, one per voxel.
+    """
+    a = np.asarray(selected, dtype=np.float64)
+    b = np.asarray(unselected, dtype=np.float64)
+    c = n_selected - a
+    d = n_unselected - b
+
+    total = a + b + c + d
+    row0 = a + b
+    row1 = c + d
+    col0 = a + c
+    col1 = b + d
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        exp00 = row0 * col0 / total
+        exp01 = row0 * col1 / total
+        exp10 = row1 * col0 / total
+        exp11 = row1 * col1 / total
+
+        chi00 = (a - exp00) ** 2 / exp00
+        chi01 = (b - exp01) ** 2 / exp01
+        chi10 = (c - exp10) ** 2 / exp10
+        chi11 = (d - exp11) ** 2 / exp11
+
+    chi00[exp00 == 0] = 1.0
+    chi01[exp01 == 0] = 1.0
+    chi10[exp10 == 0] = 1.0
+    chi11[exp11 == 0] = 1.0
+    return chi00 + chi01 + chi10 + chi11
 
 
 def two_way(cells):
@@ -69,21 +108,18 @@ def two_way(cells):
     -----
     Taken from Neurosynth.
     """
-    # Mute divide-by-zero warning for bad voxels since we account for that
-    # later
-    warnings.simplefilter("ignore", RuntimeWarning)
+    cells = np.asarray(cells, dtype=np.float64)
+    if cells.ndim != 3 or cells.shape[1:] != (2, 2):
+        raise ValueError(
+            "two_way expects an array of shape (n_tables, 2, 2); " f"got {cells.shape!r}."
+        )
 
-    cells = cells.astype("float64")  # Make sure we don't overflow
-    total = np.apply_over_axes(np.sum, cells, [1, 2]).ravel()
-    chi_sq = np.zeros(cells.shape, dtype="float64")
-    for i in range(2):
-        for j in range(2):
-            exp = np.sum(cells[:, i, :], 1).ravel() * np.sum(cells[:, :, j], 1).ravel() / total
-            bad_vox = np.where(exp == 0)[0]
-            chi_sq[:, i, j] = (cells[:, i, j] - exp) ** 2 / exp
-            chi_sq[bad_vox, i, j] = 1.0  # Set p-value for invalid voxels to 1
-    chi_sq = np.apply_over_axes(np.sum, chi_sq, [1, 2]).ravel()
-    return chi_sq
+    return two_way_counts(
+        selected=cells[:, 0, 0],
+        unselected=cells[:, 0, 1],
+        n_selected=np.asarray(cells[:, :, 0].sum(axis=1)),
+        n_unselected=np.asarray(cells[:, :, 1].sum(axis=1)),
+    )
 
 
 def pearson(x, y):

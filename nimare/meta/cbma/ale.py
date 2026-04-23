@@ -608,9 +608,29 @@ def _csr_to_memmap(ma_values, prefix):
 
 def _close_memmap_array(arr):
     """Close a numpy memmap backing file when present."""
-    mmap_obj = getattr(arr, "_mmap", None)
-    if mmap_obj is not None:
-        mmap_obj.close()
+    base = arr
+    seen = set()
+    while base is not None and id(base) not in seen:
+        seen.add(id(base))
+        mmap_obj = getattr(base, "_mmap", None)
+        if mmap_obj is not None:
+            mmap_obj.close()
+            break
+        base = getattr(base, "base", None)
+
+
+def _detach_csr_memmap_arrays(ma_values):
+    """Detach CSR arrays from any memmap-backed storage before cleanup."""
+    data = ma_values.data
+    indices = ma_values.indices
+    indptr = ma_values.indptr
+
+    ma_values.data = np.empty(0, dtype=data.dtype)
+    ma_values.indices = np.empty(0, dtype=indices.dtype)
+    ma_values.indptr = np.zeros(ma_values.shape[0] + 1, dtype=indptr.dtype)
+
+    for arr in (data, indices, indptr):
+        _close_memmap_array(arr)
 
 
 def _close_csr_memmaps(ma_values):
@@ -623,9 +643,7 @@ def _close_csr_memmaps(ma_values):
     if not sp_sparse.isspmatrix(ma_values):
         return
 
-    _close_memmap_array(ma_values.data)
-    _close_memmap_array(ma_values.indices)
-    _close_memmap_array(ma_values.indptr)
+    _detach_csr_memmap_arrays(ma_values)
 
 
 def _cleanup_temp_files(filenames):
