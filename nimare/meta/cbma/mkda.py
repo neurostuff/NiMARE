@@ -464,6 +464,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
         self.dataset2 = dataset2
         self.masker = self.masker or dataset1.masker
         self.null_distributions_ = {}
+        inference_map1 = self.inputs_.get("inference_map1")
+        inference_map2 = self.inputs_.get("inference_map2")
 
         # Generate MA maps and calculate count variables for first dataset
         n_selected_active_voxels = self._collect_ma_maps(
@@ -536,6 +538,22 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pFgA_p_vals[pFgA_p_vals < eps] = eps
         pFgA_sign = np.sign(pAgF - pAgU).ravel()
         pFgA_z = np.sqrt(pFgA_chi2_vals) * pFgA_sign
+
+        if inference_map1 is not None or inference_map2 is not None:
+            group1_mask = np.zeros(pFgA_z.shape[0], dtype=bool)
+            group2_mask = np.zeros(pFgA_z.shape[0], dtype=bool)
+            if inference_map1 is not None:
+                group1_mask = np.asarray(inference_map1) > 0
+            if inference_map2 is not None:
+                group2_mask = np.asarray(inference_map2) > 0
+
+            association_mask = ((pFgA_sign > 0) & group1_mask) | ((pFgA_sign < 0) & group2_mask)
+            pFgA_chi2_vals = pFgA_chi2_vals.astype(DEFAULT_FLOAT_DTYPE, copy=False)
+            pFgA_p_vals = pFgA_p_vals.astype(DEFAULT_FLOAT_DTYPE, copy=False)
+            pFgA_z = pFgA_z.astype(DEFAULT_FLOAT_DTYPE, copy=False)
+            pFgA_chi2_vals[~association_mask] = 0
+            pFgA_p_vals[~association_mask] = 1
+            pFgA_z[~association_mask] = 0
 
         pAgF_logp = safe_logp(pAgF_p_vals)
         pAgU_logp = safe_logp(pAgU_p_vals)

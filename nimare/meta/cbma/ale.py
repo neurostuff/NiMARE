@@ -264,6 +264,34 @@ def _finalize_alediff_tail_counts(left_counts, right_counts, n_iters):
     return p_values, diff_signs
 
 
+def _finalize_masked_alediff_tail_counts(
+    upper_counts, lower_counts, diff_ale_values, group1_mask, group2_mask, n_iters
+):
+    """Convert directional ALE subtraction tail counts into one-sided masked p-values."""
+    smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
+    p_values = np.ones(diff_ale_values.shape[0], dtype=DEFAULT_FLOAT_DTYPE)
+    diff_signs = np.zeros(diff_ale_values.shape[0], dtype=DEFAULT_FLOAT_DTYPE)
+
+    diff_ale_values = np.asarray(diff_ale_values)
+    if group1_mask is not None:
+        pos_idx = group1_mask & (diff_ale_values > 0)
+        p_values[pos_idx] = np.maximum(smallest_value, upper_counts[pos_idx] / n_iters).astype(
+            DEFAULT_FLOAT_DTYPE,
+            copy=False,
+        )
+        diff_signs[pos_idx] = 1
+
+    if group2_mask is not None:
+        neg_idx = group2_mask & (diff_ale_values < 0)
+        p_values[neg_idx] = np.maximum(smallest_value, lower_counts[neg_idx] / n_iters).astype(
+            DEFAULT_FLOAT_DTYPE,
+            copy=False,
+        )
+        diff_signs[neg_idx] = -1
+
+    return p_values, diff_signs
+
+
 def _group_row_max(ma_values):
     """Compute row-wise maxima for either a CSR matrix or a chunked CSR group."""
     if sp_sparse.isspmatrix(ma_values):
@@ -1352,6 +1380,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.masker = self.masker or dataset1.masker
         self.null_distributions_ = {}
         iter_diff_values = None
+        inference_map1 = self.inputs_.get("inference_map1")
+        inference_map2 = self.inputs_.get("inference_map2")
+        group1_mask = None if inference_map1 is None else np.asarray(inference_map1) > 0
+        group2_mask = None if inference_map2 is None else np.asarray(inference_map2) > 0
 
         with self._managed_pairwise_ma_store(
             maps_key1="ma_maps1",
@@ -1377,6 +1409,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
                     n_cores=self.n_cores,
                     diff_ale_values=diff_ale_values,
                     iter_diff_values=iter_diff_values,
+                    group1_mask=group1_mask,
+                    group2_mask=group2_mask,
                 )
                 self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = (
                     iter_abs_max
@@ -1419,7 +1453,8 @@ class ALESubtraction(PairwiseCBMAEstimator):
                     )
                 )
 
-        z_arr = p_to_z(p_values, tail="two") * diff_signs
+        z_tail = "one" if (group1_mask is not None or group2_mask is not None) else "two"
+        z_arr = p_to_z(p_values, tail=z_tail) * diff_signs
         logp_arr = safe_logp(p_values)
 
         maps = {
@@ -1459,29 +1494,56 @@ class ALESubtraction(PairwiseCBMAEstimator):
         )
 
     def _run_null_permutations(
-        self, ma_store, n_iters, n_cores, diff_ale_values=None, iter_diff_values=None
+        self,
+        ma_store,
+        n_iters,
+        n_cores,
+        diff_ale_values=None,
+        iter_diff_values=None,
+        group1_mask=None,
+        group2_mask=None,
     ):
         """Run Monte Carlo null permutations and optionally stream ALE-difference tail counts."""
         iter_abs_max = np.empty(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
-        left_counts = right_counts = None
+        upper_counts = lower_counts = None
 
         if diff_ale_values is not None:
-            left_counts = np.zeros(ma_store.n_voxels, dtype=np.uint32)
-            right_counts = np.zeros(ma_store.n_voxels, dtype=np.uint32)
+            upper_counts = np.zeros(ma_store.n_voxels, dtype=np.uint32)
+            lower_counts = np.zeros(ma_store.n_voxels, dtype=np.uint32)
 
         for i_iter, iter_diff in self._iterate_permutation_diffs(ma_store, n_iters, n_cores):
             iter_abs_max[i_iter] = np.max(np.abs(iter_diff))
             if diff_ale_values is not None:
-                left_counts += iter_diff >= diff_ale_values
-                right_counts += iter_diff <= diff_ale_values
+                if group1_mask is None and group2_mask is None:
+                    upper_counts += iter_diff >= diff_ale_values
+                    lower_counts += iter_diff <= diff_ale_values
+                else:
+                    if group1_mask is not None:
+                        upper_counts[group1_mask] += (
+                            iter_diff[group1_mask] >= diff_ale_values[group1_mask]
+                        )
+                    if group2_mask is not None:
+                        lower_counts[group2_mask] += (
+                            iter_diff[group2_mask] <= diff_ale_values[group2_mask]
+                        )
             if iter_diff_values is not None:
                 iter_diff_values[i_iter, :] = iter_diff
 
         p_values = diff_signs = None
         if diff_ale_values is not None:
-            p_values, diff_signs = _finalize_alediff_tail_counts(
-                left_counts, right_counts, n_iters
-            )
+            if group1_mask is None and group2_mask is None:
+                p_values, diff_signs = _finalize_alediff_tail_counts(
+                    upper_counts, lower_counts, n_iters
+                )
+            else:
+                p_values, diff_signs = _finalize_masked_alediff_tail_counts(
+                    upper_counts,
+                    lower_counts,
+                    diff_ale_values,
+                    group1_mask,
+                    group2_mask,
+                    n_iters,
+                )
 
         return iter_abs_max, p_values, diff_signs
 

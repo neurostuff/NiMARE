@@ -164,6 +164,7 @@ class CBMAEstimator(Estimator):
                 "Dataset with a `target` and/or `mask` so `dataset.masker` is defined."
             ),
         )
+        self.masker = masker
 
         for name, (type_, _) in self._required_inputs.items():
             if type_ == "coordinates":
@@ -1048,6 +1049,36 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         raise NotImplementedError
 
     @staticmethod
+    def _coerce_inference_map(inference_map, masker, label):
+        """Coerce a directional inference map into masked-array form."""
+        if inference_map is None:
+            return None
+
+        if hasattr(inference_map, "shape") and not isinstance(inference_map, np.ndarray):
+            try:
+                values = np.squeeze(masker.transform(inference_map))
+            except Exception as exc:
+                raise ValueError(
+                    f"{label} must be a 1D masked array or an image aligned to the estimator mask."
+                ) from exc
+        else:
+            values = np.asarray(inference_map)
+            if values.ndim != 1:
+                raise ValueError(
+                    f"{label} must be a one-dimensional masked array; got shape {values.shape}."
+                )
+
+        _, mask_img = get_masker_mask_image(masker)
+        expected_n_voxels = int(np.squeeze(masker.transform(mask_img)).shape[0])
+        if values.shape[0] != expected_n_voxels:
+            raise ValueError(
+                f"{label} has {values.shape[0]} voxels, but the estimator mask has "
+                f"{expected_n_voxels} voxels."
+            )
+
+        return np.asarray(values, dtype=DEFAULT_FLOAT_DTYPE).copy()
+
+    @staticmethod
     def _permute_pairwise_group_indices(n_total, n_group1, seed):
         """Generate randomized group memberships for pairwise permutation tests.
 
@@ -1070,7 +1101,16 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         gen.shuffle(id_idx)
         return id_idx[:n_group1], id_idx[n_group1:]
 
-    def fit(self, dataset1, dataset2, drop_invalid=True, ma_maps1=None, ma_maps2=None):
+    def fit(
+        self,
+        dataset1,
+        dataset2,
+        drop_invalid=True,
+        ma_maps1=None,
+        ma_maps2=None,
+        inference_map1=None,
+        inference_map2=None,
+    ):
         """Fit Estimator to two collections.
 
         Parameters
@@ -1083,6 +1123,10 @@ class PairwiseCBMAEstimator(CBMAEstimator):
             respectively. When provided, the estimator will reuse these maps instead of
             recomputing them from coordinates. These are typically 2D
             study-by-masked-voxel sparse matrices.
+        inference_map1/inference_map2 : array_like or Niimg-like, optional
+            Optional directional inference maps aligned to the common masked voxel space.
+            Positive pairwise effects are only evaluated where ``inference_map1 > 0``, and
+            negative pairwise effects are only evaluated where ``inference_map2 > 0``.
 
         Returns
         -------
@@ -1125,6 +1169,13 @@ class PairwiseCBMAEstimator(CBMAEstimator):
 
         self.inputs_["id2"] = self.inputs_.pop("id")
         self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
+        inference_masker = self.masker or dataset1.masker
+        self.inputs_["inference_map1"] = self._coerce_inference_map(
+            inference_map1, masker=inference_masker, label="inference_map1"
+        )
+        self.inputs_["inference_map2"] = self._coerce_inference_map(
+            inference_map2, masker=inference_masker, label="inference_map2"
+        )
 
         # Now run the Estimator-specific _fit() method.
         maps, tables, description = self._cache(self._fit, func_memory_level=1)(dataset1, dataset2)

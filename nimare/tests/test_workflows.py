@@ -7,12 +7,13 @@ import numpy as np
 import pytest
 
 import nimare
-from nimare.correct import FWECorrector
+from nimare.correct import FDRCorrector, FWECorrector
 from nimare.diagnostics import FocusCounter, Jackknife
 from nimare.meta.cbma import ALE, ALESubtraction, MKDAChi2
 from nimare.meta.ibma import Fishers, PermutedOLS, Stouffers
 from nimare.workflows import (
     CBMAWorkflow,
+    ContrastWorkflow,
     IBMAWorkflow,
     PairwiseCBMAWorkflow,
     conjunction_analysis,
@@ -219,3 +220,46 @@ def test_conjunction_analysis_smoke(tmp_path_factory):
     # Raise error if invalid image type is provided
     with pytest.raises(ValueError):
         conjunction_analysis([1, 2])
+
+
+@pytest.mark.parametrize(
+    "mode,corrector,pairwise_estimator",
+    [
+        (
+            "ALE",
+            FWECorrector(method="montecarlo", n_iters=8, voxel_thresh=0.05, n_cores=1),
+            ALESubtraction(n_iters=8, n_cores=1, generate_description=False),
+        ),
+        (
+            "MKDA",
+            FWECorrector(method="montecarlo", n_iters=8, voxel_thresh=0.05, n_cores=1),
+            MKDAChi2(generate_description=False),
+        ),
+        (
+            "ALE",
+            FDRCorrector(method="indep", alpha=0.05),
+            ALESubtraction(n_iters=8, n_cores=1, generate_description=False),
+        ),
+    ],
+)
+def test_contrast_workflow_smoke(testdata_cbma_full, mode, corrector, pairwise_estimator):
+    """Contrast Workflow should emit generic contrast/main-effect/conjunction maps."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+
+    workflow = ContrastWorkflow(
+        mode=mode,
+        corrector=corrector,
+        pairwise_estimator=pairwise_estimator,
+        alpha=0.05,
+        n_cores=1,
+    )
+    result = workflow.fit(dset1, dset2)
+
+    assert isinstance(result, nimare.results.MetaResult)
+    assert "z_desc-group1MainEffect" in result.maps
+    assert "z_desc-group2MainEffect" in result.maps
+    assert "z_desc-conjunction" in result.maps
+    assert "z_desc-contrast" in result.maps
+    assert "p_desc-contrast" in result.maps
+    assert "logp_desc-contrast" in result.maps

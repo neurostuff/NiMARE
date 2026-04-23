@@ -113,6 +113,33 @@ def test_MKDAChi2_fdr(testdata_cbma):
     assert methods == ["indep", "negcorr"]
 
 
+def test_MKDAChi2_directional_inference_maps_gate_association_results(testdata_cbma_full):
+    """Directional inference maps should zero unsupported MKDAChi2 association voxels."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+
+    baseline = MKDAChi2(generate_description=False).fit(dset1, dset2)
+    baseline_z = baseline.get_map("z_desc-association", return_type="array")
+    pos_map = (baseline_z > 0).astype(np.int8)
+    neg_map = (baseline_z < 0).astype(np.int8)
+
+    masked = MKDAChi2(generate_description=False).fit(
+        dset1,
+        dset2,
+        inference_map1=pos_map,
+        inference_map2=neg_map,
+    )
+
+    z_values = masked.get_map("z_desc-association", return_type="array")
+    p_values = masked.get_map("p_desc-association", return_type="array")
+    union = (pos_map > 0) | (neg_map > 0)
+
+    assert np.all(z_values[~union] == 0)
+    np.testing.assert_allclose(p_values[~union], 1.0)
+    assert np.all(z_values[pos_map <= 0] <= 0)
+    assert np.all(z_values[neg_map <= 0] >= 0)
+
+
 def test_MKDAChi2_fwe_1core(testdata_cbma):
     """Smoke test for MKDAChi2."""
     meta = MKDAChi2()

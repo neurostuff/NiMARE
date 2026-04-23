@@ -1046,6 +1046,35 @@ def test_ALESubtraction_low_memory_matches_standard_path(testdata_cbma):
     )
 
 
+def test_ALESubtraction_directional_inference_maps_gate_pairwise_results(testdata_cbma_full):
+    """Directional inference maps should zero unsupported ALE subtraction voxels."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+
+    baseline = ale.ALESubtraction(n_iters=8, n_cores=1, generate_description=False).fit(
+        dset1, dset2
+    )
+    baseline_z = baseline.get_map("z_desc-group1MinusGroup2", return_type="array")
+    pos_map = (baseline_z > 0).astype(np.int8)
+    neg_map = (baseline_z < 0).astype(np.int8)
+
+    masked = ale.ALESubtraction(n_iters=8, n_cores=1, generate_description=False).fit(
+        dset1,
+        dset2,
+        inference_map1=pos_map,
+        inference_map2=neg_map,
+    )
+
+    z_values = masked.get_map("z_desc-group1MinusGroup2", return_type="array")
+    p_values = masked.get_map("p_desc-group1MinusGroup2", return_type="array")
+    union = (pos_map > 0) | (neg_map > 0)
+
+    assert np.all(z_values[~union] == 0)
+    np.testing.assert_allclose(p_values[~union], 1.0)
+    assert np.all(z_values[pos_map <= 0] <= 0)
+    assert np.all(z_values[neg_map <= 0] >= 0)
+
+
 def test_ALESubtraction_low_memory_chunk_rows_scale_with_available_ram():
     """Chunk size should shrink when available RAM shrinks."""
     meta = ale.ALESubtraction()
