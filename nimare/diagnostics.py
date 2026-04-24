@@ -660,6 +660,12 @@ class FocusCounter(Diagnostics):
 class ResampledStability(NiMAREBase):
     """Estimate voxelwise stability of thresholded results under dataset resampling.
 
+    Notes
+    -----
+    For ALE analyses with ``resampling_policy="subsample"``, the subsample
+    path follows the same cluster-thresholding formulation used by related ALE
+    software. See that project's README for background and references.
+
     Parameters
     ----------
     prior_space : {"gm", "brain"}, optional
@@ -669,7 +675,7 @@ class ResampledStability(NiMAREBase):
         uses all non-zero voxels. Default is ``"gm"``.
     alpha : float, optional
         Family-wise error rate used to determine the cluster-size threshold for
-        the JALE-style ALE subsample path. The ``(1 - alpha)`` percentile of
+        the ALE subsample path. The ``(1 - alpha)`` percentile of
         the permutation null cluster-size distribution is used. Default is
         0.05.
     """
@@ -801,7 +807,7 @@ class ResampledStability(NiMAREBase):
         return self._extract_binary_support(replicate_result)
 
     def _fit_ale_subsample_replicate(self, sample_idx, ma_maps, estimator, cluster_threshold):
-        """Compute one JALE-style probabilistic ALE replicate from cached MA maps."""
+        """Compute one probabilistic ALE replicate from cached MA maps."""
         from nimare.meta.cbma.ale import (
             _ale_approximate_z_from_ma,
             _jale_threshold_z_clusters,
@@ -818,7 +824,7 @@ class ResampledStability(NiMAREBase):
         return (z_values > 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
 
     def _ale_subsample_stability(self, result):
-        """Run a JALE-style probabilistic ALE stability analysis for ALE estimators."""
+        """Run probabilistic ALE stability analysis for ALE estimators."""
         from nimare.meta.cbma.ale import (
             _ale_approximate_z_from_ma,
             _generate_unique_subsamples,

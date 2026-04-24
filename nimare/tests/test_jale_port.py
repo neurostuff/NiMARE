@@ -1,4 +1,4 @@
-"""Tests for the JALE-derived NiMARE functionality."""
+"""Tests for cross-implementation ALE compatibility functionality."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ JALE_ROOT = Path(__file__).resolve().parents[2] / "JALE"
 
 @pytest.mark.skipif(not JALE_ROOT.exists(), reason="Local JALE checkout is unavailable.")
 def test_predictive_feature_extraction_matches_jale():
-    """The packaged ALE predictive features should match JALE exactly."""
+    """The packaged ALE predictive features should match the reference implementation."""
     sys.path.insert(0, str(JALE_ROOT))
     try:
         from jale.core.utils.cutoff_prediction import (
@@ -140,7 +140,7 @@ def _nimare_to_jale_volume(masked_values, masker):
 
 @pytest.mark.skipif(not JALE_ROOT.exists(), reason="Local JALE checkout is unavailable.")
 def test_contrast_workflow_ale_matches_jale_contrast():
-    """ALE ContrastWorkflow should approximate JALE's masked contrast workflow."""
+    """ALE ContrastWorkflow should approximate the reference masked contrast workflow."""
     sys.path.insert(0, str(JALE_ROOT))
     try:
         from jale.core.utils.compute import (

@@ -76,7 +76,7 @@ class CBMAEstimator(Estimator):
         Voxel set from which random null foci are drawn when building
         Monte Carlo null distributions. ``"gm"`` restricts sampling to voxels
         with mask-image intensity above 0.1 (the ICBM 10 % GM probability
-        map), matching the JALE convention. ``"brain"`` uses every non-zero
+        map). ``"brain"`` uses every non-zero
         voxel in the mask. Has no effect when ``null_method="approximate"``.
         Default is ``"gm"``.
     *args

@@ -25,6 +25,86 @@ from nimare.utils import (
 LGR = logging.getLogger(__name__)
 
 
+def _coerce_image_like(image):
+    """Return image-like input as either a numpy array or a loaded niimg."""
+    if isinstance(image, np.ndarray):
+        return image
+    if isinstance(image, (str, os.PathLike)):
+        return nib.load(str(image))
+    if isinstance(image, nib.spatialimages.SpatialImage):
+        return image
+    raise ValueError(
+        "image inputs must be numpy arrays, Niimg-like objects, or paths to image files; "
+        f"got {type(image)}"
+    )
+
+
+def threshold_image(image, threshold, thresholding_values=None, tail="upper", fill_value=0):
+    """Threshold an array or Niimg-like object and zero voxels that fail the criterion.
+
+    Parameters
+    ----------
+    image : array-like or Niimg-like
+        Values to retain where the threshold criterion passes.
+    threshold : :obj:`float`
+        Threshold applied to ``thresholding_values`` or, when that argument is omitted,
+        to ``image`` itself.
+    thresholding_values : array-like or Niimg-like, optional
+        Values used to determine which voxels survive thresholding. Must match the shape of
+        ``image``. If omitted, thresholding is applied directly to ``image``.
+    tail : {"upper", "lower", "two-sided"}, optional
+        Threshold direction. ``"upper"`` keeps values >= threshold, ``"lower"`` keeps values
+        <= threshold, and ``"two-sided"`` keeps values whose absolute value >= threshold.
+        Default is ``"upper"``.
+    fill_value : scalar, optional
+        Replacement value for voxels that do not survive thresholding. Default is 0.
+
+    Returns
+    -------
+    array-like or Niimg-like
+        Thresholded output with the same container type as ``image``.
+    """
+    image = _coerce_image_like(image)
+    thresholding_values = (
+        image if thresholding_values is None else _coerce_image_like(thresholding_values)
+    )
+
+    image_data = (
+        np.asarray(image) if isinstance(image, np.ndarray) else np.asanyarray(image.dataobj)
+    )
+    threshold_data = (
+        np.asarray(thresholding_values)
+        if isinstance(thresholding_values, np.ndarray)
+        else np.asanyarray(thresholding_values.dataobj)
+    )
+
+    if image_data.shape != threshold_data.shape:
+        raise ValueError(
+            "image and thresholding_values must have matching shapes; "
+            f"got {image_data.shape} and {threshold_data.shape}."
+        )
+
+    if tail == "upper":
+        keep_mask = threshold_data >= threshold
+    elif tail == "lower":
+        keep_mask = threshold_data <= threshold
+    elif tail == "two-sided":
+        keep_mask = np.abs(threshold_data) >= threshold
+    else:
+        raise ValueError(f"Unsupported tail '{tail}'.")
+
+    thresholded = np.where(keep_mask, image_data, fill_value)
+    if np.issubdtype(image_data.dtype, np.floating) and thresholded.dtype != image_data.dtype:
+        thresholded = thresholded.astype(image_data.dtype, copy=False)
+
+    if isinstance(image, np.ndarray):
+        return thresholded
+
+    header = image.header.copy()
+    header.set_data_dtype(thresholded.dtype)
+    return image.__class__(thresholded, image.affine, header)
+
+
 class ImageTransformer(NiMAREBase):
     """A class to create new images from existing ones within a collection.
 

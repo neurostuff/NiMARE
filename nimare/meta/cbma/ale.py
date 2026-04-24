@@ -463,7 +463,7 @@ def _resolve_balanced_target_n(dataset1, dataset2, target_n):
 
 
 def _jale_threshold_z_clusters(z_values, masker, voxel_thresh, cluster_size_threshold=None):
-    """Apply JALE-style cluster thresholding to a z map in masked-array space."""
+    """Apply cluster thresholding to a z map in masked-array space."""
     z_map = masker.inverse_transform(z_values).get_fdata(dtype=DEFAULT_FLOAT_DTYPE)
     sig_arr = z_map > norm.ppf(1 - voxel_thresh)
     labels, cluster_count = ndimage.label(sig_arr)
@@ -533,7 +533,7 @@ def _study_metadata_from_coordinates(coordinates):
 
 
 def _random_ale_ma_from_metadata(mask_img, sample_sizes, num_foci, sample_space, rng):
-    """Generate a random ALE MA matrix using JALE-style foci counts and sample sizes."""
+    """Generate a random ALE MA matrix from study-level focus counts and sample sizes."""
     all_ijks = []
     exp_idx = []
     focus_sample_sizes = []
@@ -1047,7 +1047,13 @@ class ALE(CBMAEstimator):
         ).astype(bool, copy=False)
 
     def correct_fwe_predictive(self, result):
-        """Apply JALE-style predictive vFWE and cFWE cutoffs to an ALE result."""
+        """Apply predictive vFWE and cFWE cutoffs to an ALE result.
+
+        Notes
+        -----
+        The packaged cutoff models were ported from related ALE software.
+        See that project's README for background and references.
+        """
         stat_values = result.get_map("stat", return_type="array")
         p_values = result.get_map("p", return_type="array")
         z_values = result.get_map("z", return_type="array")
@@ -1084,7 +1090,7 @@ class ALE(CBMAEstimator):
         logp_cfwe = safe_logp(p_cfwe)
 
         description = (
-            "Family-wise error correction was approximated with JALE-style predictive ALE "
+            "Family-wise error correction was approximated with predictive ALE "
             "cutoffs. Voxel-level and cluster-size thresholds were predicted from experiment-"
             "level subject and focus counts using packaged XGBoost regressors, and TFCE was not "
             "used."
@@ -1098,62 +1104,6 @@ class ALE(CBMAEstimator):
             "logp_desc-size_level-cluster": logp_cfwe.astype(DEFAULT_FLOAT_DTYPE, copy=False),
         }
         return maps, {}, description
-
-    def jale_corrected_map(
-        self,
-        result,
-        correction="cFWE",
-        voxel_thresh=0.001,
-        n_iters=None,
-        n_cores=1,
-        alpha=0.05,
-    ):
-        """Return a JALE-style thresholded main-effect map for contrast/probabilistic use.
-
-        Parameters
-        ----------
-        alpha : float, optional
-            Family-wise error rate. The ``(1 - alpha)`` percentile of the
-            permutation null is used as the significance threshold. Default
-            is 0.05.
-        """
-        if correction not in ("cFWE", "vFWE"):
-            raise ValueError("correction must be 'cFWE' or 'vFWE'.")
-        if not 0 < alpha < 1:
-            raise ValueError(f"alpha must be between 0 and 1; got {alpha}.")
-
-        self.correct_fwe_montecarlo(
-            result,
-            voxel_thresh=voxel_thresh,
-            n_iters=n_iters or self.n_iters or 5000,
-            n_cores=n_cores,
-            vfwe_only=(correction == "vFWE"),
-        )
-
-        percentile = 100.0 * (1.0 - alpha)
-        if correction == "vFWE":
-            stat_values = result.get_map("stat", return_type="array")
-            vfwe_threshold = np.percentile(
-                self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"],
-                percentile,
-            )
-            return np.where(stat_values > vfwe_threshold, stat_values, 0).astype(
-                DEFAULT_FLOAT_DTYPE,
-                copy=False,
-            )
-
-        z_values = result.get_map("z", return_type="array")
-        cluster_threshold = np.percentile(
-            self.null_distributions_["values_desc-size_level-cluster_corr-fwe_method-montecarlo"],
-            percentile,
-        )
-        corrected, _ = _jale_threshold_z_clusters(
-            z_values,
-            self.masker,
-            voxel_thresh=voxel_thresh,
-            cluster_size_threshold=cluster_threshold,
-        )
-        return corrected.astype(DEFAULT_FLOAT_DTYPE, copy=False)
 
 
 class ALESubtraction(PairwiseCBMAEstimator):
@@ -2046,7 +1996,13 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
 
 class BalancedALESubstraction(PairwiseCBMAEstimator):
-    """JALE-style balanced ALE subtraction with matched-size subsampling.
+    """Balanced ALE subtraction with matched-size subsampling.
+
+    Notes
+    -----
+    This implementation follows the matched-size subsampling strategy used by
+    related ALE software. See that project's README for background and
+    references.
 
     Parameters
     ----------
@@ -2119,7 +2075,7 @@ class BalancedALESubstraction(PairwiseCBMAEstimator):
 
     def _generate_description(self):
         return (
-            "A JALE-style balanced ALE subtraction was performed in NiMARE using matched-size "
+            "A balanced ALE subtraction was performed in NiMARE using matched-size "
             "subsampling within groups, averaged balanced ALE differences, and Monte Carlo null "
             "extrema from balanced resamples."
         )
@@ -2203,7 +2159,7 @@ class BalancedALESubstraction(PairwiseCBMAEstimator):
         return (diff / float(n_iters)).astype(DEFAULT_FLOAT_DTYPE, copy=False)
 
     def _to_prior_dense(self, ma_maps, prior_masked):
-        """Materialize prior-masked MA maps in dense form for JALE-style extrema."""
+        """Materialize prior-masked MA maps in dense form for balanced null extrema."""
         prior_ma = ma_maps[:, prior_masked]
         if sp_sparse.isspmatrix(prior_ma):
             return prior_ma.toarray().astype(DEFAULT_FLOAT_DTYPE, copy=False)

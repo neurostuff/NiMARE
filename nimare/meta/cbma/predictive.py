@@ -33,7 +33,13 @@ def _safe_stat(func, values):
 
 
 def feature_extraction(nexp, nsub, nfoci):
-    """Extract the feature vector used by the JALE cutoff-prediction models."""
+    """Extract the feature vector used by the packaged cutoff-prediction models.
+
+    Notes
+    -----
+    The packaged models were ported from related ALE software. See that
+    project's README for background and references.
+    """
     nsub = np.asarray(nsub, dtype=float)
     nfoci = np.asarray(nfoci, dtype=float)
 
@@ -56,17 +62,17 @@ def feature_extraction(nexp, nsub, nfoci):
         )
     if nexp > 150:
         raise PredictiveCutoffError(
-            "Predictive cutoff is out of the JALE model's supported range: "
+            "Predictive cutoff is out of the packaged model's supported range: "
             f"n_experiments={nexp} exceeds 150."
         )
     if np.max(nsub) > 300:
         raise PredictiveCutoffError(
-            "Predictive cutoff is out of the JALE model's supported range: "
+            "Predictive cutoff is out of the packaged model's supported range: "
             f"max subjects per experiment ({np.max(nsub):.0f}) exceeds 300."
         )
     if np.max(nfoci) > 150:
         raise PredictiveCutoffError(
-            "Predictive cutoff is out of the JALE model's supported range: "
+            "Predictive cutoff is out of the packaged model's supported range: "
             f"max foci per experiment ({np.max(nfoci):.0f}) exceeds 150."
         )
 

@@ -10,8 +10,10 @@ from nimare.base import NiMAREBase
 from nimare.correct import Corrector, FWECorrector
 from nimare.diagnostics import Jackknife
 from nimare.meta import ALE, ALESubtraction, MKDAChi2, MKDADensity
+from nimare.meta.cbma.ale import _jale_threshold_z_clusters
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.stats import safe_logp
+from nimare.transforms import threshold_image
 from nimare.utils import DEFAULT_FLOAT_DTYPE, _check_ncores
 from nimare.workflows.base import Workflow, _check_input
 
@@ -172,44 +174,110 @@ class PairwiseCBMAWorkflow(Workflow):
         return self._transform(results)
 
 
-def _infer_corrected_main_effect_image(result):
-    """Infer the preferred corrected main-effect map from a MetaResult."""
-    ordered_candidates = (
-        "z_desc-size_level-cluster_corr-FWE_method-montecarlo",
-        "z_desc-size_level-cluster_corr-FWE_method-predictive",
-        "z_desc-mass_level-cluster_corr-FWE_method-montecarlo",
-        "z_level-voxel_corr-FWE_method-montecarlo",
-        "z_level-voxel_corr-FWE_method-predictive",
-        "z_level-voxel_corr-FDR_method-indep",
-        "z_level-voxel_corr-FDR_method-negcorr",
-        "z_level-voxel_corr-FWE_method-bonferroni",
-        "z_desc-size_level-cluster",
-        "z_desc-mass_level-cluster",
-        "z_level-voxel",
-        "z",
-    )
-    for candidate in ordered_candidates:
-        if candidate in result.maps:
-            return candidate
+def _corrected_map_priority(p_map_name):
+    """Return a stable preference ordering for corrected main-effect p maps."""
+    if "desc-size_level-cluster" in p_map_name or "Size_level-cluster" in p_map_name:
+        scope_rank = 0
+    elif "desc-mass_level-cluster" in p_map_name or "Mass_level-cluster" in p_map_name:
+        scope_rank = 1
+    elif "level-voxel" in p_map_name:
+        scope_rank = 2
+    else:
+        scope_rank = 3
 
-    fallback = sorted(
-        [
-            map_name
-            for map_name in result.maps
-            if map_name.startswith("z_") and "_corr-" in map_name
-        ]
-    )
-    if fallback:
-        return fallback[0]
+    if "_corr-FWE_method-montecarlo" in p_map_name:
+        method_rank = 0
+    elif "_corr-FWE_method-predictive" in p_map_name:
+        method_rank = 1
+    elif "_corr-FDR_method-indep" in p_map_name:
+        method_rank = 2
+    elif "_corr-FDR_method-negcorr" in p_map_name:
+        method_rank = 3
+    elif "_corr-FWE_method-bonferroni" in p_map_name:
+        method_rank = 4
+    else:
+        method_rank = 5
+
+    return (scope_rank, method_rank, p_map_name)
+
+
+def _infer_corrected_main_effect_maps(result):
+    """Infer the preferred corrected value/threshold map pair from a MetaResult."""
+    candidates = []
+    for z_map_name in result.maps:
+        if not z_map_name.startswith("z_") or "_corr-" not in z_map_name:
+            continue
+
+        p_map_name = z_map_name.replace("z_", "p_", 1)
+        logp_map_name = z_map_name.replace("z_", "logp_", 1)
+        if p_map_name in result.maps:
+            candidates.append((z_map_name, p_map_name, "p"))
+        elif logp_map_name in result.maps:
+            candidates.append((z_map_name, logp_map_name, "logp"))
+
+    if candidates:
+        return min(candidates, key=lambda triple: _corrected_map_priority(triple[1]))
 
     raise ValueError(
-        "Unable to infer a corrected main-effect map from the supplied result. "
+        "Unable to infer corrected main-effect value and threshold maps from the supplied "
+        "result. "
         f"Available maps: {', '.join(sorted(result.maps))}"
     )
 
 
+def _threshold_ale_montecarlo_main_effect(result, z_map_name, alpha):
+    """Threshold ALE Monte Carlo FWE results using cached null distributions."""
+    estimator = result.estimator
+    percentile = 100.0 * (1.0 - alpha)
+
+    if (
+        z_map_name == "z_desc-size_level-cluster_corr-FWE_method-montecarlo"
+        and "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+        in estimator.null_distributions_
+    ):
+        cluster_threshold = np.percentile(
+            estimator.null_distributions_[
+                "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+            ],
+            percentile,
+        )
+        voxel_thresh = result.corrector.parameters.get("voxel_thresh", 0.001)
+        thresholded_z, _ = _jale_threshold_z_clusters(
+            result.get_map("z", return_type="array"),
+            estimator.masker,
+            voxel_thresh=voxel_thresh,
+            cluster_size_threshold=cluster_threshold,
+        )
+        return thresholded_z.astype(DEFAULT_FLOAT_DTYPE, copy=False)
+
+    if (
+        z_map_name == "z_level-voxel_corr-FWE_method-montecarlo"
+        and "values_level-voxel_corr-fwe_method-montecarlo" in estimator.null_distributions_
+    ):
+        stat_threshold = np.percentile(
+            estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"],
+            percentile,
+        )
+        return threshold_image(
+            result.get_map("z", return_type="array"),
+            threshold=stat_threshold,
+            thresholding_values=result.get_map("stat", return_type="array"),
+            tail="upper",
+        ).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+
+    return None
+
+
 class ContrastWorkflow(NiMAREBase):
-    """Compose a JALE-style masked contrast workflow for pairwise CBMA analyses."""
+    """Compose a masked contrast workflow for pairwise CBMA analyses.
+
+    Notes
+    -----
+    When ``mode="ALE"``, corrected main-effect maps are used to gate
+    directional pairwise inference. This mirrors the masked-contrast pattern
+    used by related ALE software; see that project's README for background and
+    references.
+    """
 
     def __init__(
         self,
@@ -276,27 +344,37 @@ class ContrastWorkflow(NiMAREBase):
 
     def _compute_main_effect_map(self, result):
         """Compute the directional inference map used to gate pairwise contrast."""
+        corr_result = self.corrector.transform(result)
+        z_map_name, threshold_map_name, threshold_kind = _infer_corrected_main_effect_maps(
+            corr_result
+        )
+
         if (
             self.mode == "ALE"
-            and isinstance(self.main_estimator, ALE)
-            and isinstance(self.corrector, FWECorrector)
-            and self.corrector.method == "montecarlo"
+            and isinstance(corr_result.estimator, ALE)
+            and isinstance(corr_result.corrector, FWECorrector)
+            and corr_result.corrector.method == "montecarlo"
         ):
-            correction = "vFWE" if self.corrector.parameters.get("vfwe_only", False) else "cFWE"
-            return result.estimator.jale_corrected_map(
-                result,
-                correction=correction,
-                voxel_thresh=self.corrector.parameters.get("voxel_thresh", 0.001),
-                n_iters=self.corrector.parameters.get("n_iters"),
-                n_cores=self.corrector.parameters.get("n_cores", self.n_cores),
-                alpha=self.alpha,
-            ).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+            thresholded = _threshold_ale_montecarlo_main_effect(
+                corr_result, z_map_name, self.alpha
+            )
+            if thresholded is not None:
+                return thresholded
 
-        corr_result = self.corrector.transform(result)
-        map_name = _infer_corrected_main_effect_image(corr_result)
-        return corr_result.get_map(map_name, return_type="array").astype(
-            DEFAULT_FLOAT_DTYPE, copy=False
-        )
+        threshold_values = corr_result.get_map(threshold_map_name, return_type="array")
+        if threshold_kind == "p":
+            threshold = self.alpha
+            tail = "lower"
+        else:
+            threshold = -np.log10(self.alpha)
+            tail = "upper"
+
+        return threshold_image(
+            corr_result.get_map(z_map_name, return_type="array"),
+            threshold=threshold,
+            thresholding_values=threshold_values,
+            tail=tail,
+        ).astype(DEFAULT_FLOAT_DTYPE, copy=False)
 
     def _contrast_keys(self):
         if self.mode == "ALE":

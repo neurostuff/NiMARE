@@ -263,3 +263,22 @@ def test_contrast_workflow_smoke(testdata_cbma_full, mode, corrector, pairwise_e
     assert "z_desc-contrast" in result.maps
     assert "p_desc-contrast" in result.maps
     assert "logp_desc-contrast" in result.maps
+
+
+def test_contrast_workflow_ale_thresholding_path_smoke(testdata_cbma_full):
+    """ALE ContrastWorkflow should run without the removed estimator helper."""
+    assert not hasattr(ALE, "jale_corrected_map")
+
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+    workflow = ContrastWorkflow(
+        mode="ALE",
+        corrector=FWECorrector(method="montecarlo", n_iters=8, voxel_thresh=0.05, n_cores=1),
+        pairwise_estimator=ALESubtraction(n_iters=8, n_cores=1, generate_description=False),
+        alpha=0.05,
+        n_cores=1,
+    )
+
+    result = workflow.fit(dset1, dset2)
+
+    assert isinstance(result, nimare.results.MetaResult)
