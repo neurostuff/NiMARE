@@ -11,6 +11,12 @@ This example shows a conservative way to inspect an ALE result when a
 coordinate-based meta-analysis does not have enough eligible studies for robust
 voxelwise inference.
 
+I think it's important to be able to look at descriptive maps without over-interpreting them.
+The all-or-nothing nature of inferential statistics could lead to a researcher missing a
+potentially interesting descriptive pattern that they can collect independent data to follow up on.
+In other words, these descriptions are little "huh" moments that you can keep in your back pocket,
+and be used as a call to action for future research.
+
 The key choice is to inspect the raw ``stat`` map descriptively, instead of
 interpreting the ``z`` or ``p`` maps as evidence. For ALE, the ``stat`` map is
 the observed ALE convergence value. Larger values indicate stronger descriptive
@@ -178,8 +184,8 @@ print(f"Display-only threshold: ALE stat >= {display_threshold:.5f}")
 # unthresholded ALE ``stat`` map. The coordinates show the evidence entering the
 # analysis, while the projected stat map shows how the ALE kernel turns those
 # coordinates into a smooth descriptive convergence map. Brighter areas indicate
-# greater local overlap among modeled activation maps. This still does not imply
-# statistical significance.
+# greater local overlap among modeled activation maps. **This still does not imply
+# statistical significance.**
 glass_display = plot_glass_brain(
     stat_img,
     display_mode="ortho",
@@ -187,7 +193,7 @@ glass_display = plot_glass_brain(
     colorbar=True,
     plot_abs=False,
     symmetric_cbar=False,
-    threshold=0.0001,  # show all nonzero values
+    threshold=0.0001,  # show a reasonable amount of the values
     title="Raw unthresholded ALE stat map with reported coordinates",
 )
 add_coordinates_by_study(glass_display, marker_size=20)
@@ -288,3 +294,5 @@ ax.tick_params(axis="x", labelrotation=45)
 #
 # Avoid language such as "significant cluster", "activation was found", or
 # "evidence for convergence" unless a valid inferential analysis supports it.
+# Do I sound like a broken record? I hope so, because I want it to be crystal clear
+# that this is a descriptive summary, not an inferential result.
