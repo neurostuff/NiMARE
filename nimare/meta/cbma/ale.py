@@ -9,7 +9,7 @@ import time
 import warnings
 from contextlib import contextmanager
 from dataclasses import dataclass
-from itertools import chain, combinations
+from itertools import chain
 
 import nibabel as nib
 import numpy as np
@@ -18,14 +18,17 @@ from joblib import Memory, Parallel, delayed
 from numba import jit
 from scipy import ndimage
 from scipy import sparse as sp_sparse
-from scipy.special import comb
 from scipy.stats import norm
 from tqdm.auto import tqdm
 
 from nimare import _version
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.cbma.predictive import PredictiveCutoffError, predict_cutoffs
-from nimare.meta.cbma.utils import collect_csr_ma_maps, require_masked_csr
+from nimare.meta.cbma.utils import (
+    collect_csr_ma_maps,
+    generate_subset_schedule,
+    require_masked_csr,
+)
 from nimare.meta.kernel import ALEKernel
 from nimare.meta.utils import (
     _calculate_cluster_measures,
@@ -421,25 +424,6 @@ def _ale_uncorrected_group_maps(pairwise_estimator, ma_maps, group_label, stat_v
         "logp": _p_to_logp_values(p_values, dtype=DEFAULT_FLOAT_DTYPE),
     }
     return _prefix_ale_group_maps(maps, group_label)
-
-
-def _generate_unique_subsamples(total_n, target_n, sample_n, random_state=None):
-    """Generate unique subsamples of study indices without replacement."""
-    if not 0 < target_n <= total_n:
-        raise ValueError(f"target_n must be between 1 and total_n ({total_n}); got {target_n}.")
-    max_combinations = int(comb(total_n, target_n, exact=True))
-    sample_n = min(int(sample_n), max_combinations)
-    rng = np.random.RandomState(random_state)
-
-    if sample_n == max_combinations and max_combinations <= 10000:
-        return [np.asarray(idx, dtype=np.int32) for idx in combinations(range(total_n), target_n)]
-
-    subsamples = set()
-    while len(subsamples) < sample_n:
-        sample = tuple(np.sort(rng.choice(total_n, size=target_n, replace=False)))
-        subsamples.add(sample)
-
-    return [np.asarray(sample, dtype=np.int32) for sample in sorted(subsamples)]
 
 
 def _validate_nonoverlapping_pairwise_datasets(dataset1, dataset2, estimator_name):
@@ -2157,7 +2141,13 @@ class BalancedALESubtraction(PairwiseCBMAEstimator):
             )
 
         cluster_threshold = np.percentile(null_cluster_sizes, 100.0 * (1.0 - self.alpha))
-        samples = _generate_unique_subsamples(ma_maps.shape[0], target_n, self.n_subsamples, seed)
+        samples = generate_subset_schedule(
+            ma_maps.shape[0],
+            target_n,
+            n_samples=self.n_subsamples,
+            random_state=seed,
+            exhaustive_limit=10000,
+        )
         prob_map = np.zeros(ma_maps.shape[1], dtype=DEFAULT_FLOAT_DTYPE)
         for sample in samples:
             _, z_values = _ale_approximate_z_from_ma(estimator, ma_maps[sample, :])

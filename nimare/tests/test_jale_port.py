@@ -18,6 +18,8 @@ from nimare.meta.cbma import (
     BalancedALESubtraction,
 )
 from nimare.meta.cbma.predictive import feature_extraction
+from nimare.meta.cbma.utils import generate_subset_schedule, resolve_subset_size
+from nimare.meta.ibma import Stouffers
 from nimare.workflows import ContrastWorkflow
 
 JALE_ROOT = Path(__file__).resolve().parents[2] / "JALE"
@@ -46,6 +48,7 @@ def test_resampled_stability_smoke(testdata_cbma_full):
     dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:5])
     result = ALE().fit(dset)
     result = FWECorrector(method="montecarlo", n_iters=2, n_cores=1).transform(result)
+    n_retained = len(result.estimator.inputs_["id"])
     diagnostic = ResampledStability(
         target_image="z_level-voxel_corr-FWE_method-montecarlo",
         resampling_policy="leave_1_out",
@@ -56,6 +59,123 @@ def test_resampled_stability_smoke(testdata_cbma_full):
     values = result.get_map(map_name, return_type="array")
     assert np.all(values >= 0)
     assert np.all(values <= 1)
+
+    summary = result.tables[f"{map_name}_tab-summary"].iloc[0]
+    assert summary["resampling_policy"] == "leave_1_out"
+    assert int(summary["target_n"]) == n_retained - 1
+    assert int(summary["n_resamples"]) == n_retained
+
+
+def test_resampled_stability_leave_k_out_matches_leave_1_out(testdata_cbma_full):
+    """Leave-k-out with k=1 should match leave-one-out for CBMA fast paths."""
+    dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:5])
+    result = ALE().fit(dset)
+    result = FWECorrector(method="montecarlo", n_iters=2, n_cores=1).transform(result)
+    map_name = "z_level-voxel_corr-FWE_method-montecarlo_diag-ResampledStability"
+
+    loo_result = ResampledStability(
+        target_image="z_level-voxel_corr-FWE_method-montecarlo",
+        resampling_policy="leave_1_out",
+        random_state=0,
+        n_cores=1,
+    ).transform(result)
+    lko_result = ResampledStability(
+        target_image="z_level-voxel_corr-FWE_method-montecarlo",
+        resampling_policy="leave_k_out",
+        k=1,
+        random_state=0,
+        n_cores=1,
+    ).transform(result)
+
+    np.testing.assert_allclose(
+        loo_result.get_map(map_name, return_type="array"),
+        lko_result.get_map(map_name, return_type="array"),
+    )
+
+
+def test_resampled_stability_leave_k_out_matches_subsample_schedule(testdata_cbma_full):
+    """Matching exhaustive subset schedules should give identical CBMA stability maps."""
+    dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:5])
+    result = ALE().fit(dset)
+    result = FWECorrector(method="montecarlo", n_iters=2, n_cores=1).transform(result)
+    n_retained = len(result.estimator.inputs_["id"])
+    map_name = "z_level-voxel_corr-FWE_method-montecarlo_diag-ResampledStability"
+
+    lko_result = ResampledStability(
+        target_image="z_level-voxel_corr-FWE_method-montecarlo",
+        resampling_policy="leave_k_out",
+        k=2,
+        random_state=0,
+        n_cores=1,
+    ).transform(result)
+    subsample_result = ResampledStability(
+        target_image="z_level-voxel_corr-FWE_method-montecarlo",
+        resampling_policy="subsample",
+        target_n=n_retained - 2,
+        random_state=0,
+        n_cores=1,
+    ).transform(result)
+
+    np.testing.assert_allclose(
+        lko_result.get_map(map_name, return_type="array"),
+        subsample_result.get_map(map_name, return_type="array"),
+    )
+
+
+def test_resampled_stability_ibma_smoke(testdata_ibma):
+    """IBMA estimators should continue to use the full-refit stability path."""
+    dset = testdata_ibma.slice(testdata_ibma.ids[:5])
+    result = Stouffers().fit(dset)
+    result = ResampledStability(
+        target_image="z",
+        resampling_policy="leave_1_out",
+        n_cores=1,
+    ).transform(result)
+    map_name = "z_diag-ResampledStability"
+    values = result.get_map(map_name, return_type="array")
+    assert np.all(values >= 0)
+    assert np.all(values <= 1)
+
+
+def test_resampled_stability_schedule_validation(testdata_cbma_full):
+    """Invalid subset schedules should raise clear errors."""
+    dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:5])
+    result = ALE().fit(dset)
+
+    with pytest.raises(ValueError, match="requires k"):
+        ResampledStability(resampling_policy="leave_k_out").transform(result)
+
+    with pytest.raises(ValueError, match="k must be between"):
+        ResampledStability(resampling_policy="leave_k_out", k=5).transform(result)
+
+    with pytest.raises(ValueError, match="target_n must be between"):
+        ResampledStability(resampling_policy="subsample", target_n=0).transform(result)
+
+
+def test_shared_subset_schedule_helpers():
+    """Shared subset helpers should resolve and schedule subsets consistently."""
+    assert resolve_subset_size("leave_1_out", 5) == 4
+    assert resolve_subset_size("leave_k_out", 5, k=2) == 3
+    assert resolve_subset_size("subsample", 5, target_n=3) == 3
+
+    leave_one_out = generate_subset_schedule(5, 4)
+    subsample = generate_subset_schedule(5, 3, n_samples=4, random_state=0)
+    subsample_again = generate_subset_schedule(5, 3, n_samples=4, random_state=0)
+
+    assert len(leave_one_out) == 5
+    assert len(subsample) == len({tuple(idx) for idx in subsample}) == 4
+    for idx_a, idx_b in zip(subsample, subsample_again):
+        np.testing.assert_array_equal(idx_a, idx_b)
+
+
+def test_shared_subset_schedule_equates_leave_k_and_subsample():
+    """Equivalent exhaustive subset definitions should yield identical schedules."""
+    leave_k = generate_subset_schedule(5, resolve_subset_size("leave_k_out", 5, k=2))
+    subsample = generate_subset_schedule(5, resolve_subset_size("subsample", 5, target_n=3))
+
+    assert len(leave_k) == len(subsample)
+    for idx_a, idx_b in zip(leave_k, subsample):
+        np.testing.assert_array_equal(idx_a, idx_b)
 
 
 def test_balanced_ale_substraction_smoke(testdata_cbma_full):

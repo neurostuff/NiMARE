@@ -3,7 +3,6 @@
 import copy
 import logging
 from abc import abstractmethod
-from itertools import combinations
 
 import nibabel as nib
 import numpy as np
@@ -12,13 +11,17 @@ from joblib import Parallel, delayed
 from nilearn.maskers import NiftiLabelsMasker
 from nilearn.reporting import get_clusters_table
 from scipy.spatial.distance import cdist
-from scipy.special import comb
 from tqdm.auto import tqdm
 
 from nimare.base import NiMAREBase
 from nimare.dataset import Dataset
-from nimare.meta.cbma.ale import _generate_unique_subsamples, _threshold_z_clusters
-from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator, _approximate_z_from_ma
+from nimare.meta.cbma.ale import _threshold_z_clusters
+from nimare.meta.cbma.base import (
+    CBMAEstimator,
+    PairwiseCBMAEstimator,
+    _approximate_z_from_ma,
+)
+from nimare.meta.cbma.utils import generate_subset_schedule, resolve_subset_size
 from nimare.meta.ibma import IBMAEstimator
 from nimare.nimads import Studyset
 from nimare.studyset import normalize_collection
@@ -662,33 +665,45 @@ class FocusCounter(Diagnostics):
 class ResampledStability(NiMAREBase):
     """Estimate voxelwise stability of thresholded results under dataset resampling.
 
-    When ``resampling_policy="subsample"`` is used with any
-    :class:`~nimare.meta.cbma.base.CBMAEstimator` (e.g. ALE or MKDADensity),
-    a fast MA-map–based path is taken: MA maps are collected once, a Monte Carlo
-    null cluster-size distribution is built by repeatedly randomising foci within
-    the prior space, and each subsample replicate is scored using an
-    approximate-null z-transform without full model refitting.  For ALE this
+    For any single-sample :class:`~nimare.meta.cbma.base.CBMAEstimator` (e.g.
+    ALE or MKDADensity), a fast MA-map-based path is taken for all supported
+    resampling policies: MA maps are collected once, a Monte Carlo null
+    cluster-size distribution is built by repeatedly randomising foci within
+    the prior space, and each retained-study subset is scored using an
+    approximate-null z-transform without full model refitting. For ALE this
     follows the same cluster-thresholding formulation used by related ALE
-    software.
+    software. Single-sample IBMA estimators currently use full refits.
 
     Parameters
     ----------
     target_image : 'str', optional
         The meta-analytic map for which stability will be characterized.
     resampling_policy : {"leave_1_out", "leave_k_out", "subsample"}, optional
-        The resampling policy to use. 
+        The resampling policy to use.
     k : int, optional
-        The number of studies to leave out for each replicate when ``resampling_policy="leave_k_out"``.  Must be between 1 and n-1, where n is the number of studies in the meta-analysis.
+        The number of studies to leave out for each replicate when
+        ``resampling_policy="leave_k_out"``.
+        Must be between 1 and n-1, where n is the number of studies in the meta-analysis.
     target_n : int, optional
-        The number of studies to include in each replicate when ``resampling_policy="subsample"``.  Must be between 1 and n, where n is the number of studies in the meta-analysis.  Default is n (i.e., subsamples are the same size as the original dataset).
+        The number of studies to include in each replicate when ``resampling_policy="subsample"``.
+        Must be between 1 and n, where n is the number of studies in the meta-analysis.
+        Default is n (i.e., subsamples are the same size as the original dataset).
     n_resamples : int, optional
-        The number of resampled replicates to generate.  If None, all possible unique replicates will be generated, up to a maximum of 1000 (to avoid combinatorial explosion).
+        The number of resampled replicates to generate.
+        If None, all possible unique replicates will be generated,
+        up to a maximum of 1000 (to avoid combinatorial explosion).
     random_state : int or None, optional
-        Random seed for reproducibility when random sampling is used in the resampling policy.  Default is None.
+        Random seed for reproducibility when random sampling is used in the resampling policy.
+        Default is None.
     voxel_thresh : float or None, optional
-        An optional voxel-level threshold that may be applied to the ``target_image`` to define clusters. This can be None if the ``target_image`` is already thresholded (e.g., a cluster-level corrected map). Default is None.
+        An optional voxel-level threshold that may be applied to the ``target_image``
+        to define clusters.
+        This can be None if the ``target_image`` is already thresholded
+        (e.g., a cluster-level corrected map). Default is None.
     cluster_threshold : int or None, optional
-        Cluster size threshold, in voxels. If None, then no cluster size threshold will be applied. Default is None.
+        Cluster size threshold, in voxels.
+        If None, then no cluster size threshold will be applied.
+        Default is None.
     prior_space : {"gm", "brain"}, optional
         Voxel set used as the randomisation prior for the ``"subsample"``
         policy.  ``"gm"`` restricts random foci to grey-matter voxels (mask
@@ -699,7 +714,8 @@ class ResampledStability(NiMAREBase):
         in the ``"subsample"`` policy.  The ``(1 - alpha)`` percentile of the
         permutation null distribution is applied. Default is 0.05.
     n_cores : int, optional
-        Number of cores to use for parallelization. If <=0, defaults to using all available cores. Default is 1.
+        Number of cores to use for parallelization.
+        If <=0, defaults to using all available cores. Default is 1.
     """
 
     def __init__(
@@ -734,48 +750,19 @@ class ResampledStability(NiMAREBase):
 
     def _resolve_subsets(self, n_studies):
         """Build a replicate schedule in study-index space."""
-        policy = self.resampling_policy
-        rng = np.random.RandomState(self.random_state)
-
-        if policy == "leave_1_out":
-            return [np.delete(np.arange(n_studies), i) for i in range(n_studies)]
-
-        if policy == "leave_k_out":
-            if self.k is None:
-                raise ValueError("resampling_policy='leave_k_out' requires k.")
-            if not 0 < self.k < n_studies:
-                raise ValueError(f"k must be between 1 and {n_studies - 1}; got {self.k}.")
-            target_n = n_studies - int(self.k)
-        elif policy == "subsample":
-            target_n = self.target_n or n_studies
-            if not 0 < target_n <= n_studies:
-                raise ValueError(f"target_n must be between 1 and {n_studies}; got {target_n}.")
-        else:
-            raise ValueError(
-                "resampling_policy must be one of 'leave_1_out', 'leave_k_out', or 'subsample'."
-            )
-
-        max_combinations = int(comb(n_studies, target_n, exact=True))
-        if self.n_resamples is None:
-            if max_combinations > 1000:
-                raise ValueError(
-                    "This resampling schedule is too large to enumerate exhaustively. "
-                    "Set n_resamples to sample a subset of unique schedules."
-                )
-            n_resamples = max_combinations
-        else:
-            n_resamples = min(int(self.n_resamples), max_combinations)
-
-        if n_resamples == max_combinations and max_combinations <= 1000:
-            return [
-                np.asarray(idx, dtype=np.int32) for idx in combinations(range(n_studies), target_n)
-            ]
-
-        subsets = set()
-        while len(subsets) < n_resamples:
-            subset = tuple(np.sort(rng.choice(n_studies, size=target_n, replace=False)))
-            subsets.add(subset)
-        return [np.asarray(subset, dtype=np.int32) for subset in sorted(subsets)]
+        target_n = resolve_subset_size(
+            self.resampling_policy,
+            n_studies,
+            k=self.k,
+            target_n=self.target_n,
+        )
+        subsets = generate_subset_schedule(
+            n_studies,
+            target_n,
+            n_samples=self.n_resamples,
+            random_state=self.random_state,
+        )
+        return subsets, target_n
 
     def _extract_binary_support(self, result):
         """Convert the selected target image into a binary support vector."""
@@ -828,12 +815,12 @@ class ResampledStability(NiMAREBase):
             replicate_result = result.corrector.transform(replicate_result)
         return self._extract_binary_support(replicate_result)
 
-    def _fit_cbma_subsample_replicate(
-        self, sample_idx, ma_maps, estimator, study_ids, cluster_threshold
+    def _fit_cbma_subset_replicate(
+        self, subset_idx, ma_maps, estimator, study_ids, cluster_threshold
     ):
-        """Compute one probabilistic CBMA replicate from cached MA maps."""
-        subset_ma = ma_maps[sample_idx, :]
-        subset_study_ids = study_ids[sample_idx]
+        """Compute one CBMA replicate from cached MA maps for a retained-study subset."""
+        subset_ma = ma_maps[subset_idx, :]
+        subset_study_ids = study_ids[subset_idx]
         _, z_values = _approximate_z_from_ma(estimator, subset_ma, subset_study_ids)
         z_values, _ = _threshold_z_clusters(
             z_values,
@@ -843,15 +830,12 @@ class ResampledStability(NiMAREBase):
         )
         return (z_values > 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
 
-    def _cbma_subsample_stability(self, result):
-        """Run probabilistic CBMA stability analysis for any CBMA estimator."""
+    def _cbma_subset_stability(self, result, subsets, target_n):
+        """Run cached-MA stability analysis for any single-sample CBMA estimator."""
         # Deep copy protects result.estimator from _collect_ma_maps side-effects
         # (ALE sets _study_max_ma_values during map collection).
         estimator = copy.deepcopy(result.estimator)
         ma_maps = estimator._collect_ma_maps()
-        n_studies = ma_maps.shape[0]
-        target_n = self.target_n or n_studies
-        n_resamples = self.n_resamples or 2500
         montecarlo_iters = (
             result.corrector.parameters.get("n_iters", 5000)
             if result.corrector is not None
@@ -876,20 +860,17 @@ class ResampledStability(NiMAREBase):
             )
 
         cluster_threshold = np.percentile(null_cluster_sizes, 100.0 * (1.0 - self.alpha))
-        samples = _generate_unique_subsamples(
-            n_studies, target_n, n_resamples, random_state=self.random_state
-        )
 
         running_sum = None
         n_done = 0
         for support in tqdm(
             Parallel(return_as="generator", n_jobs=self.n_cores)(
-                delayed(self._fit_cbma_subsample_replicate)(
-                    sample_idx, ma_maps, estimator, study_ids, cluster_threshold
+                delayed(self._fit_cbma_subset_replicate)(
+                    subset_idx, ma_maps, estimator, study_ids, cluster_threshold
                 )
-                for sample_idx in samples
+                for subset_idx in subsets
             ),
-            total=len(samples),
+            total=len(subsets),
         ):
             running_sum = (
                 support.astype(np.float64) if running_sum is None else running_sum + support
@@ -934,17 +915,18 @@ class ResampledStability(NiMAREBase):
                 "ResampledStability requires a fitted estimator with a retained dataset."
             )
 
-        if isinstance(result.estimator, CBMAEstimator) and self.resampling_policy == "subsample":
-            stability_map = self._cbma_subsample_stability(result)
+        all_ids = list(result.estimator.inputs_["id"])
+        subsets, target_n_used = self._resolve_subsets(len(all_ids))
+
+        if isinstance(result.estimator, CBMAEstimator):
+            stability_map = self._cbma_subset_stability(result, subsets, target_n_used)
             return self._finalize_result(
                 result,
                 stability_map,
-                n_resamples_used=int(self.n_resamples or 2500),
-                target_n_used=self.target_n,
+                n_resamples_used=len(subsets),
+                target_n_used=target_n_used,
             )
 
-        all_ids = list(result.estimator.inputs_["id"])
-        subsets = self._resolve_subsets(len(all_ids))
         kept_id_lists = [[all_ids[i] for i in subset] for subset in subsets]
 
         running_sum = None
@@ -961,7 +943,6 @@ class ResampledStability(NiMAREBase):
             n_done += 1
 
         stability_map = (running_sum / n_done).astype(DEFAULT_FLOAT_DTYPE, copy=False)
-        target_n_used = None if not kept_id_lists else len(kept_id_lists[0])
         return self._finalize_result(
             result,
             stability_map,
