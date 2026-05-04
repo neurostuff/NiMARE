@@ -258,7 +258,44 @@ def _threshold_corrected_main_effect(
 
 
 class ContrastWorkflow(NiMAREBase):
-    """Compose a masked contrast workflow for pairwise CBMA analyses."""
+    """Compose a masked contrast workflow for pairwise CBMA analyses.
+
+    This workflow fits separate one-sample main-effect analyses for two groups, corrects
+    and thresholds those main effects, and passes the thresholded maps to the pairwise
+    estimator as directional inference masks. Positive group1 > group2 effects are
+    evaluated only where group 1 has a surviving main effect, and negative group2 > group1
+    effects are evaluated only where group 2 has a surviving main effect. This differs from
+    a standard :class:`~nimare.meta.cbma.ale.ALESubtraction` run without inference maps,
+    which evaluates differences across all voxels in the analysis mask.
+
+    The workflow then thresholds the pairwise contrast p-values at ``alpha`` and stores the
+    thresholded contrast z map. It also stores the thresholded group main-effect maps and a
+    voxelwise-minimum conjunction of those maps. This mirrors the main-effect-gated ALE
+    subtraction logic used in earlier ALE subtraction workflows :footcite:p:`laird2005ale`,
+    while keeping the correction and gating steps explicit in NiMARE. This specific
+    implementation was based on :footcite:t:`Frahm_Monimu_Hoffstaedter`.
+
+    Parameters
+    ----------
+    main_estimator : :class:`~nimare.meta.cbma.base.CBMAEstimator`
+        Estimator to use for computing main effects.
+        Default is :class:`~nimare.meta.cbma.ale.ALE`.
+    pairwise_estimator : :class:`~nimare.meta.cbma.base.PairwiseCBMAEstimator`
+        Estimator to use for computing pairwise contrast.
+        Default is :class:`~nimare.meta.cbma.ale.ALESubtraction`.
+    corrector : :class:`~nimare.correct.Corrector`
+        Corrector to use for correcting main effects.
+        Default is :class:`~nimare.correct.FDRCorrector` with ``method="indep"`` and
+        ``alpha=0.05``.
+    alpha : :obj:`float`, optional
+        Significance level to use for thresholding main effects and pairwise contrast.
+        Default is 0.05.
+    output_dir : :obj:`str`, optional
+        Output directory in which to save results. If the directory doesn't
+        exist, it will be created. Default is None (the results are not saved).
+    n_cores : :obj:`int`, optional
+        Number of cores to use for parallelization. Default is 1.
+    """
 
     def __init__(
         self,
@@ -290,13 +327,41 @@ class ContrastWorkflow(NiMAREBase):
         z_map_name, threshold_map_name, threshold_kind = _infer_corrected_main_effect_maps(
             corr_result
         )
-        return _threshold_corrected_main_effect(
+        thresholded_map = _threshold_corrected_main_effect(
             corr_result,
             z_map_name,
             threshold_map_name,
             threshold_kind,
             self.alpha,
         )
+        return thresholded_map, corr_result
+
+    def _generate_description(self, group1_result, group2_result, pairwise_result):
+        """Generate a workflow description that preserves component boilerplate."""
+        sections = []
+        if group1_result.description_:
+            sections.append(f"Group 1 main-effect analysis: {group1_result.description_}")
+        if group2_result.description_:
+            sections.append(f"Group 2 main-effect analysis: {group2_result.description_}")
+        if pairwise_result.description_:
+            sections.append(f"Pairwise contrast analysis: {pairwise_result.description_}")
+
+        sections.append(
+            "Masked contrast workflow: The group 1 and group 2 main-effect maps were "
+            f"corrected with {type(self.corrector).__name__} and thresholded at "
+            f"alpha = {self.alpha}. The thresholded main-effect maps were passed to "
+            f"{type(self.pairwise_estimator).__name__} as directional inference masks. "
+            "Positive group1 > group2 effects were evaluated only where group 1 had a "
+            "surviving main effect, and negative group2 > group1 effects were evaluated "
+            "only where group 2 had a surviving main effect. The pairwise contrast "
+            "p-values were then thresholded at the same alpha level. The output includes "
+            "the thresholded group main-effect maps, a voxelwise-minimum conjunction map, "
+            "and the thresholded pairwise contrast map. This follows the main-effect-gated "
+            "ALE subtraction logic used in earlier ALE subtraction workflows "
+            "\\citep{laird2005ale} and the JALE implementation "
+            "\\citep{Frahm_Monimu_Hoffstaedter}."
+        )
+        return " ".join(sections)
 
     def _contrast_keys(self):
         if isinstance(self.pairwise_estimator, ALESubtraction):
@@ -328,8 +393,8 @@ class ContrastWorkflow(NiMAREBase):
         LGR.info("Fitting group 2 main effect...")
         group2_result = self.main_estimator.fit(dataset2, drop_invalid=drop_invalid)
 
-        group1_map = self._compute_main_effect_map(group1_result)
-        group2_map = self._compute_main_effect_map(group2_result)
+        group1_map, group1_corr_result = self._compute_main_effect_map(group1_result)
+        group2_map, group2_corr_result = self._compute_main_effect_map(group2_result)
 
         LGR.info("Fitting masked pairwise contrast...")
         pairwise_result = self.pairwise_estimator.fit(
@@ -376,11 +441,10 @@ class ContrastWorkflow(NiMAREBase):
                 }
             ]
         )
-        result.description_ = (
-            f"A masked contrast workflow was run in NiMARE using "
-            f"{type(self.main_estimator).__name__} main effects, "
-            f"{type(self.corrector).__name__} main-effect correction, and "
-            f"{type(self.pairwise_estimator).__name__} pairwise inference."
+        result.description_ = self._generate_description(
+            group1_corr_result,
+            group2_corr_result,
+            pairwise_result,
         )
         self._save_result(result)
         return result

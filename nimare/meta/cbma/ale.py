@@ -563,8 +563,9 @@ class ALE(CBMAEstimator):
         description = (
             "Family-wise error correction was approximated with predictive ALE "
             "cutoffs. Voxel-level and cluster-size thresholds were predicted from experiment-"
-            "level subject and focus counts using packaged XGBoost regressors, and TFCE was not "
-            "used."
+            "level subject and focus counts using packaged XGBoost regressors "
+            "trained on simulated ALE datasets, "
+            "as described in :footcite:t:`10.1162/imag_a_00423`."
         )
         maps = {
             "p_level-voxel": p_vfwe,
@@ -1519,11 +1520,9 @@ class ALESubtraction(PairwiseCBMAEstimator):
 class BalancedALESubtraction(PairwiseCBMAEstimator):
     """Balanced ALE subtraction with matched-size subsampling.
 
-    Notes
-    -----
-    This implementation follows the matched-size subsampling strategy used by
-    related ALE software. See that project's README for background and
-    references.
+    "A balanced ALE subtraction using matched-size "
+    "subsampling within groups, averaged balanced ALE differences, and Monte Carlo null "
+    "extrema from balanced resamples. :footcite:t:`Frahm_Monimu_Hoffstaedter`"
 
     Parameters
     ----------
@@ -1598,7 +1597,7 @@ class BalancedALESubtraction(PairwiseCBMAEstimator):
         return (
             "A balanced ALE subtraction was performed in NiMARE using matched-size "
             "subsampling within groups, averaged balanced ALE differences, and Monte Carlo null "
-            "extrema from balanced resamples."
+            "extrema from balanced resamples. :footcite:t:`Frahm_Monimu_Hoffstaedter`"
         )
 
     def _compute_summarystat_est(self, ma_values):

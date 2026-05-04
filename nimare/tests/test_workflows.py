@@ -270,6 +270,12 @@ def test_contrast_workflow_smoke(
     assert "z_desc-contrast" in result.maps
     assert "p_desc-contrast" in result.maps
     assert "logp_desc-contrast" in result.maps
+    assert "Group 1 main-effect analysis" in result.description_
+    assert "Group 2 main-effect analysis" in result.description_
+    assert "Masked contrast workflow" in result.description_
+    assert "directional inference masks" in result.description_
+    assert "laird2005ale" in result.bibtex_
+    assert "Frahm_Monimu_Hoffstaedter" in result.bibtex_
 
 
 def test_contrast_workflow_ale_thresholding_path_smoke(testdata_cbma_full):
