@@ -19,7 +19,13 @@ from nimare.meta.kernel import KDAKernel, MKDAKernel
 from nimare.meta.utils import _calculate_cluster_measures
 from nimare.stats import null_to_p, one_way, two_way
 from nimare.transforms import p_to_z
-from nimare.utils import DEFAULT_FLOAT_DTYPE, _check_ncores, _mask_img_to_bool, vox2mm
+from nimare.utils import (
+    DEFAULT_FLOAT_DTYPE,
+    _check_ncores,
+    _mask_img_to_bool,
+    _p_to_logp_values,
+    vox2mm,
+)
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
@@ -861,7 +867,6 @@ class MKDAChi2(PairwiseCBMAEstimator):
         rand_idx2 = np.random.choice(null_xyz.shape[0], size=(iter_df2.shape[0], n_iters))
         rand_xyz2 = null_xyz[rand_idx2, :]
         iter_xyzs2 = np.split(rand_xyz2, rand_xyz2.shape[1], axis=1)
-        eps = np.spacing(1)
 
         # Identify summary statistic corresponding to intensity threshold
         ss_thresh = chi2.isf(voxel_thresh, 1)
@@ -946,25 +951,19 @@ class MKDAChi2(PairwiseCBMAEstimator):
         # Convert p-values
         # pAgF
         pAgF_z_vfwe_vals = p_to_z(pAgF_p_vfwe_vals, tail="two") * pAgF_sign
-        pAgF_logp_vfwe_vals = -np.log10(pAgF_p_vfwe_vals)
-        pAgF_logp_vfwe_vals[np.isinf(pAgF_logp_vfwe_vals)] = -np.log10(eps)
+        pAgF_logp_vfwe_vals = _p_to_logp_values(pAgF_p_vfwe_vals, dtype=DEFAULT_FLOAT_DTYPE)
         pAgF_z_cmfwe_vals = p_to_z(pAgF_p_cmfwe_vals, tail="two") * pAgF_sign
-        pAgF_logp_cmfwe_vals = -np.log10(pAgF_p_cmfwe_vals)
-        pAgF_logp_cmfwe_vals[np.isinf(pAgF_logp_cmfwe_vals)] = -np.log10(eps)
+        pAgF_logp_cmfwe_vals = _p_to_logp_values(pAgF_p_cmfwe_vals, dtype=DEFAULT_FLOAT_DTYPE)
         pAgF_z_csfwe_vals = p_to_z(pAgF_p_csfwe_vals, tail="two") * pAgF_sign
-        pAgF_logp_csfwe_vals = -np.log10(pAgF_p_csfwe_vals)
-        pAgF_logp_csfwe_vals[np.isinf(pAgF_logp_csfwe_vals)] = -np.log10(eps)
+        pAgF_logp_csfwe_vals = _p_to_logp_values(pAgF_p_csfwe_vals, dtype=DEFAULT_FLOAT_DTYPE)
 
         # pFgA
         pFgA_z_vfwe_vals = p_to_z(pFgA_p_vfwe_vals, tail="two") * pFgA_sign
-        pFgA_logp_vfwe_vals = -np.log10(pFgA_p_vfwe_vals)
-        pFgA_logp_vfwe_vals[np.isinf(pFgA_logp_vfwe_vals)] = -np.log10(eps)
+        pFgA_logp_vfwe_vals = _p_to_logp_values(pFgA_p_vfwe_vals, dtype=DEFAULT_FLOAT_DTYPE)
         pFgA_z_cmfwe_vals = p_to_z(pFgA_p_cmfwe_vals, tail="two") * pFgA_sign
-        pFgA_logp_cmfwe_vals = -np.log10(pFgA_p_cmfwe_vals)
-        pFgA_logp_cmfwe_vals[np.isinf(pFgA_logp_cmfwe_vals)] = -np.log10(eps)
+        pFgA_logp_cmfwe_vals = _p_to_logp_values(pFgA_p_cmfwe_vals, dtype=DEFAULT_FLOAT_DTYPE)
         pFgA_z_csfwe_vals = p_to_z(pFgA_p_csfwe_vals, tail="two") * pFgA_sign
-        pFgA_logp_csfwe_vals = -np.log10(pFgA_p_csfwe_vals)
-        pFgA_logp_csfwe_vals[np.isinf(pFgA_logp_csfwe_vals)] = -np.log10(eps)
+        pFgA_logp_csfwe_vals = _p_to_logp_values(pFgA_p_csfwe_vals, dtype=DEFAULT_FLOAT_DTYPE)
 
         maps = {
             # uniformity analysis

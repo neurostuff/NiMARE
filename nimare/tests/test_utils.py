@@ -13,6 +13,39 @@ from nimare import utils
 from nimare.meta.utils import _apply_liberal_mask
 
 
+def test_clip_p_values_copy_parameter_controls_mutation():
+    """P-value clipping should preserve inputs by default and mutate only when requested."""
+    p_values = np.array([np.nan, 0.0, 1e-50, 0.5, 2.0], dtype=np.float32)
+    original = p_values.copy()
+
+    clipped = utils._clip_p_values(p_values)
+
+    assert not np.shares_memory(clipped, p_values)
+    np.testing.assert_array_equal(p_values, original)
+    assert clipped[1] == utils._minimum_positive_float()
+    assert clipped[2] == utils._minimum_positive_float()
+    assert clipped[4] == np.float32(1.0)
+
+    clipped_in_place = utils._clip_p_values(p_values, copy=False)
+
+    assert np.shares_memory(clipped_in_place, p_values)
+    assert p_values[1] == utils._minimum_positive_float()
+    assert p_values[2] == utils._minimum_positive_float()
+    assert p_values[4] == np.float32(1.0)
+
+
+def test_p_to_logp_values_can_reuse_owned_array():
+    """p-to-logp conversion should support in-place mutation for owned arrays."""
+    p_values = np.array([1.0, 0.01, 0.0, np.nan], dtype=np.float32)
+
+    logp_values = utils._p_to_logp_values(p_values, copy=False)
+
+    assert np.shares_memory(logp_values, p_values)
+    np.testing.assert_allclose(logp_values[:2], [0.0, 2.0], atol=1e-6)
+    assert np.isfinite(logp_values[2])
+    assert np.isnan(logp_values[3])
+
+
 def test_find_stem():
     """Test nimare.utils._find_stem."""
     test_array = [

@@ -26,6 +26,7 @@ from nimare.utils import (
     _check_ncores,
     _check_type,
     _mask_img_to_bool,
+    _p_to_logp_values,
     get_masker,
     get_masker_mask_image,
     mm2vox,
@@ -912,8 +913,7 @@ class CBMAEstimator(Estimator):
                         nib.Nifti1Image(p_cmfwe_map, self.masker.mask_img.affine)
                     )
                 )
-                logp_cmfwe_values = -np.log10(p_cmfwe_values)
-                logp_cmfwe_values[np.isinf(logp_cmfwe_values)] = -np.log10(np.finfo(float).eps)
+                logp_cmfwe_values = _p_to_logp_values(p_cmfwe_values, dtype=DEFAULT_FLOAT_DTYPE)
                 z_cmfwe_values = p_to_z(p_cmfwe_values, tail="one")
 
                 # Cluster size-based inference
@@ -926,8 +926,7 @@ class CBMAEstimator(Estimator):
                         nib.Nifti1Image(p_csfwe_map, self.masker.mask_img.affine)
                     )
                 )
-                logp_csfwe_values = -np.log10(p_csfwe_values)
-                logp_csfwe_values[np.isinf(logp_csfwe_values)] = -np.log10(np.finfo(float).eps)
+                logp_csfwe_values = _p_to_logp_values(p_csfwe_values, dtype=DEFAULT_FLOAT_DTYPE)
                 z_csfwe_values = p_to_z(p_csfwe_values, tail="one")
 
                 self.null_distributions_[
@@ -945,8 +944,7 @@ class CBMAEstimator(Estimator):
             )
 
         z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
-        logp_vfwe_values = -np.log10(p_vfwe_values)
-        logp_vfwe_values[np.isinf(logp_vfwe_values)] = -np.log10(np.finfo(float).eps)
+        logp_vfwe_values = _p_to_logp_values(p_vfwe_values, dtype=DEFAULT_FLOAT_DTYPE)
 
         if vfwe_only:
             # Return unthresholded value images

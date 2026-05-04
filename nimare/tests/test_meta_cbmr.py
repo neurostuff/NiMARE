@@ -6,6 +6,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import pytest
+import scipy
 
 try:
     import torch
@@ -369,6 +370,28 @@ def test_cbmr_chi_square_log_intensity_matches_legacy_loop():
     )
 
     np.testing.assert_allclose(actual, np.asarray(expected))
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_cbmr_group_glh_uses_stable_chi_square_survival_function():
+    """Extreme chi-square statistics should retain nonzero p-values when representable."""
+    inference = CBMRInference(device="cpu")
+
+    chi_square, z_values, p_values = inference._compute_group_glh_statistics(
+        simp_con_group=np.array([[1.0]]),
+        involved_groups=["group"],
+        cov_spatial_coef=np.array([[1.0]]),
+        contrast_log_intensity=np.array([[10.0]]),
+        X=np.array([[1.0]]),
+        spatial_coef_dim=1,
+        n_brain_voxel=1,
+        is_homogeneity_test=False,
+    )
+
+    np.testing.assert_allclose(chi_square, [100.0])
+    np.testing.assert_allclose(p_values, scipy.stats.chi2.sf(100.0, df=1), rtol=1e-6, atol=0)
+    assert p_values[0] > 0
+    assert np.isfinite(z_values[0])
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")

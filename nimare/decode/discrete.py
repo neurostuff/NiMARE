@@ -12,7 +12,7 @@ from nimare.decode.utils import weight_priors
 from nimare.meta.kernel import KernelTransformer, MKDAKernel
 from nimare.stats import one_way, pearson, two_way
 from nimare.transforms import p_to_z
-from nimare.utils import _check_type, _mask_img_to_bool, get_masker
+from nimare.utils import _check_type, _clip_p_values, _mask_img_to_bool, get_masker
 
 
 def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
@@ -330,7 +330,8 @@ def brainmap_decode(
 
     # Significance testing
     # Forward inference significance is determined with a binomial distribution
-    p_fi = 1 - binom.cdf(k=n_selected_term, n=n_term_foci, p=p_selected)
+    p_fi = binom.sf(k=n_selected_term, n=n_term_foci, p=p_selected)
+    p_fi = _clip_p_values(p_fi, dtype=p_fi.dtype, copy=False)
     sign_fi = np.sign(
         n_selected_term - np.mean(n_selected_term)
     ).ravel()  # pylint: disable=no-member
@@ -344,6 +345,7 @@ def brainmap_decode(
     ).T
     chi2_ri = two_way(cells)
     p_ri = special.chdtrc(1, chi2_ri)
+    p_ri = _clip_p_values(p_ri, dtype=p_ri.dtype, copy=False)
     sign_ri = np.sign(p_selected_g_term - p_selected_g_noterm).ravel()  # pylint: disable=no-member
 
     # Ignore rare features
@@ -627,6 +629,7 @@ def neurosynth_decode(
     # One-way chi-square test for uniformity of term frequency across terms
     chi2_fi = one_way(n_selected_term, n_term)
     p_fi = special.chdtrc(1, chi2_fi)
+    p_fi = _clip_p_values(p_fi, dtype=p_fi.dtype, copy=False)
     sign_fi = np.sign(
         n_selected_term - np.mean(n_selected_term)
     ).ravel()  # pylint: disable=no-member
@@ -640,6 +643,7 @@ def neurosynth_decode(
     ).T
     chi2_ri = two_way(cells)
     p_ri = special.chdtrc(1, chi2_ri)
+    p_ri = _clip_p_values(p_ri, dtype=p_ri.dtype, copy=False)
     sign_ri = np.sign(p_selected_g_term - p_selected_g_noterm).ravel()  # pylint: disable=no-member
 
     # Multiple comparisons correction across terms. Separately done for FI and RI.

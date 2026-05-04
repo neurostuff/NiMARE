@@ -33,6 +33,7 @@ from nimare.transforms import p_to_z
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
+    _p_to_logp_values,
     mm2vox,
     use_memmap,
 )
@@ -968,7 +969,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
                     iter_diff_values._mmap.close()
 
         z_arr = p_to_z(p_values, tail="two") * diff_signs
-        logp_arr = -np.log10(p_values)
+        logp_arr = _p_to_logp_values(p_values, dtype=DEFAULT_FLOAT_DTYPE)
 
         maps = {
             "stat_desc-group1MinusGroup2": diff_ale_values,
@@ -1277,7 +1278,6 @@ class ALESubtraction(PairwiseCBMAEstimator):
         stat_values = result.get_map("stat_desc-group1MinusGroup2", return_type="array")
         z_values = result.get_map("z_desc-group1MinusGroup2", return_type="array")
         sign = np.sign(z_values)
-        eps = np.spacing(1)
 
         if n_iters is None:
             n_iters = self.n_iters
@@ -1365,8 +1365,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         vfwe_null = self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]
         p_vfwe_vals = null_to_p(np.abs(stat_values), vfwe_null, tail="upper")
         z_vfwe_vals = p_to_z(p_vfwe_vals, tail="two") * sign
-        logp_vfwe_vals = -np.log10(p_vfwe_vals)
-        logp_vfwe_vals[np.isinf(logp_vfwe_vals)] = -np.log10(eps)
+        logp_vfwe_vals = _p_to_logp_values(p_vfwe_vals, dtype=DEFAULT_FLOAT_DTYPE)
 
         maps = {
             "p_desc-group1MinusGroup2_level-voxel": p_vfwe_vals,
@@ -1420,12 +1419,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
             )
 
             z_cmfwe_vals = p_to_z(p_cmfwe_values, tail="two") * sign
-            logp_cmfwe_vals = -np.log10(p_cmfwe_values)
-            logp_cmfwe_vals[np.isinf(logp_cmfwe_vals)] = -np.log10(eps)
+            logp_cmfwe_vals = _p_to_logp_values(p_cmfwe_values, dtype=DEFAULT_FLOAT_DTYPE)
 
             z_csfwe_vals = p_to_z(p_csfwe_values, tail="two") * sign
-            logp_csfwe_vals = -np.log10(p_csfwe_values)
-            logp_csfwe_vals[np.isinf(logp_csfwe_vals)] = -np.log10(eps)
+            logp_csfwe_vals = _p_to_logp_values(p_csfwe_values, dtype=DEFAULT_FLOAT_DTYPE)
 
             maps.update(
                 {
@@ -1649,8 +1646,7 @@ class SCALE(CBMAEstimator):
 
         p_values, z_values = self._scale_to_p(stat_values, exceedance_counts)
 
-        logp_values = -np.log10(p_values)
-        logp_values[np.isinf(logp_values)] = -np.log10(np.finfo(float).eps)
+        logp_values = _p_to_logp_values(p_values, dtype=DEFAULT_FLOAT_DTYPE, copy=False)
 
         # Write out unthresholded value images
         maps = {"stat": stat_values, "logp": logp_values, "z": z_values}
@@ -1826,8 +1822,11 @@ class SCALE(CBMAEstimator):
 
         p_vfwe_values = null_to_p(stat_values, fwe_voxel_max, tail="upper")
         z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
-        logp_vfwe_values = -np.log10(p_vfwe_values)
-        logp_vfwe_values[np.isinf(logp_vfwe_values)] = -np.log10(np.finfo(float).eps)
+        logp_vfwe_values = _p_to_logp_values(
+            p_vfwe_values,
+            dtype=DEFAULT_FLOAT_DTYPE,
+            copy=False,
+        )
 
         self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = fwe_voxel_max
 
