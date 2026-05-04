@@ -80,8 +80,11 @@ def _check_p_values(
     # CHECK IF P-VALUES ARE WITHIN THE CORRECT RANGE
     ################################################
     if n_iters:
-        assert p_array.min() >= (1.0 / n_iters)
-        assert p_array.max() <= 1.0 - (1.0 / n_iters)
+        # Compare in the same dtype as p_array to avoid numpy 2.4+ float32/float64
+        # comparison semantics where float32(0.01) < float64(0.01).
+        p_dtype = p_array.dtype
+        assert p_array.min() >= p_dtype.type(1.0 / n_iters)
+        assert p_array.max() <= p_dtype.type(1.0 - 1.0 / n_iters)
     else:
         assert (p_array >= 0).all() and (p_array <= 1).all()
 
