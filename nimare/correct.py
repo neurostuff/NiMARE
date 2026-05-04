@@ -10,7 +10,7 @@ from pymare.stats import bonferroni, fdr
 from nimare.base import NiMAREBase
 from nimare.results import MetaResult
 from nimare.transforms import p_to_z
-from nimare.utils import DEFAULT_FLOAT_DTYPE, _clip_logp_values, _clip_p_values
+from nimare.utils import DEFAULT_FLOAT_DTYPE, _clip_p_values, _p_to_logp_values
 
 LGR = logging.getLogger(__name__)
 
@@ -99,7 +99,7 @@ class Corrector(NiMAREBase):
 
     def _generate_secondary_maps(self, result, corr_maps, rm):
         """Generate corrected version of z and log-p maps if they exist."""
-        p = _clip_p_values(corr_maps[rm], dtype=DEFAULT_FLOAT_DTYPE)
+        p = _clip_p_values(corr_maps[rm], dtype=DEFAULT_FLOAT_DTYPE, copy=False)
         corr_maps[rm] = p
 
         if rm == "p":
@@ -110,10 +110,7 @@ class Corrector(NiMAREBase):
             corr_maps[z_map_name] = p_to_z(p) * np.sign(result.maps[z_map_name])
 
         if logp_map_name in result.maps:
-            corr_maps[logp_map_name] = _clip_logp_values(
-                -np.log10(p),
-                dtype=DEFAULT_FLOAT_DTYPE,
-            )
+            corr_maps[logp_map_name] = _p_to_logp_values(p, dtype=DEFAULT_FLOAT_DTYPE)
 
         return corr_maps
 

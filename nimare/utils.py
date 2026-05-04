@@ -34,19 +34,33 @@ def _minimum_positive_float(dtype=DEFAULT_FLOAT_DTYPE):
     return np.nextafter(dtype.type(0), dtype.type(1), dtype=dtype)
 
 
-def _clip_p_values(p_values, dtype=DEFAULT_FLOAT_DTYPE):
+def _clip_p_values(p_values, dtype=DEFAULT_FLOAT_DTYPE, copy=True):
     """Clip p-values to the positive range representable by a floating dtype."""
     dtype = np.dtype(dtype)
-    p_values = np.asarray(p_values, dtype=dtype)
-    return np.clip(p_values, _minimum_positive_float(dtype), dtype.type(1))
+    p_values = (
+        np.array(p_values, dtype=dtype, copy=True) if copy else np.asarray(p_values, dtype=dtype)
+    )
+    return np.clip(p_values, _minimum_positive_float(dtype), dtype.type(1), out=p_values)
 
 
-def _clip_logp_values(logp_values, dtype=DEFAULT_FLOAT_DTYPE):
+def _clip_logp_values(logp_values, dtype=DEFAULT_FLOAT_DTYPE, copy=True):
     """Clip -log10(p) values to the range implied by a floating p-value dtype."""
     dtype = np.dtype(dtype)
-    logp_values = np.asarray(logp_values, dtype=dtype)
+    logp_values = (
+        np.array(logp_values, dtype=dtype, copy=True)
+        if copy
+        else np.asarray(logp_values, dtype=dtype)
+    )
     max_value = -np.log10(_minimum_positive_float(dtype))
-    return np.clip(logp_values, dtype.type(0), max_value)
+    return np.clip(logp_values, dtype.type(0), max_value, out=logp_values)
+
+
+def _p_to_logp_values(p_values, dtype=DEFAULT_FLOAT_DTYPE, copy=True):
+    """Convert p-values to finite -log10(p) values with shared clipping rules."""
+    p_values = _clip_p_values(p_values, dtype=dtype, copy=copy)
+    np.log10(p_values, out=p_values)
+    np.negative(p_values, out=p_values)
+    return p_values
 
 
 def _mask_img_to_bool(mask_img):

@@ -270,3 +270,20 @@ def test_z_to_p(z, tail, expected_p):
     p = transforms.z_to_p(z, tail)
 
     assert np.all(np.isclose(p, expected_p))
+
+
+def test_z_to_p_clips_extreme_values_to_positive_floor():
+    """Extreme z-values should not produce exact-zero p-values."""
+    p = transforms.z_to_p(np.array([50.0]), tail="two")
+
+    assert np.isfinite(p[0])
+    assert p[0] > 0
+
+
+def test_z_to_t_clips_extreme_tail_probabilities():
+    """Extreme z-values should not produce infinite t-values from inverse CDF calls."""
+    t_values = transforms.z_to_t(np.array([-50.0, 50.0]), dof=10)
+
+    assert np.all(np.isfinite(t_values))
+    assert t_values[0] < 0
+    assert t_values[1] > 0

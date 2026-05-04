@@ -755,6 +755,7 @@ def z_to_p(z, tail="two"):
     else:
         raise ValueError('Argument "tail" must be one of ["one", "two"]')
 
+    p = _clip_p_values(p, dtype=np.asarray(p).dtype, copy=False)
     if p.shape == ():
         p = p[()]
     return p
@@ -778,9 +779,9 @@ def p_to_z(p, tail="two"):
     z : array_like
         Z-statistics (unsigned)
     """
-    p = _clip_p_values(np.array(p), dtype=DEFAULT_FLOAT_DTYPE)
+    p = _clip_p_values(p, dtype=DEFAULT_FLOAT_DTYPE)
     if tail == "two":
-        p = np.maximum(p, 2 * _minimum_positive_float(DEFAULT_FLOAT_DTYPE))
+        np.maximum(p, 2 * _minimum_positive_float(DEFAULT_FLOAT_DTYPE), out=p)
         z = stats.norm.isf(p / 2)
     elif tail == "one":
         z = stats.norm.isf(p)
@@ -912,10 +913,14 @@ def z_to_t(z_values, dof):
 
     # Calculate p values for <=0
     p_values_z1 = stats.norm.cdf(z1)
+    eps = np.finfo(p_values_z1.dtype).eps
+    np.clip(p_values_z1, eps, 1.0 - eps, out=p_values_z1)
     t_values_z1 = stats.t.ppf(p_values_z1, df=dof)
 
     # Calculate p values for > 0
     p_values_z2 = stats.norm.cdf(-z2)
+    eps = np.finfo(p_values_z2.dtype).eps
+    np.clip(p_values_z2, eps, 1.0 - eps, out=p_values_z2)
     t_values_z2 = -stats.t.ppf(p_values_z2, df=dof)
     t_values_nonzero[k1] = t_values_z1
     t_values_nonzero[k2] = t_values_z2
