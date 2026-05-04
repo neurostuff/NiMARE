@@ -17,11 +17,12 @@ from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.cbma.utils import collect_csr_ma_maps, require_masked_csr
 from nimare.meta.kernel import KDAKernel, MKDAKernel
 from nimare.meta.utils import _calculate_cluster_measures
-from nimare.stats import null_to_p, one_way, safe_logp, two_way_counts
+from nimare.stats import null_to_p, one_way, two_way_counts
 from nimare.transforms import p_to_z
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
+    _p_to_logp_values,
     _prior_space_to_null_ijk,
     vox2mm,
 )
@@ -555,9 +556,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
             pFgA_p_vals[~association_mask] = 1
             pFgA_z[~association_mask] = 0
 
-        pAgF_logp = safe_logp(pAgF_p_vals)
-        pAgU_logp = safe_logp(pAgU_p_vals)
-        pFgA_logp = safe_logp(pFgA_p_vals)
+        pAgF_logp = _p_to_logp_values(pAgF_p_vals, dtype=DEFAULT_FLOAT_DTYPE)
+        pAgU_logp = _p_to_logp_values(pAgU_p_vals, dtype=DEFAULT_FLOAT_DTYPE)
+        pFgA_logp = _p_to_logp_values(pFgA_p_vals, dtype=DEFAULT_FLOAT_DTYPE)
 
         del pAgF_sign, pAgU_sign, pFgA_sign
 
@@ -1124,27 +1125,27 @@ class MKDAChi2(PairwiseCBMAEstimator):
         # Convert p-values
         # pAgF
         pAgF_z_vfwe_vals = p_to_z(pAgF_p_vfwe_vals, tail="two") * pAgF_sign
-        pAgF_logp_vfwe_vals = safe_logp(pAgF_p_vfwe_vals)
+        pAgF_logp_vfwe_vals = _p_to_logp_values(pAgF_p_vfwe_vals, dtype=DEFAULT_FLOAT_DTYPE)
         pAgF_z_cmfwe_vals = p_to_z(pAgF_p_cmfwe_vals, tail="two") * pAgF_sign
-        pAgF_logp_cmfwe_vals = safe_logp(pAgF_p_cmfwe_vals)
+        pAgF_logp_cmfwe_vals = _p_to_logp_values(pAgF_p_cmfwe_vals, dtype=DEFAULT_FLOAT_DTYPE)
         pAgF_z_csfwe_vals = p_to_z(pAgF_p_csfwe_vals, tail="two") * pAgF_sign
-        pAgF_logp_csfwe_vals = safe_logp(pAgF_p_csfwe_vals)
+        pAgF_logp_csfwe_vals = _p_to_logp_values(pAgF_p_csfwe_vals, dtype=DEFAULT_FLOAT_DTYPE)
 
         # pAgU
         pAgU_z_vfwe_vals = p_to_z(pAgU_p_vfwe_vals, tail="two") * pAgU_sign
-        pAgU_logp_vfwe_vals = safe_logp(pAgU_p_vfwe_vals)
+        pAgU_logp_vfwe_vals = _p_to_logp_values(pAgU_p_vfwe_vals, dtype=DEFAULT_FLOAT_DTYPE)
         pAgU_z_cmfwe_vals = p_to_z(pAgU_p_cmfwe_vals, tail="two") * pAgU_sign
-        pAgU_logp_cmfwe_vals = safe_logp(pAgU_p_cmfwe_vals)
+        pAgU_logp_cmfwe_vals = _p_to_logp_values(pAgU_p_cmfwe_vals, dtype=DEFAULT_FLOAT_DTYPE)
         pAgU_z_csfwe_vals = p_to_z(pAgU_p_csfwe_vals, tail="two") * pAgU_sign
-        pAgU_logp_csfwe_vals = safe_logp(pAgU_p_csfwe_vals)
+        pAgU_logp_csfwe_vals = _p_to_logp_values(pAgU_p_csfwe_vals, dtype=DEFAULT_FLOAT_DTYPE)
 
         # pFgA
         pFgA_z_vfwe_vals = p_to_z(pFgA_p_vfwe_vals, tail="two") * pFgA_sign
-        pFgA_logp_vfwe_vals = safe_logp(pFgA_p_vfwe_vals)
+        pFgA_logp_vfwe_vals = _p_to_logp_values(pFgA_p_vfwe_vals, dtype=DEFAULT_FLOAT_DTYPE)
         pFgA_z_cmfwe_vals = p_to_z(pFgA_p_cmfwe_vals, tail="two") * pFgA_sign
-        pFgA_logp_cmfwe_vals = safe_logp(pFgA_p_cmfwe_vals)
+        pFgA_logp_cmfwe_vals = _p_to_logp_values(pFgA_p_cmfwe_vals, dtype=DEFAULT_FLOAT_DTYPE)
         pFgA_z_csfwe_vals = p_to_z(pFgA_p_csfwe_vals, tail="two") * pFgA_sign
-        pFgA_logp_csfwe_vals = safe_logp(pFgA_p_csfwe_vals)
+        pFgA_logp_csfwe_vals = _p_to_logp_values(pFgA_p_csfwe_vals, dtype=DEFAULT_FLOAT_DTYPE)
 
         maps = {
             # uniformity analysis
@@ -1243,9 +1244,9 @@ class MKDAChi2(PairwiseCBMAEstimator):
         pFgA_p_FDR = fdr(pFgA_p_vals, q=alpha, method="bh")
         pFgA_z_FDR = p_to_z(pFgA_p_FDR, tail="two") * pFgA_sign
 
-        pAgF_logp_FDR = safe_logp(pAgF_p_FDR)
-        pAgU_logp_FDR = safe_logp(pAgU_p_FDR)
-        pFgA_logp_FDR = safe_logp(pFgA_p_FDR)
+        pAgF_logp_FDR = _p_to_logp_values(pAgF_p_FDR, dtype=DEFAULT_FLOAT_DTYPE)
+        pAgU_logp_FDR = _p_to_logp_values(pAgU_p_FDR, dtype=DEFAULT_FLOAT_DTYPE)
+        pFgA_logp_FDR = _p_to_logp_values(pFgA_p_FDR, dtype=DEFAULT_FLOAT_DTYPE)
 
         maps = {
             "p_desc-uniformity_level-voxel": pAgF_p_FDR,

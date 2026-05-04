@@ -145,16 +145,6 @@ def pearson(x, y):
     rs = temp / (datass[1:] * datass[0])
     return rs
 
-
-def safe_logp(p_values):
-    """Convert p-values to finite ``-log10(p)`` values."""
-    return utils._p_to_logp_values(
-        p_values,
-        dtype=utils.DEFAULT_FLOAT_DTYPE,
-        copy=True,
-    )
-
-
 def null_to_p(test_value, null_array, tail="two", symmetric=False):
     """Return p-value for test value(s) against null array.
 

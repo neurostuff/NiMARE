@@ -810,12 +810,12 @@ class ResampledStability(NiMAREBase):
         """Compute one probabilistic ALE replicate from cached MA maps."""
         from nimare.meta.cbma.ale import (
             _ale_approximate_z_from_ma,
-            _jale_threshold_z_clusters,
+            _threshold_z_clusters,
         )
 
         subset_ma = ma_maps[sample_idx, :]
         _, z_values = _ale_approximate_z_from_ma(estimator, subset_ma)
-        z_values, _ = _jale_threshold_z_clusters(
+        z_values, _ = _threshold_z_clusters(
             z_values,
             estimator.masker,
             voxel_thresh=self.voxel_thresh or 0.001,
@@ -828,7 +828,7 @@ class ResampledStability(NiMAREBase):
         from nimare.meta.cbma.ale import (
             _ale_approximate_z_from_ma,
             _generate_unique_subsamples,
-            _jale_threshold_z_clusters,
+            _threshold_z_clusters,
             _masked_prior_columns,
             _random_ale_ma_from_metadata,
             _study_metadata_from_coordinates,
@@ -867,7 +867,7 @@ class ResampledStability(NiMAREBase):
                 rng,
             )
             _, null_z = _ale_approximate_z_from_ma(estimator, null_ma)
-            _, null_cluster_sizes[i_iter] = _jale_threshold_z_clusters(
+            _, null_cluster_sizes[i_iter] = _threshold_z_clusters(
                 null_z,
                 estimator.masker,
                 voxel_thresh=cluster_forming_threshold,

@@ -7,14 +7,12 @@ import numpy as np
 import pandas as pd
 
 from nimare.base import NiMAREBase
-from nimare.correct import Corrector, FWECorrector
+from nimare.correct import Corrector, FDRCorrector, FWECorrector
 from nimare.diagnostics import Jackknife
 from nimare.meta import ALE, ALESubtraction, MKDAChi2, MKDADensity
-from nimare.meta.cbma.ale import _jale_threshold_z_clusters
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
-from nimare.stats import safe_logp
 from nimare.transforms import threshold_image
-from nimare.utils import DEFAULT_FLOAT_DTYPE, _check_ncores
+from nimare.utils import DEFAULT_FLOAT_DTYPE, _check_ncores, _p_to_logp_values
 from nimare.workflows.base import Workflow, _check_input
 
 LGR = logging.getLogger(__name__)
@@ -225,118 +223,54 @@ def _infer_corrected_main_effect_maps(result):
     )
 
 
-def _threshold_ale_montecarlo_main_effect(result, z_map_name, alpha):
-    """Threshold ALE Monte Carlo FWE results using cached null distributions."""
-    estimator = result.estimator
-    percentile = 100.0 * (1.0 - alpha)
+def _threshold_corrected_main_effect(
+    result,
+    z_map_name,
+    threshold_map_name,
+    threshold_kind,
+    alpha,
+):
+    """Threshold a corrected main-effect map for workflow gating.
 
-    if (
-        z_map_name == "z_desc-size_level-cluster_corr-FWE_method-montecarlo"
-        and "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
-        in estimator.null_distributions_
-    ):
-        cluster_threshold = np.percentile(
-            estimator.null_distributions_[
-                "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
-            ],
-            percentile,
-        )
-        voxel_thresh = result.corrector.parameters.get("voxel_thresh", 0.001)
-        thresholded_z, _ = _jale_threshold_z_clusters(
-            result.get_map("z", return_type="array"),
-            estimator.masker,
-            voxel_thresh=voxel_thresh,
-            cluster_size_threshold=cluster_threshold,
-        )
-        return thresholded_z.astype(DEFAULT_FLOAT_DTYPE, copy=False)
+    This helper is estimator-agnostic. It works for ALE- or MKDA-family
+    results and for either FWE- or FDR-corrected maps, as long as the
+    corrected threshold map can be inferred from the supplied ``MetaResult``.
+    """
+    threshold_values = result.get_map(threshold_map_name, return_type="array")
+    if threshold_kind == "p":
+        threshold = alpha
+        tail = "lower"
+    else:
+        threshold = -np.log10(alpha)
+        tail = "upper"
 
-    if (
-        z_map_name == "z_level-voxel_corr-FWE_method-montecarlo"
-        and "values_level-voxel_corr-fwe_method-montecarlo" in estimator.null_distributions_
-    ):
-        stat_threshold = np.percentile(
-            estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"],
-            percentile,
-        )
-        return threshold_image(
-            result.get_map("z", return_type="array"),
-            threshold=stat_threshold,
-            thresholding_values=result.get_map("stat", return_type="array"),
-            tail="upper",
-        ).astype(DEFAULT_FLOAT_DTYPE, copy=False)
-
-    return None
+    return threshold_image(
+        result.get_map(z_map_name, return_type="array"),
+        threshold=threshold,
+        thresholding_values=threshold_values,
+        tail=tail,
+    ).astype(DEFAULT_FLOAT_DTYPE, copy=False)
 
 
 class ContrastWorkflow(NiMAREBase):
     """Compose a masked contrast workflow for pairwise CBMA analyses.
-
-    Notes
-    -----
-    When ``mode="ALE"``, corrected main-effect maps are used to gate
-    directional pairwise inference. This mirrors the masked-contrast pattern
-    used by related ALE software; see that project's README for background and
-    references.
     """
 
     def __init__(
         self,
-        mode="ALE",
-        main_estimator=None,
-        pairwise_estimator=None,
-        corrector=None,
+        main_estimator=ALE,
+        pairwise_estimator=ALESubtraction,
+        corrector=FDRCorrector(method="indep", alpha=0.05),
         alpha=0.05,
         output_dir=None,
         n_cores=1,
     ):
-        mode = mode.upper()
-        if mode not in ("ALE", "MKDA"):
-            raise ValueError("mode must be 'ALE' or 'MKDA'.")
         if not 0 < alpha < 1:
             raise ValueError(f"alpha must be between 0 and 1; got {alpha}.")
 
-        self.mode = mode
         self.alpha = alpha
         self.output_dir = output_dir
         self.n_cores = _check_ncores(n_cores)
-
-        if mode == "ALE":
-            default_main = ALE
-            default_pairwise = ALESubtraction
-            main_options = ("ale",)
-            pairwise_options = ("alesubtraction",)
-        else:
-            default_main = MKDADensity
-            default_pairwise = MKDAChi2
-            main_options = ("mkdadensity",)
-            pairwise_options = ("mkdachi2",)
-
-        if main_estimator is None:
-            main_estimator = default_main(n_cores=self.n_cores)
-        else:
-            main_estimator = _check_input(
-                main_estimator, CBMAEstimator, main_options, n_cores=self.n_cores
-            )
-
-        if pairwise_estimator is None:
-            pairwise_estimator = default_pairwise(n_cores=self.n_cores)
-        else:
-            pairwise_estimator = _check_input(
-                pairwise_estimator,
-                PairwiseCBMAEstimator,
-                pairwise_options,
-                n_cores=self.n_cores,
-            )
-
-        if corrector is None:
-            corrector = FWECorrector(method="montecarlo", n_cores=self.n_cores)
-        else:
-            corrector = _check_input(
-                corrector,
-                Corrector,
-                ("montecarlo", "fdr", "bonferroni"),
-                n_cores=self.n_cores,
-            )
 
         self.main_estimator = main_estimator
         self.pairwise_estimator = pairwise_estimator
@@ -348,38 +282,24 @@ class ContrastWorkflow(NiMAREBase):
         z_map_name, threshold_map_name, threshold_kind = _infer_corrected_main_effect_maps(
             corr_result
         )
-
-        if (
-            self.mode == "ALE"
-            and isinstance(corr_result.estimator, ALE)
-            and isinstance(corr_result.corrector, FWECorrector)
-            and corr_result.corrector.method == "montecarlo"
-        ):
-            thresholded = _threshold_ale_montecarlo_main_effect(
-                corr_result, z_map_name, self.alpha
-            )
-            if thresholded is not None:
-                return thresholded
-
-        threshold_values = corr_result.get_map(threshold_map_name, return_type="array")
-        if threshold_kind == "p":
-            threshold = self.alpha
-            tail = "lower"
-        else:
-            threshold = -np.log10(self.alpha)
-            tail = "upper"
-
-        return threshold_image(
-            corr_result.get_map(z_map_name, return_type="array"),
-            threshold=threshold,
-            thresholding_values=threshold_values,
-            tail=tail,
-        ).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        return _threshold_corrected_main_effect(
+            corr_result,
+            z_map_name,
+            threshold_map_name,
+            threshold_kind,
+            self.alpha,
+        )
 
     def _contrast_keys(self):
-        if self.mode == "ALE":
+        if isinstance(self.pairwise_estimator, ALESubtraction):
             return "p_desc-group1MinusGroup2", "z_desc-group1MinusGroup2"
-        return "p_desc-association", "z_desc-association"
+        elif isinstance(self.pairwise_estimator, MKDAChi2):
+            return "p_desc-association", "z_desc-association"
+        else:
+            raise ValueError(
+                f"Unable to determine contrast map keys for pairwise estimator of type "
+                f"{type(self.pairwise_estimator).__name__}."
+            )
 
     def _save_result(self, result):
         if self.output_dir is None:
@@ -433,8 +353,9 @@ class ContrastWorkflow(NiMAREBase):
         )
         result.maps["p_desc-contrast"] = thresholded_p
         result.maps["z_desc-contrast"] = thresholded_z
-        result.maps["logp_desc-contrast"] = safe_logp(thresholded_p).astype(
-            DEFAULT_FLOAT_DTYPE,
+        result.maps["logp_desc-contrast"] = _p_to_logp_values(
+            thresholded_p,
+            dtype=DEFAULT_FLOAT_DTYPE,
             copy=False,
         )
         result.tables["contrast_tab-metadata"] = pd.DataFrame(

@@ -283,7 +283,6 @@ def test_contrast_workflow_ale_matches_jale_contrast():
             jale_contrast[flat2[0][idx2], flat2[1][idx2], flat2[2][idx2]] = -z2
 
     workflow = ContrastWorkflow(
-        mode="ALE",
         corrector=FWECorrector(method="montecarlo", n_iters=16, n_cores=1),
         pairwise_estimator=ALESubtraction(n_iters=32, n_cores=1, generate_description=False),
         alpha=0.05,

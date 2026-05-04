@@ -33,11 +33,12 @@ from nimare.meta.utils import (
     get_ale_kernel,
 )
 from nimare.results import MetaResult
-from nimare.stats import null_to_p, safe_logp
+from nimare.stats import null_to_p
 from nimare.transforms import p_to_z
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
+    _p_to_logp_values,
     mm2vox,
     use_memmap,
 )
@@ -417,7 +418,7 @@ def _ale_uncorrected_group_maps(pairwise_estimator, ma_maps, group_label, stat_v
         "stat": stat_values.astype(DEFAULT_FLOAT_DTYPE, copy=False),
         "p": p_values.astype(DEFAULT_FLOAT_DTYPE, copy=False),
         "z": z_values.astype(DEFAULT_FLOAT_DTYPE, copy=False),
-        "logp": safe_logp(p_values),
+        "logp": _p_to_logp_values(p_values, dtype=DEFAULT_FLOAT_DTYPE),
     }
     return _prefix_ale_group_maps(maps, group_label)
 
@@ -462,7 +463,7 @@ def _resolve_balanced_target_n(dataset1, dataset2, target_n):
     return resolved_target_n
 
 
-def _jale_threshold_z_clusters(z_values, masker, voxel_thresh, cluster_size_threshold=None):
+def _threshold_z_clusters(z_values, masker, voxel_thresh, cluster_size_threshold=None):
     """Apply cluster thresholding to a z map in masked-array space."""
     z_map = masker.inverse_transform(z_values).get_fdata(dtype=DEFAULT_FLOAT_DTYPE)
     sig_arr = z_map > norm.ppf(1 - voxel_thresh)
@@ -1086,8 +1087,8 @@ class ALE(CBMAEstimator):
 
         z_vfwe = np.where(voxel_mask, z_values, 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
         z_cfwe = np.where(cluster_mask, z_values, 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
-        logp_vfwe = safe_logp(p_vfwe)
-        logp_cfwe = safe_logp(p_cfwe)
+        logp_vfwe = _p_to_logp_values(p_vfwe, dtype=DEFAULT_FLOAT_DTYPE)
+        logp_cfwe = _p_to_logp_values(p_cfwe, dtype=DEFAULT_FLOAT_DTYPE)
 
         description = (
             "Family-wise error correction was approximated with predictive ALE "
@@ -1405,7 +1406,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         z_tail = "one" if (group1_mask is not None or group2_mask is not None) else "two"
         z_arr = p_to_z(p_values, tail=z_tail) * diff_signs
-        logp_arr = safe_logp(p_values)
+        logp_arr = _p_to_logp_values(p_values, dtype=DEFAULT_FLOAT_DTYPE)
 
         maps = {
             "stat_desc-group1MinusGroup2": diff_ale_values,
@@ -1863,7 +1864,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
             vfwe_null = self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]
             p_vfwe_vals = null_to_p(np.abs(stat_values), vfwe_null, tail="upper")
             z_vfwe_vals = p_to_z(p_vfwe_vals, tail="two") * sign
-            logp_vfwe_vals = safe_logp(p_vfwe_vals)
+            logp_vfwe_vals = _p_to_logp_values(p_vfwe_vals, dtype=DEFAULT_FLOAT_DTYPE)
 
             maps.update(
                 {
@@ -1923,10 +1924,16 @@ class ALESubtraction(PairwiseCBMAEstimator):
                 )
 
                 z_cmfwe_vals = p_to_z(p_cmfwe_values, tail="two") * sign
-                logp_cmfwe_vals = safe_logp(p_cmfwe_values)
+                logp_cmfwe_vals = _p_to_logp_values(
+                    p_cmfwe_values,
+                    dtype=DEFAULT_FLOAT_DTYPE,
+                )
 
                 z_csfwe_vals = p_to_z(p_csfwe_values, tail="two") * sign
-                logp_csfwe_vals = safe_logp(p_csfwe_values)
+                logp_csfwe_vals = _p_to_logp_values(
+                    p_csfwe_values,
+                    dtype=DEFAULT_FLOAT_DTYPE,
+                )
 
                 maps.update(
                     {
@@ -2121,7 +2128,7 @@ class BalancedALESubstraction(PairwiseCBMAEstimator):
                 rng,
             )
             _, null_z = _ale_approximate_z_from_ma(estimator, null_ma)
-            _, null_cluster_sizes[i_iter] = _jale_threshold_z_clusters(
+            _, null_cluster_sizes[i_iter] = _threshold_z_clusters(
                 null_z,
                 estimator.masker,
                 voxel_thresh=self.voxel_thresh,
@@ -2133,7 +2140,7 @@ class BalancedALESubstraction(PairwiseCBMAEstimator):
         prob_map = np.zeros(ma_maps.shape[1], dtype=DEFAULT_FLOAT_DTYPE)
         for sample in samples:
             _, z_values = _ale_approximate_z_from_ma(estimator, ma_maps[sample, :])
-            z_values, _ = _jale_threshold_z_clusters(
+            z_values, _ = _threshold_z_clusters(
                 z_values,
                 estimator.masker,
                 voxel_thresh=self.voxel_thresh,
@@ -2310,7 +2317,10 @@ class BalancedALESubstraction(PairwiseCBMAEstimator):
             ),
             "p_desc-balancedGroup1MinusGroup2": p_map,
             "z_desc-balancedGroup1MinusGroup2": z_map.astype(DEFAULT_FLOAT_DTYPE, copy=False),
-            "logp_desc-balancedGroup1MinusGroup2": safe_logp(p_map),
+            "logp_desc-balancedGroup1MinusGroup2": _p_to_logp_values(
+                p_map,
+                dtype=DEFAULT_FLOAT_DTYPE,
+            ),
             "stat_desc-conjunction": np.minimum(prob1, prob2).astype(
                 DEFAULT_FLOAT_DTYPE, copy=False
             ),
@@ -2505,7 +2515,11 @@ class SCALE(CBMAEstimator):
             exceedance_counts += iter_values >= stat_values
 
         p_values, z_values = self._scale_to_p(stat_values, exceedance_counts)
-        logp_values = safe_logp(p_values)
+        logp_values = _p_to_logp_values(
+            p_values,
+            dtype=DEFAULT_FLOAT_DTYPE,
+            copy=False,
+        )
 
         # Write out unthresholded value images
         maps = {"stat": stat_values, "logp": logp_values, "z": z_values}
@@ -2681,7 +2695,11 @@ class SCALE(CBMAEstimator):
 
         p_vfwe_values = null_to_p(stat_values, fwe_voxel_max, tail="upper")
         z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
-        logp_vfwe_values = safe_logp(p_vfwe_values)
+        logp_vfwe_values = _p_to_logp_values(
+            p_vfwe_values,
+            dtype=DEFAULT_FLOAT_DTYPE,
+            copy=False,
+        )
 
         self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = fwe_voxel_max
 
