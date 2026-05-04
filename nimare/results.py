@@ -10,7 +10,13 @@ import pandas as pd
 from nibabel.funcs import squeeze_image
 
 from nimare.base import NiMAREBase
-from nimare.utils import DEFAULT_FLOAT_DTYPE, get_description_references, get_masker
+from nimare.utils import (
+    DEFAULT_FLOAT_DTYPE,
+    _clip_logp_values,
+    _clip_p_values,
+    get_description_references,
+    get_masker,
+)
 
 LGR = logging.getLogger(__name__)
 
@@ -96,6 +102,10 @@ class MetaResult(NiMAREBase):
             if map_.ndim != 1:
                 LGR.warning(f"Map '{map_name}' should be 1D, not {map_.ndim}D. Squeezing.")
                 map_ = np.squeeze(map_)
+            if map_name == "p" or map_name.startswith("p_"):
+                map_ = _clip_p_values(map_, dtype=DEFAULT_FLOAT_DTYPE)
+            elif map_name.startswith("logp"):
+                map_ = _clip_logp_values(map_, dtype=DEFAULT_FLOAT_DTYPE)
             if np.issubdtype(map_.dtype, np.floating) and map_.dtype != DEFAULT_FLOAT_DTYPE:
                 map_ = map_.astype(DEFAULT_FLOAT_DTYPE)
             maps[map_name] = map_

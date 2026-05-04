@@ -16,9 +16,11 @@ from nimare.base import NiMAREBase
 from nimare.studyset import normalize_collection
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
+    _clip_p_values,
     _dict_to_coordinates,
     _dict_to_df,
     _listify,
+    _minimum_positive_float,
     get_masker,
 )
 
@@ -776,8 +778,9 @@ def p_to_z(p, tail="two"):
     z : array_like
         Z-statistics (unsigned)
     """
-    p = np.array(p)
+    p = _clip_p_values(np.array(p), dtype=DEFAULT_FLOAT_DTYPE)
     if tail == "two":
+        p = np.maximum(p, 2 * _minimum_positive_float(DEFAULT_FLOAT_DTYPE))
         z = stats.norm.isf(p / 2)
     elif tail == "one":
         z = stats.norm.isf(p)

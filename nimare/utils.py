@@ -28,6 +28,27 @@ LGR = logging.getLogger(__name__)
 DEFAULT_FLOAT_DTYPE = np.float32
 
 
+def _minimum_positive_float(dtype=DEFAULT_FLOAT_DTYPE):
+    """Return the smallest positive value representable by a floating dtype."""
+    dtype = np.dtype(dtype)
+    return np.nextafter(dtype.type(0), dtype.type(1), dtype=dtype)
+
+
+def _clip_p_values(p_values, dtype=DEFAULT_FLOAT_DTYPE):
+    """Clip p-values to the positive range representable by a floating dtype."""
+    dtype = np.dtype(dtype)
+    p_values = np.asarray(p_values, dtype=dtype)
+    return np.clip(p_values, _minimum_positive_float(dtype), dtype.type(1))
+
+
+def _clip_logp_values(logp_values, dtype=DEFAULT_FLOAT_DTYPE):
+    """Clip -log10(p) values to the range implied by a floating p-value dtype."""
+    dtype = np.dtype(dtype)
+    logp_values = np.asarray(logp_values, dtype=dtype)
+    max_value = -np.log10(_minimum_positive_float(dtype))
+    return np.clip(logp_values, dtype.type(0), max_value)
+
+
 def _mask_img_to_bool(mask_img):
     """Load mask data as boolean without forcing float conversion."""
     return np.asanyarray(mask_img.dataobj).astype(bool)
