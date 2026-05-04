@@ -7,13 +7,13 @@ import numpy as np
 import pandas as pd
 
 from nimare.base import NiMAREBase
-from nimare.correct import Corrector, FDRCorrector, FWECorrector
+from nimare.correct import FDRCorrector, FWECorrector
 from nimare.diagnostics import Jackknife
-from nimare.meta import ALE, ALESubtraction, MKDAChi2, MKDADensity
+from nimare.meta import ALE, ALESubtraction, MKDAChi2
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.transforms import threshold_image
 from nimare.utils import DEFAULT_FLOAT_DTYPE, _check_ncores, _p_to_logp_values
-from nimare.workflows.base import Workflow, _check_input
+from nimare.workflows.base import Workflow
 
 LGR = logging.getLogger(__name__)
 
@@ -253,8 +253,7 @@ def _threshold_corrected_main_effect(
 
 
 class ContrastWorkflow(NiMAREBase):
-    """Compose a masked contrast workflow for pairwise CBMA analyses.
-    """
+    """Compose a masked contrast workflow for pairwise CBMA analyses."""
 
     def __init__(
         self,
@@ -361,7 +360,6 @@ class ContrastWorkflow(NiMAREBase):
         result.tables["contrast_tab-metadata"] = pd.DataFrame(
             [
                 {
-                    "mode": self.mode,
                     "alpha": self.alpha,
                     "main_estimator": type(self.main_estimator).__name__,
                     "pairwise_estimator": type(self.pairwise_estimator).__name__,
@@ -370,7 +368,7 @@ class ContrastWorkflow(NiMAREBase):
             ]
         )
         result.description_ = (
-            f"A masked {self.mode} contrast workflow was run in NiMARE using "
+            f"A masked contrast workflow was run in NiMARE using "
             f"{type(self.main_estimator).__name__} main effects, "
             f"{type(self.corrector).__name__} main-effect correction, and "
             f"{type(self.pairwise_estimator).__name__} pairwise inference."

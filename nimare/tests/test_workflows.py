@@ -9,7 +9,7 @@ import pytest
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
 from nimare.diagnostics import FocusCounter, Jackknife
-from nimare.meta.cbma import ALE, ALESubtraction, MKDAChi2
+from nimare.meta.cbma import ALE, ALESubtraction, MKDAChi2, MKDADensity
 from nimare.meta.ibma import Fishers, PermutedOLS, Stouffers
 from nimare.workflows import (
     CBMAWorkflow,
@@ -223,38 +223,41 @@ def test_conjunction_analysis_smoke(tmp_path_factory):
 
 
 @pytest.mark.parametrize(
-    "mode,corrector,pairwise_estimator",
+    "main_estimator,corrector,pairwise_estimator",
     [
         (
-            "ALE",
+            ALE(),
             FWECorrector(method="montecarlo", n_iters=8, voxel_thresh=0.05, n_cores=1),
             ALESubtraction(n_iters=8, n_cores=1, generate_description=False),
         ),
         (
-            "MKDA",
+            MKDADensity(),
             FWECorrector(method="montecarlo", n_iters=8, voxel_thresh=0.05, n_cores=1),
             MKDAChi2(generate_description=False),
         ),
         (
-            "ALE",
+            ALE(),
             FDRCorrector(method="indep", alpha=0.05),
             ALESubtraction(n_iters=8, n_cores=1, generate_description=False),
         ),
         (
-            "MKDA",
+            MKDADensity(),
             FDRCorrector(method="indep", alpha=0.05),
             MKDAChi2(generate_description=False),
         ),
     ],
 )
-def test_contrast_workflow_smoke(testdata_cbma_full, mode, corrector, pairwise_estimator):
+def test_contrast_workflow_smoke(
+    testdata_cbma_full, main_estimator, corrector, pairwise_estimator
+):
     """Contrast Workflow should emit generic contrast/main-effect/conjunction maps."""
     dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
     dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
 
     workflow = ContrastWorkflow(
-        corrector=corrector,
+        main_estimator=main_estimator,
         pairwise_estimator=pairwise_estimator,
+        corrector=corrector,
         alpha=0.05,
         n_cores=1,
     )

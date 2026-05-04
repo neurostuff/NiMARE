@@ -828,10 +828,10 @@ class ResampledStability(NiMAREBase):
         from nimare.meta.cbma.ale import (
             _ale_approximate_z_from_ma,
             _generate_unique_subsamples,
-            _threshold_z_clusters,
             _masked_prior_columns,
             _random_ale_ma_from_metadata,
             _study_metadata_from_coordinates,
+            _threshold_z_clusters,
         )
 
         estimator = copy.deepcopy(result.estimator)
