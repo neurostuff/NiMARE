@@ -22,8 +22,8 @@ from nimare.transforms import p_to_z
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
+    _mask_coverage_to_null_ijk,
     _p_to_logp_values,
-    _prior_space_to_null_ijk,
     vox2mm,
 )
 
@@ -627,10 +627,24 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         Returns
         -------
-        tuple of nine floats
-            (pAgF_max_chi2, pAgF_max_size, pAgF_max_mass,
-             pAgU_max_chi2, pAgU_max_size, pAgU_max_mass,
-             pFgA_max_chi2, pFgA_max_size, pFgA_max_mass)
+        pAgF_max_chi2_value : :obj:`float`
+            Forward inference maximum chi-squared value, for voxel-level FWE correction.
+        pAgF_max_size : :obj:`float`
+            Forward inference maximum cluster size, for cluster-level FWE correction.
+        pAgF_max_mass : :obj:`float`
+            Forward inference maximum cluster mass, for cluster-level FWE correction.
+        pAgU_max_chi2_value : :obj:`float`
+            Reverse inference maximum chi-squared value, for voxel-level FWE correction.
+        pAgU_max_size : :obj:`float`
+            Reverse inference maximum cluster size, for cluster-level FWE correction.
+        pAgU_max_mass : :obj:`float`
+            Reverse inference maximum cluster mass, for cluster-level FWE correction.
+        pFgA_max_chi2_value : :obj:`float`
+            Reverse inference maximum chi-squared value, for voxel-level FWE correction.
+        pFgA_max_size : :obj:`float`
+            Reverse inference maximum cluster size, for cluster-level FWE correction.
+        pFgA_max_mass : :obj:`float`
+            Reverse inference maximum cluster mass, for cluster-level FWE correction.
         """
         n_selected_active_voxels = np.squeeze(n_selected_active_voxels)
         n_unselected_active_voxels = np.squeeze(n_unselected_active_voxels)
@@ -697,10 +711,24 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         Returns
         -------
-        tuple of nine floats
-            (pAgF_max_chi2, pAgF_max_size, pAgF_max_mass,
-             pAgU_max_chi2, pAgU_max_size, pAgU_max_mass,
-             pFgA_max_chi2, pFgA_max_size, pFgA_max_mass)
+        pAgF_max_chi2_value : :obj:`float`
+            Forward inference maximum chi-squared value, for voxel-level FWE correction.
+        pAgF_max_size : :obj:`float`
+            Forward inference maximum cluster size, for cluster-level FWE correction.
+        pAgF_max_mass : :obj:`float`
+            Forward inference maximum cluster mass, for cluster-level FWE correction.
+        pAgU_max_chi2_value : :obj:`float`
+            Reverse inference maximum chi-squared value, for voxel-level FWE correction.
+        pAgU_max_size : :obj:`float`
+            Reverse inference maximum cluster size, for cluster-level FWE correction.
+        pAgU_max_mass : :obj:`float`
+            Reverse inference maximum cluster mass, for cluster-level FWE correction.
+        pFgA_max_chi2_value : :obj:`float`
+            Reverse inference maximum chi-squared value, for voxel-level FWE correction.
+        pFgA_max_size : :obj:`float`
+            Reverse inference maximum cluster size, for cluster-level FWE correction.
+        pFgA_max_mass : :obj:`float`
+            Reverse inference maximum cluster mass, for cluster-level FWE correction.
         """
         iter_df1 = iter_df1.copy()
         iter_df2 = iter_df2.copy()
@@ -748,10 +776,24 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         Returns
         -------
-        tuple of nine floats
-            (pAgF_max_chi2, pAgF_max_size, pAgF_max_mass,
-             pAgU_max_chi2, pAgU_max_size, pAgU_max_mass,
-             pFgA_max_chi2, pFgA_max_size, pFgA_max_mass)
+        pAgF_max_chi2_value : :obj:`float`
+            Forward inference maximum chi-squared value, for voxel-level FWE correction.
+        pAgF_max_size : :obj:`float`
+            Forward inference maximum cluster size, for cluster-level FWE correction.
+        pAgF_max_mass : :obj:`float`
+            Forward inference maximum cluster mass, for cluster-level FWE correction.
+        pAgU_max_chi2_value : :obj:`float`
+            Reverse inference maximum chi-squared value, for voxel-level FWE correction.
+        pAgU_max_size : :obj:`float`
+            Reverse inference maximum cluster size, for cluster-level FWE correction.
+        pAgU_max_mass : :obj:`float`
+            Reverse inference maximum cluster mass, for cluster-level FWE correction.
+        pFgA_max_chi2_value : :obj:`float`
+            Reverse inference maximum chi-squared value, for voxel-level FWE correction.
+        pFgA_max_size : :obj:`float`
+            Reverse inference maximum cluster size, for cluster-level FWE correction.
+        pFgA_max_mass : :obj:`float`
+            Reverse inference maximum cluster mass, for cluster-level FWE correction.
         """
         group1_idx, group2_idx = self._permute_pairwise_group_indices(
             n_total=n_selected + n_unselected,
@@ -1013,7 +1055,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             ]
         else:  # "random-foci"
             null_xyz = vox2mm(
-                _prior_space_to_null_ijk(self.masker, prior_space=self.prior_space),
+                _mask_coverage_to_null_ijk(self.masker, mask_coverage=self.mask_coverage),
                 self.masker.mask_img.affine,
             )
             rand_idx1 = np.random.choice(null_xyz.shape[0], size=(iter_df1.shape[0], n_iters))

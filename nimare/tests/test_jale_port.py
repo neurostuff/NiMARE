@@ -64,6 +64,8 @@ def test_resampled_stability_smoke(testdata_cbma_full):
     assert summary["resampling_policy"] == "leave_1_out"
     assert int(summary["target_n"]) == n_retained - 1
     assert int(summary["n_resamples"]) == n_retained
+    assert "Voxelwise stability" in result.description_
+    assert "Frahm_Monimu_Hoffstaedter" in result.bibtex_
 
 
 def test_resampled_stability_leave_k_out_matches_leave_1_out(testdata_cbma_full):

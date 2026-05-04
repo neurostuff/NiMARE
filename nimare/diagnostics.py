@@ -32,7 +32,7 @@ from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
     _filter_kwargs,
-    _prior_space_to_null_ijk,
+    _mask_coverage_to_null_ijk,
     get_masker,
     mm2vox,
 )
@@ -668,14 +668,10 @@ class FocusCounter(Diagnostics):
 class ResampledStability(NiMAREBase):
     """Estimate voxelwise stability of thresholded results under dataset resampling.
 
-    For any single-sample :class:`~nimare.meta.cbma.base.CBMAEstimator` (e.g.
-    ALE or MKDADensity), a fast MA-map-based path is taken for all supported
-    resampling policies: MA maps are collected once, a Monte Carlo null
-    cluster-size distribution is built by repeatedly randomising foci within
-    the prior space, and each retained-study subset is scored using an
-    approximate-null z-transform without full model refitting. For ALE this
-    follows the same cluster-thresholding formulation used by related ALE
-    software. Single-sample IBMA estimators currently use full refits.
+    Determine the stability of a meta-analytic result by applying a resampling policy to the
+    input dataset and then characterizing the stability of the resulting
+    meta-analytic map's voxelwise and/or clusterwise significance.
+    Based on the implementation in :footcite:t:`Frahm_Monimu_Hoffstaedter`.
 
     Parameters
     ----------
@@ -707,7 +703,7 @@ class ResampledStability(NiMAREBase):
         Cluster size threshold, in voxels.
         If None, then no cluster size threshold will be applied.
         Default is None.
-    prior_space : {"gm", "brain"}, optional
+    mask_coverage : {"gm", "brain"}, optional
         Voxel set used as the randomisation prior for the ``"subsample"``
         policy.  ``"gm"`` restricts random foci to grey-matter voxels (mask
         image intensity > 0.1); ``"brain"`` uses all non-zero voxels.
@@ -731,12 +727,12 @@ class ResampledStability(NiMAREBase):
         random_state=None,
         voxel_thresh=None,
         cluster_threshold=None,
-        prior_space="gm",
+        mask_coverage="gm",
         alpha=0.05,
         n_cores=1,
     ):
-        if prior_space not in ("gm", "brain"):
-            raise ValueError("prior_space must be 'gm' or 'brain'.")
+        if mask_coverage not in ("gm", "brain"):
+            raise ValueError("mask_coverage must be 'gm' or 'brain'.")
         if not 0 < alpha < 1:
             raise ValueError(f"alpha must be between 0 and 1; got {alpha}.")
         self.target_image = target_image
@@ -747,7 +743,7 @@ class ResampledStability(NiMAREBase):
         self.random_state = random_state
         self.voxel_thresh = voxel_thresh
         self.cluster_threshold = cluster_threshold
-        self.prior_space = prior_space
+        self.mask_coverage = mask_coverage
         self.alpha = alpha
         self.n_cores = _check_ncores(n_cores)
 
@@ -846,8 +842,8 @@ class ResampledStability(NiMAREBase):
         )
         cluster_forming_threshold = self.voxel_thresh or 0.001
         study_ids = np.array(estimator.inputs_["id"])
-        sample_space = _prior_space_to_null_ijk(
-            estimator.masker, prior_space=self.prior_space
+        sample_space = _mask_coverage_to_null_ijk(
+            estimator.masker, mask_coverage=self.mask_coverage
         ).astype(np.int32, copy=False)
 
         rng = np.random.RandomState(self.random_state)
@@ -900,6 +896,12 @@ class ResampledStability(NiMAREBase):
             ]
         )
         result.diagnostics.append(self)
+        result.description_ += (
+            " Voxelwise stability of thresholded results was estimated by repeatedly "
+            "resampling the input dataset, recomputing thresholded support maps, and averaging "
+            "the binary support across resamples. This diagnostic follows the resampling-based "
+            "stability approach implemented in JALE \\citep{Frahm_Monimu_Hoffstaedter}."
+        )
         return result
 
     def transform(self, result):

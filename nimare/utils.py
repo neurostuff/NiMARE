@@ -17,6 +17,8 @@ import joblib
 import nibabel as nib
 import numpy as np
 import pandas as pd
+from nilearn import datasets
+from nilearn.image import resample_to_img
 from nilearn.maskers import NiftiMasker
 
 try:
@@ -68,33 +70,65 @@ def _mask_img_to_bool(mask_img):
     return np.asanyarray(mask_img.dataobj).astype(bool)
 
 
-def _prior_space_to_null_ijk(masker, prior_space="gm", gm_threshold=0.1):
+def _mask_coverage_to_mask(masker, mask_coverage="brain", gm_threshold=0.1):
+    """Return a boolean image-space mask for the null randomization space.
+
+    Parameters
+    ----------
+    masker : :class:`~nilearn.maskers.NiftiMasker`
+        Fitted masker whose ``mask_img`` defines the analysis volume.
+    mask_coverage : {"gm", "brain"}, optional
+        Voxel set from which random null foci are sampled. ``"gm"`` restricts sampling
+        to voxels in the analysis mask with MNI152 gray-matter probability above
+        ``gm_threshold``; ``"brain"`` uses every non-zero voxel in the mask image.
+        Default is ``"brain"``.
+    gm_threshold : float, optional
+        Intensity threshold applied when ``mask_coverage="gm"``. Default is 0.1.
+
+    Returns
+    -------
+    mask_bool : :class:`numpy.ndarray` of shape ``masker.mask_img.shape``
+        Boolean indicator for voxels in the chosen prior space.
+    """
+    mask_data = np.asanyarray(masker.mask_img.dataobj)
+    mask_bool = mask_data > 0
+    if mask_coverage == "brain":
+        return mask_bool
+
+    if mask_coverage != "gm":
+        raise ValueError(f"mask_coverage must be 'gm' or 'brain'; got {mask_coverage!r}.")
+
+    gm_img = datasets.load_mni152_gm_template(resolution=2)
+    gm_img = resample_to_img(gm_img, masker.mask_img, interpolation="continuous")
+    gm_bool = np.asanyarray(gm_img.dataobj) > gm_threshold
+    return mask_bool & gm_bool
+
+
+def _mask_coverage_to_null_ijk(masker, mask_coverage="brain", gm_threshold=0.1):
     """Return voxel IJK coordinates for the null randomization space.
 
     Parameters
     ----------
     masker : :class:`~nilearn.maskers.NiftiMasker`
         Fitted masker whose ``mask_img`` defines the analysis volume.
-    prior_space : {"gm", "brain"}, optional
-        Voxel set from which random null foci are sampled. ``"gm"`` restricts
-        sampling to voxels with mask-image intensity above ``gm_threshold``
-        (the ICBM 10 % GM probability map); ``"brain"`` uses every non-zero
-        voxel in the mask image. Default is ``"gm"``.
+    mask_coverage : {"gm", "brain"}, optional
+        Voxel set from which random null foci are sampled. ``"gm"`` restricts sampling
+        to voxels in the analysis mask with MNI152 gray-matter probability above
+        ``gm_threshold``; ``"brain"`` uses every non-zero voxel in the mask image.
+        Default is ``"brain"``.
     gm_threshold : float, optional
-        Intensity threshold applied when ``prior_space="gm"``. Default is 0.1.
+        Intensity threshold applied when ``mask_coverage="gm"``. Default is 0.1.
 
     Returns
     -------
     null_ijk : :class:`numpy.ndarray` of shape (N, 3)
         Integer IJK coordinates of all voxels in the chosen prior space.
     """
-    mask_data = np.asanyarray(masker.mask_img.dataobj)
-    if prior_space == "gm":
-        mask_bool = mask_data > gm_threshold
-    elif prior_space == "brain":
-        mask_bool = mask_data > 0
-    else:
-        raise ValueError(f"prior_space must be 'gm' or 'brain'; got {prior_space!r}.")
+    mask_bool = _mask_coverage_to_mask(
+        masker,
+        mask_coverage=mask_coverage,
+        gm_threshold=gm_threshold,
+    )
     return np.vstack(np.where(mask_bool)).T
 
 
@@ -1359,9 +1393,10 @@ def find_citations(description):
     all_citations : :obj:`list` of :obj:`str`
         A list of all identifiers for citations.
     """
-    paren_citations = re.findall(r"\\citep{([a-zA-Z0-9,/\.]+)}", description)
-    intext_citations = re.findall(r"\\cite{([a-zA-Z0-9,/\.]+)}", description)
-    inparen_citations = re.findall(r"\\citealt{([a-zA-Z0-9,/\.]+)}", description)
+    citation_pattern = r"([a-zA-Z0-9,_/\.]+)"
+    paren_citations = re.findall(r"\\citep{" + citation_pattern + "}", description)
+    intext_citations = re.findall(r"\\cite{" + citation_pattern + "}", description)
+    inparen_citations = re.findall(r"\\citealt{" + citation_pattern + "}", description)
     all_citations = ",".join(paren_citations + intext_citations + inparen_citations)
     all_citations = all_citations.split(",")
     all_citations = sorted(list(set(all_citations)))

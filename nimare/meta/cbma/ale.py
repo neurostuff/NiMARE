@@ -61,6 +61,7 @@ from nimare.transforms import p_to_z
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
+    _mask_coverage_to_mask,
     _p_to_logp_values,
     mm2vox,
     use_memmap,
@@ -70,27 +71,25 @@ LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
 
 
-def _masked_prior_columns(masker, prior_space="gm", gm_threshold=0.1):
+def _masked_prior_columns(masker, mask_coverage="gm", gm_threshold=0.1):
     """Return full-image and masked-space prior indicators from the active masker.
 
     Parameters
     ----------
-    prior_space : {"gm", "brain"}, optional
+    mask_coverage : {"gm", "brain"}, optional
         Voxel set used as the randomization prior. ``"gm"`` restricts sampling
         to voxels with grey-matter probability above ``gm_threshold`` in the
         mask image (the ICBM 10% GM probability map). ``"brain"`` includes
         every non-zero voxel in the mask image, i.e. the whole-brain mask.
         Default is ``"gm"``.
     gm_threshold : float, optional
-        Intensity threshold applied when ``prior_space="gm"``. Default is 0.1.
+        Intensity threshold applied when ``mask_coverage="gm"``. Default is 0.1.
     """
-    mask_data = np.asanyarray(masker.mask_img.dataobj)
-    if prior_space == "gm":
-        prior_img = mask_data > gm_threshold
-    elif prior_space == "brain":
-        prior_img = mask_data > 0
-    else:
-        raise ValueError(f"prior_space must be 'gm' or 'brain'; got {prior_space!r}.")
+    prior_img = _mask_coverage_to_mask(
+        masker,
+        mask_coverage=mask_coverage,
+        gm_threshold=gm_threshold,
+    )
     prior_masked = np.squeeze(
         masker.transform(nib.Nifti1Image(prior_img.astype(np.int8), masker.mask_img.affine))
     ).astype(bool, copy=False)
@@ -1532,7 +1531,7 @@ class BalancedALESubtraction(PairwiseCBMAEstimator):
         Method used to generate the null distribution of balanced differences.
 
         ``"random-foci"`` (default) generates null MA maps by placing each
-        study's foci randomly within the ``prior_space`` while preserving
+        study's foci randomly within the ``mask_coverage`` while preserving
         per-study sample-size and focus-count metadata. Because balanced
         subsampling breaks label exchangeability, this is the statistically
         coherent null for balanced subtractions.
@@ -1542,7 +1541,7 @@ class BalancedALESubtraction(PairwiseCBMAEstimator):
         computes the balanced difference. This directly tests group-label
         exchangeability at the cost of assuming the spatial structure of each
         study is fixed.
-    prior_space : {"gm", "brain"}, optional
+    mask_coverage : {"gm", "brain"}, optional
         Voxel set used both for restricting the balanced-difference computation
         and (when ``null_method="random-foci"``) for drawing random foci.
         ``"gm"`` uses mask-image intensity > 0.1 (the ICBM 10% GM probability
@@ -1562,7 +1561,7 @@ class BalancedALESubtraction(PairwiseCBMAEstimator):
         n_iters=1000,
         voxel_thresh=0.001,
         null_method="random-foci",
-        prior_space="gm",
+        mask_coverage="gm",
         alpha=0.05,
         memory=Memory(location=None, verbose=0),
         memory_level=0,
@@ -1578,8 +1577,8 @@ class BalancedALESubtraction(PairwiseCBMAEstimator):
         )
         if null_method not in ("random-foci", "label-permutation"):
             raise ValueError("null_method must be 'random-foci' or 'label-permutation'.")
-        if prior_space not in ("gm", "brain"):
-            raise ValueError("prior_space must be 'gm' or 'brain'.")
+        if mask_coverage not in ("gm", "brain"):
+            raise ValueError("mask_coverage must be 'gm' or 'brain'.")
         if not 0 < alpha < 1:
             raise ValueError(f"alpha must be between 0 and 1; got {alpha}.")
         self.target_n = target_n
@@ -1588,7 +1587,7 @@ class BalancedALESubtraction(PairwiseCBMAEstimator):
         self.n_iters = n_iters
         self.voxel_thresh = voxel_thresh
         self.null_method = null_method
-        self.prior_space = prior_space
+        self.mask_coverage = mask_coverage
         self.alpha = alpha
         self.n_cores = _check_ncores(n_cores)
         self.random_state = random_state
@@ -1621,7 +1620,7 @@ class BalancedALESubtraction(PairwiseCBMAEstimator):
         ma_maps = fitted.estimator._collect_ma_maps()
         sample_sizes, num_foci = _study_metadata_from_coordinates(estimator.inputs_["coordinates"])
         prior_img, prior_masked = _masked_prior_columns(
-            estimator.masker, prior_space=self.prior_space
+            estimator.masker, mask_coverage=self.mask_coverage
         )
         sample_space = np.vstack(np.where(prior_img)).T.astype(np.int32, copy=False)
         rng = np.random.RandomState(seed)
@@ -1762,7 +1761,7 @@ class BalancedALESubtraction(PairwiseCBMAEstimator):
 
         # Pre-compute sample_space once; only needed for random-foci null.
         if self.null_method == "random-foci":
-            prior_img, _ = _masked_prior_columns(self.masker, prior_space=self.prior_space)
+            prior_img, _ = _masked_prior_columns(self.masker, mask_coverage=self.mask_coverage)
             sample_space = np.vstack(np.where(prior_img)).T.astype(np.int32, copy=False)
         else:
             sample_space = None

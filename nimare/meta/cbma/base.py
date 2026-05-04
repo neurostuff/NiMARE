@@ -26,9 +26,9 @@ from nimare.utils import (
     _add_metadata_to_dataframe,
     _check_ncores,
     _check_type,
+    _mask_coverage_to_null_ijk,
     _mask_img_to_bool,
     _p_to_logp_values,
-    _prior_space_to_null_ijk,
     get_masker,
     get_masker_mask_image,
     mm2vox,
@@ -74,13 +74,13 @@ class CBMAEstimator(Estimator):
     memory_level : :obj:`int`, default=0
         Rough estimator of the amount of memory used by caching.
         Higher value means more memory for caching. Zero means no caching.
-    prior_space : {"gm", "brain"}, optional
+    mask_coverage : {"gm", "brain"}, optional
         Voxel set from which random null foci are drawn when building
         Monte Carlo null distributions. ``"gm"`` restricts sampling to voxels
         with mask-image intensity above 0.1 (the ICBM 10 % GM probability
         map). ``"brain"`` uses every non-zero
         voxel in the mask. Has no effect when ``null_method="approximate"``.
-        Default is ``"gm"``.
+        Default is ``"brain"``.
     *args
         Optional arguments to the :obj:`~nimare.base.Estimator` __init__
         (called automatically).
@@ -101,12 +101,12 @@ class CBMAEstimator(Estimator):
         generate_description=True,
         *,
         mask=None,
-        prior_space="brain",
+        mask_coverage="brain",
         **kwargs,
     ):
-        if prior_space not in ("gm", "brain"):
-            raise ValueError(f"prior_space must be 'gm' or 'brain'; got {prior_space!r}.")
-        self.prior_space = prior_space
+        if mask_coverage not in ("gm", "brain"):
+            raise ValueError(f"mask_coverage must be 'gm' or 'brain'; got {mask_coverage!r}.")
+        self.mask_coverage = mask_coverage
 
         if mask is not None:
             mask = get_masker(mask, memory=memory, memory_level=memory_level)
@@ -704,7 +704,7 @@ class CBMAEstimator(Estimator):
         "histweights_corr-none_method-montecarlo" and
         "histweights_level-voxel_corr-fwe_method-montecarlo".
         """
-        null_ijk = _prior_space_to_null_ijk(self.masker, prior_space=self.prior_space)
+        null_ijk = _mask_coverage_to_null_ijk(self.masker, mask_coverage=self.mask_coverage)
 
         n_cores = _check_ncores(n_cores)
 
@@ -911,7 +911,7 @@ class CBMAEstimator(Estimator):
                     "Running permutations from scratch."
                 )
 
-            null_ijk = _prior_space_to_null_ijk(self.masker, prior_space=self.prior_space)
+            null_ijk = _mask_coverage_to_null_ijk(self.masker, mask_coverage=self.mask_coverage)
 
             n_cores = _check_ncores(n_cores)
 

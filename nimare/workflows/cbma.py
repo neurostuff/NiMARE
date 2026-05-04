@@ -12,7 +12,12 @@ from nimare.diagnostics import Jackknife
 from nimare.meta import ALE, ALESubtraction, MKDAChi2
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.transforms import threshold_image
-from nimare.utils import DEFAULT_FLOAT_DTYPE, _check_ncores, _p_to_logp_values
+from nimare.utils import (
+    DEFAULT_FLOAT_DTYPE,
+    _check_ncores,
+    _check_type,
+    _p_to_logp_values,
+)
 from nimare.workflows.base import Workflow
 
 LGR = logging.getLogger(__name__)
@@ -271,8 +276,12 @@ class ContrastWorkflow(NiMAREBase):
         self.output_dir = output_dir
         self.n_cores = _check_ncores(n_cores)
 
-        self.main_estimator = main_estimator
-        self.pairwise_estimator = pairwise_estimator
+        self.main_estimator = _check_type(main_estimator, CBMAEstimator, n_cores=self.n_cores)
+        self.pairwise_estimator = _check_type(
+            pairwise_estimator,
+            PairwiseCBMAEstimator,
+            n_cores=self.n_cores,
+        )
         self.corrector = corrector
 
     def _compute_main_effect_map(self, result):
