@@ -11,7 +11,7 @@ from nimare.base import NiMAREBase
 from nimare.results import MetaResult
 from nimare.stats import safe_logp
 from nimare.transforms import p_to_z
-from nimare.utils import DEFAULT_FLOAT_DTYPE
+from nimare.utils import DEFAULT_FLOAT_DTYPE, _clip_p_values
 
 LGR = logging.getLogger(__name__)
 
@@ -100,7 +100,8 @@ class Corrector(NiMAREBase):
 
     def _generate_secondary_maps(self, result, corr_maps, rm):
         """Generate corrected version of z and log-p maps if they exist."""
-        p = corr_maps[rm]
+        p = _clip_p_values(corr_maps[rm], dtype=DEFAULT_FLOAT_DTYPE, copy=False)
+        corr_maps[rm] = p
 
         if rm == "p":
             z_map_name, logp_map_name = "z", "logp"

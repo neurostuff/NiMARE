@@ -148,10 +148,11 @@ def pearson(x, y):
 
 def safe_logp(p_values):
     """Convert p-values to finite ``-log10(p)`` values."""
-    logp_values = -np.log10(p_values)
-    if np.issubdtype(logp_values.dtype, np.floating):
-        logp_values[np.isinf(logp_values)] = -np.log10(np.finfo(float).eps)
-    return logp_values.astype(utils.DEFAULT_FLOAT_DTYPE, copy=False)
+    return utils._p_to_logp_values(
+        p_values,
+        dtype=utils.DEFAULT_FLOAT_DTYPE,
+        copy=True,
+    )
 
 
 def null_to_p(test_value, null_array, tail="two", symmetric=False):

@@ -2505,7 +2505,6 @@ class SCALE(CBMAEstimator):
             exceedance_counts += iter_values >= stat_values
 
         p_values, z_values = self._scale_to_p(stat_values, exceedance_counts)
-
         logp_values = safe_logp(p_values)
 
         # Write out unthresholded value images

@@ -21,6 +21,9 @@ from nimare.estimator import Estimator
 from nimare.meta import models
 from nimare.results import MetaResult
 from nimare.utils import (
+    DEFAULT_FLOAT_DTYPE,
+    _clip_p_values,
+    _minimum_positive_float,
     b_spline_bases,
     dummy_encoding_moderators,
     get_masker,
@@ -1212,6 +1215,11 @@ class CBMRInference(object):
             p_vals_spatial = scipy.stats.norm.sf(z_stats_spatial)
         else:
             p_vals_spatial = scipy.stats.norm.sf(abs(z_stats_spatial)) * 2
+        p_vals_spatial = _clip_p_values(
+            p_vals_spatial,
+            dtype=DEFAULT_FLOAT_DTYPE,
+            copy=False,
+        )
         return z_stats_spatial, p_vals_spatial
 
     def _compute_group_glh_statistics(
@@ -1249,12 +1257,21 @@ class CBMRInference(object):
             cov_log_intensity,
             contrast_log_intensity,
         )
-        p_vals_spatial = 1 - scipy.stats.chi2.cdf(chi_sq_spatial, df=m)
+        p_vals_spatial = scipy.stats.chi2.sf(chi_sq_spatial, df=m)
+        p_vals_spatial = _clip_p_values(
+            p_vals_spatial,
+            dtype=DEFAULT_FLOAT_DTYPE,
+            copy=False,
+        )
         if is_homogeneity_test:
             z_stats_spatial = scipy.stats.norm.isf(p_vals_spatial)
             z_stats_spatial[z_stats_spatial < 0] = 0
         else:
-            z_stats_spatial = scipy.stats.norm.isf(p_vals_spatial / 2)
+            z_p_values = np.maximum(
+                p_vals_spatial,
+                2 * _minimum_positive_float(p_vals_spatial.dtype),
+            )
+            z_stats_spatial = scipy.stats.norm.isf(z_p_values / 2)
             if simp_con_group.shape[0] == 1:
                 z_stats_spatial *= np.sign(contrast_log_intensity.flatten())
         z_stats_spatial = np.clip(z_stats_spatial, a_min=-10, a_max=10)
@@ -1370,13 +1387,27 @@ class CBMRInference(object):
             involved_std_moderator_coef = np.sqrt(involved_var_moderator_coef)
             z_stats_moderator = contrast_moderator_coef / involved_std_moderator_coef
             p_vals_moderator = scipy.stats.norm.sf(abs(z_stats_moderator)) * 2
+            p_vals_moderator = _clip_p_values(
+                p_vals_moderator,
+                dtype=np.asarray(p_vals_moderator).dtype,
+                copy=False,
+            )
             chi_sq_moderator = None
         else:
             contrast_covariance = con_moderator @ cov_moderator_coef @ con_moderator.T
             solved = np.linalg.solve(contrast_covariance, contrast_moderator_coef)
             chi_sq_moderator = contrast_moderator_coef.T @ solved
-            p_vals_moderator = 1 - scipy.stats.chi2.cdf(chi_sq_moderator, df=m_con_moderator)
-            z_stats_moderator = scipy.stats.norm.isf(p_vals_moderator / 2)
+            p_vals_moderator = scipy.stats.chi2.sf(chi_sq_moderator, df=m_con_moderator)
+            p_vals_moderator = _clip_p_values(
+                p_vals_moderator,
+                dtype=np.asarray(p_vals_moderator).dtype,
+                copy=False,
+            )
+            z_p_values = np.maximum(
+                p_vals_moderator,
+                2 * _minimum_positive_float(np.asarray(p_vals_moderator).dtype),
+            )
+            z_stats_moderator = scipy.stats.norm.isf(z_p_values / 2)
 
         return {
             "contrast_count": m_con_moderator,
