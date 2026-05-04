@@ -955,7 +955,7 @@ def test_ALESubtraction_streamed_tail_counts_match_chunked_path():
     right_counts = np.count_nonzero(iter_diff_values <= stat_values[None, :], axis=0).astype(
         np.uint32
     )
-    streamed_p, streamed_sign = ale._finalize_alediff_tail_counts(
+    streamed_p, streamed_sign = ale.ALESubtraction()._finalize_alediff_tail_counts(
         left_counts, right_counts, iter_diff_values.shape[0]
     )
 

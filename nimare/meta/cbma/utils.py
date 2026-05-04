@@ -2,9 +2,31 @@
 
 from itertools import combinations
 
+import nibabel as nib
 import numpy as np
+from scipy import ndimage
 from scipy import sparse as sp_sparse
 from scipy.special import comb
+from scipy.stats import norm
+
+from nimare.utils import DEFAULT_FLOAT_DTYPE
+
+
+def _threshold_z_clusters(z_values, masker, voxel_thresh, cluster_size_threshold=None):
+    """Apply cluster thresholding to a z map in masked-array space."""
+    z_map = masker.inverse_transform(z_values).get_fdata(dtype=DEFAULT_FLOAT_DTYPE)
+    sig_arr = z_map > norm.ppf(1 - voxel_thresh)
+    labels, cluster_count = ndimage.label(sig_arr)
+    if cluster_count < 1:
+        return np.zeros_like(z_values), 0
+
+    voxel_count_clusters = np.bincount(labels[labels > 0])
+    max_clust = int(np.max(voxel_count_clusters)) if voxel_count_clusters.size else 0
+    if cluster_size_threshold is not None:
+        significant_clusters = voxel_count_clusters > cluster_size_threshold
+        sig_clust_labels = np.where(significant_clusters)[0]
+        z_map = z_map * np.isin(labels, sig_clust_labels)
+    return np.squeeze(masker.transform(nib.Nifti1Image(z_map, masker.mask_img.affine))), max_clust
 
 
 def resolve_subset_size(policy, total_n, k=None, target_n=None):

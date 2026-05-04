@@ -15,13 +15,16 @@ from tqdm.auto import tqdm
 
 from nimare.base import NiMAREBase
 from nimare.dataset import Dataset
-from nimare.meta.cbma.ale import _threshold_z_clusters
 from nimare.meta.cbma.base import (
     CBMAEstimator,
     PairwiseCBMAEstimator,
     _approximate_z_from_ma,
 )
-from nimare.meta.cbma.utils import generate_subset_schedule, resolve_subset_size
+from nimare.meta.cbma.utils import (
+    _threshold_z_clusters,
+    generate_subset_schedule,
+    resolve_subset_size,
+)
 from nimare.meta.ibma import IBMAEstimator
 from nimare.nimads import Studyset
 from nimare.studyset import normalize_collection

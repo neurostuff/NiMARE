@@ -1,30 +1,50 @@
 """CBMA methods from the activation likelihood estimation (ALE) family."""
 
 import copy
-import gc
 import logging
 import os
 import tempfile
-import time
 import warnings
 from contextlib import contextmanager
-from dataclasses import dataclass
 from itertools import chain
 
 import nibabel as nib
 import numpy as np
 import pandas as pd
 from joblib import Memory, Parallel, delayed
-from numba import jit
 from scipy import ndimage
 from scipy import sparse as sp_sparse
-from scipy.stats import norm
 from tqdm.auto import tqdm
 
 from nimare import _version
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare.meta.cbma.io_utils import (
+    _csr_to_memmap,
+    _determine_low_memory_chunk_bytes,
+    _estimate_csr_nbytes,
+    _get_available_memory_bytes,
+    _iter_study_id_chunks,
+)
+from nimare.meta.cbma.null_utils import (
+    _ale_approximate_z_from_ma,
+    _ChunkedCSRGroup,
+    _compute_ale_summarystat,
+    _compute_group_approximate_null,
+    _csr_row_max,
+    _study_ma_histogram,
+    _update_ale_histogram,
+)
+from nimare.meta.cbma.pairwise_utils import (
+    _accumulate_csr_log_sums,
+    _ale_uncorrected_group_maps,
+    _GroupMAEstimate,
+    _PairwiseMAStore,
+    _prefix_ale_group_maps,
+    _resolve_balanced_target_n,
+)
 from nimare.meta.cbma.predictive import PredictiveCutoffError, predict_cutoffs
 from nimare.meta.cbma.utils import (
+    _threshold_z_clusters,
     collect_csr_ma_maps,
     generate_subset_schedule,
     require_masked_csr,
@@ -48,438 +68,6 @@ from nimare.utils import (
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
-
-
-def _csr_row_max(ma_values):
-    """Compute row-wise maxima for a CSR matrix without densifying it."""
-    ma_values = ma_values.tocsr(copy=False)
-    max_values = np.zeros(ma_values.shape[0], dtype=DEFAULT_FLOAT_DTYPE)
-    for i_row in range(ma_values.shape[0]):
-        start = ma_values.indptr[i_row]
-        end = ma_values.indptr[i_row + 1]
-        if start != end:
-            max_values[i_row] = ma_values.data[start:end].max()
-    return max_values
-
-
-def _compute_ale_summarystat(ma_values):
-    """Compute ALE summary statistics from dense arrays or masked CSR matrices."""
-    if sp_sparse.isspmatrix(ma_values):
-        ma_values = ma_values.tocsr(copy=False)
-        log_sums = np.bincount(
-            ma_values.indices,
-            weights=np.log1p(-ma_values.data),
-            minlength=ma_values.shape[1],
-        )
-        stat_values = 1.0 - np.exp(log_sums)
-        return stat_values.astype(DEFAULT_FLOAT_DTYPE, copy=False)
-
-    if isinstance(ma_values, np.ndarray):
-        stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
-        return stat_values
-
-    raise ValueError(f"Unsupported data type '{type(ma_values)}'")
-
-
-@dataclass
-class _ChunkedCSRGroup:
-    """Disk-backed study-by-voxel CSR chunks for one MA-map group."""
-
-    chunks: list
-    row_offsets: np.ndarray
-    shape: tuple
-
-
-@dataclass
-class _PairwiseMAStore:
-    """Pairwise ALESubtraction MA-map storage with a common permutation interface."""
-
-    group1: object
-    group2: object
-    group1_stat: np.ndarray
-    group2_stat: np.ndarray
-    temp_files: list
-
-    @property
-    def n_group1(self):
-        return self.group1.shape[0]
-
-    @property
-    def n_total(self):
-        return self.group1.shape[0] + self.group2.shape[0]
-
-    @property
-    def n_voxels(self):
-        return self.group1.shape[1]
-
-    def compute_partition_summarystat(self, row_idx):
-        """Compute ALE summary statistics for a selected set of study rows."""
-        return _compute_partition_ale_summarystat(self.group1, self.group2, row_idx, self.n_group1)
-
-    def close(self):
-        """Release memmap-backed arrays and delete temporary files."""
-        temp_files = list(self.temp_files)
-        _close_csr_memmaps(self.group1)
-        _close_csr_memmaps(self.group2)
-        self.group1 = None
-        self.group2 = None
-        self.group1_stat = None
-        self.group2_stat = None
-        self.temp_files = []
-        gc.collect()
-        _cleanup_temp_files(temp_files)
-
-
-@dataclass
-class _GroupMAEstimate:
-    """Projected CSR footprint for one MA-map group plus an optional reusable sample chunk."""
-
-    total_bytes: float
-    bytes_per_study: float
-    sample_ma: object
-    sample_n_studies: int
-
-
-def _is_chunked_group(ma_values):
-    """Return True when MA values are stored as chunked CSR blocks."""
-    return isinstance(ma_values, _ChunkedCSRGroup)
-
-
-def _accumulate_csr_log_sums(ma_values, log_sums):
-    """Accumulate ALE log-sums from a CSR matrix into an existing buffer."""
-    if ma_values.nnz:
-        log_sums += np.bincount(
-            ma_values.indices,
-            weights=np.log1p(-ma_values.data),
-            minlength=ma_values.shape[1],
-        )
-
-
-def _compute_partition_ale_summarystat(ma_maps1, ma_maps2, row_idx, n_grp1):
-    """Compute ALE summary stats for rows selected across two CSR or chunked MA groups."""
-    row_idx = np.asarray(row_idx)
-    if row_idx.ndim != 1:
-        row_idx = row_idx.reshape(-1)
-    if not np.issubdtype(row_idx.dtype, np.integer):
-        raise TypeError(f"row_idx must contain integers; got dtype {row_idx.dtype}.")
-    if ma_maps1.shape[1] != ma_maps2.shape[1]:
-        raise ValueError(
-            "Group MA maps must share the same number of voxels; "
-            f"got {ma_maps1.shape[1]} and {ma_maps2.shape[1]}."
-        )
-    if ma_maps1.shape[0] != n_grp1:
-        raise ValueError(
-            "n_grp1 must match the number of rows in group 1 MA maps; "
-            f"got n_grp1={n_grp1} and ma_maps1.shape[0]={ma_maps1.shape[0]}."
-        )
-    n_total_rows = ma_maps1.shape[0] + ma_maps2.shape[0]
-    if row_idx.size and (np.any(row_idx < 0) or np.any(row_idx >= n_total_rows)):
-        raise IndexError(
-            "row_idx contains out-of-bounds study indices for the provided MA groups; "
-            f"valid range is [0, {n_total_rows - 1}]."
-        )
-
-    n_voxels = ma_maps1.shape[1]
-    log_sums = np.zeros(n_voxels, dtype=np.float64)
-
-    grp1_idx = row_idx[row_idx < n_grp1]
-    if grp1_idx.size:
-        if _is_chunked_group(ma_maps1):
-            chunk_ids = np.searchsorted(ma_maps1.row_offsets[1:], grp1_idx, side="right")
-            for i_chunk in np.unique(chunk_ids):
-                local_idx = grp1_idx[chunk_ids == i_chunk] - ma_maps1.row_offsets[i_chunk]
-                grp1_maps = ma_maps1.chunks[i_chunk][local_idx, :]
-                _accumulate_csr_log_sums(grp1_maps, log_sums)
-        else:
-            grp1_maps = require_masked_csr(ma_maps1, source="Group 1 MA maps")[grp1_idx, :]
-            _accumulate_csr_log_sums(grp1_maps, log_sums)
-
-    grp2_idx = row_idx[row_idx >= n_grp1] - n_grp1
-    if grp2_idx.size:
-        if _is_chunked_group(ma_maps2):
-            chunk_ids = np.searchsorted(ma_maps2.row_offsets[1:], grp2_idx, side="right")
-            for i_chunk in np.unique(chunk_ids):
-                local_idx = grp2_idx[chunk_ids == i_chunk] - ma_maps2.row_offsets[i_chunk]
-                grp2_maps = ma_maps2.chunks[i_chunk][local_idx, :]
-                _accumulate_csr_log_sums(grp2_maps, log_sums)
-        else:
-            grp2_maps = require_masked_csr(ma_maps2, source="Group 2 MA maps")[grp2_idx, :]
-            _accumulate_csr_log_sums(grp2_maps, log_sums)
-
-    stat_values = 1.0 - np.exp(log_sums)
-    return stat_values.astype(DEFAULT_FLOAT_DTYPE, copy=False)
-
-
-@jit(nopython=True, cache=True)
-def _study_ma_histogram(study_ma_values, n_zero_voxels, mask_voxel_recip, inv_step_size, n_bins):
-    """Bin one study's nonzero ALE values onto the fixed approximate-null grid."""
-    exp_hist = np.zeros(n_bins, dtype=np.float64)
-    for i_val in range(study_ma_values.shape[0]):
-        idx = int(study_ma_values[i_val] * inv_step_size)
-        if idx < 0:
-            idx = 0
-        elif idx >= n_bins:
-            idx = n_bins - 1
-        exp_hist[idx] += 1.0
-
-    exp_hist[0] += n_zero_voxels
-    exp_hist *= mask_voxel_recip
-    return exp_hist
-
-
-@jit(nopython=True, cache=True)
-def _update_ale_histogram(
-    ale_idx, ale_probs, exp_idx, exp_probs, bin_centers, inv_step_size, n_bins, out
-):
-    """Combine two nonzero ALE histograms using a reusable output buffer."""
-    for i_bin in range(n_bins):
-        out[i_bin] = 0.0
-
-    for i_exp in range(exp_idx.shape[0]):
-        exp_center = bin_centers[exp_idx[i_exp]]
-        exp_prob = exp_probs[i_exp]
-        exp_one_minus = 1.0 - exp_center
-        for i_ale in range(ale_idx.shape[0]):
-            score = 1.0 - exp_one_minus * (1.0 - bin_centers[ale_idx[i_ale]])
-            score_idx = int(score * inv_step_size)
-            if score_idx < 0:
-                score_idx = 0
-            elif score_idx >= n_bins:
-                score_idx = n_bins - 1
-            out[score_idx] += exp_prob * ale_probs[i_ale]
-
-    return out
-
-
-def _finalize_alediff_tail_counts(left_counts, right_counts, n_iters):
-    """Convert ALE subtraction tail counts into p-values and z-map signs."""
-    left_tail = left_counts / n_iters
-    right_tail = right_counts / n_iters
-    smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
-    p_values = 2.0 * np.minimum(left_tail, right_tail)
-    p_values = np.maximum(smallest_value, np.minimum(p_values, 1.0 - smallest_value)).astype(
-        DEFAULT_FLOAT_DTYPE,
-        copy=False,
-    )
-    diff_signs = np.sign(right_counts.astype(np.int64) - left_counts.astype(np.int64)).astype(
-        DEFAULT_FLOAT_DTYPE,
-        copy=False,
-    )
-    return p_values, diff_signs
-
-
-def _finalize_masked_alediff_tail_counts(
-    upper_counts, lower_counts, diff_ale_values, group1_mask, group2_mask, n_iters
-):
-    """Convert directional ALE subtraction tail counts into one-sided masked p-values."""
-    smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
-    p_values = np.ones(diff_ale_values.shape[0], dtype=DEFAULT_FLOAT_DTYPE)
-    diff_signs = np.zeros(diff_ale_values.shape[0], dtype=DEFAULT_FLOAT_DTYPE)
-
-    diff_ale_values = np.asarray(diff_ale_values)
-    if group1_mask is not None:
-        pos_idx = group1_mask & (diff_ale_values > 0)
-        p_values[pos_idx] = np.maximum(smallest_value, upper_counts[pos_idx] / n_iters).astype(
-            DEFAULT_FLOAT_DTYPE,
-            copy=False,
-        )
-        diff_signs[pos_idx] = 1
-
-    if group2_mask is not None:
-        neg_idx = group2_mask & (diff_ale_values < 0)
-        p_values[neg_idx] = np.maximum(smallest_value, lower_counts[neg_idx] / n_iters).astype(
-            DEFAULT_FLOAT_DTYPE,
-            copy=False,
-        )
-        diff_signs[neg_idx] = -1
-
-    return p_values, diff_signs
-
-
-def _group_row_max(ma_values):
-    """Compute row-wise maxima for either a CSR matrix or a chunked CSR group."""
-    if sp_sparse.isspmatrix(ma_values):
-        return _csr_row_max(require_masked_csr(ma_values))
-    if _is_chunked_group(ma_values):
-        return np.concatenate([_csr_row_max(chunk) for chunk in ma_values.chunks]).astype(
-            DEFAULT_FLOAT_DTYPE,
-            copy=False,
-        )
-    raise ValueError(f"Unsupported MA map container '{type(ma_values)}'.")
-
-
-def _iter_group_study_values(ma_values):
-    """Yield per-study nonzero MA values for a CSR matrix or chunked CSR group."""
-    if sp_sparse.isspmatrix(ma_values):
-        ma_values = require_masked_csr(ma_values)
-        for i_row in range(ma_values.shape[0]):
-            start = ma_values.indptr[i_row]
-            end = ma_values.indptr[i_row + 1]
-            yield ma_values.data[start:end]
-        return
-
-    if _is_chunked_group(ma_values):
-        for chunk in ma_values.chunks:
-            chunk = require_masked_csr(chunk)
-            for i_row in range(chunk.shape[0]):
-                start = chunk.indptr[i_row]
-                end = chunk.indptr[i_row + 1]
-                yield chunk.data[start:end]
-        return
-
-    raise ValueError(f"Unsupported MA map container '{type(ma_values)}'.")
-
-
-def _compute_group_approximate_null(estimator, ma_maps):
-    """Populate ALE approximate-null state from a CSR or chunked MA group."""
-    estimator.null_distributions_ = {}
-    estimator._study_max_ma_values = _group_row_max(ma_maps)
-
-    inv_step_size = 100000
-    step_size = 1 / inv_step_size
-    max_ma_values = np.ceil(estimator._study_max_ma_values * inv_step_size) / inv_step_size
-    max_poss_ale = estimator._compute_summarystat(max_ma_values)
-    hist_bins = np.round(np.arange(0, max_poss_ale + (1.5 * step_size), step_size), 5)
-    estimator.null_distributions_["histogram_bins"] = hist_bins
-
-    bin_centers = hist_bins.astype(np.float64, copy=False)
-    step_size = bin_centers[1] - bin_centers[0]
-    inv_step_size = 1 / step_size
-    n_bins = bin_centers.shape[0]
-    mask_voxel_recip = 1.0 / estimator._ALE__n_mask_voxels
-
-    ale_hist = None
-    tmp_hist = np.zeros(n_bins, dtype=np.float64)
-    for study_ma_values in _iter_group_study_values(ma_maps):
-        n_nonzero_voxels = study_ma_values.shape[0]
-        n_zero_voxels = estimator._ALE__n_mask_voxels - n_nonzero_voxels
-        exp_hist = _study_ma_histogram(
-            study_ma_values,
-            n_zero_voxels,
-            mask_voxel_recip,
-            inv_step_size,
-            n_bins,
-        )
-        if ale_hist is None:
-            ale_hist = exp_hist.copy()
-            continue
-
-        ale_idx = np.where(ale_hist > 0)[0]
-        exp_hist_idx = np.where(exp_hist > 0)[0]
-        _update_ale_histogram(
-            ale_idx,
-            ale_hist[ale_idx],
-            exp_hist_idx,
-            exp_hist[exp_hist_idx],
-            bin_centers,
-            inv_step_size,
-            n_bins,
-            tmp_hist,
-        )
-        ale_hist, tmp_hist = tmp_hist, ale_hist
-
-    estimator.null_distributions_["histweights_corr-none_method-approximate"] = ale_hist
-
-
-def _prefix_ale_group_maps(maps, group_label):
-    """Rename one-sample ALE maps for storage inside a pairwise result."""
-    name_map = {
-        "stat": f"stat_desc-{group_label}",
-        "p": f"p_desc-{group_label}",
-        "z": f"z_desc-{group_label}",
-        "logp": f"logp_desc-{group_label}",
-        "p_level-voxel": f"p_desc-{group_label}_level-voxel",
-        "z_level-voxel": f"z_desc-{group_label}_level-voxel",
-        "logp_level-voxel": f"logp_desc-{group_label}_level-voxel",
-        "p_desc-size_level-cluster": f"p_desc-{group_label}Size_level-cluster",
-        "z_desc-size_level-cluster": f"z_desc-{group_label}Size_level-cluster",
-        "logp_desc-size_level-cluster": f"logp_desc-{group_label}Size_level-cluster",
-        "p_desc-mass_level-cluster": f"p_desc-{group_label}Mass_level-cluster",
-        "z_desc-mass_level-cluster": f"z_desc-{group_label}Mass_level-cluster",
-        "logp_desc-mass_level-cluster": f"logp_desc-{group_label}Mass_level-cluster",
-    }
-    return {name_map[key]: value for key, value in maps.items() if key in name_map}
-
-
-def _ale_uncorrected_group_maps(pairwise_estimator, ma_maps, group_label, stat_values=None):
-    """Compute uncorrected one-sample ALE maps for a pairwise group."""
-    temp_estimator = ALE(
-        kernel_transformer=copy.deepcopy(pairwise_estimator.kernel_transformer),
-        null_method="approximate",
-        memory=pairwise_estimator.memory,
-        memory_level=pairwise_estimator.memory_level,
-        n_cores=getattr(pairwise_estimator, "n_cores", 1),
-        mask=pairwise_estimator.masker,
-    )
-    temp_estimator.masker = pairwise_estimator.masker
-    if stat_values is None:
-        stat_values = _compute_ale_summarystat(ma_maps)
-    temp_estimator._ALE__n_mask_voxels = stat_values.shape[0]
-    _compute_group_approximate_null(temp_estimator, ma_maps)
-    p_values, z_values = temp_estimator._summarystat_to_p(stat_values, null_method="approximate")
-    maps = {
-        "stat": stat_values.astype(DEFAULT_FLOAT_DTYPE, copy=False),
-        "p": p_values.astype(DEFAULT_FLOAT_DTYPE, copy=False),
-        "z": z_values.astype(DEFAULT_FLOAT_DTYPE, copy=False),
-        "logp": _p_to_logp_values(p_values, dtype=DEFAULT_FLOAT_DTYPE),
-    }
-    return _prefix_ale_group_maps(maps, group_label)
-
-
-def _validate_nonoverlapping_pairwise_datasets(dataset1, dataset2, estimator_name):
-    """Raise when pairwise datasets share study ids."""
-    overlap = set(dataset1.ids).intersection(dataset2.ids)
-    if overlap:
-        raise ValueError(
-            f"{estimator_name} requires non-overlapping datasets. Overlapping ids include: "
-            + ", ".join(sorted(list(overlap))[:10])
-        )
-
-
-def _resolve_balanced_target_n(dataset1, dataset2, target_n):
-    """Infer or validate the matched-size study count for balanced pairwise resampling."""
-    max_target_n = min(len(dataset1.ids), len(dataset2.ids))
-    resolved_target_n = target_n or max_target_n
-    if not 0 < resolved_target_n <= max_target_n:
-        raise ValueError(
-            "target_n must be between 1 and the smaller group size; " f"got {resolved_target_n}."
-        )
-    return resolved_target_n
-
-
-def _threshold_z_clusters(z_values, masker, voxel_thresh, cluster_size_threshold=None):
-    """Apply cluster thresholding to a z map in masked-array space."""
-    z_map = masker.inverse_transform(z_values).get_fdata(dtype=DEFAULT_FLOAT_DTYPE)
-    sig_arr = z_map > norm.ppf(1 - voxel_thresh)
-    labels, cluster_count = ndimage.label(sig_arr)
-    if cluster_count < 1:
-        return np.zeros_like(z_values), 0
-
-    voxel_count_clusters = np.bincount(labels[labels > 0])
-    max_clust = int(np.max(voxel_count_clusters)) if voxel_count_clusters.size else 0
-    if cluster_size_threshold is not None:
-        significant_clusters = voxel_count_clusters > cluster_size_threshold
-        sig_clust_labels = np.where(significant_clusters)[0]
-        z_map = z_map * np.isin(labels, sig_clust_labels)
-    return np.squeeze(masker.transform(nib.Nifti1Image(z_map, masker.mask_img.affine))), max_clust
-
-
-def _ale_approximate_z_from_ma(estimator, ma_maps):
-    """Compute ALE summary statistics and approximate-null z values for one MA collection."""
-    temp_estimator = copy.deepcopy(estimator)
-    temp_estimator.null_distributions_ = {}
-    temp_estimator._study_max_ma_values = _csr_row_max(ma_maps).astype(
-        DEFAULT_FLOAT_DTYPE,
-        copy=False,
-    )
-    stat_values = temp_estimator._compute_summarystat_est(ma_maps)
-    temp_estimator._determine_histogram_bins(ma_maps)
-    temp_estimator._compute_null_approximate(ma_maps)
-    _, z_values = temp_estimator._summarystat_to_p(stat_values, null_method="approximate")
-    return stat_values.astype(DEFAULT_FLOAT_DTYPE, copy=False), z_values.astype(
-        DEFAULT_FLOAT_DTYPE,
-        copy=False,
-    )
 
 
 def _masked_prior_columns(masker, prior_space="gm", gm_threshold=0.1):
@@ -558,128 +146,6 @@ def _collect_ale_masked_ma_maps(estimator, coords_key="coordinates", maps_key="m
         DEFAULT_FLOAT_DTYPE, copy=False
     )
     return ma_values
-
-
-def _estimate_csr_nbytes(ma_values):
-    """Estimate the in-memory footprint of a CSR matrix."""
-    ma_values = require_masked_csr(ma_values)
-    return ma_values.data.nbytes + ma_values.indices.nbytes + ma_values.indptr.nbytes
-
-
-def _get_available_memory_bytes():
-    """Best-effort estimate of currently available system memory."""
-    try:
-        page_size = os.sysconf("SC_PAGE_SIZE")
-        available_pages = os.sysconf("SC_AVPHYS_PAGES")
-    except (AttributeError, OSError, ValueError):
-        return None
-
-    if page_size <= 0 or available_pages <= 0:
-        return None
-    return int(page_size * available_pages)
-
-
-def _determine_low_memory_chunk_bytes(available_bytes=None):
-    """Choose a target per-chunk MA-map budget from available RAM."""
-    if available_bytes is None:
-        available_bytes = _get_available_memory_bytes()
-
-    if available_bytes is None:
-        return 256 * 1024**2
-
-    return max(1 * 1024**2, min(512 * 1024**2, int(available_bytes * 0.1)))
-
-
-def _copy_array_to_memmap(arr, filename):
-    """Copy an array into a disk-backed memmap with the same dtype and shape."""
-    arr = np.asarray(arr)
-    mapped = np.memmap(filename, dtype=arr.dtype, mode="w+", shape=arr.shape)
-    mapped[...] = arr
-    return mapped
-
-
-def _csr_to_memmap(ma_values, prefix):
-    """Copy a CSR matrix into disk-backed arrays and return a CSR view plus temp files."""
-    ma_values = require_masked_csr(ma_values)
-
-    filenames = []
-    for suffix in ("data", "indices", "indptr"):
-        fd, filename = tempfile.mkstemp(prefix=f"{prefix}_{suffix}_", suffix=".mmap")
-        os.close(fd)
-        filenames.append(filename)
-
-    data = _copy_array_to_memmap(ma_values.data, filenames[0])
-    indices = _copy_array_to_memmap(ma_values.indices, filenames[1])
-    indptr = _copy_array_to_memmap(ma_values.indptr, filenames[2])
-    mapped = sp_sparse.csr_matrix(
-        (data, indices, indptr),
-        shape=ma_values.shape,
-        copy=False,
-    )
-    return mapped, filenames
-
-
-def _close_memmap_array(arr):
-    """Close a numpy memmap backing file when present."""
-    base = arr
-    seen = set()
-    while base is not None and id(base) not in seen:
-        seen.add(id(base))
-        mmap_obj = getattr(base, "_mmap", None)
-        if mmap_obj is not None:
-            mmap_obj.close()
-            break
-        base = getattr(base, "base", None)
-
-
-def _detach_csr_memmap_arrays(ma_values):
-    """Detach CSR arrays from any memmap-backed storage before cleanup."""
-    data = ma_values.data
-    indices = ma_values.indices
-    indptr = ma_values.indptr
-
-    ma_values.data = np.empty(0, dtype=data.dtype)
-    ma_values.indices = np.empty(0, dtype=indices.dtype)
-    ma_values.indptr = np.zeros(ma_values.shape[0] + 1, dtype=indptr.dtype)
-
-    for arr in (data, indices, indptr):
-        _close_memmap_array(arr)
-
-
-def _close_csr_memmaps(ma_values):
-    """Close memmap-backed CSR arrays when present."""
-    if _is_chunked_group(ma_values):
-        for chunk in ma_values.chunks:
-            _close_csr_memmaps(chunk)
-        return
-
-    if not sp_sparse.isspmatrix(ma_values):
-        return
-
-    _detach_csr_memmap_arrays(ma_values)
-
-
-def _cleanup_temp_files(filenames):
-    """Remove temporary files created for memmap-backed arrays."""
-    for filename in filenames:
-        if filename and os.path.isfile(filename):
-            for i_try in range(5):
-                try:
-                    os.remove(filename)
-                    break
-                except PermissionError:
-                    if i_try == 4:
-                        raise
-                    gc.collect()
-                    time.sleep(0.05)
-
-
-def _iter_study_id_chunks(coordinates, chunk_rows, start_idx=0):
-    """Yield coordinate subsets spanning up to ``chunk_rows`` studies each."""
-    study_ids = np.unique(coordinates["id"].values)
-    for start in range(start_idx, study_ids.size, chunk_rows):
-        chunk_ids = study_ids[start : start + chunk_rows]
-        yield coordinates[coordinates["id"].isin(chunk_ids)]
 
 
 class ALE(CBMAEstimator):
@@ -1324,6 +790,50 @@ class ALESubtraction(PairwiseCBMAEstimator):
         )
         return description
 
+    def _finalize_alediff_tail_counts(self, left_counts, right_counts, n_iters):
+        """Convert ALE subtraction tail counts into p-values and z-map signs."""
+        left_tail = left_counts / n_iters
+        right_tail = right_counts / n_iters
+        smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
+        p_values = 2.0 * np.minimum(left_tail, right_tail)
+        p_values = np.maximum(smallest_value, np.minimum(p_values, 1.0 - smallest_value)).astype(
+            DEFAULT_FLOAT_DTYPE,
+            copy=False,
+        )
+        diff_signs = np.sign(right_counts.astype(np.int64) - left_counts.astype(np.int64)).astype(
+            DEFAULT_FLOAT_DTYPE,
+            copy=False,
+        )
+
+        return p_values, diff_signs
+
+    def _finalize_masked_alediff_tail_counts(
+        self, upper_counts, lower_counts, diff_ale_values, group1_mask, group2_mask, n_iters
+    ):
+        """Convert directional ALE subtraction tail counts into one-sided masked p-values."""
+        smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
+        p_values = np.ones(diff_ale_values.shape[0], dtype=DEFAULT_FLOAT_DTYPE)
+        diff_signs = np.zeros(diff_ale_values.shape[0], dtype=DEFAULT_FLOAT_DTYPE)
+
+        diff_ale_values = np.asarray(diff_ale_values)
+        if group1_mask is not None:
+            pos_idx = group1_mask & (diff_ale_values > 0)
+            p_values[pos_idx] = np.maximum(smallest_value, upper_counts[pos_idx] / n_iters).astype(
+                DEFAULT_FLOAT_DTYPE,
+                copy=False,
+            )
+            diff_signs[pos_idx] = 1
+
+        if group2_mask is not None:
+            neg_idx = group2_mask & (diff_ale_values < 0)
+            p_values[neg_idx] = np.maximum(smallest_value, lower_counts[neg_idx] / n_iters).astype(
+                DEFAULT_FLOAT_DTYPE,
+                copy=False,
+            )
+            diff_signs[neg_idx] = -1
+
+        return p_values, diff_signs
+
     def _compute_summarystat_est(self, ma_values):
         return _compute_ale_summarystat(
             require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
@@ -1488,11 +998,11 @@ class ALESubtraction(PairwiseCBMAEstimator):
         p_values = diff_signs = None
         if diff_ale_values is not None:
             if group1_mask is None and group2_mask is None:
-                p_values, diff_signs = _finalize_alediff_tail_counts(
+                p_values, diff_signs = self._finalize_alediff_tail_counts(
                     upper_counts, lower_counts, n_iters
                 )
             else:
-                p_values, diff_signs = _finalize_masked_alediff_tail_counts(
+                p_values, diff_signs = self._finalize_masked_alediff_tail_counts(
                     upper_counts,
                     lower_counts,
                     diff_ale_values,
@@ -2231,12 +1741,6 @@ class BalancedALESubtraction(PairwiseCBMAEstimator):
         return float(np.min(null_diff)), float(np.max(null_diff))
 
     def _fit(self, dataset1, dataset2):
-        _validate_nonoverlapping_pairwise_datasets(
-            dataset1,
-            dataset2,
-            estimator_name=type(self).__name__,
-        )
-
         self.dataset1 = dataset1
         self.dataset2 = dataset2
         self.masker = self.masker or dataset1.masker
