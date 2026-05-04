@@ -895,6 +895,27 @@ class ALE(CBMAEstimator):
 
         return _collect_ale_masked_ma_maps(self, coords_key=coords_key, maps_key=maps_key)
 
+    def _prepare_subsample_null(self, ma_maps, subset_study_ids=None):
+        """Cache per-study MA maxima required by ALE's histogram binning."""
+        self._study_max_ma_values = _csr_row_max(ma_maps).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+
+    def _generate_random_null_ma(self, target_n, sample_space, rng):
+        """Generate a random ALE MA matrix using sample-size-aware Gaussian kernels."""
+        sample_sizes, num_foci = _study_metadata_from_coordinates(self.inputs_["coordinates"])
+        if target_n < len(sample_sizes):
+            subset = rng.permutation(len(sample_sizes))[:target_n]
+            subset_study_ids = np.array(self.inputs_["id"])[subset]
+            sample_sizes = sample_sizes[subset]
+            num_foci = num_foci[subset]
+        else:
+            subset_study_ids = None
+        return (
+            _random_ale_ma_from_metadata(
+                self.masker.mask_img, sample_sizes, num_foci, sample_space, rng
+            ),
+            subset_study_ids,
+        )
+
     def _compute_summarystat(self, data):
         """Compute ALE summary statistics from input data."""
         if sp_sparse.isspmatrix(data):

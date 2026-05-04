@@ -15,7 +15,7 @@ from nimare.generate import create_coordinate_dataset
 from nimare.meta.cbma import (
     ALE,
     ALESubtraction,
-    BalancedALESubstraction,
+    BalancedALESubtraction,
 )
 from nimare.meta.cbma.predictive import feature_extraction
 from nimare.workflows import ContrastWorkflow
@@ -59,10 +59,10 @@ def test_resampled_stability_smoke(testdata_cbma_full):
 
 
 def test_balanced_ale_substraction_smoke(testdata_cbma_full):
-    """A BalancedALESubstraction run should emit balanced subtraction outputs."""
+    """A BalancedALESubtraction run should emit balanced subtraction outputs."""
     dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:5])
     dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[5:10])
-    result = BalancedALESubstraction(
+    result = BalancedALESubtraction(
         target_n=3,
         n_subsamples=4,
         difference_iterations=2,

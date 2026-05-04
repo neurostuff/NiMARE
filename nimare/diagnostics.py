@@ -17,7 +17,8 @@ from tqdm.auto import tqdm
 
 from nimare.base import NiMAREBase
 from nimare.dataset import Dataset
-from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare.meta.cbma.ale import _generate_unique_subsamples, _threshold_z_clusters
+from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator, _approximate_z_from_ma
 from nimare.meta.ibma import IBMAEstimator
 from nimare.nimads import Studyset
 from nimare.studyset import normalize_collection
@@ -25,6 +26,7 @@ from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
     _filter_kwargs,
+    _prior_space_to_null_ijk,
     get_masker,
     mm2vox,
 )
@@ -660,24 +662,44 @@ class FocusCounter(Diagnostics):
 class ResampledStability(NiMAREBase):
     """Estimate voxelwise stability of thresholded results under dataset resampling.
 
-    Notes
-    -----
-    For ALE analyses with ``resampling_policy="subsample"``, the subsample
-    path follows the same cluster-thresholding formulation used by related ALE
-    software. See that project's README for background and references.
+    When ``resampling_policy="subsample"`` is used with any
+    :class:`~nimare.meta.cbma.base.CBMAEstimator` (e.g. ALE or MKDADensity),
+    a fast MA-map–based path is taken: MA maps are collected once, a Monte Carlo
+    null cluster-size distribution is built by repeatedly randomising foci within
+    the prior space, and each subsample replicate is scored using an
+    approximate-null z-transform without full model refitting.  For ALE this
+    follows the same cluster-thresholding formulation used by related ALE
+    software.
 
     Parameters
     ----------
+    target_image : 'str', optional
+        The meta-analytic map for which stability will be characterized.
+    resampling_policy : {"leave_1_out", "leave_k_out", "subsample"}, optional
+        The resampling policy to use. 
+    k : int, optional
+        The number of studies to leave out for each replicate when ``resampling_policy="leave_k_out"``.  Must be between 1 and n-1, where n is the number of studies in the meta-analysis.
+    target_n : int, optional
+        The number of studies to include in each replicate when ``resampling_policy="subsample"``.  Must be between 1 and n, where n is the number of studies in the meta-analysis.  Default is n (i.e., subsamples are the same size as the original dataset).
+    n_resamples : int, optional
+        The number of resampled replicates to generate.  If None, all possible unique replicates will be generated, up to a maximum of 1000 (to avoid combinatorial explosion).
+    random_state : int or None, optional
+        Random seed for reproducibility when random sampling is used in the resampling policy.  Default is None.
+    voxel_thresh : float or None, optional
+        An optional voxel-level threshold that may be applied to the ``target_image`` to define clusters. This can be None if the ``target_image`` is already thresholded (e.g., a cluster-level corrected map). Default is None.
+    cluster_threshold : int or None, optional
+        Cluster size threshold, in voxels. If None, then no cluster size threshold will be applied. Default is None.
     prior_space : {"gm", "brain"}, optional
-        Voxel set used as the randomization prior when ``resampling_policy``
-        is ``"subsample"`` and the estimator is ALE. ``"gm"`` restricts random
-        foci to grey-matter voxels (mask image intensity > 0.1); ``"brain"``
-        uses all non-zero voxels. Default is ``"gm"``.
+        Voxel set used as the randomisation prior for the ``"subsample"``
+        policy.  ``"gm"`` restricts random foci to grey-matter voxels (mask
+        image intensity > 0.1); ``"brain"`` uses all non-zero voxels.
+        Default is ``"gm"``.
     alpha : float, optional
-        Family-wise error rate used to determine the cluster-size threshold for
-        the ALE subsample path. The ``(1 - alpha)`` percentile of
-        the permutation null cluster-size distribution is used. Default is
-        0.05.
+        Family-wise error rate for the Monte Carlo cluster-size threshold used
+        in the ``"subsample"`` policy.  The ``(1 - alpha)`` percentile of the
+        permutation null distribution is applied. Default is 0.05.
+    n_cores : int, optional
+        Number of cores to use for parallelization. If <=0, defaults to using all available cores. Default is 1.
     """
 
     def __init__(
@@ -806,15 +828,13 @@ class ResampledStability(NiMAREBase):
             replicate_result = result.corrector.transform(replicate_result)
         return self._extract_binary_support(replicate_result)
 
-    def _fit_ale_subsample_replicate(self, sample_idx, ma_maps, estimator, cluster_threshold):
-        """Compute one probabilistic ALE replicate from cached MA maps."""
-        from nimare.meta.cbma.ale import (
-            _ale_approximate_z_from_ma,
-            _threshold_z_clusters,
-        )
-
+    def _fit_cbma_subsample_replicate(
+        self, sample_idx, ma_maps, estimator, study_ids, cluster_threshold
+    ):
+        """Compute one probabilistic CBMA replicate from cached MA maps."""
         subset_ma = ma_maps[sample_idx, :]
-        _, z_values = _ale_approximate_z_from_ma(estimator, subset_ma)
+        subset_study_ids = study_ids[sample_idx]
+        _, z_values = _approximate_z_from_ma(estimator, subset_ma, subset_study_ids)
         z_values, _ = _threshold_z_clusters(
             z_values,
             estimator.masker,
@@ -823,17 +843,10 @@ class ResampledStability(NiMAREBase):
         )
         return (z_values > 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
 
-    def _ale_subsample_stability(self, result):
-        """Run probabilistic ALE stability analysis for ALE estimators."""
-        from nimare.meta.cbma.ale import (
-            _ale_approximate_z_from_ma,
-            _generate_unique_subsamples,
-            _masked_prior_columns,
-            _random_ale_ma_from_metadata,
-            _study_metadata_from_coordinates,
-            _threshold_z_clusters,
-        )
-
+    def _cbma_subsample_stability(self, result):
+        """Run probabilistic CBMA stability analysis for any CBMA estimator."""
+        # Deep copy protects result.estimator from _collect_ma_maps side-effects
+        # (ALE sets _study_max_ma_values during map collection).
         estimator = copy.deepcopy(result.estimator)
         ma_maps = estimator._collect_ma_maps()
         n_studies = ma_maps.shape[0]
@@ -845,28 +858,16 @@ class ResampledStability(NiMAREBase):
             else 5000
         )
         cluster_forming_threshold = self.voxel_thresh or 0.001
-        sample_sizes, num_foci = _study_metadata_from_coordinates(estimator.inputs_["coordinates"])
-        prior_img, _ = _masked_prior_columns(estimator.masker, prior_space=self.prior_space)
-        sample_space = np.vstack(np.where(prior_img)).T.astype(np.int32, copy=False)
+        study_ids = np.array(estimator.inputs_["id"])
+        sample_space = _prior_space_to_null_ijk(
+            estimator.masker, prior_space=self.prior_space
+        ).astype(np.int32, copy=False)
 
         rng = np.random.RandomState(self.random_state)
         null_cluster_sizes = np.zeros(montecarlo_iters, dtype=np.int32)
         for i_iter in range(montecarlo_iters):
-            if target_n < n_studies:
-                subset = rng.permutation(n_studies)[:target_n]
-                subset_sample_sizes = sample_sizes[subset]
-                subset_num_foci = num_foci[subset]
-            else:
-                subset_sample_sizes = sample_sizes
-                subset_num_foci = num_foci
-            null_ma = _random_ale_ma_from_metadata(
-                estimator.masker.mask_img,
-                subset_sample_sizes,
-                subset_num_foci,
-                sample_space,
-                rng,
-            )
-            _, null_z = _ale_approximate_z_from_ma(estimator, null_ma)
+            null_ma, subset_ids = estimator._generate_random_null_ma(target_n, sample_space, rng)
+            _, null_z = _approximate_z_from_ma(estimator, null_ma, subset_ids)
             _, null_cluster_sizes[i_iter] = _threshold_z_clusters(
                 null_z,
                 estimator.masker,
@@ -876,27 +877,46 @@ class ResampledStability(NiMAREBase):
 
         cluster_threshold = np.percentile(null_cluster_sizes, 100.0 * (1.0 - self.alpha))
         samples = _generate_unique_subsamples(
-            n_studies,
-            target_n,
-            n_resamples,
-            random_state=self.random_state,
+            n_studies, target_n, n_resamples, random_state=self.random_state
         )
-        replicate_maps = [
-            values
-            for values in tqdm(
-                Parallel(return_as="generator", n_jobs=self.n_cores)(
-                    delayed(self._fit_ale_subsample_replicate)(
-                        sample_idx,
-                        ma_maps,
-                        estimator,
-                        cluster_threshold,
-                    )
-                    for sample_idx in samples
-                ),
-                total=len(samples),
+
+        running_sum = None
+        n_done = 0
+        for support in tqdm(
+            Parallel(return_as="generator", n_jobs=self.n_cores)(
+                delayed(self._fit_cbma_subsample_replicate)(
+                    sample_idx, ma_maps, estimator, study_ids, cluster_threshold
+                )
+                for sample_idx in samples
+            ),
+            total=len(samples),
+        ):
+            running_sum = (
+                support.astype(np.float64) if running_sum is None else running_sum + support
             )
-        ]
-        return np.mean(np.vstack(replicate_maps), axis=0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+            n_done += 1
+
+        return (running_sum / n_done).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+
+    def _finalize_result(self, result, stability_map, n_resamples_used, target_n_used):
+        """Attach stability map and summary table to a copied result object."""
+        result = result.copy()
+        map_name = f"{self.target_image}_diag-ResampledStability"
+        result.maps[map_name] = stability_map
+        result.tables[f"{map_name}_tab-summary"] = pd.DataFrame(
+            [
+                {
+                    "target_image": self.target_image,
+                    "resampling_policy": self.resampling_policy,
+                    "n_resamples": n_resamples_used,
+                    "target_n": target_n_used,
+                    "k": self.k,
+                    "random_state": self.random_state,
+                }
+            ]
+        )
+        result.diagnostics.append(self)
+        return result
 
     def transform(self, result):
         """Apply the resampling diagnostic to a fitted meta-analytic result."""
@@ -914,63 +934,40 @@ class ResampledStability(NiMAREBase):
                 "ResampledStability requires a fitted estimator with a retained dataset."
             )
 
-        if result.estimator.__class__.__name__ == "ALE" and self.resampling_policy == "subsample":
-            stability_map = self._ale_subsample_stability(result)
-            result = result.copy()
-            map_name = f"{self.target_image}_diag-ResampledStability"
-            table_name = f"{map_name}_tab-summary"
-            result.maps[map_name] = stability_map
-            result.tables[table_name] = pd.DataFrame(
-                [
-                    {
-                        "target_image": self.target_image,
-                        "resampling_policy": self.resampling_policy,
-                        "n_resamples": int(self.n_resamples or 2500),
-                        "target_n": self.target_n,
-                        "k": self.k,
-                        "random_state": self.random_state,
-                    }
-                ]
+        if isinstance(result.estimator, CBMAEstimator) and self.resampling_policy == "subsample":
+            stability_map = self._cbma_subsample_stability(result)
+            return self._finalize_result(
+                result,
+                stability_map,
+                n_resamples_used=int(self.n_resamples or 2500),
+                target_n_used=self.target_n,
             )
-            result.diagnostics.append(self)
-            return result
 
         all_ids = list(result.estimator.inputs_["id"])
         subsets = self._resolve_subsets(len(all_ids))
         kept_id_lists = [[all_ids[i] for i in subset] for subset in subsets]
 
-        replicate_maps = [
-            values
-            for values in tqdm(
-                Parallel(return_as="generator", n_jobs=self.n_cores)(
-                    delayed(self._fit_replicate)(kept_ids, result) for kept_ids in kept_id_lists
-                ),
-                total=len(kept_id_lists),
+        running_sum = None
+        n_done = 0
+        for support in tqdm(
+            Parallel(return_as="generator", n_jobs=self.n_cores)(
+                delayed(self._fit_replicate)(kept_ids, result) for kept_ids in kept_id_lists
+            ),
+            total=len(kept_id_lists),
+        ):
+            running_sum = (
+                support.astype(np.float64) if running_sum is None else running_sum + support
             )
-        ]
-        stability_map = np.mean(np.vstack(replicate_maps), axis=0).astype(
-            DEFAULT_FLOAT_DTYPE,
-            copy=False,
-        )
+            n_done += 1
 
-        result = result.copy()
-        map_name = f"{self.target_image}_diag-ResampledStability"
-        table_name = f"{map_name}_tab-summary"
-        result.maps[map_name] = stability_map
-        result.tables[table_name] = pd.DataFrame(
-            [
-                {
-                    "target_image": self.target_image,
-                    "resampling_policy": self.resampling_policy,
-                    "n_resamples": len(kept_id_lists),
-                    "target_n": None if not kept_id_lists else len(kept_id_lists[0]),
-                    "k": self.k,
-                    "random_state": self.random_state,
-                }
-            ]
+        stability_map = (running_sum / n_done).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        target_n_used = None if not kept_id_lists else len(kept_id_lists[0])
+        return self._finalize_result(
+            result,
+            stability_map,
+            n_resamples_used=len(kept_id_lists),
+            target_n_used=target_n_used,
         )
-        result.diagnostics.append(self)
-        return result
 
 
 class FocusFilter(NiMAREBase):

@@ -1,5 +1,6 @@
 """CBMA methods from the ALE and MKDA families."""
 
+import copy
 import logging
 from abc import abstractmethod
 
@@ -332,6 +333,73 @@ class CBMAEstimator(Estimator):
         Can be ignored by algorithms that don't support weighting.
         """
         return None
+
+    def _prepare_subsample_null(self, ma_maps, subset_study_ids=None):
+        """Set up estimator state needed for approximate-null computation on a subsample.
+
+        Called within a deep-copied estimator before ``_approximate_z_from_ma`` runs its
+        standard pipeline, so mutations here are safe. Override in subclasses that need
+        per-subsample pre-state (e.g. ALE needs ``_study_max_ma_values``; MKDADensity
+        needs ``weight_vec_`` recomputed for the subset).
+
+        Parameters
+        ----------
+        ma_maps : scipy.sparse.csr_matrix of shape (k, n_voxels)
+            The (sub)set of MA maps that will be analysed.
+        subset_study_ids : array-like of str, optional
+            Study IDs corresponding to the rows of *ma_maps*.  ``None`` means
+            all studies from the original fit are represented.
+        """
+
+    def _generate_random_null_ma(self, target_n, sample_space, rng):
+        """Generate a random MA matrix for one Monte Carlo cluster-null iteration.
+
+        The default implementation randomly re-places each focus within
+        *sample_space* while preserving the study structure, then transforms
+        through the estimator's kernel.  ALE overrides this to use
+        sample-size-aware Gaussian kernels.
+
+        Parameters
+        ----------
+        target_n : int
+            Number of studies to include in the random draw.
+        sample_space : :class:`numpy.ndarray` of shape (M, 3)
+            Integer IJK coordinates of voxels eligible for random focus placement.
+        rng : :class:`numpy.random.RandomState`
+            Random state for reproducibility.
+
+        Returns
+        -------
+        ma_maps : scipy.sparse.csr_matrix of shape (target_n, n_voxels)
+            Random MA maps.
+        subset_study_ids : array-like of str or None
+            Study IDs used (None when target_n == n_studies).
+        """
+        from nimare.meta.cbma.utils import require_masked_csr
+
+        all_study_ids = list(self.inputs_["id"])
+        if target_n < len(all_study_ids):
+            chosen = rng.choice(len(all_study_ids), size=target_n, replace=False)
+            subset_study_ids = np.array(all_study_ids)[chosen]
+        else:
+            subset_study_ids = None
+
+        coords = self.inputs_["coordinates"]
+        if subset_study_ids is not None:
+            coords = coords[coords["id"].isin(subset_study_ids)]
+
+        focus_idx = rng.randint(0, sample_space.shape[0], size=coords.shape[0])
+        iter_df = coords.drop(columns=["x", "y", "z"], errors="ignore").copy()
+        iter_df[["i", "j", "k"]] = sample_space[focus_idx, :]
+
+        return (
+            require_masked_csr(
+                self.kernel_transformer.transform(
+                    iter_df, masker=self.masker, return_type="sparse"
+                )
+            ),
+            subset_study_ids,
+        )
 
     def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", return_type="sparse"):
         """Collect modeled activation maps from Estimator inputs.
@@ -1198,3 +1266,42 @@ class PairwiseCBMAEstimator(CBMAEstimator):
             masker = dataset1.masker
 
         return MetaResult(self, mask=masker, maps=maps, tables=tables, description=description)
+
+
+def _approximate_z_from_ma(estimator, ma_maps, subset_study_ids=None):
+    """Compute summary statistics and approximate-null z-values for a (sub)set of MA maps.
+
+    The null distribution is derived from *ma_maps* itself, so each call is
+    self-contained and safe to call in parallel.  The estimator is deep-copied
+    internally, so the caller's object is never mutated.
+
+    Parameters
+    ----------
+    estimator : :class:`CBMAEstimator`
+        A *fitted* estimator whose methods are used for computation.
+    ma_maps : scipy.sparse.csr_matrix of shape (k, n_voxels)
+        Modeled activation maps for the (sub)set of studies.
+    subset_study_ids : array-like of str, optional
+        Study IDs for the rows of *ma_maps*.  Passed to
+        ``_prepare_subsample_null`` so that estimators with dataset-dependent
+        pre-state (e.g. MKDADensity ``weight_vec_``) can recompute it
+        correctly for the subset.  ``None`` means all studies.
+
+    Returns
+    -------
+    stat_values : :class:`numpy.ndarray` of shape (n_voxels,)
+        Summary-statistic values (e.g. ALE scores or OF scores).
+    z_values : :class:`numpy.ndarray` of shape (n_voxels,)
+        Approximate-null z-values.
+    """
+    temp = copy.deepcopy(estimator)
+    temp.null_distributions_ = {}
+    temp._prepare_subsample_null(ma_maps, subset_study_ids)
+    stat_values = temp._compute_summarystat_est(ma_maps)
+    temp._determine_histogram_bins(ma_maps)
+    temp._compute_null_approximate(ma_maps)
+    _, z_values = temp._summarystat_to_p(stat_values, null_method="approximate")
+    return (
+        stat_values.astype(DEFAULT_FLOAT_DTYPE, copy=False),
+        z_values.astype(DEFAULT_FLOAT_DTYPE, copy=False),
+    )

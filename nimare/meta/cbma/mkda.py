@@ -240,6 +240,13 @@ class MKDADensity(CBMAEstimator):
 
         return collect_csr_ma_maps(self, coords_key=coords_key, maps_key=maps_key)
 
+    def _prepare_subsample_null(self, ma_maps, subset_study_ids=None):
+        """Recompute experiment weights for the active subset of studies."""
+        if subset_study_ids is not None:
+            subset_mask = self.inputs_["coordinates"]["id"].isin(subset_study_ids)
+            self.inputs_["coordinates"] = self.inputs_["coordinates"][subset_mask]
+        self.weight_vec_ = self._compute_weights(ma_maps)
+
     def _compute_summarystat(self, data):
         """Compute summary statistics from dense arrays or masked CSR matrices."""
         if sp_sparse.isspmatrix(data):
