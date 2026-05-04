@@ -272,12 +272,24 @@ def test_z_to_p(z, tail, expected_p):
     assert np.all(np.isclose(p, expected_p))
 
 
-def test_z_to_p_clips_extreme_values_to_positive_floor():
-    """Extreme z-values should not produce exact-zero p-values."""
-    p = transforms.z_to_p(np.array([50.0]), tail="two")
+@pytest.mark.parametrize(
+    "tail,z_values,expected_equal",
+    [
+        ("two", np.array([50.0, -50.0]), True),
+        ("one", np.array([50.0, -50.0]), False),
+    ],
+)
+def test_z_to_p_clips_extreme_values_to_positive_floor(tail, z_values, expected_equal):
+    """Extreme z-values should stay finite and avoid zero underflow across tails."""
+    p = transforms.z_to_p(z_values, tail=tail)
 
-    assert np.isfinite(p[0])
+    assert np.all(np.isfinite(p))
     assert p[0] > 0
+    if expected_equal:
+        assert p[1] > 0
+        assert p[0] == p[1]
+    else:
+        assert p[1] == 1.0
 
 
 def test_z_to_t_clips_extreme_tail_probabilities():
