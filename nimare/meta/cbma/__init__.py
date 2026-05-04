@@ -1,12 +1,12 @@
 """Coordinate-based meta-analytic estimators."""
 
-from .ale import ALE, SCALE, ALESubtraction, BalancedALESubstraction
+from .ale import ALE, SCALE, ALESubtraction, BalancedALESubtraction
 from .mkda import KDA, MKDAChi2, MKDADensity
 
 __all__ = [
     "ALE",
     "ALESubtraction",
-    "BalancedALESubstraction",
+    "BalancedALESubtraction",
     "SCALE",
     "MKDADensity",
     "MKDAChi2",

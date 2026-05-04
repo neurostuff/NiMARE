@@ -8,7 +8,7 @@ from .cbma import (
     KDA,
     SCALE,
     ALESubtraction,
-    BalancedALESubstraction,
+    BalancedALESubtraction,
     MKDAChi2,
     MKDADensity,
     ale,
@@ -58,7 +58,7 @@ def __getattr__(name):
 __all__ = [
     "ALE",
     "ALESubtraction",
-    "BalancedALESubstraction",
+    "BalancedALESubtraction",
     "SCALE",
     "MKDADensity",
     "MKDAChi2",

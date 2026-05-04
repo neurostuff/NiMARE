@@ -2002,7 +2002,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         return maps, {}, description
 
 
-class BalancedALESubstraction(PairwiseCBMAEstimator):
+class BalancedALESubtraction(PairwiseCBMAEstimator):
     """Balanced ALE subtraction with matched-size subsampling.
 
     Notes
