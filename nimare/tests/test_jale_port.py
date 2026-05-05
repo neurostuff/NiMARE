@@ -377,8 +377,8 @@ def test_contrast_workflow_ale_matches_jale_contrast():
 
     state1 = _main_effect_state(group1)
     state2 = _main_effect_state(group2)
-    main_effect1 = _jale_cfwe_map(state1, n_iters=16, seed=13)
-    main_effect2 = _jale_cfwe_map(state2, n_iters=16, seed=14)
+    main_effect1 = _jale_cfwe_map(state1, n_iters=32, seed=13)
+    main_effect2 = _jale_cfwe_map(state2, n_iters=32, seed=14)
 
     jale_contrast = np.zeros_like(main_effect1, dtype=np.float32)
     sig_mask1 = main_effect1 > 0
@@ -424,7 +424,7 @@ def test_contrast_workflow_ale_matches_jale_contrast():
             jale_contrast[flat2[0][idx2], flat2[1][idx2], flat2[2][idx2]] = -z2
 
     workflow = ContrastWorkflow(
-        corrector=FWECorrector(method="montecarlo", n_iters=16, n_cores=1),
+        corrector=FWECorrector(method="montecarlo", n_iters=32, n_cores=1),
         pairwise_estimator=ALESubtraction(n_iters=32, n_cores=1, generate_description=False),
         alpha=0.05,
         n_cores=1,
