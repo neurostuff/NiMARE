@@ -8,5 +8,5 @@ The examples below use :class:`~nimare.nimads.Studyset` as the primary analysis 
 with legacy :class:`~nimare.dataset.Dataset` objects appearing only in preprocessing steps
 where older APIs still require them.
 
-For more information about the components that go into coordinate-based meta-analyses in NiMARE, see :doc:`../cbma`,
-as well as :doc:`../outputs`.
+For more information about the components that go into coordinate-based meta-analyses in NiMARE, see :doc:`/cbma`,
+as well as :doc:`/outputs`.

@@ -122,8 +122,13 @@ class CBMAEstimator(Estimator):
 
         # Get kernel transformer
         kernel_args = {k.split("kernel__")[1]: v for k, v in kernel_args.items()}
-        if "memory" not in kernel_args.keys() and "memory_level" not in kernel_args.keys():
-            kernel_args.update(memory=memory, memory_level=memory_level)
+        # Only forward memory settings to the kernel when it is still a class.
+        # If it is already an instance (e.g. a deepcopy passed from a pairwise
+        # estimator's internal helpers), the memory settings are already embedded
+        # in the instance and passing them again would trigger a spurious warning.
+        if not isinstance(kernel_transformer, KernelTransformer):
+            if "memory" not in kernel_args.keys() and "memory_level" not in kernel_args.keys():
+                kernel_args.update(memory=memory, memory_level=memory_level)
         kernel_transformer = _check_type(kernel_transformer, KernelTransformer, **kernel_args)
         self.kernel_transformer = kernel_transformer
 
@@ -555,6 +560,17 @@ class CBMAEstimator(Estimator):
 
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
+
+    def _compute_approximate_z_values(self, ma_maps):
+        """Compute summary statistics and approximate-null z-values from prepared MA maps."""
+        stat_values = self._compute_summarystat_est(ma_maps)
+        self._determine_histogram_bins(ma_maps)
+        self._compute_null_approximate(ma_maps)
+        _, z_values = self._summarystat_to_p(stat_values, null_method="approximate")
+        return (
+            stat_values.astype(DEFAULT_FLOAT_DTYPE, copy=False),
+            z_values.astype(DEFAULT_FLOAT_DTYPE, copy=False),
+        )
 
     def _p_to_summarystat(self, p, null_method=None):
         """Compute a summary statistic threshold that corresponds to the provided p-value.
@@ -1297,11 +1313,4 @@ def _approximate_z_from_ma(estimator, ma_maps, subset_study_ids=None):
     temp = copy.deepcopy(estimator)
     temp.null_distributions_ = {}
     temp._prepare_subsample_null(ma_maps, subset_study_ids)
-    stat_values = temp._compute_summarystat_est(ma_maps)
-    temp._determine_histogram_bins(ma_maps)
-    temp._compute_null_approximate(ma_maps)
-    _, z_values = temp._summarystat_to_p(stat_values, null_method="approximate")
-    return (
-        stat_values.astype(DEFAULT_FLOAT_DTYPE, copy=False),
-        z_values.astype(DEFAULT_FLOAT_DTYPE, copy=False),
-    )
+    return temp._compute_approximate_z_values(ma_maps)

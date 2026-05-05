@@ -278,6 +278,42 @@ def test_contrast_workflow_smoke(
     assert "Frahm_Monimu_Hoffstaedter" in result.bibtex_
 
 
+@pytest.mark.parametrize(
+    "main_estimator,corrector,pairwise_estimator",
+    [
+        ("ale", "fdr", "alesubtraction"),
+        ("mkdadensity", "bonferroni", "mkdachi2"),
+        # None corrector should fall back to the FDRCorrector default.
+        (ALE, None, ALESubtraction),
+    ],
+)
+def test_contrast_workflow_string_and_none_inputs(
+    testdata_cbma_full, main_estimator, corrector, pairwise_estimator
+):
+    """Contrast Workflow should accept strings, classes, and None corrector."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+
+    workflow = ContrastWorkflow(
+        main_estimator=main_estimator,
+        pairwise_estimator=pairwise_estimator,
+        corrector=corrector,
+        alpha=0.05,
+        n_cores=1,
+    )
+    # Keep iterations low so the test finishes quickly.
+    if hasattr(workflow.pairwise_estimator, "n_iters"):
+        workflow.pairwise_estimator.n_iters = 8
+
+    result = workflow.fit(dset1, dset2)
+
+    assert isinstance(result, nimare.results.MetaResult)
+    assert "z_desc-group1MainEffect" in result.maps
+    assert "z_desc-group2MainEffect" in result.maps
+    assert "z_desc-conjunction" in result.maps
+    assert "z_desc-contrast" in result.maps
+
+
 def test_contrast_workflow_ale_thresholding_path_smoke(testdata_cbma_full):
     """ALE ContrastWorkflow should run without the removed estimator helper."""
     assert not hasattr(ALE, "jale_corrected_map")

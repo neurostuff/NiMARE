@@ -32,6 +32,22 @@ def _csr_row_max(ma_values):
     return max_values
 
 
+def _build_ale_temp_estimator(source_estimator, null_method="approximate"):
+    """Build a temporary ALE estimator configured from another estimator."""
+    from nimare.meta.cbma.ale import ALE
+
+    temp_estimator = ALE(
+        kernel_transformer=copy.deepcopy(source_estimator.kernel_transformer),
+        null_method=null_method,
+        n_cores=getattr(source_estimator, "n_cores", 1),
+        mask=source_estimator.masker,
+        memory=source_estimator.memory,
+        memory_level=source_estimator.memory_level,
+    )
+    temp_estimator.masker = source_estimator.masker
+    return temp_estimator
+
+
 def _compute_ale_summarystat(ma_values):
     """Compute ALE summary statistics from dense arrays or masked CSR matrices."""
     if sp_sparse.isspmatrix(ma_values):
@@ -194,17 +210,10 @@ def _compute_group_approximate_null(estimator, ma_maps):
 
 def _ale_approximate_z_from_ma(estimator, ma_maps):
     """Compute ALE summary statistics and approximate-null z values for one MA collection."""
-    temp_estimator = copy.deepcopy(estimator)
+    temp_estimator = _build_ale_temp_estimator(estimator)
     temp_estimator.null_distributions_ = {}
     temp_estimator._study_max_ma_values = _csr_row_max(ma_maps).astype(
         DEFAULT_FLOAT_DTYPE,
         copy=False,
     )
-    stat_values = temp_estimator._compute_summarystat_est(ma_maps)
-    temp_estimator._determine_histogram_bins(ma_maps)
-    temp_estimator._compute_null_approximate(ma_maps)
-    _, z_values = temp_estimator._summarystat_to_p(stat_values, null_method="approximate")
-    return stat_values.astype(DEFAULT_FLOAT_DTYPE, copy=False), z_values.astype(
-        DEFAULT_FLOAT_DTYPE,
-        copy=False,
-    )
+    return temp_estimator._compute_approximate_z_values(ma_maps)

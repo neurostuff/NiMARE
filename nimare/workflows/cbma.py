@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from nimare.base import NiMAREBase
-from nimare.correct import FDRCorrector, FWECorrector
+from nimare.correct import Corrector, FDRCorrector, FWECorrector
 from nimare.diagnostics import Jackknife
 from nimare.meta import ALE, ALESubtraction, MKDAChi2
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
@@ -15,10 +15,9 @@ from nimare.transforms import threshold_image
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
-    _check_type,
     _p_to_logp_values,
 )
-from nimare.workflows.base import Workflow
+from nimare.workflows.base import Workflow, _check_input
 
 LGR = logging.getLogger(__name__)
 
@@ -277,16 +276,18 @@ class ContrastWorkflow(NiMAREBase):
 
     Parameters
     ----------
-    main_estimator : :class:`~nimare.meta.cbma.base.CBMAEstimator`
+    main_estimator : :class:`~nimare.meta.cbma.base.CBMAEstimator`, \
+:obj:`str` {'ale', 'scale', 'mkdadensity', 'kda'}, optional
         Estimator to use for computing main effects.
         Default is :class:`~nimare.meta.cbma.ale.ALE`.
-    pairwise_estimator : :class:`~nimare.meta.cbma.base.PairwiseCBMAEstimator`
+    pairwise_estimator : :class:`~nimare.meta.cbma.base.PairwiseCBMAEstimator`, \
+:obj:`str` {'alesubtraction', 'mkdachi2'}, optional
         Estimator to use for computing pairwise contrast.
         Default is :class:`~nimare.meta.cbma.ale.ALESubtraction`.
-    corrector : :class:`~nimare.correct.Corrector`
+    corrector : :class:`~nimare.correct.Corrector`, \
+:obj:`str` {'fdr', 'montecarlo', 'bonferroni'}, optional
         Corrector to use for correcting main effects.
-        Default is :class:`~nimare.correct.FDRCorrector` with ``method="indep"`` and
-        ``alpha=0.05``.
+        Default is :class:`~nimare.correct.FDRCorrector` with ``method="indep"``.
     alpha : :obj:`float`, optional
         Significance level to use for thresholding main effects and pairwise contrast.
         Default is 0.05.
@@ -294,14 +295,21 @@ class ContrastWorkflow(NiMAREBase):
         Output directory in which to save results. If the directory doesn't
         exist, it will be created. Default is None (the results are not saved).
     n_cores : :obj:`int`, optional
-        Number of cores to use for parallelization. Default is 1.
+        Number of cores to use for parallelization.
+        If ``main_estimator``, ``pairwise_estimator``, or ``corrector`` are passed as
+        already-initialized instances this parameter will be ignored for those objects.
+        Default is 1.
     """
+
+    _main_estm_options = ("ale", "scale", "mkdadensity", "kda")
+    _pairwise_estm_options = ("alesubtraction", "mkdachi2")
+    _corr_options = ("fdr", "montecarlo", "bonferroni")
 
     def __init__(
         self,
         main_estimator=ALE,
         pairwise_estimator=ALESubtraction,
-        corrector=FDRCorrector(method="indep", alpha=0.05),
+        corrector=None,
         alpha=0.05,
         output_dir=None,
         n_cores=1,
@@ -313,13 +321,21 @@ class ContrastWorkflow(NiMAREBase):
         self.output_dir = output_dir
         self.n_cores = _check_ncores(n_cores)
 
-        self.main_estimator = _check_type(main_estimator, CBMAEstimator, n_cores=self.n_cores)
-        self.pairwise_estimator = _check_type(
+        self.main_estimator = _check_input(
+            main_estimator, CBMAEstimator, self._main_estm_options, n_cores=self.n_cores
+        )
+
+        self.pairwise_estimator = _check_input(
             pairwise_estimator,
             PairwiseCBMAEstimator,
+            self._pairwise_estm_options,
             n_cores=self.n_cores,
         )
-        self.corrector = corrector
+
+        if corrector is None:
+            self.corrector = FDRCorrector(method="indep")
+        else:
+            self.corrector = _check_input(corrector, Corrector, self._corr_options)
 
     def _compute_main_effect_map(self, result):
         """Compute the directional inference map used to gate pairwise contrast."""

@@ -1,0 +1,38 @@
+name: "JALE Port Test"
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  jale_port:
+    name: JALE port
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install build tooling and NiMARE
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e .[tests,cbmr,predictive]
+
+      - name: Install JALE from GitHub
+        run: |
+          python -m pip install git+https://github.com/juaml/JALE.git
+
+      - name: Run JALE port tests
+        run: |
+          python -m pytest -q nimare/tests/test_jale_port.py

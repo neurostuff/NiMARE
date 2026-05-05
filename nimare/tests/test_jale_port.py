@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import sys
 from pathlib import Path
 
@@ -25,16 +26,35 @@ from nimare.workflows import ContrastWorkflow
 JALE_ROOT = Path(__file__).resolve().parents[2] / "JALE"
 
 
-@pytest.mark.skipif(not JALE_ROOT.exists(), reason="Local JALE checkout is unavailable.")
+def _import_jale_module(module_name):
+    try:
+        return importlib.import_module(module_name)
+    except ImportError:
+        if not JALE_ROOT.exists():
+            raise
+        sys.path.insert(0, str(JALE_ROOT))
+        try:
+            return importlib.import_module(module_name)
+        finally:
+            sys.path.pop(0)
+
+
+def _jale_available():
+    try:
+        importlib.import_module("jale")
+        return True
+    except ImportError:
+        return JALE_ROOT.exists()
+
+
+@pytest.mark.skipif(
+    not _jale_available(),
+    reason="Installed JALE package and local checkout are unavailable.",
+)
 def test_predictive_feature_extraction_matches_jale():
     """The packaged ALE predictive features should match the reference implementation."""
-    sys.path.insert(0, str(JALE_ROOT))
-    try:
-        from jale.core.utils.cutoff_prediction import (
-            feature_extraction as jale_feature_extraction,
-        )
-    finally:
-        sys.path.pop(0)
+    module = _import_jale_module("jale.core.utils.cutoff_prediction")
+    jale_feature_extraction = module.feature_extraction
 
     nsub = np.array([12, 20, 33, 18], dtype=float)
     nfoci = np.array([5, 7, 9, 6], dtype=float)
@@ -260,26 +280,25 @@ def _nimare_to_jale_volume(masked_values, masker):
     ]
 
 
-@pytest.mark.skipif(not JALE_ROOT.exists(), reason="Local JALE checkout is unavailable.")
+@pytest.mark.skipif(
+    not _jale_available(),
+    reason="Installed JALE package and local checkout are unavailable.",
+)
 def test_contrast_workflow_ale_matches_jale_contrast():
     """ALE ContrastWorkflow should approximate the reference masked contrast workflow."""
-    sys.path.insert(0, str(JALE_ROOT))
-    try:
-        from jale.core.utils.compute import (
-            compute_ale,
-            compute_hx,
-            compute_hx_conv,
-            compute_ma,
-            compute_monte_carlo_null,
-            compute_permuted_ale_diff,
-            compute_sig_diff,
-            compute_z,
-        )
-        from jale.core.utils.kernel import create_kernel_array
-        from jale.core.utils.template import GM_PRIOR
-        from jale.core.utils.template import MNI_AFFINE as JALE_AFFINE
-    finally:
-        sys.path.pop(0)
+    compute_module = _import_jale_module("jale.core.utils.compute")
+    compute_ale = compute_module.compute_ale
+    compute_hx = compute_module.compute_hx
+    compute_hx_conv = compute_module.compute_hx_conv
+    compute_ma = compute_module.compute_ma
+    compute_monte_carlo_null = compute_module.compute_monte_carlo_null
+    compute_permuted_ale_diff = compute_module.compute_permuted_ale_diff
+    compute_sig_diff = compute_module.compute_sig_diff
+    compute_z = compute_module.compute_z
+    create_kernel_array = _import_jale_module("jale.core.utils.kernel").create_kernel_array
+    template_module = _import_jale_module("jale.core.utils.template")
+    GM_PRIOR = template_module.GM_PRIOR
+    JALE_AFFINE = template_module.MNI_AFFINE
 
     def _main_effect_state(dataset):
         exp_df = _build_jale_experiment_table(dataset, JALE_AFFINE)

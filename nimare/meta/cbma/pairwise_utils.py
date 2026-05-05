@@ -1,6 +1,5 @@
-"""Internal ALE pairwise helpers."""
+"""Internal pairwise helpers."""
 
-import copy
 import gc
 from dataclasses import dataclass
 
@@ -8,6 +7,7 @@ import numpy as np
 
 from nimare.meta.cbma.io_utils import _cleanup_temp_files, _close_csr_memmaps
 from nimare.meta.cbma.null_utils import (
+    _build_ale_temp_estimator,
     _compute_group_approximate_null,
     _is_chunked_group,
 )
@@ -102,17 +102,7 @@ def _prefix_ale_group_maps(maps, group_label):
 
 def _ale_uncorrected_group_maps(pairwise_estimator, ma_maps, group_label, stat_values=None):
     """Compute uncorrected one-sample ALE maps for a pairwise group."""
-    from nimare.meta.cbma.ale import ALE
-
-    temp_estimator = ALE(
-        kernel_transformer=copy.deepcopy(pairwise_estimator.kernel_transformer),
-        null_method="approximate",
-        memory=pairwise_estimator.memory,
-        memory_level=pairwise_estimator.memory_level,
-        n_cores=getattr(pairwise_estimator, "n_cores", 1),
-        mask=pairwise_estimator.masker,
-    )
-    temp_estimator.masker = pairwise_estimator.masker
+    temp_estimator = _build_ale_temp_estimator(pairwise_estimator)
     if stat_values is None:
         from nimare.meta.cbma.ale import _compute_ale_summarystat
 
