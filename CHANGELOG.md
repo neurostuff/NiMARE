@@ -2,7 +2,27 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.16.0...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.17.0...HEAD)
+
+## [0.17.0](https://github.com/neurostuff/NiMARE/compare/0.16.0...0.17.0) - 2026-05-05
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+This is a big bug fix/feature add
+
+- p-value -> z transform was resulting in really small p-values getting clipped to zero and then creating a zero z statistic where it should have been highest.
+- starting incorporating [JALE](https://github.com/juaml/JALE)
+- added a qualitative (Exploratory Data Analysis) notebook for meta-analysis for when you want to do more descriptive statistics (as opposed to inferential)
+
+CHANGED MKDA-CHI2 FWE-CORRECTOR, it used to do random foci, now it does label switching by default, which is a better representation of the inference being made.
+
+### What's Changed
+
+* [MAINT] remove dockerfile by @jdkent in https://github.com/neurostuff/NiMARE/pull/1008
+* [DOCS] add qualitative analysis example by @jdkent in https://github.com/neurostuff/NiMARE/pull/1067
+* [FIX] underflow (and overflow) issues by @jdkent in https://github.com/neurostuff/NiMARE/pull/1069
+* [ENH] add JALE functionality to NiMARE by @jdkent in https://github.com/neurostuff/NiMARE/pull/1009
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.16.0...0.17.0
 
 ## [0.16.0](https://github.com/neurostuff/NiMARE/compare/0.15.0...0.16.0) - 2026-04-21
 
