@@ -493,8 +493,7 @@ pd.DataFrame(rows).set_index("Policy")
 #
 # * Choose ``"leave_1_out"`` for **small datasets** (< 25 studies) where each
 #   study carries substantial weight.
-# * Choose ``"leave_k_out"`` when you suspect a **block of related studies**
-#   (same lab, same paradigm) may be jointly inflating a cluster.
+# * Choose ``"leave_k_out"`` for **larger datasets** (> 30 studies).
 # * Choose ``"subsample"`` for **larger datasets** (> 30 studies) or when you
 #   want to quantify what fraction of the result survives at a reduced sample
 #   size (e.g. ``target_n = int(0.75 * n_studies)``).
