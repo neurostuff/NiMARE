@@ -81,6 +81,7 @@ For more information about the components of coordinate-based meta-analysis in N
    diagnostics.FocusFilter
    diagnostics.Jackknife
    diagnostics.FocusCounter
+   diagnostics.ResampledStability
 
 
 .. _api_annotate_ref:
@@ -145,6 +146,8 @@ For more information about functional characterization analysis, see :doc:`decod
    io.convert_neurosynth_to_dict
    io.convert_neurosynth_to_json
    io.convert_neurosynth_to_dataset
+   io.convert_nimads_to_dataset
+   io.convert_nimads_to_sleuth
    io.convert_dataset_to_nimads_dict
    io.convert_dataset_to_studyset
    io.convert_sleuth_to_dict
@@ -216,9 +219,11 @@ all NiMARE workflows.
 
    transforms.ImageTransformer
    transforms.ImagesToCoordinates
+   transforms.StandardizeField
 
    :template: function.rst
 
+   transforms.threshold_image
    transforms.transform_images
    transforms.resolve_transforms
    transforms.sample_sizes_to_dof
@@ -228,6 +233,8 @@ all NiMARE workflows.
    transforms.samplevar_dataset_to_varcope
    transforms.t_and_varcope_to_beta
    transforms.t_and_beta_to_varcope
+   transforms.t_to_d
+   transforms.d_to_g
    transforms.p_to_z
    transforms.t_to_z
    transforms.z_to_t
@@ -275,6 +282,7 @@ For more information about fetching data from the internet, see :ref:`fetching t
    :template: function.rst
 
    stats.one_way
+   stats.two_way_counts
    stats.two_way
    stats.pearson
    stats.null_to_p
@@ -343,6 +351,7 @@ For more information about fetching data from the internet, see :ref:`fetching t
 
    workflows.macm_workflow
    workflows.cbma.CBMAWorkflow
+   workflows.cbma.ContrastWorkflow
    workflows.cbma.PairwiseCBMAWorkflow
    workflows.ibma.IBMAWorkflow
    workflows.misc.conjunction_analysis
