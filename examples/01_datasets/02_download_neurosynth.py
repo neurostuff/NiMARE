@@ -20,19 +20,21 @@ release.
 
 The selector keywords determine which annotation files are downloaded:
 
-+--------------+---------------------------------------------------------------+
-| Keyword      | Meaning                                                       |
-+==============+===============================================================+
-| ``source``   | Text source used to generate the annotations. Neurosynth      |
-|              | currently provides ``"abstract"``.                            |
-+--------------+---------------------------------------------------------------+
-| ``vocab``    | Annotation vocabulary. ``"terms"`` selects term-level tf-idf |
-|              | features, while ``"LDA50"``, ``"LDA100"``, ``"LDA200"``, and  |
-|              | ``"LDA400"`` select topic-model vocabularies.                 |
-+--------------+---------------------------------------------------------------+
-| ``type``     | Feature representation. ``"tfidf"`` is used for ``"terms"``, |
-|              | while ``"weight"`` is used for the LDA vocabularies.          |
-+--------------+---------------------------------------------------------------+
+.. list-table::
+   :header-rows: 1
+
+   * - Keyword
+     - Meaning
+   * - ``source``
+     - Text source used to generate the annotations. Neurosynth currently provides
+       ``"abstract"``.
+   * - ``vocab``
+     - Annotation vocabulary. ``"terms"`` selects term-level tf-idf features, while
+       ``"LDA50"``, ``"LDA100"``, ``"LDA200"``, and ``"LDA400"`` select topic-model
+       vocabularies.
+   * - ``type``
+     - Feature representation. ``"tfidf"`` is used for ``"terms"``, while
+       ``"weight"`` is used for the LDA vocabularies.
 
 Only the combinations below are valid for Neurosynth:
 

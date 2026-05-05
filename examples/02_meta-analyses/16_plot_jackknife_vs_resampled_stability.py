@@ -1,9 +1,25 @@
-"""Jackknife vs. ResampledStability: Choosing the Right Diagnostic.
-
-This notebook runs an ALE meta-analysis on the NiMARE pain dataset, applies Jackknife
-and ResampledStability diagnostics, and plots the results.
 """
 
+.. _metas_jackknife_vs_resampled_stability:
+
+=======================================================
+Stability diagnostics: Jackknife vs. ResampledStability
+=======================================================
+
+After we run a meta-analysis and see a result, we may raise our arms and
+say hooray, but how stable is that result? If we were to run the same meta-analysis
+on a slightly different set of studies, would we get the same result? This is the
+question that stability diagnostics aim to answer. In this example, we'll compare
+two different stability diagnostics implemented in NiMARE: Jackknife and ResampledStability.
+
+Jackknife is a leave-one-out approach that iteratively leaves out one study at a time and
+re-runs the meta-analysis. It then evaluates how much each study contributes to the overall
+result and how the clusters change when each study is left out.
+
+ResampledStability is a more flexible approach that allows for different resampling policies,
+such as leave-k-out or subsampling. It generates multiple resampled meta-analytic maps and
+evaluates the stability of the results across these resamples.
+"""
 import copy
 import os
 import warnings
@@ -72,14 +88,24 @@ def main():
     print(contrib_df)
 
     if contrib_df is not None and not contrib_df.empty:
+        contrib_values = contrib_df.apply(pd.to_numeric, errors="coerce").fillna(0.0)
         fig, ax = plt.subplots(
-            figsize=(max(6, len(contrib_df.columns) * 1.2), max(5, len(contrib_df) * 0.35))
+            figsize=(
+                max(6, len(contrib_values.columns) * 1.2),
+                max(5, len(contrib_values) * 0.35),
+            )
         )
-        im = ax.imshow(contrib_df.values, aspect="auto", cmap="YlOrRd", vmin=0, vmax=1)
-        ax.set_xticks(range(len(contrib_df.columns)))
-        ax.set_xticklabels(contrib_df.columns, rotation=45, ha="right", fontsize=9)
-        ax.set_yticks(range(len(contrib_df)))
-        ax.set_yticklabels(contrib_df.index, fontsize=7)
+        im = ax.imshow(
+            contrib_values.to_numpy(dtype=float),
+            aspect="auto",
+            cmap="YlOrRd",
+            vmin=0,
+            vmax=1,
+        )
+        ax.set_xticks(range(len(contrib_values.columns)))
+        ax.set_xticklabels(contrib_values.columns, rotation=45, ha="right", fontsize=9)
+        ax.set_yticks(range(len(contrib_values)))
+        ax.set_yticklabels(contrib_values.index, fontsize=7)
         ax.set_xlabel("Cluster", fontsize=11)
         ax.set_ylabel("Study", fontsize=11)
         ax.set_title("Jackknife: proportional contribution per study per cluster", fontsize=12)
@@ -87,13 +113,17 @@ def main():
         plt.tight_layout()
         plt.show()
 
-        mean_contrib = contrib_df.mean(axis=1).sort_values(ascending=False)
+        mean_contrib = contrib_values.mean(axis=1).sort_values(ascending=False)
         print("\nMean contribution across all clusters (top 10):")
         print(mean_contrib.head(10).to_string())
     else:
         print("No clusters found — try lowering the cluster_threshold or increasing N_ITERS.")
 
-    rs_loo = ResampledStability(target_image=TARGET_IMAGE, resampling_policy="leave_1_out", n_cores=1)
+    rs_loo = ResampledStability(
+        target_image=TARGET_IMAGE,
+        resampling_policy="leave_1_out",
+        n_cores=1,
+    )
     result_loo = rs_loo.transform(copy.deepcopy(result))
     print("\nLeave-one-out ResampledStability summary:")
     print(result_loo.tables[f"{TARGET_IMAGE}_diag-ResampledStability_tab-summary"])
@@ -223,12 +253,16 @@ def main():
             {
                 "Policy": label,
                 "N replicates": int(
-                    res.tables[f"{TARGET_IMAGE}_diag-ResampledStability_tab-summary"]["n_resamples"].iloc[0]
+                    res.tables[f"{TARGET_IMAGE}_diag-ResampledStability_tab-summary"][
+                        "n_resamples"
+                    ].iloc[0]
                 ),
                 "Stable voxels (>0)": int(len(nonzero)),
                 "Stable voxels (≥0.5)": int((stab >= 0.5).sum()),
                 "Stable voxels (≥0.8)": int((stab >= 0.8).sum()),
-                "Mean stability (nonzero)": round(float(nonzero.mean()), 3) if len(nonzero) > 0 else 0.0,
+                "Mean stability (nonzero)": (
+                    round(float(nonzero.mean()), 3) if len(nonzero) > 0 else 0.0
+                ),
             }
         )
 

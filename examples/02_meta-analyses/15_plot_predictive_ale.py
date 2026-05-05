@@ -53,7 +53,7 @@ In this example we:
 .. note::
     Predictive FWE requires the optional ``xgboost`` dependency::
 
-        pip install xgboost
+        pip install nimare[predictive]
 """
 
 ###############################################################################

@@ -309,9 +309,17 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
         meta_cres.masker.transform(img).astype(bool).squeeze() for img in signal_masks
     ]
 
-    p_array = meta_cres.maps.get("p")
-    if p_array is None or corr.method == "montecarlo":
-        p_array = 10 ** -meta_cres.maps.get("logp_level-voxel_corr-FWE_method-montecarlo")
+    p_map_name = f"p{corr._name_suffix}"
+    p_array = meta_cres.maps.get(p_map_name)
+    value_type = "p"
+    if p_array is None:
+        logp_map_name = f"logp_level-voxel{corr._name_suffix}"
+        p_array = meta_cres.maps.get(logp_map_name)
+        assert p_array is not None, (
+            f"Could not find corrected p or logp map for corrector {corr}. "
+            f"Expected one of '{p_map_name}' or '{logp_map_name}'."
+        )
+        value_type = "logp"
 
     n_iters = corr.parameters.get("n_iters")
 
@@ -382,4 +390,5 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
         n_iters=n_iters,
         good_sensitivity=good_sensitivity,
         good_specificity=good_specificity,
+        value_type=value_type,
     )
