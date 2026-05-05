@@ -391,9 +391,7 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
             if "montecarlo" in null_method and (
                 (
                     isinstance(meta_cres.estimator, mkda.KDA)
-                    and not isinstance(
-                        meta_cres.estimator.kernel_transformer, kernel.ALEKernel
-                    )
+                    and not isinstance(meta_cres.estimator.kernel_transformer, kernel.ALEKernel)
                 )
                 or (
                     isinstance(meta_cres.estimator, mkda.MKDADensity)
