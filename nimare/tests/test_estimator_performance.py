@@ -389,7 +389,12 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
             good_specificity = True
         elif corr.method == "bonferroni":
             if "montecarlo" in null_method and (
-                isinstance(meta_cres.estimator, mkda.KDA)
+                (
+                    isinstance(meta_cres.estimator, mkda.KDA)
+                    and not isinstance(
+                        meta_cres.estimator.kernel_transformer, kernel.ALEKernel
+                    )
+                )
                 or (
                     isinstance(meta_cres.estimator, mkda.MKDADensity)
                     and isinstance(
@@ -398,9 +403,11 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
                     )
                 )
             ):
-                # Bonferroni is too conservative for KDA estimator or
-                # MKDADensity+MKDAKernel with montecarlo null, which produce
-                # null distributions with insufficient resolution.
+                # Bonferroni is too conservative for KDA estimator with
+                # non-ALE kernels, or MKDADensity+MKDAKernel, with montecarlo
+                # null distributions that have insufficient p-value resolution.
+                # ALEKernel produces precise enough null distributions to
+                # survive Bonferroni correction.
                 good_sensitivity = False
                 good_specificity = True
             elif isinstance(meta_cres.estimator, ale.ALE) and isinstance(
