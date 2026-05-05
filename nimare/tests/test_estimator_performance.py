@@ -354,10 +354,7 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
         and isinstance(meta_cres.estimator.kernel_transformer, kernel.KDAKernel)
         and (
             "montecarlo" in null_method
-            or (
-                null_method == "approximate"
-                and corr.method == "montecarlo"
-            )
+            or (null_method == "approximate" and corr.method == "montecarlo")
         )
     ):
         good_sensitivity = False
@@ -391,15 +388,19 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
             good_sensitivity = False
             good_specificity = True
         elif corr.method == "bonferroni":
-            if (
-                "montecarlo" in null_method
-                and isinstance(
-                    meta_cres.estimator.kernel_transformer,
-                    (kernel.KDAKernel, kernel.MKDAKernel),
+            if "montecarlo" in null_method and (
+                isinstance(meta_cres.estimator, mkda.KDA)
+                or (
+                    isinstance(meta_cres.estimator, mkda.MKDADensity)
+                    and isinstance(
+                        meta_cres.estimator.kernel_transformer,
+                        kernel.MKDAKernel,
+                    )
                 )
             ):
-                # Bonferroni is too conservative for montecarlo null with
-                # KDA/MKDA kernels which produce less precise null distributions.
+                # Bonferroni is too conservative for KDA estimator or
+                # MKDADensity+MKDAKernel with montecarlo null, which produce
+                # null distributions with insufficient resolution.
                 good_sensitivity = False
                 good_specificity = True
             elif isinstance(meta_cres.estimator, ale.ALE) and isinstance(
@@ -411,11 +412,13 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
                 # are detectable.
                 good_sensitivity = False
                 good_specificity = True
-        elif corr.method == "negcorr" and isinstance(
-            meta_cres.estimator, ale.ALE
-        ) and isinstance(
-            meta_cres.estimator.kernel_transformer,
-            (kernel.KDAKernel, kernel.MKDAKernel),
+        elif (
+            corr.method == "negcorr"
+            and isinstance(meta_cres.estimator, ale.ALE)
+            and isinstance(
+                meta_cres.estimator.kernel_transformer,
+                (kernel.KDAKernel, kernel.MKDAKernel),
+            )
         ):
             # FDR negcorr (Benjamini-Yekutieli) is more conservative than FDR
             # indep and cannot detect foci when ALE uses a mismatched kernel.
