@@ -60,31 +60,17 @@ def two_way_counts(selected, unselected, n_selected, n_unselected):
     """
     a = np.asarray(selected, dtype=np.float64)
     b = np.asarray(unselected, dtype=np.float64)
-    c = n_selected - a
-    d = n_unselected - b
-
-    total = a + b + c + d
+    total = n_selected + n_unselected
     row0 = a + b
-    row1 = c + d
-    col0 = a + c
-    col1 = b + d
+    row1 = total - row0
 
     with np.errstate(divide="ignore", invalid="ignore"):
-        exp00 = row0 * col0 / total
-        exp01 = row0 * col1 / total
-        exp10 = row1 * col0 / total
-        exp11 = row1 * col1 / total
+        numerator = total * (a * n_unselected - b * n_selected) ** 2
+        denominator = row0 * row1 * n_selected * n_unselected
+        chi_sq = numerator / denominator
 
-        chi00 = (a - exp00) ** 2 / exp00
-        chi01 = (b - exp01) ** 2 / exp01
-        chi10 = (c - exp10) ** 2 / exp10
-        chi11 = (d - exp11) ** 2 / exp11
-
-    chi00[exp00 == 0] = 1.0
-    chi01[exp01 == 0] = 1.0
-    chi10[exp10 == 0] = 1.0
-    chi11[exp11 == 0] = 1.0
-    return chi00 + chi01 + chi10 + chi11
+    chi_sq[denominator == 0] = 2.0
+    return chi_sq
 
 
 def two_way(cells):
