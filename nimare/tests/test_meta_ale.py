@@ -15,6 +15,7 @@ import nimare
 from nimare.correct import FDRCorrector, FWECorrector
 from nimare.generate import create_coordinate_dataset
 from nimare.meta import ale
+from nimare.meta.cbma import io_utils, pairwise_utils
 from nimare.meta.utils import _calculate_cluster_measures
 from nimare.results import MetaResult
 from nimare.stats import null_to_p, nullhist_to_p
@@ -803,6 +804,10 @@ def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
         results.get_map("z_desc-group1MinusGroup2", return_type="image"), nib.Nifti1Image
     )
     assert isinstance(results.get_map("z_desc-group1MinusGroup2", return_type="array"), np.ndarray)
+    assert "z_desc-group1" in results.maps
+    assert "z_desc-group2" in results.maps
+    assert "p_desc-group1" in results.maps
+    assert "p_desc-group2" in results.maps
     assert (
         "values_level-voxel_corr-fwe_method-montecarlo"
         in results.estimator.null_distributions_.keys()
@@ -818,6 +823,32 @@ def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
 
     sub_meta.save(out_file)
     assert os.path.isfile(out_file)
+
+
+def test_ALESubtraction_group_maps_are_correctable(testdata_cbma):
+    """ALESubtraction should expose group maps to generic and estimator-specific correctors."""
+    results = ale.ALESubtraction(n_iters=2, n_cores=1).fit(testdata_cbma, testdata_cbma)
+
+    fdr_result = FDRCorrector(method="indep", alpha=0.05).transform(results)
+    assert "z_desc-group1_corr-FDR_method-indep" in fdr_result.maps
+    assert "z_desc-group2_corr-FDR_method-indep" in fdr_result.maps
+
+    pairwise_fwe = FWECorrector(
+        method="montecarlo", n_iters=2, n_cores=1, vfwe_only=True
+    ).transform(results)
+    assert "z_desc-group1MinusGroup2_level-voxel_corr-FWE_method-montecarlo" in pairwise_fwe.maps
+    assert "z_desc-group1_level-voxel_corr-FWE_method-montecarlo" not in pairwise_fwe.maps
+
+    fwe_result = FWECorrector(
+        method="montecarlo",
+        n_iters=2,
+        n_cores=1,
+        vfwe_only=True,
+        target="main-effects",
+    ).transform(results)
+    assert "z_desc-group1_level-voxel_corr-FWE_method-montecarlo" in fwe_result.maps
+    assert "z_desc-group2_level-voxel_corr-FWE_method-montecarlo" in fwe_result.maps
+    assert "z_desc-group1MinusGroup2_level-voxel_corr-FWE_method-montecarlo" not in fwe_result.maps
 
 
 def test_ALESubtraction_init_vfwe_voxel_thresh_logic():
@@ -925,7 +956,7 @@ def test_ALESubtraction_streamed_tail_counts_match_chunked_path():
     right_counts = np.count_nonzero(iter_diff_values <= stat_values[None, :], axis=0).astype(
         np.uint32
     )
-    streamed_p, streamed_sign = ale._finalize_alediff_tail_counts(
+    streamed_p, streamed_sign = ale.ALESubtraction()._finalize_alediff_tail_counts(
         left_counts, right_counts, iter_diff_values.shape[0]
     )
 
@@ -964,10 +995,10 @@ def test_ALESubtraction_partitioned_summarystat_matches_combined_path():
     expected_grp1 = ale._compute_ale_summarystat(ma_arr[total_idx[:n_grp1], :])
     expected_grp2 = ale._compute_ale_summarystat(ma_arr[total_idx[n_grp1:], :])
 
-    actual_grp1 = ale._compute_partition_ale_summarystat(
+    actual_grp1 = pairwise_utils._compute_partition_ale_summarystat(
         ma_maps1, ma_maps2, total_idx[:n_grp1], n_grp1
     )
-    actual_grp2 = ale._compute_partition_ale_summarystat(
+    actual_grp2 = pairwise_utils._compute_partition_ale_summarystat(
         ma_maps1, ma_maps2, total_idx[n_grp1:], n_grp1
     )
 
@@ -981,14 +1012,14 @@ def test_ALESubtraction_partitioned_summarystat_validates_inputs():
     ma_maps2 = sp_sparse.eye(4, 6, format="csr", dtype=np.float32)
 
     with pytest.raises(ValueError, match="same number of voxels"):
-        ale._compute_partition_ale_summarystat(ma_maps1, ma_maps2, np.array([0, 1]), 3)
+        pairwise_utils._compute_partition_ale_summarystat(ma_maps1, ma_maps2, np.array([0, 1]), 3)
 
     ma_maps2 = sp_sparse.eye(4, 5, format="csr", dtype=np.float32)
     with pytest.raises(ValueError, match="n_grp1 must match"):
-        ale._compute_partition_ale_summarystat(ma_maps1, ma_maps2, np.array([0, 1]), 2)
+        pairwise_utils._compute_partition_ale_summarystat(ma_maps1, ma_maps2, np.array([0, 1]), 2)
 
     with pytest.raises(IndexError, match="out-of-bounds"):
-        ale._compute_partition_ale_summarystat(ma_maps1, ma_maps2, np.array([7]), 3)
+        pairwise_utils._compute_partition_ale_summarystat(ma_maps1, ma_maps2, np.array([7]), 3)
 
 
 def test_ALESubtraction_low_memory_matches_standard_path(testdata_cbma):
@@ -1014,6 +1045,35 @@ def test_ALESubtraction_low_memory_matches_standard_path(testdata_cbma):
         standard.estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"],
         low_memory.estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"],
     )
+
+
+def test_ALESubtraction_directional_inference_maps_gate_pairwise_results(testdata_cbma_full):
+    """Directional inference maps should zero unsupported ALE subtraction voxels."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+
+    baseline = ale.ALESubtraction(n_iters=8, n_cores=1, generate_description=False).fit(
+        dset1, dset2
+    )
+    baseline_z = baseline.get_map("z_desc-group1MinusGroup2", return_type="array")
+    pos_map = (baseline_z > 0).astype(np.int8)
+    neg_map = (baseline_z < 0).astype(np.int8)
+
+    masked = ale.ALESubtraction(n_iters=8, n_cores=1, generate_description=False).fit(
+        dset1,
+        dset2,
+        inference_map1=pos_map,
+        inference_map2=neg_map,
+    )
+
+    z_values = masked.get_map("z_desc-group1MinusGroup2", return_type="array")
+    p_values = masked.get_map("p_desc-group1MinusGroup2", return_type="array")
+    union = (pos_map > 0) | (neg_map > 0)
+
+    assert np.all(z_values[~union] == 0)
+    np.testing.assert_allclose(p_values[~union], 1.0)
+    assert np.all(z_values[pos_map <= 0] <= 0)
+    assert np.all(z_values[neg_map <= 0] >= 0)
 
 
 def test_ALESubtraction_low_memory_chunk_rows_scale_with_available_ram():
@@ -1059,7 +1119,7 @@ def test_ALESubtraction_low_memory_reuses_sample_chunk(monkeypatch, testdata_cbm
         n_voxels = ma_group.shape[1]
         stat_len = stat_values.shape[0]
 
-        store = ale._PairwiseMAStore(
+        store = pairwise_utils._PairwiseMAStore(
             group1=ma_group,
             group2=sp_sparse.csr_matrix((0, n_voxels), dtype=np.float32),
             group1_stat=stat_values,
@@ -1079,7 +1139,7 @@ def test_ALESubtraction_low_memory_reuses_sample_chunk(monkeypatch, testdata_cbm
 
 def test_ALESubtraction_pairwise_store_close_releases_refs_before_cleanup(monkeypatch):
     """Pairwise MA store should drop memmap-backed references before file cleanup."""
-    store = ale._PairwiseMAStore(
+    store = pairwise_utils._PairwiseMAStore(
         group1=object(),
         group2=object(),
         group1_stat=np.zeros(1, dtype=np.float32),
@@ -1087,7 +1147,7 @@ def test_ALESubtraction_pairwise_store_close_releases_refs_before_cleanup(monkey
         temp_files=["dummy.mmap"],
     )
 
-    monkeypatch.setattr(ale, "_close_csr_memmaps", lambda _: None)
+    monkeypatch.setattr(pairwise_utils, "_close_csr_memmaps", lambda _: None)
 
     observed = {}
 
@@ -1099,7 +1159,7 @@ def test_ALESubtraction_pairwise_store_close_releases_refs_before_cleanup(monkey
         observed["group2_stat"] = store.group2_stat
         observed["temp_files"] = store.temp_files
 
-    monkeypatch.setattr(ale, "_cleanup_temp_files", _wrapped_cleanup)
+    monkeypatch.setattr(pairwise_utils, "_cleanup_temp_files", _wrapped_cleanup)
 
     store.close()
 
@@ -1109,6 +1169,35 @@ def test_ALESubtraction_pairwise_store_close_releases_refs_before_cleanup(monkey
     assert observed["group1_stat"] is None
     assert observed["group2_stat"] is None
     assert observed["temp_files"] == []
+
+
+def test_close_memmap_array_closes_nested_memmap_base(tmp_path):
+    """Memmap cleanup should traverse ndarray view chains to the mmap owner."""
+    filename = tmp_path / "nested-view.mmap"
+    mapped = np.memmap(filename, dtype=np.float32, mode="w+", shape=(6,))
+    mapped[:] = np.arange(6, dtype=np.float32)
+    view = np.asarray(mapped)[1:5][::2]
+
+    io_utils._close_memmap_array(view)
+
+    assert mapped._mmap.closed
+
+
+def test_close_csr_memmaps_detaches_memmap_backing(tmp_path):
+    """CSR memmap cleanup should detach backing arrays before file deletion."""
+    ma_values = sp_sparse.csr_matrix(np.array([[1, 0, 2], [0, 3, 0]], dtype=np.float32))
+    mapped, filenames = ale._csr_to_memmap(ma_values, prefix="ALESubtractionUnit")
+
+    io_utils._close_csr_memmaps(mapped)
+
+    for arr in (mapped.data, mapped.indices, mapped.indptr):
+        base = arr
+        while base is not None:
+            assert getattr(base, "_mmap", None) is None
+            base = getattr(base, "base", None)
+
+    for filename in filenames:
+        os.remove(filename)
 
 
 def test_ALESubtraction_low_memory_auto_activates(monkeypatch, testdata_cbma):

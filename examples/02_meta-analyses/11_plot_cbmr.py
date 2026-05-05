@@ -1,5 +1,4 @@
-"""Coordinate-based meta-regression algorithms.
-
+"""
 .. _metas_cbmr:
 
 ===========================================

@@ -46,6 +46,16 @@ def test_p_to_logp_values_can_reuse_owned_array():
     assert np.isnan(logp_values[3])
 
 
+def test_description_references_support_underscore_keys():
+    """Reference extraction should support citation keys with underscores."""
+    bibtex = utils.get_description_references(
+        "A JALE-derived workflow was used \\citep{Frahm_Monimu_Hoffstaedter}."
+    )
+
+    assert "@misc{Frahm_Monimu_Hoffstaedter" in bibtex
+    assert "Juaml/Jale" in bibtex
+
+
 def test_find_stem():
     """Test nimare.utils._find_stem."""
     test_array = [
@@ -124,6 +134,20 @@ def test_get_template():
 
     with pytest.raises(ValueError):
         utils.get_template(space="ale_2mm", mask="gm")
+
+
+def test_mask_coverage_gm_uses_probability_template_with_binary_masker():
+    """GM null space should not rely on binary analysis-mask intensities."""
+    masker = utils.get_masker(utils.get_template(space="mni152_2mm", mask="brain"))
+
+    brain_ijk = utils._mask_coverage_to_null_ijk(masker, mask_coverage="brain")
+    gm_ijk = utils._mask_coverage_to_null_ijk(masker, mask_coverage="gm")
+
+    assert 0 < gm_ijk.shape[0] < brain_ijk.shape[0]
+
+    brain_mask = utils._mask_coverage_to_mask(masker, mask_coverage="brain")
+    gm_mask = utils._mask_coverage_to_mask(masker, mask_coverage="gm")
+    assert np.all(brain_mask[gm_mask])
 
 
 def test_get_resource_path():

@@ -88,7 +88,7 @@ Maintaining NiMARE
 ------------------
 
 Making Changes
-````````````
+``````````````
 
 Please follow the instructions specified in the 
 :doc:`contributing`.

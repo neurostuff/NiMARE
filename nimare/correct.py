@@ -274,7 +274,7 @@ class FWECorrector(Corrector):
 
     Parameters
     ----------
-    method : {'bonferoni', 'montecarlo'}
+    method : {'bonferoni', 'montecarlo', 'predictive'}
         The FWE correction to use. Note that the 'montecarlo' method is only available for
         a subset of Estimators. To determine what methods are available for the Estimator you're
         using, use :meth:`inspect`.
@@ -293,7 +293,7 @@ class FWECorrector(Corrector):
     _correction_method = "fwe"
 
     def __init__(self, method="bonferroni", n_iters=None, n_cores=1, **kwargs):
-        if method not in ("bonferroni", "montecarlo"):
+        if method not in ("bonferroni", "montecarlo", "predictive"):
             raise ValueError(f"Unsupported FWE correction method '{method}'")
 
         if method == "montecarlo":

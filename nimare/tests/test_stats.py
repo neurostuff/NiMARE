@@ -4,7 +4,7 @@ import math
 
 import numpy as np
 
-from nimare.stats import null_to_p, nullhist_to_p
+from nimare.stats import null_to_p, nullhist_to_p, one_way, two_way, two_way_counts
 
 
 def test_null_to_p_float():
@@ -99,3 +99,42 @@ def test_nullhist_to_p():
         nullhist_to_p([0, 1, 99, 100, 101], histogram_weights, histogram_bins),
         np.array([1.0, 0.99, 0.01, 0.01, 0.01]),
     )
+
+
+def test_one_way_fastpath_matches_reference_formula():
+    """one_way should match the legacy one-sample chi-square formula exactly."""
+    rng = np.random.default_rng(0)
+    data = rng.integers(0, 21, size=500, dtype=np.int16)
+    term = data.astype("float64")
+    no_term = 21 - term
+    t_exp = np.mean(term, 0)
+    t_exp = np.array([t_exp] * data.shape[0])
+    nt_exp = 21 - t_exp
+    expected = ((term - t_exp) ** 2 / t_exp) + ((no_term - nt_exp) ** 2 / nt_exp)
+
+    actual = one_way(data, 21)
+    assert np.allclose(actual, expected, equal_nan=True)
+
+
+def test_two_way_counts_matches_two_way_reference():
+    """two_way_counts should reproduce two_way for regular and degenerate tables."""
+    rng = np.random.default_rng(1)
+    selected = rng.integers(0, 21, size=500, dtype=np.int16)
+    unselected = rng.integers(0, 17, size=500, dtype=np.int16)
+
+    # Force several degenerate cases where expected cell counts hit zero.
+    selected[:4] = [0, 0, 21, 21]
+    unselected[:4] = [0, 17, 0, 17]
+
+    cells = np.squeeze(
+        np.array(
+            [
+                [selected, unselected],
+                [21 - selected, 17 - unselected],
+            ]
+        ).T
+    )
+
+    expected = two_way(cells)
+    actual = two_way_counts(selected, unselected, 21, 17)
+    assert np.allclose(actual, expected, equal_nan=True)

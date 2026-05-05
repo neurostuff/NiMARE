@@ -309,18 +309,27 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
         meta_cres.masker.transform(img).astype(bool).squeeze() for img in signal_masks
     ]
 
-    p_array = meta_cres.maps.get("p")
-    if p_array is None or corr.method == "montecarlo":
-        p_array = 10 ** -meta_cres.maps.get("logp_level-voxel_corr-FWE_method-montecarlo")
+    p_map_name = f"p{corr._name_suffix}"
+    p_array = meta_cres.maps.get(p_map_name)
+    value_type = "p"
+    if p_array is None:
+        logp_map_name = f"logp_level-voxel{corr._name_suffix}"
+        p_array = meta_cres.maps.get(logp_map_name)
+        assert p_array is not None, (
+            f"Could not find corrected p or logp map for corrector {corr}. "
+            f"Expected one of '{p_map_name}' or '{logp_map_name}'."
+        )
+        value_type = "logp"
 
     n_iters = corr.parameters.get("n_iters")
+    null_method = meta_cres.estimator.get_params().get("null_method", "")
 
     # ALE with MKDA kernel with montecarlo correction
     # combination gives poor performance
     if (
         isinstance(meta_cres.estimator, ale.ALE)
         and isinstance(meta_cres.estimator.kernel_transformer, kernel.MKDAKernel)
-        and meta_cres.estimator.get_params().get("null_method") == "approximate"
+        and null_method == "approximate"
         and corr.method != "montecarlo"
     ):
         good_sensitivity = True
@@ -328,14 +337,14 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
     elif (
         isinstance(meta_cres.estimator, ale.ALE)
         and isinstance(meta_cres.estimator.kernel_transformer, kernel.MKDAKernel)
-        and "montecarlo" in meta_cres.estimator.get_params().get("null_method")
+        and "montecarlo" in null_method
     ):
         good_sensitivity = False
         good_specificity = True
     elif (
         isinstance(meta_cres.estimator, ale.ALE)
         and isinstance(meta_cres.estimator.kernel_transformer, kernel.MKDAKernel)
-        and meta_cres.estimator.get_params().get("null_method") == "approximate"
+        and null_method == "approximate"
         and corr.method == "montecarlo"
     ):
         good_sensitivity = False
@@ -344,11 +353,8 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
         isinstance(meta_cres.estimator, ale.ALE)
         and isinstance(meta_cres.estimator.kernel_transformer, kernel.KDAKernel)
         and (
-            "montecarlo" in meta_cres.estimator.get_params().get("null_method")
-            or (
-                meta_cres.estimator.get_params().get("null_method") == "approximate"
-                and corr.method == "montecarlo"
-            )
+            "montecarlo" in null_method
+            or (null_method == "approximate" and corr.method == "montecarlo")
         )
     ):
         good_sensitivity = False
@@ -356,14 +362,14 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
     elif (
         isinstance(meta_cres.estimator, ale.ALE)
         and isinstance(meta_cres.estimator.kernel_transformer, kernel.KDAKernel)
-        and meta_cres.estimator.get_params().get("null_method") == "approximate"
+        and null_method == "approximate"
     ):
         good_sensitivity = True
         good_specificity = False
     elif (
         isinstance(meta_cres.estimator, mkda.MKDADensity)
         and isinstance(meta_cres.estimator.kernel_transformer, kernel.ALEKernel)
-        and meta_cres.estimator.get_params().get("null_method") != "reduced_montecarlo"
+        and null_method != "reduced_montecarlo"
         and corr.method != "montecarlo"
     ):
         good_sensitivity = False
@@ -371,6 +377,58 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
     else:
         good_sensitivity = True
         good_specificity = True
+
+    # Override sensitivity/specificity based on corrector conservativeness vs
+    # null distribution precision. Non-montecarlo correctors (Bonferroni, FDR)
+    # require much smaller uncorrected p-values to achieve significance.
+    if corr.method != "montecarlo":
+        if "reduced_montecarlo" in null_method:
+            # 32-iteration reduced_montecarlo produces min p=1/32≈0.03, which
+            # cannot survive Bonferroni or FDR correction across ~228K voxels.
+            good_sensitivity = False
+            good_specificity = True
+        elif corr.method == "bonferroni":
+            if "montecarlo" in null_method and (
+                (
+                    isinstance(meta_cres.estimator, mkda.KDA)
+                    and not isinstance(meta_cres.estimator.kernel_transformer, kernel.ALEKernel)
+                )
+                or (
+                    isinstance(meta_cres.estimator, mkda.MKDADensity)
+                    and isinstance(
+                        meta_cres.estimator.kernel_transformer,
+                        kernel.MKDAKernel,
+                    )
+                )
+            ):
+                # Bonferroni is too conservative for KDA estimator with
+                # non-ALE kernels, or MKDADensity+MKDAKernel, with montecarlo
+                # null distributions that have insufficient p-value resolution.
+                # ALEKernel produces precise enough null distributions to
+                # survive Bonferroni correction.
+                good_sensitivity = False
+                good_specificity = True
+            elif isinstance(meta_cres.estimator, ale.ALE) and isinstance(
+                meta_cres.estimator.kernel_transformer,
+                (kernel.KDAKernel, kernel.MKDAKernel),
+            ):
+                # Bonferroni is too conservative for ALE with mismatched
+                # approximate kernels, even though without correction the foci
+                # are detectable.
+                good_sensitivity = False
+                good_specificity = True
+        elif (
+            corr.method == "negcorr"
+            and isinstance(meta_cres.estimator, ale.ALE)
+            and isinstance(
+                meta_cres.estimator.kernel_transformer,
+                (kernel.KDAKernel, kernel.MKDAKernel),
+            )
+        ):
+            # FDR negcorr (Benjamini-Yekutieli) is more conservative than FDR
+            # indep and cannot detect foci when ALE uses a mismatched kernel.
+            good_sensitivity = False
+            good_specificity = True
 
     _check_p_values(
         p_array,
@@ -382,4 +440,5 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
         n_iters=n_iters,
         good_sensitivity=good_sensitivity,
         good_specificity=good_specificity,
+        value_type=value_type,
     )

@@ -3,7 +3,17 @@
 from importlib import import_module
 
 from . import ibma, kernel
-from .cbma import ALE, KDA, SCALE, ALESubtraction, MKDAChi2, MKDADensity, ale, mkda
+from .cbma import (
+    ALE,
+    KDA,
+    SCALE,
+    ALESubtraction,
+    BalancedALESubtraction,
+    MKDAChi2,
+    MKDADensity,
+    ale,
+    mkda,
+)
 from .ibma import (
     DerSimonianLaird,
     Fishers,
@@ -48,6 +58,7 @@ def __getattr__(name):
 __all__ = [
     "ALE",
     "ALESubtraction",
+    "BalancedALESubtraction",
     "SCALE",
     "MKDADensity",
     "MKDAChi2",

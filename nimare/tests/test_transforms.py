@@ -88,6 +88,40 @@ def test_t_to_z():
     assert np.allclose(t_arr, t_arr2)
 
 
+def test_threshold_image_array_uses_thresholding_values():
+    """threshold_image should retain image values only where thresholding values pass."""
+    image = np.array([3.0, -2.0, 1.0, 4.0], dtype=np.float32)
+    p_values = np.array([0.01, 0.2, 0.05, 0.049], dtype=np.float32)
+
+    thresholded = transforms.threshold_image(
+        image,
+        threshold=0.05,
+        thresholding_values=p_values,
+        tail="lower",
+    )
+
+    np.testing.assert_array_equal(
+        thresholded,
+        np.array([3.0, 0.0, 1.0, 4.0], dtype=np.float32),
+    )
+
+
+def test_threshold_image_nifti_preserves_affine():
+    """threshold_image should operate on Niimg-like inputs and preserve geometry."""
+    image = nib.Nifti1Image(
+        np.array([[[0.2, -0.8], [1.2, -2.4]]], dtype=np.float32),
+        affine=np.diag([2.0, 2.0, 2.0, 1.0]),
+    )
+    thresholded = transforms.threshold_image(image, threshold=1.0, tail="two-sided")
+
+    assert isinstance(thresholded, nib.Nifti1Image)
+    np.testing.assert_array_equal(
+        thresholded.get_fdata(dtype=np.float32),
+        np.array([[[0.0, 0.0], [1.2, -2.4]]], dtype=np.float32),
+    )
+    np.testing.assert_array_equal(thresholded.affine, image.affine)
+
+
 NO_OUTPUT_PATTERN = re.compile(
     (
         r"^No clusters were found for ([\w\.0-9+-]+) at a threshold of [0-9]+\.[0-9]+$|"

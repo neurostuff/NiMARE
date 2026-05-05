@@ -187,20 +187,20 @@ class CBMREstimator(Estimator):
     moderators : :obj:`~str` or obj:`~list` or obj:`~None`, optional
         CBMR can accommodate experiment-level moderators (e.g. sample size, year of publication).
         Default is CBMR without experiment-level moderators.
-        model : subclass of :class:`~nimare.meta.models.GeneralLinearModelEstimator`, optional
-                Stochastic model class used by CBMR. Available options are:
+    model : subclass of :class:`~nimare.meta.models.GeneralLinearModelEstimator`, optional
+        Stochastic model class used by CBMR. Available options are:
 
-                - :class:`~nimare.meta.models.PoissonEstimator` (default): the most efficient
-                    and widely used option, but slightly less accurate because it approximates
-                    low-rate binomial data, cannot account for over-dispersion in foci counts,
-                    and may underestimate standard errors.
-                - :class:`~nimare.meta.models.NegativeBinomialEstimator`: slower and
-                    sometimes less stable, but slightly more accurate. This model allows
-                    anticipated excess variance relative to Poisson via a group-wise
-                    overdispersion parameter shared by all experiments and voxels.
-                - :class:`~nimare.meta.models.ClusteredNegativeBinomialEstimator`: a
-                    random-effects Poisson variant that models experiment-level latent
-                    characteristics shared across the brain for a given experiment.
+        - :class:`~nimare.meta.models.PoissonEstimator` (default): the most efficient
+          and widely used option, but slightly less accurate because it approximates
+          low-rate binomial data, cannot account for over-dispersion in foci counts,
+          and may underestimate standard errors.
+        - :class:`~nimare.meta.models.NegativeBinomialEstimator`: slower and
+          sometimes less stable, but slightly more accurate. This model allows
+          anticipated excess variance relative to Poisson via a group-wise
+          overdispersion parameter shared by all experiments and voxels.
+        - :class:`~nimare.meta.models.ClusteredNegativeBinomialEstimator`: a
+          random-effects Poisson variant that models experiment-level latent
+          characteristics shared across the brain for a given experiment.
     penalty : :obj:`~bool`, optional
         Currently, the only available option is Firth-type penalty, which penalizes the
         likelihood function by Jeffreys' invariant prior and encourages convergence.

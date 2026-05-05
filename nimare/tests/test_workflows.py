@@ -7,12 +7,13 @@ import numpy as np
 import pytest
 
 import nimare
-from nimare.correct import FWECorrector
+from nimare.correct import FDRCorrector, FWECorrector
 from nimare.diagnostics import FocusCounter, Jackknife
-from nimare.meta.cbma import ALE, ALESubtraction, MKDAChi2
+from nimare.meta.cbma import ALE, ALESubtraction, MKDAChi2, MKDADensity
 from nimare.meta.ibma import Fishers, PermutedOLS, Stouffers
 from nimare.workflows import (
     CBMAWorkflow,
+    ContrastWorkflow,
     IBMAWorkflow,
     PairwiseCBMAWorkflow,
     conjunction_analysis,
@@ -219,3 +220,113 @@ def test_conjunction_analysis_smoke(tmp_path_factory):
     # Raise error if invalid image type is provided
     with pytest.raises(ValueError):
         conjunction_analysis([1, 2])
+
+
+@pytest.mark.parametrize(
+    "main_estimator,corrector,pairwise_estimator",
+    [
+        (
+            ALE(),
+            FWECorrector(method="montecarlo", n_iters=8, voxel_thresh=0.05, n_cores=1),
+            ALESubtraction(n_iters=8, n_cores=1, generate_description=False),
+        ),
+        (
+            MKDADensity(),
+            FWECorrector(method="montecarlo", n_iters=8, voxel_thresh=0.05, n_cores=1),
+            MKDAChi2(generate_description=False),
+        ),
+        (
+            ALE(),
+            FDRCorrector(method="indep", alpha=0.05),
+            ALESubtraction(n_iters=8, n_cores=1, generate_description=False),
+        ),
+        (
+            MKDADensity(),
+            FDRCorrector(method="indep", alpha=0.05),
+            MKDAChi2(generate_description=False),
+        ),
+    ],
+)
+def test_contrast_workflow_smoke(
+    testdata_cbma_full, main_estimator, corrector, pairwise_estimator
+):
+    """Contrast Workflow should emit generic contrast/main-effect/conjunction maps."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+
+    workflow = ContrastWorkflow(
+        main_estimator=main_estimator,
+        pairwise_estimator=pairwise_estimator,
+        corrector=corrector,
+        alpha=0.05,
+        n_cores=1,
+    )
+    result = workflow.fit(dset1, dset2)
+
+    assert isinstance(result, nimare.results.MetaResult)
+    assert "z_desc-group1MainEffect" in result.maps
+    assert "z_desc-group2MainEffect" in result.maps
+    assert "z_desc-conjunction" in result.maps
+    assert "z_desc-contrast" in result.maps
+    assert "p_desc-contrast" in result.maps
+    assert "logp_desc-contrast" in result.maps
+    assert "Group 1 main-effect analysis" in result.description_
+    assert "Group 2 main-effect analysis" in result.description_
+    assert "Masked contrast workflow" in result.description_
+    assert "directional inference masks" in result.description_
+    assert "laird2005ale" in result.bibtex_
+    assert "Frahm_Monimu_Hoffstaedter" in result.bibtex_
+
+
+@pytest.mark.parametrize(
+    "main_estimator,corrector,pairwise_estimator",
+    [
+        ("ale", "fdr", "alesubtraction"),
+        ("mkdadensity", "bonferroni", "mkdachi2"),
+        # None corrector should fall back to the FDRCorrector default.
+        (ALE, None, ALESubtraction),
+    ],
+)
+def test_contrast_workflow_string_and_none_inputs(
+    testdata_cbma_full, main_estimator, corrector, pairwise_estimator
+):
+    """Contrast Workflow should accept strings, classes, and None corrector."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+
+    workflow = ContrastWorkflow(
+        main_estimator=main_estimator,
+        pairwise_estimator=pairwise_estimator,
+        corrector=corrector,
+        alpha=0.05,
+        n_cores=1,
+    )
+    # Keep iterations low so the test finishes quickly.
+    if hasattr(workflow.pairwise_estimator, "n_iters"):
+        workflow.pairwise_estimator.n_iters = 8
+
+    result = workflow.fit(dset1, dset2)
+
+    assert isinstance(result, nimare.results.MetaResult)
+    assert "z_desc-group1MainEffect" in result.maps
+    assert "z_desc-group2MainEffect" in result.maps
+    assert "z_desc-conjunction" in result.maps
+    assert "z_desc-contrast" in result.maps
+
+
+def test_contrast_workflow_ale_thresholding_path_smoke(testdata_cbma_full):
+    """ALE ContrastWorkflow should run without the removed estimator helper."""
+    assert not hasattr(ALE, "jale_corrected_map")
+
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+    workflow = ContrastWorkflow(
+        corrector=FWECorrector(method="montecarlo", n_iters=8, voxel_thresh=0.05, n_cores=1),
+        pairwise_estimator=ALESubtraction(n_iters=8, n_cores=1, generate_description=False),
+        alpha=0.05,
+        n_cores=1,
+    )
+
+    result = workflow.fit(dset1, dset2)
+
+    assert isinstance(result, nimare.results.MetaResult)

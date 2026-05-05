@@ -1,5 +1,6 @@
 """CBMA methods from the ALE and MKDA families."""
 
+import copy
 import logging
 from abc import abstractmethod
 
@@ -25,6 +26,7 @@ from nimare.utils import (
     _add_metadata_to_dataframe,
     _check_ncores,
     _check_type,
+    _mask_coverage_to_null_ijk,
     _mask_img_to_bool,
     _p_to_logp_values,
     get_masker,
@@ -72,6 +74,13 @@ class CBMAEstimator(Estimator):
     memory_level : :obj:`int`, default=0
         Rough estimator of the amount of memory used by caching.
         Higher value means more memory for caching. Zero means no caching.
+    mask_coverage : {"gm", "brain"}, optional
+        Voxel set from which random null foci are drawn when building
+        Monte Carlo null distributions. ``"gm"`` restricts sampling to voxels
+        with mask-image intensity above 0.1 (the ICBM 10 % GM probability
+        map). ``"brain"`` uses every non-zero
+        voxel in the mask. Has no effect when ``null_method="approximate"``.
+        Default is ``"brain"``.
     *args
         Optional arguments to the :obj:`~nimare.base.Estimator` __init__
         (called automatically).
@@ -92,8 +101,13 @@ class CBMAEstimator(Estimator):
         generate_description=True,
         *,
         mask=None,
+        mask_coverage="brain",
         **kwargs,
     ):
+        if mask_coverage not in ("gm", "brain"):
+            raise ValueError(f"mask_coverage must be 'gm' or 'brain'; got {mask_coverage!r}.")
+        self.mask_coverage = mask_coverage
+
         if mask is not None:
             mask = get_masker(mask, memory=memory, memory_level=memory_level)
         self.masker = mask
@@ -108,8 +122,13 @@ class CBMAEstimator(Estimator):
 
         # Get kernel transformer
         kernel_args = {k.split("kernel__")[1]: v for k, v in kernel_args.items()}
-        if "memory" not in kernel_args.keys() and "memory_level" not in kernel_args.keys():
-            kernel_args.update(memory=memory, memory_level=memory_level)
+        # Only forward memory settings to the kernel when it is still a class.
+        # If it is already an instance (e.g. a deepcopy passed from a pairwise
+        # estimator's internal helpers), the memory settings are already embedded
+        # in the instance and passing them again would trigger a spurious warning.
+        if not isinstance(kernel_transformer, KernelTransformer):
+            if "memory" not in kernel_args.keys() and "memory_level" not in kernel_args.keys():
+                kernel_args.update(memory=memory, memory_level=memory_level)
         kernel_transformer = _check_type(kernel_transformer, KernelTransformer, **kernel_args)
         self.kernel_transformer = kernel_transformer
 
@@ -152,6 +171,7 @@ class CBMAEstimator(Estimator):
                 "Dataset with a `target` and/or `mask` so `dataset.masker` is defined."
             ),
         )
+        self.masker = masker
 
         for name, (type_, _) in self._required_inputs.items():
             if type_ == "coordinates":
@@ -319,6 +339,73 @@ class CBMAEstimator(Estimator):
         """
         return None
 
+    def _prepare_subsample_null(self, ma_maps, subset_study_ids=None):
+        """Set up estimator state needed for approximate-null computation on a subsample.
+
+        Called within a deep-copied estimator before ``_approximate_z_from_ma`` runs its
+        standard pipeline, so mutations here are safe. Override in subclasses that need
+        per-subsample pre-state (e.g. ALE needs ``_study_max_ma_values``; MKDADensity
+        needs ``weight_vec_`` recomputed for the subset).
+
+        Parameters
+        ----------
+        ma_maps : scipy.sparse.csr_matrix of shape (k, n_voxels)
+            The (sub)set of MA maps that will be analysed.
+        subset_study_ids : array-like of str, optional
+            Study IDs corresponding to the rows of *ma_maps*.  ``None`` means
+            all studies from the original fit are represented.
+        """
+
+    def _generate_random_null_ma(self, target_n, sample_space, rng):
+        """Generate a random MA matrix for one Monte Carlo cluster-null iteration.
+
+        The default implementation randomly re-places each focus within
+        *sample_space* while preserving the study structure, then transforms
+        through the estimator's kernel.  ALE overrides this to use
+        sample-size-aware Gaussian kernels.
+
+        Parameters
+        ----------
+        target_n : int
+            Number of studies to include in the random draw.
+        sample_space : :class:`numpy.ndarray` of shape (M, 3)
+            Integer IJK coordinates of voxels eligible for random focus placement.
+        rng : :class:`numpy.random.RandomState`
+            Random state for reproducibility.
+
+        Returns
+        -------
+        ma_maps : scipy.sparse.csr_matrix of shape (target_n, n_voxels)
+            Random MA maps.
+        subset_study_ids : array-like of str or None
+            Study IDs used (None when target_n == n_studies).
+        """
+        from nimare.meta.cbma.utils import require_masked_csr
+
+        all_study_ids = list(self.inputs_["id"])
+        if target_n < len(all_study_ids):
+            chosen = rng.choice(len(all_study_ids), size=target_n, replace=False)
+            subset_study_ids = np.array(all_study_ids)[chosen]
+        else:
+            subset_study_ids = None
+
+        coords = self.inputs_["coordinates"]
+        if subset_study_ids is not None:
+            coords = coords[coords["id"].isin(subset_study_ids)]
+
+        focus_idx = rng.randint(0, sample_space.shape[0], size=coords.shape[0])
+        iter_df = coords.drop(columns=["x", "y", "z"], errors="ignore").copy()
+        iter_df[["i", "j", "k"]] = sample_space[focus_idx, :]
+
+        return (
+            require_masked_csr(
+                self.kernel_transformer.transform(
+                    iter_df, masker=self.masker, return_type="sparse"
+                )
+            ),
+            subset_study_ids,
+        )
+
     def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", return_type="sparse"):
         """Collect modeled activation maps from Estimator inputs.
 
@@ -474,6 +561,17 @@ class CBMAEstimator(Estimator):
         z_values = p_to_z(p_values, tail="one")
         return p_values, z_values
 
+    def _compute_approximate_z_values(self, ma_maps):
+        """Compute summary statistics and approximate-null z-values from prepared MA maps."""
+        stat_values = self._compute_summarystat_est(ma_maps)
+        self._determine_histogram_bins(ma_maps)
+        self._compute_null_approximate(ma_maps)
+        _, z_values = self._summarystat_to_p(stat_values, null_method="approximate")
+        return (
+            stat_values.astype(DEFAULT_FLOAT_DTYPE, copy=False),
+            z_values.astype(DEFAULT_FLOAT_DTYPE, copy=False),
+        )
+
     def _p_to_summarystat(self, p, null_method=None):
         """Compute a summary statistic threshold that corresponds to the provided p-value.
 
@@ -622,7 +720,7 @@ class CBMAEstimator(Estimator):
         "histweights_corr-none_method-montecarlo" and
         "histweights_level-voxel_corr-fwe_method-montecarlo".
         """
-        null_ijk = np.vstack(np.where(_mask_img_to_bool(self.masker.mask_img))).T
+        null_ijk = _mask_coverage_to_null_ijk(self.masker, mask_coverage=self.mask_coverage)
 
         n_cores = _check_ncores(n_cores)
 
@@ -829,7 +927,7 @@ class CBMAEstimator(Estimator):
                     "Running permutations from scratch."
                 )
 
-            null_ijk = np.vstack(np.where(_mask_img_to_bool(self.masker.mask_img))).T
+            null_ijk = _mask_coverage_to_null_ijk(self.masker, mask_coverage=self.mask_coverage)
 
             n_cores = _check_ncores(n_cores)
 
@@ -913,7 +1011,10 @@ class CBMAEstimator(Estimator):
                         nib.Nifti1Image(p_cmfwe_map, self.masker.mask_img.affine)
                     )
                 )
-                logp_cmfwe_values = _p_to_logp_values(p_cmfwe_values, dtype=DEFAULT_FLOAT_DTYPE)
+                logp_cmfwe_values = _p_to_logp_values(
+                    p_cmfwe_values,
+                    dtype=DEFAULT_FLOAT_DTYPE,
+                )
                 z_cmfwe_values = p_to_z(p_cmfwe_values, tail="one")
 
                 # Cluster size-based inference
@@ -926,7 +1027,10 @@ class CBMAEstimator(Estimator):
                         nib.Nifti1Image(p_csfwe_map, self.masker.mask_img.affine)
                     )
                 )
-                logp_csfwe_values = _p_to_logp_values(p_csfwe_values, dtype=DEFAULT_FLOAT_DTYPE)
+                logp_csfwe_values = _p_to_logp_values(
+                    p_csfwe_values,
+                    dtype=DEFAULT_FLOAT_DTYPE,
+                )
                 z_csfwe_values = p_to_z(p_csfwe_values, tail="one")
 
                 self.null_distributions_[
@@ -944,7 +1048,10 @@ class CBMAEstimator(Estimator):
             )
 
         z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
-        logp_vfwe_values = _p_to_logp_values(p_vfwe_values, dtype=DEFAULT_FLOAT_DTYPE)
+        logp_vfwe_values = _p_to_logp_values(
+            p_vfwe_values,
+            dtype=DEFAULT_FLOAT_DTYPE,
+        )
 
         if vfwe_only:
             # Return unthresholded value images
@@ -1035,7 +1142,69 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         """
         raise NotImplementedError
 
-    def fit(self, dataset1, dataset2, drop_invalid=True, ma_maps1=None, ma_maps2=None):
+    @staticmethod
+    def _coerce_inference_map(inference_map, masker, label):
+        """Coerce a directional inference map into masked-array form."""
+        if inference_map is None:
+            return None
+
+        if hasattr(inference_map, "shape") and not isinstance(inference_map, np.ndarray):
+            try:
+                values = np.squeeze(masker.transform(inference_map))
+            except Exception as exc:
+                raise ValueError(
+                    f"{label} must be a 1D masked array or an image aligned to the estimator mask."
+                ) from exc
+        else:
+            values = np.asarray(inference_map)
+            if values.ndim != 1:
+                raise ValueError(
+                    f"{label} must be a one-dimensional masked array; got shape {values.shape}."
+                )
+
+        _, mask_img = get_masker_mask_image(masker)
+        expected_n_voxels = int(np.squeeze(masker.transform(mask_img)).shape[0])
+        if values.shape[0] != expected_n_voxels:
+            raise ValueError(
+                f"{label} has {values.shape[0]} voxels, but the estimator mask has "
+                f"{expected_n_voxels} voxels."
+            )
+
+        return np.asarray(values, dtype=DEFAULT_FLOAT_DTYPE).copy()
+
+    @staticmethod
+    def _permute_pairwise_group_indices(n_total, n_group1, seed):
+        """Generate randomized group memberships for pairwise permutation tests.
+
+        Parameters
+        ----------
+        n_total : int
+            Total number of studies in the pooled dataset.
+        n_group1 : int
+            Number of studies in the first group.
+        seed : int
+            Seed for the random generator.
+
+        Returns
+        -------
+        group1_idx, group2_idx : :obj:`numpy.ndarray`
+            Integer index arrays for the permuted group assignments.
+        """
+        gen = np.random.default_rng(seed=seed)
+        id_idx = np.arange(n_total)
+        gen.shuffle(id_idx)
+        return id_idx[:n_group1], id_idx[n_group1:]
+
+    def fit(
+        self,
+        dataset1,
+        dataset2,
+        drop_invalid=True,
+        ma_maps1=None,
+        ma_maps2=None,
+        inference_map1=None,
+        inference_map2=None,
+    ):
         """Fit Estimator to two collections.
 
         Parameters
@@ -1048,6 +1217,10 @@ class PairwiseCBMAEstimator(CBMAEstimator):
             respectively. When provided, the estimator will reuse these maps instead of
             recomputing them from coordinates. These are typically 2D
             study-by-masked-voxel sparse matrices.
+        inference_map1/inference_map2 : array_like or Niimg-like, optional
+            Optional directional inference maps aligned to the common masked voxel space.
+            Positive pairwise effects are only evaluated where ``inference_map1 > 0``, and
+            negative pairwise effects are only evaluated where ``inference_map2 > 0``.
 
         Returns
         -------
@@ -1090,6 +1263,13 @@ class PairwiseCBMAEstimator(CBMAEstimator):
 
         self.inputs_["id2"] = self.inputs_.pop("id")
         self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
+        inference_masker = self.masker or dataset1.masker
+        self.inputs_["inference_map1"] = self._coerce_inference_map(
+            inference_map1, masker=inference_masker, label="inference_map1"
+        )
+        self.inputs_["inference_map2"] = self._coerce_inference_map(
+            inference_map2, masker=inference_masker, label="inference_map2"
+        )
 
         # Now run the Estimator-specific _fit() method.
         maps, tables, description = self._cache(self._fit, func_memory_level=1)(dataset1, dataset2)
@@ -1102,3 +1282,35 @@ class PairwiseCBMAEstimator(CBMAEstimator):
             masker = dataset1.masker
 
         return MetaResult(self, mask=masker, maps=maps, tables=tables, description=description)
+
+
+def _approximate_z_from_ma(estimator, ma_maps, subset_study_ids=None):
+    """Compute summary statistics and approximate-null z-values for a (sub)set of MA maps.
+
+    The null distribution is derived from *ma_maps* itself, so each call is
+    self-contained and safe to call in parallel.  The estimator is deep-copied
+    internally, so the caller's object is never mutated.
+
+    Parameters
+    ----------
+    estimator : :class:`CBMAEstimator`
+        A *fitted* estimator whose methods are used for computation.
+    ma_maps : scipy.sparse.csr_matrix of shape (k, n_voxels)
+        Modeled activation maps for the (sub)set of studies.
+    subset_study_ids : array-like of str, optional
+        Study IDs for the rows of *ma_maps*.  Passed to
+        ``_prepare_subsample_null`` so that estimators with dataset-dependent
+        pre-state (e.g. MKDADensity ``weight_vec_``) can recompute it
+        correctly for the subset.  ``None`` means all studies.
+
+    Returns
+    -------
+    stat_values : :class:`numpy.ndarray` of shape (n_voxels,)
+        Summary-statistic values (e.g. ALE scores or OF scores).
+    z_values : :class:`numpy.ndarray` of shape (n_voxels,)
+        Approximate-null z-values.
+    """
+    temp = copy.deepcopy(estimator)
+    temp.null_distributions_ = {}
+    temp._prepare_subsample_null(ma_maps, subset_study_ids)
+    return temp._compute_approximate_z_values(ma_maps)

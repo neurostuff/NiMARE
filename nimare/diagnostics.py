@@ -4,6 +4,7 @@ import copy
 import logging
 from abc import abstractmethod
 
+import nibabel as nib
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
@@ -14,7 +15,16 @@ from tqdm.auto import tqdm
 
 from nimare.base import NiMAREBase
 from nimare.dataset import Dataset
-from nimare.meta.cbma.base import PairwiseCBMAEstimator
+from nimare.meta.cbma.base import (
+    CBMAEstimator,
+    PairwiseCBMAEstimator,
+    _approximate_z_from_ma,
+)
+from nimare.meta.cbma.utils import (
+    _threshold_z_clusters,
+    generate_subset_schedule,
+    resolve_subset_size,
+)
 from nimare.meta.ibma import IBMAEstimator
 from nimare.nimads import Studyset
 from nimare.studyset import normalize_collection
@@ -22,6 +32,7 @@ from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
     _filter_kwargs,
+    _mask_coverage_to_null_ijk,
     get_masker,
     mm2vox,
 )
@@ -652,6 +663,297 @@ class FocusCounter(Diagnostics):
             focus_counts.append(n_included_voxels)
 
         return np.array(focus_counts)
+
+
+class ResampledStability(NiMAREBase):
+    """Estimate voxelwise stability of thresholded results under dataset resampling.
+
+    Determine the stability of a meta-analytic result by applying a resampling policy to the
+    input dataset and then characterizing the stability of the resulting
+    meta-analytic map's voxelwise and/or clusterwise significance.
+    Based on the implementation in :footcite:t:`Frahm_Monimu_Hoffstaedter`.
+
+    Parameters
+    ----------
+    target_image : 'str', optional
+        The meta-analytic map for which stability will be characterized.
+    resampling_policy : {"leave_1_out", "leave_k_out", "subsample"}, optional
+        The resampling policy to use.
+    k : int, optional
+        The number of studies to leave out for each replicate when
+        ``resampling_policy="leave_k_out"``.
+        Must be between 1 and n-1, where n is the number of studies in the meta-analysis.
+    target_n : int, optional
+        The number of studies to include in each replicate when ``resampling_policy="subsample"``.
+        Must be between 1 and n, where n is the number of studies in the meta-analysis.
+        Default is n (i.e., subsamples are the same size as the original dataset).
+    n_resamples : int, optional
+        The number of resampled replicates to generate.
+        If None, all possible unique replicates will be generated,
+        up to a maximum of 1000 (to avoid combinatorial explosion).
+    random_state : int or None, optional
+        Random seed for reproducibility when random sampling is used in the resampling policy.
+        Default is None.
+    voxel_thresh : float or None, optional
+        An optional voxel-level threshold that may be applied to the ``target_image``
+        to define clusters.
+        This can be None if the ``target_image`` is already thresholded
+        (e.g., a cluster-level corrected map). Default is None.
+    cluster_threshold : int or None, optional
+        Cluster size threshold, in voxels.
+        If None, then no cluster size threshold will be applied.
+        Default is None.
+    mask_coverage : {"gm", "brain"}, optional
+        Voxel set used as the randomisation prior for the ``"subsample"``
+        policy.  ``"gm"`` restricts random foci to grey-matter voxels (mask
+        image intensity > 0.1); ``"brain"`` uses all non-zero voxels.
+        Default is ``"gm"``.
+    alpha : float, optional
+        Family-wise error rate for the Monte Carlo cluster-size threshold used
+        in the ``"subsample"`` policy.  The ``(1 - alpha)`` percentile of the
+        permutation null distribution is applied. Default is 0.05.
+    n_cores : int, optional
+        Number of cores to use for parallelization.
+        If <=0, defaults to using all available cores. Default is 1.
+    """
+
+    def __init__(
+        self,
+        target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
+        resampling_policy="subsample",
+        k=None,
+        target_n=None,
+        n_resamples=None,
+        random_state=None,
+        voxel_thresh=None,
+        cluster_threshold=None,
+        mask_coverage="gm",
+        alpha=0.05,
+        n_cores=1,
+    ):
+        if mask_coverage not in ("gm", "brain"):
+            raise ValueError("mask_coverage must be 'gm' or 'brain'.")
+        if not 0 < alpha < 1:
+            raise ValueError(f"alpha must be between 0 and 1; got {alpha}.")
+        self.target_image = target_image
+        self.resampling_policy = resampling_policy
+        self.k = k
+        self.target_n = target_n
+        self.n_resamples = n_resamples
+        self.random_state = random_state
+        self.voxel_thresh = voxel_thresh
+        self.cluster_threshold = cluster_threshold
+        self.mask_coverage = mask_coverage
+        self.alpha = alpha
+        self.n_cores = _check_ncores(n_cores)
+
+    def _resolve_subsets(self, n_studies):
+        """Build a replicate schedule in study-index space."""
+        target_n = resolve_subset_size(
+            self.resampling_policy,
+            n_studies,
+            k=self.k,
+            target_n=self.target_n,
+        )
+        subsets = generate_subset_schedule(
+            n_studies,
+            target_n,
+            n_samples=self.n_resamples,
+            random_state=self.random_state,
+        )
+        return subsets, target_n
+
+    def _extract_binary_support(self, result):
+        """Convert the selected target image into a binary support vector."""
+        if self.target_image not in result.maps:
+            if result.corrector is None:
+                raise ValueError(
+                    f"Target image '{self.target_image}' is not present in replicate results."
+                )
+            result = result.corrector.transform(result)
+            if self.target_image not in result.maps:
+                raise ValueError(
+                    f"Target image '{self.target_image}' is not present even after "
+                    "reapplying the original corrector."
+                )
+
+        if self.voxel_thresh is None and self.cluster_threshold is None:
+            values = result.get_map(self.target_image, return_type="array")
+            return (np.abs(values) > 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+
+        target_img = result.get_map(self.target_image, return_type="image")
+        data = target_img.get_fdata(dtype=DEFAULT_FLOAT_DTYPE)
+        two_sided = getattr(result.estimator, "two_sided", bool((data < 0).any()))
+        stat_threshold = self.voxel_thresh or 0
+        cluster_threshold = 0 if self.cluster_threshold is None else self.cluster_threshold
+        _, label_maps = get_clusters_table(
+            target_img,
+            stat_threshold,
+            cluster_threshold,
+            two_sided=two_sided,
+            return_label_maps=True,
+        )
+        if not label_maps:
+            return np.zeros(
+                result.masker.transform(target_img).shape[-1], dtype=DEFAULT_FLOAT_DTYPE
+            )
+
+        support = np.zeros_like(data, dtype=bool)
+        for label_map in label_maps:
+            support |= np.asanyarray(label_map.dataobj) > 0
+        return np.squeeze(
+            result.masker.transform(nib.Nifti1Image(support.astype(np.int8), target_img.affine))
+        ).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+
+    def _fit_replicate(self, kept_ids, result):
+        """Refit the estimator on one retained-id subset and return binary support."""
+        estimator = copy.deepcopy(result.estimator)
+        dataset = estimator.dataset.slice(list(kept_ids))
+        replicate_result = estimator.fit(dataset)
+        if result.corrector is not None and self.target_image not in replicate_result.maps:
+            replicate_result = result.corrector.transform(replicate_result)
+        return self._extract_binary_support(replicate_result)
+
+    def _fit_cbma_subset_replicate(
+        self, subset_idx, ma_maps, estimator, study_ids, cluster_threshold
+    ):
+        """Compute one CBMA replicate from cached MA maps for a retained-study subset."""
+        subset_ma = ma_maps[subset_idx, :]
+        subset_study_ids = study_ids[subset_idx]
+        _, z_values = _approximate_z_from_ma(estimator, subset_ma, subset_study_ids)
+        z_values, _ = _threshold_z_clusters(
+            z_values,
+            estimator.masker,
+            voxel_thresh=self.voxel_thresh or 0.001,
+            cluster_size_threshold=cluster_threshold,
+        )
+        return (z_values > 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+
+    def _cbma_subset_stability(self, result, subsets, target_n):
+        """Run cached-MA stability analysis for any single-sample CBMA estimator."""
+        # Deep copy protects result.estimator from _collect_ma_maps side-effects
+        # (ALE sets _study_max_ma_values during map collection).
+        estimator = copy.deepcopy(result.estimator)
+        ma_maps = estimator._collect_ma_maps()
+        montecarlo_iters = (
+            result.corrector.parameters.get("n_iters", 5000)
+            if result.corrector is not None
+            else 5000
+        )
+        cluster_forming_threshold = self.voxel_thresh or 0.001
+        study_ids = np.array(estimator.inputs_["id"])
+        sample_space = _mask_coverage_to_null_ijk(
+            estimator.masker, mask_coverage=self.mask_coverage
+        ).astype(np.int32, copy=False)
+
+        rng = np.random.RandomState(self.random_state)
+        null_cluster_sizes = np.zeros(montecarlo_iters, dtype=np.int32)
+        for i_iter in range(montecarlo_iters):
+            null_ma, subset_ids = estimator._generate_random_null_ma(target_n, sample_space, rng)
+            _, null_z = _approximate_z_from_ma(estimator, null_ma, subset_ids)
+            _, null_cluster_sizes[i_iter] = _threshold_z_clusters(
+                null_z,
+                estimator.masker,
+                voxel_thresh=cluster_forming_threshold,
+                cluster_size_threshold=None,
+            )
+
+        cluster_threshold = np.percentile(null_cluster_sizes, 100.0 * (1.0 - self.alpha))
+
+        running_sum = None
+        n_done = 0
+        for support in tqdm(
+            Parallel(return_as="generator", n_jobs=self.n_cores)(
+                delayed(self._fit_cbma_subset_replicate)(
+                    subset_idx, ma_maps, estimator, study_ids, cluster_threshold
+                )
+                for subset_idx in subsets
+            ),
+            total=len(subsets),
+        ):
+            running_sum = (
+                support.astype(np.float64) if running_sum is None else running_sum + support
+            )
+            n_done += 1
+
+        return (running_sum / n_done).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+
+    def _finalize_result(self, result, stability_map, n_resamples_used, target_n_used):
+        """Attach stability map and summary table to a copied result object."""
+        result = result.copy()
+        map_name = f"{self.target_image}_diag-ResampledStability"
+        result.maps[map_name] = stability_map
+        result.tables[f"{map_name}_tab-summary"] = pd.DataFrame(
+            [
+                {
+                    "target_image": self.target_image,
+                    "resampling_policy": self.resampling_policy,
+                    "n_resamples": n_resamples_used,
+                    "target_n": target_n_used,
+                    "k": self.k,
+                    "random_state": self.random_state,
+                }
+            ]
+        )
+        result.diagnostics.append(self)
+        result.description_ += (
+            " Voxelwise stability of thresholded results was estimated by repeatedly "
+            "resampling the input dataset, recomputing thresholded support maps, and averaging "
+            "the binary support across resamples. This diagnostic follows the resampling-based "
+            "stability approach implemented in JALE \\citep{Frahm_Monimu_Hoffstaedter}."
+        )
+        return result
+
+    def transform(self, result):
+        """Apply the resampling diagnostic to a fitted meta-analytic result."""
+        if issubclass(type(result.estimator), PairwiseCBMAEstimator):
+            raise ValueError(
+                "ResampledStability currently supports single-sample estimators only."
+            )
+        if not isinstance(result.estimator, (CBMAEstimator, IBMAEstimator)):
+            raise ValueError(
+                "ResampledStability only supports CBMA and single-sample IBMA estimators."
+            )
+
+        if not hasattr(result.estimator, "dataset") or result.estimator.dataset is None:
+            raise ValueError(
+                "ResampledStability requires a fitted estimator with a retained dataset."
+            )
+
+        all_ids = list(result.estimator.inputs_["id"])
+        subsets, target_n_used = self._resolve_subsets(len(all_ids))
+
+        if isinstance(result.estimator, CBMAEstimator):
+            stability_map = self._cbma_subset_stability(result, subsets, target_n_used)
+            return self._finalize_result(
+                result,
+                stability_map,
+                n_resamples_used=len(subsets),
+                target_n_used=target_n_used,
+            )
+
+        kept_id_lists = [[all_ids[i] for i in subset] for subset in subsets]
+
+        running_sum = None
+        n_done = 0
+        for support in tqdm(
+            Parallel(return_as="generator", n_jobs=self.n_cores)(
+                delayed(self._fit_replicate)(kept_ids, result) for kept_ids in kept_id_lists
+            ),
+            total=len(kept_id_lists),
+        ):
+            running_sum = (
+                support.astype(np.float64) if running_sum is None else running_sum + support
+            )
+            n_done += 1
+
+        stability_map = (running_sum / n_done).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        return self._finalize_result(
+            result,
+            stability_map,
+            n_resamples_used=len(kept_id_lists),
+            target_n_used=target_n_used,
+        )
 
 
 class FocusFilter(NiMAREBase):

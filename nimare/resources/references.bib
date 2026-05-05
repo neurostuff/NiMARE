@@ -1,3 +1,24 @@
+@misc{Frahm_Monimu_Hoffstaedter,
+    title={Juaml/Jale},
+    url={https://github.com/juaml/JALE},
+    journal={Juaml/JALE},
+    author={Frahm, Lennart and Monimu and Hoffstaedter, Felix}
+} 
+@article{10.1162/imag_a_00423,
+    author = {Frahm, Lennart and Patil, Kaustubh R. and Satterthwaite, Theodore D. and Fox, Peter T. and Eickhoff, Simon B. and Langner, Robert},
+    title = {Predictive modeling of significance thresholding in activation likelihood estimation meta-analysis},
+    journal = {Imaging Neuroscience},
+    volume = {3},
+    pages = {imag_a_00423},
+    year = {2025},
+    month = {01},
+    abstract = {Activation Likelihood Estimation (ALE) employs voxel- or cluster-level family-wise error (vFWE or cFWE) correction or threshold-free cluster enhancement (TFCE) to counter false positives due to multiple comparisons. These corrections utilize Monte-Carlo simulations to approximate a null distribution of spatial convergence, which allows for the determination of a corrected significance threshold. The simulations may take many hours depending on the dataset and the hardware used to run the computations. In this study, we aimed to replace the time-consuming Monte-Carlo simulation procedure with an instantaneous machine-learning prediction based on features of the meta-analysis dataset. These features were created from the number of experiments in the dataset, the number of subjects per experiment, and the number of foci reported per experiment. We simulated 68,100 training datasets, containing between 10 and 150 experiments and computed the vFWE, cFWE, and TFCE significance thresholds. We then used this data to train one XGBoost regression model for each thresholding technique. Lastly, we validated the performance of the three models using 11 independent real-life datasets (21 contrasts) from previously published ALE meta-analyses. The vFWE model reached near-perfect prediction levels (R² = 0.996), while the TFCE and cFWE models achieved very good prediction accuracies of R² = 0.951 and R² = 0.938, respectively. This means that, on average, the difference between predicted and standard (monte-carlo based) cFWE thresholds was less than two voxels. Given that our model predicts significance thresholds in ALE meta-analyses with very high accuracy, we advocate our efficient prediction approach as a replacement for the currently used Monte-Carlo simulations in future ALE analyses. This will save hours of computation time and reduce energy consumption. Furthermore, the reduced compute time allows for easier implementation of multi-analysis set-ups like leave-one-out sensitivity analysis or subsampling.},
+    issn = {2837-6056},
+    doi = {10.1162/imag_a_00423},
+    url = {https://doi.org/10.1162/imag_a_00423},
+    eprint = {https://direct.mit.edu/imag/article-pdf/doi/10.1162/imag_a_00423/2483917/imag_a_00423.pdf},
+}
+
 @article{10.3389/fninf.2014.00014,
   title={Machine learning for neuroimaging with scikit-learn},
   author={Abraham, Alexandre and Pedregosa, Fabian and Eickenberg, Michael and Gervais, Philippe and Mueller, Andreas and Kossaifi, Jean and Gramfort, Alexandre and Thirion, Bertrand and Varoquaux, Gael},

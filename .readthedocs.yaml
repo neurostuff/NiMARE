@@ -21,3 +21,4 @@ python:
       extra_requirements:
         - doc
         - cbmr
+        - predictive

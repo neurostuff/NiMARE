@@ -74,43 +74,57 @@ def _check_p_values(
     n_iters=None,
     good_sensitivity=True,
     good_specificity=True,
+    value_type="p",
 ):
-    """Check if p-values are within the correct range."""
+    """Check if corrected p or logp values are within the correct range."""
     ################################################
-    # CHECK IF P-VALUES ARE WITHIN THE CORRECT RANGE
+    # CHECK IF P-VALUES OR LOGP VALUES ARE WITHIN THE CORRECT RANGE
     ################################################
-    if n_iters:
-        # Compare in the same dtype as p_array to avoid numpy 2.4+ float32/float64
-        # comparison semantics where float32(0.01) < float64(0.01).
-        p_dtype = p_array.dtype
-        assert p_array.min() >= p_dtype.type(1.0 / n_iters)
-        assert p_array.max() <= p_dtype.type(1.0 - 1.0 / n_iters)
+    if value_type == "p":
+        if n_iters:
+            # Compare in the same dtype as p_array to avoid numpy 2.4+ float32/float64
+            # comparison semantics where float32(0.01) < float64(0.01).
+            p_dtype = p_array.dtype
+            assert p_array.min() >= p_dtype.type(1.0 / n_iters)
+            assert p_array.max() <= p_dtype.type(1.0 - 1.0 / n_iters)
+        else:
+            assert (p_array >= 0).all() and (p_array <= 1).all()
+        threshold = alpha
+        compare_sig = np.less
+        compare_nonsig = np.greater
     else:
-        assert (p_array >= 0).all() and (p_array <= 1).all()
+        assert (p_array >= 0).all()
+        if n_iters:
+            logp_dtype = p_array.dtype
+            assert p_array.min() >= logp_dtype.type(0.0)
+            assert p_array.max() <= logp_dtype.type(-np.log10(1.0 / n_iters))
+        threshold = -np.log10(alpha)
+        compare_sig = np.greater
+        compare_nonsig = np.less
 
-    p_map = masker.inverse_transform(p_array).get_fdata()
+    value_map = masker.inverse_transform(p_array).get_fdata()
 
-    # reformat coordinate indices to index p_map
+    # reformat coordinate indices to index the value map
     gtf_idx = [
         [ground_truth_foci_ijks[i][j] for i in range(len(ground_truth_foci_ijks))]
         for j in range(3)
     ]
 
-    best_chance_p_values = p_map[tuple(gtf_idx)]
-    assert all(best_chance_p_values < ALPHA) == good_sensitivity
+    best_chance_values = value_map[tuple(gtf_idx)]
+    assert all(compare_sig(best_chance_values, threshold)) == good_sensitivity
 
-    p_array_sig = p_array[sig_idx]
-    p_array_nonsig = p_array[nonsig_idx]
+    value_array_sig = p_array[sig_idx]
+    value_array_nonsig = p_array[nonsig_idx]
 
     # assert that at least 50% of voxels surrounding the foci
     # are significant at alpha = .05
-    observed_sig = p_array_sig < alpha
+    observed_sig = compare_sig(value_array_sig, threshold)
     observed_sig_perc = observed_sig.sum() / len(observed_sig)
     assert (observed_sig_perc >= 0.5) == good_sensitivity
 
     # assert that more than 95% of voxels farther away
     # from foci are nonsignificant at alpha = 0.05
-    observed_nonsig = p_array_nonsig > alpha
+    observed_nonsig = compare_nonsig(value_array_nonsig, threshold)
     observed_nonsig_perc = observed_nonsig.sum() / len(observed_nonsig)
     assert np.isclose(observed_nonsig_perc, (1 - alpha), atol=0.05) == good_specificity
 

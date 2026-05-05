@@ -229,15 +229,15 @@ def fetch_neurosynth(
     Only combinations present in NiMARE's database manifest are valid.
     For Neurosynth, the supported combinations are:
 
-    ======= ========= ========
-    source  vocab     type
-    ======= ========= ========
-    abstract terms    tfidf
-    abstract LDA50    weight
-    abstract LDA100   weight
-    abstract LDA200   weight
-    abstract LDA400   weight
-    ======= ========= ========
+    ======== ========= ========
+    source   vocab     type
+    ======== ========= ========
+    abstract terms     tfidf
+    abstract LDA50     weight
+    abstract LDA100    weight
+    abstract LDA200    weight
+    abstract LDA400    weight
+    ======== ========= ========
 
     Versions 3, 4, and 5 only provide ``abstract`` + ``terms`` + ``tfidf``.
     The LDA vocabularies are only available for versions 6 and 7.
