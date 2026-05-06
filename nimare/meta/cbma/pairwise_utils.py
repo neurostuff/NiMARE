@@ -166,7 +166,8 @@ class _PairwiseMAStore:
         self.group1_stat = None
         self.group2_stat = None
         self.temp_files = []
-        gc.collect()
+        if temp_files:
+            gc.collect()
         _cleanup_temp_files(temp_files)
 
 

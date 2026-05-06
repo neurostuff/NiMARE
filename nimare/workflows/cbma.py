@@ -294,6 +294,9 @@ class ContrastWorkflow(NiMAREBase):
     output_dir : :obj:`str`, optional
         Output directory in which to save results. If the directory doesn't
         exist, it will be created. Default is None (the results are not saved).
+    generate_description : :obj:`bool`, optional
+        Whether to generate workflow boilerplate and extract references for the
+        returned result. Default is True.
     n_cores : :obj:`int`, optional
         Number of cores to use for parallelization.
         If ``main_estimator``, ``pairwise_estimator``, or ``corrector`` are passed as
@@ -312,6 +315,7 @@ class ContrastWorkflow(NiMAREBase):
         corrector=None,
         alpha=0.05,
         output_dir=None,
+        generate_description=True,
         n_cores=1,
     ):
         if not 0 < alpha < 1:
@@ -319,6 +323,7 @@ class ContrastWorkflow(NiMAREBase):
 
         self.alpha = alpha
         self.output_dir = output_dir
+        self.generate_description = generate_description
         self.n_cores = _check_ncores(n_cores)
 
         self.main_estimator = _check_input(
@@ -337,9 +342,12 @@ class ContrastWorkflow(NiMAREBase):
         else:
             self.corrector = _check_input(corrector, Corrector, self._corr_options)
 
-    def _compute_main_effect_map(self, result):
+    def _compute_main_effect_map(self, result, corr_result=None):
         """Compute the directional inference map used to gate pairwise contrast."""
-        corr_result = self.corrector.transform(result)
+        if corr_result is None:
+            corr_result = self.corrector.transform(result)
+        else:
+            self._validate_cached_corrected_result(result, corr_result)
         z_map_name, threshold_map_name, threshold_kind = _infer_corrected_main_effect_maps(
             corr_result
         )
@@ -351,6 +359,52 @@ class ContrastWorkflow(NiMAREBase):
             self.alpha,
         )
         return thresholded_map, corr_result
+
+    def _validate_cached_corrected_result(self, result, corr_result):
+        """Validate that a cached corrected result can be used with a main-effect result."""
+        if corr_result.corrector is None:
+            raise ValueError("corr_result must be a corrected MetaResult.")
+
+        if type(corr_result.corrector) is not type(self.corrector):
+            raise ValueError(
+                "corr_result was generated with a different corrector type; "
+                f"expected {type(self.corrector).__name__}, got "
+                f"{type(corr_result.corrector).__name__}."
+            )
+
+        if corr_result.corrector.get_params(deep=False) != self.corrector.get_params(deep=False):
+            raise ValueError("corr_result was generated with different corrector parameters.")
+
+        result_ids = result.estimator.inputs_.get("id")
+        corr_ids = corr_result.estimator.inputs_.get("id")
+        if (
+            result_ids is not None
+            and corr_ids is not None
+            and not np.array_equal(result_ids, corr_ids)
+        ):
+            raise ValueError("corr_result does not match the study ids in result.")
+
+        result_n_voxels = next(
+            (value.shape[0] for value in result.maps.values() if isinstance(value, np.ndarray)),
+            None,
+        )
+        corr_n_voxels = next(
+            (
+                value.shape[0]
+                for value in corr_result.maps.values()
+                if isinstance(value, np.ndarray)
+            ),
+            None,
+        )
+        if (
+            result_n_voxels is not None
+            and corr_n_voxels is not None
+            and result_n_voxels != corr_n_voxels
+        ):
+            raise ValueError(
+                "corr_result maps are not aligned with result maps; "
+                f"got {corr_n_voxels} and {result_n_voxels} voxels."
+            )
 
     def _generate_description(self, group1_result, group2_result, pairwise_result):
         """Generate a workflow description that preserves component boilerplate."""
@@ -402,21 +456,62 @@ class ContrastWorkflow(NiMAREBase):
         with open(op.join(self.output_dir, "references.bib"), "w") as fo:
             fo.write(result.bibtex_)
 
-    def fit(self, dataset1, dataset2, drop_invalid=True):
-        """Fit the masked contrast workflow to two Studyset-backed collections."""
-        LGR.info("Fitting group 1 main effect...")
-        group1_result = self.main_estimator.fit(dataset1, drop_invalid=drop_invalid)
-        LGR.info("Fitting group 2 main effect...")
-        group2_result = self.main_estimator.fit(dataset2, drop_invalid=drop_invalid)
+    def fit(
+        self,
+        dataset1,
+        dataset2,
+        drop_invalid=True,
+        result1=None,
+        result2=None,
+        corr_result1=None,
+        corr_result2=None,
+    ):
+        """Fit the masked contrast workflow to two Studyset-backed collections.
 
-        group1_map, group1_corr_result = self._compute_main_effect_map(group1_result)
-        group2_map, group2_corr_result = self._compute_main_effect_map(group2_result)
+        Parameters
+        ----------
+        dataset1, dataset2 : :class:`~nimare.dataset.Dataset`
+            The two groups to contrast.
+        drop_invalid : bool, optional
+            Passed through to the main estimator when fitting from scratch.
+        result1, result2 : :class:`~nimare.results.MetaResult`, optional
+            Pre-fitted main-effect results for each group.  When supplied the
+            per-group ``main_estimator.fit()`` call is skipped and the cached
+            MA maps are passed directly to the pairwise estimator, avoiding
+            redundant kernel convolution.
+        corr_result1, corr_result2 : :class:`~nimare.results.MetaResult`, optional
+            Pre-computed corrected main-effect results (i.e. the output of
+            ``corrector.transform(result)``).  When supplied the per-group
+            ``corrector.transform()`` call inside ``_compute_main_effect_map``
+            is skipped.  If corresponding ``result1``/``result2`` values are
+            not provided, the workflow fits them before validating and using
+            the cached corrected results.
+        """
+        if result1 is None:
+            LGR.info("Fitting group 1 main effect...")
+            result1 = self.main_estimator.fit(dataset1, drop_invalid=drop_invalid)
+        if result2 is None:
+            LGR.info("Fitting group 2 main effect...")
+            result2 = self.main_estimator.fit(dataset2, drop_invalid=drop_invalid)
+
+        group1_result = result1
+        group2_result = result2
+        group1_map, group1_corr_result = self._compute_main_effect_map(
+            group1_result, corr_result=corr_result1
+        )
+        group2_map, group2_corr_result = self._compute_main_effect_map(
+            group2_result, corr_result=corr_result2
+        )
 
         LGR.info("Fitting masked pairwise contrast...")
+        ma_maps1 = group1_result.estimator.inputs_.get("ma_maps")
+        ma_maps2 = group2_result.estimator.inputs_.get("ma_maps")
         pairwise_result = self.pairwise_estimator.fit(
             dataset1,
             dataset2,
             drop_invalid=drop_invalid,
+            ma_maps1=ma_maps1,
+            ma_maps2=ma_maps2,
             inference_map1=group1_map,
             inference_map2=group2_map,
         )
@@ -457,10 +552,13 @@ class ContrastWorkflow(NiMAREBase):
                 }
             ]
         )
-        result.description_ = self._generate_description(
-            group1_corr_result,
-            group2_corr_result,
-            pairwise_result,
-        )
+        if self.generate_description:
+            result.description_ = self._generate_description(
+                group1_corr_result,
+                group2_corr_result,
+                pairwise_result,
+            )
+        else:
+            result.description_ = ""
         self._save_result(result)
         return result

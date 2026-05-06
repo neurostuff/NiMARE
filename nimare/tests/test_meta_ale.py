@@ -1076,6 +1076,118 @@ def test_ALESubtraction_directional_inference_maps_gate_pairwise_results(testdat
     assert np.all(z_values[neg_map <= 0] >= 0)
 
 
+def test_ALESubtraction_restrict_to_inference_mask_slices_permutation_voxels(
+    monkeypatch, testdata_cbma_full
+):
+    """Restricted ALE subtraction should permute only inference-union voxels."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+
+    baseline = ale.ALESubtraction(n_iters=2, n_cores=1, generate_description=False).fit(
+        dset1, dset2
+    )
+    baseline_z = baseline.get_map("z_desc-group1MinusGroup2", return_type="array")
+    pos_map = baseline_z > 0
+    neg_map = baseline_z < 0
+    union = pos_map | neg_map
+    seen_n_voxels = []
+    original = ale.ALESubtraction._run_null_permutations
+
+    def _wrapped_run_null_permutations(self, ma_store, *args, **kwargs):
+        seen_n_voxels.append(ma_store.n_voxels)
+        return original(self, ma_store, *args, **kwargs)
+
+    monkeypatch.setattr(
+        ale.ALESubtraction,
+        "_run_null_permutations",
+        _wrapped_run_null_permutations,
+    )
+
+    restricted = ale.ALESubtraction(
+        n_iters=2,
+        n_cores=1,
+        generate_description=False,
+        restrict_to_inference_mask=True,
+    ).fit(dset1, dset2, inference_map1=pos_map, inference_map2=neg_map)
+
+    z_values = restricted.get_map("z_desc-group1MinusGroup2", return_type="array")
+    p_values = restricted.get_map("p_desc-group1MinusGroup2", return_type="array")
+    stat_values = restricted.get_map("stat_desc-group1MinusGroup2", return_type="array")
+    baseline_stat = baseline.get_map("stat_desc-group1MinusGroup2", return_type="array")
+
+    assert seen_n_voxels == [int(union.sum())]
+    assert z_values.shape == baseline_z.shape
+    assert p_values.shape == baseline_z.shape
+    np.testing.assert_allclose(stat_values, baseline_stat)
+    assert np.all(z_values[~union] == 0)
+    np.testing.assert_allclose(p_values[~union], 1.0)
+
+
+@pytest.mark.parametrize("restrict_to_inference_mask", [False, True])
+def test_ALESubtraction_rejects_empty_inference_union(
+    testdata_cbma_full, restrict_to_inference_mask
+):
+    """Directional ALE subtraction should fail clearly when inference maps are empty."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+    n_voxels = int(np.count_nonzero(testdata_cbma_full.masker.mask_img.get_fdata()))
+    empty_map = np.zeros(n_voxels, dtype=bool)
+
+    meta = ale.ALESubtraction(
+        n_iters=2,
+        n_cores=1,
+        generate_description=False,
+        restrict_to_inference_mask=restrict_to_inference_mask,
+    )
+    with pytest.raises(ValueError, match="at least one nonzero voxel"):
+        meta.fit(dset1, dset2, inference_map1=empty_map, inference_map2=empty_map)
+
+
+def test_ALESubtraction_restrict_to_inference_mask_cluster_nulls(testdata_cbma_full):
+    """Restricted ALE subtraction should support cluster nulls through the full image mask."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+
+    baseline = ale.ALESubtraction(n_iters=2, n_cores=1, generate_description=False).fit(
+        dset1, dset2
+    )
+    baseline_z = baseline.get_map("z_desc-group1MinusGroup2", return_type="array")
+    pos_map = baseline_z > 0
+    neg_map = baseline_z < 0
+
+    restricted = ale.ALESubtraction(
+        n_iters=2,
+        n_cores=1,
+        generate_description=False,
+        restrict_to_inference_mask=True,
+        vfwe_only=False,
+    ).fit(dset1, dset2, inference_map1=pos_map, inference_map2=neg_map)
+
+    assert "values_desc-size_level-cluster_corr-fwe_method-montecarlo" in (
+        restricted.estimator.null_distributions_
+    )
+    assert restricted.get_map("z_desc-group1MinusGroup2", return_type="array").shape == (
+        baseline_z.shape
+    )
+
+
+def test_pairwise_ma_store_close_skips_gc_without_temp_files(monkeypatch):
+    """In-memory pairwise MA stores should not force a global GC pass on close."""
+    calls = []
+    store = pairwise_utils._PairwiseMAStore(
+        group1=sp_sparse.csr_matrix(np.zeros((1, 2))),
+        group2=sp_sparse.csr_matrix(np.zeros((1, 2))),
+        group1_stat=np.zeros(2),
+        group2_stat=np.zeros(2),
+        temp_files=[],
+    )
+
+    monkeypatch.setattr(pairwise_utils.gc, "collect", lambda: calls.append("gc"))
+    store.close()
+
+    assert calls == []
+
+
 def test_ALESubtraction_low_memory_chunk_rows_scale_with_available_ram():
     """Chunk size should shrink when available RAM shrinks."""
     meta = ale.ALESubtraction()

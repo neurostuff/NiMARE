@@ -88,6 +88,28 @@ def test_resampled_stability_smoke(testdata_cbma_full):
     assert "Frahm_Monimu_Hoffstaedter" in result.bibtex_
 
 
+def test_resampled_stability_can_skip_description_generation(testdata_cbma_full):
+    """ResampledStability should optionally skip boilerplate/reference extraction."""  # noqa: D403
+    dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:5])
+    result = ALE(generate_description=False).fit(dset)
+    result = FWECorrector(method="montecarlo", n_iters=2, n_cores=1).transform(result)
+    original_description = result.description_
+    original_maps = set(result.maps)
+
+    stability_result = ResampledStability(
+        target_image="z_level-voxel_corr-FWE_method-montecarlo",
+        resampling_policy="leave_1_out",
+        generate_description=False,
+        n_cores=1,
+    ).transform(result)
+
+    map_name = "z_level-voxel_corr-FWE_method-montecarlo_diag-ResampledStability"
+    assert map_name in stability_result.maps
+    assert map_name not in result.maps
+    assert set(result.maps) == original_maps
+    assert stability_result.description_ == original_description
+
+
 def test_resampled_stability_leave_k_out_matches_leave_1_out(testdata_cbma_full):
     """Leave-k-out with k=1 should match leave-one-out for CBMA fast paths."""
     dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:5])

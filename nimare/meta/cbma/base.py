@@ -771,6 +771,7 @@ class CBMAEstimator(Estimator):
         conn,
         voxel_thresh,
         vfwe_only,
+        mask_arr=None,
     ):
         """Run a single Monte Carlo permutation of a dataset.
 
@@ -806,12 +807,12 @@ class CBMAEstimator(Estimator):
         if vfwe_only:
             iter_max_size, iter_max_mass = None, None
         else:
-            # Cluster-level inference
-            iter_ss_map = self.masker.inverse_transform(iter_ss_map).get_fdata(
-                dtype=DEFAULT_FLOAT_DTYPE
-            )
+            # Cluster-level inference: unpack masked 1D array to 3D directly to
+            # avoid inverse_transform → NiBabel → gc.collect() overhead.
+            iter_ss_3d = np.zeros(mask_arr.shape, dtype=DEFAULT_FLOAT_DTYPE)
+            iter_ss_3d[mask_arr] = iter_ss_map
             iter_max_size, iter_max_mass = _calculate_cluster_measures(
-                iter_ss_map, voxel_thresh, conn, tail="upper"
+                iter_ss_3d, voxel_thresh, conn, tail="upper"
             )
         return iter_max_value, iter_max_size, iter_max_mass
 
@@ -950,6 +951,10 @@ class CBMAEstimator(Estimator):
             # Define connectivity matrix for cluster labeling
             conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
 
+            # Pre-compute boolean mask array once; passed to each permutation to
+            # avoid inverse_transform → NiBabel → gc.collect() per iteration.
+            mask_arr = _mask_img_to_bool(self.masker.mask_img)
+
             perm_results = Parallel(**parallel_kwargs)(
                 delayed(self._correct_fwe_montecarlo_permutation)(
                     iter_ijks[i_iter],
@@ -957,6 +962,7 @@ class CBMAEstimator(Estimator):
                     conn=conn,
                     voxel_thresh=ss_thresh,
                     vfwe_only=vfwe_only,
+                    mask_arr=mask_arr,
                 )
                 for i_iter in range(n_iters)
             )
@@ -981,9 +987,8 @@ class CBMAEstimator(Estimator):
                 # Cluster-level FWE
                 # Extract the summary statistics in voxel-wise (3D) form, threshold, and
                 # cluster-label
-                thresh_stat_values = self.masker.inverse_transform(stat_values).get_fdata(
-                    dtype=DEFAULT_FLOAT_DTYPE
-                )
+                thresh_stat_values = np.zeros(mask_arr.shape, dtype=DEFAULT_FLOAT_DTYPE)
+                thresh_stat_values[mask_arr] = stat_values
                 thresh_stat_values[thresh_stat_values <= ss_thresh] = 0
                 labeled_matrix, _ = ndimage.label(thresh_stat_values, conn)
 
@@ -1163,7 +1168,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
                 )
 
         _, mask_img = get_masker_mask_image(masker)
-        expected_n_voxels = int(np.squeeze(masker.transform(mask_img)).shape[0])
+        expected_n_voxels = int(np.count_nonzero(_mask_img_to_bool(mask_img)))
         if values.shape[0] != expected_n_voxels:
             raise ValueError(
                 f"{label} has {values.shape[0]} voxels, but the estimator mask has "
@@ -1284,12 +1289,15 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         return MetaResult(self, mask=masker, maps=maps, tables=tables, description=description)
 
 
-def _approximate_z_from_ma(estimator, ma_maps, subset_study_ids=None):
+def _approximate_z_from_ma(estimator, ma_maps, subset_study_ids=None, precomputed_null=None):
     """Compute summary statistics and approximate-null z-values for a (sub)set of MA maps.
 
-    The null distribution is derived from *ma_maps* itself, so each call is
-    self-contained and safe to call in parallel.  The estimator is deep-copied
-    internally, so the caller's object is never mutated.
+    The null distribution is derived from *ma_maps* itself by default, so each
+    call is self-contained and safe to call in parallel.  The estimator is
+    shallow-copied internally; only ``inputs_`` (a dict whose keys may be
+    reassigned by ``_prepare_subsample_null``) receives its own dict copy.
+    All attribute assignments on the temporary object are isolated from the
+    caller's estimator by the shallow-copy semantics.
 
     Parameters
     ----------
@@ -1302,6 +1310,11 @@ def _approximate_z_from_ma(estimator, ma_maps, subset_study_ids=None):
         ``_prepare_subsample_null`` so that estimators with dataset-dependent
         pre-state (e.g. MKDADensity ``weight_vec_``) can recompute it
         correctly for the subset.  ``None`` means all studies.
+    precomputed_null : dict, optional
+        Pre-computed ``null_distributions_`` dict (e.g. derived from the full
+        dataset).  When supplied the per-subset null recomputation is skipped
+        and this distribution is reused instead, matching JALE's behaviour of
+        applying the full-sample histogram convolution to every subsample.
 
     Returns
     -------
@@ -1310,7 +1323,22 @@ def _approximate_z_from_ma(estimator, ma_maps, subset_study_ids=None):
     z_values : :class:`numpy.ndarray` of shape (n_voxels,)
         Approximate-null z-values.
     """
-    temp = copy.deepcopy(estimator)
-    temp.null_distributions_ = {}
+    # Shallow-copy avoids duplicating large shared state (masker, sparse MA matrices,
+    # kernel_transformer, null_distributions_, DataFrames).  The only shared container
+    # whose *keys* may be reassigned is inputs_ (e.g. MKDADensity._prepare_subsample_null
+    # does self.inputs_["coordinates"] = filtered_df), so we give the temp object its own
+    # inputs_ dict (same values, new dict).  All other mutations from _prepare_subsample_null
+    # and null-building are attribute assignments on temp, which are invisible to the caller.
+    temp = copy.copy(estimator)
+    temp.inputs_ = dict(estimator.inputs_)
     temp._prepare_subsample_null(ma_maps, subset_study_ids)
+    if precomputed_null is not None:
+        temp.null_distributions_ = precomputed_null
+        stat_values = temp._compute_summarystat_est(ma_maps)
+        _, z_values = temp._summarystat_to_p(stat_values, null_method="approximate")
+        return (
+            stat_values.astype(DEFAULT_FLOAT_DTYPE, copy=False),
+            z_values.astype(DEFAULT_FLOAT_DTYPE, copy=False),
+        )
+    temp.null_distributions_ = {}
     return temp._compute_approximate_z_values(ma_maps)

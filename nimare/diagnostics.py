@@ -27,12 +27,14 @@ from nimare.meta.cbma.utils import (
 )
 from nimare.meta.ibma import IBMAEstimator
 from nimare.nimads import Studyset
+from nimare.results import MetaResult
 from nimare.studyset import normalize_collection
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
     _filter_kwargs,
     _mask_coverage_to_null_ijk,
+    _mask_img_to_bool,
     get_masker,
     mm2vox,
 )
@@ -715,6 +717,9 @@ class ResampledStability(NiMAREBase):
     n_cores : int, optional
         Number of cores to use for parallelization.
         If <=0, defaults to using all available cores. Default is 1.
+    generate_description : bool, optional
+        Whether to append boilerplate text and extract references for the returned result.
+        Default is True.
     """
 
     def __init__(
@@ -730,6 +735,7 @@ class ResampledStability(NiMAREBase):
         mask_coverage="gm",
         alpha=0.05,
         n_cores=1,
+        generate_description=True,
     ):
         if mask_coverage not in ("gm", "brain"):
             raise ValueError("mask_coverage must be 'gm' or 'brain'.")
@@ -746,6 +752,7 @@ class ResampledStability(NiMAREBase):
         self.mask_coverage = mask_coverage
         self.alpha = alpha
         self.n_cores = _check_ncores(n_cores)
+        self.generate_description = generate_description
 
     def _resolve_subsets(self, n_studies):
         """Build a replicate schedule in study-index space."""
@@ -815,17 +822,27 @@ class ResampledStability(NiMAREBase):
         return self._extract_binary_support(replicate_result)
 
     def _fit_cbma_subset_replicate(
-        self, subset_idx, ma_maps, estimator, study_ids, cluster_threshold
+        self,
+        subset_idx,
+        ma_maps,
+        estimator,
+        study_ids,
+        cluster_threshold,
+        precomputed_null=None,
+        mask_arr=None,
     ):
         """Compute one CBMA replicate from cached MA maps for a retained-study subset."""
         subset_ma = ma_maps[subset_idx, :]
         subset_study_ids = study_ids[subset_idx]
-        _, z_values = _approximate_z_from_ma(estimator, subset_ma, subset_study_ids)
+        _, z_values = _approximate_z_from_ma(
+            estimator, subset_ma, subset_study_ids, precomputed_null=precomputed_null
+        )
         z_values, _ = _threshold_z_clusters(
             z_values,
             estimator.masker,
             voxel_thresh=self.voxel_thresh or 0.001,
             cluster_size_threshold=cluster_threshold,
+            mask_arr=mask_arr,
         )
         return (z_values > 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
 
@@ -846,16 +863,30 @@ class ResampledStability(NiMAREBase):
             estimator.masker, mask_coverage=self.mask_coverage
         ).astype(np.int32, copy=False)
 
+        # Build the full-dataset approximate null once and reuse it for every
+        # subsample and null-MA iteration (mirrors JALE's hx_conv reuse).
+        full_null_temp = copy.deepcopy(estimator)
+        full_null_temp.null_distributions_ = {}
+        full_null_temp._prepare_subsample_null(ma_maps)
+        full_null_temp._compute_approximate_z_values(ma_maps)
+        precomputed_null = full_null_temp.null_distributions_
+
+        # Precompute boolean mask array once to avoid NiBabel round-trip in hot loops.
+        mask_arr = _mask_img_to_bool(estimator.masker.mask_img)
+
         rng = np.random.RandomState(self.random_state)
         null_cluster_sizes = np.zeros(montecarlo_iters, dtype=np.int32)
         for i_iter in range(montecarlo_iters):
             null_ma, subset_ids = estimator._generate_random_null_ma(target_n, sample_space, rng)
-            _, null_z = _approximate_z_from_ma(estimator, null_ma, subset_ids)
+            _, null_z = _approximate_z_from_ma(
+                estimator, null_ma, subset_ids, precomputed_null=precomputed_null
+            )
             _, null_cluster_sizes[i_iter] = _threshold_z_clusters(
                 null_z,
                 estimator.masker,
                 voxel_thresh=cluster_forming_threshold,
                 cluster_size_threshold=None,
+                mask_arr=mask_arr,
             )
 
         cluster_threshold = np.percentile(null_cluster_sizes, 100.0 * (1.0 - self.alpha))
@@ -865,7 +896,13 @@ class ResampledStability(NiMAREBase):
         for support in tqdm(
             Parallel(return_as="generator", n_jobs=self.n_cores)(
                 delayed(self._fit_cbma_subset_replicate)(
-                    subset_idx, ma_maps, estimator, study_ids, cluster_threshold
+                    subset_idx,
+                    ma_maps,
+                    estimator,
+                    study_ids,
+                    cluster_threshold,
+                    precomputed_null=precomputed_null,
+                    mask_arr=mask_arr,
                 )
                 for subset_idx in subsets
             ),
@@ -880,7 +917,7 @@ class ResampledStability(NiMAREBase):
 
     def _finalize_result(self, result, stability_map, n_resamples_used, target_n_used):
         """Attach stability map and summary table to a copied result object."""
-        result = result.copy()
+        result = self._copy_result_for_diagnostic(result)
         map_name = f"{self.target_image}_diag-ResampledStability"
         result.maps[map_name] = stability_map
         result.tables[f"{map_name}_tab-summary"] = pd.DataFrame(
@@ -896,13 +933,29 @@ class ResampledStability(NiMAREBase):
             ]
         )
         result.diagnostics.append(self)
-        result.description_ += (
-            " Voxelwise stability of thresholded results was estimated by repeatedly "
-            "resampling the input dataset, recomputing thresholded support maps, and averaging "
-            "the binary support across resamples. This diagnostic follows the resampling-based "
-            "stability approach implemented in JALE \\citep{Frahm_Monimu_Hoffstaedter}."
-        )
+        if self.generate_description:
+            result.description_ += (
+                " Voxelwise stability of thresholded results was estimated by repeatedly "
+                "resampling the input dataset, recomputing thresholded support maps, and "
+                "averaging the binary support across resamples. This diagnostic follows the "
+                "resampling-based stability approach implemented "
+                "in JALE \\citep{Frahm_Monimu_Hoffstaedter}."
+            )
         return result
+
+    @staticmethod
+    def _copy_result_for_diagnostic(result):
+        """Return a lightweight MetaResult copy suitable for adding diagnostic outputs."""
+        new = object.__new__(MetaResult)
+        new.estimator = result.estimator
+        new.corrector = result.corrector
+        new.diagnostics = list(result.diagnostics)
+        new.masker = result.masker
+        new.maps = dict(result.maps)
+        new.tables = dict(result.tables)
+        new.metadata = dict(getattr(result, "metadata", {}))
+        new._set_description(result.description_)
+        return new
 
     def transform(self, result):
         """Apply the resampling diagnostic to a fitted meta-analytic result."""

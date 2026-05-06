@@ -227,12 +227,12 @@ def test_conjunction_analysis_smoke(tmp_path_factory):
     [
         (
             ALE(),
-            FWECorrector(method="montecarlo", n_iters=8, voxel_thresh=0.05, n_cores=1),
+            FWECorrector(method="montecarlo", n_iters=32, voxel_thresh=0.05, n_cores=1),
             ALESubtraction(n_iters=8, n_cores=1, generate_description=False),
         ),
         (
             MKDADensity(),
-            FWECorrector(method="montecarlo", n_iters=8, voxel_thresh=0.05, n_cores=1),
+            FWECorrector(method="montecarlo", n_iters=32, voxel_thresh=0.05, n_cores=1),
             MKDAChi2(generate_description=False),
         ),
         (
@@ -314,6 +314,52 @@ def test_contrast_workflow_string_and_none_inputs(
     assert "z_desc-contrast" in result.maps
 
 
+def test_contrast_workflow_can_skip_description_generation(testdata_cbma_full):
+    """Contrast Workflow should optionally skip boilerplate and reference extraction."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+
+    workflow = ContrastWorkflow(
+        corrector=FDRCorrector(method="indep", alpha=0.05),
+        pairwise_estimator=ALESubtraction(n_iters=8, n_cores=1, generate_description=False),
+        alpha=0.05,
+        generate_description=False,
+        n_cores=1,
+    )
+    result = workflow.fit(dset1, dset2)
+
+    assert isinstance(result, nimare.results.MetaResult)
+    assert result.description_ == ""
+    assert result.bibtex_ == ""
+    assert "z_desc-contrast" in result.maps
+
+
+def test_contrast_workflow_rejects_mismatched_cached_correction(testdata_cbma_full):
+    """Cached corrected main-effect results must match their uncorrected result."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+
+    workflow = ContrastWorkflow(
+        corrector=FDRCorrector(method="indep", alpha=0.05),
+        pairwise_estimator=ALESubtraction(n_iters=2, n_cores=1, generate_description=False),
+        generate_description=False,
+        n_cores=1,
+    )
+    result1 = workflow.main_estimator.fit(dset1)
+    result2 = workflow.main_estimator.fit(dset2)
+    corr_result2 = workflow.corrector.transform(result2)
+
+    with pytest.raises(ValueError, match="study ids"):
+        workflow.fit(
+            dset1,
+            dset2,
+            result1=result1,
+            result2=result2,
+            corr_result1=corr_result2,
+            corr_result2=corr_result2,
+        )
+
+
 def test_contrast_workflow_ale_thresholding_path_smoke(testdata_cbma_full):
     """ALE ContrastWorkflow should run without the removed estimator helper."""
     assert not hasattr(ALE, "jale_corrected_map")
@@ -321,7 +367,7 @@ def test_contrast_workflow_ale_thresholding_path_smoke(testdata_cbma_full):
     dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
     dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
     workflow = ContrastWorkflow(
-        corrector=FWECorrector(method="montecarlo", n_iters=8, voxel_thresh=0.05, n_cores=1),
+        corrector=FWECorrector(method="montecarlo", n_iters=32, voxel_thresh=0.05, n_cores=1),
         pairwise_estimator=ALESubtraction(n_iters=8, n_cores=1, generate_description=False),
         alpha=0.05,
         n_cores=1,
