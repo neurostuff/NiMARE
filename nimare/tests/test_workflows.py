@@ -227,12 +227,12 @@ def test_conjunction_analysis_smoke(tmp_path_factory):
     [
         (
             ALE(),
-            FWECorrector(method="montecarlo", n_iters=8, voxel_thresh=0.05, n_cores=1),
+            FWECorrector(method="montecarlo", n_iters=32, voxel_thresh=0.05, n_cores=1),
             ALESubtraction(n_iters=8, n_cores=1, generate_description=False),
         ),
         (
             MKDADensity(),
-            FWECorrector(method="montecarlo", n_iters=8, voxel_thresh=0.05, n_cores=1),
+            FWECorrector(method="montecarlo", n_iters=32, voxel_thresh=0.05, n_cores=1),
             MKDAChi2(generate_description=False),
         ),
         (
@@ -367,7 +367,7 @@ def test_contrast_workflow_ale_thresholding_path_smoke(testdata_cbma_full):
     dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
     dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
     workflow = ContrastWorkflow(
-        corrector=FWECorrector(method="montecarlo", n_iters=8, voxel_thresh=0.05, n_cores=1),
+        corrector=FWECorrector(method="montecarlo", n_iters=32, voxel_thresh=0.05, n_cores=1),
         pairwise_estimator=ALESubtraction(n_iters=8, n_cores=1, generate_description=False),
         alpha=0.05,
         n_cores=1,
