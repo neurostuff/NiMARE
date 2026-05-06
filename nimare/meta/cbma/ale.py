@@ -62,6 +62,7 @@ from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
     _mask_coverage_to_mask,
+    _mask_img_to_bool,
     _p_to_logp_values,
     mm2vox,
     use_memmap,
@@ -626,6 +627,10 @@ class ALESubtraction(PairwiseCBMAEstimator):
     vfwe_only : :obj:`bool`, default=True
         If True, only compute voxel-level null information. If False, also compute and retain
         cluster size and mass null distributions from the permutation maps.
+    restrict_to_inference_mask : :obj:`bool`, default=False
+        If True and directional inference maps are supplied to ``fit``, restrict permutation
+        inference to the union of nonzero inference-map voxels. Observed group and contrast
+        summary-statistic maps are still reported across the full estimator mask.
     memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
         Used to cache the output of a function. By default, no caching is done.
         If a :obj:`str` is given, it is the path to the caching directory.
@@ -684,6 +689,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         voxel_thresh=0.001,
         low_memory="auto",
         vfwe_only=True,
+        restrict_to_inference_mask=False,
         memory=Memory(location=None, verbose=0),
         memory_level=0,
         n_cores=1,
@@ -710,6 +716,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self.voxel_thresh = voxel_thresh
         self.low_memory = low_memory
         self.vfwe_only = vfwe_only
+        self.restrict_to_inference_mask = restrict_to_inference_mask
         self.n_cores = _check_ncores(n_cores)
         self._permutation_parallel_backend = "threading"
         self._low_memory_fraction = 0.5
@@ -839,6 +846,60 @@ class ALESubtraction(PairwiseCBMAEstimator):
             require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
         )
 
+    @staticmethod
+    def _inference_union_mask(group1_mask, group2_mask):
+        """Build the voxel union for directional inference maps."""
+        if group1_mask is None and group2_mask is None:
+            return None
+
+        base = group1_mask if group1_mask is not None else group2_mask
+        union_mask = np.zeros(base.shape, dtype=bool)
+        if group1_mask is not None:
+            union_mask |= group1_mask
+        if group2_mask is not None:
+            union_mask |= group2_mask
+        if not np.any(union_mask):
+            raise ValueError(
+                "Directional ALESubtraction inference requires at least one nonzero voxel in "
+                "inference_map1 or inference_map2."
+            )
+        return union_mask
+
+    def _restrict_pairwise_ma_store(self, ma_store, union_mask):
+        """Slice a pairwise MA store to the inference union mask."""
+        if union_mask is None:
+            return ma_store
+
+        return _PairwiseMAStore(
+            group1=self._slice_ma_group_columns(ma_store.group1, union_mask),
+            group2=self._slice_ma_group_columns(ma_store.group2, union_mask),
+            group1_stat=ma_store.group1_stat[union_mask],
+            group2_stat=ma_store.group2_stat[union_mask],
+            temp_files=[],
+        )
+
+    @staticmethod
+    def _slice_ma_group_columns(ma_group, column_mask):
+        """Slice CSR or chunked CSR MA maps to selected columns."""
+        if isinstance(ma_group, _ChunkedCSRGroup):
+            chunks = [chunk[:, column_mask] for chunk in ma_group.chunks]
+            return _ChunkedCSRGroup(
+                chunks=chunks,
+                row_offsets=ma_group.row_offsets.copy(),
+                shape=(ma_group.shape[0], int(np.count_nonzero(column_mask))),
+            )
+        return ma_group[:, column_mask]
+
+    @staticmethod
+    def _scatter_to_full_mask(values, union_mask, fill_value=0):
+        """Scatter restricted masked values back to the full masker vector."""
+        if union_mask is None:
+            return values
+
+        full_values = np.full(union_mask.shape[0], fill_value, dtype=np.asarray(values).dtype)
+        full_values[union_mask] = values
+        return full_values
+
     @use_memmap(LGR, n_files=3)
     def _fit(self, dataset1, dataset2):
         self.dataset1 = dataset1
@@ -851,13 +912,28 @@ class ALESubtraction(PairwiseCBMAEstimator):
         group1_mask = None if inference_map1 is None else np.asarray(inference_map1) > 0
         group2_mask = None if inference_map2 is None else np.asarray(inference_map2) > 0
 
+        union_mask = None
+        has_inference_mask = group1_mask is not None or group2_mask is not None
+        if has_inference_mask:
+            inference_union_mask = self._inference_union_mask(group1_mask, group2_mask)
+            if self.restrict_to_inference_mask:
+                union_mask = inference_union_mask
+
         with self._managed_pairwise_ma_store(
             maps_key1="ma_maps1",
             coords_key1="coordinates1",
             maps_key2="ma_maps2",
             coords_key2="coordinates2",
         ) as ma_store:
-            diff_ale_values = ma_store.group1_stat - ma_store.group2_stat
+            fit_store = self._restrict_pairwise_ma_store(ma_store, union_mask)
+            if union_mask is None:
+                fit_group1_mask = group1_mask
+                fit_group2_mask = group2_mask
+            else:
+                fit_group1_mask = None if group1_mask is None else group1_mask[union_mask]
+                fit_group2_mask = None if group2_mask is None else group2_mask[union_mask]
+            full_diff_ale_values = ma_store.group1_stat - ma_store.group2_stat
+            diff_ale_values = fit_store.group1_stat - fit_store.group2_stat
 
             try:
                 if not self.vfwe_only:
@@ -866,17 +942,17 @@ class ALESubtraction(PairwiseCBMAEstimator):
                         self.memmap_filenames[2],
                         dtype=DEFAULT_FLOAT_DTYPE,
                         mode="w+",
-                        shape=(self.n_iters, ma_store.n_voxels),
+                        shape=(self.n_iters, fit_store.n_voxels),
                     )
 
                 iter_abs_max, p_values, diff_signs = self._run_null_permutations(
-                    ma_store,
+                    fit_store,
                     n_iters=self.n_iters,
                     n_cores=self.n_cores,
                     diff_ale_values=diff_ale_values,
                     iter_diff_values=iter_diff_values,
-                    group1_mask=group1_mask,
-                    group2_mask=group2_mask,
+                    group1_mask=fit_group1_mask,
+                    group2_mask=fit_group2_mask,
                 )
                 self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = (
                     iter_abs_max
@@ -890,6 +966,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
                         iter_diff_values,
                         voxel_thresh=self.voxel_thresh,
                         n_iters=self.n_iters,
+                        union_mask=union_mask,
                     )
                     self.null_distributions_[
                         "summary_stat_thresh_level-voxel_corr-fwe_method-montecarlo"
@@ -922,9 +999,12 @@ class ALESubtraction(PairwiseCBMAEstimator):
         z_tail = "one" if (group1_mask is not None or group2_mask is not None) else "two"
         z_arr = p_to_z(p_values, tail=z_tail) * diff_signs
         logp_arr = _p_to_logp_values(p_values, dtype=DEFAULT_FLOAT_DTYPE)
+        p_values = self._scatter_to_full_mask(p_values, union_mask, fill_value=1)
+        z_arr = self._scatter_to_full_mask(z_arr, union_mask)
+        logp_arr = self._scatter_to_full_mask(logp_arr, union_mask)
 
         maps = {
-            "stat_desc-group1MinusGroup2": diff_ale_values,
+            "stat_desc-group1MinusGroup2": full_diff_ale_values,
             "p_desc-group1MinusGroup2": p_values,
             "z_desc-group1MinusGroup2": z_arr,
             "logp_desc-group1MinusGroup2": logp_arr,
@@ -1013,15 +1093,27 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         return iter_abs_max, p_values, diff_signs
 
-    def _compute_cluster_nulls(self, iter_diff_values, voxel_thresh, n_iters):
+    def _compute_cluster_nulls(self, iter_diff_values, voxel_thresh, n_iters, union_mask=None):
         """Compute cluster-forming threshold and cluster null summaries from permutation maps."""
-        ss_thresh = np.quantile(np.abs(iter_diff_values), 1 - voxel_thresh)
+        # When union_mask is provided, restrict the ss_thresh quantile and cluster stats to the
+        # masked region so that null clusters can only form where inference maps have signal.
+        is_restricted = union_mask is not None and iter_diff_values.shape[1] == union_mask.sum()
+        if union_mask is not None and not is_restricted:
+            ss_thresh = np.quantile(np.abs(iter_diff_values[:, union_mask]), 1 - voxel_thresh)
+        else:
+            ss_thresh = np.quantile(np.abs(iter_diff_values), 1 - voxel_thresh)
         conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
         iter_max_sizes = np.zeros(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
         iter_max_masses = np.zeros(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
 
         for i_iter in range(n_iters):
-            iter_map = self.masker.inverse_transform(iter_diff_values[i_iter, :]).get_fdata(
+            iter_vals = iter_diff_values[i_iter, :]
+            if is_restricted:
+                iter_vals = self._scatter_to_full_mask(iter_vals, union_mask)
+            elif union_mask is not None:
+                iter_vals = iter_vals.copy()
+                iter_vals[~union_mask] = 0
+            iter_map = self.masker.inverse_transform(iter_vals).get_fdata(
                 dtype=DEFAULT_FLOAT_DTYPE
             )
             iter_max_sizes[i_iter], iter_max_masses[i_iter] = _calculate_cluster_measures(
@@ -1624,6 +1716,9 @@ class BalancedALESubtraction(PairwiseCBMAEstimator):
         sample_space = np.vstack(np.where(prior_img)).T.astype(np.int32, copy=False)
         rng = np.random.RandomState(seed)
 
+        # Precompute boolean mask once to avoid NiBabel round-trip in hot loops.
+        mask_arr = _mask_img_to_bool(estimator.masker.mask_img)
+
         null_cluster_sizes = np.zeros(self.n_iters, dtype=np.int32)
         for i_iter in range(self.n_iters):
             if target_n < ma_maps.shape[0]:
@@ -1646,6 +1741,7 @@ class BalancedALESubtraction(PairwiseCBMAEstimator):
                 estimator.masker,
                 voxel_thresh=self.voxel_thresh,
                 cluster_size_threshold=None,
+                mask_arr=mask_arr,
             )
 
         cluster_threshold = np.percentile(null_cluster_sizes, 100.0 * (1.0 - self.alpha))
@@ -1664,6 +1760,7 @@ class BalancedALESubtraction(PairwiseCBMAEstimator):
                 estimator.masker,
                 voxel_thresh=self.voxel_thresh,
                 cluster_size_threshold=cluster_threshold,
+                mask_arr=mask_arr,
             )
             prob_map += (z_values > 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
         return (

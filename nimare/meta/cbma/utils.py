@@ -2,19 +2,42 @@
 
 from itertools import combinations
 
-import nibabel as nib
 import numpy as np
 from scipy import ndimage
 from scipy import sparse as sp_sparse
 from scipy.special import comb
 from scipy.stats import norm
 
-from nimare.utils import DEFAULT_FLOAT_DTYPE
+from nimare.utils import DEFAULT_FLOAT_DTYPE, _mask_img_to_bool
 
 
-def _threshold_z_clusters(z_values, masker, voxel_thresh, cluster_size_threshold=None):
-    """Apply cluster thresholding to a z map in masked-array space."""
-    z_map = masker.inverse_transform(z_values).get_fdata(dtype=DEFAULT_FLOAT_DTYPE)
+def _threshold_z_clusters(
+    z_values, masker, voxel_thresh, cluster_size_threshold=None, mask_arr=None
+):
+    """Apply cluster thresholding to a z map in masked-array space.
+
+    Parameters
+    ----------
+    z_values : numpy.ndarray of shape (n_voxels,)
+        Masked z-values.
+    masker : NiftiMasker
+        Fitted masker; used only when ``mask_arr`` is ``None``.
+    voxel_thresh : float
+        Uncorrected voxel-level p-threshold for defining clusters.
+    cluster_size_threshold : int or None
+        Minimum cluster size in voxels; ``None`` skips size filtering.
+    mask_arr : numpy.ndarray of shape (X, Y, Z), dtype bool, optional
+        Pre-computed boolean brain mask.  When supplied the NiBabel
+        round-trip (and its ``gc.collect()`` overhead) is avoided.
+        Callers in hot loops should precompute this once and pass it in.
+    """
+    if mask_arr is None:
+        mask_arr = _mask_img_to_bool(masker.mask_img)
+
+    # 1D masked → 3D: direct numpy fill avoids inverse_transform → gc.collect
+    z_map = np.zeros(mask_arr.shape, dtype=DEFAULT_FLOAT_DTYPE)
+    z_map[mask_arr] = z_values
+
     sig_arr = z_map > norm.ppf(1 - voxel_thresh)
     labels, cluster_count = ndimage.label(sig_arr)
     if cluster_count < 1:
@@ -26,7 +49,9 @@ def _threshold_z_clusters(z_values, masker, voxel_thresh, cluster_size_threshold
         significant_clusters = voxel_count_clusters > cluster_size_threshold
         sig_clust_labels = np.where(significant_clusters)[0]
         z_map = z_map * np.isin(labels, sig_clust_labels)
-    return np.squeeze(masker.transform(nib.Nifti1Image(z_map, masker.mask_img.affine))), max_clust
+
+    # 3D → 1D masked: direct boolean index avoids masker.transform → gc.collect
+    return z_map[mask_arr].astype(DEFAULT_FLOAT_DTYPE, copy=False), max_clust
 
 
 def resolve_subset_size(policy, total_n, k=None, target_n=None):

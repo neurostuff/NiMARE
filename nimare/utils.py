@@ -28,6 +28,7 @@ except ImportError:
 
 LGR = logging.getLogger(__name__)
 DEFAULT_FLOAT_DTYPE = np.float32
+_RESAMPLED_GM_PRIOR_CACHE = {}
 
 
 def _minimum_positive_float(dtype=DEFAULT_FLOAT_DTYPE):
@@ -98,9 +99,17 @@ def _mask_coverage_to_mask(masker, mask_coverage="brain", gm_threshold=0.1):
     if mask_coverage != "gm":
         raise ValueError(f"mask_coverage must be 'gm' or 'brain'; got {mask_coverage!r}.")
 
-    gm_img = datasets.load_mni152_gm_template(resolution=2)
-    gm_img = resample_to_img(gm_img, masker.mask_img, interpolation="continuous")
-    gm_bool = np.asanyarray(gm_img.dataobj) > gm_threshold
+    cache_key = (
+        masker.mask_img.shape,
+        tuple(np.asarray(masker.mask_img.affine).ravel()),
+        float(gm_threshold),
+    )
+    gm_bool = _RESAMPLED_GM_PRIOR_CACHE.get(cache_key)
+    if gm_bool is None:
+        gm_img = datasets.load_mni152_gm_template(resolution=2)
+        gm_img = resample_to_img(gm_img, masker.mask_img, interpolation="continuous")
+        gm_bool = np.asanyarray(gm_img.dataobj) > gm_threshold
+        _RESAMPLED_GM_PRIOR_CACHE[cache_key] = gm_bool
     return mask_bool & gm_bool
 
 
