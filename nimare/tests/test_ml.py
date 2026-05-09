@@ -11,11 +11,11 @@ from nimare.nimads import Studyset
 
 def _build_shared_ml_source():
     """Create one canonical source dict for both Dataset and Studyset builders.
+
     The two studies intentionally reuse the same contrast ID (``task``) so that
     short analysis IDs are ambiguous and must be resolved via the full
     ``<study_id>-<contrast_id>`` identifier.
     """
-
     return {
         "study_alpha": {
             "contrasts": {

@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-
 from nimare.base import NiMAREBase
 
 LGR = logging.getLogger(__name__)
