@@ -5,8 +5,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import numpy as np
-import pandas as pd
 
 from nimare.base import NiMAREBase
 
@@ -30,6 +28,5 @@ class MAFeatureExtractor(NiMAREBase):
 
 
 def make_map_reducer(*args: Any, **kwargs: Any):
-    """Placeholder for map reducer construction."""
-
+    """Construct a map reducer placeholder."""
     raise NotImplementedError("make_map_reducer is not yet implemented.")

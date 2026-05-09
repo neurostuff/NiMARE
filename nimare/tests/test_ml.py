@@ -11,7 +11,6 @@ from nimare.nimads import Studyset
 
 def _build_shared_ml_source():
     """Create one canonical source dict for both Dataset and Studyset builders.
-
     The two studies intentionally reuse the same contrast ID (``task``) so that
     short analysis IDs are ambiguous and must be resolved via the full
     ``<study_id>-<contrast_id>`` identifier.
@@ -53,19 +52,16 @@ def _build_shared_ml_source():
 
 def build_shared_dataset():
     """Build a fresh Dataset from the shared source dict."""
-
     return Dataset(_build_shared_ml_source())
 
 
 def build_shared_studyset():
     """Build a fresh Studyset from the shared Dataset fixture source."""
-
     return Studyset.from_dataset(build_shared_dataset())
 
 
 def test_shared_dataset_builder():
     """The shared Dataset builder should expose the expected tabular fields."""
-
     dset = build_shared_dataset()
 
     assert isinstance(dset, Dataset)
@@ -79,7 +75,6 @@ def test_shared_dataset_builder():
 
 def test_shared_studyset_builder_and_ambiguous_short_ids():
     """The shared Studyset builder should preserve full IDs and expose ambiguity."""
-
     studyset = build_shared_studyset()
 
     assert isinstance(studyset, Studyset)
@@ -93,20 +88,17 @@ def test_shared_studyset_builder_and_ambiguous_short_ids():
 
 def test_ma_feature_dataset_initialization():
     """Test that MAFeatureDataset currently raises NotImplementedError."""
-
     with pytest.raises(NotImplementedError):
         MAFeatureDataset()
 
 
 def test_ma_feature_extractor_initialization():
     """Test that MAFeatureExtractor currently raises NotImplementedError."""
-
     with pytest.raises(NotImplementedError):
         MAFeatureExtractor()
 
 
 def test_make_map_reducer_placeholder():
     """Test that make_map_reducer currently raises NotImplementedError."""
-
     with pytest.raises(NotImplementedError):
         make_map_reducer()
