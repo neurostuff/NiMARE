@@ -12,34 +12,15 @@ and native Studyset-backed meta-analysis.
 """
 
 from pprint import pprint
-from requests import request
 
+from nimare.io import fetch_neurostore_studyset
 from nimare.meta.cbma import ALE
-from nimare.nimads import Studyset
-
 
 ###############################################################################
 # Download Data from NeuroStore
 # -----------------------------------------------------------------------------
 
-
-def download_file(url):
-    """Download a file from NeuroStore."""
-    response = request("GET", url)
-    return response.json()
-
-
-# Download a studyset and its annotation
-nimads_studyset = download_file("https://neurostore.org/api/studysets/Cv2LLUqG76W9?nested=true")
-nimads_annotation = download_file("https://neurostore.org/api/annotations/76PyNqoTNEsE")
-
-
-###############################################################################
-# Create and Explore Studyset
-# -----------------------------------------------------------------------------
-# Load the data into a NiMADS Studyset object and explore its contents
-
-studyset = Studyset(nimads_studyset, annotations=nimads_annotation)
+studyset = fetch_neurostore_studyset("Cv2LLUqG76W9", annotation_id="76PyNqoTNEsE")
 
 # Display basic information about the studyset
 print("\nStudyset Information:")

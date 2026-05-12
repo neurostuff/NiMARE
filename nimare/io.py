@@ -185,6 +185,56 @@ def _extract_coordinate_row_metadata(metadata, n_points):
     return coordinate_rows, coordinate_keys
 
 
+def fetch_neurostore_studyset(studyset_id, annotation_id=None, target="mni152_2mm"):
+    """Download a Neurostore studyset and optional annotation as a NiMARE Studyset.
+
+    Parameters
+    ----------
+    studyset_id : :obj:`str`
+        Neurostore studyset ID to download. The studyset is requested as a nested
+        payload.
+    annotation_id : :obj:`str`, optional
+        Neurostore annotation ID to download and attach to the studyset. The regular
+        annotation payload is requested.
+    target : :obj:`str` or None, optional
+        Target template space for coordinates. Default is ``"mni152_2mm"``, matching
+        :class:`~nimare.nimads.Studyset`.
+
+    Returns
+    -------
+    studyset : :obj:`nimare.nimads.Studyset`
+        Downloaded studyset with the optional annotation attached.
+    """
+    from neurostore_sdk import ApiClient, ApiException, StoreApi
+
+    from nimare.nimads import Studyset
+
+    store_api = StoreApi()
+    api_client = ApiClient()
+
+    try:
+        studyset_response = store_api.studysets_id_get(studyset_id, nested=True)
+    except ApiException as exc:
+        raise ValueError(f"Failed to download Neurostore studyset '{studyset_id}'.") from exc
+
+    studyset_payload = api_client.sanitize_for_serialization(studyset_response)
+
+    annotation_payload = None
+    if annotation_id is not None:
+        try:
+            annotation_response = store_api.annotations_id_get(annotation_id)
+        except ApiException as exc:
+            raise ValueError(
+                f"Failed to download Neurostore annotation '{annotation_id}'."
+            ) from exc
+
+        annotation_payload = api_client.sanitize_for_serialization(annotation_response)
+
+    if annotation_payload is None:
+        return Studyset(studyset_payload, target=target)
+    return Studyset(studyset_payload, annotations=annotation_payload, target=target)
+
+
 def convert_nimads_to_dataset(studyset, annotation=None):
     """Convert nimads studyset to a dataset.
 
