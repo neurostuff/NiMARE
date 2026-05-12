@@ -13,6 +13,85 @@ from nimare.nimads import Studyset
 from nimare.tests.utils import get_test_data_path
 from nimare.utils import get_template
 
+NEUROSTORE_STUDYSET_ID = "qm2PZBqNsaZK"
+NEUROSTORE_ANNOTATION_ID = "hbTQJVL2kAb8"
+
+
+@pytest.fixture(scope="module")
+def vcr_cassette_dir():
+    """Store test_io cassettes in a stable directory."""
+    return os.path.join(os.path.dirname(__file__), "cassettes", "test_io")
+
+
+@pytest.fixture(scope="module")
+def vcr_config():
+    """Keep Neurostore cassettes stable and free of credentials."""
+    return {
+        "filter_headers": ["authorization"],
+        "decode_compressed_response": True,
+    }
+
+
+@pytest.mark.vcr
+def test_fetch_neurostore_studyset():
+    """Download a nested Neurostore studyset into a NiMARE Studyset."""
+    studyset = io.fetch_neurostore_studyset(NEUROSTORE_STUDYSET_ID, target="ale_2mm")
+
+    assert isinstance(studyset, Studyset)
+    assert studyset.id == NEUROSTORE_STUDYSET_ID
+    assert studyset.space == "ale_2mm"
+    assert len(studyset.studies) > 0
+
+
+@pytest.mark.vcr
+def test_fetch_neurostore_studyset_with_annotation():
+    """Download a nested Neurostore studyset and attach a regular annotation."""
+    studyset = io.fetch_neurostore_studyset(
+        NEUROSTORE_STUDYSET_ID,
+        annotation_id=NEUROSTORE_ANNOTATION_ID,
+    )
+
+    assert isinstance(studyset, Studyset)
+    assert studyset.id == NEUROSTORE_STUDYSET_ID
+    assert len(studyset.annotations) == 1
+    assert studyset.annotations[0].id == NEUROSTORE_ANNOTATION_ID
+    assert "included" in studyset.annotations_df.columns
+    assert studyset.annotations_df["included"].any()
+
+
+def test_fetch_neurostore_studyset_wraps_api_errors(monkeypatch):
+    """Neurostore request failures should report the resource that failed."""
+    import neurostore_sdk
+
+    class FailingStoreApi:
+        def studysets_id_get(self, id, nested=True):
+            raise neurostore_sdk.ApiException(status=404, reason="Not Found")
+
+    monkeypatch.setattr(neurostore_sdk, "StoreApi", FailingStoreApi)
+
+    with pytest.raises(ValueError, match="Failed to download Neurostore studyset 'bad-id'"):
+        io.fetch_neurostore_studyset("bad-id")
+
+
+def test_fetch_neurostore_studyset_wraps_annotation_api_errors(monkeypatch):
+    """Neurostore annotation request failures should report the annotation ID."""
+    import neurostore_sdk
+
+    class FailingAnnotationStoreApi:
+        def studysets_id_get(self, id, nested=True):
+            return {"id": "ok-id", "studies": []}
+
+        def annotations_id_get(self, id):
+            raise neurostore_sdk.ApiException(status=404, reason="Not Found")
+
+    monkeypatch.setattr(neurostore_sdk, "StoreApi", FailingAnnotationStoreApi)
+
+    with pytest.raises(
+        ValueError,
+        match="Failed to download Neurostore annotation 'bad-annotation'",
+    ):
+        io.fetch_neurostore_studyset("ok-id", annotation_id="bad-annotation")
+
 
 def test_convert_nimads_to_dataset(example_nimads_studyset, example_nimads_annotation):
     """Conversion of nimads JSON to nimare dataset."""

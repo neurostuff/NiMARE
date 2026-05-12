@@ -146,6 +146,7 @@ For more information about functional characterization analysis, see :doc:`decod
    io.convert_neurosynth_to_dict
    io.convert_neurosynth_to_json
    io.convert_neurosynth_to_dataset
+   io.fetch_neurostore_studyset
    io.convert_nimads_to_dataset
    io.convert_nimads_to_sleuth
    io.convert_dataset_to_nimads_dict
