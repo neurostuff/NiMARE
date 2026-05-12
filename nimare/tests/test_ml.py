@@ -4,73 +4,61 @@ from __future__ import annotations
 
 import pytest
 
-from nimare.dataset import Dataset
 from nimare.ml import MAFeatureDataset, MAFeatureExtractor, make_map_reducer
 from nimare.nimads import Studyset
 
 
 def _build_shared_ml_source():
-    """Create one canonical source dict for both Dataset and Studyset builders.
+    """Create one canonical source dict for Studyset/NIMADS builder.
 
     The two studies intentionally reuse the same contrast ID (``task``) so that
     short analysis IDs are ambiguous and must be resolved via the full
     ``<study_id>-<contrast_id>`` identifier.
     """
     return {
-        "study_alpha": {
-            "contrasts": {
-                "task": {
-                    "coords": {
-                        "space": "MNI",
-                        "x": [1.0, 2.0],
-                        "y": [3.0, 4.0],
-                        "z": [5.0, 6.0],
-                    },
-                    "metadata": {"sample_sizes": [20]},
-                    "labels": {"alpha_label": 1.0},
-                    "text": {"abstract": "Alpha study abstract."},
-                }
-            }
-        },
-        "study_beta": {
-            "contrasts": {
-                "task": {
-                    "coords": {
-                        "space": "MNI",
-                        "x": [-1.0],
-                        "y": [-3.0],
-                        "z": [-5.0],
-                    },
-                    "metadata": {"sample_sizes": [30]},
-                    "labels": {"beta_label": 1.0},
-                    "text": {"abstract": "Beta study abstract."},
-                }
-            }
-        },
+        "id": "studyset_shared_ml_source",
+        "name": "Shared ML source",
+        "studies": [
+            {
+                "id": "study_alpha",
+                "name": "Study alpha",
+                "analyses": [
+                    {
+                        "id": "task",
+                        "name": "Alpha task",
+                        "metadata": {"sample_sizes": [20]},
+                        "annotations": {"alpha_label": 1.0},
+                        "texts": {"abstract": "Alpha study abstract."},
+                        "points": [
+                            {"space": "MNI", "coordinates": [1.0, 3.0, 5.0]},
+                            {"space": "MNI", "coordinates": [2.0, 4.0, 6.0]},
+                        ],
+                        "images": [],
+                    }
+                ],
+            },
+            {
+                "id": "study_beta",
+                "name": "Study beta",
+                "analyses": [
+                    {
+                        "id": "task",
+                        "name": "Beta task",
+                        "metadata": {"sample_sizes": [30]},
+                        "annotations": {"beta_label": 1.0},
+                        "texts": {"abstract": "Beta study abstract."},
+                        "points": [{"space": "MNI", "coordinates": [-1.0, -3.0, -5.0]}],
+                        "images": [],
+                    }
+                ],
+            },
+        ],
     }
 
 
-def build_shared_dataset():
-    """Build a fresh Dataset from the shared source dict."""
-    return Dataset(_build_shared_ml_source())
-
-
 def build_shared_studyset():
-    """Build a fresh Studyset from the shared Dataset fixture source."""
-    return Studyset.from_dataset(build_shared_dataset())
-
-
-def test_shared_dataset_builder():
-    """The shared Dataset builder should expose the expected tabular fields."""
-    dset = build_shared_dataset()
-
-    assert isinstance(dset, Dataset)
-    assert dset.ids.tolist() == ["study_alpha-task", "study_beta-task"]
-    assert list(dset.coordinates["id"].unique()) == ["study_alpha-task", "study_beta-task"]
-    assert "sample_sizes" in dset.metadata.columns
-    assert "alpha_label" in dset.annotations.columns
-    assert "beta_label" in dset.annotations.columns
-    assert "abstract" in dset.texts.columns
+    """Build a fresh Studyset from the shared source dict."""
+    return Studyset(_build_shared_ml_source())
 
 
 def test_shared_studyset_builder_and_ambiguous_short_ids():
@@ -79,6 +67,8 @@ def test_shared_studyset_builder_and_ambiguous_short_ids():
 
     assert isinstance(studyset, Studyset)
     assert studyset.ids.tolist() == ["study_alpha-task", "study_beta-task"]
+    assert studyset.study_ids.tolist() == ["study_alpha", "study_beta"]
+    assert list(studyset.coordinates["id"].unique()) == ["study_alpha-task", "study_beta-task"]
     assert studyset.filter_ids("task").ids.tolist() == ["study_alpha-task", "study_beta-task"]
     assert "abstract" in studyset.texts.columns
     assert "sample_sizes" in studyset.metadata.columns
