@@ -16,7 +16,7 @@ def _build_studyset_ml_source():
     ``<study_id>-<contrast_id>`` identifier.
     """
     return {
-        "id": "studyset_studyset_ml_source",
+        "id": "studyset_ml_source",
         "name": "Studyset ML source",
         "studies": [
             {
@@ -57,12 +57,12 @@ def _build_studyset_ml_source():
 
 
 def build_studyset():
-    """Build a fresh Studyset from the shared source dict."""
+    """Build a fresh Studyset from the studyset ML source dict."""
     return Studyset(_build_studyset_ml_source())
 
 
 def test_studyset_builder_and_ambiguous_short_ids():
-    """The shared Studyset builder should preserve full IDs and expose ambiguity."""
+    """The Studyset builder should preserve full IDs and expose ambiguity."""
     studyset = build_studyset()
 
     assert isinstance(studyset, Studyset)
