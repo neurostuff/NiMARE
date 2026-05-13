@@ -8,7 +8,7 @@ from nimare.ml import MAFeatureDataset, MAFeatureExtractor, make_map_reducer
 from nimare.nimads import Studyset
 
 
-def _build_shared_ml_source():
+def _build_studyset_ml_source():
     """Create one canonical source dict for Studyset/NIMADS builder.
 
     The two studies intentionally reuse the same contrast ID (``task``) so that
@@ -16,8 +16,8 @@ def _build_shared_ml_source():
     ``<study_id>-<contrast_id>`` identifier.
     """
     return {
-        "id": "studyset_shared_ml_source",
-        "name": "Shared ML source",
+        "id": "studyset_studyset_ml_source",
+        "name": "Studyset ML source",
         "studies": [
             {
                 "id": "study_alpha",
@@ -56,14 +56,14 @@ def _build_shared_ml_source():
     }
 
 
-def build_shared_studyset():
+def build_studyset():
     """Build a fresh Studyset from the shared source dict."""
-    return Studyset(_build_shared_ml_source())
+    return Studyset(_build_studyset_ml_source())
 
 
-def test_shared_studyset_builder_and_ambiguous_short_ids():
+def test_studyset_builder_and_ambiguous_short_ids():
     """The shared Studyset builder should preserve full IDs and expose ambiguity."""
-    studyset = build_shared_studyset()
+    studyset = build_studyset()
 
     assert isinstance(studyset, Studyset)
     assert studyset.ids.tolist() == ["study_alpha-task", "study_beta-task"]
