@@ -2,7 +2,16 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.17.0...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.19.0...HEAD)
+
+## [0.19.0](https://github.com/neurostuff/NiMARE/compare/0.17.0...0.19.0) - 2026-05-13
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+* make it easier to download/work with neurostore studyset by @jdkent in https://github.com/neurostuff/NiMARE/pull/1078
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.18.0...0.19.0
 
 ## [0.17.0](https://github.com/neurostuff/NiMARE/compare/0.16.0...0.17.0) - 2026-05-05
 
