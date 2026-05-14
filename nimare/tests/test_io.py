@@ -9,7 +9,7 @@ from scipy import sparse
 
 import nimare
 from nimare import io
-from nimare.nimads import Studyset
+from nimare.nimads import Studyset, convert_neurostore_json_to_parquet
 from nimare.tests.utils import get_test_data_path
 from nimare.utils import get_template
 
@@ -91,6 +91,121 @@ def test_fetch_neurostore_studyset_wraps_annotation_api_errors(monkeypatch):
         match="Failed to download Neurostore annotation 'bad-annotation'",
     ):
         io.fetch_neurostore_studyset("ok-id", annotation_id="bad-annotation")
+
+
+def test_convert_neurostore_json_to_parquet_and_load_all_annotations(tmp_path):
+    """Release JSON should round-trip through parquet-backed Studysets."""
+    studyset_file = tmp_path / "neurostore-studyset.json"
+    annotation_file = tmp_path / "neurostore-annotation.json"
+    manifest_file = tmp_path / "manifest.json"
+    parquet_dir = tmp_path / "parquet"
+
+    studyset_file.write_text(
+        json.dumps(
+            {
+                "name": "release-studyset",
+                "studies": [
+                    {
+                        "id": "study-1",
+                        "name": "Example study",
+                        "authors": "A. Author",
+                        "publication": "Example Journal",
+                        "analyses": [
+                            {
+                                "id": "analysis-1",
+                                "name": "faces > shapes",
+                                "metadata": {"sample_size": "20"},
+                                "points": [
+                                    {
+                                        "coordinates": [1, 2, 3],
+                                        "space": "MNI",
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+    )
+    annotation_file.write_text(
+        json.dumps(
+            {
+                "id": None,
+                "name": "release-annotation",
+                "studyset": "studyset-1",
+                "notes": [
+                    {
+                        "analysis": "analysis-1",
+                        "note": {
+                            "diagnosis": "control",
+                            "age_mean": 31.5,
+                        },
+                    }
+                ],
+            }
+        )
+    )
+    manifest_file.write_text(
+        json.dumps(
+            {
+                "studyset": {"id": "studyset-1", "name": "release-studyset"},
+                "annotation": {"id": "annotation-1", "name": "release-annotation"},
+            }
+        )
+    )
+
+    convert_neurostore_json_to_parquet(
+        studyset_file,
+        parquet_dir,
+        annotation_file=annotation_file,
+        manifest_file=manifest_file,
+    )
+    studyset = Studyset(parquet_dir)
+
+    assert isinstance(studyset, Studyset)
+    assert studyset.id == "studyset-1"
+    assert studyset.name == "release-studyset"
+    assert studyset.ids.tolist() == ["study-1-analysis-1"]
+    assert studyset.coordinates[["x", "y", "z"]].values.tolist() == [[1.0, 2.0, 3.0]]
+    assert studyset.metadata["sample_sizes"].tolist() == [[20]]
+    assert studyset.annotations_df["diagnosis"].tolist() == ["control"]
+    assert studyset.annotations_df["age_mean"].tolist() == [31.5]
+    assert len(studyset.studies) == 1
+    assert studyset.studies[0].analyses[0].annotations["diagnosis"] == "control"
+
+
+@pytest.mark.parametrize(
+    "studyset_data,match",
+    [
+        (
+            {
+                "id": "studyset-1",
+                "studies": [{"name": "No ID study", "analyses": []}],
+            },
+            "Could not infer an id for study",
+        ),
+        (
+            {
+                "id": "studyset-1",
+                "studies": [
+                    {
+                        "id": "study-1",
+                        "analyses": [{"name": "No ID analysis", "points": []}],
+                    }
+                ],
+            },
+            "has no id",
+        ),
+    ],
+)
+def test_convert_neurostore_json_to_parquet_requires_ids(tmp_path, studyset_data, match):
+    """Release conversion should fail explicitly when required IDs are missing."""
+    studyset_file = tmp_path / "neurostore-studyset.json"
+    studyset_file.write_text(json.dumps(studyset_data))
+
+    with pytest.raises(ValueError, match=match):
+        convert_neurostore_json_to_parquet(studyset_file, tmp_path / "parquet")
 
 
 def test_convert_nimads_to_dataset(example_nimads_studyset, example_nimads_annotation):

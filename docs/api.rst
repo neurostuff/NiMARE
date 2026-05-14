@@ -176,6 +176,7 @@ all NiMARE workflows.
    :toctree: generated/
    :template: class.rst
 
+   nimads.convert_neurostore_json_to_parquet
    nimads.Studyset
    nimads.Annotation
    nimads.Study
