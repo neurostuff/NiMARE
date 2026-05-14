@@ -51,12 +51,13 @@ def _require_parquet_engine():
         ) from exc
 
 
-def _load_release_manifest(manifest_file):
-    """Load release metadata if a manifest path was provided."""
-    if manifest_file is None:
+def _load_release_manifest(manifest_source):
+    """Load release metadata if a manifest path or dict was provided."""
+    if manifest_source is None:
         return {}
-
-    with open(manifest_file, encoding="utf-8") as f_obj:
+    if isinstance(manifest_source, dict):
+        return manifest_source
+    with open(manifest_source, encoding="utf-8") as f_obj:
         return json.load(f_obj)
 
 
@@ -216,7 +217,7 @@ def _json_array_item_iter(filename, key):
             buffer = buffer[end:]
 
 
-def _annotation_notes_to_dataframe(annotation_file, analyses, annotation_id):
+def _annotation_notes_to_dataframe(annotation_source, analyses, annotation_id):
     """Flatten NeuroStore annotation notes into a Dataset-style annotations table."""
     contrast_lookup = analyses[["id", "study_id", "contrast_id"]].copy()
     contrast_lookup["annotation_analysis_id"] = contrast_lookup["contrast_id"]
@@ -225,8 +226,12 @@ def _annotation_notes_to_dataframe(annotation_file, analyses, annotation_id):
         str(contrast_id): group.drop(columns=["annotation_analysis_id"])
         for contrast_id, group in contrast_lookup.groupby("annotation_analysis_id", sort=False)
     }
+    if isinstance(annotation_source, dict):
+        notes_iter = iter(annotation_source.get("notes", []))
+    else:
+        notes_iter = _json_array_item_iter(annotation_source, "notes")
     rows = []
-    for note in _json_array_item_iter(annotation_file, "notes"):
+    for note in notes_iter:
         analysis_id = str(note["analysis"])
         matching_analyses = contrast_groups.get(analysis_id)
         if matching_analyses is None:
@@ -267,8 +272,8 @@ def convert_neurostore_json_to_parquet(
     studyset_source,
     output_dir,
     *,
-    annotation_file=None,
-    manifest_file=None,
+    annotation_source=None,
+    manifest_source=None,
     studyset_id=None,
     studyset_name=None,
     annotation_id=None,
@@ -282,10 +287,10 @@ def convert_neurostore_json_to_parquet(
         Path to a NeuroStore/NIMADS-like studyset JSON file, or a pre-loaded dict.
     output_dir : :obj:`str` or :obj:`pathlib.Path`
         Directory where parquet tables and ``studyset.json`` metadata will be written.
-    annotation_file : :obj:`str` or :obj:`pathlib.Path`, optional
-        Path to a NeuroStore annotation JSON file. When provided, all note fields are
-        flattened into the annotations parquet table by default.
-    manifest_file : :obj:`str` or :obj:`pathlib.Path`, optional
+    annotation_source : :obj:`str` or :obj:`pathlib.Path`, or :obj:`dict`, optional
+        Path to a NeuroStore annotation JSON file, or a pre-loaded dict. When provided,
+        all note fields are flattened into the annotations parquet table by default.
+    manifest_source : :obj:`str` or :obj:`pathlib.Path`, or :obj:`dict`, optional
         Path to a NeuroStore release manifest. Used to fill missing top-level studyset and
         annotation ids.
     studyset_id, studyset_name, annotation_id : :obj:`str`, optional
@@ -301,8 +306,9 @@ def convert_neurostore_json_to_parquet(
     _require_parquet_engine()
 
     output_dir = Path(output_dir)
-    annotation_file = None if annotation_file is None else Path(annotation_file)
-    manifest = _load_release_manifest(manifest_file)
+    if annotation_source is not None and not isinstance(annotation_source, dict):
+        annotation_source = Path(annotation_source)
+    manifest = _load_release_manifest(manifest_source)
 
     studyset_id = studyset_id or _manifest_entity(manifest, "studyset", "id")
     studyset_name = studyset_name or _manifest_entity(manifest, "studyset", "name")
@@ -326,13 +332,13 @@ def convert_neurostore_json_to_parquet(
     from nimare._studyset_store import _build_tables_from_source
 
     table_cache = _build_tables_from_source(source)
-    if annotation_file is not None:
+    if annotation_source is not None:
         if annotation_id is None:
             raise ValueError(
                 "Could not infer an annotation id. Pass annotation_id or provide a manifest_file."
             )
         note_annotations = _annotation_notes_to_dataframe(
-            annotation_file,
+            annotation_source,
             table_cache["analyses"],
             annotation_id,
         )
@@ -363,7 +369,7 @@ def convert_neurostore_json_to_parquet(
         "version": 1,
         "tables": {name: f"{name}.parquet" for name in files["tables"]},
     }
-    if annotation_file is not None:
+    if annotation_source is not None:
         metadata["annotations"] = [{"id": annotation_id}]
     with open(output_dir / "studyset.json", "w", encoding="utf-8") as f_obj:
         json.dump(metadata, f_obj, indent=2, sort_keys=True)

@@ -158,8 +158,8 @@ def test_convert_neurostore_json_to_parquet_and_load_all_annotations(tmp_path):
     convert_neurostore_json_to_parquet(
         studyset_file,
         parquet_dir,
-        annotation_file=annotation_file,
-        manifest_file=manifest_file,
+        annotation_source=annotation_file,
+        manifest_source=manifest_file,
     )
     studyset = Studyset(parquet_dir)
 
@@ -173,6 +173,45 @@ def test_convert_neurostore_json_to_parquet_and_load_all_annotations(tmp_path):
     assert studyset.annotations_df["age_mean"].tolist() == [31.5]
     assert len(studyset.studies) == 1
     assert studyset.studies[0].analyses[0].annotations["diagnosis"] == "control"
+
+
+def test_convert_neurostore_json_to_parquet_dict_inputs(tmp_path):
+    """convert_neurostore_json_to_parquet should accept pre-loaded dicts for all sources."""
+    studyset_dict = {
+        "name": "release-studyset",
+        "studies": [
+            {
+                "id": "study-1",
+                "name": "Example study",
+                "analyses": [
+                    {
+                        "id": "analysis-1",
+                        "name": "faces > shapes",
+                        "metadata": {"sample_size": "20"},
+                        "points": [{"coordinates": [1, 2, 3], "space": "MNI"}],
+                    }
+                ],
+            }
+        ],
+    }
+    annotation_dict = {"notes": [{"analysis": "analysis-1", "note": {"diagnosis": "control"}}]}
+    manifest_dict = {
+        "studyset": {"id": "studyset-1", "name": "release-studyset"},
+        "annotation": {"id": "annotation-1", "name": "release-annotation"},
+    }
+
+    convert_neurostore_json_to_parquet(
+        studyset_dict,
+        tmp_path / "parquet",
+        annotation_source=annotation_dict,
+        manifest_source=manifest_dict,
+    )
+    studyset = Studyset(tmp_path / "parquet")
+
+    assert studyset.id == "studyset-1"
+    assert studyset.ids.tolist() == ["study-1-analysis-1"]
+    assert studyset.coordinates[["x", "y", "z"]].values.tolist() == [[1.0, 2.0, 3.0]]
+    assert studyset.annotations_df["diagnosis"].tolist() == ["control"]
 
 
 @pytest.mark.parametrize(
