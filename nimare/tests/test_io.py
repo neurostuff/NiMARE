@@ -4,6 +4,7 @@ import copy
 import json
 import os
 
+import pandas as pd
 import pytest
 from scipy import sparse
 
@@ -108,6 +109,7 @@ def test_convert_neurostore_json_to_parquet_and_load_all_annotations(tmp_path):
                     {
                         "id": "study-1",
                         "name": "Example study",
+                        "description": "A study-level description.",
                         "authors": "A. Author",
                         "publication": "Example Journal",
                         "analyses": [
@@ -171,8 +173,18 @@ def test_convert_neurostore_json_to_parquet_and_load_all_annotations(tmp_path):
     assert studyset.metadata["sample_sizes"].tolist() == [[20]]
     assert studyset.annotations_df["diagnosis"].tolist() == ["control"]
     assert studyset.annotations_df["age_mean"].tolist() == [31.5]
+    assert pd.read_parquet(parquet_dir / "studies.parquet").columns.tolist() == [
+        "study_id",
+        "name",
+        "description",
+        "authors",
+        "publication",
+    ]
     assert len(studyset.studies) == 1
+    assert studyset.studies[0].description == "A study-level description."
     assert studyset.studies[0].analyses[0].annotations["diagnosis"] == "control"
+    studyset.studies[0].metadata["reviewed"] = True
+    assert studyset.to_dict()["studies"][0]["description"] == "A study-level description."
 
 
 def test_convert_neurostore_json_to_parquet_dict_inputs(tmp_path):
@@ -260,6 +272,13 @@ def test_load_neurostore_parquet_studyset_resource():
     assert studyset.metadata.shape == (8, 155)
     assert studyset.annotations_df.shape == (8, 502)
     assert not studyset.is_materialized
+    assert pd.read_parquet(os.path.join(parquet_dir, "studies.parquet")).columns.tolist() == [
+        "study_id",
+        "name",
+        "description",
+        "authors",
+        "publication",
+    ]
 
 
 def test_convert_nimads_to_dataset(example_nimads_studyset, example_nimads_annotation):

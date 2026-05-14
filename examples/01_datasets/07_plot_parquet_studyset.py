@@ -55,7 +55,8 @@ print((parquet_dir / "studyset.json").read_text())
 # -----------------------------------------------------------------------------
 # The table layout is:
 #
-# - ``studies.parquet``: one row per study.
+# - ``studies.parquet``: one row per study, with ``study_id``, ``name``,
+#   ``description``, ``authors``, and ``publication``.
 # - ``analyses.parquet``: one row per analysis, with the full analysis ``id``.
 # - ``coordinates.parquet``: coordinate rows keyed by analysis id.
 # - ``metadata.parquet``: one row per analysis with metadata descriptors.

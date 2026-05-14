@@ -436,6 +436,7 @@ def _table_cache_to_nimads_source(studyset_id, studyset_name, table_cache):
         study = {
             "id": study_id,
             "name": study_row.get("name", "") or "",
+            "description": study_row.get("description", "") or "",
             "authors": study_row.get("authors", "") or "",
             "publication": study_row.get("publication", "") or "",
             "analyses": [],
@@ -2101,6 +2102,7 @@ class Study:
         return {
             "id": self.id,
             "name": self.name,
+            "description": self.description,
             "authors": self.authors,
             "publication": self.publication,
             "metadata": self.metadata,
