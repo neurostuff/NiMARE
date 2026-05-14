@@ -282,6 +282,7 @@ def _build_tables_from_source(source_dict):
             {
                 "study_id": study_id,
                 "name": study.get("name", ""),
+                "description": study.get("description", ""),
                 "authors": study.get("authors", ""),
                 "publication": study.get("publication", ""),
             }
@@ -424,7 +425,10 @@ def _build_tables_from_source(source_dict):
 
     ids = np.sort(np.asarray(ids, dtype=str))
     return {
-        "studies": _rows_to_df(studies_rows, ["study_id", "name", "authors", "publication"]),
+        "studies": _rows_to_df(
+            studies_rows,
+            ["study_id", "name", "description", "authors", "publication"],
+        ),
         "analyses": _rows_to_df(analyses_rows, _ID_COLS + ["name"]),
         "ids": ids,
         "coordinates": coord_df,
@@ -598,7 +602,9 @@ class StudysetStore:
                         metadata_df["sample_sizes"] = normalized_sample_sizes
 
         tables = {
-            "studies": pd.DataFrame(columns=["study_id", "name", "authors", "publication"]),
+            "studies": pd.DataFrame(
+                columns=["study_id", "name", "description", "authors", "publication"]
+            ),
             "analyses": pd.DataFrame(columns=_ID_COLS + ["name"]),
             "ids": np.sort(np.asarray(table_cache.get("ids", []), dtype=str)),
             "coordinates": table_cache.get("coordinates"),

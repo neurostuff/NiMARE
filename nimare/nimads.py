@@ -7,6 +7,7 @@ import os
 import weakref
 from copy import deepcopy
 from pathlib import Path
+from typing import Mapping
 
 import numpy as np
 import pandas as pd
@@ -14,7 +15,7 @@ from nilearn.image import load_img
 
 from nimare._studyset_store import StudysetExecutionProfile, StudysetStore
 from nimare.exceptions import InvalidStudysetError
-from nimare.io import convert_nimads_to_dataset
+from nimare.io import POINT_RELATIONSHIP_COLUMNS, convert_nimads_to_dataset
 from nimare.utils import (
     _mask_img_to_bool,
     _validate_df,
@@ -26,6 +27,554 @@ from nimare.utils import (
 LGR = logging.getLogger(__name__)
 
 _UNSET = object()
+
+_ID_COLS = ("id", "study_id", "contrast_id")
+_PARQUET_TABLES = (
+    "studies",
+    "analyses",
+    "coordinates",
+    "images",
+    "metadata",
+    "annotations",
+    "texts",
+)
+
+
+def _require_parquet_engine():
+    """Ensure pandas has the parquet backend used by NiMARE parquet IO."""
+    try:
+        import pyarrow  # noqa: F401
+    except ImportError as exc:
+        raise ImportError(
+            "Parquet Studyset IO requires pyarrow. Install it with "
+            "`python -m pip install pyarrow` or `python -m pip install nimare[parquet]`."
+        ) from exc
+
+
+def _load_release_manifest(manifest_source):
+    """Load release metadata if a manifest path or dict was provided."""
+    if manifest_source is None:
+        return {}
+    if isinstance(manifest_source, dict):
+        return manifest_source
+    with open(manifest_source, encoding="utf-8") as f_obj:
+        return json.load(f_obj)
+
+
+def _manifest_entity(manifest, entity, field):
+    """Extract one field from a manifest entity dictionary."""
+    value = manifest.get(entity, {})
+    if isinstance(value, Mapping):
+        return value.get(field)
+    return None
+
+
+def _adapt_neurostore_studyset_source(source, *, studyset_id=None, studyset_name=None):
+    """Normalize NeuroStore release JSON into the fields required by StudysetStore."""
+    if studyset_id is None:
+        studyset_id = source.get("id")
+    if studyset_id is None:
+        raise ValueError(
+            "Could not infer a studyset id. Pass studyset_id or provide a manifest_file."
+        )
+
+    source["id"] = studyset_id
+    if studyset_name is not None:
+        source["name"] = studyset_name
+    else:
+        source["name"] = source.get("name", "")
+
+    if "studies" not in source or not isinstance(source["studies"], list):
+        raise InvalidStudysetError("Studyset 'studies' field must be a list")
+
+    for i_study, study in enumerate(source["studies"]):
+        study_id = study.get("id")
+        if study_id is None:
+            raise ValueError(f"Could not infer an id for study at index {i_study}.")
+        study["id"] = str(study_id)
+
+        for analysis in study.get("analyses", []) or []:
+            analysis_id = analysis.get("id")
+            if analysis_id is None:
+                raise ValueError(
+                    f"Analysis '{analysis.get('name')}' in study '{study_id}' has no id."
+                )
+            analysis["id"] = str(analysis_id)
+            analysis["name"] = analysis.get("name") or str(analysis_id)
+
+    return source
+
+
+def _jsonify_nested_parquet_value(value):
+    """Convert nested object values to stable strings for parquet storage."""
+    if isinstance(value, (dict, list, tuple)):
+        return json.dumps(value, sort_keys=True)
+    return value
+
+
+def _is_parquet_missing(value):
+    """Return whether a scalar value should be treated as missing for parquet coercion."""
+    return value is None or (not isinstance(value, (dict, list, tuple)) and pd.isna(value))
+
+
+def _prepare_table_for_parquet(df):
+    """Return a parquet-friendly copy of a canonical Studyset table."""
+    df = df.copy()
+    for column in df.columns:
+        if column == "sample_sizes":
+            continue
+
+        values = df[column]
+        if values.dtype != object:
+            continue
+
+        has_nested = values.map(lambda value: isinstance(value, (dict, list, tuple))).any()
+        if has_nested:
+            df[column] = values.map(_jsonify_nested_parquet_value)
+            values = df[column]
+
+        non_missing = values.loc[~values.map(_is_parquet_missing)]
+        if non_missing.empty:
+            continue
+
+        numeric_values = pd.to_numeric(non_missing, errors="coerce")
+        if numeric_values.notna().all():
+            df[column] = pd.to_numeric(values, errors="coerce")
+            continue
+
+        value_types = {type(value) for value in non_missing}
+        if len(value_types) > 1:
+            df[column] = values.map(
+                lambda value: None if _is_parquet_missing(value) else str(value)
+            )
+    return df
+
+
+def _json_array_item_iter(filename, key):
+    """Yield JSON objects from a top-level array field without loading the full file."""
+    decoder = json.JSONDecoder()
+    key_token = f'"{key}"'
+    chunk_size = 1024 * 1024
+
+    with open(filename, encoding="utf-8") as f_obj:
+        tail = ""
+        offset = 0
+        while True:
+            chunk = f_obj.read(chunk_size)
+            if not chunk:
+                raise ValueError(f"Could not find top-level JSON array field '{key}'.")
+
+            haystack = tail + chunk
+            index = haystack.find(key_token)
+            if index != -1:
+                absolute = offset - len(tail) + index + len(key_token)
+                f_obj.seek(absolute)
+                break
+
+            offset += len(chunk)
+            tail = haystack[-len(key_token) :]
+
+        char = f_obj.read(1)
+        while char and char.isspace():
+            char = f_obj.read(1)
+        if char != ":":
+            raise ValueError(f"Expected ':' after JSON field '{key}'.")
+
+        char = f_obj.read(1)
+        while char and char.isspace():
+            char = f_obj.read(1)
+        if char != "[":
+            raise ValueError(f"Expected JSON field '{key}' to contain an array.")
+
+        buffer = ""
+        while True:
+            while True:
+                buffer = buffer.lstrip()
+                if buffer:
+                    break
+                chunk = f_obj.read(chunk_size)
+                if not chunk:
+                    raise ValueError(f"Unexpected end of file while reading '{key}'.")
+                buffer += chunk
+
+            if buffer[0] == "]":
+                return
+            if buffer[0] == ",":
+                buffer = buffer[1:]
+                continue
+
+            while True:
+                try:
+                    item, end = decoder.raw_decode(buffer)
+                    break
+                except json.JSONDecodeError:
+                    chunk = f_obj.read(chunk_size)
+                    if not chunk:
+                        raise
+                    buffer += chunk
+
+            yield item
+            buffer = buffer[end:]
+
+
+def _annotation_notes_to_dataframe(annotation_source, analyses, annotation_id):
+    """Flatten NeuroStore annotation notes into a Dataset-style annotations table."""
+    contrast_lookup = analyses[["id", "study_id", "contrast_id"]].copy()
+    contrast_lookup["annotation_analysis_id"] = contrast_lookup["contrast_id"]
+
+    contrast_groups = {
+        str(contrast_id): group.drop(columns=["annotation_analysis_id"])
+        for contrast_id, group in contrast_lookup.groupby("annotation_analysis_id", sort=False)
+    }
+    if isinstance(annotation_source, dict):
+        notes_iter = iter(annotation_source.get("notes", []))
+    else:
+        notes_iter = _json_array_item_iter(annotation_source, "notes")
+    rows = []
+    for note in notes_iter:
+        analysis_id = str(note["analysis"])
+        matching_analyses = contrast_groups.get(analysis_id)
+        if matching_analyses is None:
+            continue
+
+        note_value = note.get("note", {})
+        for _, analysis_row in matching_analyses.iterrows():
+            base_row = analysis_row.to_dict()
+            if isinstance(note_value, dict):
+                base_row.update(note_value)
+            else:
+                base_row[str(annotation_id)] = note_value
+            rows.append(base_row)
+
+    if not rows:
+        return pd.DataFrame(columns=list(_ID_COLS))
+
+    return pd.DataFrame(rows).sort_values(by="id").reset_index(drop=True)
+
+
+def _merge_annotation_table(base_annotations, note_annotations):
+    """Merge flattened annotation notes into the base annotations table."""
+    if note_annotations.empty:
+        return base_annotations
+
+    annotation_columns = [col for col in note_annotations.columns if col not in _ID_COLS]
+    note_annotations = note_annotations[list(_ID_COLS) + annotation_columns]
+    merged = base_annotations.merge(note_annotations, how="left", on=list(_ID_COLS))
+    return merged
+
+
+def _write_parquet_table(df, filename):
+    """Write one canonical Studyset table as parquet."""
+    _prepare_table_for_parquet(df).to_parquet(filename, index=False, engine="pyarrow")
+
+
+def convert_neurostore_json_to_parquet(
+    studyset_source,
+    output_dir,
+    *,
+    annotation_source=None,
+    manifest_source=None,
+    studyset_id=None,
+    studyset_name=None,
+    annotation_id=None,
+    overwrite=False,
+):
+    """Convert a NeuroStore release JSON export into NiMARE parquet tables.
+
+    Parameters
+    ----------
+    studyset_source : :obj:`str`, :obj:`pathlib.Path`, or :obj:`dict`
+        Path to a NeuroStore/NIMADS-like studyset JSON file, or a pre-loaded dict.
+    output_dir : :obj:`str` or :obj:`pathlib.Path`
+        Directory where parquet tables and ``studyset.json`` metadata will be written.
+    annotation_source : :obj:`str` or :obj:`pathlib.Path`, or :obj:`dict`, optional
+        Path to a NeuroStore annotation JSON file, or a pre-loaded dict. When provided,
+        all note fields are flattened into the annotations parquet table by default.
+    manifest_source : :obj:`str` or :obj:`pathlib.Path`, or :obj:`dict`, optional
+        Path to a NeuroStore release manifest. Used to fill missing top-level studyset and
+        annotation ids.
+    studyset_id, studyset_name, annotation_id : :obj:`str`, optional
+        Explicit identifiers. These override manifest-derived values.
+    overwrite : :obj:`bool`, optional
+        If False, raise when ``output_dir`` already contains files. Default is False.
+
+    Returns
+    -------
+    files : :obj:`dict`
+        Mapping with the metadata file and table files that were written.
+    """
+    _require_parquet_engine()
+
+    output_dir = Path(output_dir)
+    if annotation_source is not None and not isinstance(annotation_source, dict):
+        annotation_source = Path(annotation_source)
+    manifest = _load_release_manifest(manifest_source)
+
+    studyset_id = studyset_id or _manifest_entity(manifest, "studyset", "id")
+    studyset_name = studyset_name or _manifest_entity(manifest, "studyset", "name")
+    annotation_id = annotation_id or _manifest_entity(manifest, "annotation", "id")
+
+    if output_dir.exists() and any(output_dir.iterdir()) and not overwrite:
+        raise FileExistsError(f"Output directory already contains files: {output_dir}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if isinstance(studyset_source, dict):
+        source = studyset_source
+    else:
+        with open(studyset_source, encoding="utf-8") as f_obj:
+            source = json.load(f_obj)
+    source = _adapt_neurostore_studyset_source(
+        source,
+        studyset_id=studyset_id,
+        studyset_name=studyset_name,
+    )
+
+    from nimare._studyset_store import _build_tables_from_source
+
+    table_cache = _build_tables_from_source(source)
+    if annotation_source is not None:
+        if annotation_id is None:
+            raise ValueError(
+                "Could not infer an annotation id. Pass annotation_id or provide a manifest_file."
+            )
+        note_annotations = _annotation_notes_to_dataframe(
+            annotation_source,
+            table_cache["analyses"],
+            annotation_id,
+        )
+        table_cache["annotations"] = _merge_annotation_table(
+            table_cache["annotations"],
+            note_annotations,
+        )
+
+    _METADATA_BLOB_COLUMNS = ("raw_metadata", "table", "table_metadata")
+    if "metadata" in table_cache and table_cache["metadata"] is not None:
+        table_cache["metadata"] = table_cache["metadata"].drop(
+            columns=[c for c in _METADATA_BLOB_COLUMNS if c in table_cache["metadata"].columns]
+        )
+
+    files = {"metadata": str(output_dir / "studyset.json"), "tables": {}}
+    for table_name in _PARQUET_TABLES:
+        table = table_cache.get(table_name)
+        if table is None:
+            continue
+        filename = output_dir / f"{table_name}.parquet"
+        _write_parquet_table(table, filename)
+        files["tables"][table_name] = str(filename)
+
+    metadata = {
+        "id": source["id"],
+        "name": source.get("name", ""),
+        "format": "nimare-studyset-parquet",
+        "version": 1,
+        "tables": {name: f"{name}.parquet" for name in files["tables"]},
+    }
+    if annotation_source is not None:
+        metadata["annotations"] = [{"id": annotation_id}]
+    with open(output_dir / "studyset.json", "w", encoding="utf-8") as f_obj:
+        json.dump(metadata, f_obj, indent=2, sort_keys=True)
+
+    return files
+
+
+def _clean_row_dict(row, *, exclude=()):
+    """Convert one pandas row into a dictionary without missing values."""
+    exclude = set(exclude)
+    result = {}
+    for key, value in row.items():
+        if key in exclude:
+            continue
+        if isinstance(value, (list, tuple, dict)):
+            result[key] = value
+            continue
+        if pd.isna(value):
+            continue
+        if isinstance(value, np.generic):
+            value = value.item()
+        result[key] = value
+    return result
+
+
+def _table_cache_to_nimads_source(studyset_id, studyset_name, table_cache):
+    """Reconstruct a minimal NIMADS-like source dictionary from canonical tables."""
+    studies_df = table_cache.get("studies")
+    analyses_df = table_cache.get("analyses")
+    if studies_df is None or studies_df.empty:
+        study_ids = (
+            pd.Series(table_cache["ids"]).astype(str).map(lambda value: value.rsplit("-", 1)[0])
+        )
+        studies_df = pd.DataFrame({"study_id": sorted(study_ids.unique())})
+    if analyses_df is None or analyses_df.empty:
+        analyses_df = table_cache["metadata"][list(_ID_COLS)].copy()
+        analyses_df["name"] = analyses_df["contrast_id"]
+
+    coordinates = table_cache.get("coordinates")
+    images = table_cache.get("images")
+    metadata = table_cache.get("metadata")
+    annotations = table_cache.get("annotations")
+    texts = table_cache.get("texts")
+
+    coordinate_groups = (
+        {} if coordinates is None or coordinates.empty else dict(tuple(coordinates.groupby("id")))
+    )
+    row_tables = {}
+    for name, table in [
+        ("images", images),
+        ("metadata", metadata),
+        ("annotations", annotations),
+        ("texts", texts),
+    ]:
+        if table is not None and not table.empty:
+            row_tables[name] = table.set_index("id", drop=False)
+        else:
+            row_tables[name] = None
+
+    analyses_by_study = analyses_df.groupby("study_id", sort=False)
+    studies = []
+    for _, study_row in studies_df.iterrows():
+        study_id = str(study_row.get("study_id", study_row.get("id")))
+        study = {
+            "id": study_id,
+            "name": study_row.get("name", "") or "",
+            "description": study_row.get("description", "") or "",
+            "authors": study_row.get("authors", "") or "",
+            "publication": study_row.get("publication", "") or "",
+            "analyses": [],
+        }
+
+        if study_id not in analyses_by_study.groups:
+            studies.append(study)
+            continue
+
+        for _, analysis_row in analyses_by_study.get_group(study_id).iterrows():
+            full_id = str(analysis_row["id"])
+            contrast_id = str(analysis_row["contrast_id"])
+            analysis = {
+                "id": contrast_id,
+                "name": analysis_row.get("name", "") or contrast_id,
+                "metadata": {},
+                "images": [],
+                "points": [],
+            }
+
+            metadata_rows = row_tables["metadata"]
+            if metadata_rows is not None and full_id in metadata_rows.index:
+                analysis["metadata"] = _clean_row_dict(
+                    metadata_rows.loc[full_id],
+                    exclude=set(_ID_COLS)
+                    | {"study_name", "analysis_name", "authors", "journal", "name"},
+                )
+
+            annotation_rows = row_tables["annotations"]
+            if annotation_rows is not None and full_id in annotation_rows.index:
+                analysis["annotations"] = _clean_row_dict(
+                    annotation_rows.loc[full_id],
+                    exclude=_ID_COLS,
+                )
+
+            text_rows = row_tables["texts"]
+            if text_rows is not None and full_id in text_rows.index:
+                analysis["texts"] = _clean_row_dict(text_rows.loc[full_id], exclude=_ID_COLS)
+
+            image_rows = row_tables["images"]
+            if image_rows is not None and full_id in image_rows.index:
+                image_row = image_rows.loc[full_id]
+                image_space = image_row.get("space")
+                for column, value in image_row.items():
+                    if not column.endswith("__source") or pd.isna(value):
+                        continue
+                    image_type = column[: -len("__source")]
+                    analysis["images"].append(
+                        {
+                            "url": (
+                                value if str(value).startswith(("http://", "https://")) else None
+                            ),
+                            "filename": (
+                                None if str(value).startswith(("http://", "https://")) else value
+                            ),
+                            "space": image_space,
+                            "value_type": image_type,
+                        }
+                    )
+
+            if full_id in coordinate_groups:
+                for _, coord_row in coordinate_groups[full_id].iterrows():
+                    point = {
+                        "coordinates": [coord_row["x"], coord_row["y"], coord_row["z"]],
+                        "space": coord_row.get("space"),
+                    }
+                    for column in POINT_RELATIONSHIP_COLUMNS:
+                        if column in coord_row and not pd.isna(coord_row[column]):
+                            point[column] = coord_row[column]
+                    analysis["points"].append(point)
+
+            study["analyses"].append(analysis)
+        studies.append(study)
+
+    return {"id": studyset_id, "name": studyset_name, "studies": studies}
+
+
+def _load_parquet_dir(
+    parquet_dir,
+    *,
+    studyset_id=None,
+    studyset_name=None,
+    target="mni152_2mm",
+    mask=None,
+    basepath=None,
+    annotation_columns=None,
+):
+    """Load a Studyset from a directory of NiMARE parquet tables."""
+    _require_parquet_engine()
+
+    parquet_dir = Path(parquet_dir)
+    metadata_file = parquet_dir / "studyset.json"
+    with open(metadata_file, encoding="utf-8") as f_obj:
+        metadata = json.load(f_obj)
+
+    table_files = metadata.get("tables", {})
+    table_cache = {}
+    for table_name in _PARQUET_TABLES:
+        table_file = table_files.get(table_name, f"{table_name}.parquet")
+        table_path = parquet_dir / table_file
+        if not table_path.exists():
+            table_cache[table_name] = pd.DataFrame(columns=list(_ID_COLS))
+            continue
+
+        columns = None
+        if table_name == "annotations" and annotation_columns is not None:
+            columns = list(_ID_COLS) + list(annotation_columns)
+        table_cache[table_name] = pd.read_parquet(table_path, engine="pyarrow", columns=columns)
+
+    if "ids" not in table_cache:
+        if not table_cache["analyses"].empty:
+            table_cache["ids"] = np.sort(table_cache["analyses"]["id"].astype(str).unique())
+        elif not table_cache["metadata"].empty:
+            table_cache["ids"] = np.sort(table_cache["metadata"]["id"].astype(str).unique())
+        else:
+            table_cache["ids"] = np.asarray([], dtype=str)
+
+    studyset_id = studyset_id or metadata.get("id", "nimare_parquet_studyset")
+    studyset_name = studyset_name if studyset_name is not None else metadata.get("name", "")
+
+    materializer_cache = {
+        key: value.copy() if isinstance(value, pd.DataFrame) else value
+        for key, value in table_cache.items()
+    }
+
+    def _materializer():
+        return _table_cache_to_nimads_source(studyset_id, studyset_name, materializer_cache)
+
+    return Studyset.from_table_cache(
+        table_cache,
+        studyset_id=studyset_id,
+        studyset_name=studyset_name,
+        target=target,
+        mask=mask,
+        basepath=basepath,
+        materializer=_materializer,
+        normalize_metadata=False,
+    )
 
 
 def _validate_studyset_source(source):
@@ -165,6 +714,12 @@ class Studyset:
     ):
         if target is _UNSET:
             target = "mni152_2mm"
+
+        if isinstance(source, (str, Path)) and Path(source).is_dir():
+            _loaded = _load_parquet_dir(source, target=target, mask=mask, basepath=basepath)
+            self._initialize_from_store(_loaded._studyset_store, _loaded._execution_profile)
+            self._projection_cache = _loaded._projection_cache
+            return
 
         # load source as json; track ownership so the structural copy can be skipped
         _owned = False
@@ -832,13 +1387,14 @@ class Studyset:
         basepath=None,
         materializer=None,
         normalize_metadata=True,
-        seed_table_cache=False,
     ):
         """Create a lightweight Studyset backed by precomputed Dataset-style tables."""
+        resolved_target = target if target is not None else table_cache.get("space")
         execution_profile = StudysetExecutionProfile(
-            target=target if target is not None else table_cache.get("space"),
+            target=resolved_target,
             masker=mask if mask is not None else table_cache.get("masker"),
             basepath=basepath if basepath is not None else table_cache.get("basepath"),
+            coordinate_space_policy="harmonize" if resolved_target is not None else "explicit",
         )
         store = StudysetStore.from_table_cache(
             studyset_id,
@@ -848,22 +1404,8 @@ class Studyset:
             normalize_metadata=normalize_metadata,
         )
         studyset = cls._from_store(store, execution_profile)
-        # Seed the projection cache so the first property access doesn't rebuild.
         cache_key = studyset._cache_key(execution_profile)
-        if seed_table_cache:
-            studyset._projection_cache[cache_key] = {
-                "ids": table_cache.get("ids"),
-                "coordinates": table_cache.get("coordinates"),
-                "images": table_cache.get("images"),
-                "metadata": table_cache.get("metadata"),
-                "annotations": table_cache.get("annotations"),
-                "texts": table_cache.get("texts"),
-                "space": execution_profile.target,
-                "masker": execution_profile.masker,
-                "basepath": execution_profile.basepath,
-            }
-        else:
-            studyset._projection_cache[cache_key] = store.projected_tables(execution_profile)
+        studyset._projection_cache[cache_key] = store.projected_tables(execution_profile)
         return studyset
 
     @classmethod
@@ -906,7 +1448,6 @@ class Studyset:
                 basepath=dataset_basepath,
                 materializer=_materializer,
                 normalize_metadata=False,
-                seed_table_cache=True,
             )
             return studyset
 
@@ -1561,6 +2102,7 @@ class Study:
         return {
             "id": self.id,
             "name": self.name,
+            "description": self.description,
             "authors": self.authors,
             "publication": self.publication,
             "metadata": self.metadata,
