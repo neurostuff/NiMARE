@@ -11,7 +11,7 @@ import nimare
 from nimare import io
 from nimare.nimads import Studyset, convert_neurostore_json_to_parquet
 from nimare.tests.utils import get_test_data_path
-from nimare.utils import get_template
+from nimare.utils import get_resource_path, get_template
 
 NEUROSTORE_STUDYSET_ID = "qm2PZBqNsaZK"
 NEUROSTORE_ANNOTATION_ID = "hbTQJVL2kAb8"
@@ -245,6 +245,21 @@ def test_convert_neurostore_json_to_parquet_requires_ids(tmp_path, studyset_data
 
     with pytest.raises(ValueError, match=match):
         convert_neurostore_json_to_parquet(studyset_file, tmp_path / "parquet")
+
+
+def test_load_neurostore_parquet_studyset_resource():
+    """Packaged NeuroStore parquet fixture should load as a lazy Studyset."""
+    parquet_dir = os.path.join(get_resource_path(), "neurostore_parquet_studyset")
+
+    studyset = Studyset(parquet_dir)
+
+    assert studyset.id == "test-neurostore-parquet-studyset"
+    assert len(studyset.study_ids) == 4
+    assert len(studyset.ids) == 8
+    assert studyset.coordinates.shape == (47, 15)
+    assert studyset.metadata.shape == (8, 155)
+    assert studyset.annotations_df.shape == (8, 502)
+    assert not studyset.is_materialized
 
 
 def test_convert_nimads_to_dataset(example_nimads_studyset, example_nimads_annotation):
