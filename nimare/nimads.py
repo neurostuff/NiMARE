@@ -264,7 +264,7 @@ def _write_parquet_table(df, filename):
 
 
 def convert_neurostore_json_to_parquet(
-    studyset_file,
+    studyset_source,
     output_dir,
     *,
     annotation_file=None,
@@ -278,8 +278,8 @@ def convert_neurostore_json_to_parquet(
 
     Parameters
     ----------
-    studyset_file : :obj:`str` or :obj:`pathlib.Path`
-        Path to a NeuroStore/NIMADS-like studyset JSON file.
+    studyset_source : :obj:`str`, :obj:`pathlib.Path`, or :obj:`dict`
+        Path to a NeuroStore/NIMADS-like studyset JSON file, or a pre-loaded dict.
     output_dir : :obj:`str` or :obj:`pathlib.Path`
         Directory where parquet tables and ``studyset.json`` metadata will be written.
     annotation_file : :obj:`str` or :obj:`pathlib.Path`, optional
@@ -300,7 +300,6 @@ def convert_neurostore_json_to_parquet(
     """
     _require_parquet_engine()
 
-    studyset_file = Path(studyset_file)
     output_dir = Path(output_dir)
     annotation_file = None if annotation_file is None else Path(annotation_file)
     manifest = _load_release_manifest(manifest_file)
@@ -313,8 +312,11 @@ def convert_neurostore_json_to_parquet(
         raise FileExistsError(f"Output directory already contains files: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    with open(studyset_file, encoding="utf-8") as f_obj:
-        source = json.load(f_obj)
+    if isinstance(studyset_source, dict):
+        source = studyset_source
+    else:
+        with open(studyset_source, encoding="utf-8") as f_obj:
+            source = json.load(f_obj)
     source = _adapt_neurostore_studyset_source(
         source,
         studyset_id=studyset_id,
