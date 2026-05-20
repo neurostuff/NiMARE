@@ -45,6 +45,9 @@ Create an `MAFeatureDataset` container for NiMARE-specific provenance, masker,
 groups, descriptor tables, target metadata, and diagnostics. Provide
 `to_sklearn()` to return a scikit-learn-style dataset object with `data`,
 `target`, `groups`, `sample_metadata`, and `feature_names`.
+Expose conversion through `MAFeatureExtractor.transform(collection)` only; do
+not expose `fit` or `fit_transform` on `MAFeatureExtractor` in the initial
+public API.
 
 **Rationale**: A bare tuple or matrix would be scikit-learn compatible but would
 lose NiMARE-specific provenance needed for scientific reproducibility. A
@@ -58,6 +61,11 @@ inputs.
 - Subclass a scikit-learn estimator or transformer immediately: rejected for the
   initial API because the primary user need is dataset creation and splitting,
   not model fitting.
+- Add `fit`/`fit_transform` to `MAFeatureExtractor`: rejected because the
+  extractor's main job is one-shot conversion from a NiMARE collection into an
+  sklearn-compatible dataset, while trainable behavior belongs in explicit
+  descriptor transformers, target transformers, reducers, and downstream
+  sklearn models.
 
 ## Decision: Use scikit-learn group splitters for leakage-safe splits
 
@@ -76,18 +84,17 @@ split logic.
 - Split by analysis ID only: rejected because it violates the no-study-leakage
   requirement.
 
-## Decision: Resolve study groups from explicit IDs, then unambiguous analysis IDs
+## Decision: Use collection-provided unique study and analysis IDs for MVP
 
-Determine each sample's study group from explicit collection-provided study IDs
-when available, especially `study_id` columns in Dataset/Studyset-derived
-tables. If explicit study IDs are absent, derive study groups from NiMARE
-analysis identifiers only when the derivation is unambiguous. Fail conversion
-with a clear error if grouping cannot be determined.
+Determine each sample's study group from collection-provided study IDs. The MVP
+assumes input collections provide unique study IDs and unique analysis IDs, so
+duplicate identifier diagnostics and analysis-ID-derived study groups are out of
+scope for the initial implementation.
 
 **Rationale**: The no-leakage split requirement depends on reliable study
-groups. Explicit IDs are the most trustworthy source, while an unambiguous
-NiMARE full ID fallback preserves compatibility with older Dataset-style
-collections.
+groups. Treating unique identifiers as an input contract keeps the initial API
+and tests focused on conversion, alignment, sparse map features, and grouped
+splits.
 
 **Alternatives considered**:
 
@@ -95,6 +102,8 @@ collections.
   collections usually already contain study identity.
 - Always parse IDs by convention: rejected because silently guessing groups can
   invalidate model evaluation.
+- Add duplicate-ID reconciliation and analysis-ID fallback logic: rejected for
+  the MVP because the initial workflow can assume unique collection identifiers.
 
 ## Decision: Descriptor extraction uses numeric fields by default
 
@@ -145,9 +154,10 @@ Provide convenience constructors for map feature reduction using the order of
 preference requested by the user: existing NiMARE helpers for masking and sparse
 map matrices, nilearn maskers for atlas/image-aware reductions when applicable,
 and scikit-learn reducers for matrix reductions. Required initial workflows are
-variance thresholding, matrix-appropriate decomposition with PCA for dense
-matrices or `TruncatedSVD` for sparse matrices, and atlas or label aggregation
-when a masker or labels image is supplied.
+variance thresholding, sparse-compatible low-rank decomposition such as
+`TruncatedSVD`, and atlas or label aggregation when a masker or labels image is
+supplied. Unreduced voxelwise maps stay sparse; reducers may emit dense reduced
+component or parcel matrices only after the voxel space has been reduced.
 
 **Rationale**: scikit-learn pipelines naturally enforce fitting on training data
 before transforming held-out data, which is required to avoid leakage. The
@@ -158,8 +168,11 @@ region-level aggregation without introducing a bespoke modeling framework.
 
 - Add bespoke reducer classes: rejected unless a needed reduction is not
   available through NiMARE, nilearn, or scikit-learn.
-- Densify all map matrices before reduction: rejected because sparse MA maps are
-  expected to be high-dimensional.
+- Densify unreduced voxelwise map matrices before reduction: rejected because
+  sparse MA maps are expected to be high-dimensional.
+- Require dense PCA as an initial workflow: rejected because the initial API
+  must avoid dense unreduced voxelwise intermediates; sparse-compatible
+  low-rank reduction covers the large-scale use case.
 - Provide only user-supplied transformers: rejected because the spec requires
   convenience workflows.
 
