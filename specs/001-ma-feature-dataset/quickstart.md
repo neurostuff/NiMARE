@@ -12,7 +12,7 @@ environment:
 python -m pip install -e .[tests,doc]
 ```
 
-## Convert a collection to feature data
+## Convert a Studyset to feature data
 
 ```python
 from nimare import ml
@@ -20,6 +20,7 @@ from nimare.meta.kernel import MKDAKernel
 
 extractor = ml.MAFeatureExtractor(
     kernel_transformer=MKDAKernel(r=10),
+    missing_coordinates="drop",
     descriptor_fields=[
         {"source": "metadata", "field": "sample_sizes", "kind": "numeric"},
         {"source": "annotations", "field": "Neurosynth_TFIDF__pain", "kind": "numeric"},
@@ -31,25 +32,30 @@ extractor = ml.MAFeatureExtractor(
     },
 )
 
-feature_dataset = extractor.transform(collection)
-sklearn_data = feature_dataset.to_sklearn()
+train_sklearn, test_sklearn = extractor.to_sklearn(studyset)
 ```
 
 Expected result:
 
-- `sklearn_data.data` is sample-by-feature data.
-- `sklearn_data.target` is aligned to rows in `data`.
-- `sklearn_data.groups` contains study IDs for grouped splitting.
-- `sklearn_data.sample_metadata` maps rows back to source studies and analyses.
+- `train_sklearn.data` is analysis-by-feature data.
+- `train_sklearn.target` is aligned to rows in `data`.
+- `train_sklearn.groups` contains study IDs for grouped splitting.
+- `test_sklearn` is either another Bunch or `None` when no split is requested.
 
-`MAFeatureExtractor` performs collection conversion through `transform`; it is
-not a trainable scikit-learn estimator and does not expose `fit` or
-`fit_transform`. Scikit-learn estimators operate on the data returned by
-`feature_dataset.to_sklearn()`.
+`MAFeatureExtractor` provides `to_sklearn(studyset, ...)` as the one-call
+public workflow and returns sklearn-ready `(train_bunch, test_bunch)` outputs.
+`transform(studyset)` is the advanced workflow that returns
+`(train_dataset, test_dataset)` for manual iteration over different reducers.
+`MAFeatureExtractor` is not a trainable scikit-learn estimator and does not
+expose `fit` or `fit_transform`.
 
 Descriptor fields must be numeric by default. Categorical metadata, annotations,
 titles, abstracts, and descriptions require an explicit transformer or
 vectorizer before they can be appended to `data`.
+
+Analyses without coordinates are controlled by `missing_coordinates`. Use
+`"drop"` to remove them before row construction and record dropped IDs in
+provenance, or `"include"` to keep them as all-zero sparse map rows.
 
 ## Use explicit preprocessing for non-numeric fields
 
