@@ -25,8 +25,7 @@ Represents an input NiMARE Studyset or Dataset.
 - Must expose a masker for map feature generation.
 - Must contain at least one eligible analysis with valid coordinates.
 - Must provide stable identifiers for sample alignment.
-- Must provide explicit study identifiers or unambiguous analysis identifiers
-  from which study groups can be derived.
+- Must provide unique study identifiers and unique analysis identifiers.
 
 ## Entity: Analysis Sample
 
@@ -37,7 +36,7 @@ One eligible analysis represented as one machine-learning sample.
 - `sample_id`: full analysis identifier used for row alignment.
 - `study_id`: grouping identifier used for leakage-safe splits.
 - `analysis_id`: analysis identifier within the source study when available.
-- `group_source`: explicit study ID or unambiguous analysis-ID derivation.
+- `group_source`: collection-provided study ID.
 - `row_index`: integer position in the feature dataset.
 - `status`: included or excluded.
 - `exclusion_reason`: reason an analysis was excluded, if applicable.
@@ -50,9 +49,8 @@ One eligible analysis represented as one machine-learning sample.
 
 **Validation Rules**
 
-- Included sample IDs must be unique.
-- Included samples must have exactly one study ID; conversion fails if study
-  grouping cannot be determined.
+- Included sample IDs and analysis IDs are assumed unique in MVP inputs.
+- Included samples must have exactly one study ID from the collection.
 - Included samples must have exactly one row in every aligned output.
 - Excluded analyses must be reported with a reason.
 
@@ -62,7 +60,9 @@ Map-derived feature values for included samples.
 
 **Fields**
 
-- `matrix`: sample-by-masked-voxel sparse matrix by default.
+- `matrix`: sample-by-masked-voxel sparse matrix for unreduced voxelwise
+  features; reduced features may be dense only after an explicit reducer
+  creates a lower-dimensional representation.
 - `feature_names`: voxel or reduced feature identifiers.
 - `masker`: masker used to define voxel ordering.
 - `kernel_transformer`: description of the MA map generator.
@@ -149,7 +149,7 @@ Grouping key that keeps analyses from one study together.
 - `study_id`: group label.
 - `sample_ids`: sample IDs in the group.
 - `n_samples`: number of analyses in the group.
-- `source`: explicit study ID or unambiguous analysis-ID derivation.
+- `source`: collection-provided study ID.
 
 **Relationships**
 
@@ -160,7 +160,8 @@ Grouping key that keeps analyses from one study together.
 
 - Every included sample must have exactly one study group.
 - No study group may appear in more than one split partition.
-- Ambiguous or missing group derivation must fail before any split is returned.
+- Missing study groups are outside the MVP input contract and must be reported
+  before any split is returned.
 
 ## Entity: Split Plan
 
@@ -193,8 +194,9 @@ Reusable transformation for high-dimensional map features.
 
 - `name`: reduction workflow name.
 - `steps`: ordered transformer steps.
-- `method`: one of variance thresholding, dense PCA, sparse truncated SVD, or
-  atlas/label aggregation for the initial public workflows.
+- `method`: one of variance thresholding, sparse-compatible low-rank reduction
+  such as truncated SVD, or atlas/label aggregation for the initial public
+  workflows.
 - `fit_state`: unfitted or fitted.
 - `input_feature_names`: map feature names before reduction.
 - `output_feature_names`: reduced feature names after transformation.
@@ -212,8 +214,9 @@ Reusable transformation for high-dimensional map features.
 - Must not fit on held-out data.
 - Transformed row order must match input row order.
 - Output feature count must be deterministic for fixed inputs and parameters.
-- Sparse inputs must avoid unnecessary densification; dense PCA is used for
-  dense matrices and truncated SVD is used for sparse matrices.
+- Reducers must not densify unreduced voxelwise inputs as an intermediary.
+- Reduced outputs may be dense when the reducer explicitly returns a
+  lower-dimensional component or parcel matrix.
 - Atlas/label aggregation requires a supplied masker or labels image compatible
   with the map feature space.
 
