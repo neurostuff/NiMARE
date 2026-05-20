@@ -14,17 +14,17 @@ scikit-learn workflows.
 - `sample_metadata`: table-like sample provenance aligned to `data` rows.
 - `feature_names`: feature names aligned to `data` columns when available.
 
-Sparse map matrices must remain sparse unless the caller explicitly requests a
-dense representation.
+Exported unreduced voxelwise feature data must remain a sparse numeric matrix.
+Dense feature data may be exported only after an explicit reducer produces a
+reduced dense representation.
 
 ## Study Groups
 
 Study groups must be one-dimensional labels aligned to exported rows.
 
-- Explicit collection study IDs are the preferred source.
-- Analysis IDs may be used to derive groups only when the derivation is
-  unambiguous.
-- Missing or ambiguous groups must raise a clear error before export or split.
+- Collection-provided study IDs are the study group source.
+- MVP inputs are assumed to provide unique study IDs and unique analysis IDs.
+- Missing groups must raise a clear error before export or split.
 
 ## Splitting
 
@@ -66,11 +66,11 @@ Reduction workflows must be compatible with scikit-learn estimator workflows.
 
 - Reducers must expose `fit`, `transform`, and preferably `fit_transform`.
 - Reducers must be fit on training data only before held-out transformation.
-- Sparse inputs must avoid unnecessary densification.
+- Reducers must not densify unreduced voxelwise inputs as an intermediary.
 - Reduced output must preserve row order.
-- Required initial workflows are variance thresholding, PCA for dense matrices,
-  truncated SVD for sparse matrices, and atlas/label aggregation when a
-  compatible masker or labels image is supplied.
+- Required initial workflows are variance thresholding, truncated SVD or an
+  equivalent sparse-compatible low-rank reducer, and atlas/label aggregation
+  when a compatible masker or labels image is supplied.
 
 ## Acceptance Checks
 

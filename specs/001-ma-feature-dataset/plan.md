@@ -3,7 +3,7 @@
 **Branch**: `001-ma-feature-dataset` | **Date**: 2026-05-01 | **Spec**: `specs/001-ma-feature-dataset/spec.md`
 **Input**: Feature specification from `specs/001-ma-feature-dataset/spec.md`
 
-**Note**: This plan was refreshed after the 2026-05-01 clarification pass.
+**Note**: This plan was refreshed after the 2026-05-20 clarification pass.
 
 ## Summary
 
@@ -16,8 +16,16 @@ groups, export `data`, `target`, `groups`, `sample_metadata`, and
 splits plus convenience map-reduction workflows. Clarified defaults require
 numeric descriptor features unless the caller supplies an explicit transformer,
 scalar numeric or categorical targets unless the caller supplies explicit target
-handling, explicit-or-unambiguous study grouping, and initial reducers for
-variance thresholding, PCA/truncated SVD, and atlas/label aggregation.
+handling, unique collection-provided study and analysis identifiers, and
+initial reducers for
+variance thresholding, sparse-compatible low-rank reduction such as truncated
+SVD, and atlas/label aggregation.
+Rows represent analyses, unreduced map columns represent masked voxels, and
+descriptor columns are appended only after numeric validation or explicit
+transformation. `MAFeatureDataset` remains the authoritative NiMARE container:
+it keeps `map_features` separate from descriptors, retains the masker that
+defines voxel order, and exports `study_id` both as sklearn `groups` and in
+`sample_metadata` for provenance.
 
 ## Technical Context
 
@@ -28,11 +36,12 @@ variance thresholding, PCA/truncated SVD, and atlas/label aggregation.
 **Target Platform**: NiMARE-supported Python and OS matrix; no network-dependent tests.  
 **Project Type**: Python scientific library public API plus Sphinx documentation examples.  
 **Public API Impact**: New additive `nimare.ml` module with `MAFeatureDataset`, `MAFeatureExtractor`, field-selector handling, grouped split helpers, `to_sklearn()`, `apply_map_reducer()`, and map-reduction convenience constructors. Update `nimare/__init__.py`, `docs/api.rst`, and Numpydoc docstrings. No released public API is removed, renamed, or narrowed.  
+**Extractor API Decision**: `MAFeatureExtractor` exposes a single `transform(collection)` conversion method in the initial public API; it does not expose `fit` or `fit_transform`, and downstream scikit-learn estimators consume `MAFeatureDataset.to_sklearn()` output.
 **Compatibility Baseline**: `0.16.0` from `git describe --tags --abbrev=0`. Released Studyset, Dataset, kernel, metadata, annotation, and text access behavior must remain compatible.  
 **Example Coverage**: Create Sphinx-Gallery examples `examples/05_machine_learning/01_plot_ma_feature_dataset.py` and `examples/05_machine_learning/02_plot_ma_feature_reduction.py`. Examples remain `.py` sources and are converted by the docs/Sphinx build.  
-**Scientific Validation**: Validate that one sample represents one eligible analysis by default; all analyses from one study share a study group; map features are aligned to one mask/space; learned descriptor/reduction transforms fit only on training samples; held-out transformations do not use held-out targets; and all exclusions, missing values, and invalid targets are diagnosed.  
+**Scientific Validation**: Validate that one sample represents one eligible analysis by default; MVP fixture collections provide unique study IDs and unique analysis IDs; all analyses from one study share a study group; sklearn `groups` matches `sample_metadata["study_id"]`; map features are aligned to one mask/space; reducers operate on `map_features` only and use the stored masker for atlas/label aggregation; learned descriptor/reduction transforms fit only on training samples; held-out transformations do not use held-out targets; and all exclusions, missing values, and invalid targets are diagnosed.
 **Performance Goals**: A representative collection with at least 1,000 studies must convert and split in <=3 minutes with <=5 GB peak memory in the standard development environment.  
-**Constraints**: Preserve latest-tag public behavior; prefer NiMARE utilities, then nilearn, then scikit-learn before new helpers; reject silent descriptor/target coercion; keep sparse map matrices sparse unless explicitly densified; tests and examples precede or accompany implementation; docs build must convert examples.  
+**Constraints**: Preserve latest-tag public behavior; prefer NiMARE utilities, then nilearn, then scikit-learn before new helpers; reject silent descriptor/target coercion; keep unreduced voxelwise map matrices sparse; allow dense output only after explicit reduction; tests and examples precede or accompany implementation; docs build must convert examples.
 **Scale/Scope**: New `nimare/ml.py`, tests under `nimare/tests`, API docs, two examples, and feature planning artifacts. Initial scope stops at dataset creation, target extraction, grouped splitting, and reusable reduction workflows; it does not train or evaluate predictive models.
 
 ## Constitution Check
@@ -118,16 +127,23 @@ resolved there:
 
 - Kernel transformers provide sparse modeled activation map features.
 - Studyset/Dataset access uses existing collection interfaces.
-- Study groups use explicit study IDs first, then only unambiguous analysis-ID
-  derivation.
+- Study groups use collection-provided unique study IDs; MVP inputs also assume
+  unique analysis IDs.
 - Export uses a NiMARE container plus a scikit-learn `Bunch`.
+- Exported sklearn `groups` duplicates `sample_metadata["study_id"]` by design:
+  `groups` is for sklearn splitters, while `sample_metadata` preserves
+  row-level provenance.
 - Splits use scikit-learn group splitters.
+- `MAFeatureDataset` keeps `map_features` separate from descriptor features so
+  reducers select only voxel/reduced-map columns.
+- Atlas/label reducers use the dataset masker to align atlas labels to sparse
+  voxel columns before reducing `map_features`.
 - Descriptor features are numeric by default; non-numeric descriptors require
   explicit transformers.
 - Targets are scalar numeric/categorical by default; free-text and multi-label
   targets require explicit target handling.
-- Reduction helpers cover variance thresholding, PCA/truncated SVD, and
-  atlas/label aggregation.
+- Reduction helpers cover variance thresholding, sparse-compatible low-rank
+  reduction such as truncated SVD, and atlas/label aggregation.
 - Performance is budgeted at <=3 minutes and <=5 GB peak memory for 1,000
   studies.
 

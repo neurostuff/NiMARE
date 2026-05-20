@@ -31,7 +31,7 @@ extractor = ml.MAFeatureExtractor(
     },
 )
 
-feature_dataset = extractor.fit_transform(collection)
+feature_dataset = extractor.transform(collection)
 sklearn_data = feature_dataset.to_sklearn()
 ```
 
@@ -41,6 +41,11 @@ Expected result:
 - `sklearn_data.target` is aligned to rows in `data`.
 - `sklearn_data.groups` contains study IDs for grouped splitting.
 - `sklearn_data.sample_metadata` maps rows back to source studies and analyses.
+
+`MAFeatureExtractor` performs collection conversion through `transform`; it is
+not a trainable scikit-learn estimator and does not expose `fit` or
+`fit_transform`. Scikit-learn estimators operate on the data returned by
+`feature_dataset.to_sklearn()`.
 
 Descriptor fields must be numeric by default. Categorical metadata, annotations,
 titles, abstracts, and descriptions require an explicit transformer or
@@ -87,9 +92,10 @@ test_reduced = test_data.apply_map_reducer(svd_reducer, fit=False)
 ```
 
 The reducer is fit on training data only, then applied to held-out data.
-Dense map matrices may use PCA instead of truncated SVD. Atlas or label
-aggregation requires a masker or labels image compatible with the map feature
-space.
+Unreduced voxelwise map matrices remain sparse. A reducer such as truncated SVD
+or atlas aggregation may return a smaller dense matrix only after reducing the
+voxel space. Atlas or label aggregation requires a masker or labels image
+compatible with the map feature space.
 
 ## Tests
 

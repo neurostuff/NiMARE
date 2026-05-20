@@ -10,10 +10,16 @@
 ### Session 2026-05-01
 
 - Q: When metadata, annotations, titles, abstracts, or descriptions are added as additional features, how should non-numeric fields behave by default? -> A: Reject non-numeric descriptor fields by default unless the caller provides an explicit transformer or vectorizer.
-- Q: For grouped splitting, how should the feature determine each sample's study group by default? -> A: Use explicit study IDs from the collection when available; otherwise derive groups from analysis IDs only when unambiguous; fail if grouping cannot be determined.
+- Q: For grouped splitting, how should the feature determine each sample's study group by default? -> A: Use collection-provided study IDs; MVP inputs are assumed to provide unique study IDs and unique analysis IDs.
 - Q: When an annotation, metadata field, title, or description is used as the prediction target, what should the default target handling be? -> A: Export scalar numeric or categorical targets as y; reject free-text or multi-label targets unless an explicit target transformer or label extractor is provided.
-- Q: Which convenience data reduction workflows should be required for the initial feature? -> A: Include variance thresholding, PCA or truncated SVD as appropriate for the matrix type, and atlas or label aggregation when a masker or labels image is supplied.
+- Q: Which convenience data reduction workflows should be required for the initial feature? -> A: Include variance thresholding, sparse-compatible low-rank reduction such as truncated SVD, and atlas or label aggregation when a masker or labels image is supplied.
 - Q: What runtime and memory target should replace the current placeholder performance criterion? -> A: A representative collection with at least 1,000 studies must convert and split in <=3 minutes with <=5 GB peak memory.
+
+### Session 2026-05-20
+
+- Q: Should `MAFeatureExtractor` expose an sklearn-style `fit`/`fit_transform` API or a single conversion call? -> A: Use a single `transform(collection)` conversion method; do not expose `fit` or `fit_transform`.
+- Q: When may feature data be represented densely? -> A: Unreduced voxelwise feature data must remain sparse; dense output is allowed only after an explicit reducer creates a reduced representation, and dense PCA over unreduced voxels is not required.
+- Q: How should the MVP handle study and analysis identifier ambiguity? -> A: Assume input collections provide unique study IDs and unique analysis IDs; duplicate or missing identifiers are out of scope for the MVP.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -31,9 +37,7 @@ A meta-analysis researcher wants to turn an existing NiMARE study collection int
 
 1. **Given** a collection with three studies and multiple analyses per study, **When** the researcher converts it into feature data, **Then** every eligible analysis appears exactly once as a sample with its study identifier attached.
 2. **Given** a collection and a selected activation-map generation strategy, **When** conversion completes, **Then** the feature data contains masked activation map values aligned to the same mask for every sample.
-3. **Given** a collection without explicit study identifiers but with unambiguous NiMARE analysis identifiers, **When** conversion completes, **Then** study groups are derived consistently from those analysis identifiers.
-4. **Given** a collection where study grouping cannot be determined, **When** conversion is requested, **Then** the request fails with a clear explanation and no feature dataset is returned.
-5. **Given** a converted feature dataset, **When** the researcher inspects sample metadata, **Then** they can identify the original study, analysis, and activation-map generation settings for each sample.
+3. **Given** a converted feature dataset, **When** the researcher inspects sample metadata, **Then** they can identify the original study, analysis, and activation-map generation settings for each sample.
 
 ---
 
@@ -108,13 +112,13 @@ A researcher wants convenient, reusable reduction workflows for high-dimensional
 2. **Given** a fitted reduction workflow, **When** it is applied to a held-out partition, **Then** the held-out data is transformed without using held-out outcomes or refitting on held-out samples.
 3. **Given** optional descriptor features and targets, **When** map features are reduced, **Then** descriptor features and targets remain aligned with the transformed map features.
 4. **Given** a feature dataset with low-variance map features, **When** variance thresholding is selected, **Then** low-variance map features are removed while sample alignment is preserved.
-5. **Given** a dense or sparse feature dataset, **When** PCA or truncated SVD is selected, **Then** the reducer uses the matrix-appropriate decomposition and returns the requested number of components.
+5. **Given** a sparse voxelwise feature dataset, **When** sparse low-rank reduction is selected, **Then** the reducer uses a sparse-compatible decomposition such as truncated SVD and returns the requested number of components without densifying the unreduced voxel matrix.
 6. **Given** a masker or labels image that defines regions, **When** atlas or label aggregation is selected, **Then** map features are aggregated into region-level features aligned to the original samples.
 
 ### Edge Cases
 
 - A collection contains studies with one analysis and studies with many analyses.
-- A collection lacks explicit study identifiers, and study groups must be derived from unambiguous analysis identifiers or fail clearly.
+- A collection lacks unique study identifiers or unique analysis identifiers; this is outside the MVP input contract.
 - A collection has too few studies to support the requested split ratio or cross-validation design.
 - Analyses have no coordinates or cannot produce a valid masked activation map.
 - Input collections mix spaces or masks in a way that prevents aligned map features.
@@ -131,7 +135,7 @@ A researcher wants convenient, reusable reduction workflows for high-dimensional
 - **FR-001**: The feature MUST accept existing NiMARE study collections as input and create a machine-learning-ready dataset with one sample per eligible analysis by default.
 - **FR-002**: The feature MUST generate or consume masked activation map values for each eligible analysis and align those values to a common feature space.
 - **FR-003**: The feature MUST preserve source provenance for every sample, including study identifier, analysis identifier, and activation-map generation settings.
-- **FR-004**: The feature MUST expose study grouping information so that all analyses from the same study can be kept together during data splitting, using explicit study identifiers when available and deriving groups from analysis identifiers only when the derivation is unambiguous.
+- **FR-004**: The feature MUST expose study grouping information so that all analyses from the same study can be kept together during data splitting, assuming the input collection provides unique study identifiers and unique analysis identifiers.
 - **FR-005**: The feature MUST provide a train/test split workflow that prevents analyses from the same study from appearing in both training and testing partitions.
 - **FR-006**: The feature MUST support reproducible splits when the researcher supplies the same split configuration.
 - **FR-007**: The feature MUST allow selected numeric metadata and annotation fields to be added as additional model features.
@@ -139,10 +143,12 @@ A researcher wants convenient, reusable reduction workflows for high-dimensional
 - **FR-009**: The feature MUST allow one selected scalar numeric or categorical annotation or metadata value, or one value produced by an explicit target transformer or label extractor, to be exported as the prediction target y, and MUST reject raw free-text or multi-label targets unless such explicit target handling is supplied.
 - **FR-010**: The feature MUST keep the feature data, target values, sample identifiers, and study groups aligned through conversion, augmentation, splitting, and reduction.
 - **FR-011**: The feature MUST report missing or unusable map, descriptor, and target values with enough detail for the researcher to correct inputs or choose an explicit handling strategy.
-- **FR-012**: The feature MUST provide convenience reduction workflows for voxelwise masked activation map features while preserving sample alignment and study grouping, including variance thresholding, matrix-appropriate PCA or truncated SVD, and atlas or label aggregation when a masker or labels image is supplied.
+- **FR-012**: The feature MUST provide sparse-safe convenience reduction workflows for voxelwise masked activation map features while preserving sample alignment and study grouping, including variance thresholding, truncated SVD or equivalent sparse-compatible low-rank reduction, and atlas or label aggregation when a masker or labels image is supplied.
 - **FR-013**: The feature MUST prevent data leakage by ensuring any learned reduction or descriptor transformation is fit only on training data before being applied to held-out data.
-- **FR-014**: The feature MUST provide a user-facing example that demonstrates collection conversion, grouped splitting, descriptor features, target extraction, and at least one reduction workflow.
-- **FR-015**: The feature MUST be additive with respect to released NiMARE public behavior; existing collection, kernel, metadata, annotation, and documentation workflows must continue to work.
+- **FR-014**: The feature MUST expose collection conversion through a single `transform(collection)` method that returns an `MAFeatureDataset`; `MAFeatureExtractor` MUST NOT expose `fit` or `fit_transform` in the initial public API.
+- **FR-015**: The feature MUST represent unreduced voxelwise feature data as sparse numeric matrices throughout conversion, export, and splitting; dense feature data is allowed only after an explicit reducer creates a reduced representation.
+- **FR-016**: The feature MUST provide a user-facing example that demonstrates collection conversion, grouped splitting, descriptor features, target extraction, and at least one reduction workflow.
+- **FR-017**: The feature MUST be additive with respect to released NiMARE public behavior; existing collection, kernel, metadata, annotation, and documentation workflows must continue to work.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -153,12 +159,12 @@ A researcher wants convenient, reusable reduction workflows for high-dimensional
 - **Prediction Target**: A selected scalar numeric or categorical metadata or annotation value, or a value produced from title or description text by an explicit target transformer or label extractor, aligned to analysis samples as y; raw free-text and multi-label targets require explicit target handling.
 - **Study Group**: The grouping key that keeps all analyses from the same study together in splits.
 - **Split Plan**: The train/test or validation partition assignment that preserves study groups.
-- **Reduction Workflow**: A reusable transformation that reduces masked activation map feature dimensionality while preserving sample order and metadata alignment; required initial workflows are variance thresholding, matrix-appropriate PCA or truncated SVD, and atlas or label aggregation when a masker or labels image is supplied.
+- **Reduction Workflow**: A reusable transformation that reduces masked activation map feature dimensionality while preserving sample order and metadata alignment; required initial workflows are variance thresholding, truncated SVD or equivalent sparse-compatible low-rank reduction, and atlas or label aggregation when a masker or labels image is supplied.
 
 ### Public API & Compatibility *(mandatory for code changes)*
 
 - **Latest Release Baseline**: 0.16.0
-- **Public API Surface**: New additive public surface for creating machine-learning-ready feature datasets from existing NiMARE study collections, adding descriptor features, extracting targets, performing grouped splits, and applying reduction workflows.
+- **Public API Surface**: New additive public surface for creating machine-learning-ready feature datasets from existing NiMARE study collections through `MAFeatureExtractor.transform(collection)`, adding descriptor features, extracting targets, performing grouped splits, and applying reduction workflows.
 - **Compatibility Requirement**: Preserve existing released public behavior for study collections, masked activation map generation, metadata, annotations, and text access. New functionality is expected to be additive.
 - **Migration/Deprecation Notes**: No migration or deprecation is expected for existing released APIs.
 - **Sphinx-Gallery Example**: `examples/05_machine_learning/01_plot_ma_feature_dataset.py` and `examples/05_machine_learning/02_plot_ma_feature_reduction.py` created or edited.
@@ -176,7 +182,7 @@ A researcher wants convenient, reusable reduction workflows for high-dimensional
 - **SC-001**: For 100% of generated train/test splits in validation fixtures, no study identifier appears in more than one partition.
 - **SC-002**: Converted feature datasets contain exactly one sample for every eligible analysis and report every excluded analysis with a reason.
 - **SC-003**: Descriptor features and selected targets remain aligned with analysis samples after conversion, splitting, and reduction in all validation fixtures.
-- **SC-004**: At least three common modeling workflows are demonstrated: map-only prediction, map-plus-descriptor prediction, and reduced-map prediction using variance thresholding, PCA or truncated SVD, or atlas or label aggregation.
+- **SC-004**: At least three common modeling workflows are demonstrated: map-only prediction, map-plus-descriptor prediction, and reduced-map prediction using variance thresholding, truncated SVD or equivalent sparse-compatible low-rank reduction, or atlas or label aggregation.
 - **SC-005**: Users can complete the documented example workflow on a representative test collection without manually editing intermediate data.
 - **SC-006**: Documentation examples convert successfully during the documentation build and produce rendered gallery outputs for the public workflow.
 - **SC-007**: Missing descriptor or target data is never silently dropped or filled; validation fixtures report the affected sample identifiers and fields.
@@ -185,9 +191,12 @@ A researcher wants convenient, reusable reduction workflows for high-dimensional
 ## Assumptions
 
 - Each analysis is the default machine-learning sample because the requested split rule specifically keeps analyses grouped by study.
+- The MVP assumes input collections provide unique study IDs and unique analysis IDs; deriving study groups from ambiguous or missing identifiers is out of scope.
 - Study-level metadata may be repeated across that study's analyses, but grouped splitting prevents study-level leakage between training and testing partitions.
 - "Scikit-learn-compatible" means the exported data can be consumed by common estimator workflows that expect aligned feature values, target values, and grouping labels.
+- `MAFeatureExtractor` is a NiMARE conversion helper, not a trainable scikit-learn estimator; downstream scikit-learn models consume the output of `MAFeatureDataset.to_sklearn()`.
+- Unreduced voxelwise feature data is sparse-only; dense data is permitted only after explicit reduction, such as a low-rank component matrix or parcel-level aggregate.
 - The feature will not train or evaluate predictive models itself beyond providing data structures, split helpers, and reduction workflows needed by researchers.
 - Missing descriptor or outcome values fail clearly by default unless the researcher explicitly selects a handling strategy.
-- Study grouping is mandatory for split helpers; conversion fails if neither explicit study identifiers nor unambiguous analysis identifiers can determine groups.
+- Study grouping is mandatory for split helpers and is read from the collection's study IDs.
 - Existing kernel and collection behavior from the latest release remains the compatibility baseline.

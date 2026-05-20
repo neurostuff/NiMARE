@@ -30,8 +30,9 @@ provenance.
 
 ### Required attributes
 
-- `map_features`: sample-by-map-feature matrix. Sparse input must remain sparse
-  unless the caller explicitly requests dense output.
+- `map_features`: sample-by-map-feature matrix. Unreduced voxelwise map
+  features must remain sparse. Reduced map features may be dense only when an
+  explicit reducer returns a reduced dense representation.
 - `sample_ids`: one identifier per row.
 - `study_ids`: one study-group label per row.
 - `sample_metadata`: tabular provenance containing at least sample ID, study ID,
@@ -45,10 +46,11 @@ provenance.
 
 ### Required methods
 
-- `to_sklearn(include_descriptors=True, include_target=True, dense=False)`:
+- `to_sklearn(include_descriptors=True, include_target=True)`:
   return a `sklearn.utils.Bunch`-compatible dataset object with `data`,
-  `target`, `groups`, `sample_metadata`, and `feature_names`. Sparse map
-  features remain sparse unless `dense=True`.
+  `target`, `groups`, `sample_metadata`, and `feature_names`. Unreduced
+  voxelwise feature data must remain sparse; reduced feature data may be dense
+  only if an explicit reducer produced the reduced dense representation.
 - `split(test_size=0.25, random_state=None, cv=None)`: return train/test
   dataset slices using grouped splitting by study ID.
 - `apply_map_reducer(reducer, fit=False)`: return a dataset copy with
@@ -61,7 +63,7 @@ provenance.
 
 - Raise `ValueError` when feature, target, group, or sample dimensions do not
   align.
-- Raise `ValueError` when study groups are missing or ambiguous.
+- Raise `ValueError` when study groups required for splitting are missing.
 - Raise `ValueError` when a split cannot be created from the available number of
   study groups.
 - Raise `ValueError` when a reducer changes sample order or returns a row count
@@ -70,6 +72,10 @@ provenance.
 ## `MAFeatureExtractor`
 
 Creates `MAFeatureDataset` from Studyset or Dataset inputs.
+`MAFeatureExtractor` is a NiMARE conversion helper, not a trainable
+scikit-learn estimator. Its initial public API uses a single conversion method;
+downstream scikit-learn estimators consume the output of
+`MAFeatureDataset.to_sklearn()`.
 
 ### Construction
 
@@ -95,10 +101,11 @@ Optional parameters:
 
 ### Required methods
 
-- `fit(collection)`: validate the collection, resolve fields, and record
-  feature schema.
-- `transform(collection)`: produce an `MAFeatureDataset` using the fitted schema.
-- `fit_transform(collection)`: fit and transform in one call.
+- `transform(collection)`: validate the collection, resolve selected fields,
+  generate masked activation map features, and return an `MAFeatureDataset`.
+
+The initial public API must not expose `fit` or `fit_transform` on
+`MAFeatureExtractor`.
 
 ### Required behavior
 
@@ -107,8 +114,8 @@ Optional parameters:
   behavior.
 - Generate MA features through `KernelTransformer.transform(..., return_type="sparse")`.
 - Align map rows to sample IDs and report excluded analyses.
-- Determine study groups from explicit collection study IDs when available,
-  derive from analysis IDs only when unambiguous, and fail clearly otherwise.
+- Determine study groups from collection-provided study IDs. MVP inputs are
+  assumed to provide unique study IDs and unique analysis IDs.
 - Append numeric descriptor fields directly.
 - Reject non-numeric descriptor fields by default unless an explicit descriptor
   transformer or vectorizer is supplied.
@@ -160,9 +167,9 @@ Required behavior:
 
 Minimum workflows:
 
-- Variance thresholding for sparse or dense map matrices.
-- Matrix-appropriate decomposition using PCA for dense matrices and
-  `TruncatedSVD` for sparse matrices.
+- Variance thresholding for sparse map matrices.
+- Sparse-compatible low-rank decomposition using `TruncatedSVD` or an
+  equivalent sparse-safe transformer.
 - Atlas or label aggregation when a nilearn-compatible labels image, atlas, or
   masker is supplied and compatible with the map feature space.
 
@@ -170,8 +177,7 @@ Required helper:
 
 - `make_map_reducer(method, **kwargs)`: return a scikit-learn-compatible
   transformer or pipeline for `method` values covering `variance_threshold`,
-  `pca`, `truncated_svd`, and `atlas_aggregation` or equivalent documented
-  names.
+  `truncated_svd`, and `atlas_aggregation` or equivalent documented names.
 
 ## Documentation Contract
 
