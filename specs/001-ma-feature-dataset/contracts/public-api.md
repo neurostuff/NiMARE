@@ -1,9 +1,11 @@
 # Public API Contract: `nimare.ml`
 
 This contract defines the additive public surface for converting NiMARE
-collections into scikit-learn-compatible feature datasets. Names may be refined
+Studysets into scikit-learn-compatible feature datasets. Names may be refined
 during implementation only if the examples, tests, and API docs are updated
 together.
+
+Terminology: each dataset row is an analysis row.
 
 ## Module
 
@@ -30,52 +32,49 @@ provenance.
 
 ### Required attributes
 
-- `map_features`: sample-by-map-feature matrix. Unreduced voxelwise map
-  features must remain sparse. Reduced map features may be dense only when an
-  explicit reducer returns a reduced dense representation.
-- `sample_ids`: one identifier per row.
+- `ids`: one full Studyset analysis identifier per row, using the
+  Studyset `<study_id>-<analysis_id>` convention.
 - `study_ids`: one study-group label per row.
-- `sample_metadata`: tabular provenance containing at least sample ID, study ID,
-  analysis ID when available, and exclusion status where relevant.
-- `masker`: masker defining voxel feature order for unreduced map features.
-- `descriptor_features`: optional sample-aligned descriptor values.
-- `target`: optional sample-aligned prediction target.
-- `feature_names`: names for exported features.
-- `exclusion_report`: excluded analysis IDs and reasons.
-- `provenance`: map-generation settings and source collection details.
+- `features`: analysis-by-feature matrix combining map features (sparse
+  voxelwise) and optional descriptor features. Unreduced voxelwise features
+  must remain sparse. Reduced map features may be dense only when an explicit
+  reducer returns a reduced dense representation.
+- `feature_names`: names for features in `features` column order, covering both
+  voxel features and descriptor features when present.
+- `target`: optional analysis-row-aligned prediction target.
+- `provenance`: map-generation settings and source Studyset details, including
+  `missing_coordinates` and any `dropped_ids`.
 
 ### Required methods
 
-- `to_sklearn(include_descriptors=True, include_target=True)`:
-  return a `sklearn.utils.Bunch`-compatible dataset object with `data`,
-  `target`, `groups`, `sample_metadata`, and `feature_names`. Unreduced
-  voxelwise feature data must remain sparse; reduced feature data may be dense
-  only if an explicit reducer produced the reduced dense representation.
+- `to_sklearn()`: return a `sklearn.utils.Bunch`-compatible dataset object with
+  `data` (same as `features`), `target` (or `None` if not extracted), `groups`
+  (same as `study_ids`), and `feature_names`. Unreduced voxelwise feature data
+  must remain sparse; reduced feature data may be dense only if an explicit
+  reducer produced the reduced dense representation.
 - `split(test_size=0.25, random_state=None, cv=None)`: return train/test
-  dataset slices using grouped splitting by study ID.
+  dataset slices using grouped splitting by study ID while preserving row
+  alignment across `features`, `target`, `ids`, `study_ids`, and provenance.
 - `apply_map_reducer(reducer, fit=False)`: return a dataset copy with
   map-derived features transformed by a scikit-learn-compatible reducer while
-  preserving descriptors, target, sample metadata, and groups.
-- `get_feature_names()`: return exported feature names in data-column order.
+  preserving descriptor features, target, `ids`, `study_ids`, and provenance.
 - `copy()`: return an independent dataset copy.
 
 ### Errors
 
-- Raise `ValueError` when feature, target, group, or sample dimensions do not
+- Raise `ValueError` when feature, target, group, or row dimensions do not
   align.
 - Raise `ValueError` when study groups required for splitting are missing.
 - Raise `ValueError` when a split cannot be created from the available number of
   study groups.
-- Raise `ValueError` when a reducer changes sample order or returns a row count
+- Raise `ValueError` when a reducer changes analysis-row order or returns a row count
   that does not match the input dataset.
 
 ## `MAFeatureExtractor`
 
-Creates `MAFeatureDataset` from Studyset or Dataset inputs.
-`MAFeatureExtractor` is a NiMARE conversion helper, not a trainable
-scikit-learn estimator. Its initial public API uses a single conversion method;
-downstream scikit-learn estimators consume the output of
-`MAFeatureDataset.to_sklearn()`.
+Orchestrates the full conversion pipeline from Studyset to train/test feature
+datasets and sklearn-ready exports. `MAFeatureExtractor` is a NiMARE conversion
+helper, not a trainable scikit-learn estimator.
 
 ### Construction
 
@@ -94,41 +93,68 @@ Optional parameters:
 - `target_field`: optional field selector for `y`.
 - `target_transformer`: optional transformer or label extractor for free-text or
   multi-label targets.
-- `missing`: one of `raise`, `drop`, or explicit future strategies documented in
-  the implementation.
+- `missing_coordinates`: either `include` or `drop`, defaulting to `drop`.
+  `drop` removes analyses without coordinates before row construction and
+  records dropped IDs in provenance; `include` retains them as all-zero sparse
+  map rows.
+- `test_size`: optional float (0 to 1) or int for train/test split; `None`
+  (default) means no split, returns full dataset as train and `None` as test.
+- `random_state`: random seed for reproducible splits.
+- `cache_maps`: boolean flag controlling extractor-level caching of generated
+  MA map features across repeated calls; default `True`.
 - `memory` and `memory_level`: passed through to existing NiMARE-compatible
   caching when applicable.
 
 ### Required methods
 
-- `transform(collection)`: validate the collection, resolve selected fields,
-  generate masked activation map features, and return an `MAFeatureDataset`.
+- `transform(studyset)`: validate the Studyset, orchestrate extraction and
+  optional splitting, and return `(train_dataset, test_dataset)` for users who
+  prefer dataset-level iterative workflows.
+- `to_sklearn(studyset, map_reducer=None, map_reducer_params=None)`: run the
+  full public pipeline convenience wrapper and return sklearn-ready exports as
+  `(train_bunch, test_bunch)`. If `map_reducer` is provided, fit on training
+  map features only (when split) and apply to both train and test. If
+  `test_size` is `None` or `0.0`, return `(full_bunch, None)`.
 
 The initial public API must not expose `fit` or `fit_transform` on
 `MAFeatureExtractor`.
 
 ### Required behavior
 
-- Prefer Studyset-native access when input is a Studyset.
-- Preserve legacy Dataset compatibility without changing existing Dataset
-  behavior.
+- Use Studyset-native access for IDs, coordinates, masker, metadata,
+  annotations, and texts.
 - Generate MA features through `KernelTransformer.transform(..., return_type="sparse")`.
-- Align map rows to sample IDs and report excluded analyses.
-- Determine study groups from collection-provided study IDs. MVP inputs are
+- Align map rows to analysis IDs after applying `missing_coordinates`.
+- When `missing_coordinates="include"`, analyses with no coordinates must be
+  represented as all-zero sparse map rows.
+- When `missing_coordinates="drop"`, analyses with no coordinates must be
+  removed before row construction and recorded in provenance.
+- Determine study groups from Studyset-provided study IDs. MVP inputs are
   assumed to provide unique study IDs and unique analysis IDs.
+- If `test_size` is set: use grouped train/test split by study ID to prevent
+  study leakage.
 - Append numeric descriptor fields directly.
 - Reject non-numeric descriptor fields by default unless an explicit descriptor
   transformer or vectorizer is supplied.
+- When a split is requested and descriptor transformers are provided, fit all
+  descriptor transformers on training data, then apply to train and test
+  separately.
 - Export scalar numeric and scalar categorical targets as one-dimensional `y`.
 - Reject raw free-text and multi-label targets unless an explicit target
   transformer or label extractor is supplied.
+- If `to_sklearn(..., map_reducer=...)` is used: fit the reducer on training
+  map features only (when split), then apply to both train and test data. If
+  no split, fit and apply to the full dataset.
 - Never split analyses from the same study across train/test partitions.
+- Repeated reducer calls with unchanged Studyset and extractor settings must
+  reuse cached MA map features and avoid recomputing kernel maps.
 
 ### Errors and diagnostics
 
 - Missing maps, missing fields, incompatible masks/spaces, insufficient study
   groups, and unusable targets must raise clear exceptions or produce explicit
-  reports according to the selected missing-value policy.
+  reports. Coordinate-less analyses follow `missing_coordinates`; other invalid
+  map rows must fail clearly.
 
 ## Field Selectors
 
@@ -162,7 +188,7 @@ Required behavior:
 
 - Return scikit-learn-compatible transformers or pipelines.
 - Fit only on training data before transforming held-out data.
-- Preserve sample order and study group alignment.
+- Preserve analysis-row order and study group alignment.
 - Keep descriptor features and targets aligned with reduced map features.
 
 Minimum workflows:
