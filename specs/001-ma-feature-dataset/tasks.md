@@ -3,244 +3,211 @@
 **Input**: Design documents from `specs/001-ma-feature-dataset/`
 **Prerequisites**: `plan.md`, `spec.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md`
 
-**Tests**: Required by the NiMARE constitution and this feature plan. Test tasks
-must be completed before the implementation tasks in each user story.
+**Tests**: Use thin tests early to protect the garden-path behavior while the
+implementation shape is still settling. Add focused edge-condition tests after
+the first end-to-end sklearn-compatible pipeline works.
 
-**Organization**: Tasks are grouped by user story so each story can be
-implemented and tested independently after shared setup and foundational work.
+**Organization**: Tasks are ordered by implementation path first: shared setup,
+garden-path implementation with perfect inputs, basic edge conditions, then the
+remaining user-story hardening and documentation.
 
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel because it touches different files and has no dependency on incomplete tasks in the same phase.
-- **[Story]**: User story label from `specs/001-ma-feature-dataset/spec.md`.
+- **[Story]**: User story label from `specs/001-ma-feature-dataset/spec.md` when the task maps to a specific story.
 - Every checklist task includes exact repository-relative file paths.
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-**Purpose**: Create shared files and public API placeholders needed before TDD begins.
+**Purpose**: Create the minimum files and API hooks needed to start the garden-path implementation.
 
-- [ ] T001 Create additive `nimare.ml` module scaffold with `__all__`, imports, and `NotImplementedError` placeholders for `MAFeatureDataset`, `MAFeatureExtractor`, and `make_map_reducer` in `nimare/ml.py`
-- [ ] T002 [P] Create the machine-learning test module with imports, pytest markers, sparse-matrix assertions, and placeholder fixture names in `nimare/tests/test_ml.py`
-- [ ] T003 [P] Create the Sphinx-Gallery dataset workflow example scaffold with public imports and placeholder narrative in `examples/05_machine_learning/01_plot_ma_feature_dataset.py`
-- [ ] T004 [P] Create the Sphinx-Gallery reduction workflow example scaffold with public imports and placeholder narrative in `examples/05_machine_learning/02_plot_ma_feature_reduction.py`
-- [ ] T005 Add the `nimare.ml` autosummary target placeholder and module description in `docs/api.rst`
-
----
-
-## Phase 2: Foundational (Blocking Prerequisites)
-
-**Purpose**: Establish fixtures, Studyset identity assumptions, sparse assertions, and API wiring used by every user story.
-
-**CRITICAL**: No user story implementation should begin until this phase is complete.
-
-- [ ] T006 Add shared Studyset fixture builders with valid coordinates, a masker, metadata, annotations, texts, unique study IDs, and unique analysis IDs in `nimare/tests/test_ml.py`
-- [ ] T007 Add shared Studyset fixture builders for coordinate-less analyses, missing descriptor fields, missing targets, constant targets, and too-few-study-group cases in `nimare/tests/test_ml.py`
-- [ ] T008 Add shared test helpers that assert row alignment across `features`, `ids`, `study_ids`, `target`, and `provenance` in `nimare/tests/test_ml.py`
-- [ ] T009 Add shared test helpers that assert unreduced voxelwise matrices remain scipy sparse and are never silently densified in `nimare/tests/test_ml.py`
-- [ ] T010 Add shared test helpers that inspect `MAFeatureDataset.to_sklearn()` Bunch exports for `data`, `target`, `groups`, and `feature_names` in `nimare/tests/test_ml.py`
-- [ ] T011 Export the additive `ml` module from `nimare/__init__.py` without changing existing released imports in `nimare/__init__.py`
-- [ ] T012 Confirm the compatibility baseline remains `0.16.0` and record any discrepancy in `specs/001-ma-feature-dataset/plan.md`
-- [ ] T013 Add module-level Numpydoc stubs documenting the analysis-row, voxel-column layout and unique-ID MVP input contract in `nimare/ml.py`
-- [ ] T014 Add internal helper placeholders for Studyset field selection, sparse hstack, grouped slicing, and reducer validation in `nimare/ml.py`
-
-**Checkpoint**: Foundation ready; user story tests and implementation can now begin.
+- [ ] T001 Create additive `nimare.ml` module scaffold with `__all__`, imports, and placeholder public objects for `MAFeatureDataset`, `MAFeatureExtractor`, and `make_map_reducer` in `nimare/ml.py`
+- [ ] T002 [P] Create the machine-learning test module with shared imports and sparse/sklearn assertion helpers in `nimare/tests/test_ml.py`
+- [ ] T003 [P] Create the Sphinx-Gallery dataset workflow example scaffold with public imports in `examples/05_machine_learning/01_plot_ma_feature_dataset.py`
+- [ ] T004 [P] Create the Sphinx-Gallery reduction workflow example scaffold with public imports in `examples/05_machine_learning/02_plot_ma_feature_reduction.py`
+- [ ] T005 Export the additive `ml` module from `nimare/__init__.py` without changing existing released imports in `nimare/__init__.py`
+- [ ] T006 Add the `nimare.ml` autosummary target placeholder in `docs/api.rst`
 
 ---
 
-## Phase 3: User Story 1 - Convert Studysets Into Feature Data (Priority: P1) MVP
+## Phase 2: Garden-Path Foundation (Perfect Inputs Only)
 
-**Goal**: Convert a NiMARE Studyset into an `MAFeatureDataset` with one row per retained analysis, sparse voxelwise map features, private masker storage, public IDs/groups/features/provenance, and sklearn-ready map-only export.
+**Purpose**: Build only the fixture and helper surface needed for a perfect-input workflow.
 
-**Independent Test**: Given a Studyset with multiple studies and analyses, conversion produces one row per retained analysis, aligned sparse map features, unique full analysis IDs, Studyset-provided study IDs, `missing_coordinates` provenance, and sklearn Bunch export.
+- [ ] T007 Add one perfect Studyset fixture builder with valid coordinates, a masker, numeric metadata, numeric annotations, text fields, unique study IDs, and unique full analysis IDs in `nimare/tests/test_ml.py`
+- [ ] T008 Add shared assertions for sklearn Bunch shape, sparse `data`, aligned `target`, aligned `groups`, and estimator-fit compatibility in `nimare/tests/test_ml.py`
+- [ ] T009 Add internal helper placeholders for Studyset table access, sparse feature stacking, grouped splitting, and reducer application in `nimare/ml.py`
 
-### Tests and Examples for User Story 1
-
-> Write these tests first and confirm they fail before implementation.
-
-- [ ] T015 [US1] Add failing tests that `MAFeatureExtractor.transform(studyset)` returns `(train_dataset, test_dataset)` with `test_dataset is None` when `test_size=None` in `nimare/tests/test_ml.py`
-- [ ] T016 [US1] Add failing tests that `MAFeatureExtractor` exposes no public `fit` or `fit_transform` attributes in `nimare/tests/test_ml.py`
-- [ ] T017 [US1] Add failing tests that map-only conversion creates an `MAFeatureDataset` with public `ids`, `study_ids`, `features`, `feature_names`, `target`, and `provenance` attributes in `nimare/tests/test_ml.py`
-- [ ] T018 [US1] Add failing tests that internal `_map_features` is sparse, has shape `n_retained_analyses x n_masked_voxels`, and backs public `features` when no descriptors are extracted in `nimare/tests/test_ml.py`
-- [ ] T019 [US1] Add failing tests that `missing_coordinates="drop"` is the constructor default, drops coordinate-less analyses before row construction, and records `dropped_ids` in provenance in `nimare/tests/test_ml.py`
-- [ ] T020 [US1] Add failing tests that `missing_coordinates="include"` retains coordinate-less analyses as all-zero sparse map rows in `nimare/tests/test_ml.py`
-- [ ] T021 [US1] Add failing tests that conversion uses Studyset-provided `ids` and `study_ids` without duplicate-ID reconciliation or analysis-ID fallback logic in `nimare/tests/test_ml.py`
-- [ ] T022 [US1] Add failing tests that `MAFeatureExtractor.to_sklearn(studyset)` returns `(train_bunch, test_bunch)` with `test_bunch is None` when no split is requested in `nimare/tests/test_ml.py`
-- [ ] T023 [US1] Add failing tests that map-only Bunch export contains sparse `data`, `target is None`, `groups == study_ids`, and separate `feature_names` in `nimare/tests/test_ml.py`
-- [ ] T024 [US1] Add failing compatibility tests that conversion relies on existing Studyset and kernel transformer public behavior without changing latest-release APIs in `nimare/tests/test_ml.py`
-- [ ] T025 [P] [US1] Fill the conversion example with `MAFeatureExtractor.to_sklearn(studyset)`, `missing_coordinates="drop"`, sparse `train_bunch.data`, `groups`, and provenance inspection in `examples/05_machine_learning/01_plot_ma_feature_dataset.py`
-
-### Implementation for User Story 1
-
-- [ ] T026 [US1] Implement `MAFeatureDataset.__init__` with public `ids`, `study_ids`, `features`, `feature_names`, `target`, and `provenance` attributes in `nimare/ml.py`
-- [ ] T027 [US1] Implement `MAFeatureDataset.__init__` private `_map_features`, `_descriptor_features`, and `_masker` storage without exposing them as required public fields in `nimare/ml.py`
-- [ ] T028 [US1] Implement `MAFeatureDataset` validation for feature row counts, ID/group lengths, sparse unreduced voxelwise features, target length, and provenance shape in `nimare/ml.py`
-- [ ] T029 [US1] Implement `MAFeatureDataset.copy()` for map-only datasets with independent sparse matrix and provenance copies in `nimare/ml.py`
-- [ ] T030 [US1] Implement `MAFeatureDataset.to_sklearn()` returning a `sklearn.utils.Bunch` with `data`, `target`, `groups`, and `feature_names` while preserving sparse unreduced data in `nimare/ml.py`
-- [ ] T031 [US1] Implement `MAFeatureExtractor.__init__` storage for `kernel_transformer`, field selectors, `missing_coordinates="drop"`, `test_size`, `random_state`, `cache_maps`, `memory`, and `memory_level` in `nimare/ml.py`
-- [ ] T032 [US1] Implement Studyset-native access to `ids`, `study_ids`, `coordinates`, `metadata`, `annotations_df`, `texts`, `masker`, `space`, and `basepath` in `nimare/ml.py`
-- [ ] T033 [US1] Implement sparse MA feature extraction with `KernelTransformer.transform(..., return_type="sparse")` and row alignment to retained Studyset `ids` in `nimare/ml.py`
-- [ ] T034 [US1] Implement `missing_coordinates` handling for default `drop`, explicit `include`, invalid option errors, and `dropped_ids` provenance in `nimare/ml.py`
-- [ ] T035 [US1] Implement `MAFeatureExtractor.transform(studyset)` as cached extraction plus optional split returning `(train_dataset, test_dataset)` in `nimare/ml.py`
-- [ ] T036 [US1] Implement `MAFeatureExtractor.to_sklearn(studyset, map_reducer=None, map_reducer_params=None)` as the one-call sklearn export wrapper in `nimare/ml.py`
-- [ ] T037 [US1] Implement extractor-level map cache keys that invalidate on Studyset identity/content, kernel configuration, mask space/order, and missing-coordinate policy in `nimare/ml.py`
-- [ ] T038 [US1] Add explicit `ValueError` messages for missing masker, missing Studyset IDs, missing study groups, invalid map rows, and incompatible sparse map shape in `nimare/ml.py`
-- [ ] T039 [US1] Add Numpydoc docstrings for `MAFeatureDataset`, `MAFeatureExtractor`, `MAFeatureDataset.to_sklearn`, `MAFeatureDataset.copy`, `MAFeatureExtractor.transform`, and `MAFeatureExtractor.to_sklearn` in `nimare/ml.py`
-- [ ] T040 [US1] Finalize initial `nimare.ml` autosummary and API documentation for conversion and map-only export in `docs/api.rst`
-
-**Checkpoint**: User Story 1 is independently testable with `python -m pytest nimare/tests/test_ml.py -k "conversion or map_only or missing_coordinates"`.
+**Checkpoint**: Foundation supports one clean fixture and a single end-to-end happy-path test.
 
 ---
 
-## Phase 4: User Story 2 - Split Data Without Study Leakage (Priority: P1)
+## Phase 3: Garden-Path End-to-End Pipeline (Cross-Story MVP)
 
-**Goal**: Provide reproducible grouped train/test splits that keep all analyses from each study in one partition and return sliced `MAFeatureDataset` objects.
+**Goal**: Produce usable sklearn datasets from a perfect Studyset, including numeric descriptors, scalar target, grouped train/test split, feature reduction, and estimator fitting.
 
-**Independent Test**: Given a converted dataset with repeated study IDs, repeated splits with the same settings are identical, no study appears in both partitions, and each split exports `groups` equal to `study_ids`.
+**Independent Test**: A single test converts a perfect Studyset with `MAFeatureExtractor.to_sklearn(studyset, map_reducer="truncated_svd")`, receives train/test Bunches, and fits a scikit-learn estimator on `train_bunch.data` and `train_bunch.target`.
 
-### Tests and Examples for User Story 2
+### Thin Tests and Example
 
-> Write these tests first and confirm they fail before implementation.
+- [ ] T010 [US1] Add one failing garden-path test for `MAFeatureExtractor.to_sklearn(studyset, map_reducer="truncated_svd")` returning train/test sklearn Bunches with sparse-or-reduced numeric `data`, aligned `target`, aligned `groups`, and `feature_names` in `nimare/tests/test_ml.py`
+- [ ] T011 [US2] Extend the garden-path test to assert no study ID appears in both train and test `groups` in `nimare/tests/test_ml.py`
+- [ ] T012 [US3] Extend the garden-path test to include one numeric descriptor field in exported `data` and `feature_names` in `nimare/tests/test_ml.py`
+- [ ] T013 [US4] Extend the garden-path test to fit a simple scikit-learn estimator using `train_bunch.data` and `train_bunch.target` in `nimare/tests/test_ml.py`
+- [ ] T014 [US5] Extend the garden-path test to assert the reducer lowers map-feature dimensionality before descriptor columns are appended in `nimare/tests/test_ml.py`
+- [ ] T015 [P] [US1] Draft the happy-path dataset example using perfect inputs, numeric descriptors, scalar target, `test_size`, and `extractor.to_sklearn(studyset, ...)` in `examples/05_machine_learning/01_plot_ma_feature_dataset.py`
 
-- [ ] T041 [US2] Add failing tests that `MAFeatureDataset.split(test_size, random_state)` uses `study_ids` as sklearn `groups` and no study ID appears in both outputs in `nimare/tests/test_ml.py`
-- [ ] T042 [US2] Add failing tests that identical random state and split settings produce identical train/test `ids` in `nimare/tests/test_ml.py`
-- [ ] T043 [US2] Add failing tests that train/test slices preserve row alignment for `features`, `ids`, `study_ids`, `target`, and `provenance` in `nimare/tests/test_ml.py`
-- [ ] T044 [US2] Add failing tests that each split's `to_sklearn()` export has `groups` equal to `study_ids` and sparse `data` aligned to retained rows in `nimare/tests/test_ml.py`
-- [ ] T045 [US2] Add failing tests that `MAFeatureExtractor.transform(studyset)` performs grouped splitting when `test_size` is set and returns `(train_dataset, test_dataset)` in `nimare/tests/test_ml.py`
-- [ ] T046 [US2] Add failing tests that too-few-study cases fail with a clear `ValueError` before returning partial splits in `nimare/tests/test_ml.py`
-- [ ] T047 [P] [US2] Extend the dataset workflow example with `test_size`, grouped train/test outputs, and `groups` versus `study_ids` consistency in `examples/05_machine_learning/01_plot_ma_feature_dataset.py`
+### Implementation
 
-### Implementation for User Story 2
+- [ ] T016 [US1] Implement `MAFeatureDataset.__init__` with public `ids`, `study_ids`, `features`, `feature_names`, `target`, and `provenance` attributes plus private `_map_features`, `_descriptor_features`, and `_masker` in `nimare/ml.py`
+- [ ] T017 [US1] Implement minimal `MAFeatureDataset.to_sklearn()` returning a `sklearn.utils.Bunch` with `data`, `target`, `groups`, and `feature_names` in `nimare/ml.py`
+- [ ] T018 [US1] Implement minimal `MAFeatureDataset.copy()` and internal row slicing for perfect aligned inputs in `nimare/ml.py`
+- [ ] T019 [US1] Implement `MAFeatureExtractor.__init__` with `kernel_transformer`, `descriptor_fields`, `target_field`, `missing_coordinates`, `test_size`, `random_state`, `cache_maps`, `memory`, and `memory_level` storage in `nimare/ml.py`
+- [ ] T020 [US1] Implement Studyset-native access for `ids`, `study_ids`, `coordinates`, `metadata`, `annotations_df`, `texts`, `masker`, `space`, and `basepath` for perfect Studysets in `nimare/ml.py`
+- [ ] T021 [US1] Implement sparse MA map extraction through `KernelTransformer.transform(..., return_type="sparse")` and row alignment to Studyset `ids` for perfect Studysets in `nimare/ml.py`
+- [ ] T022 [US3] Implement numeric descriptor extraction from Studyset metadata and annotations with retained-row alignment in `nimare/ml.py`
+- [ ] T023 [US4] Implement scalar numeric and scalar categorical target extraction with retained-row alignment in `nimare/ml.py`
+- [ ] T024 [US2] Implement grouped train/test splitting with `GroupShuffleSplit`, `test_size`, `random_state`, and `study_ids` as groups in `nimare/ml.py`
+- [ ] T025 [US5] Implement `make_map_reducer("truncated_svd", **kwargs)` using scikit-learn `TruncatedSVD` in `nimare/ml.py`
+- [ ] T026 [US5] Implement `MAFeatureDataset.apply_map_reducer(reducer, fit=False)` for the truncated-SVD happy path while preserving `ids`, `study_ids`, descriptors, `target`, and `provenance` in `nimare/ml.py`
+- [ ] T027 [US5] Implement `MAFeatureExtractor.to_sklearn(studyset, map_reducer=None, map_reducer_params=None)` as the happy-path pipeline that extracts, splits, fits reducer on train rows, transforms test rows, and exports Bunches in `nimare/ml.py`
+- [ ] T028 [US1] Implement extractor-level map cache reuse for repeated calls with unchanged perfect Studyset and extraction settings in `nimare/ml.py`
+- [ ] T029 [US1] Run and fix the garden-path test with `python -m pytest nimare/tests/test_ml.py -k "garden_path"` for `nimare/tests/test_ml.py`
 
-- [ ] T048 [US2] Implement row slicing internals for `MAFeatureDataset` that slice sparse `_map_features`, `_descriptor_features`, public `features`, `target`, `ids`, `study_ids`, and `provenance` consistently in `nimare/ml.py`
-- [ ] T049 [US2] Implement `MAFeatureDataset.split` using scikit-learn `GroupShuffleSplit` with `study_ids` as groups and train/test `MAFeatureDataset` return values in `nimare/ml.py`
-- [ ] T050 [US2] Implement grouped CV support for the `cv` parameter using scikit-learn group splitters while preserving study-group disjointness and row alignment in `nimare/ml.py`
-- [ ] T051 [US2] Integrate `test_size` and `random_state` from `MAFeatureExtractor` into `transform(studyset)` and `to_sklearn(studyset, ...)` in `nimare/ml.py`
-- [ ] T052 [US2] Implement split diagnostics and `ValueError` messages for missing groups, too few groups, invalid `test_size`, and unsupported `cv` configurations in `nimare/ml.py`
-- [ ] T053 [US2] Add split-specific Numpydoc examples and API documentation for `groups`, `study_ids`, and tuple returns in `nimare/ml.py` and `docs/api.rst`
-
-**Checkpoint**: User Stories 1 and 2 are independently testable with `python -m pytest nimare/tests/test_ml.py -k "split or leakage or groups"`.
-
----
-
-## Phase 5: User Story 3 - Combine Activation Maps With Study Information (Priority: P2)
-
-**Goal**: Add selected numeric metadata and annotation fields as descriptor columns, reject non-numeric descriptors by default, and support explicit descriptor transformers or vectorizers fit on training rows only when a split is requested.
-
-**Independent Test**: Given selected descriptor fields, numeric descriptors are appended as numeric columns aligned to analysis rows; non-numeric fields fail without explicit preprocessing; transformed descriptor columns remain separate from internal `_map_features`.
-
-### Tests and Examples for User Story 3
-
-> Write these tests first and confirm they fail before implementation.
-
-- [ ] T054 [US3] Add failing tests for descriptor selector normalization for metadata, annotations, and texts using dictionary selectors in `nimare/tests/test_ml.py`
-- [ ] T055 [US3] Add failing tests that numeric metadata and annotation descriptors align to `ids`, produce descriptor feature names, and append to `features` and `to_sklearn().data` in `nimare/tests/test_ml.py`
-- [ ] T056 [US3] Add failing tests that text and categorical descriptor fields raise without explicit transformers or vectorizers in `nimare/tests/test_ml.py`
-- [ ] T057 [US3] Add failing tests that explicit descriptor vectorizers produce numeric descriptor columns and feature names in `nimare/tests/test_ml.py`
-- [ ] T058 [US3] Add failing tests that descriptor transformers fit only on training rows and transform held-out rows when `test_size` is set in `nimare/tests/test_ml.py`
-- [ ] T059 [US3] Add failing tests for missing descriptor reports listing affected `ids` and field selectors without silent row dropping or filling in `nimare/tests/test_ml.py`
-- [ ] T060 [US3] Add failing tests that a field selected as target is not silently reused as a descriptor feature by default in `nimare/tests/test_ml.py`
-- [ ] T061 [P] [US3] Extend the dataset workflow example with numeric descriptors and explicit text vectorization for descriptor fields in `examples/05_machine_learning/01_plot_ma_feature_dataset.py`
-
-### Implementation for User Story 3
-
-- [ ] T062 [US3] Implement descriptor field selector normalization and validation for `metadata`, `annotations`, and `texts` sources in `nimare/ml.py`
-- [ ] T063 [US3] Implement Studyset table lookup for descriptor fields with row alignment to retained `ids` in `nimare/ml.py`
-- [ ] T064 [US3] Implement numeric descriptor extraction, `_descriptor_features` construction, descriptor feature names, and sparse-compatible hstack into public `features` in `nimare/ml.py`
-- [ ] T065 [US3] Implement non-numeric descriptor rejection with explicit messages that identify source and field in `nimare/ml.py`
-- [ ] T066 [US3] Implement explicit descriptor transformer/vectorizer execution and transformed feature naming in `nimare/ml.py`
-- [ ] T067 [US3] Implement train-only descriptor transformer fitting when `test_size` is set and held-out descriptor transformation without leakage in `nimare/ml.py`
-- [ ] T068 [US3] Implement missing descriptor diagnostics in `provenance` without silent row dropping or filling in `nimare/ml.py`
-- [ ] T069 [US3] Implement guards that prevent target fields from being duplicated as descriptors by default in `nimare/ml.py`
-- [ ] T070 [US3] Add descriptor-feature Numpydoc docs and API documentation for selectors, missing diagnostics, explicit transformers, and sparse export in `nimare/ml.py` and `docs/api.rst`
-
-**Checkpoint**: User Story 3 is independently testable with `python -m pytest nimare/tests/test_ml.py -k "descriptor or non_numeric or vectorizer"`.
+**Checkpoint**: A clean Studyset can be converted into train/test sklearn Bunches that fit a sklearn estimator.
 
 ---
 
-## Phase 6: User Story 4 - Predict Selected Study Information (Priority: P2)
+## Phase 4: Basic Edge Conditions
 
-**Goal**: Export one selected scalar numeric or categorical metadata/annotation value, or an explicitly transformed text-derived value, as the prediction target `y`.
+**Goal**: Add only the edge handling already called out as MVP behavior, after the happy path works.
 
-**Independent Test**: Given a selected outcome field, target values align to feature rows; scalar numeric and categorical targets export correctly; missing, constant, raw free-text, and multi-label targets are diagnosed or rejected as specified.
+**Independent Test**: Focused tests cover missing-coordinate policy, sparse unreduced data, unsupported non-numeric fields, too-few-group splitting, target shape rejection, and reducer scope.
 
-### Tests and Examples for User Story 4
+### Focused Edge Tests
 
-> Write these tests first and confirm they fail before implementation.
+- [ ] T030 [US1] Add focused tests that `MAFeatureExtractor` exposes no public `fit` or `fit_transform` attributes in `nimare/tests/test_ml.py`
+- [ ] T031 [US1] Add focused tests that `missing_coordinates="drop"` is default and records dropped IDs in `provenance` in `nimare/tests/test_ml.py`
+- [ ] T032 [US1] Add focused tests that `missing_coordinates="include"` keeps coordinate-less analyses as all-zero sparse map rows in `nimare/tests/test_ml.py`
+- [ ] T033 [US1] Add focused tests that unreduced voxelwise `features` and Bunch `data` remain sparse before reduction in `nimare/tests/test_ml.py`
+- [ ] T034 [US2] Add focused tests that too-few-study split requests raise a clear `ValueError` before returning partial outputs in `nimare/tests/test_ml.py`
+- [ ] T035 [US3] Add focused tests that categorical/text descriptors raise without an explicit transformer or vectorizer in `nimare/tests/test_ml.py`
+- [ ] T036 [US4] Add focused tests that raw free-text and multi-label targets raise without an explicit target transformer or label extractor in `nimare/tests/test_ml.py`
+- [ ] T037 [US5] Add focused tests that reducers operate on internal `_map_features` only and do not reduce descriptor columns in `nimare/tests/test_ml.py`
 
-- [ ] T071 [US4] Add failing tests for scalar numeric target extraction, one-dimensional `target`, target diagnostics in `provenance`, and row alignment with `features` in `nimare/tests/test_ml.py`
-- [ ] T072 [US4] Add failing tests for scalar categorical targets, including string labels accepted by downstream sklearn classifiers in `nimare/tests/test_ml.py`
-- [ ] T073 [US4] Add failing tests that study-level targets may repeat across analyses and grouped splits keep repeated study-level targets in one partition in `nimare/tests/test_ml.py`
-- [ ] T074 [US4] Add failing tests for missing target reports and constant target diagnostics in `nimare/tests/test_ml.py`
-- [ ] T075 [US4] Add failing tests that raw free-text and multi-label targets raise unless an explicit target transformer or label extractor is supplied in `nimare/tests/test_ml.py`
-- [ ] T076 [US4] Add failing tests that explicit target transformers or label extractors produce a one-dimensional target aligned to retained `ids` in `nimare/tests/test_ml.py`
-- [ ] T077 [US4] Add failing tests that target values survive `split`, dataset slicing, `to_sklearn()`, and reduced dataset copies without row-order changes in `nimare/tests/test_ml.py`
-- [ ] T078 [P] [US4] Extend the dataset workflow example with target extraction, exported `y`, and a minimal sklearn estimator fit on train data in `examples/05_machine_learning/01_plot_ma_feature_dataset.py`
+### Edge Implementations
 
-### Implementation for User Story 4
+- [ ] T038 [US1] Implement `missing_coordinates` default `drop`, explicit `include`, invalid option errors, all-zero sparse rows, and `dropped_ids` provenance in `nimare/ml.py`
+- [ ] T039 [US1] Tighten sparse validation so unreduced voxelwise public `features` and Bunch `data` cannot be emitted dense in `nimare/ml.py`
+- [ ] T040 [US1] Add basic `ValueError` messages for missing masker, missing Studyset IDs, invalid map rows, and incompatible sparse map shape in `nimare/ml.py`
+- [ ] T041 [US2] Add basic split diagnostics for missing groups, too few groups, and invalid `test_size` in `nimare/ml.py`
+- [ ] T042 [US3] Implement non-numeric descriptor rejection with messages identifying the selector source and field in `nimare/ml.py`
+- [ ] T043 [US4] Implement raw free-text and multi-label target rejection with messages identifying the selector source and field in `nimare/ml.py`
+- [ ] T044 [US5] Enforce reducer scope by applying map reducers only to `_map_features` and rebuilding public `features` afterward in `nimare/ml.py`
+- [ ] T045 [US1] Run and fix edge-condition tests with `python -m pytest nimare/tests/test_ml.py -k "missing_coordinates or sparse or non_numeric or target or too_few or reducer_scope"` for `nimare/tests/test_ml.py`
 
-- [ ] T079 [US4] Implement target field selector normalization and lookup for metadata, annotations, and texts in `nimare/ml.py`
-- [ ] T080 [US4] Implement scalar numeric and scalar categorical target validation and one-dimensional target storage in `MAFeatureDataset.target` in `nimare/ml.py`
-- [ ] T081 [US4] Implement missing target reports and constant target diagnostics in `provenance` in `nimare/ml.py`
-- [ ] T082 [US4] Implement raw free-text and multi-label target rejection with explicit messages in `nimare/ml.py`
-- [ ] T083 [US4] Implement explicit target transformer or label extractor support with retained-row alignment in `nimare/ml.py`
-- [ ] T084 [US4] Preserve target alignment through `to_sklearn`, `split`, row slicing, and reduced dataset copies in `nimare/ml.py`
-- [ ] T085 [US4] Add target-extraction Numpydoc docs and API documentation for target selectors, target diagnostics, and sklearn `target` export in `nimare/ml.py` and `docs/api.rst`
-
-**Checkpoint**: User Story 4 is independently testable with `python -m pytest nimare/tests/test_ml.py -k "target or outcome or y"`.
-
----
-
-## Phase 7: User Story 5 - Reduce Voxelwise Feature Dimensionality (Priority: P3)
-
-**Goal**: Provide sparse-safe reduction workflows that operate only on internal `_map_features`, use the stored `_masker` for atlas/label aggregation, preserve descriptors and targets, and optionally run through `MAFeatureExtractor.to_sklearn(studyset, map_reducer=...)`.
-
-**Independent Test**: Given a feature dataset, variance thresholding, sparse-compatible low-rank reduction, and atlas/label aggregation reduce map features correctly without densifying unreduced voxel matrices; reducers fit only on training data and transform held-out analyses without leakage.
-
-### Tests and Examples for User Story 5
-
-> Write these tests first and confirm they fail before implementation.
-
-- [ ] T086 [US5] Add failing reducer factory tests for `variance_threshold`, `truncated_svd`, and `atlas_aggregation` method names and returned sklearn-compatible transformers in `nimare/tests/test_ml.py`
-- [ ] T087 [US5] Add failing tests that reducers operate on internal `_map_features` only and never select descriptor columns from public `features` or exported sklearn `data` in `nimare/tests/test_ml.py`
-- [ ] T088 [US5] Add failing tests that `MAFeatureDataset.apply_map_reducer(fit=True)` fits on training map features and `fit=False` transforms held-out map features with the same fitted reducer in `nimare/tests/test_ml.py`
-- [ ] T089 [US5] Add failing tests that `MAFeatureExtractor.to_sklearn(studyset, map_reducer=...)` fits the reducer on train rows only and applies it to held-out rows when `test_size` is set in `nimare/tests/test_ml.py`
-- [ ] T090 [US5] Add failing tests that sparse low-rank reduction accepts sparse input, does not densify the unreduced voxel matrix, and may return a reduced dense component matrix in `nimare/tests/test_ml.py`
-- [ ] T091 [US5] Add failing atlas/label aggregation tests that use the stored dataset `_masker` to align atlas labels to voxel columns and produce analysis-by-parcel outputs in `nimare/tests/test_ml.py`
-- [ ] T092 [US5] Add failing atlas/label aggregation tests for incompatible atlas space, incompatible label image shape, empty parcels, and missing masker errors in `nimare/tests/test_ml.py`
-- [ ] T093 [US5] Add failing tests that reduced datasets preserve `ids`, `study_ids`, `target`, descriptor features, and `provenance` in `nimare/tests/test_ml.py`
-- [ ] T094 [US5] Add failing tests that reduced `feature_names` distinguish variance-threshold, SVD component, and atlas parcel outputs in `nimare/tests/test_ml.py`
-- [ ] T095 [US5] Add a `performance_smoke` test for 1,000-study sparse conversion, grouped split, and sparse-safe reduction within <=3 minutes and <=5 GB peak memory in `nimare/tests/test_ml.py`
-- [ ] T096 [P] [US5] Fill the reduction workflow example with grouped split, train-fit truncated SVD, held-out transform, and atlas aggregation using the dataset masker in `examples/05_machine_learning/02_plot_ma_feature_reduction.py`
-
-### Implementation for User Story 5
-
-- [ ] T097 [US5] Implement `make_map_reducer("variance_threshold", **kwargs)` using sparse-compatible variance filtering in `nimare/ml.py`
-- [ ] T098 [US5] Implement `make_map_reducer("truncated_svd", **kwargs)` using scikit-learn `TruncatedSVD` or an equivalent sparse-safe low-rank reducer in `nimare/ml.py`
-- [ ] T099 [US5] Implement `make_map_reducer("atlas_aggregation", atlas=..., masker=..., **kwargs)` contract and validation in `nimare/ml.py`
-- [ ] T100 [US5] Implement atlas-to-mask alignment using the stored dataset `_masker`, voxel ordering, and a sparse voxel-by-parcel aggregation matrix in `nimare/ml.py`
-- [ ] T101 [US5] Implement `MAFeatureDataset.apply_map_reducer` so reducers transform only `_map_features` and descriptor features remain separate in `nimare/ml.py`
-- [ ] T102 [US5] Implement `apply_map_reducer` fit semantics, held-out transform semantics, row-count validation, output sparse/dense handling, and reduced feature names in `nimare/ml.py`
-- [ ] T103 [US5] Integrate `map_reducer` and `map_reducer_params` into `MAFeatureExtractor.to_sklearn(studyset, ...)` with train-only fitting when split in `nimare/ml.py`
-- [ ] T104 [US5] Implement diagnostics for unintended densification of unreduced voxelwise data and performance-budget risk in `nimare/ml.py`
-- [ ] T105 [US5] Add reducer Numpydoc docs and API documentation for sparse-only unreduced data, reduced dense outputs, and masker-based atlas aggregation in `nimare/ml.py` and `docs/api.rst`
-
-**Checkpoint**: User Story 5 is independently testable with `python -m pytest nimare/tests/test_ml.py -k "reducer or reduction or atlas or performance_smoke"`.
+**Checkpoint**: Basic MVP failure modes are explicit without locking down every possible diagnostic yet.
 
 ---
 
-## Phase 8: Polish & Cross-Cutting Concerns
+## Phase 5: User Story 1 Completion - Convert Studysets Into Feature Data (Priority: P1)
 
-**Purpose**: Final verification, documentation consistency, and compatibility review across all selected user stories.
+**Goal**: Finish conversion details that were intentionally skipped during the garden path.
 
-- [ ] T106 [P] Finalize Numpydoc parameter docs, return docs, examples, warnings, and errors for every public class and function in `nimare/ml.py`
-- [ ] T107 [P] Verify both Sphinx-Gallery examples use only public APIs and match `specs/001-ma-feature-dataset/quickstart.md` in `examples/05_machine_learning/01_plot_ma_feature_dataset.py` and `examples/05_machine_learning/02_plot_ma_feature_reduction.py`
-- [ ] T108 [P] Update API documentation text for `nimare.ml`, `MAFeatureDataset`, `MAFeatureExtractor`, and `make_map_reducer` in `docs/api.rst`
-- [ ] T109 Run the targeted feature test suite with `python -m pytest nimare/tests/test_ml.py` for `nimare/tests/test_ml.py`
-- [ ] T110 Run the performance smoke check with `python -m pytest -m performance_smoke nimare/tests/test_ml.py` for `nimare/tests/test_ml.py`
-- [ ] T111 Run the documentation build with `make -C docs html` for `docs/api.rst` and `examples/05_machine_learning/`
-- [ ] T112 Run linting with `make lint` for `nimare/ml.py`, `nimare/tests/test_ml.py`, `docs/api.rst`, and `examples/05_machine_learning/`
-- [ ] T113 Review public API compatibility against baseline `0.16.0` for `nimare/__init__.py`, `nimare/ml.py`, and `docs/api.rst`
-- [ ] T114 Review generated artifacts for consistency with `specs/001-ma-feature-dataset/spec.md`, `specs/001-ma-feature-dataset/contracts/public-api.md`, and `specs/001-ma-feature-dataset/contracts/sklearn-compatibility.md`
+**Independent Test**: Map-only conversion and Bunch export work without descriptors, target, split, or reducer.
+
+- [ ] T046 [US1] Add focused tests for map-only `transform(studyset)` returning `(full_dataset, None)` when `test_size=None` in `nimare/tests/test_ml.py`
+- [ ] T047 [US1] Add focused tests that map-only `to_sklearn(studyset)` returns `(full_bunch, None)` with `target is None` in `nimare/tests/test_ml.py`
+- [ ] T048 [US1] Add focused tests that MVP inputs use Studyset-provided unique `ids` and `study_ids` without duplicate-ID reconciliation or fallback parsing in `nimare/tests/test_ml.py`
+- [ ] T049 [US1] Complete map-only code paths for `transform(studyset)` and `to_sklearn(studyset)` without descriptors, target, split, or reducer in `nimare/ml.py`
+- [ ] T050 [US1] Complete provenance for source Studyset details, map generation settings, `missing_coordinates`, and `dropped_ids` in `nimare/ml.py`
+- [ ] T051 [US1] Add Numpydoc docs for `MAFeatureDataset`, `MAFeatureExtractor`, `transform`, `to_sklearn`, and `copy` in `nimare/ml.py`
+- [ ] T052 [US1] Finalize the conversion/provenance section of the dataset example in `examples/05_machine_learning/01_plot_ma_feature_dataset.py`
+
+---
+
+## Phase 6: User Story 2 Completion - Split Data Without Study Leakage (Priority: P1)
+
+**Goal**: Finish manual dataset-level splitting and grouped CV support after extractor-level split works.
+
+**Independent Test**: `MAFeatureDataset.split(...)` returns aligned train/test datasets and repeated split settings are reproducible.
+
+- [ ] T053 [US2] Add focused tests for `MAFeatureDataset.split(test_size, random_state)` reproducibility and no study leakage in `nimare/tests/test_ml.py`
+- [ ] T054 [US2] Add focused tests that manual split slices `features`, `ids`, `study_ids`, `target`, and `provenance` consistently in `nimare/tests/test_ml.py`
+- [ ] T055 [US2] Implement public `MAFeatureDataset.split(test_size=0.25, random_state=None, cv=None)` using sklearn group splitters in `nimare/ml.py`
+- [ ] T056 [US2] Implement grouped CV behavior for the `cv` parameter or raise a documented MVP `ValueError` if deferred in `nimare/ml.py`
+- [ ] T057 [US2] Extend the dataset example with manual `feature_dataset.split(...)` and `groups == study_ids` checks in `examples/05_machine_learning/01_plot_ma_feature_dataset.py`
+
+---
+
+## Phase 7: User Story 3 Completion - Combine Activation Maps With Study Information (Priority: P2)
+
+**Goal**: Finish descriptor transformers and descriptor diagnostics after numeric descriptors work.
+
+**Independent Test**: Numeric descriptors append directly; explicit descriptor transformers/vectorizers work; missing descriptor values are reported.
+
+- [ ] T058 [US3] Add focused tests for descriptor selector normalization across `metadata`, `annotations`, and `texts` sources in `nimare/tests/test_ml.py`
+- [ ] T059 [US3] Add focused tests that explicit descriptor vectorizers produce numeric columns and feature names in `nimare/tests/test_ml.py`
+- [ ] T060 [US3] Add focused tests that descriptor transformers fit only on training rows and transform held-out rows when `test_size` is set in `nimare/tests/test_ml.py`
+- [ ] T061 [US3] Add focused tests for missing descriptor diagnostics listing affected `ids` and field selectors in `nimare/tests/test_ml.py`
+- [ ] T062 [US3] Implement descriptor selector normalization for `metadata`, `annotations`, and `texts` in `nimare/ml.py`
+- [ ] T063 [US3] Implement explicit descriptor transformer/vectorizer support with train-only fitting when split in `nimare/ml.py`
+- [ ] T064 [US3] Implement missing descriptor diagnostics in `provenance` without silent row dropping or filling in `nimare/ml.py`
+- [ ] T065 [US3] Implement guard that prevents a selected target field from being silently reused as a descriptor in `nimare/ml.py`
+- [ ] T066 [US3] Extend the dataset example with numeric descriptors and explicit text vectorization in `examples/05_machine_learning/01_plot_ma_feature_dataset.py`
+
+---
+
+## Phase 8: User Story 4 Completion - Predict Selected Study Information (Priority: P2)
+
+**Goal**: Finish target transformers and target diagnostics after scalar targets work.
+
+**Independent Test**: Scalar numeric/categorical targets export as `y`; explicit target transformers work; missing and constant targets are diagnosed.
+
+- [ ] T067 [US4] Add focused tests for scalar categorical targets, including string labels accepted by a downstream sklearn classifier in `nimare/tests/test_ml.py`
+- [ ] T068 [US4] Add focused tests that study-level targets may repeat across analyses and grouped splits keep repeated targets in one partition in `nimare/tests/test_ml.py`
+- [ ] T069 [US4] Add focused tests for missing target reports and constant target diagnostics in `nimare/tests/test_ml.py`
+- [ ] T070 [US4] Add focused tests that explicit target transformers or label extractors produce a one-dimensional target aligned to retained `ids` in `nimare/tests/test_ml.py`
+- [ ] T071 [US4] Implement scalar categorical target support and target dtype preservation in `nimare/ml.py`
+- [ ] T072 [US4] Implement missing target reports and constant target diagnostics in `provenance` in `nimare/ml.py`
+- [ ] T073 [US4] Implement explicit target transformer or label extractor support with retained-row alignment in `nimare/ml.py`
+- [ ] T074 [US4] Preserve target alignment through `to_sklearn`, `split`, row slicing, and reduced dataset copies in `nimare/ml.py`
+- [ ] T075 [US4] Extend the dataset example with target extraction, exported `y`, and a minimal sklearn estimator fit on train data in `examples/05_machine_learning/01_plot_ma_feature_dataset.py`
+
+---
+
+## Phase 9: User Story 5 Completion - Reduce Voxelwise Feature Dimensionality (Priority: P3)
+
+**Goal**: Finish all required reducers after truncated SVD works.
+
+**Independent Test**: Variance thresholding, truncated SVD, and atlas aggregation reduce map features while preserving rows, descriptors, targets, and groups.
+
+- [ ] T076 [US5] Add focused tests for `make_map_reducer("variance_threshold", **kwargs)` on sparse map features in `nimare/tests/test_ml.py`
+- [ ] T077 [US5] Add focused tests for atlas/label aggregation using the stored dataset `_masker` to align labels to voxel columns in `nimare/tests/test_ml.py`
+- [ ] T078 [US5] Add focused tests that reduced datasets preserve `ids`, `study_ids`, `target`, descriptor features, and `provenance` in `nimare/tests/test_ml.py`
+- [ ] T079 [US5] Add focused tests that reduced `feature_names` distinguish variance-threshold, SVD component, and atlas parcel outputs in `nimare/tests/test_ml.py`
+- [ ] T080 [US5] Implement `make_map_reducer("variance_threshold", **kwargs)` using sparse-compatible variance filtering in `nimare/ml.py`
+- [ ] T081 [US5] Implement `make_map_reducer("atlas_aggregation", atlas=..., masker=..., **kwargs)` contract and validation in `nimare/ml.py`
+- [ ] T082 [US5] Implement atlas-to-mask alignment using the stored dataset `_masker`, voxel ordering, and a sparse voxel-by-parcel aggregation matrix in `nimare/ml.py`
+- [ ] T083 [US5] Implement reduced feature naming for variance-threshold, SVD component, and atlas parcel outputs in `nimare/ml.py`
+- [ ] T084 [US5] Fill the reduction workflow example with grouped split, train-fit truncated SVD, held-out transform, and atlas aggregation in `examples/05_machine_learning/02_plot_ma_feature_reduction.py`
+
+---
+
+## Phase 10: Performance, Documentation, and Compatibility
+
+**Purpose**: Add slow checks and finish documentation after the public implementation has stabilized.
+
+- [ ] T085 Add a `performance_smoke` test for 1,000-study sparse conversion and grouped split within <=3 minutes and <=5 GB peak memory in `nimare/tests/test_ml.py`
+- [ ] T086 [P] Finalize Numpydoc parameter docs, return docs, examples, warnings, and errors for public objects in `nimare/ml.py`
+- [ ] T087 [P] Update API documentation text for `nimare.ml`, `MAFeatureDataset`, `MAFeatureExtractor`, and `make_map_reducer` in `docs/api.rst`
+- [ ] T088 [P] Verify both Sphinx-Gallery examples use only public APIs and match `specs/001-ma-feature-dataset/quickstart.md` in `examples/05_machine_learning/01_plot_ma_feature_dataset.py` and `examples/05_machine_learning/02_plot_ma_feature_reduction.py`
+- [ ] T089 Run the targeted feature test suite with `python -m pytest nimare/tests/test_ml.py` for `nimare/tests/test_ml.py`
+- [ ] T090 Run the performance smoke check with `python -m pytest -m performance_smoke nimare/tests/test_ml.py` for `nimare/tests/test_ml.py`
+- [ ] T091 Run the documentation build with `make -C docs html` for `docs/api.rst` and `examples/05_machine_learning/`
+- [ ] T092 Run linting with `make lint` for `nimare/ml.py`, `nimare/tests/test_ml.py`, `docs/api.rst`, and `examples/05_machine_learning/`
+- [ ] T093 Review public API compatibility against baseline `0.16.0` for `nimare/__init__.py`, `nimare/ml.py`, and `docs/api.rst`
+- [ ] T094 Review generated artifacts for consistency with `specs/001-ma-feature-dataset/spec.md`, `specs/001-ma-feature-dataset/contracts/public-api.md`, and `specs/001-ma-feature-dataset/contracts/sklearn-compatibility.md`
 
 ---
 
@@ -249,85 +216,74 @@ implemented and tested independently after shared setup and foundational work.
 ### Phase Dependencies
 
 - **Setup (Phase 1)**: No dependencies; can start immediately.
-- **Foundational (Phase 2)**: Depends on Setup completion; blocks all user stories.
-- **User Story 1 and User Story 2 (P1)**: Depend on Foundational completion.
-- **User Story 3 and User Story 4 (P2)**: Depend on Foundational completion and integrate with the dataset container from User Story 1.
-- **User Story 5 (P3)**: Depends on Foundational completion, map features from User Story 1, split semantics from User Story 2, and preservation checks from User Stories 3 and 4 when descriptors or targets are present.
-- **Polish (Phase 8)**: Depends on all desired user stories being complete.
+- **Garden-Path Foundation (Phase 2)**: Depends on Setup completion.
+- **Garden-Path End-to-End Pipeline (Phase 3)**: Depends on Phase 2 and intentionally implements thin slices of US1-US5 before comprehensive edge handling.
+- **Basic Edge Conditions (Phase 4)**: Depends on a working garden path.
+- **User Story Completion (Phases 5-9)**: Depends on Phase 4; can proceed by priority or by available ownership.
+- **Performance, Documentation, and Compatibility (Phase 10)**: Depends on selected user-story completion.
 
 ### User Story Dependencies
 
-- **US1 Convert Studysets into feature data**: MVP; no dependency on other user stories after Foundational.
-- **US2 Split data without study leakage**: Requires `MAFeatureDataset` rows, IDs, study groups, and tuple-return extractor behavior from US1.
-- **US3 Combine activation maps with study information**: Requires `MAFeatureDataset` and dataset-level sklearn export from US1.
-- **US4 Predict selected study information**: Requires `MAFeatureDataset` and dataset-level sklearn export from US1; split alignment integrates with US2.
-- **US5 Reduce voxelwise feature dimensionality**: Requires internal `_map_features` and `_masker` from US1; train-fit/held-out-transform workflows integrate with US2; descriptor/target preservation integrates with US3 and US4 when present.
+- **US1 Convert Studysets into feature data**: Starts in Phase 3; completed in Phase 5.
+- **US2 Split data without study leakage**: Starts in Phase 3; completed in Phase 6.
+- **US3 Combine activation maps with study information**: Starts in Phase 3 for numeric descriptors; completed in Phase 7.
+- **US4 Predict selected study information**: Starts in Phase 3 for scalar targets; completed in Phase 8.
+- **US5 Reduce voxelwise feature dimensionality**: Starts in Phase 3 for truncated SVD; completed in Phase 9.
 
-### Within Each User Story
+### Implementation Rule
 
-- Tests must be written and fail before implementation.
-- Public examples must be created or edited before the story is considered complete.
-- Core implementation in `nimare/ml.py` follows the story tests.
-- Documentation and docstrings close each story.
+- Keep early tests thin and workflow-oriented.
+- Do not add broad edge-condition tests before the garden path passes.
+- Add focused edge tests immediately before implementing each edge behavior.
+- Prefer changing task details as design decisions evolve over preserving speculative early tests.
 
 ---
 
 ## Parallel Opportunities
 
-- T002, T003, T004, and T005 can run in parallel after T001 is understood because they touch different files.
-- T006, T007, T008, T009, and T010 can be drafted in parallel within `nimare/tests/test_ml.py` if coordinated to avoid duplicate fixture names.
-- T025 can run in parallel with US1 test authoring because it touches `examples/05_machine_learning/01_plot_ma_feature_dataset.py`.
-- T047, T061, and T078 can run in parallel with their story test tasks if prior edits to `examples/05_machine_learning/01_plot_ma_feature_dataset.py` are merged.
-- T096 can run in parallel with US5 test authoring because it touches `examples/05_machine_learning/02_plot_ma_feature_reduction.py`.
-- T106, T107, and T108 can run in parallel near the end because they touch `nimare/ml.py`, example files, and `docs/api.rst`.
+- T002, T003, T004, and T006 can run in parallel after T001 is understood.
+- T015 can run in parallel with T010-T014 because it touches the example file.
+- T057, T066, T075, and T084 can run in parallel with their corresponding focused test tasks if example edits are coordinated.
+- T086, T087, and T088 can run in parallel near the end because they touch different documentation surfaces.
 
-## Parallel Example: User Story 1
+## Garden-Path Parallel Example
 
 ```text
-Task: "Add failing sparse conversion and missing-coordinate tests in nimare/tests/test_ml.py"
-Task: "Fill conversion workflow example in examples/05_machine_learning/01_plot_ma_feature_dataset.py"
+Task: "Add garden-path sklearn Bunch and estimator-fit test in nimare/tests/test_ml.py"
+Task: "Draft happy-path dataset example in examples/05_machine_learning/01_plot_ma_feature_dataset.py"
 ```
 
-## Parallel Example: User Story 3
+## Edge-Condition Parallel Example
 
 ```text
-Task: "Add failing descriptor diagnostics tests in nimare/tests/test_ml.py"
-Task: "Extend descriptor feature examples in examples/05_machine_learning/01_plot_ma_feature_dataset.py"
-```
-
-## Parallel Example: User Story 5
-
-```text
-Task: "Add failing map reducer and atlas aggregation tests in nimare/tests/test_ml.py"
-Task: "Fill reduction workflow example in examples/05_machine_learning/02_plot_ma_feature_reduction.py"
+Task: "Add focused missing-coordinate tests in nimare/tests/test_ml.py"
+Task: "Implement missing-coordinate handling in nimare/ml.py after the tests are written"
 ```
 
 ---
 
 ## Implementation Strategy
 
-### MVP First
+### Garden Path First
 
 1. Complete Phase 1 and Phase 2.
-2. Complete Phase 3 for User Story 1.
-3. Run `python -m pytest nimare/tests/test_ml.py -k "conversion or map_only or missing_coordinates"`.
-4. Stop and review the MVP before adding split, descriptor, target, or reduction behavior.
+2. Complete Phase 3 until the perfect-input pipeline works.
+3. Validate with `python -m pytest nimare/tests/test_ml.py -k "garden_path"`.
+4. Review implementation shape before adding broad edge coverage.
 
-### Incremental Delivery
+### Basic Edges Second
 
-1. Add US1 conversion and map-only export.
-2. Add US2 grouped splitting.
-3. Add US3 descriptor features.
-4. Add US4 target extraction.
-5. Add US5 reduction workflows and performance smoke coverage.
-6. Run Phase 8 verification.
+1. Complete Phase 4 focused edge tests and implementation.
+2. Keep diagnostics useful but avoid comprehensive behavior matrices until the public shape stabilizes.
 
-### Parallel Team Strategy
+### User Stories Third
 
-After Phase 2, one developer can work on US1/US2 core dataset behavior while
-another prepares examples and tests for US3/US4/US5. Production edits to
-`nimare/ml.py` should be serialized or coordinated because all stories touch
-that public module.
+1. Finish US1 map-only conversion.
+2. Finish US2 manual splitting.
+3. Finish US3 descriptor transformers and diagnostics.
+4. Finish US4 target transformers and diagnostics.
+5. Finish US5 remaining reducers.
+6. Run Phase 10 verification.
 
 ## Notes
 
