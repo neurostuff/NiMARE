@@ -7,22 +7,35 @@ scikit-learn workflows.
 
 `MAFeatureDataset.to_sklearn()` must return an object with:
 
-- `data`: two-dimensional sample-by-feature matrix accepted by scikit-learn
-  estimators.
-- `target`: one-dimensional target array or `None`.
-- `groups`: one-dimensional study group array aligned to `data` rows.
-- `sample_metadata`: table-like sample provenance aligned to `data` rows.
-- `feature_names`: feature names aligned to `data` columns when available.
+- `data`: two-dimensional analysis-by-feature matrix accepted by scikit-learn
+  estimators; same as `MAFeatureDataset.features`.
+- `target`: one-dimensional target array or `None`; same as
+  `MAFeatureDataset.target`.
+- `groups`: one-dimensional study group array aligned to `data` rows; same as
+  `MAFeatureDataset.study_ids`.
+- `feature_names`: feature names aligned to `data` columns when available; same
+  as `MAFeatureDataset.feature_names`.
 
 Exported unreduced voxelwise feature data must remain a sparse numeric matrix.
 Dense feature data may be exported only after an explicit reducer produces a
 reduced dense representation.
 
+When coordinate-less analyses are retained, their rows must be represented as
+all-zero sparse map-feature rows. When coordinate-less analyses are dropped,
+all exported arrays and metadata must be aligned to the retained rows only.
+
+**Feature Name Pairing**: Feature names are exported as a separate attribute
+rather than paired with dense data (e.g., via DataFrame). This preserves
+sparsity essential for neuroimaging datasets. Users working with the exported
+bundle are responsible for maintaining name alignment when transforming data,
+using standard sklearn patterns like `get_feature_names_out()` or explicit
+DataFrame construction when densification is acceptable.
+
 ## Study Groups
 
 Study groups must be one-dimensional labels aligned to exported rows.
 
-- Collection-provided study IDs are the study group source.
+- Studyset-provided study IDs are the study group source.
 - MVP inputs are assumed to provide unique study IDs and unique analysis IDs.
 - Missing groups must raise a clear error before export or split.
 
@@ -31,22 +44,22 @@ Study groups must be one-dimensional labels aligned to exported rows.
 Grouped splitting must use study group labels. For any split:
 
 - `set(groups[train])` and `set(groups[test])` must be disjoint.
-- `data`, `target`, `groups`, and `sample_metadata` must be sliced with the same
-  sample indices.
+- `data`, `target`, `groups`, and `feature_names` must be sliced with the same
+  analysis-row indices, where `groups` equals `study_ids`.
 - The same dataset and reproducibility setting must produce the same split.
 - Too few study groups must raise a clear error before returning any split.
 
 ## Descriptor Features
 
-Descriptor features must be aligned to `sample_ids`.
+Descriptor features must be aligned to `ids`.
 
 - Numeric descriptors may be appended directly.
 - Categorical/text descriptors must be rejected by default unless an explicit
   transformer or vectorizer is supplied.
 - Descriptor transformers must fit only on training data before transforming
   held-out data.
-- Missing descriptor values must be reported or handled according to the
-  selected missing-value policy.
+- Missing descriptor values must be reported explicitly unless an explicit
+  transformer handles missing values internally.
 - A field selected as the prediction target must not be silently reused as a
   descriptor feature by default.
 
