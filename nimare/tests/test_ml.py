@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import numpy as np
+import pandas as pd
 import pytest
 
 from nimare.ml import MAFeatureDataset, MAFeatureExtractor, make_map_reducer
@@ -77,18 +79,182 @@ def test_studyset_builder_and_ambiguous_short_ids():
 
 
 def test_ma_feature_dataset_initialization():
-    """Test that MAFeatureDataset currently raises NotImplementedError."""
+    """Test that MAFeatureDataset initializes and stores documented attributes."""
+    map_features = np.array([[1.0, 2.0], [3.0, 4.0]])
+    sample_ids = ["s1", "s2"]
+    study_ids = ["study_a", "study_b"]
+    sample_metadata = pd.DataFrame({"sample_id": sample_ids, "study_id": study_ids})
+    masker = object()
+
+    ds = MAFeatureDataset(
+        map_features=map_features,
+        sample_ids=sample_ids,
+        study_ids=study_ids,
+        sample_metadata=sample_metadata,
+        masker=masker,
+    )
+
+    assert (ds.map_features == map_features).all()
+    assert ds.sample_ids == sample_ids
+    assert ds.study_ids == study_ids
+    assert ds.sample_metadata is sample_metadata
+    assert ds.masker is masker
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        (
+            {
+                "sample_ids": ["s1"],
+                "study_ids": ["study_a", "study_b"],
+                "sample_metadata": [{}, {}],
+            },
+            "sample_ids length must match number of rows in map_features",
+        ),
+        (
+            {
+                "sample_ids": ["s1", "s2"],
+                "study_ids": ["study_a"],
+                "sample_metadata": [{}, {}],
+            },
+            "study_ids length must match number of rows in map_features",
+        ),
+        (
+            {
+                "sample_ids": ["s1", "s2"],
+                "study_ids": ["study_a", "study_b"],
+                "sample_metadata": [{}],
+            },
+            "sample_metadata length must match number of rows in map_features",
+        ),
+        (
+            {
+                "sample_ids": ["s1", "s2"],
+                "study_ids": ["study_a", "study_b"],
+                "sample_metadata": [{}, {}],
+                "descriptor_features": [[0.1], [0.2], [0.3]],
+            },
+            "descriptor_features length must match number of rows in map_features",
+        ),
+        (
+            {
+                "sample_ids": ["s1", "s2"],
+                "study_ids": ["study_a", "study_b"],
+                "sample_metadata": [{}, {}],
+                "target": [1],
+            },
+            "target length must match number of rows in map_features",
+        ),
+        (
+            {
+                "sample_ids": ["s1", "s2"],
+                "study_ids": ["study_a", "study_b"],
+                "sample_metadata": [{}, {}],
+                "feature_names": ["f1"],
+            },
+            "feature_names length must match number of columns in map_features",
+        ),
+    ],
+)
+def test_ma_feature_dataset_initialization_length_mismatches(kwargs, message):
+    """Test each validation branch in MAFeatureDataset initialization."""
+    base_kwargs = {
+        "map_features": np.array([[1.0, 2.0], [3.0, 4.0]]),
+        "sample_ids": ["s1", "s2"],
+        "study_ids": ["study_a", "study_b"],
+        "sample_metadata": [{}, {}],
+        "masker": object(),
+    }
+
+    base_kwargs.update(kwargs)
+
+    with pytest.raises(ValueError, match=message):
+        MAFeatureDataset(**base_kwargs)
+
+
+def test_ma_feature_dataset_initialization_map_features_shape_undetermined():
+    """Test the fallback error when map_features has no usable size information."""
+
+    class UnknownShape:
+        def __len__(self):
+            raise TypeError("no length")
+
+    with pytest.raises(
+        ValueError,
+        match="Unable to determine number of samples or features from map_features",
+    ):
+        MAFeatureDataset(
+            map_features=UnknownShape(),
+            sample_ids=[],
+            study_ids=[],
+            sample_metadata=[],
+            masker=object(),
+        )
+
+
+def test_ma_feature_dataset_methods_raise_not_implemented():
+    """Dataset instance methods are scaffolded and should raise NotImplementedError."""
+    map_features = np.array([[1.0, 2.0], [3.0, 4.0]])
+    sample_ids = ["s1", "s2"]
+    study_ids = ["study_a", "study_b"]
+    sample_metadata = [{}, {}]
+    masker = object()
+
+    ds = MAFeatureDataset(
+        map_features=map_features,
+        sample_ids=sample_ids,
+        study_ids=study_ids,
+        sample_metadata=sample_metadata,
+        masker=masker,
+    )
+
     with pytest.raises(NotImplementedError):
-        MAFeatureDataset()
+        ds.to_sklearn()
+
+    with pytest.raises(NotImplementedError):
+        ds.split()
+
+    with pytest.raises(NotImplementedError):
+        ds.apply_map_reducer(object())
+
+    with pytest.raises(NotImplementedError):
+        ds.get_feature_names()
+
+    with pytest.raises(NotImplementedError):
+        ds.copy()
 
 
 def test_ma_feature_extractor_initialization():
-    """Test that MAFeatureExtractor currently raises NotImplementedError."""
+    """Test that MAFeatureExtractor initializes and stores documented parameters."""
+    kernel_transformer = object()
+    extractor = MAFeatureExtractor(
+        kernel_transformer=kernel_transformer,
+        descriptor_fields=[{"source": "metadata", "field": "sample_sizes"}],
+        target_field={"source": "annotations", "field": "alpha_label"},
+    )
+
+    assert extractor.kernel_transformer is kernel_transformer
+    assert extractor.descriptor_fields == [{"source": "metadata", "field": "sample_sizes"}]
+    assert extractor.target_field == {"source": "annotations", "field": "alpha_label"}
+    assert extractor.missing == "raise"
+
+
+def test_ma_feature_extractor_methods_raise_not_implemented():
+    """Test that MAFeatureExtractor methods currently raise NotImplementedError."""
+    extractor = MAFeatureExtractor(kernel_transformer=object())
+
     with pytest.raises(NotImplementedError):
-        MAFeatureExtractor()
+        extractor.fit(build_studyset())
+
+    with pytest.raises(NotImplementedError):
+        extractor.transform(build_studyset())
+
+    with pytest.raises(NotImplementedError):
+        extractor.fit_transform(build_studyset())
 
 
 def test_make_map_reducer_placeholder():
     """Test that make_map_reducer currently raises NotImplementedError."""
     with pytest.raises(NotImplementedError):
-        make_map_reducer()
+        make_map_reducer("variance_threshold")
