@@ -2150,18 +2150,86 @@ class CBMRInference(object):
         return meat_matrix
 
     @classmethod
-    def _apply_sandwich_correction(
+    def _sandwich_meat_matrix_sparse_response(
         cls,
-        correction,
-        bread_inverse,
         moderators,
         bases,
+        foci,
         mean,
-        residuals,
+        meat,
+        residual_scale=None,
     ):
-        """Apply HC-style finite-sample corrections to sandwich residuals."""
+        """Compute sandwich meat from a sparse response without materializing dense foci."""
+        foci = foci.tocsr()
+        if residual_scale is None:
+            adjusted_mean = mean
+            adjusted_foci = foci
+        else:
+            adjusted_mean = mean / residual_scale
+            foci_coo = foci.tocoo()
+            adjusted_foci = scipy.sparse.csr_matrix(
+                (
+                    foci_coo.data / residual_scale[foci_coo.row, foci_coo.col],
+                    (foci_coo.row, foci_coo.col),
+                ),
+                shape=foci.shape,
+            )
+
+        if meat == "cluster":
+            basis_residuals = (adjusted_foci @ bases).T - (bases.T @ adjusted_mean.T)
+            n_bases = bases.shape[1]
+            n_parameters = moderators.shape[1] * n_bases
+            cluster_scores = np.zeros((n_parameters, moderators.shape[0]), dtype=float)
+            for moderator_index in range(moderators.shape[1]):
+                parameter_slice = slice(
+                    moderator_index * n_bases,
+                    (moderator_index + 1) * n_bases,
+                )
+                cluster_scores[parameter_slice, :] = (
+                    basis_residuals * moderators[:, moderator_index][None, :]
+                )
+            return cluster_scores @ cluster_scores.T
+
+        meat_matrix = cls._sandwich_meat_matrix(
+            moderators,
+            bases,
+            adjusted_mean,
+            meat="iid",
+        )
+        foci_coo = adjusted_foci.tocoo()
+        delta = (
+            foci_coo.data**2
+            - 2
+            * foci_coo.data
+            * adjusted_mean[
+                foci_coo.row,
+                foci_coo.col,
+            ]
+        )
+        delta_matrix = scipy.sparse.csr_matrix(
+            (delta, (foci_coo.row, foci_coo.col)),
+            shape=foci.shape,
+        )
+        n_bases = bases.shape[1]
+        for row in range(moderators.shape[1]):
+            row_slice = slice(row * n_bases, (row + 1) * n_bases)
+            for col in range(row, moderators.shape[1]):
+                col_slice = slice(col * n_bases, (col + 1) * n_bases)
+                moderator_weight = moderators[:, row] * moderators[:, col]
+                voxel_weight = np.asarray(
+                    delta_matrix.multiply(moderator_weight[:, None]).sum(axis=0)
+                ).ravel()
+                block = bases.T @ (bases * voxel_weight[:, None])
+                meat_matrix[row_slice, col_slice] += block
+                if row != col:
+                    meat_matrix[col_slice, row_slice] += block.T
+        return meat_matrix
+
+    @classmethod
+    def _sandwich_correction_scale(cls, correction, bread_inverse, moderators, bases, mean):
+        """Return residual scaling and finite-sample factor for sandwich corrections."""
         if correction is None or correction == "hc0":
-            return residuals, 1.0
+            return None, 1.0
 
         n_experiments, n_moderators = moderators.shape
         if correction == "hc1":
@@ -2170,7 +2238,7 @@ class CBMRInference(object):
                     "HC1 sandwich correction requires more experiments than model columns. "
                     "Use sandwich_correction='hc0' or 'hc3' for this setting."
                 )
-            return residuals, n_experiments / float(n_experiments - n_moderators)
+            return None, n_experiments / float(n_experiments - n_moderators)
 
         n_bases = bases.shape[1]
         bread_inverse_blocks = bread_inverse.reshape(
@@ -2195,7 +2263,29 @@ class CBMRInference(object):
         )
         leverage = np.nan_to_num(leverage, nan=0.0, posinf=1.0, neginf=0.0)
         leverage = np.clip(leverage, 0.0, 0.999)
-        return residuals / np.maximum(1.0 - leverage, 1e-6), 1.0
+        return np.maximum(1.0 - leverage, 1e-6), 1.0
+
+    @classmethod
+    def _apply_sandwich_correction(
+        cls,
+        correction,
+        bread_inverse,
+        moderators,
+        bases,
+        mean,
+        residuals,
+    ):
+        """Apply HC-style finite-sample corrections to sandwich residuals."""
+        residual_scale, correction_factor = cls._sandwich_correction_scale(
+            correction,
+            bread_inverse,
+            moderators,
+            bases,
+            mean,
+        )
+        if residual_scale is None:
+            return residuals, correction_factor
+        return residuals / residual_scale, correction_factor
 
     @classmethod
     def _compute_sandwich_covariance(
@@ -2211,28 +2301,46 @@ class CBMRInference(object):
         """Compute robust Poisson sandwich covariance for one spatial CBMR group."""
         moderators = np.asarray(moderators, dtype=float)
         bases = np.asarray(bases, dtype=float)
-        y = cls._as_dense_response(foci)
         mean = np.asarray(mean, dtype=float)
         mean = np.nan_to_num(mean, nan=0.0, posinf=1e12, neginf=0.0)
         mean = np.clip(mean, 1e-12, 1e12)
+        response_shape = foci.shape if scipy.sparse.issparse(foci) else np.asarray(foci).shape
 
-        if y.shape != mean.shape:
+        if response_shape != mean.shape:
             raise ValueError("foci and mean must have matching experiment-by-voxel shapes.")
-        if y.shape != (moderators.shape[0], bases.shape[0]):
+        if response_shape != (moderators.shape[0], bases.shape[0]):
             raise ValueError("foci must have shape (n_experiments, n_voxels).")
 
         fisher_info = cls._compute_fisher_information(moderators, bases, mean)
         bread_inverse = cls._sandwich_bread_inverse(fisher_info, ridge)
-        residuals = np.nan_to_num(y - mean, nan=0.0, posinf=0.0, neginf=0.0)
-        residuals, correction_factor = cls._apply_sandwich_correction(
-            correction,
-            bread_inverse,
-            moderators,
-            bases,
-            mean,
-            residuals,
-        )
-        meat_matrix = cls._sandwich_meat_matrix(moderators, bases, residuals, meat)
+        if scipy.sparse.issparse(foci):
+            residual_scale, correction_factor = cls._sandwich_correction_scale(
+                correction,
+                bread_inverse,
+                moderators,
+                bases,
+                mean,
+            )
+            meat_matrix = cls._sandwich_meat_matrix_sparse_response(
+                moderators,
+                bases,
+                foci,
+                mean,
+                meat,
+                residual_scale=residual_scale,
+            )
+        else:
+            y = cls._as_dense_response(foci)
+            residuals = np.nan_to_num(y - mean, nan=0.0, posinf=0.0, neginf=0.0)
+            residuals, correction_factor = cls._apply_sandwich_correction(
+                correction,
+                bread_inverse,
+                moderators,
+                bases,
+                mean,
+                residuals,
+            )
+            meat_matrix = cls._sandwich_meat_matrix(moderators, bases, residuals, meat)
         covariance = correction_factor * bread_inverse @ meat_matrix @ bread_inverse
         return 0.5 * (covariance + covariance.T)
 

@@ -1551,6 +1551,29 @@ def test_spatial_cbmr_inference_sandwich_covariance_matches_explicit_kron():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+@pytest.mark.parametrize("meat", ["cluster", "iid"])
+@pytest.mark.parametrize("correction", ["hc0", "hc1", "hc3"])
+def test_spatial_cbmr_sparse_sandwich_covariance_matches_dense(meat, correction):
+    """Sparse-response sandwich covariance should match the dense-response path."""
+    moderators = np.array([[1.0, 0.5], [1.0, -0.2], [1.0, 1.2]])
+    bases = np.array([[1.0, 0.0], [0.25, 0.75], [0.5, 0.5]])
+    mean = np.array([[1.0, 2.0, 0.8], [0.5, 1.5, 1.2], [2.0, 0.75, 0.4]])
+    foci = np.array([[0.0, 2.0, 0.0], [1.0, 1.0, 0.0], [3.0, 0.0, 1.0]])
+    kwargs = {"ridge": 1e-4, "meat": meat, "correction": correction}
+
+    dense = CBMRInference._compute_sandwich_covariance(moderators, bases, foci, mean, **kwargs)
+    sparse = CBMRInference._compute_sandwich_covariance(
+        moderators,
+        bases,
+        scipy.sparse.csr_matrix(foci),
+        mean,
+        **kwargs,
+    )
+
+    np.testing.assert_allclose(sparse, dense)
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 def test_spatial_cbmr_inference_sandwich_helpers_handle_sparse_and_hc_corrections():
     """Sandwich helpers should densify sparse responses and apply HC corrections."""
     moderators = np.array([[1.0, 0.0], [1.0, 1.0], [1.0, -1.0]])
