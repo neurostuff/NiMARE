@@ -980,7 +980,10 @@ def test_cbmr_mask_lookup_and_coordinate_filtering_use_mask_indices():
 
     assert n_mask_voxels == 4
     assert filtered["id"].tolist() == ["kept-0", "kept-1"]
-    expected_flat_indices = np.ravel_multi_index(np.array([[0, 1], [0, 1], [0, 0]]), mask_data.shape)
+    expected_flat_indices = np.ravel_multi_index(
+        np.array([[0, 1], [0, 1], [0, 0]]),
+        mask_data.shape,
+    )
     np.testing.assert_array_equal(
         filtered["_cbmr_mask_index"].to_numpy(),
         mask_lookup[expected_flat_indices],
@@ -997,7 +1000,10 @@ def test_cbmr_group_label_validation_and_multicolumn_formatting():
             "drug_status": ["yes", "no"],
         }
     )
-    estimator = CBMREstimator(moderator_effect="global", group_categories=["diagnosis", "drug_status"])
+    estimator = CBMREstimator(
+        moderator_effect="global",
+        group_categories=["diagnosis", "drug_status"],
+    )
 
     grouped = estimator._assign_group_labels(annotations.copy())
 

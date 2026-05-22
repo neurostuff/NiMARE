@@ -21,6 +21,7 @@ except ImportError as e:
 from nimare import _version
 from nimare.estimator import Estimator
 from nimare.meta import models
+from nimare.meta.utils import fit_spatial_cbmr_approximate
 from nimare.results import MetaResult
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
@@ -34,7 +35,6 @@ from nimare.utils import (
     seed_torch,
     validate_coordinate_spaces,
 )
-from nimare.meta.utils import fit_spatial_cbmr_approximate
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
@@ -1095,8 +1095,13 @@ class CBMRInference(object):
         self.moderators = None
 
         if self.moderator_effect == "global":
-            self._validate_global_pipeline_options(method, sandwich_meat, sandwich_correction, ridge)
-        else: # voxelwise
+            self._validate_global_pipeline_options(
+                method,
+                sandwich_meat,
+                sandwich_correction,
+                ridge,
+            )
+        else:  # voxelwise
             if method is None:
                 method = "sandwich"
             self.method = self._validate_method(method)
@@ -1186,7 +1191,7 @@ class CBMRInference(object):
             self._moderator_covariance = None
             self._moderator_variance = None
             self._moderator_coef_table = None
-        else: # voxelwise
+        else:  # voxelwise
             self._group_covariance_cache = {}
             self._group_coefficient_cache = {}
 
@@ -1196,7 +1201,7 @@ class CBMRInference(object):
         if group_log_intensity is None:
             if self.moderator_effect == "global":
                 group_log_intensity = np.log(self.result.maps[f"spatialIntensity_group-{group}"])
-            else: # voxelwise
+            else:  # voxelwise
                 bases = self.estimator.inputs_["coef_spline_bases"]
                 coefficient = self._get_group_coefficient_matrix(group)
                 group_log_intensity = bases @ coefficient[-1]
@@ -1217,7 +1222,7 @@ class CBMRInference(object):
                 group_null_log_intensity = np.log(
                     np.sum(group_foci_per_voxel) / (n_voxels * n_experiments)
                 )
-            else: # voxelwise
+            else:  # voxelwise
                 foci = self.estimator.inputs_["foci_by_experiment_voxel"][group]
                 total_foci = foci.sum()
                 n_experiments, n_voxels = foci.shape
@@ -1959,12 +1964,12 @@ class CBMRInference(object):
                     self.result.maps[f"chiSquare_svModerator_{contrast_name}_group-{group}"] = (
                         moderator_stats["chi_square"]
                     )
-                self.result.maps[f"p_svModerator_{contrast_name}_group-{group}"] = (
-                    moderator_stats["p"]
-                )
-                self.result.maps[f"z_svModerator_{contrast_name}_group-{group}"] = (
-                    moderator_stats["z"]
-                )
+                self.result.maps[f"p_svModerator_{contrast_name}_group-{group}"] = moderator_stats[
+                    "p"
+                ]
+                self.result.maps[f"z_svModerator_{contrast_name}_group-{group}"] = moderator_stats[
+                    "z"
+                ]
             else:
                 if moderator_stats["contrast_count"] > 1:
                     self.result.maps[
@@ -2327,4 +2332,3 @@ class CBMRInference(object):
             "p": p_vals,
             "z": z_stats,
         }
-
