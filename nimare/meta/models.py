@@ -43,7 +43,8 @@ class _CBMRTensorInputs:
 class SpatialCBMRModel(torch.nn.Module):
     """Torch log-Poisson model for spatially varying CBMR.
 
-    This model is used by :class:`~nimare.meta.spatial_cbmr.SpatialCBMREstimator`.
+    This model is used by :class:`~nimare.meta.cbmr.CBMREstimator` when
+    ``moderator_effect="voxelwise"``.
     For experiment ``m`` and voxel ``v`` in group ``g``, the linear predictor is
     ``B(v) @ alpha_g + Z_m @ beta_g @ B(v).T``.
 

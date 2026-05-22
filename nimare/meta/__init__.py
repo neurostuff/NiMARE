@@ -29,16 +29,12 @@ from .kernel import ALEKernel, KDAKernel, MKDAKernel
 _OPTIONAL_SUBMODULES = {
     "cbmr": ".cbmr",
     "models": ".models",
-    "spatial_cbmr": ".spatial_cbmr",
 }
 
 _OPTIONAL_EXPORTS = {
     "CBMREstimator": (".cbmr", "CBMREstimator"),
     "CBMRInference": (".cbmr", "CBMRInference"),
     "CBMRResult": (".cbmr", "CBMRResult"),
-    "SpatialCBMREstimator": (".spatial_cbmr", "SpatialCBMREstimator"),
-    "SpatialCBMRInference": (".spatial_cbmr", "SpatialCBMRInference"),
-    "SpatialCBMRResult": (".spatial_cbmr", "SpatialCBMRResult"),
 }
 
 
@@ -70,9 +66,6 @@ __all__ = [
     "CBMREstimator",
     "CBMRInference",
     "CBMRResult",
-    "SpatialCBMREstimator",
-    "SpatialCBMRInference",
-    "SpatialCBMRResult",
     "DerSimonianLaird",
     "Fishers",
     "Hedges",
@@ -87,7 +80,6 @@ __all__ = [
     "kernel",
     "ibma",
     "cbmr",
-    "spatial_cbmr",
     "models",
     "ale",
     "mkda",
