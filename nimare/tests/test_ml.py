@@ -205,7 +205,13 @@ def test_ma_feature_dataset_methods_raise_not_implemented():
         ds.to_sklearn()
 
     with pytest.raises(NotImplementedError):
+        ds._split_by_groups()
+
+    with pytest.raises(NotImplementedError):
         ds.split()
+
+    with pytest.raises(NotImplementedError):
+        ds._apply_map_reducer(object())
 
     with pytest.raises(NotImplementedError):
         ds.apply_map_reducer(object())
@@ -235,6 +241,13 @@ def test_ma_feature_extractor_initialization():
 def test_ma_feature_extractor_methods_raise_not_implemented():
     """Test that MAFeatureExtractor methods currently raise NotImplementedError."""
     extractor = MAFeatureExtractor(kernel_transformer=object())
+
+    with pytest.raises(NotImplementedError):
+        extractor._get_studyset_tables(build_studyset())
+
+    with pytest.raises(NotImplementedError):
+        extractor._stack_sparse_features(sparse.csr_matrix([[1.0, 0.0]]))
+
     with pytest.raises(NotImplementedError):
         extractor.transform(build_studyset())
 

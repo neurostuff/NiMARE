@@ -142,6 +142,15 @@ class MAFeatureDataset(NiMAREBase):
         """
         raise NotImplementedError("MAFeatureDataset.split is not yet implemented.")
 
+    def _apply_map_reducer(self, reducer: Any, fit: bool = False):
+        """Apply a reducer to map features while preserving aligned metadata.
+
+        This private helper is reserved for the future reducer workflow that
+        keeps ids, study_ids, target, and provenance aligned with the
+        transformed feature matrix.
+        """
+        raise NotImplementedError("MAFeatureDataset._apply_map_reducer is not yet implemented.")
+
     def apply_map_reducer(self, reducer: Any, fit: bool = False):
         """Apply a map-feature reducer and return a transformed dataset copy.
 
@@ -166,15 +175,6 @@ class MAFeatureDataset(NiMAREBase):
             This public API is scaffolded only.
         """
         raise NotImplementedError("MAFeatureDataset.apply_map_reducer is not yet implemented.")
-
-    def _apply_map_reducer(self, reducer: Any, fit: bool = False):
-        """Apply a reducer to map features while preserving aligned metadata.
-
-        This private helper is reserved for the future reducer workflow that
-        keeps ids, study_ids, target, and provenance aligned with the
-        transformed feature matrix.
-        """
-        raise NotImplementedError("MAFeatureDataset._apply_map_reducer is not yet implemented.")
 
     def copy(self):
         """Return an independent copy of the dataset.
