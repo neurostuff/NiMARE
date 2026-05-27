@@ -7,14 +7,19 @@ from nimare.meta import models
 from nimare.meta.cbmr import CBMREstimator, CBMRInference
 from nimare.transforms import StandardizeField
 
+GROUP_CATEGORIES = ["diagnosis", "drug_status"]
+MODERATORS = ["standardized_sample_sizes", "standardized_avg_age"]
+N_STUDIES = 100
+RANDOM_STATE = 100
+
 
 def _make_cbmr_dataset():
     """Simulate and standardize a CBMR benchmark dataset."""
     _, dataset = create_coordinate_dataset(
         foci=10,
         sample_size=(20, 40),
-        n_studies=100,
-        seed=100,
+        n_studies=N_STUDIES,
+        seed=RANDOM_STATE,
     )
     n_rows = dataset.annotations.shape[0]
     dataset.annotations["diagnosis"] = [
@@ -23,7 +28,7 @@ def _make_cbmr_dataset():
     dataset.annotations["drug_status"] = ["Yes" if i % 2 == 0 else "No" for i in range(n_rows)]
     dataset.annotations["drug_status"] = (
         dataset.annotations["drug_status"]
-        .sample(frac=1, random_state=100)
+        .sample(frac=1, random_state=RANDOM_STATE)
         .reset_index(drop=True)
     )
     dataset.annotations["sample_sizes"] = [
@@ -36,8 +41,8 @@ def _make_cbmr_dataset():
 def _fit_cbmr(dataset, group_categories, moderators, model=models.PoissonEstimator):
     """Fit a CBMR estimator with common benchmark options."""
     meta = CBMREstimator(
-        group_categories=group_categories,
-        moderators=moderators,
+        group_categories=list(group_categories),
+        moderators=list(moderators),
         spline_spacing=100,
         model=model,
         penalty=False,
@@ -49,18 +54,25 @@ def _fit_cbmr(dataset, group_categories, moderators, model=models.PoissonEstimat
     return meta.fit(dataset)
 
 
+def _fit_cbmr_inference(result):
+    """Fit a CBMRInference object with common benchmark options."""
+    inference = CBMRInference(device="cpu")
+    inference.fit(result)
+    return inference
+
+
 class _CBMRBenchmarkMixin:
     """Shared setup for CBMR benchmarks."""
 
     def setup(self):
         """
-        Setup the data.
+        Set up the data.
 
         Simulates and standardizes the dataset required for the benchmarks.
         """
         self.dataset = _make_cbmr_dataset()
-        self.group_categories = ["diagnosis", "drug_status"]
-        self.moderators = ["standardized_sample_sizes", "standardized_avg_age"]
+        self.group_categories = list(GROUP_CATEGORIES)
+        self.moderators = list(MODERATORS)
 
 
 class TimeCBMR(_CBMRBenchmarkMixin):
@@ -100,18 +112,21 @@ class TimeCBMRInference(_CBMRBenchmarkMixin):
     """Time CBMR inference routines."""
 
     def setup(self):
-        """Setup a fitted CBMR result and reusable contrasts for inference benchmarks."""
+        """Set up a fitted CBMR result and reusable contrasts for inference benchmarks."""
         super().setup()
         self.result = _fit_cbmr(self.dataset, self.group_categories, self.moderators)
         self.group_contrast_name = "DepressionYes-DepressionNo"
         self.moderator_contrast_name = "standardized_sample_sizes-standardized_avg_age"
-        inference = CBMRInference(device="cpu")
-        inference.fit(self.result)
-        self.group_contrast = inference.create_contrast(
+        self.contrast_inference = _fit_cbmr_inference(self.result)
+        self.group_inference = _fit_cbmr_inference(self.result)
+        self.moderator_inference = _fit_cbmr_inference(self.result)
+        self.combined_inference = _fit_cbmr_inference(self.result)
+        self.group_glh_inference = _fit_cbmr_inference(self.result)
+        self.group_contrast = self.contrast_inference.create_contrast(
             [self.group_contrast_name],
             source="groups",
         )
-        self.moderator_contrast = inference.create_contrast(
+        self.moderator_contrast = self.contrast_inference.create_contrast(
             [self.moderator_contrast_name],
             source="moderators",
         )
@@ -125,8 +140,7 @@ class TimeCBMRInference(_CBMRBenchmarkMixin):
 
         Copies the fitted CBMR result and constructs group/moderator lookup structures.
         """
-        inference = CBMRInference(device="cpu")
-        inference.fit(self.result)
+        _fit_cbmr_inference(self.result)
 
     def time_create_group_contrast(self):
         """
@@ -134,9 +148,7 @@ class TimeCBMRInference(_CBMRBenchmarkMixin):
 
         Parses a pairwise group contrast into the contrast matrix used downstream.
         """
-        inference = CBMRInference(device="cpu")
-        inference.fit(self.result)
-        inference.create_contrast([self.group_contrast_name], source="groups")
+        self.contrast_inference.create_contrast([self.group_contrast_name], source="groups")
 
     def time_create_moderator_contrast(self):
         """
@@ -144,9 +156,10 @@ class TimeCBMRInference(_CBMRBenchmarkMixin):
 
         Parses a pairwise moderator contrast into the contrast matrix used downstream.
         """
-        inference = CBMRInference(device="cpu")
-        inference.fit(self.result)
-        inference.create_contrast([self.moderator_contrast_name], source="moderators")
+        self.contrast_inference.create_contrast(
+            [self.moderator_contrast_name],
+            source="moderators",
+        )
 
     def time_group_inference(self):
         """
@@ -154,9 +167,10 @@ class TimeCBMRInference(_CBMRBenchmarkMixin):
 
         Runs spatial intensity inference for one pairwise group contrast.
         """
-        inference = CBMRInference(device="cpu")
-        inference.fit(self.result)
-        inference.transform(t_con_groups=self.group_contrast, t_con_moderators=False)
+        self.group_inference.transform(
+            t_con_groups=self.group_contrast,
+            t_con_moderators=False,
+        )
 
     def time_moderator_inference(self):
         """
@@ -164,9 +178,10 @@ class TimeCBMRInference(_CBMRBenchmarkMixin):
 
         Runs scalar moderator inference for one pairwise moderator contrast.
         """
-        inference = CBMRInference(device="cpu")
-        inference.fit(self.result)
-        inference.transform(t_con_groups=False, t_con_moderators=self.moderator_contrast)
+        self.moderator_inference.transform(
+            t_con_groups=False,
+            t_con_moderators=self.moderator_contrast,
+        )
 
     def time_combined_inference(self):
         """
@@ -174,9 +189,7 @@ class TimeCBMRInference(_CBMRBenchmarkMixin):
 
         Runs both group-level and moderator-level inference in one transform call.
         """
-        inference = CBMRInference(device="cpu")
-        inference.fit(self.result)
-        inference.transform(
+        self.combined_inference.transform(
             t_con_groups=self.group_contrast,
             t_con_moderators=self.moderator_contrast,
         )
@@ -187,6 +200,7 @@ class TimeCBMRInference(_CBMRBenchmarkMixin):
 
         Runs a generalized linear hypothesis test over all fitted group intensities.
         """
-        inference = CBMRInference(device="cpu")
-        inference.fit(self.result)
-        inference.transform(t_con_groups=self.multi_group_contrast, t_con_moderators=False)
+        self.group_glh_inference.transform(
+            t_con_groups=self.multi_group_contrast,
+            t_con_moderators=False,
+        )
