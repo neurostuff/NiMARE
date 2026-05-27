@@ -242,6 +242,27 @@ all NiMARE workflows.
    transforms.z_to_t
    transforms.z_to_p
 
+.. _api_ml_ref:
+
+:mod:`nimare.ml`: Machine-learning helpers
+-----------------------------------------------------
+
+.. automodule:: nimare.ml
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. autosummary::
+   :toctree: generated/
+   :template: class.rst
+
+   ml.MAFeatureDataset
+   ml.MAFeatureExtractor
+   :template: function.rst
+
+   ml.make_map_reducer
+
 
 .. _api_extract_ref:
 

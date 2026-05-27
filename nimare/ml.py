@@ -17,119 +17,80 @@ class MAFeatureDataset(NiMAREBase):
 
     Attributes
     ----------
-    map_features : array-like or sparse matrix
-        Sample-by-map-feature matrix (n_samples, n_features).
-        Sparse matrices remain sparse unless explicitly densified.
-    sample_ids : list of str
-        Identifiers for each sample.
+    ids : list of str
+        Full Studyset analysis identifiers ("<study_id>-<analysis_id>") per row.
     study_ids : list of str
-        Study-group labels used for grouped splitting.
-    sample_metadata : DataFrame-like
-        Tabular provenance containing at least sample ID, study ID,
-        analysis ID when available, and exclusion status where relevant.
-    masker : object
-        Masker (e.g., nilearn) defining voxel feature order.
-    descriptor_features : array-like, optional
-        Sample-aligned descriptor values, by default None.
-    target : array-like, optional
-        Sample-aligned prediction target (numeric or categorical), by default None.
-    feature_names : list of str, optional
-        Feature names aligned to map_features columns, by default None.
-    exclusion_report : dict, optional
-        Excluded analyses and reasons, by default None.
-    provenance : dict, optional
-        Map-generation settings and collection details, by default None.
+        Study-level grouping label for each row; used for grouped splitting and leakage control.
+    features : array-like or sparse matrix
+        Analysis-by-feature matrix combining map features (sparse voxelwise)
+        and optional descriptor features. Unreduced voxelwise map features must
+        remain in a sparse representation. Reduced map features or
+        descriptor-only matrices may be dense.
+    feature_names : list of str
+        Names for columns in `features`, aligned to column order.
+    target : array-like or None
+        Optional row-aligned prediction target (y), by default None.
+    provenance : dict or None
+        Map-generation settings and source Studyset details, including
+        `missing_coordinates` and any `dropped_ids`, by default None.
     """
 
     def __init__(
         self,
-        map_features: Any,
-        sample_ids: list[str],
+        features: Any,
+        ids: list[str],
         study_ids: list[str],
-        sample_metadata: Any,
-        masker: Any,
-        descriptor_features: Any | None = None,
-        target: Any | None = None,
         feature_names: list[str] | None = None,
-        exclusion_report: Any | None = None,
+        target: Any | None = None,
         provenance: Any | None = None,
     ) -> None:
-        # Infer sizes from map_features. Prefer .shape for ndarray/sparse, fall back
-        # to len() for generic sequences. Use int(...) to coerce numpy scalars to
-        # native ints when present.
+        # Infer sizes from features. Prefer .shape for ndarray/sparse, fall back
+        # to len() for generic sequences.
         try:
-            n_samples = int(map_features.shape[0])
-            n_features = int(map_features.shape[1])
+            n_rows = int(features.shape[0])
+            n_cols = int(features.shape[1])
         except Exception:
             try:
-                # len(map_features) works for lists and other sized containers
-                n_samples = int(len(map_features))
-                # infer number of features from first row when possible
-                n_features = int(len(map_features[0])) if n_samples > 0 else 0
+                n_rows = int(len(features))
+                n_cols = int(len(features[0])) if n_rows > 0 else 0
             except Exception:
-                raise ValueError(
-                    "Unable to determine number of samples or features from map_features"
-                )
+                raise ValueError("Unable to determine number of rows or columns from features")
 
-        if len(sample_ids) != n_samples:
-            raise ValueError("sample_ids length must match number of rows in map_features")
+        if len(ids) != n_rows:
+            raise ValueError("ids length must match number of rows in features")
 
-        if len(study_ids) != n_samples:
-            raise ValueError("study_ids length must match number of rows in map_features")
-
-        if len(sample_metadata) != n_samples:
-            raise ValueError("sample_metadata length must match number of rows in map_features")
-
-        if descriptor_features is not None:
-            if len(descriptor_features) != n_samples:
-                raise ValueError(
-                    "descriptor_features length must match number of rows in map_features"
-                )
+        if len(study_ids) != n_rows:
+            raise ValueError("study_ids length must match number of rows in features")
 
         if target is not None:
-            if len(target) != n_samples:
-                raise ValueError("target length must match number of rows in map_features")
+            if len(target) != n_rows:
+                raise ValueError("target length must match number of rows in features")
 
         if feature_names is not None:
-            if len(feature_names) != n_features:
-                raise ValueError(
-                    "feature_names length must match number of columns in map_features"
-                )
+            if len(feature_names) != n_cols:
+                raise ValueError("feature_names length must match number of columns in features")
 
-        self.map_features = map_features
-        self.sample_ids = list(sample_ids)
+        self.features = features
+        self.ids = list(ids)
         self.study_ids = list(study_ids)
-        self.sample_metadata = sample_metadata
-        self.masker = masker
-        self.descriptor_features = descriptor_features
-        self.target = target
         self.feature_names = feature_names
-        self.exclusion_report = exclusion_report
+        self.target = target
         self.provenance = provenance
 
-    def to_sklearn(
-        self,
-        include_descriptors: bool = True,
-        include_target: bool = True,
-        dense: bool = False,
-    ):
+    def to_sklearn(self):
         """Export the dataset as a scikit-learn-compatible bundle.
-
-        Parameters
-        ----------
-        include_descriptors : bool, default=True
-            Whether descriptor features should be included in the exported
-            data matrix.
-        include_target : bool, default=True
-            Whether the target vector should be included in the export.
-        dense : bool, default=False
-            Whether to densify sparse map features during export.
 
         Returns
         -------
         sklearn.utils.Bunch-like
-            Dataset bundle with aligned data, target, groups, metadata, and
-            feature names.
+            Dataset bundle with attributes `data` (same as `features`),
+            `target` (or `None`), `groups` (same as `study_ids`), and
+            `feature_names`.
+
+        Notes
+        -----
+        Implementations must preserve sparsity for unreduced voxelwise
+        features; reduced representations may be dense.
 
         Raises
         ------
@@ -137,6 +98,19 @@ class MAFeatureDataset(NiMAREBase):
             This public API is scaffolded only.
         """
         raise NotImplementedError("MAFeatureDataset.to_sklearn is not yet implemented.")
+
+    def _split_by_groups(
+        self,
+        test_size: float = 0.25,
+        random_state: int | None = None,
+        cv: Any = None,
+    ):
+        """Split row-aligned feature data while keeping study groups intact.
+
+        This private helper is reserved for leakage-safe grouped splitting by
+        study ID.
+        """
+        raise NotImplementedError("MAFeatureDataset._split_by_groups is not yet implemented.")
 
     def split(
         self,
@@ -157,8 +131,9 @@ class MAFeatureDataset(NiMAREBase):
 
         Returns
         -------
-        tuple of MAFeatureDataset
-            Train and test dataset slices.
+        (MAFeatureDataset, MAFeatureDataset)
+            Tuple of (train_dataset, test_dataset). If no test partition is
+            requested, the second element may be ``None``.
 
         Raises
         ------
@@ -182,7 +157,8 @@ class MAFeatureDataset(NiMAREBase):
         Returns
         -------
         MAFeatureDataset
-            Dataset copy with reduced map features.
+            New dataset instance with reduced map features and preserved
+            metadata (ids, study_ids, feature_names, target, provenance).
 
         Raises
         ------
@@ -191,20 +167,14 @@ class MAFeatureDataset(NiMAREBase):
         """
         raise NotImplementedError("MAFeatureDataset.apply_map_reducer is not yet implemented.")
 
-    def get_feature_names(self):
-        """Return exported feature names in column order.
+    def _apply_map_reducer(self, reducer: Any, fit: bool = False):
+        """Apply a reducer to map features while preserving aligned metadata.
 
-        Returns
-        -------
-        list of str
-            Feature names aligned to the exported data matrix.
-
-        Raises
-        ------
-        NotImplementedError
-            This public API is scaffolded only.
+        This private helper is reserved for the future reducer workflow that
+        keeps ids, study_ids, target, and provenance aligned with the
+        transformed feature matrix.
         """
-        raise NotImplementedError("MAFeatureDataset.get_feature_names is not yet implemented.")
+        raise NotImplementedError("MAFeatureDataset._apply_map_reducer is not yet implemented.")
 
     def copy(self):
         """Return an independent copy of the dataset.
@@ -223,28 +193,38 @@ class MAFeatureDataset(NiMAREBase):
 
 
 class MAFeatureExtractor(NiMAREBase):
-    """Extract aligned map features and optional descriptors/targets from collections.
+    """Orchestrate conversion from a Studyset to MA feature datasets and sklearn-ready exports.
 
-    Converts NiMARE Studyset into scikit-learn-compatible :class:`MAFeatureDataset`.
-    Handles kernel transformation, field resolution, and sample-group alignment.
+    This helper converts a NiMARE Studyset into aligned MA feature datasets,
+    optionally splits by study group, and can export sklearn-compatible
+    bundles with optional map reduction.
 
     Parameters
     ----------
     kernel_transformer : object
-        NiMARE kernel transformer (instance or class). Required; no implicit default.
+        Existing NiMARE kernel transformer instance or class. No implicit
+        scientific default is selected; public examples must pass an explicit
+        kernel transformer.
     descriptor_fields : list of dict, optional
-        Field selectors (source, field, kind) from metadata, annotations,
-        or texts, by default None.
+        Field selectors from metadata, annotations, or texts, by default None.
     descriptor_transformers : dict, optional
-        Transformers/vectorizers for non-numeric descriptor fields, by default None.
-        Without these, non-numeric fields are rejected.
+        Optional mapping from descriptor field selectors to explicit
+        transformers or vectorizers for non-numeric descriptor fields, by
+        default None.
     target_field : dict, optional
-        Field selector for target variable (y), by default None.
+        Optional field selector for y, by default None.
     target_transformer : object, optional
-        Transformer for free-text or multi-label targets, by default None.
-    missing : {'raise', 'drop'}, default='raise'
-        Strategy for missing values and field resolution failures,
-        by default 'raise'.
+        Optional transformer or label extractor for free-text or multi-label
+        targets, by default None.
+    missing_coordinates : {'include', 'drop'}, default='drop'
+        Whether analyses without coordinates are retained as all-zero sparse
+        rows or removed before row construction.
+    test_size : float or int or None, default=None
+        Optional train/test split specification; ``None`` means no split.
+    random_state : int or None, default=None
+        Random seed for reproducible splits, by default None.
+    cache_maps : bool, default=True
+        Whether to cache generated MA map features across repeated calls.
     memory : object, optional
         joblib Memory-like object for caching, by default None.
     memory_level : int, default=1
@@ -258,7 +238,10 @@ class MAFeatureExtractor(NiMAREBase):
         descriptor_transformers: Any | None = None,
         target_field: Any | None = None,
         target_transformer: Any | None = None,
-        missing: str = "raise",
+        missing_coordinates: str = "drop",
+        test_size: float | int | None = None,
+        random_state: int | None = None,
+        cache_maps: bool = True,
         memory: Any | None = None,
         memory_level: int = 1,
     ):
@@ -267,42 +250,46 @@ class MAFeatureExtractor(NiMAREBase):
         self.descriptor_transformers = descriptor_transformers
         self.target_field = target_field
         self.target_transformer = target_transformer
-        self.missing = missing
+        self.missing_coordinates = missing_coordinates
+        self.test_size = test_size
+        self.random_state = random_state
+        self.cache_maps = cache_maps
         self.memory = memory
         self.memory_level = memory_level
 
-    def fit(self, collection: Any):
-        """Validate a collection and record the feature schema.
+    def _get_studyset_tables(self, studyset: Any):
+        """Extract Studyset tables needed to build aligned MA features.
 
-        Parameters
-        ----------
-        collection : object
-            NiMARE Studyset input.
-
-        Returns
-        -------
-        MAFeatureExtractor
-            Fitted extractor instance.
-
-        Raises
-        ------
-        NotImplementedError
-            This public API is scaffolded only.
+        This private helper is reserved for the future Studyset access path
+        that gathers coordinates, metadata, annotations, texts, and IDs.
         """
-        raise NotImplementedError("MAFeatureExtractor.fit is not yet implemented.")
+        raise NotImplementedError(
+            "MAFeatureExtractor._get_studyset_tables is not yet implemented."
+        )
 
-    def transform(self, collection: Any):
-        """Transform a collection into an :class:`MAFeatureDataset`.
+    def _stack_sparse_features(self, map_features: Any, descriptor_features: Any | None = None):
+        """Combine sparse map features with optional descriptor features.
+
+        This private helper is reserved for the future feature assembly path
+        that builds sklearn-ready matrices from aligned feature blocks.
+        """
+        raise NotImplementedError(
+            "MAFeatureExtractor._stack_sparse_features is not yet implemented."
+        )
+
+    def transform(self, studyset: Any):
+        """Validate the Studyset, orchestrate extraction and optional splitting.
 
         Parameters
         ----------
-        collection : object
+        studyset : object
             NiMARE Studyset input.
 
         Returns
         -------
-        MAFeatureDataset
-            Feature dataset created from the fitted schema.
+        tuple
+            Tuple of ``(train_dataset, test_dataset)``. If ``test_size`` is
+            ``None`` or ``0.0``, return ``(full_dataset, None)``.
 
         Raises
         ------
@@ -311,25 +298,35 @@ class MAFeatureExtractor(NiMAREBase):
         """
         raise NotImplementedError("MAFeatureExtractor.transform is not yet implemented.")
 
-    def fit_transform(self, collection: Any):
-        """Fit the extractor and transform the collection in one call.
+    def to_sklearn(
+        self,
+        studyset: Any,
+        map_reducer: Any | None = None,
+        map_reducer_params: Any | None = None,
+    ):
+        """Run the full public pipeline convenience wrapper.
 
         Parameters
         ----------
-        collection : object
+        studyset : object
             NiMARE Studyset input.
+        map_reducer : object, optional
+            Optional map-feature reducer, by default None.
+        map_reducer_params : object, optional
+            Optional reducer parameters, by default None.
 
         Returns
         -------
-        MAFeatureDataset
-            Feature dataset created from the fitted schema.
+        tuple
+            Tuple of sklearn-ready exports as ``(train_bunch, test_bunch)``. If
+            ``test_size`` is ``None`` or ``0.0``, return ``(full_bunch, None)``.
 
         Raises
         ------
         NotImplementedError
             This public API is scaffolded only.
         """
-        raise NotImplementedError("MAFeatureExtractor.fit_transform is not yet implemented.")
+        raise NotImplementedError("MAFeatureExtractor.to_sklearn is not yet implemented.")
 
 
 def make_map_reducer(method: str, **kwargs: Any):

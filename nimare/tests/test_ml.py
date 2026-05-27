@@ -3,23 +3,27 @@
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 import pytest
+from scipy import sparse
+from sklearn.linear_model import LogisticRegression
+from sklearn.utils import Bunch
 
 from nimare.ml import MAFeatureDataset, MAFeatureExtractor, make_map_reducer
 from nimare.nimads import Studyset
+from nimare.utils import get_masker, get_template
 
 
 def _build_studyset_ml_source():
-    """Create one canonical source dict for Studyset/NIMADS builder.
+    """Build the Studyset fixture used by the ML tests.
 
-    The two studies intentionally reuse the same contrast ID (``task``) so that
-    short analysis IDs are ambiguous and must be resolved via the full
-    ``<study_id>-<contrast_id>`` identifier.
+    This source intentionally includes a masker, valid MNI coordinates,
+    numeric metadata, numeric annotations, text fields, unique study IDs, and
+    unique full analysis IDs.
     """
     return {
         "id": "studyset_ml_source",
         "name": "Studyset ML source",
+        "masker": get_masker(get_template(space="mni152_2mm", mask="brain")),
         "studies": [
             {
                 "id": "study_alpha",
@@ -60,45 +64,58 @@ def _build_studyset_ml_source():
 
 def build_studyset():
     """Build a fresh Studyset from the studyset ML source dict."""
-    return Studyset(_build_studyset_ml_source())
+    source = _build_studyset_ml_source()
+    return Studyset(source, mask=source["masker"])
 
 
-def test_studyset_builder_and_ambiguous_short_ids():
-    """The Studyset builder should preserve full IDs and expose ambiguity."""
-    studyset = build_studyset()
+def assert_sklearn_bunch_valid(
+    bunch,
+    expected_feature_rows: int,
+    expected_feature_columns: int,
+    expected_groups: list[str] | None = None,
+    expected_target: list[int] | None = None,
+):
+    """Assert the shared sklearn-export contract for MA feature bundles."""
+    assert isinstance(bunch, Bunch)
+    assert bunch.data.shape == (expected_feature_rows, expected_feature_columns)
+    assert sparse.issparse(bunch.data)
+    assert len(bunch.groups) == expected_feature_rows
+    assert len(bunch.target) == expected_feature_rows
 
-    assert isinstance(studyset, Studyset)
-    assert studyset.ids.tolist() == ["study_alpha-task", "study_beta-task"]
-    assert studyset.study_ids.tolist() == ["study_alpha", "study_beta"]
-    assert list(studyset.coordinates["id"].unique()) == ["study_alpha-task", "study_beta-task"]
-    assert studyset.filter_ids("task").ids.tolist() == ["study_alpha-task", "study_beta-task"]
-    assert "abstract" in studyset.texts.columns
-    assert "sample_sizes" in studyset.metadata.columns
-    assert "alpha_label" in studyset.annotations_df.columns
-    assert "beta_label" in studyset.annotations_df.columns
+    if expected_groups is not None:
+        np.testing.assert_array_equal(bunch.groups, expected_groups)
+
+    if expected_target is not None:
+        np.testing.assert_array_equal(bunch.target, expected_target)
+
+    estimator = LogisticRegression(max_iter=1000, solver="liblinear")
+    estimator.fit(bunch.data, bunch.target)
 
 
 def test_ma_feature_dataset_initialization():
     """Test that MAFeatureDataset initializes and stores documented attributes."""
-    map_features = np.array([[1.0, 2.0], [3.0, 4.0]])
-    sample_ids = ["s1", "s2"]
+    features = np.array([[1.0, 2.0], [3.0, 4.0]])
+    ids = ["study_a-task", "study_b-task"]
     study_ids = ["study_a", "study_b"]
-    sample_metadata = pd.DataFrame({"sample_id": sample_ids, "study_id": study_ids})
-    masker = object()
+    feature_names = ["feature_1", "feature_2"]
+    target = [0, 1]
+    provenance = {"source": "unit-test"}
 
     ds = MAFeatureDataset(
-        map_features=map_features,
-        sample_ids=sample_ids,
+        features=features,
+        ids=ids,
         study_ids=study_ids,
-        sample_metadata=sample_metadata,
-        masker=masker,
+        feature_names=feature_names,
+        target=target,
+        provenance=provenance,
     )
 
-    assert (ds.map_features == map_features).all()
-    assert ds.sample_ids == sample_ids
+    assert (ds.features == features).all()
+    assert ds.ids == ids
     assert ds.study_ids == study_ids
-    assert ds.sample_metadata is sample_metadata
-    assert ds.masker is masker
+    assert ds.feature_names == feature_names
+    assert ds.target == target
+    assert ds.provenance is provenance
 
 
 @pytest.mark.parametrize(
@@ -106,65 +123,46 @@ def test_ma_feature_dataset_initialization():
     [
         (
             {
-                "sample_ids": ["s1"],
+                "ids": ["s1"],
                 "study_ids": ["study_a", "study_b"],
-                "sample_metadata": [{}, {}],
+                "feature_names": ["f1", "f2"],
             },
-            "sample_ids length must match number of rows in map_features",
+            "ids length must match number of rows in features",
         ),
         (
             {
-                "sample_ids": ["s1", "s2"],
+                "ids": ["s1", "s2"],
                 "study_ids": ["study_a"],
-                "sample_metadata": [{}, {}],
+                "feature_names": ["f1", "f2"],
             },
-            "study_ids length must match number of rows in map_features",
+            "study_ids length must match number of rows in features",
         ),
         (
             {
-                "sample_ids": ["s1", "s2"],
+                "ids": ["s1", "s2"],
                 "study_ids": ["study_a", "study_b"],
-                "sample_metadata": [{}],
-            },
-            "sample_metadata length must match number of rows in map_features",
-        ),
-        (
-            {
-                "sample_ids": ["s1", "s2"],
-                "study_ids": ["study_a", "study_b"],
-                "sample_metadata": [{}, {}],
-                "descriptor_features": [[0.1], [0.2], [0.3]],
-            },
-            "descriptor_features length must match number of rows in map_features",
-        ),
-        (
-            {
-                "sample_ids": ["s1", "s2"],
-                "study_ids": ["study_a", "study_b"],
-                "sample_metadata": [{}, {}],
+                "feature_names": ["f1", "f2"],
                 "target": [1],
             },
-            "target length must match number of rows in map_features",
+            "target length must match number of rows in features",
         ),
         (
             {
-                "sample_ids": ["s1", "s2"],
+                "ids": ["s1", "s2"],
                 "study_ids": ["study_a", "study_b"],
-                "sample_metadata": [{}, {}],
                 "feature_names": ["f1"],
             },
-            "feature_names length must match number of columns in map_features",
+            "feature_names length must match number of columns in features",
         ),
     ],
 )
 def test_ma_feature_dataset_initialization_length_mismatches(kwargs, message):
     """Test each validation branch in MAFeatureDataset initialization."""
     base_kwargs = {
-        "map_features": np.array([[1.0, 2.0], [3.0, 4.0]]),
-        "sample_ids": ["s1", "s2"],
+        "features": np.array([[1.0, 2.0], [3.0, 4.0]]),
+        "ids": ["s1", "s2"],
         "study_ids": ["study_a", "study_b"],
-        "sample_metadata": [{}, {}],
-        "masker": object(),
+        "feature_names": ["f1", "f2"],
     }
 
     base_kwargs.update(kwargs)
@@ -173,8 +171,8 @@ def test_ma_feature_dataset_initialization_length_mismatches(kwargs, message):
         MAFeatureDataset(**base_kwargs)
 
 
-def test_ma_feature_dataset_initialization_map_features_shape_undetermined():
-    """Test the fallback error when map_features has no usable size information."""
+def test_ma_feature_dataset_initialization_features_shape_undetermined():
+    """Test the fallback error when features has no usable size information."""
 
     class UnknownShape:
         def __len__(self):
@@ -182,31 +180,25 @@ def test_ma_feature_dataset_initialization_map_features_shape_undetermined():
 
     with pytest.raises(
         ValueError,
-        match="Unable to determine number of samples or features from map_features",
+        match="Unable to determine number of rows or columns from features",
     ):
         MAFeatureDataset(
-            map_features=UnknownShape(),
-            sample_ids=[],
+            features=UnknownShape(),
+            ids=[],
             study_ids=[],
-            sample_metadata=[],
-            masker=object(),
         )
 
 
 def test_ma_feature_dataset_methods_raise_not_implemented():
     """Dataset instance methods are scaffolded and should raise NotImplementedError."""
-    map_features = np.array([[1.0, 2.0], [3.0, 4.0]])
-    sample_ids = ["s1", "s2"]
+    features = np.array([[1.0, 2.0], [3.0, 4.0]])
+    ids = ["s1", "s2"]
     study_ids = ["study_a", "study_b"]
-    sample_metadata = [{}, {}]
-    masker = object()
 
     ds = MAFeatureDataset(
-        map_features=map_features,
-        sample_ids=sample_ids,
+        features=features,
+        ids=ids,
         study_ids=study_ids,
-        sample_metadata=sample_metadata,
-        masker=masker,
     )
 
     with pytest.raises(NotImplementedError):
@@ -217,9 +209,6 @@ def test_ma_feature_dataset_methods_raise_not_implemented():
 
     with pytest.raises(NotImplementedError):
         ds.apply_map_reducer(object())
-
-    with pytest.raises(NotImplementedError):
-        ds.get_feature_names()
 
     with pytest.raises(NotImplementedError):
         ds.copy()
@@ -237,21 +226,20 @@ def test_ma_feature_extractor_initialization():
     assert extractor.kernel_transformer is kernel_transformer
     assert extractor.descriptor_fields == [{"source": "metadata", "field": "sample_sizes"}]
     assert extractor.target_field == {"source": "annotations", "field": "alpha_label"}
-    assert extractor.missing == "raise"
+    assert extractor.missing_coordinates == "drop"
+    assert extractor.test_size is None
+    assert extractor.random_state is None
+    assert extractor.cache_maps is True
 
 
 def test_ma_feature_extractor_methods_raise_not_implemented():
     """Test that MAFeatureExtractor methods currently raise NotImplementedError."""
     extractor = MAFeatureExtractor(kernel_transformer=object())
-
-    with pytest.raises(NotImplementedError):
-        extractor.fit(build_studyset())
-
     with pytest.raises(NotImplementedError):
         extractor.transform(build_studyset())
 
     with pytest.raises(NotImplementedError):
-        extractor.fit_transform(build_studyset())
+        extractor.to_sklearn(build_studyset())
 
 
 def test_make_map_reducer_placeholder():
