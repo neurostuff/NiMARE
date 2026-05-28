@@ -181,7 +181,7 @@ class CBMRResult(MetaResult):
     def test_moderators(self, moderators=None, device=None, method=None, **kwargs):
         """Test whether the requested moderator effects differ from zero."""
         if not self.moderators:
-            raise ValueError("This CBMR result does not include experiment-level moderators.")
+            raise ValueError("This CBMR result does not include moderators.")
         moderator_contrasts = list(self.moderators) if moderators is None else moderators
         return self.infer(
             group_contrasts=False,
@@ -194,7 +194,7 @@ class CBMRResult(MetaResult):
     def compare_moderators(self, contrasts, device=None, method=None, **kwargs):
         """Run pairwise moderator-comparison tests using names or tuples."""
         if not self.moderators:
-            raise ValueError("This CBMR result does not include experiment-level moderators.")
+            raise ValueError("This CBMR result does not include moderators.")
         moderator_contrasts = _normalize_named_pairwise_contrasts(contrasts)
         return self.infer(
             group_contrasts=False,
@@ -220,8 +220,8 @@ class CBMREstimator(Estimator):
         CBMR allows a collection to be categorized into multiple groups according to one or more
         group categories. Default is one-group CBMR.
     moderators : :obj:`~str` or obj:`~list` or obj:`~None`, optional
-        CBMR can accommodate experiment-level moderators (e.g. sample size, year of publication).
-        Default is CBMR without experiment-level moderators.
+        CBMR can accommodate moderators (e.g. sample size, year of publication).
+        Default is CBMR without moderators.
     moderator_effect : {"voxelwise", "global"}, optional
         How experiment-level moderator effects are parameterized. ``"global"`` fits the
         standard CBMR model with one coefficient per moderator and group. ``"voxelwise"`` fits
@@ -279,8 +279,10 @@ class CBMREstimator(Estimator):
         mask_img (brain mask image),
         id (experiment ids),
         ids_by_group (experiment ids categorized by groups),
-        moderators_by_group (experiment-level moderators categorized by groups, if present),
+        moderators_by_group (moderators categorized by groups, if present),
         coef_spline_bases (spatial matrix of cubic B-spline coefficients in x, y, and z),
+        foci_by_experiment (experiment-by-voxel sparse focus-count matrices, categorized by
+        groups),
         foci_per_voxel (voxelwise sum of foci counts across experiments, categorized by groups),
         foci_per_experiment (experiment-wise sum of foci counts across space, categorized by
         groups).
@@ -418,14 +420,14 @@ class CBMREstimator(Estimator):
         """
         description = """CBMR is a meta-regression framework that can explicitly model
                     group-wise spatial intensity function, and consider the effect of
-                    experiment-level moderators. It consists of two components: (1) a spatial
+                    moderators. It consists of two components: (1) a spatial
                     model that makes use of a spline parameterization to induce a smooth
                     response; (2) a generalized linear model (Poisson, Negative Binomial
                     (NB), Clustered NB) to model group-wise spatial intensity function).
                     CBMR is fitted via maximizing the log-likelihood function with L-BFGS
                     algorithm."""
         if self.moderators:
-            moderators_str = f"""and accommodate the following experiment-level moderators:
+            moderators_str = f"""and accommodate the following moderators:
                             {', '.join(self.moderators)}"""
         else:
             moderators_str = ""
@@ -625,7 +627,7 @@ class CBMREstimator(Estimator):
         experiment_annotations, moderators_by_group = self._build_group_moderators(
             experiment_annotations
         )
-        foci_per_voxel, foci_per_experiment = self._build_group_foci(
+        foci_by_experiment, foci_per_voxel, foci_per_experiment = self._build_group_foci(
             filtered_coordinates,
             ids_by_group,
             n_mask_voxels,
@@ -633,6 +635,7 @@ class CBMREstimator(Estimator):
         inputs = {
             "ids_by_group": ids_by_group,
             "moderators_by_group": moderators_by_group,
+            "foci_by_experiment": foci_by_experiment,
             "foci_per_voxel": foci_per_voxel,
             "foci_per_experiment": foci_per_experiment,
         }
@@ -717,13 +720,7 @@ class CBMREstimator(Estimator):
             grouped_coordinates[self._group_column].notna()
         ].reset_index(drop=True)
 
-        if grouped_coordinates.empty:
-            grouped_experiment_counts = pd.Series(dtype=np.int64)
-        else:
-            grouped_experiment_counts = grouped_coordinates.groupby(
-                [self._group_column, "id"], sort=False
-            ).size()
-
+        foci_by_experiment = {}
         foci_per_voxel = {}
         foci_per_experiment = {}
         for group, group_ids in ids_by_group.items():
@@ -731,35 +728,46 @@ class CBMREstimator(Estimator):
                 grouped_coordinates[self._group_column] == group
             ]
             if group_coordinates.empty:
-                group_foci_per_voxel = np.zeros((n_mask_voxels, 1), dtype=np.int32)
-                group_experiment_counts = pd.Series(dtype=np.int64)
-            else:
-                group_foci_per_voxel = np.bincount(
-                    group_coordinates["_cbmr_mask_index"].to_numpy(dtype=np.int64, copy=False),
-                    minlength=n_mask_voxels,
-                ).astype(np.int32, copy=False)
-                group_foci_per_voxel = group_foci_per_voxel.reshape((-1, 1))
-                group_experiment_counts = grouped_experiment_counts.xs(
-                    group, level=self._group_column
+                group_foci_by_experiment = scipy.sparse.csr_matrix(
+                    (len(group_ids), n_mask_voxels), dtype=np.int32
                 )
+            else:
+                id_to_row = pd.Series(
+                    np.arange(len(group_ids), dtype=np.int32),
+                    index=group_ids,
+                )
+                row_indices = group_coordinates["id"].map(id_to_row).to_numpy(
+                    dtype=np.int32, copy=False
+                )
+                column_indices = group_coordinates["_cbmr_mask_index"].to_numpy(
+                    dtype=np.int32, copy=False
+                )
+                data = np.ones(group_coordinates.shape[0], dtype=np.int32)
+                group_foci_by_experiment = scipy.sparse.coo_matrix(
+                    (data, (row_indices, column_indices)),
+                    shape=(len(group_ids), n_mask_voxels),
+                    dtype=np.int32,
+                ).tocsr()
 
-            group_foci_per_experiment = group_experiment_counts.reindex(
-                group_ids,
-                fill_value=0,
-            ).to_numpy(dtype=np.int32)
-            group_foci_per_experiment = group_foci_per_experiment.reshape((-1, 1))
+            group_foci_per_voxel = np.asarray(
+                group_foci_by_experiment.sum(axis=0), dtype=np.int32
+            ).reshape((-1, 1))
+            group_foci_per_experiment = np.asarray(
+                group_foci_by_experiment.sum(axis=1), dtype=np.int32
+            ).reshape((-1, 1))
 
+            foci_by_experiment[group] = group_foci_by_experiment
             foci_per_voxel[group] = group_foci_per_voxel
             foci_per_experiment[group] = group_foci_per_experiment
 
-        return foci_per_voxel, foci_per_experiment
+        return foci_by_experiment, foci_per_voxel, foci_per_experiment
 
     def _preprocess_input(self, dataset):
         """Mask required input images using either the Dataset's mask or the Estimator's.
 
         Also, categorize experiment id, voxelwise sum of foci counts across experiments,
         experiment-wise sum of foci counts across space into multiple groups. And summarize
-        experiment-level moderators into
+        moderators into
         multiple groups (if exist).
 
         Parameters
@@ -770,7 +778,7 @@ class CBMREstimator(Estimator):
             annotations,
             (3) summarize group-wise experiment id, moderators (if exist), foci per voxel, foci
             per experiment,
-            (4) extract sample size metadata and use it as one of experiment-level moderators.
+            (4) extract sample size metadata and use it as one of the moderators.
 
         Attributes
         ----------
@@ -780,11 +788,13 @@ class CBMREstimator(Estimator):
             (3) a 'coef_spline_bases' key will be added (spatial matrix of coefficient of cubic
             B-spline bases in x,y,z dimension),
             (4) an 'ids_by_group' key will be added (experiment id categorized by groups),
-            (5) a 'moderators_by_group' key will be added (experiment-level moderators categorized
-            by groups) if experiment-level moderators are considered,
-            (6) an 'foci_per_voxel' key will be added (voxelwise sum of foci count across
+            (5) a 'moderators_by_group' key will be added (moderators categorized
+            by groups) if moderators are considered,
+            (6) a 'foci_by_experiment' key will be added (experiment-by-voxel sparse focus-count
+            matrices, categorized by groups),
+            (7) an 'foci_per_voxel' key will be added (voxelwise sum of foci count across
             experiments, categorized by groups),
-            (7) an 'foci_per_experiment' key will be added (experiment-wise sum of
+            (8) an 'foci_per_experiment' key will be added (experiment-wise sum of
             foci count across space, categorized by groups).
 
         .. warning::
@@ -822,7 +832,7 @@ class CBMREstimator(Estimator):
 
         (1) Estimate group-wise spatial regression coefficients and its standard error via
         inverse of Fisher Information matrix; Similarly, estimate regression coefficient of
-        experiment-level moderators (if exist), as well as its standard error via inverse of
+        moderators (if exist), as well as its standard error via inverse of
         Fisher Information matrix;
         (2) Estimate standard error of group-wise log intensity, group-wise intensity via delta
         method;
@@ -1465,7 +1475,7 @@ class CBMRInference(object):
         -------
         t_con_regressor : :obj:`~list`
             Preprocessed contrast vector/matrix for inference on
-            spatial intensity or experiment-level moderators.
+            spatial intensity or moderators.
         t_con_regressor_name : :obj:`~list`
             Name of contrast vector/matrix for spatial intensity
         """
@@ -2020,10 +2030,10 @@ class CBMRInference(object):
 
     @_check_fit
     def _glh_con_moderator(self):
-        """Conduct Generalized linear hypothesis (GLH) testing for experiment-level moderators.
+        """Conduct Generalized linear hypothesis (GLH) testing for moderators.
 
         GLH testing allows flexible hypothesis testings on regression
-        coefficients of experiment-level moderators, including testing for
+        coefficients of moderators, including testing for
         the existence of moderator effects and difference in moderator
         effects across multiple moderator effects.
         """

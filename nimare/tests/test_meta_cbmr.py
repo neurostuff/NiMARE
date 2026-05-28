@@ -764,6 +764,11 @@ def test_cbmr_group_arrays_remain_aligned_when_experiment_has_no_in_mask_foci(
 
     for group in cbmr.groups:
         n_experiments = len(cbmr.inputs_["ids_by_group"][group])
+        assert scipy.sparse.isspmatrix_csr(cbmr.inputs_["foci_by_experiment"][group])
+        assert cbmr.inputs_["foci_by_experiment"][group].shape == (
+            n_experiments,
+            cbmr.inputs_["foci_per_voxel"][group].shape[0],
+        )
         assert cbmr.inputs_["foci_per_experiment"][group].shape == (n_experiments, 1)
         assert cbmr.inputs_["moderators_by_group"][group].shape[0] == n_experiments
 
