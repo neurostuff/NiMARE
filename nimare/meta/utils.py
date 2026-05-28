@@ -135,7 +135,7 @@ def _compute_spatial_cbmr_preconditioner(moderators, bases, mean_moderator, mean
     return np.kron(moderator_info_inv, basis_info_inv)
 
 
-def fit_spatial_cbmr_approximate(
+def fit_voxelwise_cbmr_approximate(
     moderators,
     bases,
     foci,
@@ -205,6 +205,9 @@ def fit_spatial_cbmr_approximate(
             max_iter,
         )
     return coefficient
+
+
+fit_spatial_cbmr_approximate = fit_voxelwise_cbmr_approximate
 
 
 @jit(nopython=True, cache=True)

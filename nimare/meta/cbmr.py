@@ -21,7 +21,7 @@ except ImportError as e:
 from nimare import _version
 from nimare.estimator import Estimator
 from nimare.meta import models
-from nimare.meta.utils import fit_spatial_cbmr_approximate
+from nimare.meta.utils import fit_voxelwise_cbmr_approximate
 from nimare.results import MetaResult
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
@@ -95,9 +95,9 @@ class CBMRResult(MetaResult):
         return tuple(getattr(self.estimator, "moderators", ()) or ())
 
     @property
-    def sv_moderator_names(self):
-        """Return spatially varying moderator map names."""
-        return tuple(name for name in self.maps if name.startswith("svModerator_"))
+    def voxelwise_moderator_effect_map_names(self):
+        """Return voxelwise moderator-effect map names."""
+        return tuple(name for name in self.maps if name.startswith("voxelwiseModeratorEffect_"))
 
     def copy(self):
         """Return a copy of the CBMR result object."""
@@ -121,12 +121,12 @@ class CBMRResult(MetaResult):
             "moderator_effect": self.moderator_effect,
         }
 
-    def describe_sv_effects(self):
-        """Return simple summaries for spatially varying moderator maps."""
+    def describe_voxelwise_moderator_effect_maps(self):
+        """Return simple summaries for voxelwise moderator-effect maps."""
         return {
             name: (float(values.min()), float(values.mean()), float(values.max()))
             for name, values in self.maps.items()
-            if name.startswith("svModerator_")
+            if name.startswith("voxelwiseModeratorEffect_")
         }
 
     def get_inference(self, device=None, method=None, **kwargs):
@@ -225,7 +225,8 @@ class CBMREstimator(Estimator):
     moderator_effect : {"voxelwise", "global"}, optional
         How experiment-level moderator effects are parameterized. ``"global"`` fits the
         standard CBMR model with one coefficient per moderator and group. ``"voxelwise"`` fits
-        the spatially varying CBMR backend, in which moderator effects vary smoothly over voxels.
+        the voxelwise moderator-effect CBMR backend, in which moderator effects vary smoothly over
+        voxels.
         Default is ``"voxelwise"``.
     model : subclass of :class:`~nimare.meta.models.GeneralLinearModelEstimator`, optional
         Stochastic model class used by CBMR. Available options are:
@@ -403,8 +404,8 @@ class CBMREstimator(Estimator):
         self.alpha = alpha
         self.damping = damping
         self.compute_nll = compute_nll
-        self.spatial_varying_model = None
-        self.spatial_varying_coef = None
+        self.voxelwise_model = None
+        self.voxelwise_coef = None
         if _uses_cuda(self.device) and not torch.cuda.is_available():
             LGR.debug("cuda not found, use device cpu")
             self.device = "cpu"
@@ -680,7 +681,7 @@ class CBMREstimator(Estimator):
         return torch.as_tensor(value, dtype=torch.float64, device=self.device)
 
     def _prepare_torch_inputs(self):
-        """Return tensorized spatially varying CBMR inputs."""
+        """Return tensorized voxelwise moderator-effect CBMR inputs."""
         bases = self._as_torch_tensor(self.inputs_["coef_spline_bases"])
         moderators_by_group = None
         if self.moderators:
@@ -694,17 +695,16 @@ class CBMREstimator(Estimator):
         }
         return bases, moderators_by_group, foci_by_experiment_voxel
 
-    def _spatial_cbmr_description(self, backend):
-        """Generate a NiMARE-style description for spatially varying CBMR."""
+    def _voxelwise_cbmr_description(self, backend):
+        """Generate a NiMARE-style description for voxelwise moderator-effect CBMR."""
         if self.moderators:
             moderator_text = (
-                "with spatially varying experiment-level moderator effects for "
-                f"{', '.join(self.moderators)}"
+                "with voxelwise moderator effects for " f"{', '.join(self.moderators)}"
             )
         else:
             moderator_text = "without experiment-level moderators"
         return (
-            f"Spatially varying CBMR was performed with the {backend} backend "
+            f"Voxelwise moderator-effect CBMR was performed with the {backend} backend "
             f"{moderator_text}. The model used {len(self.groups)} group(s), "
             f"spline spacing {self.spline_spacing}, and device {self.device}."
         )
@@ -875,18 +875,18 @@ class CBMREstimator(Estimator):
         return maps, tables, self._description_text()
 
     def _fit_full(self, dataset):
-        """Fit spatially varying CBMR with the full torch L-BFGS backend."""
+        """Fit voxelwise moderator-effect CBMR with the full torch L-BFGS backend."""
         seed_torch(self.random_state, self.device)
         bases, moderators_by_group, foci_by_experiment_voxel = self._prepare_torch_inputs()
         moderators_coef_dim = len(self.moderators) if self.moderators else None
-        self.spatial_varying_model = models.SpatialCBMRModel(
+        self.voxelwise_model = models.SpatialCBMRModel(
             groups=self.groups,
             spatial_coef_dim=self.inputs_["coef_spline_bases"].shape[1],
             moderators_coef_dim=moderators_coef_dim,
             device=self.device,
         )
         optimizer = torch.optim.LBFGS(
-            params=self.spatial_varying_model.parameters(),
+            params=self.voxelwise_model.parameters(),
             lr=self.lr,
             max_iter=self.n_iter,
             tolerance_change=self.tol,
@@ -898,7 +898,7 @@ class CBMREstimator(Estimator):
         def closure():
             """Evaluate the L-BFGS closure required by torch."""
             optimizer.zero_grad()
-            loss = self.spatial_varying_model(
+            loss = self.voxelwise_model(
                 bases,
                 moderators_by_group,
                 foci_by_experiment_voxel,
@@ -908,16 +908,19 @@ class CBMREstimator(Estimator):
 
         optimizer.step(closure)
         scheduler.step()
-        LGR.info("Spatially varying CBMR optimisation took %.1f s.", time.time() - start_time)
+        LGR.info(
+            "Voxelwise moderator-effect CBMR optimisation took %.1f s.",
+            time.time() - start_time,
+        )
         maps, tables = self._extract_torch_results(moderators_by_group)
-        return maps, tables, self._spatial_cbmr_description("full L-BFGS")
+        return maps, tables, self._voxelwise_cbmr_description("full L-BFGS")
 
     def _fit_approximate(self, dataset):
-        """Fit spatially varying CBMR with the approximate backend."""
+        """Fit voxelwise moderator-effect CBMR with the approximate backend."""
         bases = self.inputs_["coef_spline_bases"]
         maps = {}
         tables = {}
-        self.spatial_varying_coef = {}
+        self.voxelwise_coef = {}
         for group in self.groups:
             foci = self.inputs_["foci_by_experiment_voxel"][group]
             if self.moderators:
@@ -928,7 +931,7 @@ class CBMREstimator(Estimator):
             augmented_moderators = np.column_stack(
                 [moderators, np.ones((foci.shape[0], 1), dtype=np.float64)]
             )
-            coefficient = self._get_spatial_cbmr_approximate_solver()(
+            coefficient = self._get_voxelwise_cbmr_approximate_solver()(
                 augmented_moderators,
                 bases,
                 foci,
@@ -938,7 +941,7 @@ class CBMREstimator(Estimator):
                 damping=self.damping,
                 compute_nll=self.compute_nll,
             )
-            self.spatial_varying_coef[group] = coefficient
+            self.voxelwise_coef[group] = coefficient
             self._add_approximate_results(
                 maps,
                 tables,
@@ -946,12 +949,12 @@ class CBMREstimator(Estimator):
                 moderators,
                 coefficient,
             )
-        return maps, tables, self._spatial_cbmr_description("approximate")
+        return maps, tables, self._voxelwise_cbmr_description("approximate")
 
     @staticmethod
-    def _get_spatial_cbmr_approximate_solver():
+    def _get_voxelwise_cbmr_approximate_solver():
         """Return the approximate solver used by the voxelwise backend."""
-        return fit_spatial_cbmr_approximate
+        return fit_voxelwise_cbmr_approximate
 
     def _extract_torch_results(self, moderators_by_group):
         """Extract maps and coefficient tables from the fitted torch model."""
@@ -960,7 +963,7 @@ class CBMREstimator(Estimator):
         tables = {}
         for group in self.groups:
             spatial_coef = (
-                self.spatial_varying_model.spatial_coef_linears[group]
+                self.voxelwise_model.spatial_coef_linears[group]
                 .weight.detach()
                 .cpu()
                 .numpy()
@@ -970,7 +973,7 @@ class CBMREstimator(Estimator):
             self._add_spatial_coef_table(tables, group, spatial_coef)
             if self.moderators:
                 moderator_coef = (
-                    self.spatial_varying_model.moderator_coef_linears[group]
+                    self.voxelwise_model.moderator_coef_linears[group]
                     .weight.detach()
                     .cpu()
                     .numpy()
@@ -999,28 +1002,28 @@ class CBMREstimator(Estimator):
 
     @staticmethod
     def _append_group_moderator_table(tables, group, group_moderator_table):
-        """Append one group to the aggregate spatially varying moderator table."""
+        """Append one group to the aggregate voxelwise moderator-effect table."""
         indexed_table = group_moderator_table.copy()
         indexed_table.index = pd.MultiIndex.from_product(
             [[group], indexed_table.index],
             names=["group", "moderator"],
         )
-        if "sv_moderators_regression_coef" in tables:
-            tables["sv_moderators_regression_coef"] = pd.concat(
-                [tables["sv_moderators_regression_coef"], indexed_table]
+        if "voxelwise_moderator_effects_regression_coef" in tables:
+            tables["voxelwise_moderator_effects_regression_coef"] = pd.concat(
+                [tables["voxelwise_moderator_effects_regression_coef"], indexed_table]
             )
         else:
-            tables["sv_moderators_regression_coef"] = indexed_table
+            tables["voxelwise_moderator_effects_regression_coef"] = indexed_table
 
     @staticmethod
     def _add_moderator_table(tables, group, moderator_names, moderator_coef):
-        """Add spatially varying moderator coefficient tables for one group."""
+        """Add voxelwise moderator-effect coefficient tables for one group."""
         group_moderator_table = pd.DataFrame(
             moderator_coef,
             index=moderator_names,
             columns=[f"basis_{i}" for i in range(moderator_coef.shape[1])],
         )
-        tables[f"sv_moderator_regression_coef_group-{group}"] = group_moderator_table
+        tables[f"voxelwise_moderator_effect_regression_coef_group-{group}"] = group_moderator_table
         CBMREstimator._append_group_moderator_table(
             tables,
             group,
@@ -1028,16 +1031,16 @@ class CBMREstimator(Estimator):
         )
 
     def _add_moderator_maps_and_tables(self, maps, tables, group, moderators, moderator_coef):
-        """Add spatially varying moderator maps and tables for one group."""
+        """Add voxelwise moderator-effect maps and tables for one group."""
         bases = self.inputs_["coef_spline_bases"]
         for index, moderator_name in enumerate(self.moderators):
             moderator_effect = moderators[:, index : index + 1] @ moderator_coef[index : index + 1]
-            maps[f"svModerator_{moderator_name}_group-{group}"] = (
+            maps[f"voxelwiseModeratorEffect_{moderator_name}_group-{group}"] = (
                 moderator_effect @ bases.T
             ).mean(axis=0)
-        maps[f"svModeratorTotal_group-{group}"] = (moderators @ moderator_coef @ bases.T).mean(
-            axis=0
-        )
+        maps[f"voxelwiseModeratorEffectTotal_group-{group}"] = (
+            moderators @ moderator_coef @ bases.T
+        ).mean(axis=0)
         self._add_moderator_table(tables, group, self.moderators, moderator_coef)
 
     def _add_approximate_results(self, maps, tables, group, moderators, coefficient):
@@ -1074,9 +1077,16 @@ class CBMRInference(object):
         Device type ('cpu' or 'cuda') represents the device on which operations will be allocated.
         Default is 'cpu'.
     moderator_effect : {"voxelwise", "global"}, optional
-        Inference parameterization to use. ``"voxelwise"`` uses the integrated spatial CBMR
+        Inference parameterization to use. ``"voxelwise"`` uses the integrated voxelwise CBMR
         inference backend with sandwich or inverse-Fisher covariance estimates. ``"global"`` uses
         the standard CBMR inference backend. Default is ``"voxelwise"``.
+    method : {"sandwich", "FI"}, optional
+        Covariance estimator for voxelwise CBMR inference. The default is ``"sandwich"`` because
+        it uses empirical residual variation to provide standard errors that are more robust to
+        model misspecification, study-level clustering, and departures from idealized Poisson
+        assumptions common in coordinate-based meta-analysis. ``"FI"`` uses inverse Fisher
+        information and can be more efficient when the likelihood, mean-variance relationship, and
+        independence assumptions are correctly specified, but may be too optimistic otherwise.
     """
 
     _valid_methods = ("sandwich", "FI")
@@ -1427,13 +1437,15 @@ class CBMRInference(object):
                 if validated_method != self.method:
                     self.method = validated_method
                     self._reset_inference_caches()
-            self.result.metadata["spatial_cbmr_inference_method"] = self.method
+            self.result.metadata["voxelwise_cbmr_inference_method"] = self.method
             if self.method == "sandwich":
-                self.result.metadata["spatial_cbmr_sandwich_meat"] = self.sandwich_meat
-                self.result.metadata["spatial_cbmr_sandwich_correction"] = self.sandwich_correction
+                self.result.metadata["voxelwise_cbmr_sandwich_meat"] = self.sandwich_meat
+                self.result.metadata["voxelwise_cbmr_sandwich_correction"] = (
+                    self.sandwich_correction
+                )
             else:
-                self.result.metadata.pop("spatial_cbmr_sandwich_meat", None)
-                self.result.metadata.pop("spatial_cbmr_sandwich_correction", None)
+                self.result.metadata.pop("voxelwise_cbmr_sandwich_meat", None)
+                self.result.metadata.pop("voxelwise_cbmr_sandwich_correction", None)
         else:
             if method is not None:
                 raise ValueError("method is only supported for voxelwise moderator effects.")
@@ -1971,26 +1983,27 @@ class CBMRInference(object):
             )
             if contrast_name:
                 if moderator_stats["contrast_count"] > 1:
-                    self.result.maps[f"chiSquare_svModerator_{contrast_name}_group-{group}"] = (
-                        moderator_stats["chi_square"]
-                    )
-                self.result.maps[f"p_svModerator_{contrast_name}_group-{group}"] = moderator_stats[
-                    "p"
-                ]
-                self.result.maps[f"z_svModerator_{contrast_name}_group-{group}"] = moderator_stats[
-                    "z"
-                ]
+                    self.result.maps[
+                        f"chiSquare_voxelwiseModeratorEffect_{contrast_name}_group-{group}"
+                    ] = moderator_stats["chi_square"]
+                self.result.maps[f"p_voxelwiseModeratorEffect_{contrast_name}_group-{group}"] = (
+                    moderator_stats["p"]
+                )
+                self.result.maps[f"z_voxelwiseModeratorEffect_{contrast_name}_group-{group}"] = (
+                    moderator_stats["z"]
+                )
             else:
                 if moderator_stats["contrast_count"] > 1:
                     self.result.maps[
-                        f"chiSquare_GLH_svModerators_{con_moderator_count}_group-{group}"
+                        "chiSquare_GLH_voxelwiseModeratorEffects_"
+                        f"{con_moderator_count}_group-{group}"
                     ] = moderator_stats["chi_square"]
-                self.result.maps[f"p_GLH_svModerators_{con_moderator_count}_group-{group}"] = (
-                    moderator_stats["p"]
-                )
-                self.result.maps[f"z_GLH_svModerators_{con_moderator_count}_group-{group}"] = (
-                    moderator_stats["z"]
-                )
+                self.result.maps[
+                    f"p_GLH_voxelwiseModeratorEffects_{con_moderator_count}_group-{group}"
+                ] = moderator_stats["p"]
+                self.result.maps[
+                    f"z_GLH_voxelwiseModeratorEffects_{con_moderator_count}_group-{group}"
+                ] = moderator_stats["z"]
             return
 
         moderator_stats = moderator_stats_or_group
@@ -2055,13 +2068,11 @@ class CBMRInference(object):
             return coefficient
 
         n_bases = self.estimator.inputs_["coef_spline_bases"].shape[1]
-        if getattr(self.estimator, "spatial_varying_coef", None) is not None:
-            coefficient = np.asarray(self.estimator.spatial_varying_coef[group]).reshape(
-                (-1, n_bases)
-            )
-        elif getattr(self.estimator, "spatial_varying_model", None) is not None:
+        if getattr(self.estimator, "voxelwise_coef", None) is not None:
+            coefficient = np.asarray(self.estimator.voxelwise_coef[group]).reshape((-1, n_bases))
+        elif getattr(self.estimator, "voxelwise_model", None) is not None:
             spatial_coef = (
-                self.estimator.spatial_varying_model.spatial_coef_linears[group]
+                self.estimator.voxelwise_model.spatial_coef_linears[group]
                 .weight.detach()
                 .cpu()
                 .numpy()
@@ -2069,7 +2080,7 @@ class CBMRInference(object):
             )
             if self.moderators:
                 moderator_coef = (
-                    self.estimator.spatial_varying_model.moderator_coef_linears[group]
+                    self.estimator.voxelwise_model.moderator_coef_linears[group]
                     .weight.detach()
                     .cpu()
                     .numpy()
@@ -2081,7 +2092,7 @@ class CBMRInference(object):
             spatial_coef = self.result.tables["spatial_regression_coef"].loc[group].to_numpy()
             if self.moderators:
                 moderator_coef = self.result.tables[
-                    f"sv_moderator_regression_coef_group-{group}"
+                    f"voxelwise_moderator_effect_regression_coef_group-{group}"
                 ].to_numpy()
                 coefficient = np.vstack([moderator_coef, spatial_coef])
             else:
@@ -2113,13 +2124,6 @@ class CBMRInference(object):
                 if row != col:
                     fisher_info[col_slice, row_slice] = block.T
         return fisher_info
-
-    @staticmethod
-    def _as_dense_response(foci):
-        """Return a dense experiment-by-voxel response matrix."""
-        if scipy.sparse.issparse(foci):
-            return foci.toarray()
-        return np.asarray(foci, dtype=float)
 
     @staticmethod
     def _sandwich_bread_inverse(fisher_info, ridge):
@@ -2308,7 +2312,7 @@ class CBMRInference(object):
         meat="cluster",
         correction="hc3",
     ):
-        """Compute robust Poisson sandwich covariance for one spatial CBMR group."""
+        """Compute robust Poisson sandwich covariance for one voxelwise CBMR group."""
         moderators = np.asarray(moderators, dtype=float)
         bases = np.asarray(bases, dtype=float)
         mean = np.asarray(mean, dtype=float)
@@ -2340,7 +2344,7 @@ class CBMRInference(object):
                 residual_scale=residual_scale,
             )
         else:
-            y = cls._as_dense_response(foci)
+            y = np.asarray(foci, dtype=float)
             residuals = np.nan_to_num(y - mean, nan=0.0, posinf=0.0, neginf=0.0)
             residuals, correction_factor = cls._apply_sandwich_correction(
                 correction,
@@ -2414,7 +2418,7 @@ class CBMRInference(object):
 
     @classmethod
     def _compute_spatial_coefficient_statistics(cls, coefficient, covariance, contrast, bases):
-        """Compute voxel-wise Wald statistics for spatially varying coefficients."""
+        """Compute voxelwise Wald statistics for voxelwise moderator-effect coefficients."""
         contrast_eta = contrast @ coefficient @ bases.T
         contrast_cov = cls._contrast_covariance_by_voxel(contrast, covariance, bases)
 

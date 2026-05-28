@@ -1,6 +1,6 @@
 r"""
 .. _metas_cbmr:
-.. _metas_spatial_cbmr:
+.. _metas_voxelwise_cbmr:
 
 ============================================================
 Coordinate-based meta-regression with moderator-effect modes
@@ -10,15 +10,14 @@ A tour of coordinate-based meta-regression (CBMR) in NiMARE.
 
 CBMR is a generative framework for estimating smooth activation intensity
 functions from coordinate-based meta-analytic data. The same
-:class:`~nimare.meta.cbmr.CBMREstimator` can parameterize study-level moderator
-effects in two ways:
+:class:`~nimare.meta.cbmr.CBMREstimator` can parameterize moderator effects in
+two ways:
 
 * ``moderator_effect="global"`` estimates one scalar coefficient per moderator.
-  This is the classic CBMR model and answers whether a study-level covariate has
-  an overall effect on the spatial intensity function.
-* ``moderator_effect="voxelwise"`` estimates a smooth map for each moderator.
-  This spatially varying model asks where the study-level covariate effect is
-  stronger or weaker over voxels.
+  This assumes the effect of the moderator has a global effect across the entire brain.
+* ``moderator_effect="voxelwise"`` estimates a scalar coefficient _per voxel_ per moderator.
+  This assumes the effect of the moderator differentially impacts voxels throughout the brain.
+  This is likely a more accurate assumption, but requires a lot more data for estimation.
 
 This tutorial fits both versions to the same simulated Studyset with the same
 groups and the same standardized moderators, then compares their outputs.
@@ -37,7 +36,7 @@ from nimare.transforms import StandardizeField
 # Load Studyset-compatible data
 # -----------------------------------------------------------------------------
 # We simulate a coordinate-based Studyset with reported foci, sample sizes,
-# diagnosis labels, drug-status labels, and continuous study-level moderators.
+# diagnosis labels, drug-status labels, and continuous moderators.
 # The example uses a moderate number of studies and coarse B-spline spacing so
 # that both global and voxelwise CBMR fits run quickly.
 
@@ -67,9 +66,9 @@ moderators = ["standardized_sample_sizes", "standardized_avg_age"]
 # Option 1: global moderator effects
 # -----------------------------------------------------------------------------
 # With ``moderator_effect="global"``, CBMR estimates group-specific baseline
-# spatial intensity functions plus one scalar effect for each study-level
-# moderator. Here, ``standardized_sample_sizes`` and ``standardized_avg_age``
-# each receive one global coefficient shared over voxels.
+# spatial intensity functions plus one scalar effect for each moderator.
+# Here, ``standardized_sample_sizes`` and ``standardized_avg_age`` each receive
+# one global coefficient shared over voxels.
 
 global_cbmr = CBMREstimator(
     moderator_effect="global",
@@ -207,10 +206,10 @@ plot_stat_map(
 ###############################################################################
 # Option 2: voxelwise moderator effects
 # -----------------------------------------------------------------------------
-# The same estimator exposes spatially varying CBMR through
+# The same estimator exposes voxelwise moderator-effect maps through
 # ``moderator_effect="voxelwise"``. This option uses the same groups and the same
-# standardized moderators as above, but estimates a smooth map for each moderator
-# within each group. The approximate backend is used here for speed.
+# standardized moderators as above, but estimates a smooth effect map for each
+# moderator within each group. The approximate backend is used here for speed.
 
 voxelwise_cbmr = CBMREstimator(
     moderator_effect="voxelwise",
@@ -228,8 +227,8 @@ voxelwise_cbmr = CBMREstimator(
 voxelwise_results = voxelwise_cbmr.fit(dataset=studyset)
 
 print(voxelwise_results.describe_inference_inputs())
-print(voxelwise_results.sv_moderator_names)
-print(voxelwise_results.describe_sv_effects())
+print(voxelwise_results.voxelwise_moderator_effect_map_names)
+print(voxelwise_results.describe_voxelwise_moderator_effect_maps())
 
 ###############################################################################
 # Plot voxelwise moderator-effect maps
@@ -239,7 +238,9 @@ print(voxelwise_results.describe_sv_effects())
 # scalar tables.
 
 plot_stat_map(
-    voxelwise_results.get_map("svModerator_standardized_sample_sizes_group-SchizophreniaYes"),
+    voxelwise_results.get_map(
+        "voxelwiseModeratorEffect_standardized_sample_sizes_group-SchizophreniaYes"
+    ),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
@@ -247,7 +248,9 @@ plot_stat_map(
     title="Voxelwise sample-size effect: SchizophreniaYes",
 )
 plot_stat_map(
-    voxelwise_results.get_map("svModerator_standardized_avg_age_group-SchizophreniaYes"),
+    voxelwise_results.get_map(
+        "voxelwiseModeratorEffect_standardized_avg_age_group-SchizophreniaYes"
+    ),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
@@ -264,11 +267,11 @@ plot_stat_map(
 # Fisher information standard errors can be requested with ``method="FI"``.
 
 voxelwise_moderator_result = voxelwise_results.test_moderators(method="sandwich")
-print(voxelwise_moderator_result.metadata["spatial_cbmr_inference_method"])
+print(voxelwise_moderator_result.metadata["voxelwise_cbmr_inference_method"])
 
 plot_stat_map(
     voxelwise_moderator_result.get_map(
-        "z_svModerator_standardized_sample_sizes_group-SchizophreniaYes"
+        "z_voxelwiseModeratorEffect_standardized_sample_sizes_group-SchizophreniaYes"
     ),
     cut_coords=[0, 0, -8],
     draw_cross=False,
@@ -285,7 +288,8 @@ voxelwise_moderator_comparison = voxelwise_results.compare_moderators(
 
 plot_stat_map(
     voxelwise_moderator_comparison.get_map(
-        "z_svModerator_standardized_sample_sizes-standardized_avg_age_group-SchizophreniaYes"
+        "z_voxelwiseModeratorEffect_standardized_sample_sizes-standardized_avg_age_group-"
+        "SchizophreniaYes"
     ),
     cut_coords=[0, 0, -8],
     draw_cross=False,
@@ -299,17 +303,29 @@ plot_stat_map(
 ###############################################################################
 # Optional inverse-Fisher standard errors for voxelwise CBMR
 # -----------------------------------------------------------------------------
-# The same voxelwise inference helpers can use inverse Fisher information rather
-# than the sandwich estimator.
+# The same voxelwise inference helpers can use inverse Fisher information, but
+# the sandwich estimator is usually the safer default for applied CBMR analyses.
+# Inverse-Fisher standard errors are model-based: they are efficient when the
+# likelihood, mean-variance relationship, and independence assumptions are
+# correctly specified, but can be too optimistic when those assumptions are only
+# approximate. Coordinate-based meta-analytic data often have study-level
+# clustering, heterogeneous reporting practices, and other departures from the
+# idealized Poisson model. Sandwich standard errors use the fitted model for the
+# mean structure while estimating covariance from empirical residual variation,
+# making inference more robust to this kind of model misspecification.
+#
+# For that reason, we recommend keeping ``method="sandwich"`` as the default for
+# primary voxelwise CBMR inference. ``method="FI"`` can still be useful for
+# sensitivity analyses, simulations where the model is known to be correct, or
+# comparisons with fully model-based standard errors.
 
 voxelwise_fi_result = voxelwise_results.test_groups(method="FI")
-print(voxelwise_fi_result.metadata["spatial_cbmr_inference_method"])
+print(voxelwise_fi_result.metadata["voxelwise_cbmr_inference_method"])
 
 ###############################################################################
 # Summary
 # -----------------------------------------------------------------------------
 # Use ``moderator_effect="global"`` when the scientific question is whether a
-# study-level covariate has an overall effect on activation intensity. Use
-# ``moderator_effect="voxelwise"`` when the scientific question is where that
-# covariate effect varies across the brain. Both options share the same
-# preprocessing, grouping, and result-centered inference interface.
+# moderator has an overall effect on activation intensity. Use ``moderator_effect="voxelwise"``
+# when the scientific question is where that moderator effect varies across the brain.
+# Both options share the same preprocessing, grouping, and result-centered inference interface.

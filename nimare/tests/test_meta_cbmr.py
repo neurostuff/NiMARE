@@ -903,7 +903,7 @@ def _spatial_result_for_inference():
             "Default": scipy.sparse.csr_matrix(np.array([[1.0, 0.0], [0.0, 1.0]]))
         },
     }
-    estimator.spatial_varying_coef = {"Default": np.array([[0.1], [0.2], [0.3], [0.4]])}
+    estimator.voxelwise_coef = {"Default": np.array([[0.1], [0.2], [0.3], [0.4]])}
     maps = {}
     tables = {}
     estimator._add_approximate_results(
@@ -911,7 +911,7 @@ def _spatial_result_for_inference():
         tables,
         "Default",
         estimator.inputs_["moderators_by_group"]["Default"],
-        estimator.spatial_varying_coef["Default"],
+        estimator.voxelwise_coef["Default"],
     )
     return CBMRResult(
         estimator=estimator,
@@ -1148,7 +1148,7 @@ def test_spatial_cbmr_result_helpers_preserve_result_type_and_summarize_maps():
         estimator=object(),
         mask=_mask_img(),
         maps={
-            "svModerator_age_group-Default": np.array([1.0, 2.0, 3.0]),
+            "voxelwiseModeratorEffect_age_group-Default": np.array([1.0, 2.0, 3.0]),
             "spatialIntensity_group-Default": np.array([4.0, 5.0, 6.0]),
         },
         tables={"spatial_regression_coef": pd.DataFrame([[1.0, 2.0]], index=["Default"])},
@@ -1161,8 +1161,12 @@ def test_spatial_cbmr_result_helpers_preserve_result_type_and_summarize_maps():
     assert isinstance(result, nimare.results.MetaResult)
     assert copied is not result
     assert isinstance(copied, CBMRResult)
-    assert result.sv_moderator_names == ("svModerator_age_group-Default",)
-    assert result.describe_sv_effects()["svModerator_age_group-Default"] == (1.0, 2.0, 3.0)
+    assert result.voxelwise_moderator_effect_map_names == (
+        "voxelwiseModeratorEffect_age_group-Default",
+    )
+    assert result.describe_voxelwise_moderator_effect_maps()[
+        "voxelwiseModeratorEffect_age_group-Default"
+    ] == (1.0, 2.0, 3.0)
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
@@ -1185,10 +1189,13 @@ def test_spatial_cbmr_output_tables_match_cbmr_group_table_convention():
         columns=["basis_0", "basis_1"],
     )
     pd.testing.assert_frame_equal(tables["spatial_regression_coef"], expected_spatial)
-    assert "sv_moderator_regression_coef_group-A" in tables
-    assert "sv_moderators_regression_coef" in tables
-    assert tables["sv_moderators_regression_coef"].index.names == ["group", "moderator"]
-    assert ("A", "age") in tables["sv_moderators_regression_coef"].index
+    assert "voxelwise_moderator_effect_regression_coef_group-A" in tables
+    assert "voxelwise_moderator_effects_regression_coef" in tables
+    assert tables["voxelwise_moderator_effects_regression_coef"].index.names == [
+        "group",
+        "moderator",
+    ]
+    assert ("A", "age") in tables["voxelwise_moderator_effects_regression_coef"].index
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
@@ -1205,17 +1212,17 @@ def test_spatial_cbmr_add_approximate_results_creates_expected_maps_and_tables()
 
     assert set(maps) == {
         "spatialIntensity_group-Default",
-        "svModerator_age_group-Default",
-        "svModeratorTotal_group-Default",
+        "voxelwiseModeratorEffect_age_group-Default",
+        "voxelwiseModeratorEffectTotal_group-Default",
     }
     assert np.all(np.isfinite(maps["spatialIntensity_group-Default"]))
     np.testing.assert_allclose(maps["spatialIntensity_group-Default"], np.exp([0.3, 0.4]))
-    np.testing.assert_allclose(maps["svModerator_age_group-Default"], [0.3, 0.6])
+    np.testing.assert_allclose(maps["voxelwiseModeratorEffect_age_group-Default"], [0.3, 0.6])
     pd.testing.assert_frame_equal(
         tables["spatial_regression_coef"],
         pd.DataFrame([[0.3, 0.4]], index=["Default"], columns=["basis_0", "basis_1"]),
     )
-    assert ("Default", "age") in tables["sv_moderators_regression_coef"].index
+    assert ("Default", "age") in tables["voxelwise_moderator_effects_regression_coef"].index
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
@@ -1224,17 +1231,17 @@ def test_spatial_cbmr_torch_result_extraction_uses_model_weights():
     estimator = CBMREstimator(moderators=["age"], backend="full", device="cpu")
     estimator.groups = ["Default"]
     estimator.inputs_ = {"coef_spline_bases": np.array([[1.0, 0.0], [0.0, 1.0]])}
-    estimator.spatial_varying_model = models.SpatialCBMRModel(
+    estimator.voxelwise_model = models.SpatialCBMRModel(
         groups=estimator.groups,
         spatial_coef_dim=2,
         moderators_coef_dim=1,
         device="cpu",
     )
     with torch.no_grad():
-        estimator.spatial_varying_model.spatial_coef_linears["Default"].weight[:] = torch.tensor(
+        estimator.voxelwise_model.spatial_coef_linears["Default"].weight[:] = torch.tensor(
             [[0.3, 0.4]], dtype=torch.float64
         )
-        estimator.spatial_varying_model.moderator_coef_linears["Default"].weight[:] = torch.tensor(
+        estimator.voxelwise_model.moderator_coef_linears["Default"].weight[:] = torch.tensor(
             [[0.1, 0.2]], dtype=torch.float64
         )
     moderators_by_group = {"Default": torch.tensor([[2.0], [4.0]], dtype=torch.float64)}
@@ -1242,12 +1249,12 @@ def test_spatial_cbmr_torch_result_extraction_uses_model_weights():
     maps, tables = estimator._extract_torch_results(moderators_by_group)
 
     np.testing.assert_allclose(maps["spatialIntensity_group-Default"], np.exp([0.3, 0.4]))
-    np.testing.assert_allclose(maps["svModerator_age_group-Default"], [0.3, 0.6])
+    np.testing.assert_allclose(maps["voxelwiseModeratorEffect_age_group-Default"], [0.3, 0.6])
     pd.testing.assert_frame_equal(
         tables["spatial_regression_coef"],
         pd.DataFrame([[0.3, 0.4]], index=["Default"], columns=["basis_0", "basis_1"]),
     )
-    assert ("Default", "age") in tables["sv_moderators_regression_coef"].index
+    assert ("Default", "age") in tables["voxelwise_moderator_effects_regression_coef"].index
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
@@ -1272,7 +1279,7 @@ def test_spatial_cbmr_fit_dispatches_to_approximate_backend(monkeypatch):
     }
     calls = []
 
-    def fake_fit_spatial_cbmr_approximate(
+    def fake_fit_voxelwise_cbmr_approximate(
         moderators, bases, foci, tol, max_iter, alpha, damping, compute_nll
     ):
         calls.append(
@@ -1291,8 +1298,8 @@ def test_spatial_cbmr_fit_dispatches_to_approximate_backend(monkeypatch):
 
     monkeypatch.setattr(
         cbmr_module,
-        "fit_spatial_cbmr_approximate",
-        fake_fit_spatial_cbmr_approximate,
+        "fit_voxelwise_cbmr_approximate",
+        fake_fit_voxelwise_cbmr_approximate,
     )
 
     maps, tables, description = estimator._fit(dataset=None)
@@ -1380,7 +1387,7 @@ def test_spatial_cbmr_result_helpers_allow_fisher_information_method():
     transformed = result.test_groups(method="FI")
 
     assert inference.method == "FI"
-    assert transformed.metadata["spatial_cbmr_inference_method"] == "FI"
+    assert transformed.metadata["voxelwise_cbmr_inference_method"] == "FI"
     assert "z_group-Default" in transformed.maps
 
 
@@ -1395,7 +1402,7 @@ def test_spatial_cbmr_result_helpers_run_inference():
     assert isinstance(group_result, CBMRResult)
     assert isinstance(moderator_result, CBMRResult)
     assert "z_group-Default" in group_result.maps
-    assert "p_svModerator_age_group-Default" in moderator_result.maps
+    assert "p_voxelwiseModeratorEffect_age_group-Default" in moderator_result.maps
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
@@ -1477,18 +1484,18 @@ def test_spatial_cbmr_inference_transform_adds_maps_without_mutating_input():
     assert set(result.maps) == original_map_keys
     assert "p_group-Default" in transformed.maps
     assert "z_group-Default" in transformed.maps
-    assert "p_svModerator_age_group-Default" in transformed.maps
-    assert "z_svModerator_age_group-Default" in transformed.maps
-    assert transformed.metadata["spatial_cbmr_inference_method"] == "sandwich"
-    assert transformed.metadata["spatial_cbmr_sandwich_meat"] == "cluster"
+    assert "p_voxelwiseModeratorEffect_age_group-Default" in transformed.maps
+    assert "z_voxelwiseModeratorEffect_age_group-Default" in transformed.maps
+    assert transformed.metadata["voxelwise_cbmr_inference_method"] == "sandwich"
+    assert transformed.metadata["voxelwise_cbmr_sandwich_meat"] == "cluster"
     transformed_fi = inference.transform(t_con_groups="Default", method="FI")
-    assert transformed_fi.metadata["spatial_cbmr_inference_method"] == "FI"
-    assert "spatial_cbmr_sandwich_meat" not in transformed_fi.metadata
+    assert transformed_fi.metadata["voxelwise_cbmr_inference_method"] == "FI"
+    assert "voxelwise_cbmr_sandwich_meat" not in transformed_fi.metadata
     for map_name in [
         "p_group-Default",
         "z_group-Default",
-        "p_svModerator_age_group-Default",
-        "z_svModerator_age_group-Default",
+        "p_voxelwiseModeratorEffect_age_group-Default",
+        "z_voxelwiseModeratorEffect_age_group-Default",
     ]:
         assert np.all(np.isfinite(transformed.maps[map_name])), map_name
 
@@ -1579,8 +1586,8 @@ def test_spatial_cbmr_sparse_sandwich_covariance_matches_dense(meat, correction)
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_inference_sandwich_helpers_handle_sparse_and_hc_corrections():
-    """Sandwich helpers should densify sparse responses and apply HC corrections."""
+def test_spatial_cbmr_inference_sandwich_helpers_handle_hc_corrections():
+    """Sandwich helpers should apply HC corrections."""
     moderators = np.array([[1.0, 0.0], [1.0, 1.0], [1.0, -1.0]])
     bases = np.array([[1.0, 0.0], [0.5, 0.5]])
     mean = np.full((3, 2), 0.5)
@@ -1588,7 +1595,6 @@ def test_spatial_cbmr_inference_sandwich_helpers_handle_sparse_and_hc_correction
     fisher_info = CBMRInference._compute_fisher_information(moderators, bases, mean)
     bread_inverse = CBMRInference._sandwich_bread_inverse(fisher_info, ridge=1e-4)
 
-    dense = CBMRInference._as_dense_response(scipy.sparse.csr_matrix(residuals))
     hc1_residuals, hc1_factor = CBMRInference._apply_sandwich_correction(
         "hc1",
         bread_inverse,
@@ -1606,7 +1612,6 @@ def test_spatial_cbmr_inference_sandwich_helpers_handle_sparse_and_hc_correction
         residuals,
     )
 
-    np.testing.assert_array_equal(dense, residuals)
     np.testing.assert_array_equal(hc1_residuals, residuals)
     assert hc1_factor == pytest.approx(3.0)
     assert hc3_factor == pytest.approx(1.0)
