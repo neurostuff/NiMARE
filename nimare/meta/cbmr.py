@@ -736,8 +736,8 @@ class CBMREstimator(Estimator):
                     np.arange(len(group_ids), dtype=np.int32),
                     index=group_ids,
                 )
-                row_indices = group_coordinates["id"].map(id_to_row).to_numpy(
-                    dtype=np.int32, copy=False
+                row_indices = (
+                    group_coordinates["id"].map(id_to_row).to_numpy(dtype=np.int32, copy=False)
                 )
                 column_indices = group_coordinates["_cbmr_mask_index"].to_numpy(
                     dtype=np.int32, copy=False
