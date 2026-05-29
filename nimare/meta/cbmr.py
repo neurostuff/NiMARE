@@ -130,7 +130,18 @@ class CBMRResult(MetaResult):
         }
 
     def get_inference(self, device=None, method=None, **kwargs):
-        """Return a fitted inference engine for advanced CBMR use cases."""
+        """Return a fitted inference engine for advanced CBMR use cases.
+
+        Parameters
+        ----------
+        device : str, optional
+            Compute device to use for inference. Defaults to the device recorded on the fitted
+            estimator.
+        method : {"sandwich", "FI"}, optional
+            Covariance estimator for voxelwise CBMR inference.
+        **kwargs
+            Additional keyword arguments passed to :class:`~nimare.meta.cbmr.CBMRInference`.
+        """
         inference_device = device or getattr(self.estimator, "device", "cpu")
         inference = CBMRInference(
             device=inference_device,
@@ -149,7 +160,23 @@ class CBMRResult(MetaResult):
         method=None,
         **kwargs,
     ):
-        """Run CBMR inference from a fitted result."""
+        """Run CBMR inference from a fitted result.
+
+        Parameters
+        ----------
+        group_contrasts : bool, dict, list, tuple, str, or None, optional
+            Group homogeneity or comparison specification. Use ``False`` to skip group inference.
+        moderator_contrasts : bool, dict, list, tuple, str, or None, optional
+            Moderator effect or comparison specification. Use ``False`` to skip moderator
+            inference.
+        device : str, optional
+            Compute device to use for inference. Defaults to the device recorded on the fitted
+            estimator.
+        method : {"sandwich", "FI"}, optional
+            Covariance estimator for voxelwise CBMR inference.
+        **kwargs
+            Additional keyword arguments passed to :class:`~nimare.meta.cbmr.CBMRInference`.
+        """
         inference = self.get_inference(device=device, method=method, **kwargs)
         return inference.transform(
             t_con_groups=group_contrasts,
@@ -157,7 +184,20 @@ class CBMRResult(MetaResult):
         )
 
     def test_groups(self, groups=None, device=None, method=None, **kwargs):
-        """Run one-group spatial homogeneity tests for the requested groups."""
+        """Run one-group spatial homogeneity tests for the requested groups.
+
+        Parameters
+        ----------
+        groups : list, tuple, str, or None, optional
+            Group name or names to test. Defaults to all fitted groups.
+        device : str, optional
+            Compute device to use for inference. Defaults to the device recorded on the fitted
+            estimator.
+        method : {"sandwich", "FI"}, optional
+            Covariance estimator for voxelwise CBMR inference.
+        **kwargs
+            Additional keyword arguments passed to :class:`~nimare.meta.cbmr.CBMRInference`.
+        """
         group_contrasts = list(self.groups) if groups is None else groups
         return self.infer(
             group_contrasts=group_contrasts,
@@ -168,7 +208,20 @@ class CBMRResult(MetaResult):
         )
 
     def compare_groups(self, contrasts, device=None, method=None, **kwargs):
-        """Run pairwise group-comparison tests using names or (group_a, group_b) tuples."""
+        """Run pairwise group-comparison tests using names or ``(group_a, group_b)`` tuples.
+
+        Parameters
+        ----------
+        contrasts : list, tuple, or str
+            Group comparison specification or specifications.
+        device : str, optional
+            Compute device to use for inference. Defaults to the device recorded on the fitted
+            estimator.
+        method : {"sandwich", "FI"}, optional
+            Covariance estimator for voxelwise CBMR inference.
+        **kwargs
+            Additional keyword arguments passed to :class:`~nimare.meta.cbmr.CBMRInference`.
+        """
         group_contrasts = _normalize_named_pairwise_contrasts(contrasts)
         return self.infer(
             group_contrasts=group_contrasts,
@@ -179,7 +232,20 @@ class CBMRResult(MetaResult):
         )
 
     def test_moderators(self, moderators=None, device=None, method=None, **kwargs):
-        """Test whether the requested moderator effects differ from zero."""
+        """Test whether the requested moderator effects differ from zero.
+
+        Parameters
+        ----------
+        moderators : list, tuple, str, or None, optional
+            Moderator name or names to test. Defaults to all fitted moderators.
+        device : str, optional
+            Compute device to use for inference. Defaults to the device recorded on the fitted
+            estimator.
+        method : {"sandwich", "FI"}, optional
+            Covariance estimator for voxelwise CBMR inference.
+        **kwargs
+            Additional keyword arguments passed to :class:`~nimare.meta.cbmr.CBMRInference`.
+        """
         if not self.moderators:
             raise ValueError("This CBMR result does not include moderators.")
         moderator_contrasts = list(self.moderators) if moderators is None else moderators
@@ -192,7 +258,20 @@ class CBMRResult(MetaResult):
         )
 
     def compare_moderators(self, contrasts, device=None, method=None, **kwargs):
-        """Run pairwise moderator-comparison tests using names or tuples."""
+        """Run pairwise moderator-comparison tests using names or tuples.
+
+        Parameters
+        ----------
+        contrasts : list, tuple, or str
+            Moderator comparison specification or specifications.
+        device : str, optional
+            Compute device to use for inference. Defaults to the device recorded on the fitted
+            estimator.
+        method : {"sandwich", "FI"}, optional
+            Covariance estimator for voxelwise CBMR inference.
+        **kwargs
+            Additional keyword arguments passed to :class:`~nimare.meta.cbmr.CBMRInference`.
+        """
         if not self.moderators:
             raise ValueError("This CBMR result does not include moderators.")
         moderator_contrasts = _normalize_named_pairwise_contrasts(contrasts)
@@ -931,7 +1010,7 @@ class CBMREstimator(Estimator):
             augmented_moderators = np.column_stack(
                 [moderators, np.ones((foci.shape[0], 1), dtype=np.float64)]
             )
-            coefficient = self._get_voxelwise_cbmr_approximate_solver()(
+            coefficient = self._voxelwise_cbmr_approximate_solver(
                 augmented_moderators,
                 bases,
                 foci,
@@ -951,8 +1030,8 @@ class CBMREstimator(Estimator):
             )
         return maps, tables, self._voxelwise_cbmr_description("approximate")
 
-    @staticmethod
-    def _get_voxelwise_cbmr_approximate_solver():
+    @property
+    def _voxelwise_cbmr_approximate_solver(self):
         """Return the approximate solver used by the voxelwise backend."""
         return fit_voxelwise_cbmr_approximate
 
@@ -1324,7 +1403,7 @@ class CBMRInference(object):
                     self.result.tables["moderators_regression_coef"].to_numpy().T
                 )
 
-        self.create_regular_expressions()
+        self._create_regular_expressions()
 
         self.group_reference_dict = {
             group_name: index for index, group_name in enumerate(self.groups)
@@ -1349,9 +1428,8 @@ class CBMRInference(object):
             for moderator, index in self.moderator_reference_dict.items():
                 LGR.info(f"{moderator} = index_{index}")
 
-    def create_regular_expressions(self):
-        """
-        Create regular expressions for parsing contrast names.
+    def _create_regular_expressions(self):
+        """Create regular expressions for parsing contrast names.
 
         creates the following attributes:
         self.groups_regular_expression: regular expression for parsing group names
@@ -1430,7 +1508,18 @@ class CBMRInference(object):
 
     @_check_fit
     def transform(self, t_con_groups=None, t_con_moderators=None, method=None):
-        """Conduct generalized linear hypothesis (GLH) testing on CBMR estimates."""
+        """Conduct generalized linear hypothesis (GLH) testing on CBMR estimates.
+
+        Parameters
+        ----------
+        t_con_groups : bool, dict, list, tuple, str, or None, optional
+            Group homogeneity or comparison specification. Use ``False`` to skip group inference.
+        t_con_moderators : bool, dict, list, tuple, str, or None, optional
+            Moderator effect or comparison specification. Use ``False`` to skip moderator
+            inference.
+        method : {"sandwich", "FI"}, optional
+            Covariance estimator for voxelwise CBMR inference.
+        """
         if self.moderator_effect == "voxelwise":
             if method is not None:
                 validated_method = self._validate_method(method)
@@ -1465,7 +1554,21 @@ class CBMRInference(object):
         return self.result
 
     def fit_transform(self, result, t_con_groups=None, t_con_moderators=None, method=None):
-        """Fit and transform."""
+        """Fit the inference engine and conduct GLH testing on CBMR estimates.
+
+        Parameters
+        ----------
+        result : :obj:`~nimare.meta.cbmr.CBMRResult`
+            Fitted CBMR result containing regression coefficient tables and spatial intensity
+            maps.
+        t_con_groups : bool, dict, list, tuple, str, or None, optional
+            Group homogeneity or comparison specification. Use ``False`` to skip group inference.
+        t_con_moderators : bool, dict, list, tuple, str, or None, optional
+            Moderator effect or comparison specification. Use ``False`` to skip moderator
+            inference.
+        method : {"sandwich", "FI"}, optional
+            Covariance estimator for voxelwise CBMR inference.
+        """
         self.fit(result)
         return self.transform(t_con_groups, t_con_moderators, method=method)
 

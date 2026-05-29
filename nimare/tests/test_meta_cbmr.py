@@ -1258,6 +1258,16 @@ def test_spatial_cbmr_torch_result_extraction_uses_model_weights():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_spatial_cbmr_exposes_approximate_solver_as_property():
+    """The approximate solver accessor should behave like an attribute, not a method."""
+    estimator = CBMREstimator(moderators=["age"], backend="approximate")
+
+    assert (
+        estimator._voxelwise_cbmr_approximate_solver is cbmr_module.fit_voxelwise_cbmr_approximate
+    )
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 def test_spatial_cbmr_fit_dispatches_to_approximate_backend(monkeypatch):
     """The backend option should route CBMREstimator through the approximate solver."""
     estimator = CBMREstimator(
