@@ -828,6 +828,7 @@ def test_convert_neurosynth_to_json_smoke():
 )
 def test_convert_neurovault_to_dataset(kwargs, monkeypatch, tmp_path):
     """Test conversion of neurovault collection to a dataset."""
+
     class _MockResponse:
         def __init__(self, *, payload=None, status_code=200, content=b""):
             self._payload = payload
