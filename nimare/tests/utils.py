@@ -97,7 +97,10 @@ def _check_p_values(
         if n_iters:
             logp_dtype = p_array.dtype
             assert p_array.min() >= logp_dtype.type(0.0)
-            assert p_array.max() <= logp_dtype.type(-np.log10(1.0 / n_iters))
+            max_logp = np.array(1.0 / n_iters, dtype=logp_dtype)
+            np.log10(max_logp, out=max_logp)
+            np.negative(max_logp, out=max_logp)
+            assert p_array.max() <= max_logp
         threshold = -np.log10(alpha)
         compare_sig = np.greater
         compare_nonsig = np.less
