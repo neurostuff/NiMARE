@@ -996,6 +996,64 @@ def test_cbmr_mask_lookup_and_coordinate_filtering_use_mask_indices():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_cbmr_incidence_threshold_drops_low_incidence_voxels():
+    """Incidence filtering should drop voxels whose empirical rate is <= threshold."""
+    estimator = CBMREstimator(moderator_effect="global", incidence_threshold=0.25)
+    estimator.inputs_ = {}
+    mask_data = np.ones((3, 1, 1), dtype=bool)
+    mask_img = nib.Nifti1Image(mask_data.astype(np.uint8), np.eye(4))
+    filtered_coordinates = pd.DataFrame(
+        {
+            "id": ["study-1", "study-2", "study-3"],
+            "_cbmr_mask_index": [0, 0, 1],
+        }
+    )
+    ids_by_group = {"Default": ["study-1", "study-2", "study-3", "study-4"]}
+
+    thresholded_img = estimator._threshold_mask_by_incidence(
+        mask_img,
+        mask_data,
+        filtered_coordinates,
+        ids_by_group,
+        n_mask_voxels=3,
+    )
+
+    np.testing.assert_array_equal(np.asanyarray(thresholded_img.dataobj).ravel(), [1, 0, 0])
+    np.testing.assert_allclose(estimator.inputs_["empirical_incidence_rate_roi"], [0.5, 0.25, 0.0])
+    np.testing.assert_allclose(estimator.inputs_["empirical_incidence_rate"], [0.5])
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_cbmr_inference_can_restrict_fitted_result_by_incidence():
+    """Inference-level incidence filtering should subset maps, masks, and voxel inputs."""
+    estimator = CBMREstimator(moderators=["age"], backend="approximate")
+    estimator.groups = ["Default"]
+    estimator.inputs_ = {
+        "coef_spline_bases": np.array([[1.0, 0.0], [0.0, 1.0]]),
+        "empirical_incidence_rate": np.array([0.002, 0.001]),
+        "moderators_by_group": {"Default": np.array([[2.0], [4.0]])},
+        "foci_by_experiment_voxel": {
+            "Default": scipy.sparse.csr_matrix(np.array([[1.0, 0.0], [0.0, 1.0]]))
+        },
+    }
+    result = CBMRResult(
+        estimator=estimator,
+        mask=nib.Nifti1Image(np.ones((2, 1, 1), dtype=np.uint8), np.eye(4)),
+        maps={"spatialIntensity_group-Default": np.array([1.0, 2.0])},
+        tables={"spatial_regression_coef": pd.DataFrame([[0.0, 0.0]], index=["Default"])},
+        description="incidence inference test",
+    )
+
+    inference = CBMRInference(incidence_threshold=0.001)
+    inference.fit(result)
+
+    np.testing.assert_array_equal(inference.result.maps["spatialIntensity_group-Default"], [1.0])
+    assert int(np.asanyarray(inference.result.masker.mask_img.dataobj).sum()) == 1
+    assert inference.estimator.inputs_["coef_spline_bases"].shape == (1, 2)
+    assert inference.estimator.inputs_["foci_by_experiment_voxel"]["Default"].shape == (2, 1)
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 def test_cbmr_group_label_validation_and_multicolumn_formatting():
     """Group label preprocessing should format valid labels and reject missing columns."""
     annotations = pd.DataFrame(

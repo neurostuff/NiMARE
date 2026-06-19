@@ -6,10 +6,12 @@ import re
 import time
 from functools import wraps
 
+import nibabel as nib
 import numpy as np
 import pandas as pd
 import scipy
 import scipy.sparse
+from nilearn.image import resample_to_img
 
 try:
     import torch  # type: ignore[import-not-found]
@@ -31,6 +33,7 @@ from nimare.utils import (
     dummy_encoding_moderators,
     get_masker,
     get_masker_mask_image,
+    get_template,
     mm2vox,
     seed_torch,
     validate_coordinate_spaces,
@@ -39,6 +42,7 @@ from nimare.utils import (
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
 DEFAULT_GROUP_NAME = "Default"
+DEFAULT_INCIDENCE_THRESHOLD = 0.001
 
 
 def _uses_cuda(device):
@@ -67,6 +71,16 @@ def _is_named_pairwise_contrast(contrast):
     )
 
 
+def _validate_incidence_threshold(incidence_threshold):
+    """Validate the empirical incidence threshold used for voxel filtering."""
+    if incidence_threshold is None:
+        return None
+    incidence_threshold = float(incidence_threshold)
+    if incidence_threshold < 0 or incidence_threshold >= 1:
+        raise ValueError("incidence_threshold must be None or a value in [0, 1).")
+    return incidence_threshold
+
+
 def _normalize_named_pairwise_contrasts(contrasts):
     """Convert tuple shorthand like (A, B) into the legacy string form."""
     if contrasts is None:
@@ -81,6 +95,34 @@ def _normalize_named_pairwise_contrasts(contrasts):
         else:
             normalized.append(contrast)
     return normalized
+
+
+def _clipped_stat_p_values(p_values, dtype=None):
+    """Clip statistic p-values using a consistent dtype."""
+    if dtype is None:
+        dtype = np.asarray(p_values).dtype
+    return _clip_p_values(p_values, dtype=dtype, copy=False)
+
+
+def _normal_p_values(z_stats, two_sided=True, dtype=None):
+    """Return clipped normal p-values for Wald statistics."""
+    if two_sided:
+        p_values = scipy.stats.norm.sf(np.abs(z_stats)) * 2
+    else:
+        p_values = scipy.stats.norm.sf(z_stats)
+    return _clipped_stat_p_values(p_values, dtype=dtype)
+
+
+def _chi_square_p_values(chi_square, df, dtype=None):
+    """Return clipped chi-square p-values."""
+    return _clipped_stat_p_values(scipy.stats.chi2.sf(chi_square, df=df), dtype=dtype)
+
+
+def _two_sided_z_from_p_values(p_values):
+    """Convert two-sided p-values to z-statistics with stable tail handling."""
+    p_values = np.asarray(p_values)
+    z_p_values = np.maximum(p_values, 2 * _minimum_positive_float(p_values.dtype))
+    return scipy.stats.norm.isf(z_p_values / 2)
 
 
 class CBMRResult(MetaResult):
@@ -195,6 +237,43 @@ class CBMRResult(MetaResult):
             t_con_moderators=moderator_contrasts,
         )
 
+    def _infer_named_effects(
+        self,
+        source,
+        contrasts=None,
+        pairwise=False,
+        device=None,
+        method=None,
+        **kwargs,
+    ):
+        """Run inference for named group or moderator effects through one shared path."""
+        if source == "groups":
+            if contrasts is None:
+                contrasts = list(self.groups)
+            group_contrasts = (
+                _normalize_named_pairwise_contrasts(contrasts) if pairwise else contrasts
+            )
+            moderator_contrasts = False
+        elif source == "moderators":
+            if not self.moderators:
+                raise ValueError("This CBMR result does not include moderators.")
+            if contrasts is None:
+                contrasts = list(self.moderators)
+            group_contrasts = False
+            moderator_contrasts = (
+                _normalize_named_pairwise_contrasts(contrasts) if pairwise else contrasts
+            )
+        else:
+            raise ValueError("source must be either 'groups' or 'moderators'.")
+
+        return self.infer(
+            group_contrasts=group_contrasts,
+            moderator_contrasts=moderator_contrasts,
+            device=device,
+            method=method,
+            **kwargs,
+        )
+
     def test_groups(self, groups=None, device=None, method=None, **kwargs):
         """Run one-group spatial homogeneity tests for the requested groups.
 
@@ -210,10 +289,9 @@ class CBMRResult(MetaResult):
         **kwargs
             Additional keyword arguments passed to :class:`~nimare.meta.cbmr.CBMRInference`.
         """
-        group_contrasts = list(self.groups) if groups is None else groups
-        return self.infer(
-            group_contrasts=group_contrasts,
-            moderator_contrasts=False,
+        return self._infer_named_effects(
+            "groups",
+            contrasts=groups,
             device=device,
             method=method,
             **kwargs,
@@ -234,10 +312,10 @@ class CBMRResult(MetaResult):
         **kwargs
             Additional keyword arguments passed to :class:`~nimare.meta.cbmr.CBMRInference`.
         """
-        group_contrasts = _normalize_named_pairwise_contrasts(contrasts)
-        return self.infer(
-            group_contrasts=group_contrasts,
-            moderator_contrasts=False,
+        return self._infer_named_effects(
+            "groups",
+            contrasts=contrasts,
+            pairwise=True,
             device=device,
             method=method,
             **kwargs,
@@ -258,12 +336,9 @@ class CBMRResult(MetaResult):
         **kwargs
             Additional keyword arguments passed to :class:`~nimare.meta.cbmr.CBMRInference`.
         """
-        if not self.moderators:
-            raise ValueError("This CBMR result does not include moderators.")
-        moderator_contrasts = list(self.moderators) if moderators is None else moderators
-        return self.infer(
-            group_contrasts=False,
-            moderator_contrasts=moderator_contrasts,
+        return self._infer_named_effects(
+            "moderators",
+            contrasts=moderators,
             device=device,
             method=method,
             **kwargs,
@@ -284,12 +359,10 @@ class CBMRResult(MetaResult):
         **kwargs
             Additional keyword arguments passed to :class:`~nimare.meta.cbmr.CBMRInference`.
         """
-        if not self.moderators:
-            raise ValueError("This CBMR result does not include moderators.")
-        moderator_contrasts = _normalize_named_pairwise_contrasts(contrasts)
-        return self.infer(
-            group_contrasts=False,
-            moderator_contrasts=moderator_contrasts,
+        return self._infer_named_effects(
+            "moderators",
+            contrasts=contrasts,
+            pairwise=True,
             device=device,
             method=method,
             **kwargs,
@@ -319,6 +392,12 @@ class CBMREstimator(Estimator):
         the voxelwise moderator-effect CBMR backend, in which moderator effects vary smoothly over
         voxels.
         Default is ``"voxelwise"``.
+    mask : :obj:`str`, :class:`~nibabel.nifti1.Nifti1Image`, or Nilearn masker, optional
+        Region-of-interest mask. If None, CBMR uses the whole 2 mm MNI152 brain mask.
+    incidence_threshold : :obj:`float` or None, optional
+        Drop voxels with empirical focus incidence less than or equal to this threshold after
+        applying ``mask``. Empirical incidence is the fraction of experiments with at least one
+        focus in a voxel. Use None to retain all voxels in ``mask``. Default is 0.001.
     model : subclass of :class:`~nimare.meta.models.GeneralLinearModelEstimator`, optional
         Stochastic model class used by CBMR. Available options are:
 
@@ -359,7 +438,7 @@ class CBMREstimator(Estimator):
         Random seed used for torch-based weight initialization. Default is None.
     **kwargs
         Keyword arguments. Arguments for the Estimator can be assigned here,
-        Another optional argument is ``mask``.
+        Additional masking controls are exposed as ``mask`` and ``incidence_threshold``.
 
     Attributes
     ----------
@@ -408,6 +487,7 @@ class CBMREstimator(Estimator):
         moderators=None,
         moderator_effect="voxelwise",
         mask=None,
+        incidence_threshold=DEFAULT_INCIDENCE_THRESHOLD,
         spline_spacing=10,
         model=models.PoissonEstimator,
         penalty=False,
@@ -428,6 +508,7 @@ class CBMREstimator(Estimator):
             moderators=moderators,
             moderator_effect=moderator_effect,
             mask=mask,
+            incidence_threshold=incidence_threshold,
             spline_spacing=spline_spacing,
             model=model,
             penalty=penalty,
@@ -450,6 +531,7 @@ class CBMREstimator(Estimator):
         moderators=None,
         moderator_effect="voxelwise",
         mask=None,
+        incidence_threshold=DEFAULT_INCIDENCE_THRESHOLD,
         spline_spacing=10,
         model=models.PoissonEstimator,
         penalty=False,
@@ -468,13 +550,13 @@ class CBMREstimator(Estimator):
         """Initialize shared estimator state for the selected concrete CBMR pipeline."""
         super().__init__(**kwargs)
         self.moderator_effect = self._validate_moderator_effect(moderator_effect)
+        self.incidence_threshold = _validate_incidence_threshold(incidence_threshold)
         if backend not in self._valid_backends:
             raise ValueError(f"backend must be one of {self._valid_backends}. Got {backend!r}.")
         if self.moderator_effect == "voxelwise" and model is not models.PoissonEstimator:
             raise ValueError("Voxelwise CBMR currently requires model=models.PoissonEstimator.")
-        if mask is not None:
-            mask = get_masker(mask)
-        self.masker = mask
+        self.mask = mask
+        self.masker = get_masker(mask) if mask is not None else None
 
         self.group_categories = group_categories
         self.moderators = moderators
@@ -571,7 +653,9 @@ class CBMREstimator(Estimator):
             f" learning rate {self.lr}, learning rate decay {self.lr_decay} and "
             f"tolerance {self.tol}." + penalty_str + f" The optimization is run on {self.device}."
             f" The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
-            f"{len(self.inputs_['id'])} experiments."
+            f"{len(self.inputs_['id'])} experiments. The analysis mask included "
+            f"{self.inputs_['coef_spline_bases'].shape[0]} voxels after ROI and empirical "
+            f"incidence filtering."
         )
 
         description = model_description + "\n" + optimization_description
@@ -581,6 +665,21 @@ class CBMREstimator(Estimator):
         """Construct a CBMR-specific result object."""
         masker = self.masker or dataset.masker
         return CBMRResult(self, mask=masker, maps=maps, tables=tables, description=description)
+
+    def _resolve_roi_masker(self, dataset):
+        """Return the user-requested ROI masker or the default 2 mm MNI brain masker."""
+        if self.masker is not None:
+            return get_masker(self.masker)
+
+        default_mask_img = get_template(space="mni152_2mm", mask="brain")
+        return get_masker(default_mask_img)
+
+    @staticmethod
+    def _mask_image_from_data(mask_data, reference_img):
+        """Create a binary mask image aligned to a reference image."""
+        header = reference_img.header.copy()
+        header.set_data_dtype(np.uint8)
+        return nib.Nifti1Image(mask_data.astype(np.uint8), reference_img.affine, header)
 
     @staticmethod
     def _build_mask_lookup(mask_data):
@@ -600,6 +699,57 @@ class CBMREstimator(Estimator):
             spacing=self.spline_spacing,
         )
         return mask_data, mask_lookup, n_mask_voxels
+
+    def _compute_empirical_incidence(self, coordinates, ids_by_group, n_mask_voxels):
+        """Return the empirical voxel incidence rate across experiments."""
+        n_experiments = sum(len(group_ids) for group_ids in ids_by_group.values())
+        if n_experiments == 0:
+            raise ValueError("CBMR requires at least one experiment.")
+
+        foci_by_experiment = self._build_group_foci_matrices(
+            coordinates,
+            ids_by_group,
+            n_mask_voxels,
+        )
+        incidence_count = np.zeros(n_mask_voxels, dtype=np.float64)
+        for group_matrix in foci_by_experiment.values():
+            incidence_count += np.asarray((group_matrix > 0).sum(axis=0)).ravel()
+        return incidence_count / float(n_experiments)
+
+    def _threshold_mask_by_incidence(
+        self,
+        mask_img,
+        mask_data,
+        filtered_coordinates,
+        ids_by_group,
+        n_mask_voxels,
+    ):
+        """Apply empirical-incidence filtering to an ROI mask."""
+        incidence_rate = self._compute_empirical_incidence(
+            filtered_coordinates,
+            ids_by_group,
+            n_mask_voxels,
+        )
+        self.inputs_["empirical_incidence_rate_roi"] = incidence_rate
+
+        if self.incidence_threshold is None:
+            keep_voxels = np.ones(n_mask_voxels, dtype=bool)
+        else:
+            keep_voxels = incidence_rate > self.incidence_threshold
+
+        if not np.any(keep_voxels):
+            raise ValueError(
+                "No voxels survived CBMR incidence filtering. Lower incidence_threshold or "
+                "provide a less restrictive mask."
+            )
+
+        thresholded_mask_data = np.zeros(mask_data.size, dtype=bool)
+        roi_flat_indices = np.flatnonzero(mask_data.ravel())
+        thresholded_mask_data[roi_flat_indices[keep_voxels]] = True
+        thresholded_mask_data = thresholded_mask_data.reshape(mask_data.shape)
+        self.inputs_["empirical_incidence_rate"] = incidence_rate[keep_voxels]
+        self.inputs_["incidence_threshold"] = self.incidence_threshold
+        return self._mask_image_from_data(thresholded_mask_data, mask_img)
 
     def _filter_coordinates_to_mask(self, coordinates, mask_img, mask_data, mask_lookup):
         """Filter coordinates to the mask and attach masked-space voxel indices."""
@@ -742,14 +892,24 @@ class CBMREstimator(Estimator):
     @staticmethod
     def _build_group_foci_matrices(coordinates, ids_by_group, n_mask_voxels):
         """Return experiment-by-voxel foci count matrices for each group."""
-        foci_by_experiment_voxel = {}
+        return CBMREstimator._build_group_sparse_foci_matrices(
+            coordinates,
+            ids_by_group,
+            n_mask_voxels,
+            dtype=np.float64,
+        )
+
+    @staticmethod
+    def _build_group_sparse_foci_matrices(coordinates, ids_by_group, n_mask_voxels, dtype):
+        """Return grouped experiment-by-voxel sparse focus-count matrices."""
+        foci_by_experiment = {}
         if coordinates.empty:
             for group, group_ids in ids_by_group.items():
-                foci_by_experiment_voxel[group] = scipy.sparse.csr_matrix(
+                foci_by_experiment[group] = scipy.sparse.csr_matrix(
                     (len(group_ids), n_mask_voxels),
-                    dtype=np.float64,
+                    dtype=dtype,
                 )
-            return foci_by_experiment_voxel
+            return foci_by_experiment
 
         coordinates = coordinates.loc[:, ["id", "_cbmr_mask_index"]].copy()
         for group, group_ids in ids_by_group.items():
@@ -757,13 +917,13 @@ class CBMREstimator(Estimator):
             group_coordinates = coordinates.loc[coordinates["id"].isin(group_ids)]
             rows = group_coordinates["id"].map(id_to_row).to_numpy(dtype=np.int64, copy=False)
             cols = group_coordinates["_cbmr_mask_index"].to_numpy(dtype=np.int64, copy=False)
-            data = np.ones(group_coordinates.shape[0], dtype=np.float64)
-            foci_by_experiment_voxel[group] = scipy.sparse.csr_matrix(
+            data = np.ones(group_coordinates.shape[0], dtype=dtype)
+            foci_by_experiment[group] = scipy.sparse.csr_matrix(
                 (data, (rows, cols)),
                 shape=(len(group_ids), n_mask_voxels),
-                dtype=np.float64,
+                dtype=dtype,
             )
-        return foci_by_experiment_voxel
+        return foci_by_experiment
 
     def _as_torch_tensor(self, value):
         """Convert an array-like object to a float64 tensor on the estimator device."""
@@ -797,49 +957,23 @@ class CBMREstimator(Estimator):
         return (
             f"Voxelwise moderator-effect CBMR was performed with the {backend} backend "
             f"{moderator_text}. The model used {len(self.groups)} group(s), "
-            f"spline spacing {self.spline_spacing}, and device {self.device}."
+            f"spline spacing {self.spline_spacing}, device {self.device}, and "
+            f"{self.inputs_['coef_spline_bases'].shape[0]} analysis-mask voxels after ROI and "
+            f"empirical incidence filtering."
         )
 
     def _build_group_foci(self, coordinates, ids_by_group, n_mask_voxels):
         """Summarize voxelwise and experiment-wise focus counts for each group."""
-        grouped_coordinates = coordinates.loc[:, ["id", "_cbmr_mask_index"]].copy()
-        id_to_group = pd.Series(
-            {id_: group for group, group_ids in ids_by_group.items() for id_ in group_ids}
+        foci_by_experiment = self._build_group_sparse_foci_matrices(
+            coordinates,
+            ids_by_group,
+            n_mask_voxels,
+            dtype=np.int32,
         )
-        grouped_coordinates[self._group_column] = grouped_coordinates["id"].map(id_to_group)
-        grouped_coordinates = grouped_coordinates[
-            grouped_coordinates[self._group_column].notna()
-        ].reset_index(drop=True)
 
-        foci_by_experiment = {}
         foci_per_voxel = {}
         foci_per_experiment = {}
-        for group, group_ids in ids_by_group.items():
-            group_coordinates = grouped_coordinates.loc[
-                grouped_coordinates[self._group_column] == group
-            ]
-            if group_coordinates.empty:
-                group_foci_by_experiment = scipy.sparse.csr_matrix(
-                    (len(group_ids), n_mask_voxels), dtype=np.int32
-                )
-            else:
-                id_to_row = pd.Series(
-                    np.arange(len(group_ids), dtype=np.int32),
-                    index=group_ids,
-                )
-                row_indices = (
-                    group_coordinates["id"].map(id_to_row).to_numpy(dtype=np.int32, copy=False)
-                )
-                column_indices = group_coordinates["_cbmr_mask_index"].to_numpy(
-                    dtype=np.int32, copy=False
-                )
-                data = np.ones(group_coordinates.shape[0], dtype=np.int32)
-                group_foci_by_experiment = scipy.sparse.csr_matrix(
-                    (data, (row_indices, column_indices)),
-                    shape=(len(group_ids), n_mask_voxels),
-                    dtype=np.int32,
-                )
-
+        for group, group_foci_by_experiment in foci_by_experiment.items():
             group_foci_per_voxel = np.asarray(
                 group_foci_by_experiment.sum(axis=0), dtype=np.int32
             ).reshape((-1, 1))
@@ -847,7 +981,6 @@ class CBMREstimator(Estimator):
                 group_foci_by_experiment.sum(axis=1), dtype=np.int32
             ).reshape((-1, 1))
 
-            foci_by_experiment[group] = group_foci_by_experiment
             foci_per_voxel[group] = group_foci_per_voxel
             foci_per_experiment[group] = group_foci_per_experiment
 
@@ -892,17 +1025,36 @@ class CBMREstimator(Estimator):
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
             in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
-        masker, mask_img = get_masker_mask_image(
-            self.masker,
-            dataset=dataset,
-            message=(
-                "A masker is required for coordinate-based meta-analysis. "
-                "Provide a `mask` to the Estimator or initialize the Dataset with a `target` "
-                "and/or `mask` so `dataset.masker` is defined."
-            ),
-        )
         validate_coordinate_spaces(self.inputs_["coordinates"])
-        mask_data, mask_lookup, n_mask_voxels = self._initialize_spatial_inputs(masker, mask_img)
+
+        roi_masker = self._resolve_roi_masker(dataset)
+        _, roi_mask_img = get_masker_mask_image(roi_masker)
+        roi_mask_data = np.asanyarray(roi_mask_img.dataobj).astype(bool, copy=False)
+        roi_mask_lookup, n_roi_voxels = self._build_mask_lookup(roi_mask_data)
+        roi_filtered_coordinates = self._filter_coordinates_to_mask(
+            self.inputs_["coordinates"],
+            roi_mask_img,
+            roi_mask_data,
+            roi_mask_lookup,
+        )
+
+        experiment_annotations = self._collect_experiment_annotations(dataset)
+        experiment_annotations = self._assign_group_labels(experiment_annotations)
+        ids_by_group = self._index_experiments_by_group(experiment_annotations)
+
+        analysis_mask_img = self._threshold_mask_by_incidence(
+            roi_mask_img,
+            roi_mask_data,
+            roi_filtered_coordinates,
+            ids_by_group,
+            n_roi_voxels,
+        )
+        self.masker = get_masker(analysis_mask_img)
+        _, mask_img = get_masker_mask_image(self.masker)
+        mask_data, mask_lookup, n_mask_voxels = self._initialize_spatial_inputs(
+            self.masker,
+            mask_img,
+        )
         filtered_coordinates = self._filter_coordinates_to_mask(
             self.inputs_["coordinates"],
             mask_img,
@@ -1178,6 +1330,13 @@ class CBMRInference(object):
         assumptions common in coordinate-based meta-analysis. ``"FI"`` uses inverse Fisher
         information and can be more efficient when the likelihood, mean-variance relationship, and
         independence assumptions are correctly specified, but may be too optimistic otherwise.
+    mask : :obj:`str`, :class:`~nibabel.nifti1.Nifti1Image`, or Nilearn masker, optional
+        Optional ROI mask used to restrict voxelwise inference outputs from a fitted result.
+        If None, the fitted result's analysis mask is used.
+    incidence_threshold : :obj:`float` or None, optional
+        Drop voxels with empirical focus incidence less than or equal to this threshold when
+        incidence information is available on the fitted result. Use None to keep all fitted
+        voxels. Default is 0.001.
     """
 
     _valid_methods = ("sandwich", "FI")
@@ -1193,9 +1352,14 @@ class CBMRInference(object):
         sandwich_meat="cluster",
         sandwich_correction="hc3",
         ridge=1e-6,
+        mask=None,
+        incidence_threshold=DEFAULT_INCIDENCE_THRESHOLD,
     ):
         self.moderator_effect = self._normalize_moderator_effect(moderator_effect)
         self.device = device
+        self.mask = mask
+        self.masker = get_masker(mask) if mask is not None else None
+        self.incidence_threshold = _validate_incidence_threshold(incidence_threshold)
         # device check
         if _uses_cuda(self.device) and not torch.cuda.is_available():
             LGR.debug("cuda not found, use device 'cpu'")
@@ -1229,33 +1393,43 @@ class CBMRInference(object):
         """Normalize the shared public moderator-effect selector."""
         return CBMREstimator._validate_moderator_effect(moderator_effect)
 
+    @staticmethod
+    def _validate_choice(value, choices, error_message, case_map=None):
+        """Validate a string-like option against allowed choices."""
+        if isinstance(value, str):
+            normalized = value.lower()
+            value = case_map.get(normalized, normalized) if case_map else normalized
+        if value not in choices:
+            raise ValueError(error_message)
+        return value
+
     @classmethod
     def _validate_method(cls, method):
         """Validate and normalize an inference standard-error method."""
-        if isinstance(method, str):
-            if method.lower() == "fi":
-                return "FI"
-            if method.lower() == "sandwich":
-                return "sandwich"
-        raise ValueError("method must be one of {'sandwich', 'FI'}.")
+        return cls._validate_choice(
+            method,
+            cls._valid_methods,
+            "method must be one of {'sandwich', 'FI'}.",
+            case_map={"fi": "FI", "sandwich": "sandwich"},
+        )
 
     @classmethod
     def _validate_sandwich_meat(cls, sandwich_meat):
         """Validate and normalize the sandwich meat estimator."""
-        if isinstance(sandwich_meat, str):
-            sandwich_meat = sandwich_meat.lower()
-        if sandwich_meat not in cls._valid_sandwich_meats:
-            raise ValueError("sandwich_meat must be either 'cluster' or 'iid'.")
-        return sandwich_meat
+        return cls._validate_choice(
+            sandwich_meat,
+            cls._valid_sandwich_meats,
+            "sandwich_meat must be either 'cluster' or 'iid'.",
+        )
 
     @classmethod
     def _validate_sandwich_correction(cls, sandwich_correction):
         """Validate and normalize the sandwich leverage correction."""
-        if isinstance(sandwich_correction, str):
-            sandwich_correction = sandwich_correction.lower()
-        if sandwich_correction not in cls._valid_sandwich_corrections:
-            raise ValueError("sandwich_correction must be None, 'hc0', 'hc1', or 'hc3'.")
-        return sandwich_correction
+        return cls._validate_choice(
+            sandwich_correction,
+            cls._valid_sandwich_corrections,
+            "sandwich_correction must be None, 'hc0', 'hc1', or 'hc3'.",
+        )
 
     @staticmethod
     def _validate_global_pipeline_options(method, sandwich_meat, sandwich_correction, ridge):
@@ -1377,6 +1551,105 @@ class CBMRInference(object):
             self._moderator_variance = np.diag(self._moderator_covariance)
         return self._moderator_covariance, self._moderator_variance
 
+    @staticmethod
+    def _resample_mask_to_reference(mask_img, reference_img):
+        """Return mask data resampled into the reference mask grid."""
+        same_grid = mask_img.shape == reference_img.shape and np.allclose(
+            mask_img.affine, reference_img.affine
+        )
+        if not same_grid:
+            mask_img = resample_to_img(mask_img, reference_img, interpolation="nearest")
+        return np.asanyarray(mask_img.dataobj).astype(bool)
+
+    def _voxel_selection_for_result(self, result):
+        """Return a boolean voxel selector for optional inference masking."""
+        reference_img = result.masker.mask_img
+        reference_data = np.asanyarray(reference_img.dataobj).astype(bool)
+        n_voxels = int(reference_data.sum())
+        keep_voxels = np.ones(n_voxels, dtype=bool)
+
+        if self.masker is not None:
+            mask_img = self.masker.mask_img
+            requested_data = self._resample_mask_to_reference(mask_img, reference_img)
+            keep_voxels &= requested_data.ravel()[np.flatnonzero(reference_data.ravel())]
+
+        incidence_rate = result.estimator.inputs_.get("empirical_incidence_rate")
+        if self.incidence_threshold is not None and incidence_rate is not None:
+            incidence_rate = np.asarray(incidence_rate)
+            if incidence_rate.shape[0] != n_voxels:
+                raise ValueError("Stored empirical incidence rates do not match the result mask.")
+            keep_voxels &= incidence_rate > self.incidence_threshold
+
+        if not np.any(keep_voxels):
+            raise ValueError(
+                "No voxels survived CBMR inference masking. Lower incidence_threshold or "
+                "provide a less restrictive mask."
+            )
+        return keep_voxels
+
+    @staticmethod
+    def _subset_sparse_columns(matrix, keep_voxels):
+        """Subset sparse or dense experiment-by-voxel matrices by voxel columns."""
+        if scipy.sparse.issparse(matrix):
+            return _as_csr_matrix(matrix)[:, keep_voxels]
+        return np.asarray(matrix)[:, keep_voxels]
+
+    def _restrict_result_voxels(self, result):
+        """Restrict a fitted result to the requested inference ROI/incidence set."""
+        keep_voxels = self._voxel_selection_for_result(result)
+        if np.all(keep_voxels):
+            return result
+
+        reference_img = result.masker.mask_img
+        reference_data = np.asanyarray(reference_img.dataobj).astype(bool)
+        kept_flat_indices = np.flatnonzero(reference_data.ravel())[keep_voxels]
+        restricted_mask_data = np.zeros(reference_data.size, dtype=bool)
+        restricted_mask_data[kept_flat_indices] = True
+        restricted_mask_data = restricted_mask_data.reshape(reference_data.shape)
+        restricted_mask_img = CBMREstimator._mask_image_from_data(
+            restricted_mask_data, reference_img
+        )
+        restricted_masker = get_masker(restricted_mask_img)
+
+        n_voxels = int(reference_data.sum())
+        result.maps = {
+            map_name: map_[keep_voxels] if map_.shape[0] == n_voxels else map_
+            for map_name, map_ in result.maps.items()
+        }
+        result.masker = restricted_masker
+        result.estimator.masker = restricted_masker
+        result.estimator.inputs_["mask_img"] = restricted_mask_img
+        result.estimator.inputs_["coef_spline_bases"] = result.estimator.inputs_[
+            "coef_spline_bases"
+        ][keep_voxels]
+
+        incidence_rate = result.estimator.inputs_.get("empirical_incidence_rate")
+        if incidence_rate is not None:
+            result.estimator.inputs_["empirical_incidence_rate"] = np.asarray(incidence_rate)[
+                keep_voxels
+            ]
+
+        for key in ("foci_by_experiment", "foci_by_experiment_voxel"):
+            if key not in result.estimator.inputs_:
+                continue
+            for group, matrix in list(result.estimator.inputs_[key].items()):
+                result.estimator.inputs_[key][group] = self._subset_sparse_columns(
+                    matrix,
+                    keep_voxels,
+                )
+
+        if "foci_by_experiment" in result.estimator.inputs_:
+            for group, matrix in result.estimator.inputs_["foci_by_experiment"].items():
+                result.estimator.inputs_["foci_per_voxel"][group] = np.asarray(
+                    matrix.sum(axis=0),
+                    dtype=np.int32,
+                ).reshape((-1, 1))
+                result.estimator.inputs_["foci_per_experiment"][group] = np.asarray(
+                    matrix.sum(axis=1),
+                    dtype=np.int32,
+                ).reshape((-1, 1))
+        return result
+
     def fit(self, result):
         """Fit CBMRInference instance.
 
@@ -1400,6 +1673,7 @@ class CBMRInference(object):
                 )
 
         self.result = self._copy_result_for_inference(result)
+        self.result = self._restrict_result_voxels(self.result)
         self._reset_inference_caches()
         self.estimator = self.result.estimator
         self.groups = list(self.result.groups)
@@ -1464,6 +1738,36 @@ class CBMRInference(object):
 
             setattr(self, "{}_regular_expression".format(attr), reg_expr)
 
+    def _contrast_source_context(self, source):
+        """Return the fitted names, parser, and index lookup for one contrast source."""
+        if source == "groups":
+            return self.groups, self.groups_regular_expression, self.group_reference_dict
+        if source == "moderators":
+            return (
+                self.moderators,
+                self.moderators_regular_expression,
+                self.moderator_reference_dict,
+            )
+        return None, None, None
+
+    def _create_named_contrast_vector(self, contrast, source):
+        """Create one named contrast vector for groups or moderators."""
+        regressors, regular_expression, reference_dict = self._contrast_source_context(source)
+        contrast_vector = np.zeros(len(regressors))
+        contrast_match = regular_expression.match(contrast)
+        if contrast_match is None:
+            raise ValueError(f"{contrast} is not a valid contrast.")
+
+        contrast_parts = contrast_match.groupdict()
+        if all(contrast_parts.values()):
+            contrast_vector[reference_dict[contrast_parts["first"]]] = 1
+            contrast_vector[reference_dict[contrast_parts["second"]]] = int(
+                contrast_parts["operator"] + "1"
+            )
+        else:
+            contrast_vector[reference_dict[contrast]] = 1
+        return contrast_vector
+
     @_check_fit
     def create_contrast(self, contrast_name, source="groups"):
         """Create contrast matrix for generalized hypothesis testing (GLH).
@@ -1480,41 +1784,9 @@ class CBMRInference(object):
         """
         contrast_name = _normalize_named_pairwise_contrasts(contrast_name)
         contrast_matrix = {}
-        if source == "groups":  # contrast matrix for spatial intensity
+        if source in ("groups", "moderators"):
             for contrast in contrast_name:
-                contrast_vector = np.zeros(len(self.groups))
-                contrast_match = self.groups_regular_expression.match(contrast)
-                # check validity of contrast name
-                if contrast_match is None:
-                    raise ValueError(f"{contrast} is not a valid contrast.")
-                groups_contrast = contrast_match.groupdict()
-                # create contrast matrix
-                if all(groups_contrast.values()):  # group comparison
-                    contrast_vector[self.group_reference_dict[groups_contrast["first"]]] = 1
-                    contrast_vector[self.group_reference_dict[groups_contrast["second"]]] = int(
-                        contrast_match["operator"] + "1"
-                    )
-                else:  # homogeneity test
-                    contrast_vector[self.group_reference_dict[contrast]] = 1
-                contrast_matrix[contrast] = contrast_vector
-
-        elif source == "moderators":  # contrast matrix for moderator effect
-            for contrast in contrast_name:
-                contrast_vector = np.zeros(len(self.moderators))
-                contrast_match = self.moderators_regular_expression.match(contrast)
-                if contrast_match is None:
-                    raise ValueError(f"{contrast} is not a valid contrast.")
-                moderators_contrast = contrast_match.groupdict()
-                if all(moderators_contrast.values()):  # moderator comparison
-                    contrast_vector[
-                        self.moderator_reference_dict[moderators_contrast["first"]]
-                    ] = 1
-                    contrast_vector[
-                        self.moderator_reference_dict[moderators_contrast["second"]]
-                    ] = int(moderators_contrast["operator"] + "1")
-                else:  # moderator effect
-                    contrast_vector[self.moderator_reference_dict[contrast]] = 1
-                contrast_matrix[contrast] = contrast_vector
+                contrast_matrix[contrast] = self._create_named_contrast_vector(contrast, source)
 
         return contrast_matrix
 
@@ -1842,14 +2114,13 @@ class CBMRInference(object):
             np.inf,
         )
         if n_con_group_involved == 1:
-            p_vals_spatial = scipy.stats.norm.sf(z_stats_spatial)
+            p_vals_spatial = _normal_p_values(
+                z_stats_spatial,
+                two_sided=False,
+                dtype=DEFAULT_FLOAT_DTYPE,
+            )
         else:
-            p_vals_spatial = scipy.stats.norm.sf(abs(z_stats_spatial)) * 2
-        p_vals_spatial = _clip_p_values(
-            p_vals_spatial,
-            dtype=DEFAULT_FLOAT_DTYPE,
-            copy=False,
-        )
+            p_vals_spatial = _normal_p_values(z_stats_spatial, dtype=DEFAULT_FLOAT_DTYPE)
         return z_stats_spatial, p_vals_spatial
 
     def _compute_group_glh_statistics(
@@ -1891,21 +2162,12 @@ class CBMRInference(object):
             cov_log_intensity,
             contrast_log_intensity,
         )
-        p_vals_spatial = scipy.stats.chi2.sf(chi_sq_spatial, df=m)
-        p_vals_spatial = _clip_p_values(
-            p_vals_spatial,
-            dtype=DEFAULT_FLOAT_DTYPE,
-            copy=False,
-        )
+        p_vals_spatial = _chi_square_p_values(chi_sq_spatial, df=m, dtype=DEFAULT_FLOAT_DTYPE)
         if is_homogeneity_test:
             z_stats_spatial = scipy.stats.norm.isf(p_vals_spatial)
             z_stats_spatial[z_stats_spatial < 0] = 0
         else:
-            z_p_values = np.maximum(
-                p_vals_spatial,
-                2 * _minimum_positive_float(p_vals_spatial.dtype),
-            )
-            z_stats_spatial = scipy.stats.norm.isf(z_p_values / 2)
+            z_stats_spatial = _two_sided_z_from_p_values(p_vals_spatial)
             if simp_con_group.shape[0] == 1:
                 z_stats_spatial *= np.sign(contrast_log_intensity.flatten())
         z_stats_spatial = np.clip(z_stats_spatial, a_min=-10, a_max=10)
@@ -1915,17 +2177,34 @@ class CBMRInference(object):
         """Write one computed group-inference result into result maps."""
         contrast_name = self.t_con_groups_name[con_group_count] if self.t_con_groups_name else None
         if contrast_name:
-            if group_stats["contrast_count"] > 1:
-                self.result.maps[f"chiSquare_group-{contrast_name}"] = group_stats["chi_square"]
-            self.result.maps[f"p_group-{contrast_name}"] = group_stats["p"]
-            self.result.maps[f"z_group-{contrast_name}"] = group_stats["z"]
+            key_builder = lambda stat_name: f"{stat_name}_group-{contrast_name}"
         else:
-            if group_stats["contrast_count"] > 1:
-                self.result.maps[f"chiSquare_GLH_groups_{con_group_count}"] = group_stats[
-                    "chi_square"
-                ]
-            self.result.maps[f"p_GLH_groups_{con_group_count}"] = group_stats["p"]
-            self.result.maps[f"z_GLH_groups_{con_group_count}"] = group_stats["z"]
+            key_builder = lambda stat_name: f"{stat_name}_GLH_groups_{con_group_count}"
+        self._store_stat_outputs(
+            self.result.maps,
+            group_stats,
+            key_builder,
+            chi_square_key="chiSquare",
+        )
+
+    @staticmethod
+    def _store_stat_outputs(
+        container,
+        stats,
+        key_builder,
+        chi_square_key="chi_square",
+        as_table=False,
+    ):
+        """Store chi-square, p, and z statistic outputs with shared naming logic."""
+        stat_keys = []
+        if stats["contrast_count"] > 1:
+            stat_keys.append(("chi_square", chi_square_key))
+        stat_keys.extend([("p", "p"), ("z", "z")])
+        for stat_name, key_name in stat_keys:
+            values = stats[stat_name]
+            if as_table:
+                values = pd.DataFrame(data=np.array(values), columns=[stat_name])
+            container[key_builder(key_name)] = values
 
     @_check_fit
     def _glh_con_group(self):
@@ -2052,28 +2331,14 @@ class CBMRInference(object):
             involved_var_moderator_coef = con_moderator**2 @ var_moderator_coef
             involved_std_moderator_coef = np.sqrt(involved_var_moderator_coef)
             z_stats_moderator = contrast_moderator_coef / involved_std_moderator_coef
-            p_vals_moderator = scipy.stats.norm.sf(abs(z_stats_moderator)) * 2
-            p_vals_moderator = _clip_p_values(
-                p_vals_moderator,
-                dtype=np.asarray(p_vals_moderator).dtype,
-                copy=False,
-            )
+            p_vals_moderator = _normal_p_values(z_stats_moderator)
             chi_sq_moderator = None
         else:
             contrast_covariance = con_moderator @ cov_moderator_coef @ con_moderator.T
             solved = np.linalg.solve(contrast_covariance, contrast_moderator_coef)
             chi_sq_moderator = contrast_moderator_coef.T @ solved
-            p_vals_moderator = scipy.stats.chi2.sf(chi_sq_moderator, df=m_con_moderator)
-            p_vals_moderator = _clip_p_values(
-                p_vals_moderator,
-                dtype=np.asarray(p_vals_moderator).dtype,
-                copy=False,
-            )
-            z_p_values = np.maximum(
-                p_vals_moderator,
-                2 * _minimum_positive_float(np.asarray(p_vals_moderator).dtype),
-            )
-            z_stats_moderator = scipy.stats.norm.isf(z_p_values / 2)
+            p_vals_moderator = _chi_square_p_values(chi_sq_moderator, df=m_con_moderator)
+            z_stats_moderator = _two_sided_z_from_p_values(p_vals_moderator)
 
         return {
             "contrast_count": m_con_moderator,
@@ -2097,28 +2362,21 @@ class CBMRInference(object):
                 else None
             )
             if contrast_name:
-                if moderator_stats["contrast_count"] > 1:
-                    self.result.maps[
-                        f"chiSquare_voxelwiseModeratorEffect_{contrast_name}_group-{group}"
-                    ] = moderator_stats["chi_square"]
-                self.result.maps[f"p_voxelwiseModeratorEffect_{contrast_name}_group-{group}"] = (
-                    moderator_stats["p"]
-                )
-                self.result.maps[f"z_voxelwiseModeratorEffect_{contrast_name}_group-{group}"] = (
-                    moderator_stats["z"]
+                key_builder = (
+                    lambda stat_name: f"{stat_name}_voxelwiseModeratorEffect_"
+                    f"{contrast_name}_group-{group}"
                 )
             else:
-                if moderator_stats["contrast_count"] > 1:
-                    self.result.maps[
-                        "chiSquare_GLH_voxelwiseModeratorEffects_"
-                        f"{con_moderator_count}_group-{group}"
-                    ] = moderator_stats["chi_square"]
-                self.result.maps[
-                    f"p_GLH_voxelwiseModeratorEffects_{con_moderator_count}_group-{group}"
-                ] = moderator_stats["p"]
-                self.result.maps[
-                    f"z_GLH_voxelwiseModeratorEffects_{con_moderator_count}_group-{group}"
-                ] = moderator_stats["z"]
+                key_builder = (
+                    lambda stat_name: f"{stat_name}_GLH_voxelwiseModeratorEffects_"
+                    f"{con_moderator_count}_group-{group}"
+                )
+            self._store_stat_outputs(
+                self.result.maps,
+                moderator_stats,
+                key_builder,
+                chi_square_key="chiSquare",
+            )
             return
 
         moderator_stats = moderator_stats_or_group
@@ -2126,35 +2384,15 @@ class CBMRInference(object):
             self.t_con_moderators_name[con_moderator_count] if self.t_con_moderators_name else None
         )
         if contrast_name:
-            if moderator_stats["contrast_count"] > 1:
-                self.result.tables[f"chi_square_{contrast_name}"] = pd.DataFrame(
-                    data=np.array(moderator_stats["chi_square"]),
-                    columns=["chi_square"],
-                )
-            self.result.tables[f"p_{contrast_name}"] = pd.DataFrame(
-                data=np.array(moderator_stats["p"]),
-                columns=["p"],
-            )
-            self.result.tables[f"z_{contrast_name}"] = pd.DataFrame(
-                data=np.array(moderator_stats["z"]),
-                columns=["z"],
-            )
+            key_builder = lambda stat_name: f"{stat_name}_{contrast_name}"
         else:
-            if moderator_stats["contrast_count"] > 1:
-                self.result.tables[f"chi_square_GLH_moderators_{con_moderator_count}"] = (
-                    pd.DataFrame(
-                        data=np.array(moderator_stats["chi_square"]),
-                        columns=["chi_square"],
-                    )
-                )
-            self.result.tables[f"p_GLH_moderators_{con_moderator_count}"] = pd.DataFrame(
-                data=np.array(moderator_stats["p"]),
-                columns=["p"],
-            )
-            self.result.tables[f"z_GLH_moderators_{con_moderator_count}"] = pd.DataFrame(
-                data=np.array(moderator_stats["z"]),
-                columns=["z"],
-            )
+            key_builder = lambda stat_name: f"{stat_name}_GLH_moderators_{con_moderator_count}"
+        self._store_stat_outputs(
+            self.result.tables,
+            moderator_stats,
+            key_builder,
+            as_table=True,
+        )
 
     @_check_fit
     def _glh_con_moderator(self):
@@ -2546,27 +2784,13 @@ class CBMRInference(object):
             contrast_var = contrast_cov[:, 0, 0]
             contrast_std = np.sqrt(np.maximum(contrast_var, 0.0))
             z_stats = contrast_eta[0] / np.where(contrast_std > 0, contrast_std, np.inf)
-            p_vals = scipy.stats.norm.sf(np.abs(z_stats)) * 2
-            p_vals = _clip_p_values(
-                p_vals,
-                dtype=np.asarray(p_vals).dtype,
-                copy=False,
-            )
+            p_vals = _normal_p_values(z_stats)
             chi_square = None
         else:
             solved = np.linalg.solve(contrast_cov, contrast_eta.T[..., np.newaxis])
             chi_square = np.einsum("ns,ns->n", contrast_eta.T, solved[..., 0], optimize=True)
-            p_vals = scipy.stats.chi2.sf(chi_square, df=contrast.shape[0])
-            p_vals = _clip_p_values(
-                p_vals,
-                dtype=np.asarray(p_vals).dtype,
-                copy=False,
-            )
-            z_p_values = np.maximum(
-                p_vals,
-                2 * _minimum_positive_float(np.asarray(p_vals).dtype),
-            )
-            z_stats = scipy.stats.norm.isf(z_p_values / 2)
+            p_vals = _chi_square_p_values(chi_square, df=contrast.shape[0])
+            z_stats = _two_sided_z_from_p_values(p_vals)
 
         return {
             "contrast_count": contrast.shape[0],
