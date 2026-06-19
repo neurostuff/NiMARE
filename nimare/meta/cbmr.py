@@ -1324,12 +1324,22 @@ class CBMRInference(object):
         inference backend with sandwich or inverse-Fisher covariance estimates. ``"global"`` uses
         the standard CBMR inference backend. Default is ``"voxelwise"``.
     method : {"sandwich", "FI"}, optional
-        Covariance estimator for voxelwise CBMR inference. The default is ``"sandwich"`` because
+        Covariance estimator for CBMR inference. The voxelwise default is ``"sandwich"`` because
         it uses empirical residual variation to provide standard errors that are more robust to
         model misspecification, study-level clustering, and departures from idealized Poisson
-        assumptions common in coordinate-based meta-analysis. ``"FI"`` uses inverse Fisher
-        information and can be more efficient when the likelihood, mean-variance relationship, and
-        independence assumptions are correctly specified, but may be too optimistic otherwise.
+        assumptions common in coordinate-based meta-analysis. The global default is ``"FI"`` to
+        preserve the historical inverse-Fisher behavior. ``"FI"`` can be more efficient when the
+        likelihood, mean-variance relationship, and independence assumptions are correctly
+        specified, but may be too optimistic otherwise.
+    sandwich_meat : {"cluster", "iid"}, optional
+        Meat estimator for voxelwise sandwich covariance. ``"cluster"`` aggregates scores by
+        experiment, while ``"iid"`` treats experiment-voxel observations independently. For global
+        CBMR the marginal spatial and moderator score rows are already aggregated, so both options
+        use the same row-wise meat.
+    sandwich_correction : {None, "hc0", "hc1", "hc3"}, optional
+        Optional HC-style finite-sample/leverage correction for sandwich covariance.
+    ridge : :obj:`float`, optional
+        Nonnegative ridge added before inverting the Fisher information matrix.
     mask : :obj:`str`, :class:`~nibabel.nifti1.Nifti1Image`, or Nilearn masker, optional
         Optional ROI mask used to restrict voxelwise inference outputs from a fitted result.
         If None, the fitted result's analysis mask is used.
@@ -1343,6 +1353,7 @@ class CBMRInference(object):
     _valid_sandwich_meats = ("cluster", "iid")
     _valid_sandwich_corrections = (None, "hc0", "hc1", "hc3")
     _voxelwise_default_method = "sandwich"
+    _global_default_method = "FI"
 
     def __init__(
         self,
@@ -1369,22 +1380,17 @@ class CBMRInference(object):
         self.groups = None
         self.moderators = None
 
-        if self.moderator_effect == "global":
-            self._validate_global_pipeline_options(
-                method,
-                sandwich_meat,
-                sandwich_correction,
-                ridge,
-            )
-        else:  # voxelwise
-            if method is None:
-                method = "sandwich"
-            self.method = self._validate_method(method)
-            self.sandwich_meat = self._validate_sandwich_meat(sandwich_meat)
-            self.sandwich_correction = self._validate_sandwich_correction(sandwich_correction)
-            if ridge < 0:
-                raise ValueError("ridge must be nonnegative.")
-            self.ridge = ridge
+        if self.moderator_effect == "global" and method is None:
+            method = self._global_default_method
+        elif method is None:
+            method = self._voxelwise_default_method
+
+        self.method = self._validate_method(method)
+        self.sandwich_meat = self._validate_sandwich_meat(sandwich_meat)
+        self.sandwich_correction = self._validate_sandwich_correction(sandwich_correction)
+        if ridge < 0:
+            raise ValueError("ridge must be nonnegative.")
+        self.ridge = ridge
 
         self._reset_inference_caches()
 
@@ -1431,15 +1437,14 @@ class CBMRInference(object):
             "sandwich_correction must be None, 'hc0', 'hc1', or 'hc3'.",
         )
 
-    @staticmethod
-    def _validate_global_pipeline_options(method, sandwich_meat, sandwich_correction, ridge):
-        """Reject voxelwise-only options when the global pipeline is selected."""
-        if method is not None:
-            raise ValueError("method is only supported for voxelwise moderator effects.")
-        if sandwich_meat != "cluster" or sandwich_correction != "hc3" or ridge != 1e-6:
+    def _validate_global_sandwich_model(self):
+        """Validate model support for global robust covariance."""
+        model = getattr(self, "estimator", None)
+        model = getattr(model, "model", None)
+        if model is not None and not isinstance(model, models.PoissonEstimator):
             raise ValueError(
-                "sandwich_meat, sandwich_correction, and ridge are only supported for "
-                "voxelwise moderator effects."
+                "Global sandwich inference is currently supported only for "
+                "model=models.PoissonEstimator."
             )
 
     def _check_fit(fn):
@@ -1518,36 +1523,44 @@ class CBMRInference(object):
 
     def _get_group_spatial_covariance(self, involved_groups):
         """Return cached spatial covariance for the involved groups."""
-        group_key = tuple(involved_groups)
+        group_key = (tuple(involved_groups), self.method, self.sandwich_correction, self.ridge)
         cov_spatial_coef = self._group_spatial_covariance_cache.get(group_key)
         if cov_spatial_coef is None:
-            moderators_by_group = (
-                self.estimator.inputs_["moderators_by_group"] if self.moderators else None
-            )
-            f_spatial_coef = self.estimator.model.fisher_info_multiple_group_spatial(
-                involved_groups,
-                self.estimator.inputs_["coef_spline_bases"],
-                moderators_by_group,
-                self.estimator.inputs_["foci_per_voxel"],
-                self.estimator.inputs_["foci_per_experiment"],
-            )
-            cov_spatial_coef = np.linalg.inv(f_spatial_coef)
+            if self.method == "FI":
+                moderators_by_group = (
+                    self.estimator.inputs_["moderators_by_group"] if self.moderators else None
+                )
+                f_spatial_coef = self.estimator.model.fisher_info_multiple_group_spatial(
+                    involved_groups,
+                    self.estimator.inputs_["coef_spline_bases"],
+                    moderators_by_group,
+                    self.estimator.inputs_["foci_per_voxel"],
+                    self.estimator.inputs_["foci_per_experiment"],
+                )
+                cov_spatial_coef = np.linalg.inv(f_spatial_coef)
+            else:
+                cov_spatial_coef = self._compute_global_spatial_sandwich_covariance(
+                    involved_groups
+                )
             self._group_spatial_covariance_cache[group_key] = cov_spatial_coef
         return cov_spatial_coef
 
     def _get_moderator_covariance(self):
         """Return cached moderator covariance and marginal variances."""
         if self._moderator_covariance is None:
-            moderators_by_group = (
-                self.estimator.inputs_["moderators_by_group"] if self.moderators else None
-            )
-            f_moderator_coef = self.estimator.model.fisher_info_multiple_group_moderator(
-                self.estimator.inputs_["coef_spline_bases"],
-                moderators_by_group,
-                self.estimator.inputs_["foci_per_voxel"],
-                self.estimator.inputs_["foci_per_experiment"],
-            )
-            self._moderator_covariance = np.linalg.inv(f_moderator_coef)
+            if self.method == "FI":
+                moderators_by_group = (
+                    self.estimator.inputs_["moderators_by_group"] if self.moderators else None
+                )
+                f_moderator_coef = self.estimator.model.fisher_info_multiple_group_moderator(
+                    self.estimator.inputs_["coef_spline_bases"],
+                    moderators_by_group,
+                    self.estimator.inputs_["foci_per_voxel"],
+                    self.estimator.inputs_["foci_per_experiment"],
+                )
+                self._moderator_covariance = np.linalg.inv(f_moderator_coef)
+            else:
+                self._moderator_covariance = self._compute_global_moderator_sandwich_covariance()
             self._moderator_variance = np.diag(self._moderator_covariance)
         return self._moderator_covariance, self._moderator_variance
 
@@ -1684,6 +1697,8 @@ class CBMRInference(object):
             self.estimator.model.device = self.device
             self.estimator.model.to(self.device)
             self.estimator.model._invalidate_tensor_inputs_cache()
+            if self.method == "sandwich":
+                self._validate_global_sandwich_model()
             if self.moderators:
                 self._moderator_coef_table = (
                     self.result.tables["moderators_regression_coef"].to_numpy().T
@@ -1802,14 +1817,17 @@ class CBMRInference(object):
             Moderator effect or comparison specification. Use ``False`` to skip moderator
             inference.
         method : {"sandwich", "FI"}, optional
-            Covariance estimator for voxelwise CBMR inference.
+            Covariance estimator for CBMR inference.
         """
+        if method is not None:
+            validated_method = self._validate_method(method)
+            if self.moderator_effect == "global" and validated_method == "sandwich":
+                self._validate_global_sandwich_model()
+            if validated_method != self.method:
+                self.method = validated_method
+                self._reset_inference_caches()
+
         if self.moderator_effect == "voxelwise":
-            if method is not None:
-                validated_method = self._validate_method(method)
-                if validated_method != self.method:
-                    self.method = validated_method
-                    self._reset_inference_caches()
             self.result.metadata["voxelwise_cbmr_inference_method"] = self.method
             if self.method == "sandwich":
                 self.result.metadata["voxelwise_cbmr_sandwich_meat"] = self.sandwich_meat
@@ -1820,8 +1838,13 @@ class CBMRInference(object):
                 self.result.metadata.pop("voxelwise_cbmr_sandwich_meat", None)
                 self.result.metadata.pop("voxelwise_cbmr_sandwich_correction", None)
         else:
-            if method is not None:
-                raise ValueError("method is only supported for voxelwise moderator effects.")
+            self.result.metadata["global_cbmr_inference_method"] = self.method
+            if self.method == "sandwich":
+                self.result.metadata["global_cbmr_sandwich_meat"] = self.sandwich_meat
+                self.result.metadata["global_cbmr_sandwich_correction"] = self.sandwich_correction
+            else:
+                self.result.metadata.pop("global_cbmr_sandwich_meat", None)
+                self.result.metadata.pop("global_cbmr_sandwich_correction", None)
 
         self.t_con_groups = t_con_groups
         self.t_con_moderators = t_con_moderators
@@ -2454,6 +2477,119 @@ class CBMRInference(object):
         self._group_coefficient_cache[group] = coefficient
         return coefficient
 
+    @staticmethod
+    def _compute_glm_sandwich_covariance(
+        design,
+        foci,
+        mean,
+        ridge=1e-6,
+        correction="hc3",
+    ):
+        """Compute robust covariance for one log-link marginal Poisson GLM."""
+        design = np.asarray(design, dtype=float)
+        foci = np.asarray(foci, dtype=float).reshape(-1)
+        mean = np.asarray(mean, dtype=float).reshape(-1)
+        mean = np.nan_to_num(mean, nan=0.0, posinf=1e12, neginf=0.0)
+        mean = np.clip(mean, 1e-12, 1e12)
+
+        if design.ndim != 2:
+            raise ValueError("design must be a two-dimensional array.")
+        if design.shape[0] != foci.shape[0] or foci.shape != mean.shape:
+            raise ValueError("design, foci, and mean must have matching rows.")
+
+        fisher_info = design.T @ (design * mean[:, None])
+        bread_inverse = CBMRInference._sandwich_bread_inverse(fisher_info, ridge)
+        residuals = np.nan_to_num(foci - mean, nan=0.0, posinf=0.0, neginf=0.0)
+        correction_factor = 1.0
+
+        if correction == "hc1":
+            n_observations, n_parameters = design.shape
+            if n_observations <= n_parameters:
+                raise ValueError(
+                    "HC1 sandwich correction requires more observations than model columns. "
+                    "Use sandwich_correction='hc0' or 'hc3' for this setting."
+                )
+            correction_factor = n_observations / float(n_observations - n_parameters)
+        elif correction == "hc3":
+            leverage = mean * np.einsum(
+                "ij,jk,ik->i",
+                design,
+                bread_inverse,
+                design,
+                optimize=True,
+            )
+            leverage = np.nan_to_num(leverage, nan=0.0, posinf=1.0, neginf=0.0)
+            leverage = np.clip(leverage, 0.0, 0.999)
+            residuals = residuals / np.maximum(1.0 - leverage, 1e-6)
+
+        meat_matrix = design.T @ (design * residuals[:, None] ** 2)
+        covariance = correction_factor * bread_inverse @ meat_matrix @ bread_inverse
+        return 0.5 * (covariance + covariance.T)
+
+    def _global_group_moderator_sum(self, group):
+        """Return the summed experiment-level moderator effect for one global-CBMR group."""
+        if not self.moderators:
+            return float(np.asarray(self.estimator.inputs_["foci_per_experiment"][group]).size)
+
+        moderators = np.asarray(self.estimator.inputs_["moderators_by_group"][group], dtype=float)
+        moderator_coef = np.asarray(self._moderator_coef_table, dtype=float)
+        return float(np.exp(np.clip(moderators @ moderator_coef, -100, 100)).sum())
+
+    def _compute_global_spatial_sandwich_covariance(self, involved_groups):
+        """Compute block-diagonal robust covariance for global spatial coefficients."""
+        bases = np.asarray(self.estimator.inputs_["coef_spline_bases"], dtype=float)
+        n_bases = bases.shape[1]
+        covariance = np.zeros((len(involved_groups) * n_bases, len(involved_groups) * n_bases))
+        for group_index, group in enumerate(involved_groups):
+            spatial_intensity = np.asarray(
+                self.result.maps[f"spatialIntensity_group-{group}"],
+                dtype=float,
+            ).reshape(-1)
+            mean = self._global_group_moderator_sum(group) * spatial_intensity
+            group_covariance = self._compute_glm_sandwich_covariance(
+                bases,
+                self.estimator.inputs_["foci_per_voxel"][group],
+                mean,
+                ridge=self.ridge,
+                correction=self.sandwich_correction,
+            )
+            group_slice = slice(group_index * n_bases, (group_index + 1) * n_bases)
+            covariance[group_slice, group_slice] = group_covariance
+        return covariance
+
+    def _compute_global_moderator_sandwich_covariance(self):
+        """Compute robust covariance for global experiment-level moderator coefficients."""
+        if not self.moderators:
+            return np.zeros((0, 0), dtype=np.float64)
+
+        designs = []
+        foci = []
+        mean = []
+        moderator_coef = np.asarray(self._moderator_coef_table, dtype=float)
+        for group in self.groups:
+            group_moderators = np.asarray(
+                self.estimator.inputs_["moderators_by_group"][group],
+                dtype=float,
+            )
+            spatial_sum = float(
+                np.asarray(self.result.maps[f"spatialIntensity_group-{group}"], dtype=float).sum()
+            )
+            designs.append(group_moderators)
+            foci.append(
+                np.asarray(self.estimator.inputs_["foci_per_experiment"][group], dtype=float)
+            )
+            mean.append(
+                spatial_sum * np.exp(np.clip(group_moderators @ moderator_coef, -100, 100))
+            )
+
+        return self._compute_glm_sandwich_covariance(
+            np.vstack(designs),
+            np.concatenate([group_foci.reshape(-1) for group_foci in foci]),
+            np.concatenate([group_mean.reshape(-1) for group_mean in mean]),
+            ridge=self.ridge,
+            correction=self.sandwich_correction,
+        )
+
     def _get_group_mean(self, group):
         """Return fitted Poisson mean for one group as experiments by voxels."""
         bases = self.estimator.inputs_["coef_spline_bases"]
@@ -2666,7 +2802,12 @@ class CBMRInference(object):
         meat="cluster",
         correction="hc3",
     ):
-        """Compute robust Poisson sandwich covariance for one voxelwise CBMR group."""
+        """Compute robust Poisson sandwich covariance for one voxelwise CBMR group.
+
+        The voxelwise model has Kronecker rows ``moderator_experiment x basis_voxel``; this is
+        distinct from the global-moderator covariance, where moderator effects are not spatially
+        expanded over spline bases.
+        """
         moderators = np.asarray(moderators, dtype=float)
         bases = np.asarray(bases, dtype=float)
         mean = np.asarray(mean, dtype=float)

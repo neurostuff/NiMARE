@@ -922,6 +922,34 @@ def _spatial_result_for_inference():
     )
 
 
+def _global_result_for_sandwich_inference():
+    """Return a small fitted global Poisson CBMR result suitable for sandwich tests."""
+    estimator = CBMREstimator(
+        moderator_effect="global",
+        moderators=["age"],
+        model=models.PoissonEstimator,
+    )
+    estimator.groups = ["Default"]
+    estimator.inputs_ = {
+        "coef_spline_bases": np.array([[1.0, 0.0], [0.0, 1.0]]),
+        "moderators_by_group": {"Default": np.array([[0.0], [1.0], [2.0]])},
+        "foci_per_voxel": {"Default": np.array([3.0, 5.0])},
+        "foci_per_experiment": {"Default": np.array([2.0, 3.0, 3.0])},
+    }
+    maps = {"spatialIntensity_group-Default": np.array([1.0, 1.5])}
+    tables = {
+        "spatial_regression_coef": pd.DataFrame([[0.0, np.log(1.5)]], index=["Default"]),
+        "moderators_regression_coef": pd.DataFrame([[0.1]], columns=["age"]),
+    }
+    return CBMRResult(
+        estimator=estimator,
+        mask=nib.Nifti1Image(np.ones((2, 1, 1), dtype=np.uint8), np.eye(4)),
+        maps=maps,
+        tables=tables,
+        description="global sandwich inference test",
+    )
+
+
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 @pytest.mark.parametrize(
     ("estimator_kwargs", "inference_kwargs", "expected_moderator_effect"),
@@ -1101,16 +1129,21 @@ def test_cbmr_inference_forwards_voxelwise_options_to_voxelwise_pipeline():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_cbmr_inference_rejects_voxelwise_options_for_global_pipeline():
-    """Global inference should reject options that only apply to voxelwise inference."""
-    with pytest.raises(ValueError, match="method is only supported"):
-        CBMRInference(moderator_effect="global", method="FI")
-    with pytest.raises(ValueError, match="only supported for voxelwise"):
-        CBMRInference(moderator_effect="global", sandwich_meat="iid")
-    with pytest.raises(ValueError, match="only supported for voxelwise"):
-        CBMRInference(moderator_effect="global", sandwich_correction="hc0")
-    with pytest.raises(ValueError, match="only supported for voxelwise"):
-        CBMRInference(moderator_effect="global", ridge=1e-3)
+def test_cbmr_inference_accepts_sandwich_options_for_global_pipeline():
+    """Global inference should expose sandwich covariance options."""
+    inference = CBMRInference(
+        moderator_effect="global",
+        method="sandwich",
+        sandwich_meat="iid",
+        sandwich_correction="hc0",
+        ridge=1e-3,
+    )
+
+    assert inference.moderator_effect == "global"
+    assert inference.method == "sandwich"
+    assert inference.sandwich_meat == "iid"
+    assert inference.sandwich_correction == "hc0"
+    assert inference.ridge == pytest.approx(1e-3)
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
@@ -1460,6 +1493,62 @@ def test_spatial_cbmr_result_helpers_allow_fisher_information_method():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_spatial_cbmr_result_helpers_allow_sandwich_method_options():
+    """Result-centered inference should let users request voxelwise sandwich standard errors."""
+    result = _spatial_result_for_inference()
+
+    transformed = result.test_moderators(
+        method="sandwich",
+        sandwich_meat="iid",
+        sandwich_correction="hc0",
+        ridge=1e-4,
+    )
+
+    assert transformed.metadata["voxelwise_cbmr_inference_method"] == "sandwich"
+    assert transformed.metadata["voxelwise_cbmr_sandwich_meat"] == "iid"
+    assert transformed.metadata["voxelwise_cbmr_sandwich_correction"] == "hc0"
+    assert "z_voxelwiseModeratorEffect_age_group-Default" in transformed.maps
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_global_cbmr_result_helpers_allow_sandwich_method_options():
+    """Result-centered inference should let users request global sandwich standard errors."""
+    result = _global_result_for_sandwich_inference()
+
+    group_result = result.test_groups(
+        method="sandwich",
+        sandwich_meat="iid",
+        sandwich_correction="hc0",
+        ridge=1e-4,
+    )
+    moderator_result = result.test_moderators(
+        method="sandwich",
+        sandwich_meat="iid",
+        sandwich_correction="hc0",
+        ridge=1e-4,
+    )
+
+    assert group_result.metadata["global_cbmr_inference_method"] == "sandwich"
+    assert group_result.metadata["global_cbmr_sandwich_meat"] == "iid"
+    assert group_result.metadata["global_cbmr_sandwich_correction"] == "hc0"
+    assert "z_group-Default" in group_result.maps
+    assert "z_age" in moderator_result.tables
+    assert np.all(np.isfinite(group_result.maps["z_group-Default"]))
+    assert np.all(np.isfinite(moderator_result.tables["z_age"].to_numpy()))
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_global_cbmr_sandwich_requires_poisson_model():
+    """Global sandwich should reject models with different score equations."""
+    result = _global_result_for_sandwich_inference()
+    result.estimator.model = models.NegativeBinomialEstimator()
+    inference = CBMRInference(moderator_effect="global", method="sandwich")
+
+    with pytest.raises(ValueError, match="Global sandwich inference"):
+        inference.fit(result)
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 def test_spatial_cbmr_result_helpers_run_inference():
     """The result should support CBMRResult-style inference helpers."""
     result = _spatial_result_for_inference()
@@ -1591,7 +1680,8 @@ def test_spatial_cbmr_inference_fisher_information_matches_explicit_kron():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_inference_sandwich_covariance_matches_explicit_kron():
+@pytest.mark.parametrize("meat", ["iid", "cluster"])
+def test_spatial_cbmr_inference_sandwich_covariance_matches_explicit_kron(meat):
     """Sandwich covariance should match explicit Kronecker-design calculations."""
     moderators = np.array([[1.0, 0.5], [1.0, -0.2], [1.0, 1.2]])
     bases = np.array([[1.0, 0.0], [0.25, 0.75]])
@@ -1614,8 +1704,17 @@ def test_spatial_cbmr_inference_sandwich_covariance_matches_explicit_kron():
     explicit_residuals = np.asarray(explicit_residuals)
     bread = explicit_design.T @ (explicit_design * explicit_weights[:, None])
     bread_inverse = np.linalg.pinv(bread + ridge * np.eye(bread.shape[0]))
-    meat = explicit_design.T @ (explicit_design * explicit_residuals[:, None] ** 2)
-    expected = bread_inverse @ meat @ bread_inverse
+    if meat == "iid":
+        meat_matrix = explicit_design.T @ (explicit_design * explicit_residuals[:, None] ** 2)
+    else:
+        cluster_scores = []
+        for experiment_index in range(moderators.shape[0]):
+            start = experiment_index * bases.shape[0]
+            stop = start + bases.shape[0]
+            cluster_scores.append(explicit_design[start:stop].T @ explicit_residuals[start:stop])
+        cluster_scores = np.column_stack(cluster_scores)
+        meat_matrix = cluster_scores @ cluster_scores.T
+    expected = bread_inverse @ meat_matrix @ bread_inverse
 
     actual = CBMRInference._compute_sandwich_covariance(
         moderators,
@@ -1623,7 +1722,32 @@ def test_spatial_cbmr_inference_sandwich_covariance_matches_explicit_kron():
         scipy.sparse.csr_matrix(foci),
         mean,
         ridge=ridge,
-        meat="iid",
+        meat=meat,
+        correction="hc0",
+    )
+
+    np.testing.assert_allclose(actual, expected)
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_global_cbmr_inference_sandwich_covariance_matches_explicit_glm():
+    """Global sandwich covariance should match explicit marginal GLM calculations."""
+    design = np.array([[1.0, 0.0], [1.0, 0.5], [1.0, 1.0]])
+    mean = np.array([1.0, 1.5, 2.0])
+    foci = np.array([0.0, 2.0, 3.0])
+    ridge = 1e-4
+
+    bread = design.T @ (design * mean[:, None])
+    bread_inverse = np.linalg.pinv(bread + ridge * np.eye(bread.shape[0]))
+    residuals = foci - mean
+    meat_matrix = design.T @ (design * residuals[:, None] ** 2)
+    expected = bread_inverse @ meat_matrix @ bread_inverse
+
+    actual = CBMRInference._compute_glm_sandwich_covariance(
+        design,
+        foci,
+        mean,
+        ridge=ridge,
         correction="hc0",
     )
 
