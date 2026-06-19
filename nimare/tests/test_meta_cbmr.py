@@ -1125,7 +1125,7 @@ def test_spatial_cbmr_prepare_torch_inputs_densifies_sparse_matrices():
         "coef_spline_bases": np.array([[1.0, 0.0], [0.5, 0.5]]),
         "moderators_by_group": {"Default": np.array([[0.2], [1.0]])},
         "foci_by_experiment_voxel": {
-            "Default": scipy.sparse.csr_matrix(np.array([[1.0, 0.0], [0.0, 2.0]]))
+            "Default": scipy.sparse.csc_matrix(np.array([[1.0, 0.0], [0.0, 2.0]]))
         },
     }
 
@@ -1587,7 +1587,7 @@ def test_spatial_cbmr_sparse_sandwich_covariance_matches_dense(meat, correction)
     sparse = CBMRInference._compute_sandwich_covariance(
         moderators,
         bases,
-        scipy.sparse.csr_matrix(foci),
+        scipy.sparse.csc_matrix(foci),
         mean,
         **kwargs,
     )

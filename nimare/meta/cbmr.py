@@ -46,6 +46,18 @@ def _uses_cuda(device):
     return str(device).startswith("cuda")
 
 
+def _as_csr_matrix(value):
+    """Return a sparse matrix in CSR format."""
+    if scipy.sparse.isspmatrix_csr(value):
+        return value
+    return value.tocsr()
+
+
+def _csr_row_indices(value):
+    """Return row indices for each nonzero entry in a CSR matrix."""
+    return np.repeat(np.arange(value.shape[0], dtype=value.indices.dtype), np.diff(value.indptr))
+
+
 def _is_named_pairwise_contrast(contrast):
     """Return whether a contrast uses tuple shorthand like (A, B)."""
     return (
@@ -746,17 +758,17 @@ class CBMREstimator(Estimator):
             rows = group_coordinates["id"].map(id_to_row).to_numpy(dtype=np.int64, copy=False)
             cols = group_coordinates["_cbmr_mask_index"].to_numpy(dtype=np.int64, copy=False)
             data = np.ones(group_coordinates.shape[0], dtype=np.float64)
-            foci_by_experiment_voxel[group] = scipy.sparse.coo_matrix(
+            foci_by_experiment_voxel[group] = scipy.sparse.csr_matrix(
                 (data, (rows, cols)),
                 shape=(len(group_ids), n_mask_voxels),
                 dtype=np.float64,
-            ).tocsr()
+            )
         return foci_by_experiment_voxel
 
     def _as_torch_tensor(self, value):
         """Convert an array-like object to a float64 tensor on the estimator device."""
         if scipy.sparse.issparse(value):
-            value = value.toarray()
+            value = _as_csr_matrix(value).toarray()
         return torch.as_tensor(value, dtype=torch.float64, device=self.device)
 
     def _prepare_torch_inputs(self):
@@ -822,11 +834,11 @@ class CBMREstimator(Estimator):
                     dtype=np.int32, copy=False
                 )
                 data = np.ones(group_coordinates.shape[0], dtype=np.int32)
-                group_foci_by_experiment = scipy.sparse.coo_matrix(
+                group_foci_by_experiment = scipy.sparse.csr_matrix(
                     (data, (row_indices, column_indices)),
                     shape=(len(group_ids), n_mask_voxels),
                     dtype=np.int32,
-                ).tocsr()
+                )
 
             group_foci_per_voxel = np.asarray(
                 group_foci_by_experiment.sum(axis=0), dtype=np.int32
@@ -2277,17 +2289,18 @@ class CBMRInference(object):
         residual_scale=None,
     ):
         """Compute sandwich meat from a sparse response without materializing dense foci."""
-        foci = foci.tocsr()
+        foci = _as_csr_matrix(foci)
         if residual_scale is None:
             adjusted_mean = mean
             adjusted_foci = foci
         else:
             adjusted_mean = mean / residual_scale
-            foci_coo = foci.tocoo()
+            row_indices = _csr_row_indices(foci)
             adjusted_foci = scipy.sparse.csr_matrix(
                 (
-                    foci_coo.data / residual_scale[foci_coo.row, foci_coo.col],
-                    (foci_coo.row, foci_coo.col),
+                    foci.data / residual_scale[row_indices, foci.indices],
+                    foci.indices,
+                    foci.indptr,
                 ),
                 shape=foci.shape,
             )
@@ -2313,18 +2326,18 @@ class CBMRInference(object):
             adjusted_mean,
             meat="iid",
         )
-        foci_coo = adjusted_foci.tocoo()
+        row_indices = _csr_row_indices(adjusted_foci)
         delta = (
-            foci_coo.data**2
+            adjusted_foci.data**2
             - 2
-            * foci_coo.data
+            * adjusted_foci.data
             * adjusted_mean[
-                foci_coo.row,
-                foci_coo.col,
+                row_indices,
+                adjusted_foci.indices,
             ]
         )
         delta_matrix = scipy.sparse.csr_matrix(
-            (delta, (foci_coo.row, foci_coo.col)),
+            (delta, adjusted_foci.indices, adjusted_foci.indptr),
             shape=foci.shape,
         )
         n_bases = bases.shape[1]
@@ -2421,7 +2434,11 @@ class CBMRInference(object):
         mean = np.asarray(mean, dtype=float)
         mean = np.nan_to_num(mean, nan=0.0, posinf=1e12, neginf=0.0)
         mean = np.clip(mean, 1e-12, 1e12)
-        response_shape = foci.shape if scipy.sparse.issparse(foci) else np.asarray(foci).shape
+        if scipy.sparse.issparse(foci):
+            foci = _as_csr_matrix(foci)
+            response_shape = foci.shape
+        else:
+            response_shape = np.asarray(foci).shape
 
         if response_shape != mean.shape:
             raise ValueError("foci and mean must have matching experiment-by-voxel shapes.")
