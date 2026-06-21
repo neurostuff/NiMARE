@@ -259,6 +259,33 @@ plot_stat_map(
 )
 
 ###############################################################################
+# Diagnostic maps for per-unit voxelwise moderator changes
+# -----------------------------------------------------------------------------
+# A fitted :class:`~nimare.meta.cbmr.CBMRInference` object can generate Relative
+# Intensity (RI) and Intensity Difference (ID) diagnostic maps showing how a
+# user-defined moderator-unit change affects spatial intensity. Users can either
+# keep the RI/ID maps for downstream diagnosis or plot RI inside an ID-defined
+# region of interest. If no ID threshold is provided, the median absolute ID
+# value is used.
+
+voxelwise_inference = voxelwise_results.get_inference(method="FI")
+voxelwise_diagnostic_result = voxelwise_inference.generate_voxelwise_moderator_effect_maps(
+    moderators=["standardized_sample_sizes", "standardized_avg_age"],
+    groups="SchizophreniaYes",
+    unit_change=1.0,
+)
+print(voxelwise_diagnostic_result.metadata["voxelwise_moderator_effect_diagnostic_maps"])
+
+voxelwise_inference.plot_voxelwise_moderator_effects(
+    moderators=["standardized_sample_sizes", "standardized_avg_age"],
+    groups="SchizophreniaYes",
+    unit_change=1.0,
+    id_threshold=None,
+    cut_coords=[0, 0, -8],
+    plot_kwargs={"draw_cross": False},
+)
+
+###############################################################################
 # Inference on voxelwise moderator effects
 # -----------------------------------------------------------------------------
 # Voxelwise CBMR supports the same result-centered helpers. Because moderator

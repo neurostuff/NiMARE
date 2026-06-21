@@ -2895,6 +2895,248 @@ class CBMRInference(object):
         return covariance
 
     @staticmethod
+    def _as_list(value, default, label):
+        """Normalize a scalar-or-sequence selection to a list."""
+        if value is None:
+            return list(default)
+        if isinstance(value, str):
+            return [value]
+        try:
+            return list(value)
+        except TypeError as exc:
+            raise TypeError(f"{label} must be a string, sequence of strings, or None.") from exc
+
+    @staticmethod
+    def _validate_selected_names(selected, available, label):
+        """Reject requested group or moderator names that are not available."""
+        invalid = [name for name in selected if name not in available]
+        if invalid:
+            available_names = ", ".join(available)
+            invalid_names = ", ".join(invalid)
+            raise ValueError(
+                f"Unknown {label}: {invalid_names}. Available {label}: {available_names}."
+            )
+
+    @staticmethod
+    def _validate_unit_change(unit_change):
+        """Return a finite scalar moderator-unit change."""
+        unit_change = float(unit_change)
+        if not np.isfinite(unit_change):
+            raise ValueError("unit_change must be a finite scalar.")
+        return unit_change
+
+    @staticmethod
+    def _unit_change_label(unit_change):
+        """Format a unit change for stable map keys."""
+        label = f"{unit_change:g}".replace("-", "neg").replace(".", "p")
+        return label
+
+    def _validate_voxelwise_moderator_diagnostic_inputs(self, moderators, groups, unit_change):
+        """Validate voxelwise moderator-effect diagnostic selections."""
+        if self.moderator_effect != "voxelwise":
+            raise ValueError(
+                "Voxelwise moderator-effect diagnostics require "
+                "CBMRInference(moderator_effect='voxelwise')."
+            )
+        if not self.moderators:
+            raise ValueError("This CBMR result does not include voxelwise moderators.")
+
+        moderators = self._as_list(moderators, self.moderators, "moderators")
+        groups = self._as_list(groups, self.groups, "groups")
+        self._validate_selected_names(moderators, self.moderators, "moderators")
+        self._validate_selected_names(groups, self.groups, "groups")
+        unit_change = self._validate_unit_change(unit_change)
+        return moderators, groups, unit_change
+
+    def _compute_voxelwise_moderator_diagnostic_maps(self, moderator, group, unit_change):
+        """Compute RI and ID maps for one moderator/group/unit-change combination."""
+        bases = self.estimator.inputs_["coef_spline_bases"]
+        coefficient = self._get_group_coefficient_matrix(group)
+        moderator_index = self.moderator_reference_dict[moderator]
+        moderator_log_intensity_change = bases @ coefficient[moderator_index]
+        relative_intensity = np.exp(
+            np.clip(unit_change * moderator_log_intensity_change, -100, 100)
+        )
+        baseline_intensity = np.asarray(
+            self.result.maps[f"spatialIntensity_group-{group}"],
+            dtype=float,
+        )
+        intensity_difference = baseline_intensity * (relative_intensity - 1.0)
+        return relative_intensity, intensity_difference
+
+    @staticmethod
+    def _validate_id_threshold(id_threshold):
+        """Return a finite non-negative ID threshold for ROI filtering."""
+        if id_threshold is None:
+            return None
+        id_threshold = float(id_threshold)
+        if not np.isfinite(id_threshold) or id_threshold < 0:
+            raise ValueError("id_threshold must be None or a finite non-negative scalar.")
+        return id_threshold
+
+    @staticmethod
+    def _mask_relative_intensity_to_id_roi(
+        relative_intensity,
+        intensity_difference,
+        id_threshold=None,
+    ):
+        """Mask RI values to voxels whose absolute ID values pass a threshold."""
+        id_threshold = CBMRInference._validate_id_threshold(id_threshold)
+        relative_intensity = np.asarray(relative_intensity, dtype=float)
+        intensity_difference = np.asarray(intensity_difference, dtype=float)
+        if relative_intensity.shape != intensity_difference.shape:
+            raise ValueError("relative_intensity and intensity_difference must have the same shape.")
+
+        finite_difference = np.isfinite(intensity_difference)
+        if not finite_difference.any():
+            raise ValueError("intensity_difference must contain at least one finite value.")
+
+        absolute_difference = np.abs(intensity_difference)
+        if id_threshold is None:
+            id_threshold = float(np.quantile(absolute_difference[finite_difference], 0.5))
+
+        roi_mask = finite_difference & (absolute_difference >= id_threshold)
+        masked_relative_intensity = np.where(
+            roi_mask & np.isfinite(relative_intensity),
+            relative_intensity,
+            0.0,
+        )
+        return masked_relative_intensity, id_threshold
+
+    @_check_fit
+    def generate_voxelwise_moderator_effect_maps(
+        self,
+        moderators=None,
+        groups=None,
+        unit_change=1.0,
+    ):
+        """Generate diagnostic maps for voxelwise moderator effects.
+
+        Parameters
+        ----------
+        moderators : :obj:`str`, sequence of :obj:`str`, or None, optional
+            Spatially varying moderators to diagnose. If None, all fitted moderators are used.
+        groups : :obj:`str`, sequence of :obj:`str`, or None, optional
+            Groups for which to generate maps. If None, all fitted groups are used.
+        unit_change : :obj:`float`, optional
+            Moderator-unit increase to visualize. Default is 1.
+
+        Returns
+        -------
+        :obj:`~nimare.meta.cbmr.CBMRResult`
+            Result copy with added RI and ID maps. Relative Intensity (RI) is the multiplicative
+            intensity ratio for ``unit_change`` moderator units, and Intensity Difference (ID) is
+            the corresponding additive change from the fitted group baseline intensity.
+        """
+        moderators, groups, unit_change = self._validate_voxelwise_moderator_diagnostic_inputs(
+            moderators,
+            groups,
+            unit_change,
+        )
+        unit_label = self._unit_change_label(unit_change)
+        generated_maps = []
+
+        for group in groups:
+            for moderator in moderators:
+                relative_intensity, intensity_difference = (
+                    self._compute_voxelwise_moderator_diagnostic_maps(
+                        moderator,
+                        group,
+                        unit_change,
+                    )
+                )
+                relative_key = (
+                    f"relativeIntensity_voxelwiseModeratorEffect_{moderator}_"
+                    f"unit-{unit_label}_group-{group}"
+                )
+                difference_key = (
+                    f"intensityDifference_voxelwiseModeratorEffect_{moderator}_"
+                    f"unit-{unit_label}_group-{group}"
+                )
+                self.result.maps[relative_key] = relative_intensity
+                self.result.maps[difference_key] = intensity_difference
+                generated_maps.extend([relative_key, difference_key])
+
+        self.result.metadata["voxelwise_moderator_effect_diagnostic_unit_change"] = unit_change
+        self.result.metadata["voxelwise_moderator_effect_diagnostic_maps"] = tuple(generated_maps)
+        return self.result
+
+    @_check_fit
+    def plot_voxelwise_moderator_effects(
+        self,
+        moderators=None,
+        groups=None,
+        unit_change=1.0,
+        cut_coords=None,
+        display_mode="ortho",
+        id_threshold=None,
+        threshold=None,
+        figure=None,
+        plot_kwargs=None,
+    ):
+        """Plot RI diagnostic maps within ID-defined regions of interest.
+
+        Each requested moderator/group combination is plotted as one row. Intensity Difference
+        (ID) values define the region of interest: voxels are retained when ``abs(ID)`` is greater
+        than or equal to ``id_threshold``. If ``id_threshold`` is None, the 50% quantile of
+        ``abs(ID)`` is used. Relative Intensity (RI) values are displayed only within that ROI.
+        """
+        id_threshold = self._validate_id_threshold(id_threshold)
+        result = self.generate_voxelwise_moderator_effect_maps(
+            moderators=moderators,
+            groups=groups,
+            unit_change=unit_change,
+        )
+        moderators, groups, unit_change = self._validate_voxelwise_moderator_diagnostic_inputs(
+            moderators,
+            groups,
+            unit_change,
+        )
+
+        import matplotlib.pyplot as plt
+        from nilearn.plotting import plot_stat_map
+
+        plot_kwargs = {} if plot_kwargs is None else dict(plot_kwargs)
+        unit_label = self._unit_change_label(unit_change)
+        n_rows = len(moderators) * len(groups)
+        if figure is None:
+            figure = plt.figure(figsize=(5, 3.5 * n_rows))
+        axes = figure.subplots(n_rows, 1, squeeze=False)
+        plot_threshold = 1e-12 if threshold is None else threshold
+
+        for row, (group, moderator) in enumerate(
+            (group, moderator) for group in groups for moderator in moderators
+        ):
+            relative_key = (
+                f"relativeIntensity_voxelwiseModeratorEffect_{moderator}_"
+                f"unit-{unit_label}_group-{group}"
+            )
+            difference_key = (
+                f"intensityDifference_voxelwiseModeratorEffect_{moderator}_"
+                f"unit-{unit_label}_group-{group}"
+            )
+            masked_relative_intensity, resolved_id_threshold = (
+                self._mask_relative_intensity_to_id_roi(
+                    result.maps[relative_key],
+                    result.maps[difference_key],
+                    id_threshold=id_threshold,
+                )
+            )
+            title_suffix = f"{moderator}, group={group}, unit={unit_change:g}"
+            plot_stat_map(
+                result.masker.inverse_transform(masked_relative_intensity),
+                axes=axes[row, 0],
+                figure=figure,
+                cut_coords=cut_coords,
+                display_mode=display_mode,
+                threshold=plot_threshold,
+                title=f"RI in ID ROI: {title_suffix}, |ID| >= {resolved_id_threshold:g}",
+                **plot_kwargs,
+            )
+
+        return figure
+
+    @staticmethod
     def _contrast_covariance_by_voxel(contrast, covariance, bases):
         """Project coefficient covariance into voxel-wise contrast covariance."""
         n_regressors = contrast.shape[1]

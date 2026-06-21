@@ -915,7 +915,7 @@ def _spatial_result_for_inference():
     )
     return CBMRResult(
         estimator=estimator,
-        mask=_mask_img(),
+        mask=nib.Nifti1Image(np.ones((2, 1, 1), dtype=np.uint8), np.eye(4)),
         maps=maps,
         tables=tables,
         description="spatial inference test",
@@ -1622,6 +1622,116 @@ def test_spatial_cbmr_inference_rejects_wrong_contrast_shape():
 
     with pytest.raises(ValueError, match="doesn't match with moderators"):
         inference._preprocess_t_con_regressor(source="moderators")
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_spatial_cbmr_inference_generates_moderator_effect_diagnostic_maps():
+    """Voxelwise moderator-effect diagnostics should generate per-unit RI and ID maps."""
+    inference = CBMRInference(device="cpu")
+    inference.fit(_spatial_result_for_inference())
+
+    diagnostic_result = inference.generate_voxelwise_moderator_effect_maps(
+        moderators="age",
+        groups="Default",
+        unit_change=2.0,
+    )
+
+    relative_key = "relativeIntensity_voxelwiseModeratorEffect_age_unit-2_group-Default"
+    difference_key = "intensityDifference_voxelwiseModeratorEffect_age_unit-2_group-Default"
+    expected_relative = np.exp([0.2, 0.4])
+    expected_difference = np.exp([0.3, 0.4]) * (expected_relative - 1.0)
+
+    assert relative_key in diagnostic_result.maps
+    assert difference_key in diagnostic_result.maps
+    np.testing.assert_allclose(diagnostic_result.maps[relative_key], expected_relative)
+    np.testing.assert_allclose(diagnostic_result.maps[difference_key], expected_difference)
+    assert diagnostic_result.metadata["voxelwise_moderator_effect_diagnostic_unit_change"] == 2.0
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_spatial_cbmr_result_exposes_moderator_effect_diagnostic_workflow():
+    """Users should be able to run RI/ID diagnostics from a fitted voxelwise result."""
+    result = _spatial_result_for_inference()
+    inference = result.get_inference(method="FI")
+
+    diagnostic_result = inference.generate_voxelwise_moderator_effect_maps(
+        moderators=["age"],
+        groups="Default",
+        unit_change=1.0,
+    )
+
+    assert inference.method == "FI"
+    assert "relativeIntensity_voxelwiseModeratorEffect_age_unit-1_group-Default" in (
+        diagnostic_result.metadata["voxelwise_moderator_effect_diagnostic_maps"]
+    )
+    assert "intensityDifference_voxelwiseModeratorEffect_age_unit-1_group-Default" in (
+        diagnostic_result.metadata["voxelwise_moderator_effect_diagnostic_maps"]
+    )
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_spatial_cbmr_inference_plots_moderator_effect_diagnostics():
+    """Voxelwise moderator-effect diagnostics should plot RI within an ID-thresholded ROI."""
+    import matplotlib.pyplot as plt
+
+    inference = CBMRInference(device="cpu")
+    inference.fit(_spatial_result_for_inference())
+
+    figure = inference.plot_voxelwise_moderator_effects(
+        moderators="age",
+        groups="Default",
+        cut_coords=[0],
+        display_mode="x",
+    )
+
+    assert figure is not None
+    assert len(figure.axes) >= 1
+    plt.close(figure)
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_spatial_cbmr_inference_masks_ri_to_default_id_roi():
+    """The default ROI should keep voxels above the median absolute ID value."""
+    relative_intensity = np.array([1.1, 1.2, 1.3, 1.4])
+    intensity_difference = np.array([0.1, -0.4, 0.2, -0.8])
+
+    masked, threshold = CBMRInference._mask_relative_intensity_to_id_roi(
+        relative_intensity,
+        intensity_difference,
+    )
+
+    assert threshold == pytest.approx(0.3)
+    np.testing.assert_allclose(masked, np.array([0.0, 1.2, 0.0, 1.4]))
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_spatial_cbmr_inference_masks_ri_to_custom_id_roi():
+    """A user-provided ID threshold should define the RI display ROI."""
+    relative_intensity = np.array([1.1, 1.2, 1.3])
+    intensity_difference = np.array([0.1, 0.5, -0.9])
+
+    masked, threshold = CBMRInference._mask_relative_intensity_to_id_roi(
+        relative_intensity,
+        intensity_difference,
+        id_threshold=0.5,
+    )
+
+    assert threshold == pytest.approx(0.5)
+    np.testing.assert_allclose(masked, np.array([0.0, 1.2, 1.3]))
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_spatial_cbmr_inference_validates_moderator_effect_diagnostics():
+    """Voxelwise moderator-effect diagnostics should reject unavailable inputs."""
+    inference = CBMRInference(device="cpu")
+    inference.fit(_spatial_result_for_inference())
+
+    with pytest.raises(ValueError, match="Unknown moderators"):
+        inference.generate_voxelwise_moderator_effect_maps(moderators="sample_size")
+    with pytest.raises(ValueError, match="unit_change"):
+        inference.generate_voxelwise_moderator_effect_maps(unit_change=np.inf)
+    with pytest.raises(ValueError, match="id_threshold"):
+        inference.plot_voxelwise_moderator_effects(id_threshold=-1)
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
