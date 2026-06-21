@@ -2200,9 +2200,15 @@ class CBMRInference(object):
         """Write one computed group-inference result into result maps."""
         contrast_name = self.t_con_groups_name[con_group_count] if self.t_con_groups_name else None
         if contrast_name:
-            key_builder = lambda stat_name: f"{stat_name}_group-{contrast_name}"
+
+            def key_builder(stat_name):
+                return f"{stat_name}_group-{contrast_name}"
+
         else:
-            key_builder = lambda stat_name: f"{stat_name}_GLH_groups_{con_group_count}"
+
+            def key_builder(stat_name):
+                return f"{stat_name}_GLH_groups_{con_group_count}"
+
         self._store_stat_outputs(
             self.result.maps,
             group_stats,
@@ -2407,9 +2413,15 @@ class CBMRInference(object):
             self.t_con_moderators_name[con_moderator_count] if self.t_con_moderators_name else None
         )
         if contrast_name:
-            key_builder = lambda stat_name: f"{stat_name}_{contrast_name}"
+
+            def key_builder(stat_name):
+                return f"{stat_name}_{contrast_name}"
+
         else:
-            key_builder = lambda stat_name: f"{stat_name}_GLH_moderators_{con_moderator_count}"
+
+            def key_builder(stat_name):
+                return f"{stat_name}_GLH_moderators_{con_moderator_count}"
+
         self._store_stat_outputs(
             self.result.tables,
             moderator_stats,
@@ -2985,7 +2997,9 @@ class CBMRInference(object):
         relative_intensity = np.asarray(relative_intensity, dtype=float)
         intensity_difference = np.asarray(intensity_difference, dtype=float)
         if relative_intensity.shape != intensity_difference.shape:
-            raise ValueError("relative_intensity and intensity_difference must have the same shape.")
+            raise ValueError(
+                "relative_intensity and intensity_difference must have the same shape."
+            )
 
         finite_difference = np.isfinite(intensity_difference)
         if not finite_difference.any():
