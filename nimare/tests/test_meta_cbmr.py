@@ -922,6 +922,49 @@ def _spatial_result_for_inference():
     )
 
 
+def _mixed_result_for_inference():
+    """Return a small fitted mixed CBMR result suitable for inference tests."""
+    estimator = CBMREstimator(
+        moderator_effect="mixed",
+        global_moderators=["sample_size"],
+        voxelwise_moderators=["age"],
+    )
+    estimator.groups = ["Default"]
+    estimator.moderators = ["sample_size", "age"]
+    estimator.inputs_ = {
+        "coef_spline_bases": np.array([[1.0, 0.0], [0.0, 1.0]]),
+        "global_moderators_by_group": {"Default": np.array([[1.0], [2.0]])},
+        "voxelwise_moderators_by_group": {"Default": np.array([[2.0], [4.0]])},
+        "foci_by_experiment": {
+            "Default": scipy.sparse.csr_matrix(np.array([[1.0, 0.0], [0.0, 1.0]]))
+        },
+        "foci_by_experiment_voxel": {
+            "Default": scipy.sparse.csr_matrix(np.array([[1.0, 0.0], [0.0, 1.0]]))
+        },
+    }
+    estimator.voxelwise_coef = {"Default": np.array([[0.1], [0.2], [0.3], [0.4]])}
+    maps = {}
+    tables = {}
+    estimator._add_approximate_results(
+        maps,
+        tables,
+        "Default",
+        estimator.inputs_["voxelwise_moderators_by_group"]["Default"],
+        estimator.voxelwise_coef["Default"],
+    )
+    tables["global_moderators_regression_coef"] = pd.DataFrame(
+        [[0.05]],
+        columns=["sample_size"],
+    )
+    return CBMRResult(
+        estimator=estimator,
+        mask=nib.Nifti1Image(np.ones((2, 1, 1), dtype=np.uint8), np.eye(4)),
+        maps=maps,
+        tables=tables,
+        description="mixed inference test",
+    )
+
+
 def _global_result_for_sandwich_inference():
     """Return a small fitted global Poisson CBMR result suitable for sandwich tests."""
     estimator = CBMREstimator(
@@ -956,6 +999,15 @@ def _global_result_for_sandwich_inference():
     [
         ({}, {}, "voxelwise"),
         ({"moderator_effect": "global"}, {"moderator_effect": "global"}, "global"),
+        (
+            {
+                "moderator_effect": "mixed",
+                "global_moderators": ["sample_size"],
+                "voxelwise_moderators": ["age"],
+            },
+            {"moderator_effect": "mixed"},
+            "mixed",
+        ),
     ],
 )
 def test_cbmr_public_api_dispatches_by_moderator_effect(
@@ -971,6 +1023,34 @@ def test_cbmr_public_api_dispatches_by_moderator_effect(
     assert type(inference) is CBMRInference
     assert estimator.moderator_effect == expected_moderator_effect
     assert inference.moderator_effect == expected_moderator_effect
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_mixed_cbmr_api_separates_global_and_voxelwise_moderators():
+    """Mixed CBMR should expose distinct global and voxelwise moderator sets."""
+    estimator = CBMREstimator(
+        moderator_effect="mixed",
+        global_moderators=["sample_size"],
+        voxelwise_moderators=["age"],
+    )
+
+    assert estimator.global_moderators == ["sample_size"]
+    assert estimator.voxelwise_moderators == ["age"]
+    assert estimator.moderators == ["sample_size", "age"]
+
+    result = _mixed_result_for_inference()
+    description = result.describe_inference_inputs()
+
+    assert description["moderator_effect"] == "mixed"
+    assert description["global_moderators"] == ("sample_size",)
+    assert description["voxelwise_moderators"] == ("age",)
+
+    with pytest.raises(ValueError, match="both global and voxelwise"):
+        CBMREstimator(
+            moderator_effect="mixed",
+            global_moderators=["age"],
+            voxelwise_moderators=["age"],
+        )
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
@@ -1560,6 +1640,32 @@ def test_spatial_cbmr_result_helpers_run_inference():
     assert isinstance(moderator_result, CBMRResult)
     assert "z_group-Default" in group_result.maps
     assert "p_voxelwiseModeratorEffect_age_group-Default" in moderator_result.maps
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_mixed_cbmr_inference_routes_moderator_types_separately():
+    """Mixed inference should return tables for global and maps for voxelwise moderators."""
+    result = _mixed_result_for_inference()
+
+    inference = CBMRInference(moderator_effect="mixed", method="FI", ridge=1e-3)
+    transformed = inference.fit_transform(
+        result,
+        t_con_moderators=["sample_size", "age"],
+    )
+
+    assert "z_sample_size" in transformed.tables
+    assert "p_sample_size" in transformed.tables
+    assert "z_voxelwiseModeratorEffect_age_group-Default" in transformed.maps
+    assert "p_voxelwiseModeratorEffect_age_group-Default" in transformed.maps
+    assert transformed.metadata["global_cbmr_inference_method"] == "FI"
+    assert transformed.metadata["voxelwise_cbmr_inference_method"] == "FI"
+
+    helper_result = result.test_moderators(method="FI", ridge=1e-3)
+    assert "p_sample_size" in helper_result.tables
+    assert "p_voxelwiseModeratorEffect_age_group-Default" in helper_result.maps
+
+    with pytest.raises(ValueError, match="cannot combine global and voxelwise"):
+        inference.transform(t_con_moderators=[np.array([1.0, 1.0])])
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")

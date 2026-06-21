@@ -11,16 +11,19 @@ A tour of coordinate-based meta-regression (CBMR) in NiMARE.
 CBMR is a generative framework for estimating smooth activation intensity
 functions from coordinate-based meta-analytic data. The same
 :class:`~nimare.meta.cbmr.CBMREstimator` can parameterize moderator effects in
-two ways:
+three ways:
 
 * ``moderator_effect="global"`` estimates one scalar coefficient per moderator.
   This assumes the effect of the moderator has a global effect across the entire brain.
 * ``moderator_effect="voxelwise"`` estimates a scalar coefficient _per voxel_ per moderator.
   This assumes the effect of the moderator differentially impacts voxels throughout the brain.
   This is likely a more accurate assumption, but requires a lot more data for estimation.
+* ``moderator_effect="mixed"`` estimates scalar coefficients for selected
+  ``global_moderators`` and spatially varying coefficients for selected
+  ``voxelwise_moderators`` in one model.
 
-This tutorial fits both versions to the same simulated Studyset with the same
-groups and the same standardized moderators, then compares their outputs.
+This tutorial fits all three versions to the same simulated Studyset with the
+same groups and standardized moderators, then compares their outputs.
 """
 
 import numpy as np
@@ -350,9 +353,70 @@ voxelwise_fi_result = voxelwise_results.test_groups(method="FI")
 print(voxelwise_fi_result.metadata["voxelwise_cbmr_inference_method"])
 
 ###############################################################################
+# Option 3: mixed global and voxelwise moderator effects
+# -----------------------------------------------------------------------------
+# Mixed CBMR is useful when some moderators are expected to have a whole-brain
+# effect and others are expected to vary spatially. The model below estimates a
+# global sample-size effect and a voxelwise age-effect map in the same fit. Mixed
+# CBMR currently uses the full Poisson backend.
+
+mixed_cbmr = CBMREstimator(
+    moderator_effect="mixed",
+    group_categories=group_categories,
+    global_moderators=["standardized_sample_sizes"],
+    voxelwise_moderators=["standardized_avg_age"],
+    spline_spacing=100,  # a reasonable analysis choice is 10 or 5; 100 is for speed
+    n_iter=10,
+    lr=1e-1,
+    tol=1e3,  # a reasonable analysis choice is 1e-4; 1e3 is for speed
+    device="cpu",  # use "cuda" if you have a GPU
+)
+mixed_results = mixed_cbmr.fit(dataset=studyset)
+
+print(mixed_results.describe_inference_inputs())
+print(mixed_results.tables["global_moderators_regression_coef"])
+print(mixed_results.voxelwise_moderator_effect_map_names)
+
+plot_stat_map(
+    mixed_results.get_map("voxelwiseModeratorEffect_standardized_avg_age_group-SchizophreniaYes"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+    title="Mixed CBMR voxelwise age effect: SchizophreniaYes",
+)
+
+###############################################################################
+# Inference for mixed CBMR
+# -----------------------------------------------------------------------------
+# The same result-centered helpers dispatch each mixed-model moderator to the
+# right inference path: global moderators return scalar tables, while voxelwise
+# moderators return spatial maps. In mixed CBMR, contrast vectors should test
+# global and voxelwise moderators separately.
+
+mixed_moderator_result = mixed_results.test_moderators(method="FI")
+print(mixed_moderator_result.tables["z_standardized_sample_sizes"])
+print(mixed_moderator_result.metadata["global_cbmr_inference_method"])
+print(mixed_moderator_result.metadata["voxelwise_cbmr_inference_method"])
+
+plot_stat_map(
+    mixed_moderator_result.get_map(
+        "z_voxelwiseModeratorEffect_standardized_avg_age_group-SchizophreniaYes"
+    ),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+    title="Mixed CBMR test of voxelwise age effect: SchizophreniaYes",
+    threshold=None,
+    vmax=5,
+)
+
+###############################################################################
 # Summary
 # -----------------------------------------------------------------------------
 # Use ``moderator_effect="global"`` when the scientific question is whether a
 # moderator has an overall effect on activation intensity. Use ``moderator_effect="voxelwise"``
 # when the scientific question is where that moderator effect varies across the brain.
-# Both options share the same preprocessing, grouping, and result-centered inference interface.
+# Use ``moderator_effect="mixed"`` when both assumptions are needed in one model.
+# All options share the same preprocessing, grouping, and result-centered inference interface.

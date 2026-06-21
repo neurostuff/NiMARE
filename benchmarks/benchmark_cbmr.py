@@ -45,12 +45,17 @@ def _supports_moderator_effect():
     return "moderator_effect" in inspect.signature(CBMREstimator).parameters
 
 
+def _supports_inference_moderator_effect():
+    """Return whether CBMRInference exposes the moderator_effect selector."""
+    return "moderator_effect" in inspect.signature(CBMRInference).parameters
+
+
 def _fit_cbmr(
     dataset,
     group_categories,
     moderators,
     model=models.PoissonEstimator,
-    moderator_effect=None,
+    moderator_effect="global",
 ):
     """Fit a CBMR estimator with common benchmark options."""
     kwargs = {}
@@ -74,7 +79,11 @@ def _fit_cbmr(
 
 def _fit_cbmr_inference(result):
     """Fit a CBMRInference object with common benchmark options."""
-    inference = CBMRInference(device="cpu")
+    kwargs = {}
+    if _supports_inference_moderator_effect():
+        kwargs["moderator_effect"] = getattr(result, "moderator_effect", "global")
+
+    inference = CBMRInference(device="cpu", **kwargs)
     inference.fit(result)
     return inference
 
