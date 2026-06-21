@@ -135,10 +135,19 @@ print(global_moderator_comparison.tables["p_standardized_sample_sizes-standardiz
 ###############################################################################
 # Group inference and correction for global CBMR
 # -----------------------------------------------------------------------------
-# Group homogeneity tests and pairwise group comparisons use the same result
-# helpers for both moderator-effect modes.
+# Group homogeneity tests and pairwise group comparisons use the same
+# result-centered helpers for all moderator-effect modes. The helpers now also
+# expose the robust covariance options implemented in :class:`~nimare.meta.cbmr.CBMRInference`.
 
-global_group_result = global_results.test_groups()
+global_group_result = global_results.test_groups(
+    method="sandwich",
+    sandwich_meat="iid",
+    sandwich_correction="hc0",
+    ridge=1e-4,
+)
+print(global_group_result.metadata["global_cbmr_inference_method"])
+print(global_group_result.metadata["global_cbmr_sandwich_meat"])
+print(global_group_result.metadata["global_cbmr_sandwich_correction"])
 
 plot_stat_map(
     global_group_result.get_map("z_group-SchizophreniaYes"),
@@ -266,18 +275,41 @@ plot_stat_map(
 # -----------------------------------------------------------------------------
 # A fitted :class:`~nimare.meta.cbmr.CBMRInference` object can generate Relative
 # Intensity (RI) and Intensity Difference (ID) diagnostic maps showing how a
-# user-defined moderator-unit change affects spatial intensity. Users can either
-# keep the RI/ID maps for downstream diagnosis or plot RI inside an ID-defined
-# region of interest. If no ID threshold is provided, the median absolute ID
-# value is used.
+# user-defined moderator-unit change affects spatial intensity. The updated
+# helper accepts the same moderator/group selectors as the inference methods and
+# returns a CBMRResult copy with named RI and ID maps. Users can keep those maps
+# for downstream diagnosis or plot RI inside an ID-defined region of interest.
+# If no ID threshold is provided, the median absolute ID value is used.
 
-voxelwise_inference = voxelwise_results.get_inference(method="FI")
+voxelwise_inference = voxelwise_results.get_inference(
+    method="FI",
+    incidence_threshold=None,
+)
 voxelwise_diagnostic_result = voxelwise_inference.generate_voxelwise_moderator_effect_maps(
     moderators=["standardized_sample_sizes", "standardized_avg_age"],
     groups="SchizophreniaYes",
     unit_change=1.0,
 )
 print(voxelwise_diagnostic_result.metadata["voxelwise_moderator_effect_diagnostic_maps"])
+
+plot_stat_map(
+    voxelwise_diagnostic_result.get_map(
+        "relativeIntensity_voxelwiseModeratorEffect_standardized_sample_sizes_unit-1_group-"
+        "SchizophreniaYes"
+    ),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    title="RI for one-SD sample-size increase: SchizophreniaYes",
+)
+plot_stat_map(
+    voxelwise_diagnostic_result.get_map(
+        "intensityDifference_voxelwiseModeratorEffect_standardized_sample_sizes_unit-1_group-"
+        "SchizophreniaYes"
+    ),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    title="ID for one-SD sample-size increase: SchizophreniaYes",
+)
 
 voxelwise_inference.plot_voxelwise_moderator_effects(
     moderators=["standardized_sample_sizes", "standardized_avg_age"],
