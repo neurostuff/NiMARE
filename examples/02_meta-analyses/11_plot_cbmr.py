@@ -70,6 +70,8 @@ studyset = StandardizeField(fields=["sample_sizes", "avg_age"]).transform(studys
 
 group_categories = ["diagnosis", "drug_status"]
 moderators = ["standardized_sample_sizes", "standardized_avg_age"]
+mixed_global_moderators = ["standardized_sample_sizes"]
+mixed_voxelwise_moderators = ["standardized_avg_age"]
 
 ###############################################################################
 # Option 1: global moderator effects
@@ -393,18 +395,22 @@ voxelwise_fi_result = voxelwise_results.test_groups(method="FI")
 print(voxelwise_fi_result.metadata["voxelwise_cbmr_inference_method"])
 
 ###############################################################################
-# Option 3: mixed global and voxelwise moderator effects
+# Option 3: mixed moderator effects
 # -----------------------------------------------------------------------------
-# Mixed CBMR is useful when some moderators are expected to have a whole-brain
-# effect and others are expected to vary spatially. The model below estimates a
-# global sample-size effect and a voxelwise age-effect map in the same fit. Mixed
-# CBMR currently uses the full Poisson backend.
+# With ``moderator_effect="mixed"``, CBMR estimates group-specific baseline
+# spatial intensity functions, scalar coefficients for moderators listed in
+# ``global_moderators``, and smooth spatial coefficient maps for moderators
+# listed in ``voxelwise_moderators``. This is useful when some moderators are
+# expected to have whole-brain effects and others are expected to vary spatially.
+# The model below estimates sample size as a global effect and age as a
+# voxelwise, spatially varying effect in the same fit. Mixed CBMR currently uses
+# the full Poisson backend.
 
 mixed_cbmr = CBMREstimator(
     moderator_effect="mixed",
     group_categories=group_categories,
-    global_moderators=["standardized_sample_sizes"],
-    voxelwise_moderators=["standardized_avg_age"],
+    global_moderators=mixed_global_moderators,
+    voxelwise_moderators=mixed_voxelwise_moderators,
     backend="full",
     spline_spacing=100,  # a reasonable analysis choice is 10 or 5; 100 is for speed
     n_iter=10,
@@ -434,7 +440,8 @@ plot_stat_map(
 # The same result-centered helpers dispatch each mixed-model moderator to the
 # right inference path: global moderators return scalar tables, while voxelwise
 # moderators return spatial maps. In mixed CBMR, contrast vectors should test
-# global and voxelwise moderators separately.
+# global and voxelwise moderators separately because they live in different
+# parameter spaces.
 
 mixed_moderator_result = mixed_results.test_moderators(method="FI")
 print(mixed_moderator_result.tables["z_standardized_sample_sizes"])
