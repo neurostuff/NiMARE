@@ -1,4 +1,4 @@
-"""Coordinate Based Meta Regression Methods."""
+"""Coordinate-based meta-regression methods."""
 
 import copy
 import logging
@@ -434,16 +434,16 @@ class CBMREstimator(Estimator):
     n_iter : :obj:`int`, optional
         Number of iterations allowed in the log-likelihood optimization.
         Default is 2000.
-    lr: :obj:`float`, optional
+    lr : :obj:`float`, optional
         Learning rate in optimization of log-likelihood function.
         Default is 1.
-    lr_decay: :obj:`float`, optional
+    lr_decay : :obj:`float`, optional
         Multiplicative factor of learning rate decay.
         Default is 0.999.
-    tol: :obj:`float`, optional
+    tol : :obj:`float`, optional
         Stopping criterion based on the change in log-likelihood between two consecutive
         iterations. Default is 1e-9.
-    device: :obj:`string`, optional
+    device : :obj:`string`, optional
         Device type ('cpu' or 'cuda') representing where operations will be allocated.
         Default is 'cpu'.
     random_state : :obj:`int`, optional
@@ -628,7 +628,7 @@ class CBMREstimator(Estimator):
         self.voxelwise_model = None
         self.voxelwise_coef = None
         if _uses_cuda(self.device) and not torch.cuda.is_available():
-            LGR.debug("cuda not found, use device cpu")
+            LGR.debug("CUDA not found; using device 'cpu'.")
             self.device = "cpu"
         self.model.device = self.device
 
@@ -649,14 +649,6 @@ class CBMREstimator(Estimator):
         description : :obj:`str`
             Description of the Estimator instance.
         """
-        description = """CBMR is a meta-regression framework that can explicitly model
-                    group-wise spatial intensity function, and consider the effect of
-                    moderators. It consists of two components: (1) a spatial
-                    model that makes use of a spline parameterization to induce a smooth
-                    response; (2) a generalized linear model (Poisson, Negative Binomial
-                    (NB), Clustered NB) to model group-wise spatial intensity function).
-                    CBMR is fitted via maximizing the log-likelihood function with L-BFGS
-                    algorithm."""
         if self.moderator_effect == "mixed":
             moderator_parts = []
             if self.global_moderators:
@@ -1215,7 +1207,7 @@ class CBMREstimator(Estimator):
         (2) Estimate standard error of group-wise log intensity, group-wise intensity via delta
         method;
         (3) For NegativeBinomial or ClusteredNegativeBinomial model, estimate regression
-        coefficient of overdispersion.s
+        coefficient of overdispersion.
 
         Parameters
         ----------
@@ -1474,7 +1466,7 @@ class CBMREstimator(Estimator):
             )
 
 
-class CBMRInference(object):
+class CBMRInference:
     """Statistical inference on fitted CBMR results.
 
     Notes
@@ -1485,7 +1477,7 @@ class CBMRInference(object):
 
     Parameters
     ----------
-    device: :obj:`string`, optional
+    device : :obj:`string`, optional
         Device type ('cpu' or 'cuda') represents the device on which operations will be allocated.
         Default is 'cpu'.
     moderator_effect : {"voxelwise", "global"}, optional
@@ -1542,7 +1534,7 @@ class CBMRInference(object):
         self.incidence_threshold = _validate_incidence_threshold(incidence_threshold)
         # device check
         if _uses_cuda(self.device) and not torch.cuda.is_available():
-            LGR.debug("cuda not found, use device 'cpu'")
+            LGR.debug("CUDA not found; using device 'cpu'.")
             self.device = "cpu"
 
         self.result = None
@@ -1884,28 +1876,28 @@ class CBMRInference(object):
                 moderator_name: index for index, moderator_name in enumerate(self.moderators)
             }
             for moderator_name, index in self.moderator_reference_dict.items():
-                LGR.info(f"{moderator_name} = index_{index}")
+                LGR.info("%s = index_%d", moderator_name, index)
 
     @_check_fit
     def display(self):
-        """Display Groups and Moderator names and order."""
-        # visialize group/moderator names and their indices in contrast array
+        """Display group and moderator names and order."""
+        # Visualize group/moderator names and their indices in the contrast array.
         LGR.info("Group Reference in contrast array")
         for group, index in self.group_reference_dict.items():
-            LGR.info(f"{group} = index_{index}")
+            LGR.info("%s = index_%d", group, index)
         if self.moderators:
             LGR.info("Moderator Reference in contrast array")
             for moderator, index in self.moderator_reference_dict.items():
-                LGR.info(f"{moderator} = index_{index}")
+                LGR.info("%s = index_%d", moderator, index)
 
     def _create_regular_expressions(self):
         """Create regular expressions for parsing contrast names.
 
-        creates the following attributes:
+        Creates the following attributes:
         self.groups_regular_expression: regular expression for parsing group names
         self.moderators_regular_expression: regular expression for parsing moderator names
 
-        usage:
+        Usage:
         >>> self.groups_regular_expression.match("group1 - group2").groupdict()
         """
         operator = "(\\ ?(?P<operator>[+-]?)\\ ??)"
@@ -1920,7 +1912,7 @@ class CBMRInference(object):
             else:
                 reg_expr = None
 
-            setattr(self, "{}_regular_expression".format(attr), reg_expr)
+            setattr(self, f"{attr}_regular_expression", reg_expr)
 
     def _contrast_source_context(self, source):
         """Return the fitted names, parser, and index lookup for one contrast source."""
