@@ -2,28 +2,29 @@ r"""
 .. _metas_cbmr:
 .. _metas_voxelwise_cbmr:
 
-============================================================
-Coordinate-based meta-regression with moderator-effect modes
-============================================================
+====================================================================
+Coordinate-based meta-regression with global and voxelwise moderators
+====================================================================
 
 A tour of coordinate-based meta-regression (CBMR) in NiMARE.
 
 CBMR is a generative framework for estimating smooth activation intensity
-functions from coordinate-based meta-analytic data. The same
-:class:`~nimare.meta.cbmr.CBMREstimator` can parameterize moderator effects in
-three ways:
+functions from coordinate-based meta-analytic data. The current
+:class:`~nimare.meta.cbmr.CBMREstimator` implementation exposes one public API
+for three moderator-effect parameterizations:
 
 * ``moderator_effect="global"`` estimates one scalar coefficient per moderator.
   This assumes the effect of the moderator has a global effect across the entire brain.
-* ``moderator_effect="voxelwise"`` estimates a scalar coefficient _per voxel_ per moderator.
-  This assumes the effect of the moderator differentially impacts voxels throughout the brain.
-  This is likely a more accurate assumption, but requires a lot more data for estimation.
+* ``moderator_effect="voxelwise"`` estimates a smooth spatial coefficient map
+  for each moderator and group. This allows the moderator effect to vary across
+  the brain, but requires more data for stable estimation.
 * ``moderator_effect="mixed"`` estimates scalar coefficients for selected
   ``global_moderators`` and spatially varying coefficients for selected
   ``voxelwise_moderators`` in one model.
 
-This tutorial fits all three versions to the same simulated Studyset with the
-same groups and standardized moderators, then compares their outputs.
+This tutorial fits all three versions to the same simulated Studyset, shows how
+to inspect fitted CBMR results, and demonstrates the result-centered inference
+helpers added around :class:`~nimare.meta.cbmr.CBMRInference`.
 """
 
 import numpy as np
@@ -39,23 +40,28 @@ from nimare.transforms import StandardizeField
 # Load Studyset-compatible data
 # -----------------------------------------------------------------------------
 # We simulate a coordinate-based Studyset with reported foci, sample sizes,
-# diagnosis labels, drug-status labels, and continuous moderators.
-# The example uses a moderate number of studies and coarse B-spline spacing so
-# that both global and voxelwise CBMR fits run quickly.
+# diagnosis labels, drug-status labels, and continuous moderators. The example
+# uses a moderate number of studies and coarse B-spline spacing so that global,
+# voxelwise, and mixed CBMR fits run quickly.
 
 _, studyset = create_coordinate_studyset(
     foci=10,
     sample_size=(20, 40),
     n_studies=200,
+    seed=100,
 )
 
 annotations_df = studyset.annotations_df.copy()
 n_rows = annotations_df.shape[0]
-annotations_df["diagnosis"] = [
-    "schizophrenia" if i % 2 == 0 else "depression" for i in range(n_rows)
+group_pattern = [
+    ("schizophrenia", "Yes"),
+    ("schizophrenia", "No"),
+    ("depression", "Yes"),
+    ("depression", "No"),
 ]
-annotations_df["drug_status"] = ["Yes" if i % 2 == 0 else "No" for i in range(n_rows)]
-annotations_df["drug_status"] = annotations_df["drug_status"].sample(frac=1).reset_index(drop=True)
+annotations_df[["diagnosis", "drug_status"]] = [
+    group_pattern[i % len(group_pattern)] for i in range(n_rows)
+]
 annotations_df["sample_sizes"] = [studyset.metadata.sample_sizes[i][0] for i in range(n_rows)]
 annotations_df["avg_age"] = np.arange(n_rows)
 studyset.annotations_df = annotations_df
@@ -83,6 +89,7 @@ global_cbmr = CBMREstimator(
     lr=1e-1,
     tol=1e3,  # a reasonable analysis choice is 1e-2; 1e3 is for speed
     device="cpu",  # use "cuda" if you have a GPU
+    random_state=100,
 )
 global_results = global_cbmr.fit(dataset=studyset)
 
@@ -235,6 +242,7 @@ voxelwise_cbmr = CBMREstimator(
     damping=1.0,
     compute_nll=False,
     device="cpu",  # the full backend also accepts "cuda" if a GPU is available
+    random_state=100,
 )
 voxelwise_results = voxelwise_cbmr.fit(dataset=studyset)
 
@@ -275,11 +283,11 @@ plot_stat_map(
 # -----------------------------------------------------------------------------
 # A fitted :class:`~nimare.meta.cbmr.CBMRInference` object can generate Relative
 # Intensity (RI) and Intensity Difference (ID) diagnostic maps showing how a
-# user-defined moderator-unit change affects spatial intensity. The updated
-# helper accepts the same moderator/group selectors as the inference methods and
-# returns a CBMRResult copy with named RI and ID maps. Users can keep those maps
-# for downstream diagnosis or plot RI inside an ID-defined region of interest.
-# If no ID threshold is provided, the median absolute ID value is used.
+# user-defined moderator-unit change affects spatial intensity. The helper
+# accepts the same moderator/group selectors as the inference methods and returns
+# a CBMRResult copy with named RI and ID maps. Users can keep those maps for
+# downstream diagnosis or plot RI inside an ID-defined region of interest. If no
+# ID threshold is provided, the median absolute ID value is used.
 
 voxelwise_inference = voxelwise_results.get_inference(
     method="FI",
@@ -397,11 +405,13 @@ mixed_cbmr = CBMREstimator(
     group_categories=group_categories,
     global_moderators=["standardized_sample_sizes"],
     voxelwise_moderators=["standardized_avg_age"],
+    backend="full",
     spline_spacing=100,  # a reasonable analysis choice is 10 or 5; 100 is for speed
     n_iter=10,
     lr=1e-1,
     tol=1e3,  # a reasonable analysis choice is 1e-4; 1e3 is for speed
     device="cpu",  # use "cuda" if you have a GPU
+    random_state=100,
 )
 mixed_results = mixed_cbmr.fit(dataset=studyset)
 

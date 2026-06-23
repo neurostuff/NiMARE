@@ -13,7 +13,7 @@ import scipy.sparse
 try:
     import torch
 except ImportError:
-    warnings.warn("Torch not installed. CBMR tests will be skipped.")
+    warnings.warn("Torch not installed. CBMR tests will be skipped.", stacklevel=2)
     TORCH_INSTALLED = False
 else:
     TORCH_INSTALLED = True
@@ -25,7 +25,7 @@ else:
         CBMRResult,
         DEFAULT_GROUP_NAME,
     )
-    from nimare.meta.utils import fit_spatial_cbmr_approximate
+    from nimare.meta.utils import fit_voxelwise_cbmr_approximate
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
@@ -35,6 +35,19 @@ from nimare.transforms import StandardizeField
 logging.getLogger("numba").setLevel(logging.WARNING)
 # indexed_gzip has a few debug messages that are not useful for testing
 logging.getLogger("indexed_gzip").setLevel(logging.WARNING)
+
+CBMR_STANDARDIZE_FIELDS = ("sample_sizes", "avg_age", "schizophrenia_subtype")
+CBMR_GROUP_CATEGORIES = ("diagnosis", "drug_status")
+CBMR_MODERATORS = (
+    "standardized_sample_sizes",
+    "standardized_avg_age",
+    "schizophrenia_subtype",
+)
+
+
+def _standardize_cbmr_dataset(dataset):
+    """Standardize the fields used by most CBMR tests."""
+    return StandardizeField(fields=list(CBMR_STANDARDIZE_FIELDS)).transform(dataset)
 
 
 if TORCH_INSTALLED:
@@ -60,14 +73,12 @@ else:
 @pytest.fixture(scope="session")
 def cbmr_result(testdata_cbmr_simulated, model):
     """Test CBMR estimator."""
-    dset = StandardizeField(fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]).transform(
-        testdata_cbmr_simulated
-    )
+    dset = _standardize_cbmr_dataset(testdata_cbmr_simulated)
 
     cbmr = CBMREstimator(
         moderator_effect="global",
-        group_categories=["diagnosis", "drug_status"],
-        moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
+        group_categories=list(CBMR_GROUP_CATEGORIES),
+        moderators=list(CBMR_MODERATORS),
         spline_spacing=100,
         model=model,
         generate_description=False,
@@ -124,9 +135,7 @@ def test_cbmr_result_interface_lists_inference_inputs(cbmr_result):
 
 def test_cbmr_default_group_is_used_when_group_categories_none(testdata_cbmr_simulated):
     """CBMR should create a single default group when no grouping columns are supplied."""
-    dset = StandardizeField(fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]).transform(
-        testdata_cbmr_simulated
-    )
+    dset = _standardize_cbmr_dataset(testdata_cbmr_simulated)
     cbmr = CBMREstimator(
         moderator_effect="global",
         group_categories=None,
@@ -169,19 +178,13 @@ def test_cbmr_result_helpers_run_inference(cbmr_result):
 def test_cbmr_fit_is_repeatable(testdata_cbmr_simulated):
     """Repeated CBMR fits on the same dataset should return identical results."""
     dset = testdata_cbmr_simulated.slice(testdata_cbmr_simulated.ids[:60])
-    dset = StandardizeField(fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]).transform(
-        dset
-    )
+    dset = _standardize_cbmr_dataset(dset)
 
     def _fit_once():
         cbmr = CBMREstimator(
             moderator_effect="global",
-            group_categories=["diagnosis", "drug_status"],
-            moderators=[
-                "standardized_sample_sizes",
-                "standardized_avg_age",
-                "schizophrenia_subtype",
-            ],
+            group_categories=list(CBMR_GROUP_CATEGORIES),
+            moderators=list(CBMR_MODERATORS),
             spline_spacing=100,
             model=models.PoissonEstimator,
             generate_description=False,
@@ -216,14 +219,12 @@ def test_cbmr_fit_is_repeatable(testdata_cbmr_simulated):
 def test_cbmr_cuda_fit_and_inference_run(testdata_cbmr_simulated):
     """CBMR fit and inference should run end to end on CUDA."""
     dset = testdata_cbmr_simulated.slice(testdata_cbmr_simulated.ids[:60])
-    dset = StandardizeField(fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]).transform(
-        dset
-    )
+    dset = _standardize_cbmr_dataset(dset)
 
     cbmr = CBMREstimator(
         moderator_effect="global",
-        group_categories=["diagnosis", "drug_status"],
-        moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
+        group_categories=list(CBMR_GROUP_CATEGORIES),
+        moderators=list(CBMR_MODERATORS),
         spline_spacing=100,
         model=models.PoissonEstimator,
         generate_description=False,
@@ -259,14 +260,12 @@ def test_cbmr_cuda_fit_and_inference_run(testdata_cbmr_simulated):
 
 def test_cbmr_description_generation(testdata_cbmr_simulated):
     """CBMR should still generate a description when requested."""
-    dset = StandardizeField(fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]).transform(
-        testdata_cbmr_simulated
-    )
+    dset = _standardize_cbmr_dataset(testdata_cbmr_simulated)
 
     cbmr = CBMREstimator(
         moderator_effect="global",
-        group_categories=["diagnosis", "drug_status"],
-        moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
+        group_categories=list(CBMR_GROUP_CATEGORIES),
+        moderators=list(CBMR_MODERATORS),
         spline_spacing=100,
         model=models.PoissonEstimator,
         generate_description=True,
@@ -600,13 +599,11 @@ def test_cbmr_correctors(inference_results, corrector):
 
 def test_firth_penalty(testdata_cbmr_simulated):
     """Unit test for Firth penalty."""
-    dset = StandardizeField(fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]).transform(
-        testdata_cbmr_simulated
-    )
+    dset = _standardize_cbmr_dataset(testdata_cbmr_simulated)
     cbmr = CBMREstimator(
         moderator_effect="global",
-        group_categories=["diagnosis", "drug_status"],
-        moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
+        group_categories=list(CBMR_GROUP_CATEGORIES),
+        moderators=list(CBMR_MODERATORS),
         spline_spacing=100,
         model=models.PoissonEstimator,
         generate_description=False,
@@ -622,13 +619,11 @@ def test_firth_penalty(testdata_cbmr_simulated):
 
 
 def test_moderators_none(testdata_cbmr_simulated):
-    """Unit test for Firth penalty."""
-    dset = StandardizeField(fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]).transform(
-        testdata_cbmr_simulated
-    )
+    """CBMR should fit and run group inference when moderators are omitted."""
+    dset = _standardize_cbmr_dataset(testdata_cbmr_simulated)
     cbmr = CBMREstimator(
         moderator_effect="global",
-        group_categories=["diagnosis", "drug_status"],
+        group_categories=list(CBMR_GROUP_CATEGORIES),
         moderators=None,
         spline_spacing=100,
         model=models.PoissonEstimator,
@@ -656,14 +651,12 @@ def test_moderators_none(testdata_cbmr_simulated):
     assert isinstance(inference_results, nimare.results.MetaResult)
 
 
-def test_CBMREstimator_update(testdata_cbmr_simulated):
+def test_cbmr_estimator_update(testdata_cbmr_simulated):
     """Unit test for CBMR estimator update function."""
-    testdata_cbmr_simulated = StandardizeField(
-        fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]
-    ).transform(testdata_cbmr_simulated)
+    testdata_cbmr_simulated = _standardize_cbmr_dataset(testdata_cbmr_simulated)
     cbmr = CBMREstimator(
         moderator_effect="global",
-        moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
+        moderators=list(CBMR_MODERATORS),
         model=models.PoissonEstimator,
         generate_description=False,
         lr=1,
@@ -673,7 +666,7 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
     cbmr._collect_inputs(testdata_cbmr_simulated, drop_invalid=True)
     cbmr._preprocess_input(testdata_cbmr_simulated)
 
-    # fit the model
+    # Fit the model.
     init_weight_kwargs = {
         "groups": cbmr.groups,
         "moderators": cbmr.moderators,
@@ -683,7 +676,7 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
 
     cbmr.model.init_weights(**init_weight_kwargs)
     optimizer = torch.optim.LBFGS(cbmr.model.parameters(), cbmr.lr)
-    # load dataset info to torch.tensor
+    # Load dataset information into tensors.
     if cbmr.moderators:
         moderators_by_group_tensor = dict()
         for group in cbmr.model.groups:
@@ -706,7 +699,7 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
         foci_per_voxel_tensor[group] = group_foci_per_voxel_tensor
         foci_per_experiment_tensor[group] = group_foci_per_experiment_tensor
 
-    prev_loss = torch.tensor(float("inf"))  # initialization loss difference
+    prev_loss = torch.tensor(float("inf"))
 
     cbmr.model._update(
         optimizer,
@@ -716,7 +709,7 @@ def test_CBMREstimator_update(testdata_cbmr_simulated):
         foci_per_experiment_tensor,
         prev_loss,
     )
-    # deliberately set the first spatial coefficient to nan
+    # Deliberately set the first spatial coefficient to NaN.
     for group in cbmr.model.groups:
         nan_coef = torch.tensor(cbmr.model.spatial_coef_linears[group].weight)
         nan_coef[:, 0] = float("nan")
@@ -740,9 +733,7 @@ def test_cbmr_group_arrays_remain_aligned_when_experiment_has_no_in_mask_foci(
     testdata_cbmr_simulated,
 ):
     """Experiment-level arrays should stay aligned after focus filtering removes all foci."""
-    dset = StandardizeField(fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]).transform(
-        testdata_cbmr_simulated
-    )
+    dset = _standardize_cbmr_dataset(testdata_cbmr_simulated)
     target_id = dset.annotations.iloc[0]["id"]
     dset.coordinates.loc[
         dset.coordinates["id"] == target_id,
@@ -751,8 +742,8 @@ def test_cbmr_group_arrays_remain_aligned_when_experiment_has_no_in_mask_foci(
 
     cbmr = CBMREstimator(
         moderator_effect="global",
-        group_categories=["diagnosis", "drug_status"],
-        moderators=["standardized_sample_sizes", "standardized_avg_age", "schizophrenia_subtype"],
+        group_categories=list(CBMR_GROUP_CATEGORIES),
+        moderators=list(CBMR_MODERATORS),
         model=models.PoissonEstimator,
         generate_description=False,
         lr=1,
@@ -803,7 +794,7 @@ def test_cbmr_groups_full_experiment_ids_instead_of_collapsing_study_ids():
 
     cbmr = CBMREstimator(
         moderator_effect="global",
-        group_categories=["diagnosis", "drug_status"],
+        group_categories=list(CBMR_GROUP_CATEGORIES),
         model=models.PoissonEstimator,
         generate_description=False,
         lr=1,
@@ -819,7 +810,7 @@ def test_cbmr_groups_full_experiment_ids_instead_of_collapsing_study_ids():
     assert "study-0-2" in cbmr.inputs_["ids_by_group"]["DepressionNo"]
 
 
-def test_StandardizeField(testdata_cbmr_simulated):
+def test_standardize_field(testdata_cbmr_simulated):
     """Unit test for StandardizeField."""
     dset = StandardizeField(fields=["sample_sizes", "avg_age"]).transform(testdata_cbmr_simulated)
     assert isinstance(dset, nimare.dataset.Dataset)
@@ -892,7 +883,7 @@ def _mask_img():
     return nib.Nifti1Image(np.ones((2, 2, 2), dtype=np.uint8), np.eye(4))
 
 
-def _spatial_result_for_inference():
+def _voxelwise_result_for_inference():
     """Return a small fitted voxelwise CBMR result suitable for inference tests."""
     estimator = CBMREstimator(moderators=["age"], backend="approximate")
     estimator.groups = ["Default"]
@@ -918,7 +909,7 @@ def _spatial_result_for_inference():
         mask=nib.Nifti1Image(np.ones((2, 1, 1), dtype=np.uint8), np.eye(4)),
         maps=maps,
         tables=tables,
-        description="spatial inference test",
+        description="voxelwise inference test",
     )
 
 
@@ -1173,7 +1164,7 @@ def test_cbmr_group_label_validation_and_multicolumn_formatting():
     )
     estimator = CBMREstimator(
         moderator_effect="global",
-        group_categories=["diagnosis", "drug_status"],
+        group_categories=list(CBMR_GROUP_CATEGORIES),
     )
 
     grouped = estimator._assign_group_labels(annotations.copy())
@@ -1236,14 +1227,14 @@ def test_cbmr_moderator_effect_validation_is_shared_by_estimator_and_inference()
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_invalid_backend_raises():
+def test_voxelwise_cbmr_invalid_backend_raises():
     """The estimator should validate backend names at initialization."""
     with pytest.raises(ValueError, match="backend must be one of"):
         CBMREstimator(backend="bad-backend")
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_build_group_foci_matrices_counts_foci():
+def test_voxelwise_cbmr_build_group_foci_matrices_counts_foci():
     """Experiment-by-voxel matrices should preserve ordered experiment IDs and focus counts."""
     coordinates = pd.DataFrame(
         {
@@ -1272,7 +1263,7 @@ def test_spatial_cbmr_build_group_foci_matrices_counts_foci():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_build_group_foci_matrices_handles_empty_coordinates():
+def test_voxelwise_cbmr_build_group_foci_matrices_handles_empty_coordinates():
     """Groups with no retained foci should still receive correctly shaped sparse matrices."""
     coordinates = pd.DataFrame({"id": [], "_cbmr_mask_index": []})
     ids_by_group = {"Default": ["study-1", "study-2"]}
@@ -1288,7 +1279,7 @@ def test_spatial_cbmr_build_group_foci_matrices_handles_empty_coordinates():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_prepare_torch_inputs_densifies_sparse_matrices():
+def test_voxelwise_cbmr_prepare_torch_inputs_densifies_sparse_matrices():
     """Torch backend inputs should be float64 tensors on the estimator device."""
     estimator = CBMREstimator(moderators=["age"], device="cpu")
     estimator.groups = ["Default"]
@@ -1313,8 +1304,8 @@ def test_spatial_cbmr_prepare_torch_inputs_densifies_sparse_matrices():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_result_helpers_preserve_result_type_and_summarize_maps():
-    """The result should retain CBMRResult behavior plus spatial helper methods."""
+def test_voxelwise_cbmr_result_helpers_preserve_result_type_and_summarize_maps():
+    """The result should retain CBMRResult behavior plus voxelwise helper methods."""
     result = CBMRResult(
         estimator=object(),
         mask=_mask_img(),
@@ -1323,7 +1314,7 @@ def test_spatial_cbmr_result_helpers_preserve_result_type_and_summarize_maps():
             "spatialIntensity_group-Default": np.array([4.0, 5.0, 6.0]),
         },
         tables={"spatial_regression_coef": pd.DataFrame([[1.0, 2.0]], index=["Default"])},
-        description="spatial test",
+        description="voxelwise test",
     )
 
     copied = result.copy()
@@ -1341,8 +1332,8 @@ def test_spatial_cbmr_result_helpers_preserve_result_type_and_summarize_maps():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_output_tables_match_cbmr_group_table_convention():
-    """Spatial CBMR summaries should expose aggregate CBMR-style output tables."""
+def test_voxelwise_cbmr_output_tables_match_cbmr_group_table_convention():
+    """Voxelwise CBMR summaries should expose aggregate CBMR-style output tables."""
     tables = {}
 
     CBMREstimator._add_spatial_coef_table(tables, "A", np.array([1.0, 2.0]))
@@ -1370,7 +1361,7 @@ def test_spatial_cbmr_output_tables_match_cbmr_group_table_convention():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_add_approximate_results_creates_expected_maps_and_tables():
+def test_voxelwise_cbmr_add_approximate_results_creates_expected_maps_and_tables():
     """Approximate backend result extraction should create finite maps and CBMR-style tables."""
     estimator = CBMREstimator(moderators=["age"], backend="approximate")
     estimator.inputs_ = {"coef_spline_bases": np.array([[1.0, 0.0], [0.0, 1.0]])}
@@ -1397,7 +1388,7 @@ def test_spatial_cbmr_add_approximate_results_creates_expected_maps_and_tables()
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_torch_result_extraction_uses_model_weights():
+def test_voxelwise_cbmr_torch_result_extraction_uses_model_weights():
     """Full backend result extraction should project fitted torch weights into maps and tables."""
     estimator = CBMREstimator(moderators=["age"], backend="full", device="cpu")
     estimator.groups = ["Default"]
@@ -1429,7 +1420,7 @@ def test_spatial_cbmr_torch_result_extraction_uses_model_weights():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_exposes_approximate_solver_as_property():
+def test_voxelwise_cbmr_exposes_approximate_solver_as_property():
     """The approximate solver accessor should behave like an attribute, not a method."""
     estimator = CBMREstimator(moderators=["age"], backend="approximate")
 
@@ -1439,7 +1430,7 @@ def test_spatial_cbmr_exposes_approximate_solver_as_property():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_fit_dispatches_to_approximate_backend(monkeypatch):
+def test_voxelwise_cbmr_fit_dispatches_to_approximate_backend(monkeypatch):
     """The backend option should route CBMREstimator through the approximate solver."""
     estimator = CBMREstimator(
         moderators=["age"],
@@ -1498,7 +1489,7 @@ def test_spatial_cbmr_fit_dispatches_to_approximate_backend(monkeypatch):
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_fit_dispatches_to_full_backend(monkeypatch):
+def test_voxelwise_cbmr_fit_dispatches_to_full_backend(monkeypatch):
     """The full backend should route through the torch fitting implementation."""
     estimator = CBMREstimator(moderators=["age"], backend="full")
     estimator.groups = ["Default"]
@@ -1526,13 +1517,13 @@ def test_spatial_cbmr_fit_dispatches_to_full_backend(monkeypatch):
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_approximate_solver_returns_finite_coefficients():
+def test_voxelwise_cbmr_approximate_solver_returns_finite_coefficients():
     """The approximate solver should return finite coefficient vectors."""
     moderators = np.array([[0.0, 1.0], [0.5, 1.0], [1.0, 1.0]])
     bases = np.array([[1.0, 0.0], [0.5, 0.5], [0.0, 1.0]])
     foci = scipy.sparse.csr_matrix(np.array([[0.0, 1.0, 0.0], [1.0, 0.0, 1.0], [0.0, 0.0, 1.0]]))
 
-    coefficient = fit_spatial_cbmr_approximate(
+    coefficient = fit_voxelwise_cbmr_approximate(
         moderators,
         bases,
         foci,
@@ -1546,9 +1537,9 @@ def test_spatial_cbmr_approximate_solver_returns_finite_coefficients():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_result_get_inference_returns_fitted_engine():
+def test_voxelwise_cbmr_result_get_inference_returns_fitted_engine():
     """The result should expose a result-centered inference workflow."""
-    result = _spatial_result_for_inference()
+    result = _voxelwise_result_for_inference()
 
     inference = result.get_inference()
 
@@ -1560,9 +1551,9 @@ def test_spatial_cbmr_result_get_inference_returns_fitted_engine():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_result_helpers_allow_fisher_information_method():
+def test_voxelwise_cbmr_result_helpers_allow_fisher_information_method():
     """Result-centered inference should let users request FI standard errors."""
-    result = _spatial_result_for_inference()
+    result = _voxelwise_result_for_inference()
 
     inference = result.get_inference(method="FI")
     transformed = result.test_groups(method="FI")
@@ -1573,9 +1564,9 @@ def test_spatial_cbmr_result_helpers_allow_fisher_information_method():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_result_helpers_allow_sandwich_method_options():
+def test_voxelwise_cbmr_result_helpers_allow_sandwich_method_options():
     """Result-centered inference should let users request voxelwise sandwich standard errors."""
-    result = _spatial_result_for_inference()
+    result = _voxelwise_result_for_inference()
 
     transformed = result.test_moderators(
         method="sandwich",
@@ -1629,9 +1620,9 @@ def test_global_cbmr_sandwich_requires_poisson_model():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_result_helpers_run_inference():
+def test_voxelwise_cbmr_result_helpers_run_inference():
     """The result should support CBMRResult-style inference helpers."""
-    result = _spatial_result_for_inference()
+    result = _voxelwise_result_for_inference()
 
     group_result = result.test_groups()
     moderator_result = result.test_moderators()
@@ -1669,7 +1660,7 @@ def test_mixed_cbmr_inference_routes_moderator_types_separately():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_inference_requires_fit_and_spatial_result():
+def test_voxelwise_cbmr_inference_requires_fit_and_cbmr_result():
     """The inference object should validate fit state and result type like CBMRInference."""
     inference = CBMRInference(device="cpu")
 
@@ -1680,7 +1671,7 @@ def test_spatial_cbmr_inference_requires_fit_and_spatial_result():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_inference_validates_standard_error_options():
+def test_voxelwise_cbmr_inference_validates_standard_error_options():
     """The inference object should validate sandwich and FI method options."""
     with pytest.raises(ValueError, match="method must be one of"):
         CBMRInference(method="bad-method")
@@ -1693,10 +1684,10 @@ def test_spatial_cbmr_inference_validates_standard_error_options():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_inference_create_contrast():
+def test_voxelwise_cbmr_inference_create_contrast():
     """The inference object should parse named group and moderator contrasts like CBMR."""
     inference = CBMRInference(device="cpu")
-    inference.fit(_spatial_result_for_inference())
+    inference.fit(_voxelwise_result_for_inference())
 
     group_contrast = inference.create_contrast("Default", source="groups")
     moderator_contrast = inference.create_contrast("age", source="moderators")
@@ -1706,10 +1697,10 @@ def test_spatial_cbmr_inference_create_contrast():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_inference_preprocesses_raw_contrasts_like_cbmr():
+def test_voxelwise_cbmr_inference_preprocesses_raw_contrasts_like_cbmr():
     """Raw contrast arrays should be two-dimensional, standardized, and deduplicated."""
     inference = CBMRInference(device="cpu")
-    inference.fit(_spatial_result_for_inference())
+    inference.fit(_voxelwise_result_for_inference())
     inference.t_con_moderators = [np.array([2.0]), np.array([2.0])]
 
     contrasts, names = inference._preprocess_t_con_regressor(source="moderators")
@@ -1720,10 +1711,10 @@ def test_spatial_cbmr_inference_preprocesses_raw_contrasts_like_cbmr():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_inference_rejects_wrong_contrast_shape():
+def test_voxelwise_cbmr_inference_rejects_wrong_contrast_shape():
     """The inference object should reject contrasts with incorrect regressor width."""
     inference = CBMRInference(device="cpu")
-    inference.fit(_spatial_result_for_inference())
+    inference.fit(_voxelwise_result_for_inference())
     inference.t_con_moderators = [np.array([1.0, 0.0])]
 
     with pytest.raises(ValueError, match="doesn't match with moderators"):
@@ -1731,10 +1722,10 @@ def test_spatial_cbmr_inference_rejects_wrong_contrast_shape():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_inference_generates_moderator_effect_diagnostic_maps():
+def test_voxelwise_cbmr_inference_generates_moderator_effect_diagnostic_maps():
     """Voxelwise moderator-effect diagnostics should generate per-unit RI and ID maps."""
     inference = CBMRInference(device="cpu")
-    inference.fit(_spatial_result_for_inference())
+    inference.fit(_voxelwise_result_for_inference())
 
     diagnostic_result = inference.generate_voxelwise_moderator_effect_maps(
         moderators="age",
@@ -1755,9 +1746,9 @@ def test_spatial_cbmr_inference_generates_moderator_effect_diagnostic_maps():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_result_exposes_moderator_effect_diagnostic_workflow():
+def test_voxelwise_cbmr_result_exposes_moderator_effect_diagnostic_workflow():
     """Users should be able to run RI/ID diagnostics from a fitted voxelwise result."""
-    result = _spatial_result_for_inference()
+    result = _voxelwise_result_for_inference()
     inference = result.get_inference(method="FI")
 
     diagnostic_result = inference.generate_voxelwise_moderator_effect_maps(
@@ -1776,12 +1767,12 @@ def test_spatial_cbmr_result_exposes_moderator_effect_diagnostic_workflow():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_inference_plots_moderator_effect_diagnostics():
+def test_voxelwise_cbmr_inference_plots_moderator_effect_diagnostics():
     """Voxelwise moderator-effect diagnostics should plot RI within an ID-thresholded ROI."""
     import matplotlib.pyplot as plt
 
     inference = CBMRInference(device="cpu")
-    inference.fit(_spatial_result_for_inference())
+    inference.fit(_voxelwise_result_for_inference())
 
     figure = inference.plot_voxelwise_moderator_effects(
         moderators="age",
@@ -1796,7 +1787,7 @@ def test_spatial_cbmr_inference_plots_moderator_effect_diagnostics():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_inference_masks_ri_to_default_id_roi():
+def test_voxelwise_cbmr_inference_masks_ri_to_default_id_roi():
     """The default ROI should keep voxels above the median absolute ID value."""
     relative_intensity = np.array([1.1, 1.2, 1.3, 1.4])
     intensity_difference = np.array([0.1, -0.4, 0.2, -0.8])
@@ -1811,7 +1802,7 @@ def test_spatial_cbmr_inference_masks_ri_to_default_id_roi():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_inference_masks_ri_to_custom_id_roi():
+def test_voxelwise_cbmr_inference_masks_ri_to_custom_id_roi():
     """A user-provided ID threshold should define the RI display ROI."""
     relative_intensity = np.array([1.1, 1.2, 1.3])
     intensity_difference = np.array([0.1, 0.5, -0.9])
@@ -1827,10 +1818,10 @@ def test_spatial_cbmr_inference_masks_ri_to_custom_id_roi():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_inference_validates_moderator_effect_diagnostics():
+def test_voxelwise_cbmr_inference_validates_moderator_effect_diagnostics():
     """Voxelwise moderator-effect diagnostics should reject unavailable inputs."""
     inference = CBMRInference(device="cpu")
-    inference.fit(_spatial_result_for_inference())
+    inference.fit(_voxelwise_result_for_inference())
 
     with pytest.raises(ValueError, match="Unknown moderators"):
         inference.generate_voxelwise_moderator_effect_maps(moderators="sample_size")
@@ -1841,9 +1832,9 @@ def test_spatial_cbmr_inference_validates_moderator_effect_diagnostics():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_inference_transform_adds_maps_without_mutating_input():
+def test_voxelwise_cbmr_inference_transform_adds_maps_without_mutating_input():
     """The inference object should append maps to a copy."""
-    result = _spatial_result_for_inference()
+    result = _voxelwise_result_for_inference()
     original_map_keys = set(result.maps)
     inference = CBMRInference(device="cpu", ridge=1e-3)
 
@@ -1874,7 +1865,7 @@ def test_spatial_cbmr_inference_transform_adds_maps_without_mutating_input():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_inference_fisher_information_matches_explicit_kron():
+def test_voxelwise_cbmr_inference_fisher_information_matches_explicit_kron():
     """Kronecker Fisher information should match explicit weighted design construction."""
     moderators = np.array([[1.0, 0.5], [1.0, -0.2], [1.0, 1.2]])
     bases = np.array([[1.0, 0.0], [0.25, 0.75]])
@@ -1897,7 +1888,7 @@ def test_spatial_cbmr_inference_fisher_information_matches_explicit_kron():
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 @pytest.mark.parametrize("meat", ["iid", "cluster"])
-def test_spatial_cbmr_inference_sandwich_covariance_matches_explicit_kron(meat):
+def test_voxelwise_cbmr_inference_sandwich_covariance_matches_explicit_kron(meat):
     """Sandwich covariance should match explicit Kronecker-design calculations."""
     moderators = np.array([[1.0, 0.5], [1.0, -0.2], [1.0, 1.2]])
     bases = np.array([[1.0, 0.0], [0.25, 0.75]])
@@ -1973,7 +1964,7 @@ def test_global_cbmr_inference_sandwich_covariance_matches_explicit_glm():
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 @pytest.mark.parametrize("meat", ["cluster", "iid"])
 @pytest.mark.parametrize("correction", ["hc0", "hc1", "hc3"])
-def test_spatial_cbmr_sparse_sandwich_covariance_matches_dense(meat, correction):
+def test_voxelwise_cbmr_sparse_sandwich_covariance_matches_dense(meat, correction):
     """Sparse-response sandwich covariance should match the dense-response path."""
     moderators = np.array([[1.0, 0.5], [1.0, -0.2], [1.0, 1.2]])
     bases = np.array([[1.0, 0.0], [0.25, 0.75], [0.5, 0.5]])
@@ -1994,7 +1985,7 @@ def test_spatial_cbmr_sparse_sandwich_covariance_matches_dense(meat, correction)
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_inference_sandwich_helpers_handle_hc_corrections():
+def test_voxelwise_cbmr_inference_sandwich_helpers_handle_hc_corrections():
     """Sandwich helpers should apply HC corrections."""
     moderators = np.array([[1.0, 0.0], [1.0, 1.0], [1.0, -1.0]])
     bases = np.array([[1.0, 0.0], [0.5, 0.5]])
@@ -2037,7 +2028,7 @@ def test_spatial_cbmr_inference_sandwich_helpers_handle_hc_corrections():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_inference_spatial_statistics_match_manual_wald():
+def test_voxelwise_cbmr_inference_spatial_statistics_match_manual_wald():
     """Voxel-wise single-contrast Wald statistics should match a manual calculation."""
     coefficient = np.array([[0.1, 0.2], [0.3, 0.4]])
     covariance = np.diag([0.5, 0.25, 0.75, 0.5])
@@ -2062,7 +2053,7 @@ def test_spatial_cbmr_inference_spatial_statistics_match_manual_wald():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_spatial_cbmr_inference_chi_square_log_intensity_matches_legacy_loop():
+def test_voxelwise_cbmr_inference_chi_square_log_intensity_matches_legacy_loop():
     """Vectorized group GLH chi-square statistics should match a direct voxel loop."""
     simp_con_group = np.array([[1.0, -1.0], [0.5, 0.5]])
     contrast_log_intensity = np.array(
