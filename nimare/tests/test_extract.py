@@ -12,7 +12,7 @@ import pytest
 import nimare
 import nimare.extract
 from nimare.dataset import Dataset
-from nimare.extract.extract import _get_available_entities
+from nimare.extract.extract import _fetch_database, _get_available_entities
 from nimare.generate import create_coordinate_studyset
 from nimare.nimads import Studyset
 from nimare.tests.utils import get_test_data_path
@@ -236,6 +236,45 @@ def test_fetch_neuroquery_raises_on_unmatched_query(tmp_path):
     with pytest.raises(ValueError) as excinfo:
         nimare.extract.fetch_neuroquery(data_dir=str(tmp_path), vocab="not_a_real_vocab")
     assert "No files matched the query" in str(excinfo.value)
+
+
+def test_get_available_entities_ignores_unknown_segments():
+    """Unknown key-value segments are ignored, and known entities still parse correctly."""
+    manifest = [
+        {
+            "features": [
+                {
+                    "features": (
+                        "data-neurosynth_version-7_vocab-terms_source-abstract_"
+                        "type-tfidf_garbage-xyz_features.npz"
+                    )
+                },
+            ],
+        },
+    ]
+    out = _get_available_entities(manifest, data="neurosynth")
+    assert out["vocab"] == ["terms"]
+    assert out["version"] == ["7"]
+    assert "garbage" not in out  # unrecognized key is never surfaced
+
+
+def test_fetch_database_message_omits_data_none(tmp_path):
+    """When the query has no 'data' key, the message uses a generic scope (no 'data-None')."""
+    with pytest.raises(ValueError) as excinfo:
+        _fetch_database({"version": "999"}, "http://example.com/", str(tmp_path))
+    msg = str(excinfo.value)
+    assert "No files matched the query" in msg
+    assert "data-None" not in msg
+    assert "the requested database" in msg
+
+
+def test_fetch_database_message_falls_back_when_no_entities(tmp_path):
+    """An unknown data source (no available entities) yields a generic fallback message."""
+    with pytest.raises(ValueError) as excinfo:
+        _fetch_database({"data": "not_a_database"}, "http://example.com/", str(tmp_path))
+    msg = str(excinfo.value)
+    assert "No matching entries were found" in msg
+    assert "see the database file manifest" in msg
 
 
 def test_download_abstracts_accepts_studyset(monkeypatch):
