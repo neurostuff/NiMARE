@@ -57,6 +57,42 @@ def _find_entities(filename, search_pairs, log=False):
     return False
 
 
+def _get_available_entities(database_file_manifest, data=None):
+    """Collect the searchable entity values present in the database manifest.
+
+    Parameters
+    ----------
+    database_file_manifest : :obj:`list` of :obj:`dict`
+        Parsed ``database_file_manifest.json``; each entry has a ``"features"``
+        list of dictionaries with a ``"features"`` filename.
+    data : :obj:`str` or None, optional
+        If provided, restrict results to feature files for this data source
+        (e.g. ``"neurosynth"``). Default is None (all sources).
+
+    Returns
+    -------
+    :obj:`dict`
+        Mapping of each searchable entity (``"version"``, ``"vocab"``,
+        ``"source"``, ``"type"``) to a sorted list of its distinct values
+        across the matching feature files. Entities with no values are omitted.
+    """
+    searchable = ["version", "vocab", "source", "type"]
+    values = {key: set() for key in searchable}
+    for database in database_file_manifest:
+        for feature_dict in database.get("features", []):
+            entities = {}
+            for part in feature_dict.get("features", "").split("_"):
+                if "-" in part:
+                    key, _, value = part.partition("-")
+                    entities[key] = value
+            if data is not None and entities.get("data") != data:
+                continue
+            for key in searchable:
+                if key in entities:
+                    values[key].add(entities[key])
+    return {key: sorted(vals) for key, vals in values.items() if vals}
+
+
 def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
     """Fetch generic database."""
     res_dir = get_resource_path()
@@ -107,6 +143,14 @@ def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
                         }
                     )
                 found_files += [coordinates_file, metadata_file, *feature_dict.values()]
+
+    if not found_databases:
+        available = _get_available_entities(database_file_manifest, data=search_pairs.get("data"))
+        options = "; ".join(f"{key}: {', '.join(vals)}" for key, vals in available.items())
+        raise ValueError(
+            f"No files matched the query {search_pairs}. "
+            f"Available options for data-{search_pairs.get('data')} are: {options}."
+        )
 
     found_files = sorted(list(set(found_files)))
     for found_file in found_files:
