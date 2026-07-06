@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from typing import Any
 
 from nimare.base import NiMAREBase
@@ -17,16 +18,16 @@ class MAFeatureDataset(NiMAREBase):
 
     Attributes
     ----------
-    ids : list of str
+    ids : sequence of str
         Full Studyset analysis identifiers ("<study_id>-<analysis_id>") per row.
-    study_ids : list of str
+    study_ids : sequence of str
         Study-level grouping label for each row; used for grouped splitting and leakage control.
     features : array-like or sparse matrix
         Analysis-by-feature matrix combining map features (sparse voxelwise)
         and optional descriptor features. Unreduced voxelwise map features must
         remain in a sparse representation. Reduced map features or
         descriptor-only matrices may be dense.
-    feature_names : list of str
+    feature_names : sequence of str or None
         Names for columns in `features`, aligned to column order.
     target : array-like or None
         Optional row-aligned prediction target (y), by default None.
@@ -38,11 +39,11 @@ class MAFeatureDataset(NiMAREBase):
     def __init__(
         self,
         features: Any,
-        ids: list[str],
-        study_ids: list[str],
-        feature_names: list[str] | None = None,
+        ids: Sequence[str],
+        study_ids: Sequence[str],
+        feature_names: Sequence[str] | None = None,
         target: Any | None = None,
-        provenance: Any | None = None,
+        provenance: dict[str, Any] | None = None,
     ) -> None:
         # Infer sizes from features. Prefer .shape for ndarray/sparse, fall back
         # to len() for generic sequences.
@@ -101,7 +102,7 @@ class MAFeatureDataset(NiMAREBase):
 
     def _split_by_groups(
         self,
-        test_size: float = 0.25,
+        test_size: float | int = 0.25,
         random_state: int | None = None,
         cv: Any = None,
     ):
@@ -114,7 +115,7 @@ class MAFeatureDataset(NiMAREBase):
 
     def split(
         self,
-        test_size: float = 0.25,
+        test_size: float | int = 0.25,
         random_state: int | None = None,
         cv: Any = None,
     ):
@@ -122,8 +123,8 @@ class MAFeatureDataset(NiMAREBase):
 
         Parameters
         ----------
-        test_size : float, default=0.25
-            Proportion of grouped data to assign to the test partition.
+        test_size : float or int, default=0.25
+            Proportion or count of grouped data to assign to the test partition.
         random_state : int or None, default=None
             Seed used when the splitter is stochastic.
         cv : object, default=None
@@ -131,7 +132,7 @@ class MAFeatureDataset(NiMAREBase):
 
         Returns
         -------
-        (MAFeatureDataset, MAFeatureDataset)
+        (MAFeatureDataset, MAFeatureDataset or None)
             Tuple of (train_dataset, test_dataset). If no test partition is
             requested, the second element may be ``None``.
 
@@ -205,13 +206,13 @@ class MAFeatureExtractor(NiMAREBase):
         Existing NiMARE kernel transformer instance or class. No implicit
         scientific default is selected; public examples must pass an explicit
         kernel transformer.
-    descriptor_fields : list of dict, optional
+    descriptor_fields : list of dict or object, optional
         Field selectors from metadata, annotations, or texts, by default None.
     descriptor_transformers : dict, optional
         Optional mapping from descriptor field selectors to explicit
         transformers or vectorizers for non-numeric descriptor fields, by
         default None.
-    target_field : dict, optional
+    target_field : dict or object, optional
         Optional field selector for y, by default None.
     target_transformer : object, optional
         Optional transformer or label extractor for free-text or multi-label
@@ -267,11 +268,11 @@ class MAFeatureExtractor(NiMAREBase):
             "MAFeatureExtractor._get_studyset_tables is not yet implemented."
         )
 
-    def _stack_sparse_features(self, map_features: Any, descriptor_features: Any | None = None):
-        """Combine sparse map features with optional descriptor features.
+    def _stack_sparse_features(self, sparse_rows: Any):
+        """Concatenate sparse feature rows.
 
         This private helper is reserved for the future feature assembly path
-        that builds sklearn-ready matrices from aligned feature blocks.
+        that builds sklearn-ready matrices from row-aligned sparse feature blocks.
         """
         raise NotImplementedError(
             "MAFeatureExtractor._stack_sparse_features is not yet implemented."
@@ -302,7 +303,7 @@ class MAFeatureExtractor(NiMAREBase):
         self,
         studyset: Any,
         map_reducer: Any | None = None,
-        map_reducer_params: Any | None = None,
+        map_reducer_params: dict[str, Any] | None = None,
     ):
         """Run the full public pipeline convenience wrapper.
 
@@ -312,7 +313,7 @@ class MAFeatureExtractor(NiMAREBase):
             NiMARE Studyset input.
         map_reducer : object, optional
             Optional map-feature reducer, by default None.
-        map_reducer_params : object, optional
+        map_reducer_params : dict, optional
             Optional reducer parameters, by default None.
 
         Returns

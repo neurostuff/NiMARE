@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pytest
 from scipy import sparse
@@ -73,7 +75,7 @@ def assert_sklearn_bunch_valid(
     expected_feature_rows: int,
     expected_feature_columns: int,
     expected_groups: list[str] | None = None,
-    expected_target: list[int] | None = None,
+    expected_target: list[Any] | None = None,
 ):
     """Assert the shared sklearn-export contract for MA feature bundles."""
     assert isinstance(bunch, Bunch)
