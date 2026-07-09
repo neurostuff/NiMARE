@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import nibabel as nib
 import numpy as np
+import pandas as pd
 import pytest
 from nilearn.maskers import NiftiLabelsMasker
 
@@ -92,6 +93,100 @@ def test_get_target_value_map_raises_for_unsupported_maps():
         diagnostics._get_target_value_map(result)
 
 
+def test_diagnostics_voxel_thresh_deprecated_alias():
+    """voxel_thresh should remain a deprecated alias for target_threshold."""
+    with pytest.warns(FutureWarning, match="voxel_thresh"):
+        counter = diagnostics.FocusCounter(target_image="z", voxel_thresh=1.0)
+
+    assert counter.target_threshold == 1.0
+
+
+def test_diagnostics_target_and_voxel_threshold_error():
+    """Supplying both threshold names should fail explicitly."""
+    with pytest.raises(ValueError, match="target_threshold"):
+        diagnostics.FocusCounter(target_image="z", target_threshold=1.0, voxel_thresh=1.0)
+
+
+def test_corrected_cluster_table_uses_thresholded_support_and_original_z():
+    """Corrected cluster tables should report original-z peaks inside thresholded support."""
+    target_image = "z_desc-size_level-cluster_corr-FWE_method-montecarlo"
+    mask_data = np.ones((7, 7, 7), dtype=bool)
+    mask_img = nib.Nifti1Image(mask_data.astype(np.int8), affine=np.eye(4))
+
+    class DummyMasker:
+        def __init__(self, mask_img):
+            self.mask_img_ = mask_img
+
+        def transform(self, img):
+            return np.asanyarray(img.dataobj)[mask_data].reshape(1, -1)
+
+        def inverse_transform(self, data):
+            arr = np.asarray(data)
+            if arr.ndim > 1:
+                arr = np.squeeze(arr, axis=0)
+            out = np.zeros(mask_data.shape, dtype=arr.dtype)
+            out[mask_data] = arr
+            return nib.Nifti1Image(out, affine=mask_img.affine)
+
+    class DummyResult:
+        def __init__(self, maps, masker):
+            self.maps = maps
+            self.tables = {}
+            self.diagnostics = []
+            self.masker = masker
+            self.estimator = SimpleNamespace(
+                masker=masker,
+                inputs_={
+                    "id": ["study1"],
+                    "coordinates": pd.DataFrame(
+                        {"id": ["study1"], "x": [1.0], "y": [1.0], "z": [1.0]}
+                    ),
+                },
+            )
+
+        def get_map(self, name, return_type="image"):
+            values = self.maps[name]
+            if return_type == "array":
+                return values
+            return self.masker.inverse_transform(values)
+
+    corrected = np.zeros(mask_data.shape, dtype=float)
+    corrected[(1, 1, 1)] = 6.0
+    corrected[(1, 1, 2)] = 2.0
+    corrected[(1, 2, 1)] = 2.0
+    corrected[(5, 5, 5)] = 1.2
+    corrected[(5, 5, 4)] = 1.2
+
+    original_z = np.zeros(mask_data.shape, dtype=float)
+    original_z[(1, 1, 1)] = 3.0
+    original_z[(1, 1, 2)] = 9.0
+    original_z[(1, 2, 1)] = 2.0
+    original_z[(5, 5, 5)] = 8.0
+    original_z[(5, 5, 4)] = 8.0
+    original_z[(3, 3, 3)] = 99.0
+
+    masker = DummyMasker(mask_img)
+    result = DummyResult(
+        {
+            target_image: masker.transform(nib.Nifti1Image(corrected, affine=mask_img.affine))[0],
+            "z": masker.transform(nib.Nifti1Image(original_z, affine=mask_img.affine))[0],
+        },
+        masker,
+    )
+
+    counter = diagnostics.FocusCounter(target_image=target_image, target_threshold=1.64)
+    result = counter.transform(result)
+
+    clusters_table = result.tables[f"{target_image}_tab-clust"]
+    peak_row = clusters_table.loc[clusters_table["Peak Stat"].idxmax()]
+
+    assert clusters_table.shape[0] == 1
+    assert peak_row["Peak Stat"] == pytest.approx(9.0)
+    assert peak_row[["X", "Y", "Z"]].to_numpy().tolist() == [1.0, 1.0, 2.0]
+    assert not np.any(np.isclose(clusters_table["Peak Stat"], 8.0))
+    assert not np.any(np.isclose(clusters_table["Peak Stat"], 99.0))
+
+
 def test_is_voxelwise_masker_uses_round_trip_when_mask_count_mismatches():
     """Voxelwise detection should fall back to a round-trip feature-shape check."""
     mask_data = np.array([[[1], [0]], [[1], [1]]], dtype=np.int8)
@@ -150,7 +245,7 @@ def test_jackknife_smoke(
     testdata = testdata_ibma if meta_type == "ibma" else testdata_cbma_full
     res = meta.fit(dset1, dset2) if n_samples == "twosample" else meta.fit(testdata)
 
-    jackknife = diagnostics.Jackknife(target_image=target_image, voxel_thresh=voxel_thresh)
+    jackknife = diagnostics.Jackknife(target_image=target_image, target_threshold=voxel_thresh)
     results = jackknife.transform(res)
 
     image_name = "_".join(target_image.split("_")[1:])
@@ -177,7 +272,7 @@ def test_jackknife_with_zero_clusters(testdata_cbma_full):
     meta = cbma.ALE()
     res = meta.fit(testdata_cbma_full)
 
-    jackknife = diagnostics.Jackknife(target_image="z", voxel_thresh=10)
+    jackknife = diagnostics.Jackknife(target_image="z", target_threshold=10)
     results = jackknife.transform(res)
 
     contribution_table = results.tables["z_diag-Jackknife_tab-counts"]
@@ -200,14 +295,14 @@ def test_jackknife_with_custom_masker_smoke(testdata_ibma):
     meta = ibma.SampleSizeBasedLikelihood(mask=masker)
     res = meta.fit(testdata_ibma)
 
-    jackknife = diagnostics.Jackknife(target_image="z", voxel_thresh=0.5)
+    jackknife = diagnostics.Jackknife(target_image="z", target_threshold=0.5)
     results = jackknife.transform(res)
     contribution_table = results.tables["z_diag-Jackknife_tab-counts_tail-positive"]
     assert contribution_table.shape[0] == len(meta.inputs_["id"])
 
     # A Jackknife with a target_image that isn't present in the MetaResult raises a ValueError.
     with pytest.raises(ValueError):
-        jackknife = diagnostics.Jackknife(target_image="doggy", voxel_thresh=0.5)
+        jackknife = diagnostics.Jackknife(target_image="doggy", target_threshold=0.5)
         jackknife.transform(res)
 
 
@@ -227,7 +322,7 @@ def test_focuscounter_negative_tail_label_map_naming(testdata_cbma_full):
     neg_img = nib.Nifti1Image(neg_data, mask_img.affine)
     res.maps["z"] = np.squeeze(masker.transform(neg_img))
 
-    counter = diagnostics.FocusCounter(target_image="z", voxel_thresh=1.0)
+    counter = diagnostics.FocusCounter(target_image="z", target_threshold=1.0)
     results = counter.transform(res)
 
     assert "label_tail-negative" in results.maps
@@ -252,7 +347,7 @@ def test_focuscounter_positive_tail_label_map_naming(testdata_cbma_full):
     pos_img = nib.Nifti1Image(pos_data, mask_img.affine)
     res.maps["z"] = np.squeeze(masker.transform(pos_img))
 
-    counter = diagnostics.FocusCounter(target_image="z", voxel_thresh=1.0)
+    counter = diagnostics.FocusCounter(target_image="z", target_threshold=1.0)
     results = counter.transform(res)
 
     assert "label_tail-positive" in results.maps
@@ -283,7 +378,7 @@ def test_focuscounter_single_tail_mixed_sign_warning(testdata_cbma_full, monkeyp
     monkeypatch.setattr(diagnostics, "_infer_label_map_tails", _fake_infer)
     caplog.set_level(logging.WARNING, logger="nimare.diagnostics")
 
-    counter = diagnostics.FocusCounter(target_image="z", voxel_thresh=1.0)
+    counter = diagnostics.FocusCounter(target_image="z", target_threshold=1.0)
     results = counter.transform(res)
 
     assert any("Mixed-sign clusters detected" in r.message for r in caplog.records)
@@ -308,7 +403,7 @@ def test_focuscounter_pairwise_negative_tail_uses_group2(testdata_cbma_full):
     neg_img = nib.Nifti1Image(neg_data, mask_img.affine)
     res.maps["z_desc-uniformity"] = np.squeeze(masker.transform(neg_img))
 
-    counter = diagnostics.FocusCounter(target_image="z_desc-uniformity", voxel_thresh=1.0)
+    counter = diagnostics.FocusCounter(target_image="z_desc-uniformity", target_threshold=1.0)
     results = counter.transform(res)
 
     table_key = "z_desc-uniformity_diag-FocusCounter_tab-counts_tail-negative"
@@ -342,7 +437,7 @@ def test_focuscounter_smoke(
     testdata = testdata_ibma if meta_type == "ibma" else testdata_cbma_full
     res = meta.fit(dset1, dset2) if n_samples == "twosample" else meta.fit(testdata)
 
-    counter = diagnostics.FocusCounter(target_image=target_image, voxel_thresh=1.65)
+    counter = diagnostics.FocusCounter(target_image=target_image, target_threshold=1.65)
     if meta_type == "ibma":
         with pytest.raises(ValueError):
             counter.transform(res)

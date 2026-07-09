@@ -2,6 +2,7 @@
 
 import copy
 import logging
+import warnings
 from abc import abstractmethod
 
 import nibabel as nib
@@ -67,6 +68,124 @@ def _get_target_value_map(result):
         "No supported map found for per-cluster contribution calculations. "
         f"Expected one of {target_value_keys}; available maps are: {available_maps}."
     )
+
+
+def _resolve_target_threshold(target_threshold, voxel_thresh):
+    """Resolve diagnostics threshold aliases."""
+    if target_threshold is not None and voxel_thresh is not None:
+        raise ValueError(
+            "Only one of 'target_threshold' and deprecated 'voxel_thresh' may be provided."
+        )
+
+    if voxel_thresh is not None:
+        warnings.warn(
+            "'voxel_thresh' is deprecated for diagnostics and will be removed in a future "
+            "release. Use 'target_threshold' to threshold the selected target image before "
+            "diagnostics table/support generation.",
+            FutureWarning,
+            stacklevel=3,
+        )
+        return voxel_thresh
+
+    return target_threshold
+
+
+def _is_cluster_corrected_target(target_image):
+    """Determine whether a target image is a corrected cluster-level map."""
+    return "_level-cluster" in target_image and "_corr-" in target_image
+
+
+def _remove_cluster_stat_suffix(description):
+    """Remove size/mass cluster-stat suffixes from a map description."""
+    if description in {"size", "mass"}:
+        return None
+
+    for suffix in ("Size", "Mass", "size", "mass"):
+        if description.endswith(suffix):
+            description = description[: -len(suffix)]
+            break
+
+    return description or None
+
+
+def _candidate_peak_value_maps(target_image):
+    """Generate candidate original statistic maps for a corrected cluster target."""
+    uncorrected_target = target_image.split("_corr-", 1)[0]
+    candidate_maps = []
+
+    if "_desc-" in uncorrected_target:
+        description = uncorrected_target.split("_desc-", 1)[1].split("_", 1)[0]
+        description = _remove_cluster_stat_suffix(description)
+        if description is not None:
+            candidate_maps.extend([f"z_desc-{description}", f"stat_desc-{description}"])
+
+    candidate_maps.extend(
+        ["z", "stat", "est", "stat_desc-group1MinusGroup2", "z_desc-association"]
+    )
+    return candidate_maps
+
+
+def _get_peak_value_map_for_cluster_table(result, target_image):
+    """Select the original map used for peak statistics in corrected-cluster tables."""
+    for candidate_map in _candidate_peak_value_maps(target_image):
+        if "_level-cluster" not in candidate_map and candidate_map in result.maps:
+            return candidate_map
+
+    available_maps = ", ".join(sorted(result.maps.keys()))
+    raise ValueError(
+        "No supported original z/statistic map found for corrected-cluster table peaks. "
+        f"Target image was '{target_image}'. Available maps are: {available_maps}."
+    )
+
+
+def _get_cluster_support_data(label_maps, shape):
+    """Convert one or more cluster label maps to a binary support array."""
+    support = np.zeros(shape, dtype=bool)
+    for label_map in label_maps:
+        support |= np.asanyarray(label_map.dataobj) > 0
+    return support
+
+
+def _get_clusters_table_and_label_maps(
+    result,
+    target_img,
+    target_image,
+    threshold,
+    cluster_threshold,
+):
+    """Create diagnostics clusters from target image and peaks from original statistics."""
+    target_data = target_img.get_fdata(dtype=DEFAULT_FLOAT_DTYPE)
+    if hasattr(result.estimator, "two_sided"):
+        # Only present in Fisher's and Stouffer's estimators
+        two_sided = getattr(result.estimator, "two_sided")
+    else:
+        two_sided = (target_data < 0).any()
+
+    clusters_table, label_maps = get_clusters_table(
+        target_img,
+        0 if threshold is None else threshold,
+        cluster_threshold,
+        two_sided=two_sided,
+        return_label_maps=True,
+    )
+
+    if clusters_table.empty or not label_maps or not _is_cluster_corrected_target(target_image):
+        return clusters_table, label_maps
+
+    peak_value_map = _get_peak_value_map_for_cluster_table(result, target_image)
+    peak_img = result.get_map(peak_value_map, return_type="image")
+    peak_data = peak_img.get_fdata(dtype=DEFAULT_FLOAT_DTYPE)
+    support_data = _get_cluster_support_data(label_maps, peak_data.shape)
+    masked_peak_data = np.where(support_data, peak_data, 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+    masked_peak_img = nib.Nifti1Image(masked_peak_data, peak_img.affine, peak_img.header)
+
+    peak_clusters_table = get_clusters_table(
+        masked_peak_img,
+        0,
+        0,
+        two_sided=two_sided or (masked_peak_data < 0).any(),
+    )
+    return peak_clusters_table, label_maps
 
 
 def _cluster_masker_kwargs():
@@ -210,10 +329,7 @@ class Diagnostics(NiMAREBase):
         The meta-analytic map for which clusters will be characterized.
         The default is z because log-p will not always have value of zero for non-cluster voxels.
     voxel_thresh : :obj:`float` or None, optional
-        An optional voxel-level threshold that may be applied to the ``target_image`` to define
-        clusters. This can be None if the ``target_image`` is already thresholded
-        (e.g., a cluster-level corrected map).
-        Default is None.
+        Deprecated alias for ``target_threshold``. Prefer ``target_threshold`` for new code.
     cluster_threshold : :obj:`int` or None, optional
         Cluster size threshold, in :term:`voxels<voxel>`.
         If None, then no cluster size threshold will be applied. Default=None.
@@ -221,6 +337,12 @@ class Diagnostics(NiMAREBase):
         Number of cores to use for parallelization.
         If <=0, defaults to using all available cores.
         Default is 1.
+    target_threshold : :obj:`float` or None, optional
+        Threshold applied to ``target_image`` before defining diagnostics clusters and tables.
+        For unthresholded Monte Carlo cluster-corrected maps, this should generally be the
+        corrected significance threshold in the target map's units. This is distinct from
+        :class:`~nimare.correct.FWECorrector` ``voxel_thresh``, which is the cluster-forming
+        threshold used during correction. Default=None.
 
     """
 
@@ -231,9 +353,11 @@ class Diagnostics(NiMAREBase):
         cluster_threshold=None,
         display_second_group=False,
         n_cores=1,
+        target_threshold=None,
     ):
         self.target_image = target_image
         self.voxel_thresh = voxel_thresh
+        self.target_threshold = _resolve_target_threshold(target_threshold, voxel_thresh)
         self.cluster_threshold = cluster_threshold
         self.display_second_group = display_second_group
         self.n_cores = _check_ncores(n_cores)
@@ -312,21 +436,14 @@ class Diagnostics(NiMAREBase):
             )
 
         # Get clusters table and label maps
-        stat_threshold = self.voxel_thresh or 0
         cluster_threshold = 0 if self.cluster_threshold is None else self.cluster_threshold
 
-        if hasattr(result.estimator, "two_sided"):
-            # Only present in Fisher's and Stouffer's estimators
-            two_sided = getattr(result.estimator, "two_sided")
-        else:
-            two_sided = (target_img.get_fdata(dtype=DEFAULT_FLOAT_DTYPE) < 0).any()
-
-        clusters_table, label_maps = get_clusters_table(
+        clusters_table, label_maps = _get_clusters_table_and_label_maps(
+            result,
             target_img,
-            stat_threshold,
+            self.target_image,
+            self.target_threshold,
             cluster_threshold,
-            two_sided=two_sided,
-            return_label_maps=True,
         )
 
         n_clusters = clusters_table.shape[0]
