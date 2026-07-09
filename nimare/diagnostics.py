@@ -95,46 +95,46 @@ def _is_cluster_corrected_target(target_image):
     return "_level-cluster" in target_image and "_corr-" in target_image
 
 
-def _remove_cluster_stat_suffix(description):
-    """Remove size/mass cluster-stat suffixes from a map description."""
-    if description in {"size", "mass"}:
-        return None
+def _strip_cluster_stat_description(map_name):
+    """Remove cluster-size/mass description components from a map name."""
+    if "_desc-" not in map_name:
+        return map_name
 
-    for suffix in ("Size", "Mass", "size", "mass"):
-        if description.endswith(suffix):
-            description = description[: -len(suffix)]
+    prefix, remainder = map_name.split("_desc-", 1)
+    description, separator, suffix = remainder.partition("_")
+
+    if description in {"size", "mass"}:
+        return prefix + (f"_{suffix}" if separator else "")
+
+    for cluster_stat in ("Size", "Mass", "size", "mass"):
+        if description.endswith(cluster_stat):
+            description = description[: -len(cluster_stat)]
             break
 
-    return description or None
+    if not description:
+        return prefix + (f"_{suffix}" if separator else "")
+
+    return f"{prefix}_desc-{description}" + (f"_{suffix}" if separator else "")
 
 
-def _candidate_peak_value_maps(target_image):
-    """Generate candidate original statistic maps for a corrected cluster target."""
+def _peak_value_map_from_cluster_target(target_image):
+    """Derive the original statistic map from a corrected cluster target name."""
     uncorrected_target = target_image.split("_corr-", 1)[0]
-    candidate_maps = []
-
-    if "_desc-" in uncorrected_target:
-        description = uncorrected_target.split("_desc-", 1)[1].split("_", 1)[0]
-        description = _remove_cluster_stat_suffix(description)
-        if description is not None:
-            candidate_maps.extend([f"z_desc-{description}", f"stat_desc-{description}"])
-
-    candidate_maps.extend(
-        ["z", "stat", "est", "stat_desc-group1MinusGroup2", "z_desc-association"]
-    )
-    return candidate_maps
+    uncorrected_target = uncorrected_target.replace("_level-cluster", "")
+    return _strip_cluster_stat_description(uncorrected_target)
 
 
 def _get_peak_value_map_for_cluster_table(result, target_image):
     """Select the original map used for peak statistics in corrected-cluster tables."""
-    for candidate_map in _candidate_peak_value_maps(target_image):
-        if "_level-cluster" not in candidate_map and candidate_map in result.maps:
-            return candidate_map
+    peak_value_map = _peak_value_map_from_cluster_target(target_image)
+    if "_level-cluster" not in peak_value_map and peak_value_map in result.maps:
+        return peak_value_map
 
     available_maps = ", ".join(sorted(result.maps.keys()))
     raise ValueError(
         "No supported original z/statistic map found for corrected-cluster table peaks. "
-        f"Target image was '{target_image}'. Available maps are: {available_maps}."
+        f"Expected '{peak_value_map}' derived from target image '{target_image}'. "
+        f"Available maps are: {available_maps}."
     )
 
 

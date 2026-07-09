@@ -107,6 +107,30 @@ def test_diagnostics_target_and_voxel_threshold_error():
         diagnostics.FocusCounter(target_image="z", target_threshold=1.0, voxel_thresh=1.0)
 
 
+@pytest.mark.parametrize(
+    "target_image,source_map",
+    [
+        ("z_desc-size_level-cluster_corr-FWE_method-montecarlo", "z"),
+        ("z_desc-mass_level-cluster_corr-FWE_method-montecarlo", "z"),
+        (
+            "z_desc-uniformitySize_level-cluster_corr-FWE_method-montecarlo",
+            "z_desc-uniformity",
+        ),
+        (
+            "z_desc-group1MinusGroup2Mass_level-cluster_corr-FWE_method-montecarlo",
+            "z_desc-group1MinusGroup2",
+        ),
+        (
+            "stat_desc-balancedGroup1MinusGroup2Size_level-cluster_corr-FWE_method-montecarlo",
+            "stat_desc-balancedGroup1MinusGroup2",
+        ),
+    ],
+)
+def test_peak_value_map_is_derived_from_target_image(target_image, source_map):
+    """Original peak maps should be derived from corrected-cluster map names."""
+    assert diagnostics._peak_value_map_from_cluster_target(target_image) == source_map
+
+
 def test_corrected_cluster_table_uses_thresholded_support_and_original_z():
     """Corrected cluster tables should report original-z peaks inside thresholded support."""
     target_image = "z_desc-size_level-cluster_corr-FWE_method-montecarlo"
