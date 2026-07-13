@@ -274,6 +274,27 @@ historical import path and adds nothing of its own.
    transforms.t_to_nlogp
    transforms.chi2_to_nlogp
 
+.. _api_ml_ref:
+
+:mod:`nimare.ml`: Machine-learning helpers
+-----------------------------------------------------
+
+.. automodule:: nimare.ml
+   :no-members:
+   :no-inherited-members:
+
+.. currentmodule:: nimare
+
+.. autosummary::
+   :toctree: generated/
+   :template: class.rst
+
+   ml.MAFeatureDataset
+   ml.MAFeatureExtractor
+   :template: function.rst
+
+   ml.make_map_reducer
+
 
 .. _api_extract_ref:
 
