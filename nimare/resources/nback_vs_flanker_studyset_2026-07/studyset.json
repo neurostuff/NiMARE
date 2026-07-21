@@ -1,0 +1,21 @@
+{
+  "annotations": [
+    {
+      "id": "DZr5AjsPDTqL"
+    }
+  ],
+  "description": "Balanced subset from NeuroStore 2026-07 release: up to 500 coordinate analyses each matched by TaskExtractor task names for n-back and flanker tasks.",
+  "format": "nimare-studyset-parquet",
+  "id": "nback-vs-flanker-2026-07",
+  "name": "n-back vs flanker task analysis examples",
+  "tables": {
+    "analyses": "analyses.parquet",
+    "annotations": "annotations.parquet",
+    "coordinates": "coordinates.parquet",
+    "images": "images.parquet",
+    "metadata": "metadata.parquet",
+    "studies": "studies.parquet",
+    "texts": "texts.parquet"
+  },
+  "version": 1
+}
