@@ -1,31 +1,74 @@
-"""
+"""Classify task labels from masked activation features.
+
 .. _ma_feature_dataset:
 
 ==========================================
 Masked activation feature dataset workflow
 ==========================================
 
-This example documents the public API that will support masked activation
-feature dataset workflows.
-
-The implementation is still a scaffold, so this example intentionally avoids
-calling any constructor or reducer that would raise ``NotImplementedError``.
-It remains executable so Sphinx-Gallery can build the page once the public
-API lands.
+Convert a Studyset with complete coordinates into scikit-learn-compatible
+training and test datasets. This example uses modeled activation maps to
+classify n-back and flanker task analyses from a parquet-backed Studyset.
 """
 
-from nimare.ml import MAFeatureDataset, MAFeatureExtractor, make_map_reducer
+from pathlib import Path
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, balanced_accuracy_score
+
+from nimare.meta.kernel import MKDAKernel
+from nimare.ml import MAFeatureExtractor
+from nimare.nimads import Studyset
+from nimare.utils import get_resource_path
 
 ###############################################################################
-# The scaffold is intentionally lightweight and import-only for now.
+# Load the n-back/flanker Studyset
 # -----------------------------------------------------------------------------
-# These symbols are exposed so downstream examples and docs can import the
-# future masked activation feature workflow from the public module.
-public_api = (
-    MAFeatureDataset.__name__,
-    MAFeatureExtractor.__name__,
-    make_map_reducer.__name__,
+# The bundled parquet Studyset contains coordinate analyses selected from
+# NeuroStore for n-back and flanker tasks. The Studyset constructor reads the
+# ``studyset.json`` manifest and keeps the table-backed views available without
+# materializing nested Study and Analysis objects.
+studyset_dir = Path(get_resource_path()) / "nback_vs_flanker_studyset_2026-07"
+studyset = Studyset(studyset_dir)
+
+print(f"Studyset: {studyset.name}")
+print(f"Analyses: {len(studyset.ids)}")
+print(studyset.metadata["comparison_task"].value_counts().to_string())
+
+###############################################################################
+# Configure feature extraction
+# -----------------------------------------------------------------------------
+# ``comparison_task`` is a metadata field with labels ``"n-back"`` and
+# ``"flanker"``. The split is grouped by Studyset study ID, so analyses from
+# one study cannot appear in both partitions.
+extractor = MAFeatureExtractor(
+    kernel_transformer=MKDAKernel(r=10),
+    target_field={"source": "metadata", "field": "comparison_task"},
+    test_size=0.25,
+    random_state=13,
 )
 
-print("Masked activation feature dataset public API scaffold:")
-print("\n".join(public_api))
+###############################################################################
+# Export scikit-learn datasets and classify task labels
+# -----------------------------------------------------------------------------
+# The masked activation maps are sparse and high-dimensional, so we reduce only
+# the map features with truncated SVD before fitting a simple linear classifier.
+train_bunch, test_bunch = extractor.to_sklearn(
+    studyset,
+    map_reducer="truncated_svd",
+    map_reducer_params={"n_components": 50, "random_state": 13},
+)
+
+classifier = LogisticRegression(
+    max_iter=1000,
+    class_weight="balanced",
+    random_state=13,
+)
+classifier.fit(train_bunch.data, train_bunch.target)
+predicted = classifier.predict(test_bunch.data)
+
+print(f"Training data shape: {train_bunch.data.shape}")
+print(f"Test data shape: {test_bunch.data.shape}")
+print(f"Training labels: {sorted(set(train_bunch.target))}")
+print(f"Test accuracy: {accuracy_score(test_bunch.target, predicted):.3f}")
+print("Test balanced accuracy: " f"{balanced_accuracy_score(test_bunch.target, predicted):.3f}")
