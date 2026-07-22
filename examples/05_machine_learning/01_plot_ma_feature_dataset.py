@@ -1,5 +1,4 @@
-"""Classify task labels from masked activation features.
-
+"""
 .. _ma_feature_dataset:
 
 ==========================================
