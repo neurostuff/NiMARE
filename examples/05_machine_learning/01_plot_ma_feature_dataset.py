@@ -13,12 +13,14 @@ classify n-back and flanker task analyses from a parquet-backed Studyset.
 from pathlib import Path
 
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, balanced_accuracy_score
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, confusion_matrix
 
 from nimare.meta.kernel import MKDAKernel
 from nimare.ml import MAFeatureExtractor
 from nimare.nimads import Studyset
 from nimare.utils import get_resource_path
+
+RANDOM_SEED = 13
 
 ###############################################################################
 # Load the n-back/flanker Studyset
@@ -44,7 +46,7 @@ extractor = MAFeatureExtractor(
     kernel_transformer=MKDAKernel(r=10),
     target_field={"source": "metadata", "field": "comparison_task"},
     test_size=0.25,
-    random_state=13,
+    random_state=RANDOM_SEED,
 )
 
 ###############################################################################
@@ -55,19 +57,22 @@ extractor = MAFeatureExtractor(
 train_bunch, test_bunch = extractor.to_sklearn(
     studyset,
     map_reducer="truncated_svd",
-    map_reducer_params={"n_components": 50, "random_state": 13},
+    map_reducer_params={"n_components": 50},
 )
 
 classifier = LogisticRegression(
     max_iter=1000,
     class_weight="balanced",
-    random_state=13,
+    random_state=RANDOM_SEED,
 )
 classifier.fit(train_bunch.data, train_bunch.target)
 predicted = classifier.predict(test_bunch.data)
+labels = sorted(set(train_bunch.target))
 
 print(f"Training data shape: {train_bunch.data.shape}")
 print(f"Test data shape: {test_bunch.data.shape}")
-print(f"Training labels: {sorted(set(train_bunch.target))}")
+print(f"Training labels: {labels}")
 print(f"Test accuracy: {accuracy_score(test_bunch.target, predicted):.3f}")
 print("Test balanced accuracy: " f"{balanced_accuracy_score(test_bunch.target, predicted):.3f}")
+print("Confusion matrix:")
+print(confusion_matrix(test_bunch.target, predicted, labels=labels))

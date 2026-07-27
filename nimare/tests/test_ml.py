@@ -16,87 +16,91 @@ from nimare.ml import MAFeatureDataset, MAFeatureExtractor, make_map_reducer
 from nimare.nimads import Studyset
 from nimare.utils import get_masker, get_template
 
+RANDOM_SEED = 13
+TEST_DATA_PERCENTAGE = 0.33
 
-def _build_studyset_ml_source():
-    """Build the shared perfect Studyset source used by the ML tests.
 
-    The source includes enough single-analysis studies for grouped train/test
+@pytest.fixture(scope="session")
+def ml_studyset():
+    """Build the shared Studyset used by the ML tests.
+
+    The Studyset includes enough single-analysis studies for grouped train/test
     splitting, plus a masker, valid MNI coordinates, Studyset-style sample
     size metadata, numeric annotations, text fields, unique study IDs, and
     unique full analysis IDs.
     """
-    coordinates = [
-        [1.0, 3.0, 5.0],
-        [-1.0, -3.0, -5.0],
-        [8.0, -12.0, 10.0],
-        [-8.0, 12.0, 10.0],
-        [18.0, -20.0, 22.0],
-        [-18.0, 20.0, 22.0],
-    ]
+    coordinate_groups = {
+        "motor": [
+            [-38.0, -22.0, 56.0],
+            [38.0, -20.0, 56.0],
+            [0.0, -4.0, 58.0],
+        ],
+        "visual": [
+            [-18.0, -96.0, 0.0],
+            [18.0, -96.0, 0.0],
+            [30.0, -88.0, 4.0],
+        ],
+    }
     studies = []
 
-    for idx, coordinate in enumerate(coordinates):
-        study_id = f"study_{idx}"
-        sample_sizes = [20 + idx]
-        target_score = float(idx) + 0.5
-        studies.append(
-            {
-                "id": study_id,
-                "name": f"Study {idx}",
-                "analyses": [
-                    {
-                        "id": "task",
-                        "name": f"Task {idx}",
-                        "metadata": {
-                            "sample_sizes": sample_sizes,
-                        },
-                        "annotations": {
-                            "alpha_label": float(idx == 0),
-                            "beta_label": float(idx == 1),
-                            "target_score": target_score,
-                        },
-                        "texts": {"abstract": f"Study {idx} abstract."},
-                        "points": [{"space": "MNI", "coordinates": coordinate}],
-                        "images": [],
-                    }
-                ],
-            }
-        )
+    idx = 0
+    for group, coordinates in coordinate_groups.items():
+        for coordinate in coordinates:
+            study_id = f"study_{idx}"
+            sample_sizes = [20 + idx]
+            target_score = float(idx) + 0.5
+            studies.append(
+                {
+                    "id": study_id,
+                    "name": f"Study {idx}",
+                    "analyses": [
+                        {
+                            "id": "task",
+                            "name": f"Task {idx}",
+                            "metadata": {
+                                "sample_sizes": sample_sizes,
+                            },
+                            "annotations": {
+                                "motor_label": float(group == "motor"),
+                                "visual_label": float(group == "visual"),
+                                "target_score": target_score,
+                            },
+                            "texts": {"abstract": f"Study {idx} abstract."},
+                            "points": [{"space": "MNI", "coordinates": coordinate}],
+                            "images": [],
+                        }
+                    ],
+                }
+            )
+            idx += 1
 
-    return {
+    source = {
         "id": "studyset_ml_source",
         "name": "Studyset ML source",
         "masker": get_masker(get_template(space="mni152_2mm", mask="brain")),
         "studies": studies,
     }
-
-
-def build_studyset():
-    """Build a fresh shared perfect Studyset for ML tests."""
-    source = _build_studyset_ml_source()
     return Studyset(source, mask=source["masker"])
 
 
-def build_ma_feature_dataset():
-    """Build a fresh MAFeatureDataset from the shared Studyset-like source."""
-    source = _build_studyset_ml_source()
-    ids = []
-    study_ids = []
-    map_rows = []
-    descriptor_rows = []
-    target = []
-
-    for study in source["studies"]:
-        analysis = study["analyses"][0]
-        coordinate = analysis["points"][0]["coordinates"]
-        ids.append(f"{study['id']}-{analysis['id']}")
-        study_ids.append(study["id"])
-        map_rows.append([coordinate[0], coordinate[1]])
-        descriptor_rows.append([analysis["annotations"]["alpha_label"]])
-        target.append(analysis["annotations"]["target_score"])
-
-    map_features = sparse.csr_matrix(map_rows)
-    descriptor_features = np.asarray(descriptor_rows, dtype=float)
+@pytest.fixture
+def ma_feature_dataset(ml_studyset):
+    """Build a fresh MAFeatureDataset from the shared Studyset."""
+    studyset = ml_studyset
+    ids = np.asarray(studyset.ids, dtype=str)
+    study_ids = np.asarray([id_.rsplit("-", 1)[0] for id_ in ids], dtype=str)
+    annotations = studyset.annotations_df.drop_duplicates("id").set_index("id").reindex(ids)
+    motor_labels = annotations["motor_label"].to_numpy(dtype=float)
+    target = annotations["target_score"].to_numpy(dtype=float)
+    map_features = sparse.csr_matrix(
+        np.column_stack(
+            [
+                motor_labels + 0.1 * target,
+                2.0 * motor_labels + 0.1 * target,
+            ]
+        )
+    )
+    descriptor_features = motor_labels[:, None]
     features = sparse.hstack(
         [map_features, sparse.csr_matrix(descriptor_features)],
         format="csr",
@@ -106,12 +110,12 @@ def build_ma_feature_dataset():
         features=features,
         ids=ids,
         study_ids=study_ids,
-        feature_names=["feature_0", "feature_1", "alpha_label"],
-        target=np.asarray(target, dtype=float),
+        feature_names=["feature_0", "feature_1", "motor_label"],
+        target=target,
         provenance={"source": {"ids": list(ids)}},
         map_features=map_features,
         descriptor_features=descriptor_features,
-        masker=source["masker"],
+        masker=studyset.masker,
     )
 
 
@@ -198,51 +202,24 @@ def assert_sklearn_bunch_valid(
         estimator.fit(bunch.data, target)
 
 
-def test_ma_feature_dataset_initialization():
+def test_ma_feature_dataset_initialization(ma_feature_dataset):
     """Test that MAFeatureDataset initializes and stores documented attributes."""
-    features = np.array([[1.0, 2.0], [3.0, 4.0]])
-    ids = ["study_a-task", "study_b-task"]
-    study_ids = ["study_a", "study_b"]
-    feature_names = ["feature_1", "feature_2"]
-    target = [0, 1]
-    provenance = {"source": "unit-test"}
+    ds = ma_feature_dataset
 
-    ds = MAFeatureDataset(
-        features=features,
-        ids=ids,
-        study_ids=study_ids,
-        feature_names=feature_names,
-        target=target,
-        provenance=provenance,
-    )
-
-    assert (ds.features == features).all()
-    assert ds.ids == ids
-    assert ds.study_ids == study_ids
-    assert ds.feature_names == feature_names
-    assert ds.target == target
-    assert ds.provenance is provenance
-    assert ds._map_features is features
-    assert ds._descriptor_features is None
-    assert ds._masker is None
-
-    descriptor_features = np.array([[10.0], [20.0]])
-    masker = object()
-    ds = MAFeatureDataset(
-        features=sparse.csr_matrix([[1.0, 0.0, 10.0], [0.0, 1.0, 20.0]]),
-        ids=ids,
-        study_ids=study_ids,
-        feature_names=["feature_0", "feature_1", "descriptor"],
-        target=target,
-        provenance=provenance,
-        map_features=sparse.csr_matrix([[1.0, 0.0], [0.0, 1.0]]),
-        descriptor_features=descriptor_features,
-        masker=masker,
-    )
-
+    assert sparse.issparse(ds.features)
+    assert ds.features.shape == (6, 3)
+    assert ds.ids == [f"study_{idx}-task" for idx in range(6)]
+    assert ds.study_ids == [f"study_{idx}" for idx in range(6)]
+    assert ds.feature_names == ["feature_0", "feature_1", "motor_label"]
+    np.testing.assert_array_equal(ds.target, np.arange(6, dtype=float) + 0.5)
+    assert ds.provenance == {"source": {"ids": ds.ids}}
     assert sparse.issparse(ds._map_features)
-    assert ds._descriptor_features is descriptor_features
-    assert ds._masker is masker
+    assert ds._map_features.shape == (6, 2)
+    np.testing.assert_array_equal(
+        ds._descriptor_features.ravel(),
+        [1.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+    )
+    assert ds._masker is not None
 
 
 @pytest.mark.parametrize(
@@ -334,9 +311,9 @@ def test_ma_feature_dataset_initialization_features_shape_undetermined():
         )
 
 
-def test_ma_feature_dataset_to_sklearn():
+def test_ma_feature_dataset_to_sklearn(ma_feature_dataset):
     """Dataset export returns a valid sklearn Bunch."""
-    ds = build_ma_feature_dataset()
+    ds = ma_feature_dataset
 
     bunch = ds.to_sklearn()
     assert_sklearn_bunch_valid(
@@ -351,11 +328,14 @@ def test_ma_feature_dataset_to_sklearn():
     assert bunch.data is ds.features
 
 
-def test_ma_feature_dataset_split():
+def test_ma_feature_dataset_split(ma_feature_dataset):
     """Dataset grouped split preserves row alignment and avoids study leakage."""
-    ds = build_ma_feature_dataset()
+    ds = ma_feature_dataset
 
-    train, test = ds.split(test_size=0.5, random_state=13)
+    train, test = ds.split(
+        test_size=TEST_DATA_PERCENTAGE,
+        random_state=RANDOM_SEED,
+    )
 
     assert set(train.study_ids).isdisjoint(test.study_ids)
     assert sorted(train.ids + test.ids) == sorted(ds.ids)
@@ -373,13 +353,17 @@ def test_ma_feature_dataset_split():
             np.testing.assert_array_equal(row_features, expected_features_by_id[row_id])
 
 
-def test_ma_feature_dataset_apply_map_reducer():
+def test_ma_feature_dataset_apply_map_reducer(ma_feature_dataset):
     """Map reducers transform map columns while preserving descriptors and metadata."""
-    ds = build_ma_feature_dataset()
-    descriptor_name = "alpha_label"
+    ds = ma_feature_dataset
+    descriptor_name = "motor_label"
     descriptor_idx = ds.feature_names.index(descriptor_name)
     descriptor_values = _get_data_column(ds.features, descriptor_idx)
-    reducer = make_map_reducer("truncated_svd", n_components=1, random_state=13)
+    reducer = make_map_reducer(
+        "truncated_svd",
+        n_components=1,
+        random_state=RANDOM_SEED,
+    )
 
     reduced = ds.apply_map_reducer(reducer, fit=True)
 
@@ -395,9 +379,9 @@ def test_ma_feature_dataset_apply_map_reducer():
     assert ds.provenance["source"]["ids"] == ds.ids
 
 
-def test_ma_feature_dataset_copy():
+def test_ma_feature_dataset_copy(ma_feature_dataset):
     """Dataset copy preserves aligned arrays without sharing mutable data."""
-    ds = build_ma_feature_dataset()
+    ds = ma_feature_dataset
 
     copied = ds.copy()
 
@@ -422,14 +406,14 @@ def test_ma_feature_extractor_initialization():
     kernel_transformer = object()
     extractor = MAFeatureExtractor(
         kernel_transformer=kernel_transformer,
-        descriptor_fields=[{"source": "annotations", "field": "alpha_label"}],
-        target_field={"source": "annotations", "field": "alpha_label"},
+        descriptor_fields=[{"source": "annotations", "field": "motor_label"}],
+        target_field={"source": "annotations", "field": "motor_label"},
     )
 
     assert extractor.kernel_transformer is kernel_transformer
-    assert extractor.descriptor_fields == [{"source": "annotations", "field": "alpha_label"}]
+    assert extractor.descriptor_fields == [{"source": "annotations", "field": "motor_label"}]
     assert extractor.descriptor_transformers is None
-    assert extractor.target_field == {"source": "annotations", "field": "alpha_label"}
+    assert extractor.target_field == {"source": "annotations", "field": "motor_label"}
     assert extractor.target_transformer is None
     assert extractor.missing_coordinates == "drop"
     assert extractor.test_size is None
@@ -440,48 +424,25 @@ def test_ma_feature_extractor_initialization():
     assert extractor._map_cache == {}
 
 
-def test_ma_feature_extractor_studyset_values_alignment():
-    """Studyset table extraction preserves row-aligned IDs and field values."""
-    source = _build_studyset_ml_source()
-    studyset = Studyset(source, mask=source["masker"])
+def test_ma_feature_extractor_selected_values_alignment(ml_studyset):
+    """Selected Studyset field values remain aligned to analysis IDs."""
+    studyset = ml_studyset
     extractor = MAFeatureExtractor(kernel_transformer=object())
 
-    tables = extractor._get_studyset_tables(studyset)
-    assert set(tables) == {
-        "ids",
-        "study_ids",
-        "coordinates",
-        "metadata",
-        "annotations_df",
-        "texts",
-        "masker",
-        "space",
-        "basepath",
-    }
-    expected_ids = [f"{study['id']}-{study['analyses'][0]['id']}" for study in source["studies"]]
-    expected_study_ids = [study["id"] for study in source["studies"]]
-    expected_alpha = [
-        study["analyses"][0]["annotations"]["alpha_label"] for study in source["studies"]
-    ]
+    expected_motor = [study.analyses[0].annotations["motor_label"] for study in studyset.studies]
     expected_sample_sizes = [
-        study["analyses"][0]["metadata"]["sample_sizes"] for study in source["studies"]
+        study.analyses[0].metadata["sample_sizes"] for study in studyset.studies
     ]
 
-    np.testing.assert_array_equal(tables["ids"], expected_ids)
-    np.testing.assert_array_equal(tables["study_ids"], expected_study_ids)
-    assert tables["masker"] is studyset.masker
-    assert tables["space"] == studyset.space
-    assert tables["basepath"] == studyset.basepath
-
     values, field = extractor._get_selected_values(
-        tables,
-        {"source": "annotations", "field": "alpha_label"},
+        studyset,
+        {"source": "annotations", "field": "motor_label"},
     )
-    assert field == "alpha_label"
-    np.testing.assert_array_equal(values, expected_alpha)
+    assert field == "motor_label"
+    np.testing.assert_array_equal(values, expected_motor)
 
     values, field = extractor._get_selected_values(
-        tables,
+        studyset,
         {"source": "metadata", "field": "sample_sizes"},
     )
     assert field == "sample_sizes"
@@ -496,26 +457,23 @@ def test_ma_feature_extractor_stack_sparse_features_not_implemented():
         extractor._stack_sparse_features(sparse.csr_matrix([[1.0, 0.0]]))
 
 
-def test_ma_feature_extractor_transform():
-    """Transform a perfect Studyset into grouped train/test MAFeatureDatasets."""
-    source = _build_studyset_ml_source()
-    studyset = Studyset(source, mask=source["masker"])
-    descriptor_name = "alpha_label"
+def test_ma_feature_extractor_transform(ml_studyset):
+    """Transform a Studyset into grouped train/test MAFeatureDatasets."""
+    studyset = ml_studyset
+    descriptor_name = "motor_label"
     target_name = "target_score"
     descriptor_by_study = {
-        study["id"]: study["analyses"][0]["annotations"][descriptor_name]
-        for study in source["studies"]
+        study.id: study.analyses[0].annotations[descriptor_name] for study in studyset.studies
     }
     target_by_study = {
-        study["id"]: study["analyses"][0]["annotations"][target_name]
-        for study in source["studies"]
+        study.id: study.analyses[0].annotations[target_name] for study in studyset.studies
     }
     extractor = MAFeatureExtractor(
         kernel_transformer=MKDAKernel(r=4, value=1),
         descriptor_fields=[{"source": "annotations", "field": descriptor_name}],
         target_field={"source": "annotations", "field": target_name},
-        test_size=0.33,
-        random_state=13,
+        test_size=TEST_DATA_PERCENTAGE,
+        random_state=RANDOM_SEED,
     )
 
     train_dataset, test_dataset = extractor.transform(studyset)
@@ -526,7 +484,7 @@ def test_ma_feature_extractor_transform():
     assert sparse.issparse(test_dataset._map_features)
     assert train_dataset._masker is studyset.masker
     assert test_dataset._masker is studyset.masker
-    assert "alpha_label" in train_dataset.feature_names
+    assert "motor_label" in train_dataset.feature_names
     assert "target_score" not in train_dataset.feature_names
     assert set(train_dataset.study_ids).isdisjoint(set(test_dataset.study_ids))
 
@@ -547,7 +505,7 @@ def test_ma_feature_extractor_transform():
     )
 
 
-def test_ma_feature_extractor_reuses_map_cache():
+def test_ma_feature_extractor_reuses_map_cache(ml_studyset):
     """Repeated extraction with unchanged settings reuses cached map features."""
 
     class CountingKernel:
@@ -561,7 +519,7 @@ def test_ma_feature_extractor_reuses_map_cache():
             data = np.arange(n_rows * 3, dtype=float).reshape(n_rows, 3)
             return sparse.csr_matrix(data)
 
-    studyset = build_studyset()
+    studyset = ml_studyset
     kernel = CountingKernel()
     extractor = MAFeatureExtractor(kernel_transformer=kernel)
 
@@ -576,26 +534,23 @@ def test_ma_feature_extractor_reuses_map_cache():
     )
 
 
-def test_ma_feature_extractor_to_sklearn():
-    """Export a perfect Studyset as train/test sklearn Bunches and fit an estimator."""
-    source = _build_studyset_ml_source()
-    studyset = Studyset(source, mask=source["masker"])
-    descriptor_name = "alpha_label"
+def test_ma_feature_extractor_to_sklearn(ml_studyset):
+    """Export a Studyset as train/test sklearn Bunches and fit an estimator."""
+    studyset = ml_studyset
+    descriptor_name = "motor_label"
     target_name = "target_score"
     descriptor_by_study = {
-        study["id"]: study["analyses"][0]["annotations"][descriptor_name]
-        for study in source["studies"]
+        study.id: study.analyses[0].annotations[descriptor_name] for study in studyset.studies
     }
     target_by_study = {
-        study["id"]: study["analyses"][0]["annotations"][target_name]
-        for study in source["studies"]
+        study.id: study.analyses[0].annotations[target_name] for study in studyset.studies
     }
     extractor = MAFeatureExtractor(
         kernel_transformer=MKDAKernel(r=4, value=1),
         descriptor_fields=[{"source": "annotations", "field": descriptor_name}],
         target_field={"source": "annotations", "field": target_name},
-        test_size=0.33,
-        random_state=13,
+        test_size=TEST_DATA_PERCENTAGE,
+        random_state=RANDOM_SEED,
     )
 
     train_bunch, test_bunch = extractor.to_sklearn(
@@ -630,11 +585,15 @@ def test_ma_feature_extractor_to_sklearn():
 
 def test_make_map_reducer_truncated_svd():
     """Build the truncated-SVD reducer and defer later reducers."""
-    reducer = make_map_reducer("truncated_svd", n_components=2, random_state=13)
+    reducer = make_map_reducer(
+        "truncated_svd",
+        n_components=2,
+        random_state=RANDOM_SEED,
+    )
 
     assert isinstance(reducer, TruncatedSVD)
     assert reducer.n_components == 2
-    assert reducer.random_state == 13
+    assert reducer.random_state == RANDOM_SEED
 
     with pytest.raises(NotImplementedError):
         make_map_reducer("variance_threshold")

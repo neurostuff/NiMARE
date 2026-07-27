@@ -383,36 +383,8 @@ class MAFeatureExtractor(NiMAREBase):
         self.memory_level = memory_level
         self._map_cache = {}
 
-    def _get_studyset_tables(self, studyset: Any):
-        """Extract Studyset tables needed to build aligned MA features.
-
-        This private helper gathers coordinates, metadata, annotations, texts, IDs, and
-        Studyset metadata.
-        """
-        ids = np.asarray(studyset.ids, dtype=str)
-        coordinates = studyset.coordinates.copy()
-        metadata = studyset.metadata.copy()
-        annotations_df = studyset.annotations_df.copy()
-        texts = studyset.texts.copy()
-
-        study_ids = np.asarray([id_.rsplit("-", 1)[0] for id_ in ids], dtype=str)
-
-        tables = {
-            "ids": ids,
-            "study_ids": study_ids,
-            "coordinates": coordinates,
-            "metadata": metadata,
-            "annotations_df": annotations_df,
-            "texts": texts,
-            "masker": getattr(studyset, "masker", None),
-            "space": getattr(studyset, "space", None),
-            "basepath": getattr(studyset, "basepath", None),
-        }
-
-        return tables
-
     @staticmethod
-    def _get_selected_values(tables: dict[str, Any], selector: Any):
+    def _get_selected_values(studyset: Any, selector: Any):
         """Return selected Studyset values aligned to analysis IDs."""
         if isinstance(selector, dict):
             source = selector.get("source")
@@ -427,9 +399,9 @@ class MAFeatureExtractor(NiMAREBase):
         source = str(source)
         field = str(field)
         source_to_table = {
-            "metadata": tables["metadata"],
-            "annotations": tables["annotations_df"],
-            "annotations_df": tables["annotations_df"],
+            "metadata": studyset.metadata,
+            "annotations": studyset.annotations_df,
+            "annotations_df": studyset.annotations_df,
         }
         table = source_to_table.get(source)
         if table is None:
@@ -438,7 +410,8 @@ class MAFeatureExtractor(NiMAREBase):
         if field not in table.columns:
             raise ValueError(f"Field '{field}' not found in Studyset {source}.")
 
-        values = table.drop_duplicates("id").set_index("id")[field].reindex(tables["ids"])
+        ids = np.asarray(studyset.ids, dtype=str)
+        values = table.drop_duplicates("id").set_index("id")[field].reindex(ids)
         return values.to_list(), field
 
     def _stack_sparse_features(self, sparse_rows: Any):
@@ -465,9 +438,13 @@ class MAFeatureExtractor(NiMAREBase):
             Tuple of ``(train_dataset, test_dataset)``. If ``test_size`` is
             ``None`` or ``0.0``, return ``(full_dataset, None)``.
         """
-        tables = self._get_studyset_tables(studyset)
-        ids = tables["ids"]
-        study_ids = tables["study_ids"]
+        ids = np.asarray(studyset.ids, dtype=str)
+        study_ids = (
+            studyset.metadata.drop_duplicates("id")
+            .set_index("id")["study_id"]
+            .reindex(ids)
+            .to_numpy(dtype=str)
+        )
 
         kernel_transformer = self.kernel_transformer
         if isinstance(kernel_transformer, type):
@@ -492,7 +469,7 @@ class MAFeatureExtractor(NiMAREBase):
         if self.descriptor_fields:
             columns = []
             for selector in self.descriptor_fields:
-                values, field = self._get_selected_values(tables, selector)
+                values, field = self._get_selected_values(studyset, selector)
                 column = []
 
                 for value in values:
@@ -505,7 +482,7 @@ class MAFeatureExtractor(NiMAREBase):
 
         target = None
         if self.target_field is not None:
-            values, _ = self._get_selected_values(tables, self.target_field)
+            values, _ = self._get_selected_values(studyset, self.target_field)
             target_values = []
 
             for value in values:
@@ -536,7 +513,7 @@ class MAFeatureExtractor(NiMAREBase):
             },
             map_features=map_features,
             descriptor_features=descriptor_features,
-            masker=tables["masker"],
+            masker=studyset.masker,
         )
 
         return dataset.split(
@@ -572,6 +549,8 @@ class MAFeatureExtractor(NiMAREBase):
         if map_reducer is not None:
             map_reducer_params = {} if map_reducer_params is None else dict(map_reducer_params)
             if isinstance(map_reducer, str):
+                if self.random_state is not None:
+                    map_reducer_params.setdefault("random_state", self.random_state)
                 reducer = make_map_reducer(map_reducer, **map_reducer_params)
             else:
                 reducer = map_reducer
