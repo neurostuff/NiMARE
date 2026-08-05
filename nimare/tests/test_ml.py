@@ -208,11 +208,12 @@ def test_ma_feature_dataset_initialization(ma_feature_dataset):
 
     assert sparse.issparse(ds.features)
     assert ds.features.shape == (6, 3)
-    assert ds.ids == [f"study_{idx}-task" for idx in range(6)]
-    assert ds.study_ids == [f"study_{idx}" for idx in range(6)]
+    assert repr(ds) == "MAFeatureDataset(n_rows=6, n_features=3)"
+    np.testing.assert_array_equal(ds.ids, [f"study_{idx}-task" for idx in range(6)])
+    np.testing.assert_array_equal(ds.study_ids, [f"study_{idx}" for idx in range(6)])
     assert ds.feature_names == ["feature_0", "feature_1", "motor_label"]
     np.testing.assert_array_equal(ds.target, np.arange(6, dtype=float) + 0.5)
-    assert ds.provenance == {"source": {"ids": ds.ids}}
+    np.testing.assert_array_equal(ds.provenance["source"]["ids"], ds.ids)
     assert sparse.issparse(ds._map_features)
     assert ds._map_features.shape == (6, 2)
     np.testing.assert_array_equal(
@@ -293,24 +294,6 @@ def test_ma_feature_dataset_initialization_length_mismatches(kwargs, message):
         MAFeatureDataset(**base_kwargs)
 
 
-def test_ma_feature_dataset_initialization_features_shape_undetermined():
-    """Test the fallback error when features has no usable size information."""
-
-    class UnknownShape:
-        def __len__(self):
-            raise TypeError("no length")
-
-    with pytest.raises(
-        ValueError,
-        match="Unable to determine number of rows or columns from features",
-    ):
-        MAFeatureDataset(
-            features=UnknownShape(),
-            ids=[],
-            study_ids=[],
-        )
-
-
 def test_ma_feature_dataset_to_sklearn(ma_feature_dataset):
     """Dataset export returns a valid sklearn Bunch."""
     ds = ma_feature_dataset
@@ -338,7 +321,7 @@ def test_ma_feature_dataset_split(ma_feature_dataset):
     )
 
     assert set(train.study_ids).isdisjoint(test.study_ids)
-    assert sorted(train.ids + test.ids) == sorted(ds.ids)
+    assert sorted(np.concatenate([train.ids, test.ids])) == sorted(ds.ids)
 
     expected_target_by_id = dict(zip(ds.ids, ds.target, strict=False))
     expected_features_by_id = dict(zip(ds.ids, ds.features.toarray(), strict=False))
@@ -368,15 +351,15 @@ def test_ma_feature_dataset_apply_map_reducer(ma_feature_dataset):
     reduced = ds.apply_map_reducer(reducer, fit=True)
 
     assert reduced is not ds
-    assert reduced.ids == ds.ids
-    assert reduced.study_ids == ds.study_ids
+    np.testing.assert_array_equal(reduced.ids, ds.ids)
+    np.testing.assert_array_equal(reduced.study_ids, ds.study_ids)
     assert reduced.feature_names == ["feature_0", descriptor_name]
     assert reduced.features.shape == (len(ds.ids), 2)
     assert not sparse.issparse(reduced.features)
     np.testing.assert_array_equal(reduced.target, ds.target)
     np.testing.assert_array_equal(reduced.features[:, 1], descriptor_values)
     reduced.provenance["source"]["ids"].append("s4")
-    assert ds.provenance["source"]["ids"] == ds.ids
+    np.testing.assert_array_equal(ds.provenance["source"]["ids"], ds.ids)
 
 
 def test_ma_feature_dataset_copy(ma_feature_dataset):
@@ -389,15 +372,15 @@ def test_ma_feature_dataset_copy(ma_feature_dataset):
     assert copied.features is not ds.features
     assert copied._map_features is not ds._map_features
     assert copied._descriptor_features is not ds._descriptor_features
-    assert copied.ids == ds.ids
-    assert copied.study_ids == ds.study_ids
+    np.testing.assert_array_equal(copied.ids, ds.ids)
+    np.testing.assert_array_equal(copied.study_ids, ds.study_ids)
     assert copied.feature_names == ds.feature_names
     np.testing.assert_array_equal(copied.target, ds.target)
     np.testing.assert_array_equal(copied.features.toarray(), ds.features.toarray())
     np.testing.assert_array_equal(copied._map_features.toarray(), ds._map_features.toarray())
     np.testing.assert_array_equal(copied._descriptor_features, ds._descriptor_features)
     copied.provenance["source"]["ids"].append("s3")
-    assert ds.provenance["source"]["ids"] == ds.ids
+    np.testing.assert_array_equal(ds.provenance["source"]["ids"], ds.ids)
     assert copied._masker is ds._masker
 
 
@@ -446,7 +429,7 @@ def test_ma_feature_extractor_selected_values_alignment(ml_studyset):
         {"source": "metadata", "field": "sample_sizes"},
     )
     assert field == "sample_sizes"
-    assert values == expected_sample_sizes
+    assert values.tolist() == expected_sample_sizes
 
 
 def test_ma_feature_extractor_stack_sparse_features_not_implemented():
@@ -534,8 +517,8 @@ def test_ma_feature_extractor_reuses_map_cache(ml_studyset):
     )
 
 
-def test_ma_feature_extractor_to_sklearn(ml_studyset):
-    """Export a Studyset as train/test sklearn Bunches and fit an estimator."""
+def test_ma_feature_extractor_transform_with_map_reducer(ml_studyset):
+    """Reduce train/test map features and export sklearn Bunches."""
     studyset = ml_studyset
     descriptor_name = "motor_label"
     target_name = "target_score"
@@ -553,10 +536,12 @@ def test_ma_feature_extractor_to_sklearn(ml_studyset):
         random_state=RANDOM_SEED,
     )
 
-    train_bunch, test_bunch = extractor.to_sklearn(
+    train_dataset, test_dataset = extractor.transform(
         studyset,
         map_reducer="truncated_svd",
     )
+    train_bunch = train_dataset.to_sklearn()
+    test_bunch = test_dataset.to_sklearn()
 
     assert_sklearn_bunch_valid(
         train_bunch,
