@@ -61,9 +61,7 @@ class MAFeatureDataset(NiMAREBase):
         descriptor_features: Any | None = None,
         masker: Any | None = None,
     ) -> None:
-        # Infer sizes from features. Prefer .shape for ndarray/sparse, fall back
-        # to len() for generic sequences.
-        n_rows, n_cols = self._get_feature_shape(features)
+        n_rows, n_cols = features.shape
 
         if len(ids) != n_rows:
             raise ValueError("ids length must match number of rows in features")
@@ -82,20 +80,20 @@ class MAFeatureDataset(NiMAREBase):
         if map_features is None:
             map_features = features
 
-        n_map_rows, _ = self._get_feature_shape(map_features)
+        n_map_rows = map_features.shape[0]
         if n_map_rows != n_rows:
             raise ValueError("map_features row count must match number of rows in features")
 
         if descriptor_features is not None:
-            n_descriptor_rows, _ = self._get_feature_shape(descriptor_features)
+            n_descriptor_rows = descriptor_features.shape[0]
             if n_descriptor_rows != n_rows:
                 raise ValueError(
                     "descriptor_features row count must match number of rows in features"
                 )
 
         self.features = features
-        self.ids = list(ids)
-        self.study_ids = list(study_ids)
+        self.ids = ids
+        self.study_ids = study_ids
         self.feature_names = None if feature_names is None else list(feature_names)
         self.target = target
         self.provenance = provenance
@@ -103,18 +101,10 @@ class MAFeatureDataset(NiMAREBase):
         self._descriptor_features = descriptor_features
         self._masker = masker
 
-    @staticmethod
-    def _get_feature_shape(features: Any) -> tuple[int, int]:
-        """Return row and column counts for matrix-like feature data."""
-        try:
-            return int(features.shape[0]), int(features.shape[1])
-        except Exception:
-            try:
-                n_rows = int(len(features))
-                n_cols = int(len(features[0])) if n_rows > 0 else 0
-                return n_rows, n_cols
-            except Exception:
-                raise ValueError("Unable to determine number of rows or columns from features")
+    def __repr__(self):
+        """Show a concise dataset representation."""
+        n_rows, n_features = self.features.shape
+        return f"{self.__class__.__name__}(n_rows={n_rows}, n_features={n_features})"
 
     @staticmethod
     def _slice_array_like(value: Any, row_indices: np.ndarray):
@@ -141,8 +131,8 @@ class MAFeatureDataset(NiMAREBase):
 
         return MAFeatureDataset(
             features=self._slice_array_like(self.features, resolved_indices),
-            ids=[self.ids[int(idx)] for idx in resolved_indices],
-            study_ids=[self.study_ids[int(idx)] for idx in resolved_indices],
+            ids=self._slice_array_like(self.ids, resolved_indices),
+            study_ids=self._slice_array_like(self.study_ids, resolved_indices),
             feature_names=None if self.feature_names is None else list(self.feature_names),
             target=self._slice_array_like(self.target, resolved_indices),
             provenance=copy.deepcopy(self.provenance),
@@ -180,7 +170,6 @@ class MAFeatureDataset(NiMAREBase):
         self,
         test_size: float | int = 0.25,
         random_state: int | None = None,
-        cv: Any = None,
     ):
         """Split row-aligned feature data while keeping study groups intact.
 
@@ -190,21 +179,21 @@ class MAFeatureDataset(NiMAREBase):
         if test_size is None or test_size == 0:
             return self.copy(), None
 
-        if cv is None:
-            cv = GroupShuffleSplit(
-                n_splits=1,
-                test_size=test_size,
-                random_state=random_state,
-            )
+        splitter = GroupShuffleSplit(
+            n_splits=1,
+            test_size=test_size,
+            random_state=random_state,
+        )
 
-        train_idx, test_idx = next(cv.split(self.features, self.target, groups=self.study_ids))
+        train_idx, test_idx = next(
+            splitter.split(self.features, self.target, groups=self.study_ids)
+        )
         return self._slice_rows(train_idx), self._slice_rows(test_idx)
 
     def split(
         self,
         test_size: float | int = 0.25,
         random_state: int | None = None,
-        cv: Any = None,
     ):
         """Split the dataset into leakage-safe train and test partitions.
 
@@ -214,8 +203,6 @@ class MAFeatureDataset(NiMAREBase):
             Proportion or count of grouped data to assign to the test partition.
         random_state : int or None, default=None
             Seed used when the splitter is stochastic.
-        cv : object, default=None
-            Optional grouped cross-validation splitter.
 
         Returns
         -------
@@ -226,7 +213,6 @@ class MAFeatureDataset(NiMAREBase):
         return self._split_by_groups(
             test_size=test_size,
             random_state=random_state,
-            cv=cv,
         )
 
     def _apply_map_reducer(self, reducer: Any, fit: bool = False):
@@ -251,7 +237,7 @@ class MAFeatureDataset(NiMAREBase):
             if reduced_map_features.ndim == 1:
                 reduced_map_features = reduced_map_features.reshape(-1, 1)
 
-        n_rows, n_map_features = self._get_feature_shape(reduced_map_features)
+        n_rows, n_map_features = reduced_map_features.shape
         if n_rows != len(self.ids):
             raise ValueError("Reduced map feature row count must match input rows")
 
@@ -270,14 +256,14 @@ class MAFeatureDataset(NiMAREBase):
 
         feature_names = None
         if self.feature_names is not None:
-            _, original_map_features = self._get_feature_shape(self._map_features)
+            original_map_features = self._map_features.shape[1]
             descriptor_names = list(self.feature_names[original_map_features:])
             feature_names = [f"feature_{idx}" for idx in range(n_map_features)] + descriptor_names
 
         return MAFeatureDataset(
             features=features,
-            ids=list(self.ids),
-            study_ids=list(self.study_ids),
+            ids=self.ids,
+            study_ids=self.study_ids,
             feature_names=feature_names,
             target=copy.deepcopy(self.target),
             provenance=copy.deepcopy(self.provenance),
@@ -318,11 +304,10 @@ class MAFeatureDataset(NiMAREBase):
 
 
 class MAFeatureExtractor(NiMAREBase):
-    """Orchestrate conversion from a Studyset to MA feature datasets and sklearn-ready exports.
+    """Orchestrate conversion from a Studyset to MA feature datasets.
 
     This helper converts a NiMARE Studyset into aligned MA feature datasets,
-    optionally splits by study group, and can export sklearn-compatible
-    bundles with optional map reduction.
+    optionally splits by study group and reduces map features.
 
     Parameters
     ----------
@@ -330,13 +315,13 @@ class MAFeatureExtractor(NiMAREBase):
         Existing NiMARE kernel transformer instance or class. No implicit
         scientific default is selected; public examples must pass an explicit
         kernel transformer.
-    descriptor_fields : list of dict or object, optional
+    descriptor_fields : list of dict, optional
         Field selectors from metadata or annotations, by default None.
     descriptor_transformers : dict, optional
         Optional mapping from descriptor field selectors to explicit
         transformers or vectorizers for non-numeric descriptor fields, by
         default None.
-    target_field : dict or object, optional
+    target_field : dict, optional
         Optional field selector for y, by default None.
     target_transformer : object, optional
         Optional transformer or label extractor for free-text or multi-label
@@ -359,9 +344,9 @@ class MAFeatureExtractor(NiMAREBase):
     def __init__(
         self,
         kernel_transformer: Any,
-        descriptor_fields: list[Any] | None = None,
+        descriptor_fields: list[dict[str, str]] | None = None,
         descriptor_transformers: Any | None = None,
-        target_field: Any | None = None,
+        target_field: dict[str, str] | None = None,
         target_transformer: Any | None = None,
         missing_coordinates: str = "drop",
         test_size: float | int | None = None,
@@ -384,20 +369,17 @@ class MAFeatureExtractor(NiMAREBase):
         self._map_cache = {}
 
     @staticmethod
-    def _get_selected_values(studyset: Any, selector: Any):
+    def _get_selected_values(studyset: Any, selector: dict[str, str]):
         """Return selected Studyset values aligned to analysis IDs."""
-        if isinstance(selector, dict):
-            source = selector.get("source")
-            field = selector.get("field")
-        else:
-            source = getattr(selector, "source", None)
-            field = getattr(selector, "field", None)
+        if not isinstance(selector, dict):
+            raise TypeError("Field selectors must be dictionaries.")
+
+        source = selector.get("source")
+        field = selector.get("field")
 
         if not source or not field:
             raise ValueError("Field selectors must define 'source' and 'field'.")
 
-        source = str(source)
-        field = str(field)
         source_to_table = {
             "metadata": studyset.metadata,
             "annotations": studyset.annotations_df,
@@ -410,27 +392,24 @@ class MAFeatureExtractor(NiMAREBase):
         if field not in table.columns:
             raise ValueError(f"Field '{field}' not found in Studyset {source}.")
 
-        ids = np.asarray(studyset.ids, dtype=str)
-        values = table.drop_duplicates("id").set_index("id")[field].reindex(ids)
-        return values.to_list(), field
+        return table[field].to_numpy(dtype=object), field
 
-    def _stack_sparse_features(self, sparse_rows: Any):
-        """Concatenate sparse feature rows.
-
-        This private helper is reserved for the future feature assembly path
-        that builds sklearn-ready matrices from row-aligned sparse feature blocks.
-        """
-        raise NotImplementedError(
-            "MAFeatureExtractor._stack_sparse_features is not yet implemented."
-        )
-
-    def transform(self, studyset: Any):
+    def transform(
+        self,
+        studyset: Any,
+        map_reducer: Any | None = None,
+        map_reducer_params: dict[str, Any] | None = None,
+    ):
         """Validate the Studyset, orchestrate extraction and optional splitting.
 
         Parameters
         ----------
         studyset : object
             NiMARE Studyset input.
+        map_reducer : object, optional
+            Optional map-feature reducer, by default None.
+        map_reducer_params : dict, optional
+            Optional reducer parameters, by default None.
 
         Returns
         -------
@@ -438,13 +417,8 @@ class MAFeatureExtractor(NiMAREBase):
             Tuple of ``(train_dataset, test_dataset)``. If ``test_size`` is
             ``None`` or ``0.0``, return ``(full_dataset, None)``.
         """
-        ids = np.asarray(studyset.ids, dtype=str)
-        study_ids = (
-            studyset.metadata.drop_duplicates("id")
-            .set_index("id")["study_id"]
-            .reindex(ids)
-            .to_numpy(dtype=str)
-        )
+        ids = studyset.ids
+        study_ids = np.asarray([id_.rsplit("-", 1)[0] for id_ in ids], dtype=str)
 
         kernel_transformer = self.kernel_transformer
         if isinstance(kernel_transformer, type):
@@ -456,7 +430,6 @@ class MAFeatureExtractor(NiMAREBase):
             map_features = self._map_cache[cache_key].copy()
         else:
             map_features = kernel_transformer.transform(studyset, return_type="sparse")
-            map_features = sparse.csr_matrix(map_features)
             if map_features.shape[0] != len(ids):
                 raise ValueError("Map feature row count must match Studyset ids")
 
@@ -470,25 +443,14 @@ class MAFeatureExtractor(NiMAREBase):
             columns = []
             for selector in self.descriptor_fields:
                 values, field = self._get_selected_values(studyset, selector)
-                column = []
-
-                for value in values:
-                    column.append(float(value))
-
-                columns.append(column)
+                columns.append(values.astype(float))
                 descriptor_names.append(field)
 
-            descriptor_features = np.asarray(columns, dtype=float).T
+            descriptor_features = np.column_stack(columns)
 
         target = None
         if self.target_field is not None:
-            values, _ = self._get_selected_values(studyset, self.target_field)
-            target_values = []
-
-            for value in values:
-                target_values.append(value)
-
-            target = np.asarray(target_values, dtype=object)
+            target, _ = self._get_selected_values(studyset, self.target_field)
 
         if descriptor_features is None:
             features = map_features
@@ -516,35 +478,10 @@ class MAFeatureExtractor(NiMAREBase):
             masker=studyset.masker,
         )
 
-        return dataset.split(
+        train_dataset, test_dataset = dataset.split(
             test_size=self.test_size,
             random_state=self.random_state,
         )
-
-    def to_sklearn(
-        self,
-        studyset: Any,
-        map_reducer: Any | None = None,
-        map_reducer_params: dict[str, Any] | None = None,
-    ):
-        """Run the full public pipeline convenience wrapper.
-
-        Parameters
-        ----------
-        studyset : object
-            NiMARE Studyset input.
-        map_reducer : object, optional
-            Optional map-feature reducer, by default None.
-        map_reducer_params : dict, optional
-            Optional reducer parameters, by default None.
-
-        Returns
-        -------
-        tuple
-            Tuple of sklearn-ready exports as ``(train_bunch, test_bunch)``. If
-            ``test_size`` is ``None`` or ``0.0``, return ``(full_bunch, None)``.
-        """
-        train_dataset, test_dataset = self.transform(studyset)
         reducer = None
         if map_reducer is not None:
             map_reducer_params = {} if map_reducer_params is None else dict(map_reducer_params)
@@ -562,9 +499,7 @@ class MAFeatureExtractor(NiMAREBase):
             if test_dataset is not None:
                 test_dataset = test_dataset.apply_map_reducer(reducer, fit=False)
 
-        train_bunch = train_dataset.to_sklearn()
-        test_bunch = None if test_dataset is None else test_dataset.to_sklearn()
-        return train_bunch, test_bunch
+        return train_dataset, test_dataset
 
 
 def make_map_reducer(method: str, **kwargs: Any):

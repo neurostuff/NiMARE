@@ -54,11 +54,13 @@ extractor = MAFeatureExtractor(
 # -----------------------------------------------------------------------------
 # The masked activation maps are sparse and high-dimensional, so we reduce only
 # the map features with truncated SVD before fitting a simple linear classifier.
-train_bunch, test_bunch = extractor.to_sklearn(
+train_dataset, test_dataset = extractor.transform(
     studyset,
     map_reducer="truncated_svd",
     map_reducer_params={"n_components": 50},
 )
+train_bunch = train_dataset.to_sklearn()
+test_bunch = test_dataset.to_sklearn()
 
 classifier = LogisticRegression(
     max_iter=1000,
