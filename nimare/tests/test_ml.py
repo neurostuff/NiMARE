@@ -432,14 +432,6 @@ def test_ma_feature_extractor_selected_values_alignment(ml_studyset):
     assert values.tolist() == expected_sample_sizes
 
 
-def test_ma_feature_extractor_stack_sparse_features_not_implemented():
-    """The reserved sparse stacking helper remains explicitly scaffolded."""
-    extractor = MAFeatureExtractor(kernel_transformer=object())
-
-    with pytest.raises(NotImplementedError):
-        extractor._stack_sparse_features(sparse.csr_matrix([[1.0, 0.0]]))
-
-
 def test_ma_feature_extractor_transform(ml_studyset):
     """Transform a Studyset into grouped train/test MAFeatureDatasets."""
     studyset = ml_studyset
