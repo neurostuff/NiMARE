@@ -58,6 +58,43 @@ def test_gclda_symmetric(testdata_laird):
     assert isinstance(encoded_img, nib.Nifti1Image)
 
 
+def test_gclda_loglikelihood_uses_zero_indexed_tokens(testdata_laird):
+    """Log-likelihood must index documents/words directly, not offset by one.
+
+    Regression test: the indices produced by docidx_mapper are already
+    0-indexed, so subtracting 1 wrapped document 0 to the final document.
+    """
+    counts_df = annotate.text.generate_counts(
+        testdata_laird.texts, text_column="abstract", tfidf=False, min_df=1, max_df=1.0
+    )
+    model = annotate.gclda.GCLDAModel(
+        counts_df,
+        testdata_laird.coordinates,
+        mask=testdata_laird.masker.mask_img,
+        n_topics=5,
+        n_regions=2,
+        symmetric=True,
+    )
+    model._update_regions()
+
+    # Recompute the word log-likelihood independently, with correct indexing.
+    alpha, beta, gamma = model.params["alpha"], model.params["beta"], model.params["gamma"]
+    doccounts = model.topics["n_peak_tokens_doc_by_topic"] + gamma
+    docprobs_z = doccounts / np.sum(doccounts, axis=1)[:, None]
+    wordcounts = model.topics["n_word_tokens_word_by_topic"] + beta
+    wordprobs = wordcounts / np.sum(wordcounts, axis=0)[None, :]
+    p_w_g_d = np.dot(docprobs_z, wordprobs.T)
+
+    expected_w = 0.0
+    for i in range(len(model.data["wtoken_word_idx"])):
+        w = model.data["wtoken_word_idx"][i]
+        d = model.data["wtoken_doc_idx"][i]
+        expected_w += np.log(p_w_g_d[d, w])
+
+    _, w_loglikely, _ = model.compute_log_likelihood(update_vectors=False)
+    assert np.isclose(w_loglikely, expected_w)
+
+
 def test_gclda_asymmetric(testdata_laird):
     """A smoke test for GCLDA with three asymmetric regions."""
     counts_df = annotate.text.generate_counts(
