@@ -1,18 +1,7 @@
 use gclda::rng::Mt19937;
 
-fn load(name: &str) -> serde_json::Value {
-    let path = format!("{}/tests/fixtures/{}", env!("CARGO_MANIFEST_DIR"), name);
-    let text = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("missing fixture {path}: {e}. Run generate_gclda_fixtures.py"));
-    serde_json::from_str(&text).unwrap()
-}
-
-fn bits_to_f64(hex: &str) -> f64 {
-    let raw = (0..8)
-        .map(|i| u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).unwrap())
-        .collect::<Vec<u8>>();
-    f64::from_le_bytes(raw.try_into().unwrap())
-}
+mod common;
+use common::{bits_to_f64, load};
 
 #[test]
 fn random_stream_matches_numpy_bit_for_bit() {

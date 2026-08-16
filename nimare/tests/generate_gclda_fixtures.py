@@ -59,6 +59,44 @@ def gen_rng_randint():
     write("rng_randint.json", cases)
 
 
+def gen_gaussian():
+    """Closed-form 3x3 inverse/logdet and the Gaussian PDF, on fixed matrices."""
+    from nimare.annotate.gclda import _inv3_logdet
+
+    rng = np.random.default_rng(0)
+    cases = []
+    for _ in range(50):
+        m = rng.normal(size=(3, 3)) * rng.uniform(1, 60)
+        sigma = m @ m.T + 50.0 * np.eye(3) * rng.uniform(0.1, 3)
+        inv, logdet = _inv3_logdet(sigma)
+        log_norm = -0.5 * (3 * np.log(2 * np.pi) + logdet)
+        mean = rng.normal(size=3) * 30.0
+        points = rng.normal(size=(4, 3)) * 40.0
+        pdfs = []
+        for p in points:
+            centered = p - mean
+            quad = 0.0
+            for i in range(3):
+                inner = 0.0
+                for j in range(3):
+                    inner += inv[i, j] * (p[j] - mean[j])
+                quad += centered[i] * inner
+            pdfs.append(f64_bits(np.exp(log_norm - 0.5 * quad)))
+        cases.append(
+            {
+                "sigma": [[f64_bits(v) for v in row] for row in sigma],
+                "inv": [[f64_bits(v) for v in row] for row in inv],
+                "logdet": f64_bits(logdet),
+                "log_norm": f64_bits(log_norm),
+                "mean": [f64_bits(v) for v in mean],
+                "points": [[f64_bits(v) for v in p] for p in points],
+                "pdfs": pdfs,
+            }
+        )
+    write("gaussian.json", cases)
+
+
 if __name__ == "__main__":
     gen_rng_random()
     gen_rng_randint()
+    gen_gaussian()

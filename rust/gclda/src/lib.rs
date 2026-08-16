@@ -5,6 +5,7 @@
 //! replace division with reciprocal multiplication, and do not enable
 //! fast-math anywhere in this crate.
 
+pub mod gaussian;
 pub mod rng;
 
 #[derive(Debug)]
