@@ -1,5 +1,5 @@
 {
-  "path": "/mnt/c/Users/tsalo/Documents/neurostuff/NiMARE/nimare/resources/templates/MNI152_2x2x2_brainmask.nii.gz",
+  "path": "nimare/resources/templates/MNI152_2x2x2_brainmask.nii.gz",
   "shape": [
     91,
     109,

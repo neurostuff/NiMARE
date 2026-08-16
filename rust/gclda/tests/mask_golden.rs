@@ -3,13 +3,13 @@ use std::path::Path;
 use std::process::Command;
 
 mod common;
-use common::{bits_to_f64, load};
+use common::{bits_to_f64, load, repo_path};
 
 #[test]
 fn mask_xyz_matches_nibabel() {
     let expected = load("mask_xyz.json");
-    let path = expected["path"].as_str().unwrap();
-    let info = load_mask_xyz(Path::new(path)).unwrap();
+    let path = repo_path(expected["path"].as_str().unwrap());
+    let info = load_mask_xyz(&path).unwrap();
 
     let want_shape: Vec<usize> = expected["shape"]
         .as_array().unwrap().iter().map(|v| v.as_u64().unwrap() as usize).collect();
@@ -55,9 +55,15 @@ fn mask_xyz_matches_nibabel() {
 
 /// Ask nibabel to write an uncompressed copy of `src_path` to `dst_path`.
 ///
-/// nibabel writes single-file `.nii` output with `vox_offset == 0.0` (like the
-/// bundled `.nii.gz`), so this exercises the same "data starts at 352" fallback
-/// but through the plain, non-gzip read path.
+/// The bundled mask carries an AFNI header extension, so its real data offset
+/// is 448 (not 0) whether it's gzipped or not — `to_filename` preserves the
+/// extension and the offset. This test therefore does NOT exercise the
+/// `vox_offset == 0` -> 352 fallback (see
+/// `io::nifti::tests::vox_offset_zero_reads_data_from_352_not_348` for that);
+/// what it does check is that gzip-decompress-then-parse and
+/// read-the-plain-file-directly agree bit-for-bit on the `vox_offset != 0`
+/// path, which is a real and separate risk (e.g. an off-by-N bug in the gzip
+/// branch of `read_all_bytes`).
 fn write_uncompressed_copy(src_path: &str, dst_path: &Path) {
     let script = format!(
         "import nibabel as nib; nib.load(r'{src_path}').to_filename(r'{}')",
@@ -77,14 +83,14 @@ fn write_uncompressed_copy(src_path: &str, dst_path: &Path) {
 #[test]
 fn uncompressed_nii_matches_gzipped_nii_gz() {
     let expected = load("mask_xyz.json");
-    let gz_path = expected["path"].as_str().unwrap();
+    let gz_path = repo_path(expected["path"].as_str().unwrap());
 
     let dir = std::env::temp_dir().join("gclda_nifti_test");
     std::fs::create_dir_all(&dir).unwrap();
     let nii_path = dir.join("mask_uncompressed.nii");
-    write_uncompressed_copy(gz_path, &nii_path);
+    write_uncompressed_copy(gz_path.to_str().unwrap(), &nii_path);
 
-    let gz_info = load_mask_xyz(Path::new(gz_path)).unwrap();
+    let gz_info = load_mask_xyz(&gz_path).unwrap();
     let nii_info = load_mask_xyz(&nii_path).unwrap();
 
     assert_eq!(nii_info.shape, gz_info.shape);

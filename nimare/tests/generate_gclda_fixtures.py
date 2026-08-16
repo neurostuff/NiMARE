@@ -15,13 +15,10 @@ import struct
 
 import numpy as np
 
-FIXTURE_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "rust",
-    "gclda",
-    "tests",
-    "fixtures",
+REPO_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
+FIXTURE_DIR = os.path.join(REPO_ROOT, "rust", "gclda", "tests", "fixtures")
 
 
 def f64_bits(x):
@@ -161,7 +158,12 @@ def gen_mask():
     write(
         "mask_xyz.json",
         {
-            "path": path,
+            # Store a repo-relative path, never an absolute one: an absolute
+            # path bakes in the generating machine's filesystem layout (drive
+            # letter, username, checkout location), so the fixture would only
+            # be loadable on this machine. Consumers resolve this against the
+            # repo root themselves (see rust/gclda/tests/common::repo_path).
+            "path": os.path.relpath(path, REPO_ROOT),
             "shape": [int(d) for d in img.shape],
             "affine": [[f64_bits(v) for v in row] for row in img.affine],
             "n_voxels": int(len(mask_xyz)),
