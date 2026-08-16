@@ -40,10 +40,27 @@ fn parse_count(field: &str, context: &str) -> Result<i64, GcldaError> {
     // float->int64 cast (`count_df[...].to_numpy(dtype=np.int64)`) truncates
     // toward zero, not rounds -- `as i64` on an f64 in Rust does the same, so
     // this must NOT be `.round()`: "2.9" must become 2, matching Python, not 3.
+    //
+    // Non-finite values must be rejected explicitly. Rust's `as i64` cast is
+    // *saturating*: NaN -> 0 (a silent, wrong count) and +/-Inf -> i64::{MAX,MIN}
+    // (which then makes the token-expansion `for _ in 0..count` loop attempt
+    // ~9.2e18 iterations, i.e. an effective hang). Do NOT drop this guard to
+    // "match" pandas: pandas' `to_numpy(dtype=np.int64)` cast is *also*
+    // saturating (NaN and Inf both become i64::MIN, with a RuntimeWarning) --
+    // but that value is negative, so it fails a few lines later in the Python
+    // constructor at `np.repeat(..., counts)` with "repeats may not contain
+    // negative values". Python therefore refuses this input too, just via a
+    // confusing downstream error; we refuse it here, clearly and up front.
     field
         .parse::<f64>()
-        .map(|v| v as i64)
         .map_err(|e| GcldaError::Parse(format!("bad count {field:?} ({context}): {e}")))
+        .and_then(|v| {
+            if v.is_finite() {
+                Ok(v as i64)
+            } else {
+                Err(GcldaError::Parse(format!("non-finite count {field:?} ({context})")))
+            }
+        })
 }
 
 fn parse_coord(field: &str, context: &str) -> Result<f64, GcldaError> {
@@ -236,5 +253,17 @@ mod tests {
         assert_eq!(parse_count("2.0", "test").unwrap(), 2);
         assert_eq!(parse_count("-1.7", "test").unwrap(), -1);
         assert_eq!(parse_count("3", "test").unwrap(), 3);
+    }
+
+    /// Rust's `as i64` cast on a float is *saturating*, not error-raising:
+    /// NaN silently becomes 0 and +/-Inf silently become i64::{MAX,MIN}. Both
+    /// are wrong (a silently different model, or an ~9.2e18-iteration hang in
+    /// token expansion), so `parse_count` must reject non-finite input
+    /// explicitly rather than relying on the cast.
+    #[test]
+    fn non_finite_counts_are_rejected() {
+        assert!(parse_count("nan", "test").is_err());
+        assert!(parse_count("inf", "test").is_err());
+        assert!(parse_count("-inf", "test").is_err());
     }
 }
