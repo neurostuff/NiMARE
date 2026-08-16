@@ -460,13 +460,7 @@ description = "Generalized Correspondence LDA trainer, bit-compatible with NiMAR
 clap = { version = "4", features = ["derive"] }
 rayon = "1"
 flate2 = "1"
-
-[dev-dependencies]
 serde_json = "1"
-
-[[bin]]
-name = "gclda-train"
-path = "src/bin/gclda-train.rs"
 
 [profile.release]
 opt-level = 3
@@ -474,6 +468,12 @@ lto = true
 codegen-units = 1
 debug = true          # keep symbols for perf profiling
 ```
+
+> **Two manifest details, both verified.** There is deliberately **no `[[bin]]` section**:
+> cargo auto-discovers `src/bin/*.rs` when Task 14 creates it. Declaring the bin target here
+> makes `cargo test` refuse to compile for Tasks 3-13 with "can't find bin `gclda-train`".
+> And `serde_json` is a **regular dependency**, not a dev-dependency, because Task 13 writes
+> `model.json` from `src/output.rs`.
 
 `rust/gclda/src/lib.rs`:
 
@@ -2091,7 +2091,10 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Consumes: everything above
 - Produces: the `gclda-train` binary
 
-Arguments, mirroring the Python signature: `--counts <PATH>`, `--coordinates <PATH>`, `--mask <PATH>`, `--out-dir <PATH>`, `--n-topics <INT=100>`, `--n-regions <INT=2>`, `--symmetric <BOOL=true>`, `--alpha <F64=0.1>`, `--beta <F64=0.01>`, `--gamma <F64=0.01>`, `--delta <F64=1.0>`, `--dobs <F64=25>`, `--roi-size <F64=50.0>`, `--seed-init <U32=1>`, `--n-iters <INT=5000>`, `--loglikely-freq <INT=10>`, `--output-dtype <f64|f32 = f64>`, `--threads <INT>` (0 = rayon default).
+Arguments, mirroring the Python signature: `--counts <PATH>`, `--coordinates <PATH>`, `--mask <PATH>`, `--out-dir <PATH>`, `--n-topics <INT=100>`, `--n-regions <INT=2>`, `--symmetric <BOOL=true>`, `--alpha <F64=0.1>`,
+(**`--symmetric` takes an explicit value** — `--symmetric true` / `--symmetric false` — via
+clap's `ArgAction::Set` with `value_parser!(bool)`, NOT a presence flag. Tasks 16 and 17 invoke
+it that way, and a presence flag cannot express `false`.) `--beta <F64=0.01>`, `--gamma <F64=0.01>`, `--delta <F64=1.0>`, `--dobs <F64=25>`, `--roi-size <F64=50.0>`, `--seed-init <U32=1>`, `--n-iters <INT=5000>`, `--loglikely-freq <INT=10>`, `--output-dtype <f64|f32 = f64>`, `--threads <INT>` (0 = rayon default).
 
 Print per-iteration progress to stderr at `loglikely_freq` intervals, in the same format as the Python `LGR.info` line, so runs can be compared side by side.
 
@@ -2250,6 +2253,11 @@ The core harness. Without it, a divergence introduced at iteration 3 is invisibl
 - Produces:
   - Python: `GCLDAModel._dump_state(out_dir, iteration)` writing `iter_{n:05d}.npz`
   - Rust: `--dump-state-dir <PATH>` writing `iter_{n:05d}/<name>.npy` after each iteration
+
+**Dump point:** both implementations dump at the **end** of an iteration, after the region
+update — Python at the end of `_update`, Rust at the end of its fit-loop body — so `regions_*`
+reflect the post-update state for that iteration. Both must agree on this or Level 2 reports a
+spurious `regions_*` mismatch.
 
 Both dump, after each iteration: `wtoken_topic_idx`, `peak_topic_idx`, `peak_region_idx`, `n_peak_tokens_doc_by_topic`, `n_peak_tokens_region_by_topic`, `n_word_tokens_word_by_topic`, `n_word_tokens_doc_by_topic`, `total_n_word_tokens_by_topic`, `regions_mu`, `regions_sigma`, `regions_precision`, `regions_log_norm`.
 
