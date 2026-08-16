@@ -1,11 +1,11 @@
 //! Peak topic/subregion sampler with fused PDF evaluation.
 //!
-//! Port of `_jit_update_peak_assignments` (`nimare/annotate/gclda.py:200-270`).
-//! The Python source at those lines is the specification: this file preserves
-//! its arithmetic operation order exactly.
+//! Port of `_jit_update_peak_assignments` in `nimare/annotate/gclda.py`.
+//! The Python source is the specification: this file preserves its
+//! arithmetic operation order exactly.
 //!
-//! Python's `_get_peak_probs` (`_jit_get_peak_probs`,
-//! `nimare/annotate/gclda.py:108-129`) materializes an
+//! Python's `_get_peak_probs` (`_jit_get_peak_probs` in
+//! `nimare/annotate/gclda.py`) materializes an
 //! `n_peaks x n_topics x n_regions` array of Gaussian densities every
 //! iteration -- roughly 800 MB at full Neurosynth scale -- and then streams
 //! through it exactly once, reading only the current peak's `T x R` block.

@@ -1,10 +1,9 @@
 //! Word-topic sampler: sequential collapsed Gibbs sweep over word tokens.
 //!
-//! Port of `_jit_update_word_topic_assignments`
-//! (`nimare/annotate/gclda.py:213-250`). The Python source at those lines is
-//! the specification: this file preserves its arithmetic operation order
-//! exactly, including keeping the count-ratio a division rather than a
-//! reciprocal multiply.
+//! Port of `_jit_update_word_topic_assignments` in
+//! `nimare/annotate/gclda.py`. The Python source is the specification: this
+//! file preserves its arithmetic operation order exactly, including keeping
+//! the count-ratio a division rather than a reciprocal multiply.
 
 use crate::model::Model;
 use crate::rng::Mt19937;

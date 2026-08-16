@@ -1,8 +1,8 @@
 //! GCLDA model state and initialization.
 //!
-//! [`Model::new`] reproduces the Python constructor's random assignment and
-//! count initialization exactly (`nimare/annotate/gclda.py:386-605`). The
-//! RNG consumption order is load-bearing -- see the comments inline.
+//! [`Model::new`] reproduces `GCLDAModel.__init__`'s random assignment and
+//! count initialization exactly (`nimare/annotate/gclda.py`). The RNG
+//! consumption order is load-bearing -- see the comments inline.
 
 use crate::io::nifti::MaskInfo;
 use crate::io::tsv::Corpus;

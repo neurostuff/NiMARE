@@ -296,6 +296,60 @@ def gen_peak_sampler():
     )
 
 
+def gen_region_update():
+    """Pin `_update_regions`: per-(topic, region) means, regularized
+    covariances, and cached Gaussian pdf parameters (precision, log-norm).
+
+    Uses the same four subregion configurations as `gen_init_state` -- two
+    symmetric (n_regions 2 and 4) and two asymmetric (n_regions 1 and 3) --
+    so the Rust port can be checked against both branches of `_update_regions`
+    (`gclda.py:847-927` symmetric, `gclda.py:928-961` asymmetric) and against
+    more than one subregion pairing in the symmetric case.
+    """
+    import pandas as pd
+
+    from nimare.annotate.gclda import GCLDAModel
+    from nimare.utils import get_template
+
+    counts = pd.read_csv(os.path.join(FIXTURE_DIR, "counts.tsv"), sep="\t", index_col="id")
+    counts.index = counts.index.astype(str)
+    coords = pd.read_csv(os.path.join(FIXTURE_DIR, "coordinates.tsv"), sep="\t")
+    coords["id"] = coords["id"].astype(str)
+    mask = get_template("mni152_2mm", mask="brain")
+
+    configs = [
+        {"n_topics": 3, "n_regions": 2, "symmetric": True, "seed_init": 1},
+        {"n_topics": 4, "n_regions": 4, "symmetric": True, "seed_init": 7},
+        {"n_topics": 3, "n_regions": 1, "symmetric": False, "seed_init": 1},
+        {"n_topics": 5, "n_regions": 3, "symmetric": False, "seed_init": 42},
+    ]
+    out = []
+    for cfg in configs:
+        model = GCLDAModel(counts, coords, mask=mask, **cfg)
+        model._update_regions()
+        out.append(
+            {
+                "config": cfg,
+                "regions_mu": [
+                    [[f64_bits(v) for v in region[0, :]] for region in topic]
+                    for topic in model.topics["regions_mu"]
+                ],
+                "regions_sigma": [
+                    [[[f64_bits(v) for v in row] for row in region] for region in topic]
+                    for topic in model.topics["regions_sigma"]
+                ],
+                "regions_precision": [
+                    [[[f64_bits(v) for v in row] for row in region] for region in topic]
+                    for topic in model.topics["regions_precision"]
+                ],
+                "regions_log_norm": [
+                    [f64_bits(v) for v in topic] for topic in model.topics["regions_log_norm"]
+                ],
+            }
+        )
+    write("region_update.json", out)
+
+
 if __name__ == "__main__":
     gen_rng_random()
     gen_rng_randint()
@@ -305,3 +359,4 @@ if __name__ == "__main__":
     gen_init_state()
     gen_word_sampler()
     gen_peak_sampler()
+    gen_region_update()
