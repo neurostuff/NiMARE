@@ -5,4 +5,5 @@
 //! parallelized: each token's sampling probabilities are computed from
 //! counts that the immediately preceding token in the same sweep wrote.
 
+pub mod peaks;
 pub mod words;

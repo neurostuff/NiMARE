@@ -246,6 +246,56 @@ def gen_word_sampler():
     )
 
 
+def gen_peak_sampler():
+    """Pin one peak topic/subregion sampling sweep.
+
+    Region parameters (`regions_mu`/`regions_precision`/`regions_log_norm`) are
+    dumped alongside the sampled assignments because the Rust port has not
+    implemented `_update_regions` yet (that is a separate task): the Rust test
+    loads these values directly into the model's region fields instead of
+    computing them, so it can exercise `update_peak_assignments` in isolation.
+    """
+    import pandas as pd
+
+    from nimare.annotate.gclda import GCLDAModel
+    from nimare.utils import get_template
+
+    counts = pd.read_csv(os.path.join(FIXTURE_DIR, "counts.tsv"), sep="\t", index_col="id")
+    counts.index = counts.index.astype(str)
+    coords = pd.read_csv(os.path.join(FIXTURE_DIR, "coordinates.tsv"), sep="\t")
+    coords["id"] = coords["id"].astype(str)
+
+    model = GCLDAModel(
+        counts, coords, mask=get_template("mni152_2mm", mask="brain"),
+        n_topics=3, n_regions=2, symmetric=True, seed_init=1,
+    )
+    model._update_regions()
+    model._update_peak_assignments(2)
+    write(
+        "peak_sampler.json",
+        {
+            "seed": 2,
+            "regions_mu": [
+                [[f64_bits(v) for v in region[0, :]] for region in topic]
+                for topic in model.topics["regions_mu"]
+            ],
+            "regions_precision": [
+                [[[f64_bits(v) for v in row] for row in region] for region in topic]
+                for topic in model.topics["regions_precision"]
+            ],
+            "regions_log_norm": [
+                [f64_bits(v) for v in topic] for topic in model.topics["regions_log_norm"]
+            ],
+            "peak_topic_idx": model.topics["peak_topic_idx"].tolist(),
+            "peak_region_idx": model.topics["peak_region_idx"].tolist(),
+            "n_peak_tokens_doc_by_topic": model.topics[
+                "n_peak_tokens_doc_by_topic"].tolist(),
+            "n_peak_tokens_region_by_topic": model.topics[
+                "n_peak_tokens_region_by_topic"].tolist(),
+        },
+    )
+
+
 if __name__ == "__main__":
     gen_rng_random()
     gen_rng_randint()
@@ -254,3 +304,4 @@ if __name__ == "__main__":
     gen_mask()
     gen_init_state()
     gen_word_sampler()
+    gen_peak_sampler()
