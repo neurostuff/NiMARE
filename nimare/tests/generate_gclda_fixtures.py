@@ -49,7 +49,7 @@ def gen_rng_randint():
     a power of two, exercising the masked-rejection path."""
     cases = []
     for seed in (1, 42):
-        for bound in (2, 3, 7, 8, 64, 100, 1000, 1024, 65537):
+        for bound in (1, 2, 3, 7, 8, 64, 100, 1000, 1024, 65537):
             np.random.seed(seed)
             values = np.random.randint(bound, size=64).tolist()
             cases.append({"seed": int(seed), "bound": int(bound), "values": values})
@@ -174,9 +174,53 @@ def gen_mask():
     )
 
 
+def gen_init_state():
+    """Pin the full post-constructor state for several configurations."""
+    import pandas as pd
+
+    from nimare.annotate.gclda import GCLDAModel
+    from nimare.utils import get_template
+
+    counts = pd.read_csv(os.path.join(FIXTURE_DIR, "counts.tsv"), sep="\t", index_col="id")
+    counts.index = counts.index.astype(str)
+    coords = pd.read_csv(os.path.join(FIXTURE_DIR, "coordinates.tsv"), sep="\t")
+    coords["id"] = coords["id"].astype(str)
+    mask = get_template("mni152_2mm", mask="brain")
+
+    configs = [
+        {"n_topics": 3, "n_regions": 2, "symmetric": True, "seed_init": 1},
+        {"n_topics": 4, "n_regions": 4, "symmetric": True, "seed_init": 7},
+        {"n_topics": 3, "n_regions": 1, "symmetric": False, "seed_init": 1},
+        {"n_topics": 5, "n_regions": 3, "symmetric": False, "seed_init": 42},
+    ]
+    out = []
+    for cfg in configs:
+        model = GCLDAModel(counts, coords, mask=mask, **cfg)
+        out.append(
+            {
+                "config": cfg,
+                "wtoken_topic_idx": model.topics["wtoken_topic_idx"].tolist(),
+                "peak_topic_idx": model.topics["peak_topic_idx"].tolist(),
+                "peak_region_idx": model.topics["peak_region_idx"].tolist(),
+                "n_peak_tokens_doc_by_topic": model.topics[
+                    "n_peak_tokens_doc_by_topic"].tolist(),
+                "n_peak_tokens_region_by_topic": model.topics[
+                    "n_peak_tokens_region_by_topic"].tolist(),
+                "n_word_tokens_word_by_topic": model.topics[
+                    "n_word_tokens_word_by_topic"].tolist(),
+                "n_word_tokens_doc_by_topic": model.topics[
+                    "n_word_tokens_doc_by_topic"].tolist(),
+                "total_n_word_tokens_by_topic": model.topics[
+                    "total_n_word_tokens_by_topic"].tolist(),
+            }
+        )
+    write("init_state.json", out)
+
+
 if __name__ == "__main__":
     gen_rng_random()
     gen_rng_randint()
     gen_gaussian()
     gen_ingest()
     gen_mask()
+    gen_init_state()

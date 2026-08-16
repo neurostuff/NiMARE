@@ -7,6 +7,7 @@
 
 pub mod gaussian;
 pub mod io;
+pub mod model;
 pub mod rng;
 
 #[derive(Debug)]

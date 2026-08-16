@@ -76,6 +76,15 @@ impl Mt19937 {
     ///
     /// NumPy's legacy path is 32-bit masked rejection sampling. This was
     /// verified against bounds 2, 3, 7, 64, 100, and 1000.
+    ///
+    /// `bound == 1` (`rng_range == 0`) is a special case: confirmed directly
+    /// against NumPy that `np.random.randint(1, size=n)` consumes ZERO RNG
+    /// draws -- after `np.random.seed(s); np.random.randint(1, size=1000)`,
+    /// the next `np.random.random()` is bit-identical to a freshly seeded
+    /// one. Returning 0 immediately below, without drawing, is therefore
+    /// correct, not just an optimization. (This matters for the model
+    /// constructor's symmetric peak->region assignment with n_regions == 2,
+    /// which calls `randint(n_pairs)` with `n_pairs == 1`.)
     pub fn randint(&mut self, bound: u64) -> u64 {
         debug_assert!(bound > 0);
         let rng_range = bound - 1;
