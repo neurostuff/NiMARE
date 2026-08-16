@@ -96,7 +96,55 @@ def gen_gaussian():
     write("gaussian.json", cases)
 
 
+def gen_ingest():
+    """Pin the constructor's index-determining behavior.
+
+    Deliberately adversarial: document IDs are NOT in sorted order in the
+    file, IDs differ between the two tables, one term is all-zero, and
+    string sorting differs from numeric sorting ("10" < "9").
+    """
+    import pandas as pd
+
+    from nimare.annotate.gclda import GCLDAModel
+    from nimare.utils import get_template
+
+    counts = pd.DataFrame(
+        {
+            "alpha": [2, 0, 1, 3],
+            "beta": [0, 0, 0, 0],  # dropped: zero everywhere
+            "gamma": [1, 4, 0, 0],
+            "delta": [0, 2, 5, 1],
+        },
+        index=["9", "10", "2", "extra_count_only"],
+    )
+    coords = pd.DataFrame(
+        {
+            "id": ["2", "9", "9", "10", "10", "10", "coord_only"],
+            "x": [10.0, -20.0, 30.0, -5.0, 15.0, -25.0, 0.0],
+            "y": [-30.0, 40.0, -50.0, 12.0, -22.0, 32.0, 0.0],
+            "z": [50.0, -60.0, 20.0, -18.0, 28.0, -38.0, 0.0],
+        }
+    )
+
+    counts.to_csv(os.path.join(FIXTURE_DIR, "counts.tsv"), sep="\t", index_label="id")
+    coords.to_csv(os.path.join(FIXTURE_DIR, "coordinates.tsv"), sep="\t", index=False)
+
+    model = GCLDAModel(counts, coords, mask=get_template("mni152_2mm", mask="brain"), n_topics=3)
+    write(
+        "ingest.json",
+        {
+            "ids": list(model.ids),
+            "vocabulary": list(model.vocabulary),
+            "wtoken_doc_idx": model.data["wtoken_doc_idx"].tolist(),
+            "wtoken_word_idx": model.data["wtoken_word_idx"].tolist(),
+            "ptoken_doc_idx": model.data["ptoken_doc_idx"].tolist(),
+            "ptoken_coords": [[f64_bits(v) for v in row] for row in model.data["ptoken_coords"]],
+        },
+    )
+
+
 if __name__ == "__main__":
     gen_rng_random()
     gen_rng_randint()
     gen_gaussian()
+    gen_ingest()
