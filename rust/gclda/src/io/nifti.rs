@@ -250,3 +250,86 @@ pub fn load_mask_xyz(path: &Path) -> Result<MaskInfo, GcldaError> {
         shape: [nx, ny, nz],
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a minimal, valid little-endian NIfTI-1 single-file `.nii` image
+    /// by hand: a 2x2x2 uint8 volume, an identity-plus-translation sform
+    /// affine, and `vox_offset == 0.0` (so data must start at byte 352, the
+    /// 348-byte header plus the 4-byte extension field). Bytes 348..352 (the
+    /// extension field) are set to a nonzero canary that is not valid voxel
+    /// data: if the reader mistakenly starts reading 4 bytes early (at 348
+    /// instead of 352), it picks up the canary as the first voxels and gets
+    /// the wrong nonzero set entirely.
+    ///
+    /// This exists because the bundled MNI mask used in `mask_golden.rs`
+    /// turns out not to exercise this fallback at all: it carries an AFNI
+    /// header extension, so its true `vox_offset` is 448, not 0 (see the
+    /// task 7 follow-up report). That real file only ever exercises the
+    /// `vox_offset != 0` branch, so this synthetic file is the only thing in
+    /// the suite that proves the `352` fallback offset is right.
+    fn minimal_nifti_bytes() -> Vec<u8> {
+        let mut buf = vec![0u8; 352 + 8];
+
+        buf[0..4].copy_from_slice(&348i32.to_le_bytes());
+
+        // dim[0..8] at offset 40: a 3D, 2x2x2 volume.
+        let dim: [i16; 8] = [3, 2, 2, 2, 1, 1, 1, 1];
+        for (i, d) in dim.iter().enumerate() {
+            buf[40 + 2 * i..42 + 2 * i].copy_from_slice(&d.to_le_bytes());
+        }
+
+        buf[70..72].copy_from_slice(&2i16.to_le_bytes()); // datatype: uint8
+        buf[72..74].copy_from_slice(&8i16.to_le_bytes()); // bitpix
+
+        buf[108..112].copy_from_slice(&0.0f32.to_le_bytes()); // vox_offset
+
+        buf[252..254].copy_from_slice(&0i16.to_le_bytes()); // qform_code
+        buf[254..256].copy_from_slice(&1i16.to_le_bytes()); // sform_code
+
+        // sform rows: identity rotation/scale, translation (10, 20, 30).
+        let srow_x: [f32; 4] = [1.0, 0.0, 0.0, 10.0];
+        let srow_y: [f32; 4] = [0.0, 1.0, 0.0, 20.0];
+        let srow_z: [f32; 4] = [0.0, 0.0, 1.0, 30.0];
+        for (base, row) in [(280usize, srow_x), (296, srow_y), (312, srow_z)] {
+            for (i, v) in row.iter().enumerate() {
+                buf[base + 4 * i..base + 4 * i + 4].copy_from_slice(&v.to_le_bytes());
+            }
+        }
+
+        buf[344..348].copy_from_slice(b"n+1\0"); // magic
+
+        // Extension field: a nonzero canary, not a valid "no extension"
+        // marker. The reader must ignore its content and still start voxel
+        // data at 352.
+        buf[348..352].copy_from_slice(&[9, 9, 9, 9]);
+
+        // Voxel data at offset 352..360, Fortran order (i fastest): only
+        // ijk = (0, 0, 1) -> linear index 0 + 0*2 + 1*4 = 4 -> nonzero.
+        let voxels: [u8; 8] = [0, 0, 0, 0, 5, 0, 0, 0];
+        buf[352..360].copy_from_slice(&voxels);
+
+        buf
+    }
+
+    #[test]
+    fn vox_offset_zero_reads_data_from_352_not_348() {
+        let dir = std::env::temp_dir().join("gclda_nifti_unit_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("synthetic.nii");
+        std::fs::write(&path, minimal_nifti_bytes()).unwrap();
+
+        let info = load_mask_xyz(&path).unwrap();
+
+        assert_eq!(info.shape, [2, 2, 2]);
+        assert_eq!(
+            info.xyz.len(),
+            1,
+            "expected exactly one nonzero voxel, got {:?}",
+            info.xyz
+        );
+        assert_eq!(info.xyz[0], [10.0, 20.0, 31.0]);
+    }
+}
