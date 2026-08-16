@@ -408,13 +408,10 @@ import struct
 
 import numpy as np
 
-FIXTURE_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "rust",
-    "gclda",
-    "tests",
-    "fixtures",
+REPO_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
+FIXTURE_DIR = os.path.join(REPO_ROOT, "rust", "gclda", "tests", "fixtures")
 
 
 def f64_bits(x):
@@ -890,6 +887,17 @@ fn mat3(v: &serde_json::Value) -> [[f64; 3]; 3] {
 Create the shared helper `rust/gclda/tests/common/mod.rs`:
 
 ```rust
+use std::path::PathBuf;
+
+/// Resolve a repo-relative fixture path (as stored in the JSON fixtures) against
+/// the repository root. Fixtures MUST NOT store absolute paths — a test that
+/// hard-codes the generating machine's paths passes only on that machine.
+pub fn repo_path(relative: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(relative)
+}
+
 pub fn load(name: &str) -> serde_json::Value {
     let path = format!("{}/tests/fixtures/{}", env!("CARGO_MANIFEST_DIR"), name);
     let text = std::fs::read_to_string(&path)
@@ -1543,7 +1551,10 @@ def gen_mask():
     write(
         "mask_xyz.json",
         {
-            "path": path,
+            # Repo-RELATIVE. Never store an absolute path in a committed fixture:
+            # the test would then only pass on the machine that generated it.
+            # Rust joins this against CARGO_MANIFEST_DIR/.. to reach the repo root.
+            "path": os.path.relpath(path, REPO_ROOT),
             "shape": [int(d) for d in img.shape],
             "affine": [[f64_bits(v) for v in row] for row in img.affine],
             "n_voxels": int(len(mask_xyz)),
@@ -1570,8 +1581,7 @@ use common::{bits_to_f64, load};
 #[test]
 fn mask_xyz_matches_nibabel() {
     let expected = load("mask_xyz.json");
-    let path = expected["path"].as_str().unwrap();
-    let info = load_mask_xyz(Path::new(path)).unwrap();
+    let info = load_mask_xyz(&repo_path(expected["path"].as_str().unwrap())).unwrap();
 
     let want_shape: Vec<usize> = expected["shape"]
         .as_array().unwrap().iter().map(|v| v.as_u64().unwrap() as usize).collect();
@@ -1777,7 +1787,7 @@ fn fixture(name: &str) -> PathBuf {
 #[test]
 fn initial_state_matches_python_constructor() {
     let mask_meta = load("mask_xyz.json");
-    let mask_path = mask_meta["path"].as_str().unwrap().to_string();
+    let mask_path = common::repo_path(mask_meta["path"].as_str().unwrap());
 
     for (c, case) in load("init_state.json").as_array().unwrap().iter().enumerate() {
         let cfg = &case["config"];
@@ -1790,7 +1800,7 @@ fn initial_state_matches_python_constructor() {
             seed_init: cfg["seed_init"].as_u64().unwrap() as u32,
         };
         let corpus = load_corpus(&fixture("counts.tsv"), &fixture("coordinates.tsv")).unwrap();
-        let mask = load_mask_xyz(Path::new(&mask_path)).unwrap();
+        let mask = load_mask_xyz(&mask_path).unwrap();
         let model = Model::new(corpus, mask, params).unwrap();
 
         let want_u32 = |k: &str| -> Vec<u32> {
@@ -1820,7 +1830,7 @@ fn initial_state_matches_python_constructor() {
 fn symmetric_with_odd_regions_is_rejected() {
     let corpus = load_corpus(&fixture("counts.tsv"), &fixture("coordinates.tsv")).unwrap();
     let mask_meta = load("mask_xyz.json");
-    let mask = load_mask_xyz(Path::new(mask_meta["path"].as_str().unwrap())).unwrap();
+    let mask = load_mask_xyz(&common::repo_path(mask_meta["path"].as_str().unwrap())).unwrap();
     let params = Params {
         n_topics: 3, n_regions: 3, symmetric: true,
         alpha: 0.1, beta: 0.01, gamma: 0.01, delta: 1.0,
