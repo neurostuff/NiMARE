@@ -23,6 +23,13 @@
 - **Rust crate location:** `rust/gclda/`. **Binary name:** `gclda-train`.
 - **Reference constants:** MNI152 2mm brain mask is 91x109x91, 228483 nonzero voxels.
 
+> **Line numbers in this plan are advisory — locate functions by NAME.** Tasks 1 and 2 add
+> ~54 lines near the top of `nimare/annotate/gclda.py`, which shifts every reference below
+> them. The citations here were remapped once after those tasks landed, but any further edit
+> to that file re-staleness them. A stale citation is dangerous rather than merely unhelpful:
+> `gclda.py:200-270` used to be the peak sampler and now lands inside the *word* sampler, so
+> following it literally means porting the wrong function. Always confirm by function name.
+
 **Convention for port tasks.** This is a port, so the specification for each sampler already
 exists as working code. Where a task says "implement per the reference at `gclda.py:NNN-MMM`",
 those lines ARE the specification — read them and translate them, preserving operation order.
@@ -109,7 +116,7 @@ These must land before any Rust, so the port targets a stable, correct reference
 `compute_log_likelihood` subtracts 1 from indices that are already 0-indexed, mapping document 0 to `-1` (which wraps to the last document). Every reported log-likelihood is computed against shifted indices. The fitted model is unaffected — log-likelihood never feeds back into sampling — but every logged value is wrong.
 
 **Files:**
-- Modify: `nimare/annotate/gclda.py:984`, `:1020`, `:1022`
+- Modify: `nimare/annotate/gclda.py` — the three offset lines in `compute_log_likelihood` (locate by content, not line number)
 - Test: `nimare/tests/test_annotate_gclda.py`
 
 **Interfaces:**
@@ -226,7 +233,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 `np.linalg.inv`/`slogdet` dispatch to OpenBLAS, whose results depend on build configuration, CPU features, and threading, and are therefore not reproducible from Rust. Since these precision matrices feed sampling probabilities directly, a 1-ulp difference can flip a sampled index and cascade. A closed-form 3x3 adjugate inverse with fixed operation order is reproducible, exactly symmetric, and 2.5x faster.
 
 **Files:**
-- Modify: `nimare/annotate/gclda.py:693-701` (`_cache_region_pdf_params`)
+- Modify: `nimare/annotate/gclda.py` — `_cache_region_pdf_params`
 - Test: `nimare/tests/test_annotate_gclda.py`
 
 **Interfaces:**
@@ -326,7 +333,7 @@ def _inv3_logdet(sigma):
     return inv, np.log(det)
 ```
 
-Then replace the body of `_cache_region_pdf_params` (currently `gclda.py:693-701`) with:
+Then replace the body of `_cache_region_pdf_params` (currently at `gclda.py:746-753`) with:
 
 ```python
     def _cache_region_pdf_params(self, topic_idx, region_idx, sigma):
@@ -1308,7 +1315,7 @@ The index-determining logic. A mistake here produces correctly-shaped but silent
   pub fn load_corpus(counts: &Path, coords: &Path) -> Result<Corpus, GcldaError>
   ```
 
-**Critical semantics — replicate exactly (from `gclda.py:365-470`):**
+**Critical semantics — replicate exactly (from `gclda.py:418-523`):**
 
 1. `ids` = **lexicographically sorted** intersection of count IDs and coordinate IDs, compared as strings. Rust's byte-order `String` sort agrees with Python's code-point sort here.
 2. `docidx` is the position within that sorted `ids` list.
@@ -1521,7 +1528,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
   }
   ```
 
-**Reference behavior (`gclda.py:422-427`):**
+**Reference behavior (`gclda.py:475-480`):**
 ```python
 mask_ijk = np.vstack(np.where(_mask_img_to_bool(self.mask))).T
 mask_xyz = nib.affines.apply_affine(self.mask.affine, mask_ijk)
@@ -1709,7 +1716,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
   `regions_precision: Vec<[[f64; 3]; 3]>` (T*R), `regions_log_norm: Vec<f64>` (T*R),
   `iter: usize`, `seed: u32`
 
-**Reference behavior (`gclda.py:386-605`) — exact RNG consumption order:**
+**Reference behavior (`gclda.py:439-658`) — exact RNG consumption order:**
 
 1. Validate: `symmetric && n_regions % 2 != 0` is an error.
 2. `np.random.seed(seed_init)` — one RNG stream for everything that follows in the constructor.
@@ -1885,7 +1892,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Consumes: `Model`, `Mt19937`
 - Produces: `impl Model { pub fn update_word_topic_assignments(&mut self, seed: u32) -> Result<(), GcldaError> }`
 
-**Reference (`gclda.py:159-197`).** Must be sequential. Re-seeds the RNG at entry. For each word token in order: decrement its three counts, compute
+**Reference (`_jit_update_word_topic_assignments`, `gclda.py:213-250`).** Must be sequential. Re-seeds the RNG at entry. For each word token in order: decrement its three counts, compute
 `probs[t] = ((word_by_topic[word][t] + beta) / (total_word_by_topic[t] + beta_vocabulary)) * (peak_doc_by_topic[doc][t] + gamma)`
 with `beta_vocabulary = beta * vocabulary.len()`, sample, then re-increment. **Keep the division as a division.**
 
@@ -1960,7 +1967,7 @@ The central optimization. Python materializes an `n_peaks x T x R` array (~800 M
   - `impl Model { pub fn update_peak_assignments(&mut self, seed: u32) -> Result<(), GcldaError> }`
   - `impl Model { pub fn peak_probs_for(&self, i_peak: usize, out: &mut [f64]) }` — fills a `T*R` buffer indexed `topic * n_regions + region`, used by both this sampler and the log-likelihood
 
-**Reference (`gclda.py:200-270`).** Sequential; re-seeds at entry. Precompute `region_totals[t] = sum_r region_by_topic[r][t]` once. Per peak: decrement, compute `peak_topic_probs` via the log1p/max-subtract/exp stabilization exactly as written, build `probs_pdf` in **region-major, topic-minor flat order** (`flat_idx` increments with `j_region` outer, `i_topic` inner — see `gclda.py:248-260`), sample, then decode `region = idx / n_topics`, `topic = idx % n_topics`, and re-increment.
+**Reference (`_jit_update_peak_assignments`, `gclda.py:254-324`).** Sequential; re-seeds at entry. Precompute `region_totals[t] = sum_r region_by_topic[r][t]` once. Per peak: decrement, compute `peak_topic_probs` via the log1p/max-subtract/exp stabilization exactly as written, build `probs_pdf` in **region-major, topic-minor flat order** (`flat_idx` increments with `j_region` outer, `i_topic` inner — see `gclda.py:302-314`), sample, then decode `region = idx / n_topics`, `topic = idx % n_topics`, and re-increment.
 
 **Critical:** `probs_pdf` ordering is region-outer/topic-inner, while `peak_probs_for` is indexed topic-outer/region-inner. Do not conflate them.
 
@@ -1999,7 +2006,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Consumes: `Model`, `gaussian::{inv3_logdet, log_norm}`, rayon
 - Produces: `impl Model { pub fn update_regions(&mut self) -> Result<(), GcldaError> }`
 
-**Reference (`gclda.py:776-910`).** Accumulate per (region, topic) sums and cross-products over all peaks (`_jit_accumulate_region_stats`), then per topic compute means and regularized covariances. Symmetric and asymmetric paths differ — implement both, following `gclda.py:796-876` and `gclda.py:877-910` respectively.
+**Reference (`_update_regions`, `gclda.py:827-961`).** Accumulate per (region, topic) sums and cross-products over all peaks (`_jit_accumulate_region_stats`), then per topic compute means and regularized covariances. Symmetric and asymmetric paths differ — implement both, following `gclda.py:847-927` and `gclda.py:928-961` respectively.
 
 `_compute_covariance_from_stats` is `(cross - outer(sum, sum) / n_obs) / (n_obs - 1)`. Preserve that order.
 
@@ -2041,7 +2048,7 @@ Python builds a dense `D x W` matrix (~340 MB, ~4.2 GFLOP at Neurosynth scale) a
 - Consumes: `Model`, `Model::peak_probs_for`
 - Produces: `impl Model { pub fn compute_log_likelihood(&self) -> LogLikelihood }` where `pub struct LogLikelihood { pub x: f64, pub w: f64, pub total: f64 }`
 
-**Reference:** `gclda.py:912-1038`, **as corrected by Task 1** (no `- 1` offsets).
+**Reference:** `compute_log_likelihood`, `gclda.py:963-1087`, **as corrected by Task 1** (no `- 1` offsets).
 
 For the word term, instead of `p_wtoken_g_doc = docprobs_z @ wordprobs.T`, compute per token
 `p = sum_t docprobs_z[doc][t] * wordprobs[word][t]`, accumulating `t` in ascending order to match the BLAS-free reference. Since Task 1's test computes the reference with `np.dot`, expect agreement to ~1e-12 rather than bit-exact for this quantity; assert with a relative tolerance of `1e-10` and document why in a comment. **This is the one quantity in the port that is not asserted bit-exact**, because the Python reference routes it through BLAS.
@@ -2083,9 +2090,9 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
   - `impl Model { pub fn fit(&mut self, n_iters: usize, loglikely_freq: usize) -> Result<(), GcldaError> }`
   - `pub fn write_outputs(model: &Model, dir: &Path, dtype: npy::Dtype) -> Result<(), GcldaError>`
 
-**`fit` reference (`gclda.py:607-682`):** if `iter == 0`, call `update_regions()` then record log-likelihood. Then loop: `iter += 1`; `seed += 1`, `update_word_topic_assignments(seed)`; `seed += 1`, `update_peak_assignments(seed)`; `update_regions()`; if `iter % loglikely_freq == 0`, record log-likelihood.
+**`fit` reference (`fit`/`_update`, `gclda.py:660-745`):** if `iter == 0`, call `update_regions()` then record log-likelihood. Then loop: `iter += 1`; `seed += 1`, `update_word_topic_assignments(seed)`; `seed += 1`, `update_peak_assignments(seed)`; `update_regions()`; if `iter % loglikely_freq == 0`, record log-likelihood.
 
-**Distributions reference (`gclda.py:1059-1107`):** `spatial_dists[v][t] = sum_r pdf(...)` (rayon over voxels is safe — each row is independent); then `p_topic_g_voxel = spatial_dists / rowsum`, `p_voxel_g_topic = spatial_dists / colsum`, `p_word_g_topic = counts / colsum`, `p_topic_g_word = counts / rowsum`, each followed by `nan_to_num`. Implement `nan_to_num` as: NaN -> 0.0, +inf -> `f64::MAX`, -inf -> `f64::MIN` (NumPy's default behavior).
+**Distributions reference (`get_probability_distributions`, `gclda.py:1108-1156`):** `spatial_dists[v][t] = sum_r pdf(...)` (rayon over voxels is safe — each row is independent); then `p_topic_g_voxel = spatial_dists / rowsum`, `p_voxel_g_topic = spatial_dists / colsum`, `p_word_g_topic = counts / colsum`, `p_topic_g_word = counts / rowsum`, each followed by `nan_to_num`. Implement `nan_to_num` as: NaN -> 0.0, +inf -> `f64::MAX`, -inf -> `f64::MIN` (NumPy's default behavior).
 
 **Output files** — exactly as the spec's Output directory section lists:
 `p_topic_g_voxel.npy`, `p_voxel_g_topic.npy` (V x T); `p_topic_g_word.npy`, `p_word_g_topic.npy` (W x T); `vocabulary.txt`; `model.json`; `n_word_tokens_word_by_topic.npy` (W x T, i64); `n_peak_tokens_doc_by_topic.npy` (D x T, i64); `n_peak_tokens_region_by_topic.npy` (R x T, i64); `regions_mu.npy` (T x R x 3); `regions_sigma.npy` (T x R x 3 x 3); `loglikelihood.tsv`; `wtoken_topic_idx.npy`, `peak_topic_idx.npy`, `peak_region_idx.npy` (i64).
