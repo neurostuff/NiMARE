@@ -41,7 +41,27 @@ These were confirmed empirically. Trust them; the tasks below encode them.
 3. **`random()` is built from two 32-bit draws:** `a = u32() >> 5`, `b = u32() >> 6`, result `(a * 67108864.0 + b) / 9007199254740992.0`.
 4. **MT19937 seeding is `init_genrand`** (Knuth multiplier 1812433253), not `init_by_array`, for scalar seeds.
 5. **LAPACK's 3x3 inverse is not portably reproducible** — naive scalar LU matched `np.linalg.inv` in only 104/3000 trials. Hence Task 2.
-6. **The bundled MNI mask** (`nimare/resources/templates/MNI152_2x2x2_brainmask.nii.gz`) has `sform_code=4`, `qform_code=4`, `datatype=2` (uint8), `vox_offset=0`, `scl_slope=nan`. nibabel's `img.affine` equals the sform. A `nan` scl_slope means "no scaling" — treat as slope 1.0, inter 0.0.
+6. **The bundled MNI mask** (`nimare/resources/templates/MNI152_2x2x2_brainmask.nii.gz`) has
+   `sform_code=4`, `qform_code=4`, `datatype=2` (uint8), `scl_slope=nan`. nibabel's `img.affine`
+   equals the sform. A `nan` scl_slope means "no scaling" — treat as slope 1.0, inter 0.0.
+
+   **CORRECTED during Task 7 — the original entry here was wrong on two counts:**
+
+   - **The file is BIG-ENDIAN.** `sizeof_hdr` reads 348 only when byte-swapped; interpreted
+     little-endian it reads 1543569408.
+   - **The real `vox_offset` is 448, not 0.** The file carries one AFNI extension (extension
+     flag bytes at `[348:352]` are `01 00 00 00`), and `448 + 91*109*91 = 903077` is exactly the
+     decompressed file size. The original "vox_offset=0" came from reading
+     `img.header['vox_offset']` through nibabel, which **normalizes that field to 0** on load
+     while tracking the true value in `img.dataobj.offset`. Read the raw header bytes, not
+     nibabel's normalized view.
+
+   `nib.Nifti1Image.to_filename()` **preserves** both properties, so every mask this project
+   writes is big-endian with `vox_offset=448`. Consequently the byte-swap path and the
+   nonzero-`vox_offset` path are exercised by every mask test, and the genuinely untested
+   branches are **little-endian** files, the qform/pixdim affine fallback, and non-uint8
+   datatypes. The `vox_offset == 0` → offset-352 fallback is covered by a synthetic-buffer
+   unit test, since no real file in this project reaches it.
 
 ---
 
@@ -1613,7 +1633,10 @@ Required behavior:
 - Note `srow_*` are `f32` in the file and widened to `f64`. nibabel does the same, so widening reproduces its affine exactly.
 - Support at minimum `datatype` 2 (uint8), 4 (int16), 8 (int32), 16 (float32), 64 (float64). The bundled mask is uint8.
 - **`scl_slope` is `nan` in the bundled mask.** Treat `nan` or `0.0` slope as "no scaling" (slope 1.0, inter 0.0), matching nibabel.
-- Voxel data starts at `vox_offset` (0 in the bundled mask means "immediately after the 348-byte header plus the 4-byte extension field" — for a `.nii` single file, data begins at offset 352 when `vox_offset` is 0).
+- Voxel data starts at `vox_offset` read from the raw header. The bundled mask's is **448**, not
+  0 (see the corrected fact 6 above — nibabel's normalized `header['vox_offset']` misleadingly
+  reports 0). Only when the raw `vox_offset` is genuinely 0 does data begin at offset **352** for
+  a single-file `.nii` — the 348-byte header plus the 4-byte extension field.
 - Nonzero test: a voxel is in the mask iff its **raw** value is nonzero. Do not threshold. Do not apply scaling before the test — `astype(bool)` in nibabel operates on `dataobj`, which for these masks is the raw array.
 - Iterate in **C order**: `i` outermost, `k` innermost, matching `np.where`.
 - Compute `xyz[d] = affine[d][0]*i + affine[d][1]*j + affine[d][2]*k + affine[d][3]` for `d` in 0..3, in that operation order.
