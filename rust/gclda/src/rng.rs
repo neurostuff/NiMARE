@@ -77,14 +77,9 @@ impl Mt19937 {
     /// NumPy's legacy path is 32-bit masked rejection sampling. This was
     /// verified against bounds 2, 3, 7, 64, 100, and 1000.
     ///
-    /// `bound == 1` (`rng_range == 0`) is a special case: confirmed directly
-    /// against NumPy that `np.random.randint(1, size=n)` consumes ZERO RNG
-    /// draws -- after `np.random.seed(s); np.random.randint(1, size=1000)`,
-    /// the next `np.random.random()` is bit-identical to a freshly seeded
-    /// one. Returning 0 immediately below, without drawing, is therefore
-    /// correct, not just an optimization. (This matters for the model
-    /// constructor's symmetric peak->region assignment with n_regions == 2,
-    /// which calls `randint(n_pairs)` with `n_pairs == 1`.)
+    /// `bound == 1` (`rng_range == 0`) returns 0 without drawing -- see
+    /// `randint_with_bound_one_consumes_no_draws` below for the proof and
+    /// why it matters.
     pub fn randint(&mut self, bound: u64) -> u64 {
         debug_assert!(bound > 0);
         let rng_range = bound - 1;
@@ -126,5 +121,45 @@ impl Mt19937 {
             }
         }
         Ok(weights.len() - 1)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `np.random.randint(1, size=n)` consumes ZERO draws from the bit
+    /// generator: NumPy's `random_bounded_uint32_fill` short-circuits when
+    /// `rng == 0` and fills with `off` without touching the generator.
+    /// Verified against NumPy: after `seed(1)` + `randint(1, size=1000)`,
+    /// the next `random()` is bit-identical to a freshly seeded `random()`,
+    /// while `bound=2` diverges.
+    ///
+    /// This matters on the most common configuration: a symmetric model
+    /// with `n_regions == 2` gives `n_pairs == 1`, so `Model::new` hits this
+    /// path for every peak. Neither `init_state.json` nor `rng_randint.json`
+    /// can detect a regression here -- the former because a reseed follows
+    /// before anything reads the stream again, the latter because it pins
+    /// only the returned values (always 0 either way) and never observes
+    /// stream position -- so this test is the only guard.
+    #[test]
+    fn randint_with_bound_one_consumes_no_draws() {
+        let mut fresh = Mt19937::new(1);
+        let expected = fresh.random();
+
+        let mut after_bound_one = Mt19937::new(1);
+        for _ in 0..1000 {
+            assert_eq!(after_bound_one.randint(1), 0);
+        }
+        assert_eq!(after_bound_one.random().to_bits(), expected.to_bits());
+
+        // Control: bound = 2 DOES consume, so the stream must move. Without
+        // this half, the test above would still pass if `randint` were
+        // broken to always return 0 without drawing for every bound.
+        let mut after_bound_two = Mt19937::new(1);
+        for _ in 0..1000 {
+            after_bound_two.randint(2);
+        }
+        assert_ne!(after_bound_two.random().to_bits(), expected.to_bits());
     }
 }
