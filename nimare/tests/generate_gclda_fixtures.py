@@ -217,6 +217,35 @@ def gen_init_state():
     write("init_state.json", out)
 
 
+def gen_word_sampler():
+    """Pin one word-topic sampling sweep."""
+    import pandas as pd
+
+    from nimare.annotate.gclda import GCLDAModel
+    from nimare.utils import get_template
+
+    counts = pd.read_csv(os.path.join(FIXTURE_DIR, "counts.tsv"), sep="\t", index_col="id")
+    counts.index = counts.index.astype(str)
+    coords = pd.read_csv(os.path.join(FIXTURE_DIR, "coordinates.tsv"), sep="\t")
+    coords["id"] = coords["id"].astype(str)
+
+    model = GCLDAModel(
+        counts, coords, mask=get_template("mni152_2mm", mask="brain"),
+        n_topics=3, n_regions=2, symmetric=True, seed_init=1,
+    )
+    model._update_word_topic_assignments(1)
+    write(
+        "word_sampler.json",
+        {
+            "seed": 1,
+            "wtoken_topic_idx": model.topics["wtoken_topic_idx"].tolist(),
+            "n_word_tokens_word_by_topic": model.topics["n_word_tokens_word_by_topic"].tolist(),
+            "n_word_tokens_doc_by_topic": model.topics["n_word_tokens_doc_by_topic"].tolist(),
+            "total_n_word_tokens_by_topic": model.topics["total_n_word_tokens_by_topic"].tolist(),
+        },
+    )
+
+
 if __name__ == "__main__":
     gen_rng_random()
     gen_rng_randint()
@@ -224,3 +253,4 @@ if __name__ == "__main__":
     gen_ingest()
     gen_mask()
     gen_init_state()
+    gen_word_sampler()
