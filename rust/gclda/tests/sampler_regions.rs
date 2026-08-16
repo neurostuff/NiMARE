@@ -10,11 +10,11 @@ fn fixture(name: &str) -> PathBuf {
 }
 
 /// Compare `model.update_regions()` output against Python's `_update_regions`
-/// (`nimare/annotate/gclda.py:827-961`) bit-for-bit, across the four
-/// configurations dumped by `gen_region_update` in
-/// `nimare/tests/generate_gclda_fixtures.py`: symmetric with n_regions 2 and
-/// 4 (exercising the paired-subregion branch, `gclda.py:847-927`), and
-/// asymmetric with n_regions 1 and 3 (`gclda.py:928-961`).
+/// bit-for-bit, across the four configurations dumped by `gen_region_update`
+/// in `nimare/tests/generate_gclda_fixtures.py`: symmetric with n_regions 2
+/// and 4 (exercising the paired-subregion branch of `_update_regions`), and
+/// asymmetric with n_regions 1 and 3 (the asymmetric branch of
+/// `_update_regions`).
 #[test]
 fn region_update_matches_python() {
     let cases = load("region_update.json");
