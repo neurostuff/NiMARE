@@ -143,8 +143,38 @@ def gen_ingest():
     )
 
 
+def gen_mask():
+    """Pin mask loading: affine, nonzero rule, index order, and coordinates."""
+    import nibabel as nib
+
+    from nimare.utils import _mask_img_to_bool, get_resource_path
+
+    path = os.path.join(
+        get_resource_path(), "templates", "MNI152_2x2x2_brainmask.nii.gz"
+    )
+    img = nib.load(path)
+    mask_ijk = np.vstack(np.where(_mask_img_to_bool(img))).T
+    mask_xyz = nib.affines.apply_affine(img.affine, mask_ijk)
+
+    # The full array is ~228k rows; pin the shape, a checksum, and a sample.
+    sample_idx = list(range(0, len(mask_xyz), max(1, len(mask_xyz) // 500)))
+    write(
+        "mask_xyz.json",
+        {
+            "path": path,
+            "shape": [int(d) for d in img.shape],
+            "affine": [[f64_bits(v) for v in row] for row in img.affine],
+            "n_voxels": int(len(mask_xyz)),
+            "sum_bits": [f64_bits(v) for v in mask_xyz.sum(axis=0)],
+            "sample_indices": sample_idx,
+            "sample_xyz": [[f64_bits(v) for v in mask_xyz[i]] for i in sample_idx],
+        },
+    )
+
+
 if __name__ == "__main__":
     gen_rng_random()
     gen_rng_randint()
     gen_gaussian()
     gen_ingest()
+    gen_mask()
