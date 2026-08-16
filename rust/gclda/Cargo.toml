@@ -1,0 +1,17 @@
+[package]
+name = "gclda"
+version = "0.1.0"
+edition = "2021"
+description = "Generalized Correspondence LDA trainer, bit-compatible with NiMARE's Python implementation"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+rayon = "1"
+flate2 = "1"
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+debug = true          # keep symbols for perf profiling
