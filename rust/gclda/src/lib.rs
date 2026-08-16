@@ -6,6 +6,7 @@
 //! fast-math anywhere in this crate.
 
 pub mod gaussian;
+pub mod io;
 pub mod rng;
 
 #[derive(Debug)]
