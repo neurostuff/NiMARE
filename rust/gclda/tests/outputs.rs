@@ -176,7 +176,10 @@ print("OK")
 #[test]
 fn fit_and_write_outputs_produce_valid_files() {
     let mut model = build_model();
-    model.fit(3, 1).unwrap();
+    // `fit` now takes a progress callback (invoked from inside its loop --
+    // see src/output.rs); this test only checks recorded history/output
+    // files, not progress output, so pass a no-op.
+    model.fit(3, 1, |_, _| {}).unwrap();
 
     assert_eq!(model.iter, 3);
     // iter 0 (initial) + iters 1,2,3 at loglikely_freq=1 => 4 recorded entries.
@@ -201,7 +204,7 @@ fn fit_and_write_outputs_produce_valid_files() {
 #[test]
 fn fit_zero_iters_still_records_initial_loglikelihood_and_regions() {
     let mut model = build_model();
-    model.fit(0, 1).unwrap();
+    model.fit(0, 1, |_, _| {}).unwrap();
 
     assert_eq!(model.iter, 0);
     assert_eq!(

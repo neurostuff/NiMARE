@@ -14,7 +14,7 @@ use gclda::io::tsv::load_corpus;
 use gclda::model::{Model, Params};
 use gclda::output::write_outputs;
 use gclda::GcldaError;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 /// Storage dtype for the two large V x T probability matrices. See
@@ -117,6 +117,25 @@ struct Args {
     threads: usize,
 }
 
+/// Preflight-check that `path` can be opened, and if not, produce an error
+/// naming both `label` and `path` -- `load_corpus`/`load_mask_xyz` return
+/// `GcldaError::Io`, whose `Display` (`src/lib.rs`) is a bare `io error:
+/// <message>` with no path at all, which leaves the user unable to tell
+/// whether `--counts`, `--coordinates`, or `--mask` was the culprit. This
+/// check runs before handing `path` to the library, so it does not require
+/// restructuring `GcldaError` to carry a path.
+///
+/// This is a diagnostic aid, not a substitute for the library's own error
+/// handling: a path that passes this check but then genuinely fails inside
+/// the library (a race, or a parse error unrelated to file access) still
+/// surfaces via `main`'s bare `GcldaError` fallback, just without a path
+/// name.
+fn check_readable(label: &str, path: &Path) -> Result<(), GcldaError> {
+    std::fs::File::open(path)
+        .map(|_| ())
+        .map_err(|e| GcldaError::Parse(format!("reading {label} file \"{}\": {e}", path.display())))
+}
+
 fn run(args: Args) -> Result<(), GcldaError> {
     if args.threads != 0 {
         rayon::ThreadPoolBuilder::new()
@@ -127,7 +146,11 @@ fn run(args: Args) -> Result<(), GcldaError> {
             })?;
     }
 
+    check_readable("counts", &args.counts)?;
+    check_readable("coordinates", &args.coordinates)?;
     let corpus = load_corpus(&args.counts, &args.coordinates)?;
+
+    check_readable("mask", &args.mask)?;
     let mask = load_mask_xyz(&args.mask)?;
 
     let params = Params {
@@ -144,21 +167,24 @@ fn run(args: Args) -> Result<(), GcldaError> {
     };
 
     let mut model = Model::new(corpus, mask, params)?;
-    model.fit(args.n_iters, args.loglikely_freq)?;
 
-    // Replay the recorded log-likelihood history to stderr in the same
-    // format as Python's `_update`'s `LGR.info` line. `fit` (src/output.rs)
-    // computes an iter==0 entry before the loop, exactly as Python's `fit`
-    // does directly (not through `_update`) -- Python never logs that one,
-    // so skip it here too.
-    for &(iter, x, w, total) in &model.loglikelihood_history {
-        if iter == 0 {
-            continue;
-        }
+    // The callback is invoked from inside `fit`'s loop (src/output.rs),
+    // right where Python's `_update` calls `LGR.info`, so progress reaches
+    // stderr WHILE training runs rather than only after `fit` returns --
+    // essential for a 5000-iteration production run that can take hours.
+    // Format matches `_update`'s `LGR.info` f-string exactly (located by
+    // function name, not line number): `Iter {iter:04d} Log-likely: x =
+    // {x:10.1f}, w = {w:10.1f}, tot = {total:10.1f}`. `fit`'s iter==0 entry
+    // (computed directly by Python's `fit`, not through `_update`) never
+    // invokes this callback, matching Python never logging it either.
+    model.fit(args.n_iters, args.loglikely_freq, |iter, ll| {
         eprintln!(
-            "Iter {iter:04} Log-likely: x = {x:10.1}, w = {w:10.1}, tot = {total:10.1}"
+            "Iter {iter:04} Log-likely: x = {x:10.1}, w = {w:10.1}, tot = {total:10.1}",
+            x = ll.x,
+            w = ll.w,
+            total = ll.total,
         );
-    }
+    })?;
 
     write_outputs(&model, &args.out_dir, args.output_dtype.into())?;
 

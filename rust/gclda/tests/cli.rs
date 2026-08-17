@@ -7,8 +7,9 @@
 //! exit status, and stderr messaging -- not bit-exactness (that lives in the
 //! Python-side regression harness added by a later task).
 
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 mod common;
 
@@ -222,4 +223,141 @@ fn cli_symmetric_accepts_explicit_false() {
     );
 
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// Progress must reach stderr WHILE training runs, not only after `fit()`
+/// returns -- a 5000-iteration production run can take hours, and output
+/// that only appears on completion is useless for monitoring it, comparing
+/// it against a live Python run, or noticing a stalled run.
+///
+/// This spawns the child directly (rather than using `.output()`, which
+/// waits for exit before handing back anything) and reads its stderr line
+/// by line as it is produced. The first time a progress line is read, it
+/// polls `child.try_wait()`: if the child has NOT exited yet, that line
+/// necessarily reached this test while training was still running --
+/// concrete proof of live streaming, not a timing guess. `--n-iters 40` at
+/// `--loglikely-freq 1` gives 39 more iterations (plus the whole output-
+/// writing phase) of headroom between the first line and process exit, so
+/// this is not a tight race.
+#[test]
+fn cli_progress_streams_during_the_run_not_only_after_it_finishes() {
+    let dir = std::env::temp_dir()
+        .join(format!("gclda_cli_test_stream_{}", std::process::id()));
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_gclda-train"))
+        .args([
+            "--counts",
+            fixture("counts.tsv").to_str().unwrap(),
+            "--coordinates",
+            fixture("coordinates.tsv").to_str().unwrap(),
+            "--mask",
+            mask_path().to_str().unwrap(),
+            "--out-dir",
+            dir.to_str().unwrap(),
+            "--n-topics",
+            "3",
+            "--n-regions",
+            "2",
+            "--symmetric",
+            "true",
+            "--seed-init",
+            "1",
+            "--n-iters",
+            "40",
+            "--loglikely-freq",
+            "1",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn gclda-train binary");
+
+    let stderr = child.stderr.take().expect("child stderr was not piped");
+    let mut reader = BufReader::new(stderr);
+    let mut line = String::new();
+    let mut n_progress_lines = 0usize;
+    let mut observed_still_running = false;
+
+    loop {
+        line.clear();
+        let n_bytes = reader.read_line(&mut line).expect("failed to read child stderr");
+        if n_bytes == 0 {
+            break; // EOF: the child closed its stderr.
+        }
+        if line.starts_with("Iter ") {
+            n_progress_lines += 1;
+            if n_progress_lines == 1 {
+                if let Ok(None) = child.try_wait() {
+                    observed_still_running = true;
+                }
+            }
+        }
+    }
+
+    let status = child.wait().expect("failed to wait on child");
+    assert!(status.success(), "gclda-train exited with {:?}", status.code());
+
+    // Every recorded log-likelihood (iters 1..=40 at loglikely_freq=1) must
+    // produce exactly one progress line, regardless of the timing race above.
+    assert_eq!(
+        n_progress_lines, 40,
+        "expected one progress line per recorded iteration (true streaming is verified \
+         by construction here too: the callback is invoked from inside fit()'s loop in \
+         src/output.rs, at the same point Python's `_update` calls `LGR.info`)"
+    );
+
+    assert!(
+        observed_still_running,
+        "expected the child process to still be running when the first progress line \
+         arrived, proving progress streams live rather than batching after fit() \
+         returns"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// `GcldaError::Io`'s `Display` (src/lib.rs) is a bare `io error: <message>`
+/// with no path -- on its own it can't tell the user whether `--counts`,
+/// `--coordinates`, or `--mask` was the problem. The CLI's `check_readable`
+/// preflight (src/bin/gclda-train.rs) must name both the failing input
+/// ("counts") and its path before that bare message ever reaches the user.
+#[test]
+fn cli_missing_counts_file_names_the_path_in_the_error() {
+    let dir = std::env::temp_dir()
+        .join(format!("gclda_cli_test_missing_counts_{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+
+    let missing_counts = fixture("does_not_exist_counts.tsv");
+    assert!(!missing_counts.exists(), "test setup bug: fixture unexpectedly exists");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_gclda-train"))
+        .args([
+            "--counts",
+            missing_counts.to_str().unwrap(),
+            "--coordinates",
+            fixture("coordinates.tsv").to_str().unwrap(),
+            "--mask",
+            mask_path().to_str().unwrap(),
+            "--out-dir",
+            dir.to_str().unwrap(),
+            "--n-iters",
+            "1",
+        ])
+        .output()
+        .expect("failed to run gclda-train binary");
+
+    assert!(
+        !output.status.success(),
+        "expected a nonzero exit for a missing --counts file"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("counts") && stderr.contains(missing_counts.to_str().unwrap()),
+        "expected the error to name both the \"counts\" input and its path, got: {stderr}"
+    );
+    assert!(!stderr.contains("panicked"), "stderr:\n{stderr}");
+    assert!(!dir.exists(), "out-dir should not be created when input loading fails");
 }

@@ -45,6 +45,7 @@
 
 use crate::gaussian::pdf;
 use crate::io::npy::{self, Dtype, NpyWriter};
+use crate::loglik::LogLikelihood;
 use crate::model::Model;
 use crate::pairwise_sum::numpy_sum;
 use crate::GcldaError;
@@ -396,7 +397,19 @@ impl Model {
     /// Port of `_update`. Kept private: the public entry point is
     /// [`Model::fit`], matching Python where `_update` is a private helper
     /// only `fit` calls directly.
-    fn update(&mut self, loglikely_freq: usize) -> Result<(), GcldaError> {
+    ///
+    /// `on_loglikelihood` is invoked exactly where Python's `_update` calls
+    /// `LGR.info` -- immediately after a log-likelihood is computed and
+    /// recorded, still inside this iteration, so a caller driving a long
+    /// `fit` loop can stream progress out (e.g. to a terminal) as each
+    /// iteration completes rather than only after `fit` returns. It is a
+    /// `&mut dyn FnMut` rather than a second type parameter so this private
+    /// per-iteration method doesn't need its own generic instantiation.
+    fn update(
+        &mut self,
+        loglikely_freq: usize,
+        on_loglikelihood: &mut dyn FnMut(usize, &LogLikelihood),
+    ) -> Result<(), GcldaError> {
         self.iter += 1;
 
         self.seed += 1;
@@ -410,6 +423,7 @@ impl Model {
         if self.iter % loglikely_freq == 0 {
             let ll = self.compute_log_likelihood();
             self.loglikelihood_history.push((self.iter, ll.x, ll.w, ll.total));
+            on_loglikelihood(self.iter, &ll);
         }
 
         Ok(())
@@ -422,7 +436,19 @@ impl Model {
     /// estimate (`update_regions`) and records the initial log-likelihood,
     /// exactly as Python's `fit` does before its loop -- this is why a
     /// fresh model, even with `n_iters == 0`, still gets one recorded
-    /// log-likelihood entry and populated `regions_*` fields.
+    /// log-likelihood entry and populated `regions_*` fields. This initial
+    /// entry does NOT invoke `on_loglikelihood`: Python's `fit` computes it
+    /// directly (`self._update_regions()` + `self.compute_log_likelihood()`)
+    /// rather than through `_update`, and never logs it via `LGR.info`
+    /// either, so the callback -- which mirrors that exact log line -- must
+    /// stay silent here too.
+    ///
+    /// `on_loglikelihood(iter, &ll)` is called once per iteration where a
+    /// log-likelihood is actually recorded (i.e. `iter % loglikely_freq ==
+    /// 0`), from inside the loop below, so a caller can emit progress (to
+    /// stderr, a UI, etc.) while training is still running rather than only
+    /// after every iteration has finished. Callers that don't need progress
+    /// notifications can pass `|_, _| {}`.
     ///
     /// The loop below runs exactly `n_iters.saturating_sub(self.iter)`
     /// times: Rust's `self.iter..n_iters` range, like Python's
@@ -430,7 +456,15 @@ impl Model {
     /// loop entry, so mutating `self.iter` inside the loop body (via
     /// `update`) does not change the iteration count -- both empty out
     /// identically when `n_iters <= self.iter`.
-    pub fn fit(&mut self, n_iters: usize, loglikely_freq: usize) -> Result<(), GcldaError> {
+    pub fn fit<F>(
+        &mut self,
+        n_iters: usize,
+        loglikely_freq: usize,
+        mut on_loglikelihood: F,
+    ) -> Result<(), GcldaError>
+    where
+        F: FnMut(usize, &LogLikelihood),
+    {
         self.n_iters = n_iters;
         self.loglikely_freq = loglikely_freq;
 
@@ -441,7 +475,7 @@ impl Model {
         }
 
         for _ in self.iter..n_iters {
-            self.update(loglikely_freq)?;
+            self.update(loglikely_freq, &mut on_loglikelihood)?;
         }
 
         Ok(())
