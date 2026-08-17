@@ -115,6 +115,12 @@ struct Args {
     /// thread per logical CPU).
     #[arg(long, default_value_t = 0)]
     threads: usize,
+
+    /// If set, write full sampler state (`iter_{n:05d}/<name>.npy`) after
+    /// every iteration into this directory, for the per-iteration equality
+    /// harness against the Python port. Not used in normal training runs.
+    #[arg(long)]
+    dump_state_dir: Option<PathBuf>,
 }
 
 /// Preflight-check that `path` can be opened, and if not, produce an error
@@ -177,14 +183,19 @@ fn run(args: Args) -> Result<(), GcldaError> {
     // {x:10.1f}, w = {w:10.1f}, tot = {total:10.1f}`. `fit`'s iter==0 entry
     // (computed directly by Python's `fit`, not through `_update`) never
     // invokes this callback, matching Python never logging it either.
-    model.fit(args.n_iters, args.loglikely_freq, |iter, ll| {
-        eprintln!(
-            "Iter {iter:04} Log-likely: x = {x:10.1}, w = {w:10.1}, tot = {total:10.1}",
-            x = ll.x,
-            w = ll.w,
-            total = ll.total,
-        );
-    })?;
+    model.fit(
+        args.n_iters,
+        args.loglikely_freq,
+        args.dump_state_dir.as_deref(),
+        |iter, ll| {
+            eprintln!(
+                "Iter {iter:04} Log-likely: x = {x:10.1}, w = {w:10.1}, tot = {total:10.1}",
+                x = ll.x,
+                w = ll.w,
+                total = ll.total,
+            );
+        },
+    )?;
 
     write_outputs(&model, &args.out_dir, args.output_dtype.into())?;
 

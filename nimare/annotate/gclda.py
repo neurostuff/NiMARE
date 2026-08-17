@@ -657,7 +657,7 @@ class GCLDAModel(NiMAREBase):
             word_doc_by_topic,
         )
 
-    def fit(self, n_iters=5000, loglikely_freq=10):
+    def fit(self, n_iters=5000, loglikely_freq=10, dump_state_dir=None):
         """Run multiple iterations.
 
         .. versionchanged:: 0.0.8
@@ -671,6 +671,11 @@ class GCLDAModel(NiMAREBase):
         loglikely_freq : :obj:`int`, optional
             The frequency with which log-likelihood is updated. Default value
             is 1 (log-likelihood is updated every iteration).
+        dump_state_dir : :obj:`str`, optional
+            If provided, the full sampler state is written to
+            ``iter_{n:05d}.npz`` in this directory after every iteration, for
+            comparison against the Rust port. Default is None, in which case
+            no state is dumped and normal operation is unaffected.
         """
         if self.iter == 0:
             # Get Initial Spatial Parameter Estimates
@@ -681,7 +686,7 @@ class GCLDAModel(NiMAREBase):
             self.compute_log_likelihood()
 
         for i in range(self.iter, n_iters):
-            self._update(loglikely_freq=loglikely_freq)
+            self._update(loglikely_freq=loglikely_freq, dump_state_dir=dump_state_dir)
 
         # TODO: Handle this more elegantly
         (
@@ -695,7 +700,7 @@ class GCLDAModel(NiMAREBase):
         self.p_topic_g_word_ = p_topic_g_word
         self.p_word_g_topic_ = p_word_g_topic
 
-    def _update(self, loglikely_freq=1):
+    def _update(self, loglikely_freq=1, dump_state_dir=None):
         """Run a complete update cycle (sample z, sample y&r, update regions).
 
         .. versionchanged:: 0.0.8
@@ -707,6 +712,10 @@ class GCLDAModel(NiMAREBase):
         loglikely_freq : :obj:`int`, optional
             The frequency with which log-likelihood is updated. Default value
             is 1 (log-likelihood is updated every iteration).
+        dump_state_dir : :obj:`str`, optional
+            If provided, the full sampler state is written to this directory
+            at the end of this update. Default is None, in which case
+            nothing is written.
         """
         self.iter += 1  # Update total iteration count
 
@@ -733,6 +742,40 @@ class GCLDAModel(NiMAREBase):
                 f"w = {self.loglikelihood['w'][-1]:10.1f}, "
                 f"tot = {self.loglikelihood['total'][-1]:10.1f}"
             )
+
+        if dump_state_dir is not None:
+            self._dump_state(dump_state_dir, self.iter)
+
+    def _dump_state(self, out_dir, iteration):
+        """Write the full sampler state to ``iter_{iteration:05d}.npz``.
+
+        Used by the Rust-port equality harness (``test_gclda_rust.py``) to
+        compare Python and Rust sampler state after every iteration, rather
+        than only at the end of training. Not used in normal operation.
+
+        Parameters
+        ----------
+        out_dir : :obj:`str`
+            Directory to write the ``.npz`` file into. Must already exist.
+        iteration : :obj:`int`
+            The iteration number, used to name the output file.
+        """
+        out_path = op.join(out_dir, f"iter_{iteration:05d}.npz")
+        np.savez(
+            out_path,
+            wtoken_topic_idx=self.topics["wtoken_topic_idx"],
+            peak_topic_idx=self.topics["peak_topic_idx"],
+            peak_region_idx=self.topics["peak_region_idx"],
+            n_peak_tokens_doc_by_topic=self.topics["n_peak_tokens_doc_by_topic"],
+            n_peak_tokens_region_by_topic=self.topics["n_peak_tokens_region_by_topic"],
+            n_word_tokens_word_by_topic=self.topics["n_word_tokens_word_by_topic"],
+            n_word_tokens_doc_by_topic=self.topics["n_word_tokens_doc_by_topic"],
+            total_n_word_tokens_by_topic=self.topics["total_n_word_tokens_by_topic"],
+            regions_mu=self.topics["regions_mu"],
+            regions_sigma=self.topics["regions_sigma"],
+            regions_precision=self.topics["regions_precision"],
+            regions_log_norm=self.topics["regions_log_norm"],
+        )
 
     def _spatial_pdf(self, points, topic_idx, region_idx):
         """Evaluate the cached Gaussian PDF for one topic-region pair."""

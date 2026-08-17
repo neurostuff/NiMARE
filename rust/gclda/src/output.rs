@@ -392,6 +392,95 @@ pub fn write_outputs(model: &Model, dir: &Path, dtype: Dtype) -> Result<(), Gcld
     Ok(())
 }
 
+/// Write the full sampler state for one iteration into
+/// `dir/iter_{iteration:05d}/<name>.npy`. Port of Python's
+/// `GCLDAModel._dump_state`, used by the per-iteration equality harness
+/// (`test_gclda_rust.py::test_rust_matches_python_every_iteration`) to
+/// compare Rust and Python state after every iteration rather than only at
+/// the end of training. Twelve arrays total: eight integer
+/// count/assignment arrays plus the four `regions_*` Gaussian parameter
+/// arrays. Called from [`Model::fit`]'s loop, after `update` (i.e. after
+/// the region update, matching where Python's `_update` dumps state), not
+/// from normal training -- callers that don't pass `--dump-state-dir`
+/// never invoke this.
+fn dump_state(model: &Model, dir: &Path, iteration: usize) -> Result<(), GcldaError> {
+    let iter_dir = dir.join(format!("iter_{iteration:05}"));
+
+    let n_topics = model.params.n_topics;
+    let n_regions = model.params.n_regions;
+    let n_docs = model.corpus.ids.len();
+    let n_words = model.corpus.vocabulary.len();
+
+    let wtoken: Vec<i64> = model.wtoken_topic_idx.iter().map(|&v| v as i64).collect();
+    npy::write_i64(&iter_dir.join("wtoken_topic_idx.npy"), &[wtoken.len()], &wtoken)?;
+
+    let ptopic: Vec<i64> = model.peak_topic_idx.iter().map(|&v| v as i64).collect();
+    npy::write_i64(&iter_dir.join("peak_topic_idx.npy"), &[ptopic.len()], &ptopic)?;
+
+    let pregion: Vec<i64> = model.peak_region_idx.iter().map(|&v| v as i64).collect();
+    npy::write_i64(&iter_dir.join("peak_region_idx.npy"), &[pregion.len()], &pregion)?;
+
+    npy::write_i64(
+        &iter_dir.join("n_peak_tokens_doc_by_topic.npy"),
+        &[n_docs, n_topics],
+        &model.n_peak_tokens_doc_by_topic,
+    )?;
+    npy::write_i64(
+        &iter_dir.join("n_peak_tokens_region_by_topic.npy"),
+        &[n_regions, n_topics],
+        &model.n_peak_tokens_region_by_topic,
+    )?;
+    npy::write_i64(
+        &iter_dir.join("n_word_tokens_word_by_topic.npy"),
+        &[n_words, n_topics],
+        &model.n_word_tokens_word_by_topic,
+    )?;
+    npy::write_i64(
+        &iter_dir.join("n_word_tokens_doc_by_topic.npy"),
+        &[n_docs, n_topics],
+        &model.n_word_tokens_doc_by_topic,
+    )?;
+    npy::write_i64(
+        &iter_dir.join("total_n_word_tokens_by_topic.npy"),
+        &[n_topics],
+        &model.total_n_word_tokens_by_topic,
+    )?;
+
+    let mu_flat: Vec<f64> =
+        model.regions_mu.iter().flat_map(|m| m.iter().copied()).collect();
+    npy::write_f64(&iter_dir.join("regions_mu.npy"), &[n_topics, n_regions, 3], &mu_flat)?;
+
+    let sigma_flat: Vec<f64> = model
+        .regions_sigma
+        .iter()
+        .flat_map(|s| s.iter().flat_map(|row| row.iter().copied()))
+        .collect();
+    npy::write_f64(
+        &iter_dir.join("regions_sigma.npy"),
+        &[n_topics, n_regions, 3, 3],
+        &sigma_flat,
+    )?;
+
+    let precision_flat: Vec<f64> = model
+        .regions_precision
+        .iter()
+        .flat_map(|s| s.iter().flat_map(|row| row.iter().copied()))
+        .collect();
+    npy::write_f64(
+        &iter_dir.join("regions_precision.npy"),
+        &[n_topics, n_regions, 3, 3],
+        &precision_flat,
+    )?;
+
+    npy::write_f64(
+        &iter_dir.join("regions_log_norm.npy"),
+        &[n_topics, n_regions],
+        &model.regions_log_norm,
+    )?;
+
+    Ok(())
+}
+
 impl Model {
     /// Run a complete update cycle (sample z, sample y&r, update regions).
     /// Port of `_update`. Kept private: the public entry point is
@@ -456,10 +545,20 @@ impl Model {
     /// loop entry, so mutating `self.iter` inside the loop body (via
     /// `update`) does not change the iteration count -- both empty out
     /// identically when `n_iters <= self.iter`.
+    ///
+    /// `dump_state_dir`, when `Some`, writes `iter_{n:05d}/<name>.npy` for
+    /// the twelve state arrays (see [`dump_state`]) at the END of each loop
+    /// iteration -- i.e. after `update` (which itself ends with the region
+    /// update, mirroring Python's `_update`). This matches exactly where
+    /// Python's `GCLDAModel._dump_state` is called from `_update`, which is
+    /// required for the per-iteration equality harness: dumping at any
+    /// other point would make every `regions_*` array look like a spurious
+    /// mismatch.
     pub fn fit<F>(
         &mut self,
         n_iters: usize,
         loglikely_freq: usize,
+        dump_state_dir: Option<&Path>,
         mut on_loglikelihood: F,
     ) -> Result<(), GcldaError>
     where
@@ -476,6 +575,9 @@ impl Model {
 
         for _ in self.iter..n_iters {
             self.update(loglikely_freq, &mut on_loglikelihood)?;
+            if let Some(dir) = dump_state_dir {
+                dump_state(self, dir, self.iter)?;
+            }
         }
 
         Ok(())

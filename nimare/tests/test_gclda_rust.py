@@ -238,3 +238,84 @@ def test_export_gclda_tsvs_round_trips_through_rust_reader(small_corpus, mni_mas
         meta = json.load(fo)
     # ids are the sorted-as-strings intersection of count/coordinate IDs.
     assert meta["ids"] == sorted(meta["ids"])
+
+
+INTEGER_ARRAYS = (
+    "wtoken_topic_idx", "peak_topic_idx", "peak_region_idx",
+    "n_peak_tokens_doc_by_topic", "n_peak_tokens_region_by_topic",
+    "n_word_tokens_word_by_topic", "n_word_tokens_doc_by_topic",
+    "total_n_word_tokens_by_topic",
+)
+FLOAT_ARRAYS = ("regions_mu", "regions_sigma", "regions_precision", "regions_log_norm")
+
+
+@requires_rust
+@pytest.mark.parametrize(
+    "n_regions,symmetric", [(2, True), (4, True), (1, False), (3, False)]
+)
+def test_rust_matches_python_every_iteration(
+    small_corpus, mni_mask, tmp_path, n_regions, symmetric
+):
+    """Rust and Python state must be identical after EVERY iteration.
+
+    Comparing only endpoints would leave a divergence introduced at
+    iteration 3 undiagnosable. This reports the first differing iteration
+    and the first differing element.
+    """
+    counts, coords = small_corpus
+    n_iters = 12
+    mask_path = str(tmp_path / "mask.nii.gz")
+    mni_mask.to_filename(mask_path)
+
+    py_dir = tmp_path / "py_state"
+    py_dir.mkdir()
+    model = annotate.gclda.GCLDAModel(
+        counts, coords, mask=mask_path, n_topics=4, n_regions=n_regions,
+        symmetric=symmetric, seed_init=1,
+    )
+    model.fit(n_iters=n_iters, loglikely_freq=n_iters, dump_state_dir=str(py_dir))
+
+    rs_dir = tmp_path / "rs_state"
+    counts_path, coords_path = annotate.gclda_rs.export_gclda_tsvs(
+        counts, coords, str(tmp_path / "inputs")
+    )
+    subprocess.run(
+        [
+            BINARY, "--counts", counts_path, "--coordinates", coords_path,
+            "--mask", mask_path, "--out-dir", str(tmp_path / "rs_out"),
+            "--n-topics", "4", "--n-regions", str(n_regions),
+            "--symmetric", "true" if symmetric else "false",
+            "--seed-init", "1", "--n-iters", str(n_iters),
+            "--loglikely-freq", str(n_iters),
+            "--dump-state-dir", str(rs_dir),
+        ],
+        check=True,
+    )
+
+    for it in range(1, n_iters + 1):
+        py = np.load(py_dir / f"iter_{it:05d}.npz")
+        for name in INTEGER_ARRAYS:
+            rs = np.load(rs_dir / f"iter_{it:05d}" / f"{name}.npy")
+            expected = py[name]
+            if not np.array_equal(rs.ravel(), expected.ravel()):
+                bad = np.flatnonzero(rs.ravel() != expected.ravel())[0]
+                pytest.fail(
+                    f"{name} diverged at iteration {it}, first at flat index {bad}: "
+                    f"rust={rs.ravel()[bad]} python={expected.ravel()[bad]}"
+                )
+        for name in FLOAT_ARRAYS:
+            rs = np.load(rs_dir / f"iter_{it:05d}" / f"{name}.npy")
+            expected = py[name]
+            # Shapes may differ harmlessly: Python stores regions_mu as
+            # (T, R, 1, 3) while Rust writes (T, R, 3). Compare raveled values.
+            # ascontiguousarray is required before .view() -- viewing a
+            # non-contiguous array raises.
+            rb = np.ascontiguousarray(rs.ravel(), dtype=np.float64).view(np.uint64)
+            eb = np.ascontiguousarray(expected.ravel(), dtype=np.float64).view(np.uint64)
+            assert rb.size == eb.size, f"{name} size mismatch at iteration {it}"
+            if not np.array_equal(rb, eb):
+                bad = np.flatnonzero(rb != eb)[0]
+                pytest.fail(
+                    f"{name} diverged (bitwise) at iteration {it}, flat index {bad}: "
+                    f"rust={rs.ravel()[bad]!r} python={expected.ravel()[bad]!r}"
+                )

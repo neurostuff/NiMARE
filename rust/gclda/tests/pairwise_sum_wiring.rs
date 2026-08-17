@@ -73,7 +73,7 @@ fn p_topic_g_voxel_row_sum_matches_python_at_n_topics_100() {
         seed_init: 1,
     };
     let mut model = Model::new(corpus, mask, params).unwrap();
-    model.fit(2, 1, |_, _| {}).unwrap();
+    model.fit(2, 1, None, |_, _| {}).unwrap();
 
     let dir = std::env::temp_dir()
         .join(format!("gclda_pairwise_wiring_test_{}", std::process::id()));
