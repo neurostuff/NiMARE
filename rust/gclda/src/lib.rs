@@ -9,6 +9,7 @@ pub mod gaussian;
 pub mod io;
 pub mod loglik;
 pub mod model;
+pub mod output;
 pub mod rng;
 pub mod sampler;
 
@@ -40,5 +41,11 @@ impl std::error::Error for GcldaError {}
 impl From<std::io::Error> for GcldaError {
     fn from(e: std::io::Error) -> Self {
         GcldaError::Io(e)
+    }
+}
+
+impl From<serde_json::Error> for GcldaError {
+    fn from(e: serde_json::Error) -> Self {
+        GcldaError::Parse(format!("json error: {e}"))
     }
 }

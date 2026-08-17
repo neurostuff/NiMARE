@@ -23,6 +23,10 @@ pub struct MaskInfo {
     pub xyz: Vec<[f64; 3]>,
     pub affine: [[f64; 4]; 4],
     pub shape: [usize; 3],
+    /// The path this mask was loaded from, as given to [`load_mask_xyz`].
+    /// Carried through so `output.rs` can record it in `model.json` without
+    /// threading a separate path argument through `Model`.
+    pub path: std::path::PathBuf,
 }
 
 fn read_i16(buf: &[u8], off: usize, big_endian: bool) -> i16 {
@@ -248,6 +252,7 @@ pub fn load_mask_xyz(path: &Path) -> Result<MaskInfo, GcldaError> {
         xyz,
         affine,
         shape: [nx, ny, nz],
+        path: path.to_path_buf(),
     })
 }
 

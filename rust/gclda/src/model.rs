@@ -63,6 +63,19 @@ pub struct Model {
     /// Current random seed, incremented after initialization and each
     /// sampling update.
     pub seed: u32,
+
+    /// The `n_iters` argument passed to the most recent [`Model::fit`] call.
+    /// Not part of `GCLDAModel.__init__` -- Python's `fit`/`_update` take
+    /// this as a plain argument and never store it. Rust stores it because
+    /// `write_outputs`'s signature is `(model, dir, dtype)` with no separate
+    /// channel to report it in `model.json`.
+    pub n_iters: usize,
+    /// The `loglikely_freq` argument passed to the most recent
+    /// [`Model::fit`] call. See `n_iters` above for why this is stored.
+    pub loglikely_freq: usize,
+    /// `(iter, x, w, total)` recorded each time `fit`'s loop computes the
+    /// log-likelihood (mirrors Python's `self.loglikelihood` dict of lists).
+    pub loglikelihood_history: Vec<(usize, f64, f64, f64)>,
 }
 
 impl Model {
@@ -189,6 +202,9 @@ impl Model {
             // Step 7.
             iter: 0,
             seed: 0,
+            n_iters: 0,
+            loglikely_freq: 0,
+            loglikelihood_history: Vec::new(),
         })
     }
 }
