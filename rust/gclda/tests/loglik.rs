@@ -14,18 +14,28 @@ fn fixture(name: &str) -> PathBuf {
 /// asymmetric n_regions=1) dumped by `gen_loglik` in
 /// `nimare/tests/generate_gclda_fixtures.py`.
 ///
-/// `x` (the peak term) and `total` are asserted with a relative tolerance of
+/// `x`, `w`, and `total` are ALL asserted with a relative tolerance of
 /// 1e-10 -- not the bit-exactness used everywhere else in this crate --
-/// because `total = x + w` and `w` (the word term) is itself only
-/// tolerance-comparable: the Python reference computes it via
-/// `np.dot(docprobs_z, wordprobs.T)`, which is routed through BLAS.  BLAS's
-/// summation order (and its use of fused multiply-add) is a property of the
-/// BLAS implementation on the machine that generated the fixture, not of the
-/// Python source, so it cannot be reproduced from scalar Rust code. This is
-/// the ONLY quantity in the whole crate that is not asserted bit-exact; do
-/// not widen any other assertion by analogy with this one, and do not
-/// tighten this one back to bit-exactness -- that would make the test flaky
-/// across BLAS builds.
+/// for two independent reasons (see the doc comment on `LogLikelihood` in
+/// `src/loglik.rs` for the full explanation):
+///
+/// 1. Python routes BOTH the word term (`np.dot(docprobs_z, wordprobs.T)`)
+///    and the peak term (`np.dot(p_region_g_doc, p_x_r)` per region)
+///    through BLAS, whose summation order/FMA use is a property of the
+///    BLAS build, not the Python source.
+/// 2. `docprobs_y`/`docprobs_z` are normalized by `np.sum(..., axis=1)`,
+///    a contiguous-axis sum that NumPy computes via pairwise summation,
+///    which diverges from a plain accumulator once the reduction length
+///    (`n_topics`) reaches 8 -- see `src/pairwise_sum.rs`.
+///
+/// At this fixture's `n_topics=3`, both effects are below their thresholds,
+/// so the measured relative error here is exactly 0e0. That is a property
+/// of this small fixture, NOT evidence that `x`/`w`/`total` are bit-exact
+/// in general -- do not tighten this to `assert_eq!` on the strength of
+/// that observation, and do not widen any other assertion in the crate by
+/// analogy with this one; every other quantity here has neither a BLAS dot
+/// product nor an `np.sum`-pairwise dependency and remains genuinely
+/// bit-exact.
 #[test]
 fn log_likelihood_matches_python() {
     let cases = load("loglik.json");

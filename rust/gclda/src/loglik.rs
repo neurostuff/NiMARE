@@ -11,29 +11,63 @@
 //! reuses [`Model::peak_probs_for`] rather than materializing the full
 //! `n_peaks x n_topics x n_regions` peak-probability array. The four cached
 //! per-call probability matrices (`docprobs_y`, `docprobs_z`, `regionprobs`,
-//! `wordprobs`) are still computed exactly as Python computes them, and the
-//! peak (x) term's arithmetic order is unchanged from Python -- only the
-//! word (w) term's summation order is BLAS-free scalar code instead of
-//! `np.dot`. See the comment on [`LogLikelihood`] for why that one quantity
-//! is not asserted bit-exact.
+//! `wordprobs`) are computed with the same arithmetic Python uses, and both
+//! the peak (x) and word (w) terms preserve Python's per-element formula.
+//! See the comment on [`LogLikelihood`] for why NEITHER term is asserted
+//! bit-exact, despite that.
 
 use crate::model::Model;
 
 /// The three totals returned by `compute_log_likelihood`: peak-token,
 /// word-token, and combined log-likelihood.
 ///
-/// `w` (and therefore `total = x + w`) is the one quantity in this whole
-/// crate that is NOT asserted bit-exact against Python. Python computes it
-/// via `p_wtoken_g_doc = np.dot(docprobs_z, wordprobs.T)`, which is routed
-/// through BLAS; BLAS's summation order (and whether it fuses multiply-adds)
-/// is a property of the BLAS build that generated the reference fixture, not
-/// of the Python source, so scalar Rust code cannot reproduce it bit-for-bit
-/// even while preserving the mathematically-equivalent left-to-right
-/// summation order used everywhere else in this port. The test compares `w`
-/// (and `x`/`total`) with a relative tolerance of `1e-10` instead. Do not
-/// use this as license to loosen any other assertion in the crate -- `x`
-/// and all four cached probability matrices below are ordinary scalar
-/// arithmetic and remain held to bit-exactness.
+/// `x`, `w`, and `total` are the only quantities in this whole crate that
+/// are NOT asserted bit-exact against Python (see `tests/loglik.rs`, which
+/// compares all three with a relative tolerance of `1e-10`). There are TWO
+/// independent, unrelated causes -- both real, neither fixable by "just
+/// summing more carefully" in Rust:
+///
+/// 1. **BLAS-mediated dot products.** Python's word term computes
+///    `p_wtoken_g_doc = np.dot(docprobs_z, wordprobs.T)`, and its peak term
+///    computes `p_x_rd = np.dot(p_region_g_doc, p_x_r)` per region -- both
+///    are 1-D dot products of length `n_topics` dispatched to BLAS
+///    (`cblas_ddot`). BLAS's summation order (and whether it fuses
+///    multiply-adds) is a property of the BLAS build that generated the
+///    reference fixture, not of the Python source, and is not reproducible
+///    from scalar Rust. This affects BOTH `x` and `w`, not just `w`.
+/// 2. **`np.sum`'s pairwise summation.** `docprobs_y` and `docprobs_z` are
+///    built by dividing by `np.sum(doccounts, axis=1)` -- a sum along the
+///    contiguous (stride-1) axis of a `(n_docs, n_topics)` array. NumPy's
+///    pairwise-summation kernel diverges from naive left-to-right
+///    accumulation once the reduction length reaches 8 (see
+///    `pairwise_sum.rs`), so a plain `row_sum += v` loop over `n_topics`
+///    stops matching once `n_topics >= 8`. This reaches `x_loglikely` via
+///    `docprobs_y` and `w_loglikely` via `docprobs_z`. (`regionprobs` and
+///    `wordprobs` sum along `axis=0` of their arrays instead -- a STRIDED
+///    axis, which NumPy reduces with a plain sequential loop, not the
+///    pairwise kernel -- so a plain Rust loop matches those exactly; see
+///    the module doc on `pairwise_sum.rs` for why axis matters here.)
+///
+/// This crate has a `numpy_sum` helper (`pairwise_sum.rs`) that reproduces
+/// `np.sum`'s pairwise kernel bit-for-bit, used elsewhere (the output
+/// writer's `p_topic_g_voxel` row-sum) to keep a quantity bit-exact. It is
+/// deliberately NOT used here: cause 1 (BLAS dot products) still breaks
+/// bit-exactness for `x` and `w` regardless of how faithfully the row sums
+/// are computed, so there is no bit-exact target to reach for these two
+/// quantities, and a tolerance-based comparison is the correct design, not
+/// a workaround pending a fix.
+///
+/// The fixture's `n_topics=3` measures a relative error of exactly `0e0`
+/// for `x`, `w`, and `total` -- but that is an artifact of `n_topics=3`
+/// being below BOTH thresholds above (BLAS `ddot` at length 3 has no room
+/// to reorder; `np.sum` at length 3 falls back to a plain sequential loop
+/// itself, below its own length-8 pairwise threshold). It is NOT evidence
+/// that these quantities are bit-exact in general, and must not be used to
+/// justify tightening this assertion to `assert_eq!` -- at production scale
+/// (e.g. Neurosynth's dozens of topics) both causes are live. Conversely,
+/// do not use this comment as license to loosen any OTHER assertion in the
+/// crate by analogy -- every other quantity in this port has no BLAS or
+/// `np.sum`-pairwise dependency and remains held to genuine bit-exactness.
 pub struct LogLikelihood {
     pub x: f64,
     pub w: f64,
