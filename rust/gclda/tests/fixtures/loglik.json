@@ -1,0 +1,24 @@
+[
+  {
+    "config": {
+      "n_topics": 3,
+      "n_regions": 2,
+      "symmetric": true,
+      "seed_init": 1
+    },
+    "x": "baca44ea880e5ec0",
+    "w": "f186b4b79fec28c0",
+    "total": "ccad9d700e9660c0"
+  },
+  {
+    "config": {
+      "n_topics": 3,
+      "n_regions": 1,
+      "symmetric": false,
+      "seed_init": 1
+    },
+    "x": "ce4cdd8369d652c0",
+    "w": "f186b4b79fec28c0",
+    "total": "acddd37afdf355c0"
+  }
+]

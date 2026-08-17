@@ -7,6 +7,7 @@
 
 pub mod gaussian;
 pub mod io;
+pub mod loglik;
 pub mod model;
 pub mod rng;
 pub mod sampler;

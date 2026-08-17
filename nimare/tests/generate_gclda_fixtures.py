@@ -302,9 +302,9 @@ def gen_region_update():
 
     Uses the same four subregion configurations as `gen_init_state` -- two
     symmetric (n_regions 2 and 4) and two asymmetric (n_regions 1 and 3) --
-    so the Rust port can be checked against both branches of `_update_regions`
-    (`gclda.py:847-927` symmetric, `gclda.py:928-961` asymmetric) and against
-    more than one subregion pairing in the symmetric case.
+    so the Rust port can be checked against both the symmetric and
+    asymmetric branches of `_update_regions`, and against more than one
+    subregion pairing in the symmetric case.
     """
     import pandas as pd
 
@@ -350,6 +350,49 @@ def gen_region_update():
     write("region_update.json", out)
 
 
+def gen_loglik():
+    """Pin `compute_log_likelihood`'s three totals (x, w, total) for two
+    configurations -- one symmetric, one asymmetric -- after `_update_regions`
+    has populated the spatial Gaussians the peak (x) term reads.
+
+    `update_vectors=False` is passed so the call neither appends to the
+    model's log-likelihood history nor is treated as an external-model call
+    (which would silently force `update_vectors` off and log a message);
+    the Rust port only needs the three returned totals.
+    """
+    import pandas as pd
+
+    from nimare.annotate.gclda import GCLDAModel
+    from nimare.utils import get_template
+
+    counts = pd.read_csv(os.path.join(FIXTURE_DIR, "counts.tsv"), sep="\t", index_col="id")
+    counts.index = counts.index.astype(str)
+    coords = pd.read_csv(os.path.join(FIXTURE_DIR, "coordinates.tsv"), sep="\t")
+    coords["id"] = coords["id"].astype(str)
+    mask = get_template("mni152_2mm", mask="brain")
+
+    configs = [
+        {"n_topics": 3, "n_regions": 2, "symmetric": True, "seed_init": 1},
+        {"n_topics": 3, "n_regions": 1, "symmetric": False, "seed_init": 1},
+    ]
+    out = []
+    for cfg in configs:
+        model = GCLDAModel(counts, coords, mask=mask, **cfg)
+        model._update_regions()
+        x_loglikely, w_loglikely, tot_loglikely = model.compute_log_likelihood(
+            update_vectors=False
+        )
+        out.append(
+            {
+                "config": cfg,
+                "x": f64_bits(x_loglikely),
+                "w": f64_bits(w_loglikely),
+                "total": f64_bits(tot_loglikely),
+            }
+        )
+    write("loglik.json", out)
+
+
 if __name__ == "__main__":
     gen_rng_random()
     gen_rng_randint()
@@ -360,3 +403,4 @@ if __name__ == "__main__":
     gen_word_sampler()
     gen_peak_sampler()
     gen_region_update()
+    gen_loglik()
