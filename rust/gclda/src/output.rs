@@ -13,33 +13,40 @@
 //! *reduced* axis is contiguous (unit stride); for a C-contiguous 2-D array
 //! that means `axis=-1` (the last axis) goes through pairwise summation
 //! (naive for length < 8, an 8-way-unrolled block for 8..=128, recursive
-//! divide-and-conquer above that), while `axis=0` (non-contiguous stride)
-//! goes through NumPy's generic strided-reduction loop, which accumulates
-//! sequentially over the reduced axis. Concretely:
+//! divide-and-conquer above that -- see [`crate::pairwise_sum`]), while
+//! `axis=0` (non-contiguous stride) goes through NumPy's generic
+//! strided-reduction loop, which accumulates sequentially over the reduced
+//! axis. Concretely:
 //!
-//! - `p_voxel_g_topic`'s and `p_word_g_topic`'s denominators are `axis=0`
-//!   sums (over voxels, over words) -- non-contiguous, so NumPy's actual
-//!   algorithm IS plain sequential ascending-index accumulation. The code
-//!   below matches this exactly, following the same precedent already
-//!   established (and verified bit-exact) for `region_col_sum`/
-//!   `word_col_sum` in `loglik.rs`.
-//! - `p_topic_g_voxel`'s and `p_topic_g_word`'s denominators are `axis=1`
-//!   sums (over topics) -- contiguous, so for `n_topics >= 8` NumPy's real
-//!   algorithm is the unrolled/recursive `pairwise_sum`, NOT plain
-//!   sequential accumulation. This module uses plain sequential accumulation
-//!   for these too. That is bit-exact for `n_topics < 8` (every fixture and
-//!   every regression test through at least Task 20 uses `n_topics` in
-//!   {3, 4, 5, 20... }) -- wait, 20 is not < 8, see the report -- but is a
-//!   **known, untested gap** at larger topic counts (e.g. Task 21's
-//!   production run with `n_topics=100`). This is the same category of
-//!   accepted, documented risk as `loglik.rs`'s BLE-routed `w` term: fixing
-//!   it would mean reimplementing NumPy's exact recursive pairwise-sum
-//!   kernel, which is out of scope for this task's interface and untested
-//!   by anything in this task's own suite.
+//! - `p_voxel_g_topic`'s denominator (`spatial_dists.sum(axis=0)`, over
+//!   voxels) is non-contiguous, so NumPy's actual algorithm IS plain
+//!   sequential ascending-voxel accumulation. The code below matches this
+//!   exactly, following the same precedent already established (and
+//!   verified bit-exact) for `region_col_sum`/`word_col_sum` in
+//!   `loglik.rs`.
+//! - `p_topic_g_voxel`'s denominator (`spatial_dists.sum(axis=1)`, over
+//!   topics) IS contiguous float data, so it goes through
+//!   [`crate::pairwise_sum::numpy_sum`], not a plain loop -- plain
+//!   accumulation diverges from `np.sum` once `n_topics >= 8` (measured:
+//!   `np.sum` vs. naive differs in the majority of rows once `n_topics >=
+//!   100`), which is exactly the production scale this port targets and
+//!   exactly the case none of this crate's small fixtures (`n_topics` in
+//!   {3, 4, 5}) can distinguish from a naive sum. See
+//!   `tests/pairwise_sum.rs` for the verification against `np.sum` at
+//!   `n_topics`-scale reduction lengths, including 100 and 228483.
+//! - `p_word_g_topic`'s and `p_topic_g_word`'s denominators
+//!   (`n_word_tokens_word_by_topic.sum(axis=0/1)`) sum `int64` counts:
+//!   integer addition is exact and order-independent (no rounding to
+//!   reassociate), so plain accumulation is correct for both regardless of
+//!   axis or `n_topics`, even though one of them (`axis=1`, the
+//!   `p_topic_g_word` denominator) is a contiguous reduction. Do not apply
+//!   [`crate::pairwise_sum::numpy_sum`] there -- it is unneeded there and
+//!   is written for `f64`, not counts.
 
 use crate::gaussian::pdf;
 use crate::io::npy::{self, Dtype, NpyWriter};
 use crate::model::Model;
+use crate::pairwise_sum::numpy_sum;
 use crate::GcldaError;
 use rayon::prelude::*;
 use std::io::Write;
@@ -131,13 +138,15 @@ fn write_p_topic_g_voxel_and_accumulate_colsum(
         for i in 0..chunk_len {
             let row = &chunk_rows[i * n_topics..(i + 1) * n_topics];
 
-            // rowsum = sum_t spatial_dists[v][t] -- see the module doc
-            // comment for why this is plain ascending-t accumulation.
-            let mut rowsum = 0.0f64;
-            for &v in row {
-                rowsum += v;
-            }
+            // rowsum = sum_t spatial_dists[v][t] -- a contiguous
+            // floating-point reduction, so it must go through NumPy's
+            // actual pairwise algorithm (see the module doc comment), not
+            // a plain loop.
+            let rowsum = numpy_sum(row);
             for (t, &v) in row.iter().enumerate() {
+                // colsum, in contrast, is a strided (axis=0) reduction --
+                // plain ascending-voxel accumulation is what NumPy itself
+                // does here, see the module doc comment.
                 colsum[t] += v;
                 out_row[t] = nan_to_num(v / rowsum);
             }
@@ -217,8 +226,11 @@ fn compute_word_topic_matrices(model: &Model) -> (Vec<f64>, Vec<f64>) {
         }
     }
 
-    // rowsum[w] = sum_t counts[w][t] (axis=1, contiguous -- see the module
-    // doc comment for the n_topics >= 8 caveat on this ordering).
+    // rowsum[w] = sum_t counts[w][t] (axis=1, contiguous, but these are
+    // integer counts, not floats: plain accumulation is exact and
+    // order-independent regardless of length, so no pairwise summation is
+    // needed here even though the axis matches the case that does need it
+    // for spatial_dists above -- see the module doc comment).
     let mut p_topic_g_word = vec![0.0f64; n_words * n_topics];
     for w in 0..n_words {
         let mut rowsum = 0.0f64;

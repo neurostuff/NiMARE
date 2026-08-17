@@ -10,6 +10,7 @@ pub mod io;
 pub mod loglik;
 pub mod model;
 pub mod output;
+pub mod pairwise_sum;
 pub mod rng;
 pub mod sampler;
 
