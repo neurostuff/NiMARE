@@ -531,11 +531,17 @@ def test_rust_model_drives_existing_decoders_identically(small_corpus, mni_mask,
 
     py_roi, _ = decode.discrete.gclda_decode_roi(py_model, roi)
     rs_roi, _ = decode.discrete.gclda_decode_roi(rs_model, roi)
-    pd.testing.assert_frame_equal(py_roi, rs_roi)
+    pd.testing.assert_frame_equal(py_roi, rs_roi, check_exact=True)
+    # Guard against a vacuous pass where both sides load a degenerate
+    # (all-zero) p_topic_g_voxel_/p_word_g_topic_ identically -- e.g. a mask
+    # mismatch that fails the same way in both loaders would still produce
+    # "equal" all-zero frames without this.
+    assert (py_roi["Weight"] != 0).any(), "python ROI decode produced all-zero weights"
 
     py_map, _ = decode.continuous.gclda_decode_map(py_model, roi)
     rs_map, _ = decode.continuous.gclda_decode_map(rs_model, roi)
-    pd.testing.assert_frame_equal(py_map, rs_map)
+    pd.testing.assert_frame_equal(py_map, rs_map, check_exact=True)
+    assert (py_map["Weight"] != 0).any(), "python map decode produced all-zero weights"
 
     py_img, _ = decode.encode.gclda_encode(py_model, "term_1 term_2")
     rs_img, _ = decode.encode.gclda_encode(rs_model, "term_1 term_2")
