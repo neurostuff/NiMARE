@@ -1,6 +1,6 @@
 """Automated annotation tools."""
 
-from . import cogat, gclda, lda, text, utils
+from . import cogat, gclda, gclda_rs, lda, text, utils
 from .cogat import CogAtLemmatizer, expand_counts, extract_cogat
 from .gclda import GCLDAModel
 from .lda import LDAModel
@@ -15,6 +15,7 @@ __all__ = [
     "generate_counts",
     "cogat",
     "gclda",
+    "gclda_rs",
     "lda",
     "text",
     "utils",
