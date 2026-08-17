@@ -2,6 +2,7 @@
 
 import logging
 import os.path as op
+import time
 
 import nibabel as nib
 import numpy as np
@@ -607,6 +608,18 @@ class GCLDAModel(NiMAREBase):
             "total": [],  # Tracks log-likelihood of peak + word tokens
         }
 
+        # Cumulative per-phase wall-clock time (seconds), accumulated across every
+        # call to ``_update``. Populated even if ``fit`` is never called, so the
+        # attribute always exists. Keys match the Rust port's ``model.json``
+        # ``phase_times`` object exactly, so benchmark comparisons are like-for-like.
+        self.phase_times_ = {
+            "word_sampling": 0.0,
+            "peak_sampling": 0.0,
+            "region_update": 0.0,
+            "loglikelihood": 0.0,
+            "total": 0.0,
+        }
+
         # Initialize peak->subregion assignments (r)
         if self.params["symmetric"]:
             # if symmetric model use deterministic assignment :
@@ -673,9 +686,9 @@ class GCLDAModel(NiMAREBase):
             is 1 (log-likelihood is updated every iteration).
         dump_state_dir : :obj:`str`, optional
             If provided, the full sampler state is written to
-            ``iter_{n:05d}.npz`` in this directory after every iteration, for
-            comparison against the Rust port. Default is None, in which case
-            no state is dumped and normal operation is unaffected.
+            ``iter_{n:05d}.npz`` in this directory after every iteration.
+            Default is None, in which case no state is dumped and normal
+            operation is unaffected.
         """
         if self.iter == 0:
             # Get Initial Spatial Parameter Estimates
@@ -717,18 +730,31 @@ class GCLDAModel(NiMAREBase):
             at the end of this update. Default is None, in which case
             nothing is written.
         """
+        # Whole-call wall-clock time, including work outside the four timed
+        # phases below (e.g. bookkeeping and the optional state dump). This is
+        # NOT the sum of the four phase times below -- it is the actual
+        # wall-clock span of this method call, so it also captures untimed
+        # overhead between phases.
+        update_start = time.perf_counter()
+
         self.iter += 1  # Update total iteration count
 
         LGR.debug(f"Iter {self.iter:04d}: Sampling z")
         self.seed += 1
+        t0 = time.perf_counter()
         self._update_word_topic_assignments(self.seed)  # Update z-assignments
+        self.phase_times_["word_sampling"] += time.perf_counter() - t0
 
         LGR.debug(f"Iter {self.iter:04d}: Sampling y|r")
         self.seed += 1
+        t0 = time.perf_counter()
         self._update_peak_assignments(self.seed)  # Update y-assignments
+        self.phase_times_["peak_sampling"] += time.perf_counter() - t0
 
         LGR.debug(f"Iter {self.iter:04d}: Updating spatial params")
+        t0 = time.perf_counter()
         self._update_regions()  # Update gaussian estimates for all subregions
+        self.phase_times_["region_update"] += time.perf_counter() - t0
 
         # Only update log-likelihood every 'loglikely_freq' iterations
         # (Computing log-likelihood isn't necessary and slows things down a bit)
@@ -736,7 +762,9 @@ class GCLDAModel(NiMAREBase):
             LGR.debug(f"Iter {self.iter:04d}: Computing log-likelihood")
 
             # Compute log-likelihood of model in current state
+            t0 = time.perf_counter()
             self.compute_log_likelihood()
+            self.phase_times_["loglikelihood"] += time.perf_counter() - t0
             LGR.info(
                 f"Iter {self.iter:04d} Log-likely: x = {self.loglikelihood['x'][-1]:10.1f}, "
                 f"w = {self.loglikelihood['w'][-1]:10.1f}, "
@@ -745,6 +773,8 @@ class GCLDAModel(NiMAREBase):
 
         if dump_state_dir is not None:
             self._dump_state(dump_state_dir, self.iter)
+
+        self.phase_times_["total"] += time.perf_counter() - update_start
 
     def _dump_state(self, out_dir, iteration):
         """Write the full sampler state to ``iter_{iteration:05d}.npz``.

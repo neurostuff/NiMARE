@@ -52,6 +52,7 @@ use crate::GcldaError;
 use rayon::prelude::*;
 use std::io::Write;
 use std::path::Path;
+use std::time::Instant;
 
 /// Number of voxel rows computed (in parallel, via rayon) before being
 /// merged into the running column-sum accumulator / streamed to disk. Bounds
@@ -325,14 +326,14 @@ fn write_model_json(model: &Model, dir: &Path) -> Result<(), GcldaError> {
         "mask_affine": affine,
         "mask_shape": shape,
         "n_voxels": model.mask.xyz.len(),
-        // Populated by Task 19; zeros are a valid, documented placeholder
-        // until then (see that task's brief).
+        // Real measurements accumulated in `Model::update` (Task 19); see
+        // `PhaseTimes` in model.rs for exactly what each key measures.
         "phase_times": {
-            "word_sampling": 0.0,
-            "peak_sampling": 0.0,
-            "region_update": 0.0,
-            "loglikelihood": 0.0,
-            "total": 0.0,
+            "word_sampling": model.phase_times.word_sampling,
+            "peak_sampling": model.phase_times.peak_sampling,
+            "region_update": model.phase_times.region_update,
+            "loglikelihood": model.phase_times.loglikelihood,
+            "total": model.phase_times.total,
         },
     });
 
@@ -499,21 +500,38 @@ impl Model {
         loglikely_freq: usize,
         on_loglikelihood: &mut dyn FnMut(usize, &LogLikelihood),
     ) -> Result<(), GcldaError> {
+        // `update_start` brackets the whole call (see `PhaseTimes::total`'s
+        // doc comment for why this is not simply the sum of the four phases
+        // below). Timestamps are taken only at these phase boundaries --
+        // nothing inside any sampling loop is touched, so this cannot change
+        // a single sampled value.
+        let update_start = Instant::now();
+
         self.iter += 1;
 
         self.seed += 1;
+        let t0 = Instant::now();
         self.update_word_topic_assignments(self.seed)?;
+        self.phase_times.word_sampling += t0.elapsed().as_secs_f64();
 
         self.seed += 1;
+        let t0 = Instant::now();
         self.update_peak_assignments(self.seed)?;
+        self.phase_times.peak_sampling += t0.elapsed().as_secs_f64();
 
+        let t0 = Instant::now();
         self.update_regions()?;
+        self.phase_times.region_update += t0.elapsed().as_secs_f64();
 
         if self.iter % loglikely_freq == 0 {
+            let t0 = Instant::now();
             let ll = self.compute_log_likelihood();
+            self.phase_times.loglikelihood += t0.elapsed().as_secs_f64();
             self.loglikelihood_history.push((self.iter, ll.x, ll.w, ll.total));
             on_loglikelihood(self.iter, &ll);
         }
+
+        self.phase_times.total += update_start.elapsed().as_secs_f64();
 
         Ok(())
     }

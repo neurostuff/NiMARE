@@ -23,6 +23,22 @@ pub struct Params {
     pub seed_init: u32,
 }
 
+/// Cumulative per-phase wall-clock time (seconds), accumulated across every
+/// [`Model::update`] call within the most recent [`Model::fit`]. Mirrors
+/// Python's `GCLDAModel.phase_times_` exactly (same five keys), so a
+/// benchmark driver can compare Rust against Python phase-by-phase rather
+/// than as one aggregate ratio. `total` is the whole-call wall-clock time of
+/// `update` (including untimed bookkeeping between phases), NOT the sum of
+/// the other four -- matching how the Python side defines it.
+#[derive(Default)]
+pub struct PhaseTimes {
+    pub word_sampling: f64,
+    pub peak_sampling: f64,
+    pub region_update: f64,
+    pub loglikelihood: f64,
+    pub total: f64,
+}
+
 /// Full model state: corpus, mask geometry, hyperparameters, and all
 /// assignment/count arrays. All 2-D fields are row-major flat `Vec`s; use
 /// [`Model::at`] to compute `row * n_cols + col` consistently.
@@ -76,6 +92,9 @@ pub struct Model {
     /// `(iter, x, w, total)` recorded each time `fit`'s loop computes the
     /// log-likelihood (mirrors Python's `self.loglikelihood` dict of lists).
     pub loglikelihood_history: Vec<(usize, f64, f64, f64)>,
+    /// Cumulative per-phase timing, mirrors Python's `phase_times_`. See
+    /// [`PhaseTimes`] for field-by-field semantics.
+    pub phase_times: PhaseTimes,
 }
 
 impl Model {
@@ -205,6 +224,7 @@ impl Model {
             n_iters: 0,
             loglikely_freq: 0,
             loglikelihood_history: Vec::new(),
+            phase_times: PhaseTimes::default(),
         })
     }
 }

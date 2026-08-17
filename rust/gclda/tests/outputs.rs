@@ -94,7 +94,8 @@ assert n_voxels > 0
 assert set(ids["phase_times"].keys()) == {{
     "word_sampling", "peak_sampling", "region_update", "loglikelihood", "total"
 }}
-assert all(v == 0 for v in ids["phase_times"].values())
+assert all(v >= 0 for v in ids["phase_times"].values())
+assert ids["phase_times"]["total"] > 0
 
 p_topic_g_voxel = np.load(d + "/p_topic_g_voxel.npy")
 p_voxel_g_topic = np.load(d + "/p_voxel_g_topic.npy")

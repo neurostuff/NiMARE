@@ -552,3 +552,30 @@ def test_rust_model_drives_existing_decoders_identically(small_corpus, mni_mask,
     # actually produced non-zero voxel weights on both sides.
     assert np.any(py_img.get_fdata() != 0), "python encode produced an all-zero image"
     assert np.any(rs_img.get_fdata() != 0), "rust-driven encode produced an all-zero image"
+
+
+@requires_rust
+def test_both_implementations_report_matching_phase_keys(small_corpus, mni_mask, tmp_path):
+    """Phase timing keys must match so benchmarks can compare like with like."""
+    counts, coords = small_corpus
+    mask_path = str(tmp_path / "mask.nii.gz")
+    mni_mask.to_filename(mask_path)
+
+    model = annotate.gclda.GCLDAModel(
+        counts, coords, mask=mask_path, n_topics=4, n_regions=2, symmetric=True
+    )
+    model.fit(n_iters=3, loglikely_freq=1)
+
+    annotate.gclda_rs.train_gclda_rust(
+        counts, coords, mask=mask_path, out_dir=str(tmp_path / "out"),
+        binary=BINARY, n_topics=4, n_regions=2, symmetric=True,
+        n_iters=3, loglikely_freq=1,
+    )
+    with open(tmp_path / "out" / "model.json") as fo:
+        rust_meta = json.load(fo)
+
+    expected = {"word_sampling", "peak_sampling", "region_update", "loglikelihood", "total"}
+    assert set(model.phase_times_) == expected
+    assert set(rust_meta["phase_times"]) == expected
+    assert all(v >= 0 for v in model.phase_times_.values())
+    assert rust_meta["phase_times"]["total"] > 0
