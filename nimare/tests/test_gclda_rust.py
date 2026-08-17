@@ -556,7 +556,18 @@ def test_rust_model_drives_existing_decoders_identically(small_corpus, mni_mask,
 
 @requires_rust
 def test_both_implementations_report_matching_phase_keys(small_corpus, mni_mask, tmp_path):
-    """Phase timing keys must match so benchmarks can compare like with like."""
+    """Phase timing keys must match so benchmarks can compare like with like.
+
+    Per-phase attribution is this task's entire deliverable: the design made
+    four separate predictions (memory, peak-sampling speedup, log-likelihood
+    speedup, word-sampling speedup) that the final benchmark report checks
+    individually. A regression that silently zeroed one phase's accumulator
+    -- while `total` stayed positive from the others -- would misattribute
+    that phase's cost to nothing, so each of the four sub-phases is asserted
+    individually positive here, not just `total`. `loglikely_freq=1` with
+    `n_iters=5` guarantees the log-likelihood phase actually runs (it is the
+    one phase that can legitimately be zero if `n_iters < loglikely_freq`).
+    """
     counts, coords = small_corpus
     mask_path = str(tmp_path / "mask.nii.gz")
     mni_mask.to_filename(mask_path)
@@ -564,12 +575,12 @@ def test_both_implementations_report_matching_phase_keys(small_corpus, mni_mask,
     model = annotate.gclda.GCLDAModel(
         counts, coords, mask=mask_path, n_topics=4, n_regions=2, symmetric=True
     )
-    model.fit(n_iters=3, loglikely_freq=1)
+    model.fit(n_iters=5, loglikely_freq=1)
 
     annotate.gclda_rs.train_gclda_rust(
         counts, coords, mask=mask_path, out_dir=str(tmp_path / "out"),
         binary=BINARY, n_topics=4, n_regions=2, symmetric=True,
-        n_iters=3, loglikely_freq=1,
+        n_iters=5, loglikely_freq=1,
     )
     with open(tmp_path / "out" / "model.json") as fo:
         rust_meta = json.load(fo)
@@ -577,5 +588,11 @@ def test_both_implementations_report_matching_phase_keys(small_corpus, mni_mask,
     expected = {"word_sampling", "peak_sampling", "region_update", "loglikelihood", "total"}
     assert set(model.phase_times_) == expected
     assert set(rust_meta["phase_times"]) == expected
-    assert all(v >= 0 for v in model.phase_times_.values())
+
+    sub_phases = ["word_sampling", "peak_sampling", "region_update", "loglikelihood"]
+    for key in sub_phases:
+        assert model.phase_times_[key] > 0, f"python {key} was not timed (reports 0.0)"
+        assert rust_meta["phase_times"][key] > 0, f"rust {key} was not timed (reports 0.0)"
+
+    assert model.phase_times_["total"] > 0
     assert rust_meta["phase_times"]["total"] > 0

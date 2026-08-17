@@ -730,11 +730,17 @@ class GCLDAModel(NiMAREBase):
             at the end of this update. Default is None, in which case
             nothing is written.
         """
-        # Whole-call wall-clock time, including work outside the four timed
-        # phases below (e.g. bookkeeping and the optional state dump). This is
-        # NOT the sum of the four phase times below -- it is the actual
-        # wall-clock span of this method call, so it also captures untimed
-        # overhead between phases.
+        # Wall-clock time of the four timed phases below PLUS the untimed
+        # bookkeeping interleaved with them (iteration/seed increments, debug/
+        # info log calls) -- i.e. everything between here and the log-
+        # likelihood block, inclusive. This is NOT simply the sum of the four
+        # phase times (it also covers that untimed bookkeeping), but it
+        # deliberately EXCLUDES the optional `_dump_state` call below: that
+        # write is per-iteration diagnostic I/O for the equality harness, not
+        # model computation, and excluding it keeps `total` measuring the same
+        # thing on both sides regardless of whether `dump_state_dir` is used
+        # (the Rust port's `total` never includes its equivalent dump, since
+        # that call happens outside the timed `update` method there).
         update_start = time.perf_counter()
 
         self.iter += 1  # Update total iteration count
@@ -771,10 +777,10 @@ class GCLDAModel(NiMAREBase):
                 f"tot = {self.loglikelihood['total'][-1]:10.1f}"
             )
 
+        self.phase_times_["total"] += time.perf_counter() - update_start
+
         if dump_state_dir is not None:
             self._dump_state(dump_state_dir, self.iter)
-
-        self.phase_times_["total"] += time.perf_counter() - update_start
 
     def _dump_state(self, out_dir, iteration):
         """Write the full sampler state to ``iter_{iteration:05d}.npz``.

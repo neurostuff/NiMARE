@@ -500,11 +500,14 @@ impl Model {
         loglikely_freq: usize,
         on_loglikelihood: &mut dyn FnMut(usize, &LogLikelihood),
     ) -> Result<(), GcldaError> {
-        // `update_start` brackets the whole call (see `PhaseTimes::total`'s
-        // doc comment for why this is not simply the sum of the four phases
-        // below). Timestamps are taken only at these phase boundaries --
-        // nothing inside any sampling loop is touched, so this cannot change
-        // a single sampled value.
+        // `update_start` brackets this whole method, INCLUDING the untimed
+        // bookkeeping between phases but EXCLUDING the optional state dump
+        // (`dump_state`), which `fit` calls only after this method returns --
+        // see `PhaseTimes::total`'s doc comment in model.rs for exactly what
+        // this does and doesn't cover, and why it must match Python's
+        // `_update` there. Timestamps are taken only at these phase
+        // boundaries -- nothing inside any sampling loop is touched, so this
+        // cannot change a single sampled value.
         let update_start = Instant::now();
 
         self.iter += 1;

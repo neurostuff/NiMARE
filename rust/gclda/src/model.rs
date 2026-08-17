@@ -27,9 +27,18 @@ pub struct Params {
 /// [`Model::update`] call within the most recent [`Model::fit`]. Mirrors
 /// Python's `GCLDAModel.phase_times_` exactly (same five keys), so a
 /// benchmark driver can compare Rust against Python phase-by-phase rather
-/// than as one aggregate ratio. `total` is the whole-call wall-clock time of
-/// `update` (including untimed bookkeeping between phases), NOT the sum of
-/// the other four -- matching how the Python side defines it.
+/// than as one aggregate ratio.
+///
+/// `total` is the wall-clock time of the four phases below PLUS the untimed
+/// bookkeeping interleaved with them (iteration/seed increments) inside
+/// [`Model::update`] -- i.e. NOT simply the sum of the other four fields, but
+/// it deliberately EXCLUDES the optional per-iteration state dump
+/// (`dump_state`, called from [`Model::fit`] after `update` returns, not from
+/// `update` itself): that write is diagnostic I/O for the equality harness,
+/// not model computation. This matches Python's `_update` exactly, where the
+/// `total` timestamp is likewise taken before Python's own `_dump_state`
+/// call -- so `total` means the same thing on both sides whether or not
+/// `dump_state_dir`/`--dump-state-dir` is used.
 #[derive(Default)]
 pub struct PhaseTimes {
     pub word_sampling: f64,
