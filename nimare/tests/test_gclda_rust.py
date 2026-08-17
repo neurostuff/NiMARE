@@ -380,17 +380,25 @@ def test_rust_probability_matrices_match_python(
 def test_rust_handles_topics_with_no_observations(mni_mask, tmp_path):
     """More topics than peaks forces empty subregions, exercising the
     n_obs == 0 and n_obs <= 1 branches of the region update, and the
-    all-zero-column path through nan_to_num for topics that receive no
+    nan_to_num rescue of a genuine 0/0 division for topics that receive no
     word tokens.
 
     With 20 topics, 2 regions, and only 4 peaks total, at most 4 of the 40
     (region, topic) cells can be non-empty, so the ``n_obs == 0`` branch of
     ``_update_regions`` is guaranteed to run regardless of RNG outcome; this
     is confirmed below by inspecting the model's own region-count array
-    rather than assumed. Likewise, with only 2 words and 20 topics, several
-    topics necessarily receive zero word tokens, forcing an all-zero column
-    through the ``p_topic_g_word_`` / ``p_word_g_topic_`` nan_to_num calls
-    -- also confirmed directly below.
+    rather than assumed.
+
+    Likewise, with only 2 words and 20 topics, several topics necessarily
+    receive zero word tokens. ``p_word_g_topic_`` normalizes by the
+    per-topic word-token total, so an empty topic produces a literal 0/0
+    there -- caught below both as a real ``RuntimeWarning`` from numpy and
+    as a proof that ``nan_to_num`` rescued it (the column sums to 0, not
+    NaN). ``p_topic_g_word_`` normalizes by the per-*word* token total
+    instead, which is never zero here (both fixture words have nonzero
+    total counts), so its all-zero topic columns are ordinary 0/nonzero
+    divisions -- they do not exercise the NaN rescue and are not asserted
+    as evidence of it.
     """
     ids = [f"s{i}" for i in range(4)]
     counts = pd.DataFrame(
@@ -407,19 +415,36 @@ def test_rust_handles_topics_with_no_observations(mni_mask, tmp_path):
         counts, coords, mask=mask_path, n_topics=20, n_regions=2,
         symmetric=True, seed_init=1,
     )
-    model.fit(n_iters=4, loglikely_freq=4)
+    # get_probability_distributions (called at the end of fit) divides by a
+    # per-topic word-token total that is genuinely zero for some topics in
+    # this fixture, producing a real 0/0 -> NaN in p_word_g_topic_ before
+    # nan_to_num rescues it. Asserting the warning turns that into a
+    # checked signal instead of unexplained console noise: if a future
+    # change stops the empty-topic 0/0 from happening, this fails loudly.
+    with pytest.warns(RuntimeWarning, match="invalid value encountered in divide"):
+        model.fit(n_iters=4, loglikely_freq=4)
 
     # Confirm the branches this test is meant to exercise are actually hit,
     # rather than assuming n_topics=20 with 4 peaks guarantees it.
     region_counts = model.topics["n_peak_tokens_region_by_topic"]
     assert (region_counts == 0).any(), "no empty (region, topic) cell -- n_obs==0 branch unreached"
     assert (region_counts == 1).any(), "no singleton (region, topic) cell -- n_obs==1 branch unreached"
+
+    # p_word_g_topic_ divides by n_word_tokens_per_topic (sum over words,
+    # per topic) -- a zero entry here is what forces the 0/0 that
+    # nan_to_num must rescue.
     word_totals_by_topic = model.topics["n_word_tokens_word_by_topic"].sum(axis=0)
     assert (word_totals_by_topic == 0).any(), (
-        "no topic received zero word tokens -- nan_to_num zero-column branch unreached"
+        "no topic received zero total word tokens -- the 0/0 divide behind "
+        "p_word_g_topic_'s nan_to_num rescue is unreached"
     )
-    assert (model.p_topic_g_word_.sum(axis=0) == 0).any(), (
-        "p_topic_g_word_ has no all-zero column -- nan_to_num did not need to zero anything"
+    # Proof the rescue actually ran: without nan_to_num, a 0/0 column would
+    # be all-NaN (and NaN != 0), not all-zero.
+    assert not np.isnan(model.p_word_g_topic_).any(), (
+        "p_word_g_topic_ contains NaN -- nan_to_num rescue did not run"
+    )
+    assert (model.p_word_g_topic_.sum(axis=0) == 0).any(), (
+        "p_word_g_topic_ has no all-zero column -- nan_to_num rescue left no trace to check"
     )
 
     result = annotate.gclda_rs.train_gclda_rust(
@@ -458,7 +483,13 @@ def test_rust_handles_document_with_no_coordinates(mni_mask, tmp_path):
         counts, coords, mask=mask_path, n_topics=3, n_regions=2,
         symmetric=True, seed_init=1,
     )
-    model.fit(n_iters=3, loglikely_freq=3)
+    # Incidental to this test's actual target (dropping the coordinate-less
+    # document), the small n_topics/vocabulary here also happens to leave
+    # some topic with zero word tokens, hitting the same p_word_g_topic_
+    # 0/0 divide as test_rust_handles_topics_with_no_observations. Assert
+    # it rather than let it print as unexplained console noise.
+    with pytest.warns(RuntimeWarning, match="invalid value encountered in divide"):
+        model.fit(n_iters=3, loglikely_freq=3)
 
     result = annotate.gclda_rs.train_gclda_rust(
         counts, coords, mask=mask_path, out_dir=str(tmp_path / "out"),
