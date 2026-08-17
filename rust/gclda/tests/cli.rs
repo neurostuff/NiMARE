@@ -10,6 +10,7 @@
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::time::Instant;
 
 mod common;
 
@@ -225,20 +226,55 @@ fn cli_symmetric_accepts_explicit_false() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// Number of iterations for the streaming test below, chosen empirically
+/// (see the fix report for task 14) so that `fit()`'s own sampling work
+/// dominates wall time -- roughly 1.7-2.0s of `fit()` against roughly
+/// 0.3s of fixed per-process overhead (mostly `write_outputs` against the
+/// full ~228,483-voxel MNI mask, which is otherwise-constant regardless of
+/// `n_iters`). That gap is what gives the timing assertion below a wide,
+/// unambiguous margin rather than a coin flip.
+const N_STREAM_ITERS: usize = 20_000;
+
 /// Progress must reach stderr WHILE training runs, not only after `fit()`
 /// returns -- a 5000-iteration production run can take hours, and output
 /// that only appears on completion is useless for monitoring it, comparing
 /// it against a live Python run, or noticing a stalled run.
 ///
-/// This spawns the child directly (rather than using `.output()`, which
-/// waits for exit before handing back anything) and reads its stderr line
-/// by line as it is produced. The first time a progress line is read, it
-/// polls `child.try_wait()`: if the child has NOT exited yet, that line
-/// necessarily reached this test while training was still running --
-/// concrete proof of live streaming, not a timing guess. `--n-iters 40` at
-/// `--loglikely-freq 1` gives 39 more iterations (plus the whole output-
-/// writing phase) of headroom between the first line and process exit, so
-/// this is not a tight race.
+/// ## Why this is a timing assertion, not a `try_wait()` check
+///
+/// An earlier version of this test spawned the child and, on the first
+/// `"Iter "` line read from its stderr, called `child.try_wait()`,
+/// asserting it returned `Ok(None)` (child still alive) as "proof" of
+/// streaming. That assertion is worthless: `run()` in
+/// `src/bin/gclda-train.rs` calls `write_outputs` (real Gaussian-PDF work
+/// against every voxel in the mask) AFTER `fit()` returns, and that alone
+/// takes measurable wall time (~0.3s here). So even under the ORIGINAL
+/// batched design this test was meant to catch -- print all of
+/// `loglikelihood_history` in a tight loop right after `fit()` returns,
+/// THEN call `write_outputs` -- the first stderr line would still arrive
+/// while the child was alive and about to enter `write_outputs`.
+/// `try_wait()` would still see `Ok(None)`. That version of this test would
+/// have passed under the exact regression it was written to catch, which
+/// defeats the point of having it. (Checking that `--out-dir` doesn't exist
+/// yet at that point doesn't help either, for the same reason: progress
+/// precedes `write_outputs` under BOTH designs.)
+///
+/// The only thing that actually discriminates batched-after-`fit()` from
+/// genuinely-streamed-during-`fit()` is INTER-LINE TIMING: under batched
+/// printing, all N lines arrive within microseconds of each other (a tight
+/// Rust loop over an in-memory `Vec`); under real streaming, consecutive
+/// lines are separated by real per-iteration sampling work. So this test
+/// measures the wall-clock span from the first progress line to the last,
+/// and requires it to be a substantial fraction of the process's total
+/// wall time. The 25% threshold is deliberately generous (observed ratios
+/// in practice are ~80-90%, see the fix report) -- the goal is only to
+/// distinguish "~0" from "seconds," not to pin down a precise number, so
+/// this stays robust on slower/loaded CI machines without becoming flaky.
+///
+/// This was verified to have teeth: temporarily reverting `run()` to
+/// collect all progress after `fit()` returns (the original design) makes
+/// this test fail with a near-zero ratio. See the fix report for the exact
+/// numbers.
 #[test]
 fn cli_progress_streams_during_the_run_not_only_after_it_finishes() {
     let dir = std::env::temp_dir()
@@ -247,6 +283,7 @@ fn cli_progress_streams_during_the_run_not_only_after_it_finishes() {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    let overall_start = Instant::now();
     let mut child = Command::new(env!("CARGO_BIN_EXE_gclda-train"))
         .args([
             "--counts",
@@ -266,7 +303,7 @@ fn cli_progress_streams_during_the_run_not_only_after_it_finishes() {
             "--seed-init",
             "1",
             "--n-iters",
-            "40",
+            &N_STREAM_ITERS.to_string(),
             "--loglikely-freq",
             "1",
         ])
@@ -279,7 +316,8 @@ fn cli_progress_streams_during_the_run_not_only_after_it_finishes() {
     let mut reader = BufReader::new(stderr);
     let mut line = String::new();
     let mut n_progress_lines = 0usize;
-    let mut observed_still_running = false;
+    let mut first_line_at: Option<Instant> = None;
+    let mut last_line_at: Option<Instant> = None;
 
     loop {
         line.clear();
@@ -288,32 +326,38 @@ fn cli_progress_streams_during_the_run_not_only_after_it_finishes() {
             break; // EOF: the child closed its stderr.
         }
         if line.starts_with("Iter ") {
+            let now = Instant::now();
+            first_line_at.get_or_insert(now);
+            last_line_at = Some(now);
             n_progress_lines += 1;
-            if n_progress_lines == 1 {
-                if let Ok(None) = child.try_wait() {
-                    observed_still_running = true;
-                }
-            }
         }
     }
 
     let status = child.wait().expect("failed to wait on child");
+    let overall_elapsed = overall_start.elapsed();
     assert!(status.success(), "gclda-train exited with {:?}", status.code());
 
-    // Every recorded log-likelihood (iters 1..=40 at loglikely_freq=1) must
-    // produce exactly one progress line, regardless of the timing race above.
-    assert_eq!(
-        n_progress_lines, 40,
-        "expected one progress line per recorded iteration (true streaming is verified \
-         by construction here too: the callback is invoked from inside fit()'s loop in \
-         src/output.rs, at the same point Python's `_update` calls `LGR.info`)"
-    );
+    // One progress line per recorded log-likelihood (true by construction --
+    // the callback lives inside fit()'s loop -- so this alone can't catch a
+    // regression to batching, but it's still a real correctness check).
+    assert_eq!(n_progress_lines, N_STREAM_ITERS, "expected one progress line per iteration");
+
+    let first_line_at = first_line_at.expect("no progress lines were read at all");
+    let last_line_at = last_line_at.expect("no progress lines were read at all");
+    let span = last_line_at.duration_since(first_line_at);
+    let ratio = span.as_secs_f64() / overall_elapsed.as_secs_f64();
 
     assert!(
-        observed_still_running,
-        "expected the child process to still be running when the first progress line \
-         arrived, proving progress streams live rather than batching after fit() \
-         returns"
+        ratio >= 0.25,
+        "progress lines spanned only {:.1}% of the process's total wall time \
+         ({:?} of {:?}) -- expected at least 25%. A ratio this low means \
+         progress is arriving in a tight batch rather than streaming \
+         throughout the run (see this test's doc comment for why an \
+         inter-line-timing check, not a try_wait() check, is what actually \
+         proves this)",
+        ratio * 100.0,
+        span,
+        overall_elapsed,
     );
 
     std::fs::remove_dir_all(&dir).ok();
