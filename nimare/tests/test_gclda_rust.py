@@ -470,3 +470,48 @@ def test_rust_handles_document_with_no_coordinates(mni_mask, tmp_path):
         "p_topic_g_voxel_", "p_voxel_g_topic_", "p_topic_g_word_", "p_word_g_topic_"
     ):
         _bit_equal(getattr(result, name), getattr(model, name), name)
+
+
+@requires_rust
+def test_rust_model_drives_existing_decoders_identically(small_corpus, mni_mask, tmp_path):
+    """The three shipped GCLDA consumers must produce identical results
+    whether driven by the Python model or a Rust-trained one.
+
+    ``nimare.decode`` is never modified to make this pass: if any of these
+    comparisons required touching ``nimare/decode/``, that would mean the
+    Rust loader's interface -- not the decoders -- is wrong.
+    """
+    counts, coords = small_corpus
+    mask_path = str(tmp_path / "mask.nii.gz")
+    mni_mask.to_filename(mask_path)
+    kwargs = dict(n_topics=4, n_regions=2, symmetric=True, seed_init=1)
+
+    py_model = annotate.gclda.GCLDAModel(counts, coords, mask=mask_path, **kwargs)
+    py_model.fit(n_iters=6, loglikely_freq=6)
+
+    rs_model = annotate.gclda_rs.train_gclda_rust(
+        counts, coords, mask=mask_path, out_dir=str(tmp_path / "out"),
+        binary=BINARY, n_iters=6, loglikely_freq=6, **kwargs
+    )
+
+    arr = np.zeros(mni_mask.shape, np.int32)
+    arr[40:44, 45:49, 40:44] = 1
+    roi = nib.Nifti1Image(arr, mni_mask.affine)
+
+    py_roi, _ = decode.discrete.gclda_decode_roi(py_model, roi)
+    rs_roi, _ = decode.discrete.gclda_decode_roi(rs_model, roi)
+    pd.testing.assert_frame_equal(py_roi, rs_roi)
+
+    py_map, _ = decode.continuous.gclda_decode_map(py_model, roi)
+    rs_map, _ = decode.continuous.gclda_decode_map(rs_model, roi)
+    pd.testing.assert_frame_equal(py_map, rs_map)
+
+    py_img, _ = decode.encode.gclda_encode(py_model, "term_1 term_2")
+    rs_img, _ = decode.encode.gclda_encode(rs_model, "term_1 term_2")
+    assert np.array_equal(py_img.get_fdata(), rs_img.get_fdata())
+    # A weight vector that is trivially all-zero would let the assertion
+    # above pass vacuously (two all-zero arrays are "equal" but prove
+    # nothing about the encode path). Confirm the shared vocabulary terms
+    # actually produced non-zero voxel weights on both sides.
+    assert np.any(py_img.get_fdata() != 0), "python encode produced an all-zero image"
+    assert np.any(rs_img.get_fdata() != 0), "rust-driven encode produced an all-zero image"
