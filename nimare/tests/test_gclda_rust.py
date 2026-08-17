@@ -319,3 +319,154 @@ def test_rust_matches_python_every_iteration(
                     f"{name} diverged (bitwise) at iteration {it}, flat index {bad}: "
                     f"rust={rs.ravel()[bad]!r} python={expected.ravel()[bad]!r}"
                 )
+
+
+def _bit_equal(rust_arr, py_arr, name):
+    """Assert two float64 arrays are bit-identical, comparing shapes first.
+
+    ``.view(np.uint64)`` raises on a non-contiguous array, and a
+    memory-mapped array (as returned by ``train_gclda_rust``, which loads
+    with ``mmap=True``) is not guaranteed to be a plain in-memory array, so
+    both sides are forced through ``np.ascontiguousarray`` before viewing.
+    """
+    rs = np.ascontiguousarray(np.asarray(rust_arr))
+    py = np.ascontiguousarray(np.asarray(py_arr))
+    assert rs.shape == py.shape, f"{name} shape mismatch: rust={rs.shape} python={py.shape}"
+    assert np.array_equal(rs.view(np.uint64), py.view(np.uint64)), f"{name} not bit-identical"
+
+
+@requires_rust
+@pytest.mark.parametrize("n_regions,symmetric", [(2, True), (4, True), (1, False), (3, False)])
+@pytest.mark.parametrize("seed_init", [1, 99])
+def test_rust_probability_matrices_match_python(
+    small_corpus, mni_mask, tmp_path, n_regions, symmetric, seed_init
+):
+    """All four probability matrices must be bit-identical after a full fit.
+
+    This is the test that actually checks the deliverable: the per-iteration
+    harness above proves the internal sampler *state* agrees, but a bug
+    confined to the final ``p_topic_g_voxel_`` / ``p_voxel_g_topic_`` /
+    ``p_topic_g_word_`` / ``p_word_g_topic_`` computation (e.g. summing over
+    the wrong axis, an off-by-one in nan_to_num handling, or a stray
+    normalization difference) would slip through the state harness entirely,
+    since it never inspects these four arrays.
+    """
+    counts, coords = small_corpus
+    mask_path = str(tmp_path / "mask.nii.gz")
+    mni_mask.to_filename(mask_path)
+
+    model = annotate.gclda.GCLDAModel(
+        counts, coords, mask=mask_path, n_topics=4, n_regions=n_regions,
+        symmetric=symmetric, seed_init=seed_init,
+    )
+    model.fit(n_iters=8, loglikely_freq=8)
+
+    result = annotate.gclda_rs.train_gclda_rust(
+        counts, coords, mask=mask_path, out_dir=str(tmp_path / "out"),
+        binary=BINARY, n_topics=4, n_regions=n_regions, symmetric=symmetric,
+        seed_init=seed_init, n_iters=8, loglikely_freq=8,
+    )
+
+    for name in (
+        "p_topic_g_voxel_", "p_voxel_g_topic_", "p_topic_g_word_", "p_word_g_topic_"
+    ):
+        _bit_equal(getattr(result, name), getattr(model, name), name)
+
+    assert result.vocabulary == list(model.vocabulary)
+    assert result.ids == list(model.ids)
+
+
+@requires_rust
+def test_rust_handles_topics_with_no_observations(mni_mask, tmp_path):
+    """More topics than peaks forces empty subregions, exercising the
+    n_obs == 0 and n_obs <= 1 branches of the region update, and the
+    all-zero-column path through nan_to_num for topics that receive no
+    word tokens.
+
+    With 20 topics, 2 regions, and only 4 peaks total, at most 4 of the 40
+    (region, topic) cells can be non-empty, so the ``n_obs == 0`` branch of
+    ``_update_regions`` is guaranteed to run regardless of RNG outcome; this
+    is confirmed below by inspecting the model's own region-count array
+    rather than assumed. Likewise, with only 2 words and 20 topics, several
+    topics necessarily receive zero word tokens, forcing an all-zero column
+    through the ``p_topic_g_word_`` / ``p_word_g_topic_`` nan_to_num calls
+    -- also confirmed directly below.
+    """
+    ids = [f"s{i}" for i in range(4)]
+    counts = pd.DataFrame(
+        [[1, 2], [0, 3], [4, 0], [1, 1]], index=ids, columns=["a", "b"]
+    )
+    coords = pd.DataFrame(
+        {"id": ids, "x": [1.0, -1.0, 2.0, -2.0],
+         "y": [0.0, 0.0, 0.0, 0.0], "z": [0.0, 0.0, 0.0, 0.0]}
+    )
+    mask_path = str(tmp_path / "mask.nii.gz")
+    mni_mask.to_filename(mask_path)
+
+    model = annotate.gclda.GCLDAModel(
+        counts, coords, mask=mask_path, n_topics=20, n_regions=2,
+        symmetric=True, seed_init=1,
+    )
+    model.fit(n_iters=4, loglikely_freq=4)
+
+    # Confirm the branches this test is meant to exercise are actually hit,
+    # rather than assuming n_topics=20 with 4 peaks guarantees it.
+    region_counts = model.topics["n_peak_tokens_region_by_topic"]
+    assert (region_counts == 0).any(), "no empty (region, topic) cell -- n_obs==0 branch unreached"
+    assert (region_counts == 1).any(), "no singleton (region, topic) cell -- n_obs==1 branch unreached"
+    word_totals_by_topic = model.topics["n_word_tokens_word_by_topic"].sum(axis=0)
+    assert (word_totals_by_topic == 0).any(), (
+        "no topic received zero word tokens -- nan_to_num zero-column branch unreached"
+    )
+    assert (model.p_topic_g_word_.sum(axis=0) == 0).any(), (
+        "p_topic_g_word_ has no all-zero column -- nan_to_num did not need to zero anything"
+    )
+
+    result = annotate.gclda_rs.train_gclda_rust(
+        counts, coords, mask=mask_path, out_dir=str(tmp_path / "out"),
+        binary=BINARY, n_topics=20, n_regions=2, symmetric=True,
+        seed_init=1, n_iters=4, loglikely_freq=4,
+    )
+    for name in (
+        "p_topic_g_voxel_", "p_voxel_g_topic_", "p_topic_g_word_", "p_word_g_topic_"
+    ):
+        _bit_equal(getattr(result, name), getattr(model, name), name)
+
+
+@requires_rust
+def test_rust_handles_document_with_no_coordinates(mni_mask, tmp_path):
+    """A document present in counts but absent from coordinates must be
+    dropped identically by both implementations.
+
+    If the Rust trainer kept ``no_coords`` (e.g. by not intersecting counts
+    IDs against coordinate IDs, or intersecting in a different order), the
+    ``ids`` list and every ``D``-indexed and word/voxel-derived matrix would
+    disagree with Python's -- both the identity check and the bit-exact
+    matrix check below would catch that.
+    """
+    counts = pd.DataFrame(
+        [[2, 1], [0, 3], [1, 1]], index=["a", "b", "no_coords"], columns=["w1", "w2"]
+    )
+    coords = pd.DataFrame(
+        {"id": ["a", "a", "b"], "x": [5.0, -5.0, 10.0],
+         "y": [1.0, 2.0, 3.0], "z": [4.0, 5.0, 6.0]}
+    )
+    mask_path = str(tmp_path / "mask.nii.gz")
+    mni_mask.to_filename(mask_path)
+
+    model = annotate.gclda.GCLDAModel(
+        counts, coords, mask=mask_path, n_topics=3, n_regions=2,
+        symmetric=True, seed_init=1,
+    )
+    model.fit(n_iters=3, loglikely_freq=3)
+
+    result = annotate.gclda_rs.train_gclda_rust(
+        counts, coords, mask=mask_path, out_dir=str(tmp_path / "out"),
+        binary=BINARY, n_topics=3, n_regions=2, symmetric=True,
+        seed_init=1, n_iters=3, loglikely_freq=3,
+    )
+    assert result.ids == list(model.ids) == ["a", "b"]
+    for name in (
+        "p_topic_g_voxel_", "p_voxel_g_topic_", "p_topic_g_word_", "p_word_g_topic_"
+    ):
+        _bit_equal(getattr(result, name), getattr(model, name), name)
