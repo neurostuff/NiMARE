@@ -2,15 +2,45 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 from collections.abc import Sequence
 from typing import Any
+
+import numpy as np
+from joblib import hash as joblib_hash
+from scipy import sparse
+from sklearn.compose import ColumnTransformer
+from sklearn.decomposition import TruncatedSVD
+from sklearn.model_selection import GroupKFold, GroupShuffleSplit
+from sklearn.utils import Bunch
 
 from nimare.base import NiMAREBase
 
 LGR = logging.getLogger(__name__)
 
 __all__ = ["MAFeatureDataset", "MAFeatureExtractor", "make_map_reducer"]
+
+
+class _GroupBoundCV:
+    """Bind study groups to a scikit-learn cross-validator."""
+
+    def __init__(self, inner: Any, groups: Any):
+        self._inner = inner
+        self._groups = groups
+
+    def split(self, X: Any, y: Any | None = None, groups: Any | None = None):
+        """Generate splits using the bound study groups."""
+        return self._inner.split(X, y, groups=self._groups)
+
+    def get_n_splits(
+        self,
+        X: Any | None = None,
+        y: Any | None = None,
+        groups: Any | None = None,
+    ):
+        """Return the number of splits from the wrapped cross-validator."""
+        return self._inner.get_n_splits(X, y, self._groups)
 
 
 class MAFeatureDataset(NiMAREBase):
@@ -34,6 +64,12 @@ class MAFeatureDataset(NiMAREBase):
     provenance : dict or None
         Map-generation settings and source Studyset details, including
         `missing_coordinates` and any `dropped_ids`, by default None.
+
+    Notes
+    -----
+    The private `_map_features`, `_descriptor_features`, and `_masker`
+    attributes keep map data, descriptor data, and voxel-ordering metadata
+    available for later splitting and reduction steps.
     """
 
     def __init__(
@@ -44,18 +80,11 @@ class MAFeatureDataset(NiMAREBase):
         feature_names: Sequence[str] | None = None,
         target: Any | None = None,
         provenance: dict[str, Any] | None = None,
+        map_features: Any | None = None,
+        descriptor_features: Any | None = None,
+        masker: Any | None = None,
     ) -> None:
-        # Infer sizes from features. Prefer .shape for ndarray/sparse, fall back
-        # to len() for generic sequences.
-        try:
-            n_rows = int(features.shape[0])
-            n_cols = int(features.shape[1])
-        except Exception:
-            try:
-                n_rows = int(len(features))
-                n_cols = int(len(features[0])) if n_rows > 0 else 0
-            except Exception:
-                raise ValueError("Unable to determine number of rows or columns from features")
+        n_rows, n_cols = features.shape
 
         if len(ids) != n_rows:
             raise ValueError("ids length must match number of rows in features")
@@ -71,12 +100,82 @@ class MAFeatureDataset(NiMAREBase):
             if len(feature_names) != n_cols:
                 raise ValueError("feature_names length must match number of columns in features")
 
+        if map_features is None:
+            map_features = features
+
+        n_map_rows = map_features.shape[0]
+        if n_map_rows != n_rows:
+            raise ValueError("map_features row count must match number of rows in features")
+
+        if descriptor_features is not None:
+            n_descriptor_rows = descriptor_features.shape[0]
+            if n_descriptor_rows != n_rows:
+                raise ValueError(
+                    "descriptor_features row count must match number of rows in features"
+                )
+
         self.features = features
-        self.ids = list(ids)
-        self.study_ids = list(study_ids)
-        self.feature_names = feature_names
+        self.ids = ids
+        self.study_ids = study_ids
+        self.feature_names = None if feature_names is None else list(feature_names)
         self.target = target
         self.provenance = provenance
+        self._map_features = map_features
+        self._descriptor_features = descriptor_features
+        self._masker = masker
+
+    def __repr__(self):
+        """Show a concise dataset representation."""
+        n_rows, n_features = self.features.shape
+        return f"{self.__class__.__name__}(n_rows={n_rows}, n_features={n_features})"
+
+    @property
+    def map_columns(self):
+        """slice: Columns containing map features."""
+        return slice(0, self._map_features.shape[1])
+
+    @property
+    def descriptor_columns(self):
+        """slice: Columns containing descriptor features."""
+        return slice(self._map_features.shape[1], self.features.shape[1])
+
+    @staticmethod
+    def _slice_array_like(value: Any, row_indices: np.ndarray):
+        """Slice rows from matrix-like or sequence-like data."""
+        if value is None:
+            return None
+
+        if sparse.issparse(value):
+            return value[row_indices].copy()
+
+        if hasattr(value, "iloc"):
+            return value.iloc[row_indices].copy()
+
+        try:
+            return value[row_indices].copy()
+        except Exception:
+            return [value[int(idx)] for idx in row_indices]
+
+    def _slice_rows(self, row_indices: Any):
+        """Return a row-aligned dataset slice."""
+        n_rows = len(self.ids)
+        resolved_indices = np.arange(n_rows)[row_indices]
+        resolved_indices = np.atleast_1d(resolved_indices)
+
+        return MAFeatureDataset(
+            features=self._slice_array_like(self.features, resolved_indices),
+            ids=self._slice_array_like(self.ids, resolved_indices),
+            study_ids=self._slice_array_like(self.study_ids, resolved_indices),
+            feature_names=None if self.feature_names is None else list(self.feature_names),
+            target=self._slice_array_like(self.target, resolved_indices),
+            provenance=copy.deepcopy(self.provenance),
+            map_features=self._slice_array_like(self._map_features, resolved_indices),
+            descriptor_features=self._slice_array_like(
+                self._descriptor_features,
+                resolved_indices,
+            ),
+            masker=self._masker,
+        )
 
     def to_sklearn(self):
         """Export the dataset as a scikit-learn-compatible bundle.
@@ -86,96 +185,83 @@ class MAFeatureDataset(NiMAREBase):
         sklearn.utils.Bunch-like
             Dataset bundle with attributes `data` (same as `features`),
             `target` (or `None`), `groups` (same as `study_ids`), and
-            `feature_names`.
+            `feature_names`, `map_columns`, and `descriptor_columns`.
 
         Notes
         -----
         Implementations must preserve sparsity for unreduced voxelwise
         features; reduced representations may be dense.
-
-        Raises
-        ------
-        NotImplementedError
-            This public API is scaffolded only.
         """
-        raise NotImplementedError("MAFeatureDataset.to_sklearn is not yet implemented.")
+        return Bunch(
+            data=self.features,
+            target=self.target,
+            groups=self.study_ids,
+            feature_names=self.feature_names,
+            map_columns=self.map_columns,
+            descriptor_columns=self.descriptor_columns,
+        )
 
-    def _split_by_groups(
-        self,
-        test_size: float | int = 0.25,
-        random_state: int | None = None,
-        cv: Any = None,
-    ):
-        """Split row-aligned feature data while keeping study groups intact.
-
-        This private helper is reserved for leakage-safe grouped splitting by
-        study ID.
-        """
-        raise NotImplementedError("MAFeatureDataset._split_by_groups is not yet implemented.")
-
-    def split(
-        self,
-        test_size: float | int = 0.25,
-        random_state: int | None = None,
-        cv: Any = None,
-    ):
-        """Split the dataset into leakage-safe train and test partitions.
+    def make_preprocessor(self, method: str = "truncated_svd", **kwargs: Any):
+        """Build an unfitted preprocessor for map and descriptor columns.
 
         Parameters
         ----------
-        test_size : float or int, default=0.25
-            Proportion or count of grouped data to assign to the test partition.
-        random_state : int or None, default=None
-            Seed used when the splitter is stochastic.
-        cv : object, default=None
-            Optional grouped cross-validation splitter.
+        method : str, default="truncated_svd"
+            Map-feature reduction workflow name.
+        **kwargs : dict
+            Additional reducer-specific keyword arguments.
 
         Returns
         -------
-        (MAFeatureDataset, MAFeatureDataset or None)
-            Tuple of (train_dataset, test_dataset). If no test partition is
-            requested, the second element may be ``None``.
-
-        Raises
-        ------
-        NotImplementedError
-            This public API is scaffolded only.
+        sklearn.compose.ColumnTransformer
+            Unfitted transformer that reduces map columns and passes descriptor
+            columns through unchanged.
         """
-        raise NotImplementedError("MAFeatureDataset.split is not yet implemented.")
+        return ColumnTransformer(
+            [
+                (
+                    "maps",
+                    make_map_reducer(method, masker=self._masker, **kwargs),
+                    self.map_columns,
+                ),
+                ("descriptors", "passthrough", self.descriptor_columns),
+            ]
+        )
 
-    def _apply_map_reducer(self, reducer: Any, fit: bool = False):
-        """Apply a reducer to map features while preserving aligned metadata.
-
-        This private helper is reserved for the future reducer workflow that
-        keeps ids, study_ids, target, and provenance aligned with the
-        transformed feature matrix.
-        """
-        raise NotImplementedError("MAFeatureDataset._apply_map_reducer is not yet implemented.")
-
-    def apply_map_reducer(self, reducer: Any, fit: bool = False):
-        """Apply a map-feature reducer and return a transformed dataset copy.
+    def make_cv(
+        self,
+        n_splits: int = 5,
+        test_size: float | int | None = None,
+        random_state: int | None = None,
+    ):
+        """Build a cross-validator bound to this dataset's study groups.
 
         Parameters
         ----------
-        reducer : object
-            Scikit-learn-compatible transformer or pipeline used to reduce map
-            features.
-        fit : bool, default=False
-            Whether the reducer should be fitted before transforming the map
-            features.
+        n_splits : int, default=5
+            Number of folds or shuffled splits.
+        test_size : float or int, optional
+            Test-group proportion or count. If None, use GroupKFold.
+        random_state : int, optional
+            Random seed used by GroupShuffleSplit.
 
         Returns
         -------
-        MAFeatureDataset
-            New dataset instance with reduced map features and preserved
-            metadata (ids, study_ids, feature_names, target, provenance).
-
-        Raises
-        ------
-        NotImplementedError
-            This public API is scaffolded only.
+        _GroupBoundCV
+            Cross-validator that always splits using this dataset's study IDs.
         """
-        raise NotImplementedError("MAFeatureDataset.apply_map_reducer is not yet implemented.")
+        if test_size is None:
+            if n_splits > len(np.unique(self.study_ids)):
+                raise ValueError("n_splits cannot exceed the number of unique study IDs")
+            inner = GroupKFold(n_splits=n_splits)
+        else:
+            inner = GroupShuffleSplit(
+                n_splits=n_splits,
+                test_size=test_size,
+                random_state=random_state,
+            )
+
+        return _GroupBoundCV(inner, self.study_ids)
 
     def copy(self):
         """Return an independent copy of the dataset.
@@ -184,21 +270,14 @@ class MAFeatureDataset(NiMAREBase):
         -------
         MAFeatureDataset
             Independent dataset copy.
-
-        Raises
-        ------
-        NotImplementedError
-            This public API is scaffolded only.
         """
-        raise NotImplementedError("MAFeatureDataset.copy is not yet implemented.")
+        return self._slice_rows(slice(None))
 
 
 class MAFeatureExtractor(NiMAREBase):
-    """Orchestrate conversion from a Studyset to MA feature datasets and sklearn-ready exports.
+    """Orchestrate conversion from a Studyset to MA feature datasets.
 
-    This helper converts a NiMARE Studyset into aligned MA feature datasets,
-    optionally splits by study group, and can export sklearn-compatible
-    bundles with optional map reduction.
+    This helper converts a NiMARE Studyset into an aligned MA feature dataset.
 
     Parameters
     ----------
@@ -206,13 +285,13 @@ class MAFeatureExtractor(NiMAREBase):
         Existing NiMARE kernel transformer instance or class. No implicit
         scientific default is selected; public examples must pass an explicit
         kernel transformer.
-    descriptor_fields : list of dict or object, optional
-        Field selectors from metadata, annotations, or texts, by default None.
+    descriptor_fields : list of dict, optional
+        Field selectors from metadata or annotations, by default None.
     descriptor_transformers : dict, optional
         Optional mapping from descriptor field selectors to explicit
         transformers or vectorizers for non-numeric descriptor fields, by
         default None.
-    target_field : dict or object, optional
+    target_field : dict, optional
         Optional field selector for y, by default None.
     target_transformer : object, optional
         Optional transformer or label extractor for free-text or multi-label
@@ -220,10 +299,6 @@ class MAFeatureExtractor(NiMAREBase):
     missing_coordinates : {'include', 'drop'}, default='drop'
         Whether analyses without coordinates are retained as all-zero sparse
         rows or removed before row construction.
-    test_size : float or int or None, default=None
-        Optional train/test split specification; ``None`` means no split.
-    random_state : int or None, default=None
-        Random seed for reproducible splits, by default None.
     cache_maps : bool, default=True
         Whether to cache generated MA map features across repeated calls.
     memory : object, optional
@@ -235,13 +310,11 @@ class MAFeatureExtractor(NiMAREBase):
     def __init__(
         self,
         kernel_transformer: Any,
-        descriptor_fields: list[Any] | None = None,
+        descriptor_fields: list[dict[str, str]] | None = None,
         descriptor_transformers: Any | None = None,
-        target_field: Any | None = None,
+        target_field: dict[str, str] | None = None,
         target_transformer: Any | None = None,
         missing_coordinates: str = "drop",
-        test_size: float | int | None = None,
-        random_state: int | None = None,
         cache_maps: bool = True,
         memory: Any | None = None,
         memory_level: int = 1,
@@ -252,34 +325,39 @@ class MAFeatureExtractor(NiMAREBase):
         self.target_field = target_field
         self.target_transformer = target_transformer
         self.missing_coordinates = missing_coordinates
-        self.test_size = test_size
-        self.random_state = random_state
         self.cache_maps = cache_maps
         self.memory = memory
         self.memory_level = memory_level
+        self._map_cache = {}
 
-    def _get_studyset_tables(self, studyset: Any):
-        """Extract Studyset tables needed to build aligned MA features.
+    @staticmethod
+    def _get_selected_values(studyset: Any, selector: dict[str, str]):
+        """Return selected Studyset values aligned to analysis IDs."""
+        if not isinstance(selector, dict):
+            raise TypeError("Field selectors must be dictionaries.")
 
-        This private helper is reserved for the future Studyset access path
-        that gathers coordinates, metadata, annotations, texts, and IDs.
-        """
-        raise NotImplementedError(
-            "MAFeatureExtractor._get_studyset_tables is not yet implemented."
-        )
+        source = selector.get("source")
+        field = selector.get("field")
 
-    def _stack_sparse_features(self, sparse_rows: Any):
-        """Concatenate sparse feature rows.
+        if not source or not field:
+            raise ValueError("Field selectors must define 'source' and 'field'.")
 
-        This private helper is reserved for the future feature assembly path
-        that builds sklearn-ready matrices from row-aligned sparse feature blocks.
-        """
-        raise NotImplementedError(
-            "MAFeatureExtractor._stack_sparse_features is not yet implemented."
-        )
+        source_to_table = {
+            "metadata": studyset.metadata,
+            "annotations": studyset.annotations_df,
+            "annotations_df": studyset.annotations_df,
+        }
+        table = source_to_table.get(source)
+        if table is None:
+            raise ValueError(f"Unsupported field selector source: {source}")
+
+        if field not in table.columns:
+            raise ValueError(f"Field '{field}' not found in Studyset {source}.")
+
+        return table[field].to_numpy(dtype=object), field
 
     def transform(self, studyset: Any):
-        """Validate the Studyset, orchestrate extraction and optional splitting.
+        """Transform a Studyset into an MA feature dataset.
 
         Parameters
         ----------
@@ -288,55 +366,115 @@ class MAFeatureExtractor(NiMAREBase):
 
         Returns
         -------
-        tuple
-            Tuple of ``(train_dataset, test_dataset)``. If ``test_size`` is
-            ``None`` or ``0.0``, return ``(full_dataset, None)``.
-
-        Raises
-        ------
-        NotImplementedError
-            This public API is scaffolded only.
+        MAFeatureDataset
+            Dataset containing all extracted analysis rows.
         """
-        raise NotImplementedError("MAFeatureExtractor.transform is not yet implemented.")
+        if self.missing_coordinates not in ("drop", "include"):
+            raise ValueError("missing_coordinates must be 'drop' or 'include'")
 
-    def to_sklearn(
-        self,
-        studyset: Any,
-        map_reducer: Any | None = None,
-        map_reducer_params: dict[str, Any] | None = None,
-    ):
-        """Run the full public pipeline convenience wrapper.
+        ids = studyset.ids
+        coordinate_ids = np.unique(studyset.coordinates["id"].to_numpy())
+        has_coordinates = np.isin(ids, coordinate_ids)
 
-        Parameters
-        ----------
-        studyset : object
-            NiMARE Studyset input.
-        map_reducer : object, optional
-            Optional map-feature reducer, by default None.
-        map_reducer_params : dict, optional
-            Optional reducer parameters, by default None.
+        if self.missing_coordinates == "drop":
+            retained_rows = has_coordinates
+            dropped_ids = ids[~has_coordinates].tolist()
+        else:
+            retained_rows = np.ones(len(ids), dtype=bool)
+            dropped_ids = []
 
-        Returns
-        -------
-        tuple
-            Tuple of sklearn-ready exports as ``(train_bunch, test_bunch)``. If
-            ``test_size`` is ``None`` or ``0.0``, return ``(full_bunch, None)``.
+        ids = ids[retained_rows]
+        study_ids = np.asarray([id_.rsplit("-", 1)[0] for id_ in ids], dtype=str)
 
-        Raises
-        ------
-        NotImplementedError
-            This public API is scaffolded only.
-        """
-        raise NotImplementedError("MAFeatureExtractor.to_sklearn is not yet implemented.")
+        kernel_transformer = self.kernel_transformer
+        if isinstance(kernel_transformer, type):
+            kernel_transformer = kernel_transformer()
+
+        cache_key = None
+        if self.cache_maps:
+            cache_key = joblib_hash(
+                (
+                    studyset.id,
+                    studyset.coordinates,
+                    studyset.metadata,
+                    studyset.masker.mask_img,
+                    kernel_transformer.get_params(),
+                )
+            )
+
+        if self.cache_maps and cache_key in self._map_cache:
+            map_features = self._map_cache[cache_key].copy()
+        else:
+            map_features = kernel_transformer.transform(studyset, return_type="sparse")
+            if self.cache_maps:
+                self._map_cache[cache_key] = map_features.copy()
+                map_features = map_features.copy()
+
+        if self.missing_coordinates == "include" and not np.all(has_coordinates):
+            zero_row = sparse.csr_matrix(
+                (1, map_features.shape[1]),
+                dtype=map_features.dtype,
+            )
+            map_rows = iter(map_features)
+            map_features = sparse.vstack(
+                [next(map_rows) if present else zero_row for present in has_coordinates],
+                format="csr",
+            )
+
+        descriptor_features = None
+        descriptor_names = []
+        if self.descriptor_fields:
+            columns = []
+            for selector in self.descriptor_fields:
+                values, field = self._get_selected_values(studyset, selector)
+                columns.append(values[retained_rows].astype(float))
+                descriptor_names.append(field)
+
+            descriptor_features = np.column_stack(columns)
+
+        target = None
+        if self.target_field is not None:
+            target, _ = self._get_selected_values(studyset, self.target_field)
+            target = target[retained_rows]
+
+        if descriptor_features is None:
+            features = map_features
+        else:
+            features = sparse.hstack(
+                [map_features, sparse.csr_matrix(descriptor_features)],
+                format="csr",
+            )
+
+        dataset = MAFeatureDataset(
+            features=features,
+            ids=ids,
+            study_ids=study_ids,
+            feature_names=[f"feature_{idx}" for idx in range(map_features.shape[1])]
+            + descriptor_names,
+            target=target,
+            provenance={
+                "source_studyset_id": getattr(studyset, "id", None),
+                "source_studyset_name": getattr(studyset, "name", None),
+                "missing_coordinates": self.missing_coordinates,
+                "dropped_ids": dropped_ids,
+            },
+            map_features=map_features,
+            descriptor_features=descriptor_features,
+            masker=studyset.masker,
+        )
+
+        return dataset
 
 
-def make_map_reducer(method: str, **kwargs: Any):
+def make_map_reducer(method: str, masker: Any | None = None, **kwargs: Any):
     """Construct a map-feature reducer.
 
     Parameters
     ----------
     method : str
         Reduction workflow name.
+    masker : object, optional
+        Masker defining the map-feature voxel ordering, by default None.
     **kwargs : dict
         Additional reducer-specific keyword arguments.
 
@@ -348,6 +486,9 @@ def make_map_reducer(method: str, **kwargs: Any):
     Raises
     ------
     NotImplementedError
-        This public API is scaffolded only.
+        Raised for reducer methods outside the current truncated-SVD path.
     """
-    raise NotImplementedError("make_map_reducer is not yet implemented.")
+    if method == "truncated_svd":
+        return TruncatedSVD(**kwargs)
+
+    raise NotImplementedError(f"Map reducer '{method}' is not yet implemented.")
