@@ -233,8 +233,9 @@ equality gate must pass before any new timing is recorded.
   Python produce different results even when both are correct. That removes exact comparison as
   a test and replaces it with tolerance-based statistical comparison. It is a separate decision
   on its own merits, taken after this work lands and is trusted.
-- **GPU offload.** The parallel-safe fraction is ~44% of runtime, so Amdahl caps total speedup
-  at 1.79x even with infinitely fast hardware. Block-wise CPU parallelism captures ~1.5x of
+- **GPU offload.** *(Figures corrected after measurement -- see below.)* The parallel-safe
+  fraction is ~22.6% of runtime, so Amdahl caps total speedup at **1.29x** over the pre-change
+  Rust even with infinitely fast hardware. Block-wise CPU parallelism captures ~1.27x of
   that, leaving ~1.17x incremental for a CUDA/wgpu dependency, a hardware requirement, and near
   certain loss of bit-exactness. Not recommended.
 - **PyO3 bindings.** A usability improvement, not a performance one, and it would make peak
@@ -242,3 +243,23 @@ equality gate must pass before any new timing is recorded.
   working set.
 - **Threshold-gating rayon in `update_regions`.** A real measured regression, but that phase is
   0.14% of runtime at Neurosynth scale. Worth doing opportunistically; not worth a task here.
+
+---
+
+## Post-implementation correction (2026-08-18)
+
+Two figures in this spec were written before the gate measurement and are wrong. They are
+corrected here rather than silently edited away, because the error is the point:
+
+- **The projected ~1.5x total rested on PDF evaluation being 75-80% of the peak-sampling
+  phase.** Task 1 measured it at **35.5-37.9%**, which revised the projection to ~1.2x before
+  any optimization code was written. The measured outcome was **1.27x**.
+- **The GPU "Out of scope" note originally cited a 44% parallel-safe fraction and a 1.79x
+  Amdahl ceiling.** Both came from the same wrong assumption. Measured, the parallel-safe
+  fraction is ~22.6% and the ceiling is ~1.29x, so the case against GPU offload is *stronger*
+  than this spec first argued, not weaker.
+
+~77.2% of Rust runtime is inherently sequential collapsed-Gibbs work (word sampling plus the
+peak-sampling body). That is the ceiling on any future parallelization of this algorithm.
+
+Measured results: `benchmarks/gclda_rust_results.md`.
