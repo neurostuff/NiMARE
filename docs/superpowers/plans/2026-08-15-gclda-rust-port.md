@@ -2815,10 +2815,17 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ## Completion Checklist
 
-- [ ] `cargo test --release` passes in `rust/gclda`
-- [ ] `micromamba run -n nimenv pytest nimare/tests/test_annotate_gclda.py nimare/tests/test_gclda_rust.py -v` passes
-- [ ] Level 2 per-iteration equality passes for all four configurations
-- [ ] All three shipped decoders produce identical results from a Rust-trained model, with `nimare/decode/` unmodified
-- [ ] `benchmarks/gclda_rust_results.md` contains measured numbers, with extrapolated figures labeled
-- [ ] `git log --oneline` shows the work; `git status` shows no unintended files staged
-- [ ] **Nothing has been pushed**
+- [x] `cargo test --release` passes in `rust/gclda`
+- [x] `micromamba run -n nimenv pytest nimare/tests/test_annotate_gclda.py nimare/tests/test_gclda_rust.py -v` passes
+- [x] Level 2 per-iteration equality passes for all four configurations
+- [x] All three shipped decoders produce identical results from a Rust-trained model, with `nimare/decode/` unmodified
+- [x] `benchmarks/gclda_rust_results.md` contains measured numbers, with extrapolated figures labeled
+- [x] `git log --oneline` shows the work; `git status` shows no unintended files staged
+- [x] **Nothing has been pushed**
+
+All items verified 2026-08-17. Measured results are in `benchmarks/gclda_rust_results.md`.
+
+Two deviations from the plan, both recorded in the results document:
+
+- **Task 21 Step 5 (`perf` counters) could not be run** — `perf` is unavailable under this WSL2 kernel. The fusion analysis rests on per-phase timing and peak-RSS evidence instead, as the plan allowed for.
+- **The benchmark exposed a real defect before it could report timing** (commit `40f9f70`): pandas' default C float parser is not correctly rounded and disagreed with Rust's by 1 ULP on ~2.5% of real Neurosynth coordinates, so the two implementations trained on inputs differing in the last bit. Scoped to the benchmark harness, not the port — real NiMARE usage passes DataFrames directly and never reparses.
