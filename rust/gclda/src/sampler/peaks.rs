@@ -20,6 +20,14 @@ use crate::gaussian::pdf;
 use crate::model::Model;
 use crate::rng::Mt19937;
 use crate::GcldaError;
+use rayon::prelude::*;
+
+/// Minimum number of Gaussian evaluations (`len * n_topics * n_regions`) in a
+/// block before it is worth filling with rayon. Below this, task overhead
+/// exceeds the work: `update_regions` was measured 4x *slower* at 8 threads
+/// than at 1 on small corpora for exactly this reason (see
+/// `benchmarks/gclda_rust_results.md`, thread-scaling table).
+pub const PARALLEL_MIN_EVALS: usize = 32_768;
 
 impl Model {
     /// Fill `out` (length `n_topics * n_regions`, indexed
@@ -80,6 +88,52 @@ impl Model {
         // Consume `acc` so the accumulation itself cannot be optimized away.
         std::hint::black_box(acc);
         (elapsed, n_peaks)
+    }
+
+    /// Fill `out` with `p(x_i | topic, region)` for peaks `[start, start + len)`.
+    ///
+    /// Layout is `(local_peak * n_topics + topic) * n_regions + region`, so each
+    /// peak's `n_topics * n_regions` block is contiguous and indexes exactly as
+    /// [`Model::peak_probs_for`]'s output does.
+    ///
+    /// # Invariant this relies on
+    ///
+    /// [`crate::gaussian::pdf`] reads only `corpus.ptoken_coords` and the cached
+    /// region parameters (`regions_mu`, `regions_precision`, `regions_log_norm`).
+    /// None of those are mutated by [`Model::update_peak_assignments`], which
+    /// touches only count matrices and assignment vectors; region parameters are
+    /// recomputed in the separate `update_regions` phase. **That is what makes it
+    /// legal to evaluate a whole block up front, before the sequential loop
+    /// mutates anything.** If a future change moves region-parameter updates
+    /// inside the sampling sweep, this precomputation becomes wrong and the
+    /// Level 2 per-iteration equality tests will fail immediately.
+    ///
+    /// Parallelism is across disjoint peaks with no floating-point reduction, so
+    /// results are bit-identical to `len` successive `peak_probs_for` calls.
+    pub fn peak_probs_block(&self, start: usize, len: usize, out: &mut [f64]) {
+        let stride = self.params.n_topics * self.params.n_regions;
+        let out = &mut out[..len * stride];
+
+        self.peak_probs_block_forced(start, len, out, len * stride >= PARALLEL_MIN_EVALS);
+    }
+
+    /// [`Model::peak_probs_block`] with the sequential/parallel choice forced
+    /// rather than taken from [`PARALLEL_MIN_EVALS`]. Exists so tests can prove
+    /// both fill paths produce identical bits without needing a fixture large
+    /// enough to cross the threshold naturally.
+    pub fn peak_probs_block_forced(&self, start: usize, len: usize, out: &mut [f64], parallel: bool) {
+        let stride = self.params.n_topics * self.params.n_regions;
+        let out = &mut out[..len * stride];
+
+        if parallel {
+            out.par_chunks_mut(stride).enumerate().for_each(|(i, chunk)| {
+                self.peak_probs_for(start + i, chunk);
+            });
+        } else {
+            for (i, chunk) in out.chunks_mut(stride).enumerate() {
+                self.peak_probs_for(start + i, chunk);
+            }
+        }
     }
 
     /// Update peak-token -> topic/subregion assignments (y, c) via one Gibbs
