@@ -38,9 +38,17 @@ fn fixture_model() -> Model {
 }
 
 #[test]
-fn serial_pdf_pass_reports_positive_time() {
+fn serial_pdf_pass_evaluates_every_peak_and_reports_positive_time() {
     let model = fixture_model();
-    let seconds = model.time_serial_pdf_pass();
+    let n_peaks = model.corpus.ptoken_coords.len();
+    assert!(n_peaks > 0, "fixture corpus has no peaks; this test would pass vacuously");
+
+    let (seconds, n_evaluated) = model.time_serial_pdf_pass();
+
+    assert_eq!(
+        n_evaluated, n_peaks,
+        "serial PDF pass evaluated {n_evaluated} peaks, expected all {n_peaks} fixture peaks"
+    );
     assert!(
         seconds > 0.0,
         "serial PDF pass reported {seconds} seconds; timer is not measuring anything"

@@ -182,7 +182,7 @@ fn run(args: Args) -> Result<(), GcldaError> {
     let mut model = Model::new(corpus, mask, params)?;
 
     if args.profile_pdf {
-        let seconds = model.time_serial_pdf_pass();
+        let (seconds, _n_evaluated) = model.time_serial_pdf_pass();
         println!("profile_pdf: serial_pdf_pass_seconds={seconds:.6}");
     }
 

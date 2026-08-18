@@ -53,17 +53,33 @@ impl Model {
     /// share of the peak-sampling phase is PDF evaluation, which is the number
     /// the block-wise parallelization decision is gated on. Not called during
     /// normal training.
-    pub fn time_serial_pdf_pass(&self) -> f64 {
+    ///
+    /// Returns `(seconds, n_evaluated)`: elapsed wall time for the whole pass,
+    /// and the number of peaks actually evaluated, so a caller (test or CLI)
+    /// can confirm the loop was not partially or fully elided by the
+    /// optimizer. Every iteration's fill of `buf` is summed into an
+    /// accumulator that is itself `black_box`-ed *inside* the loop -- unlike a
+    /// single trailing `black_box(&buf)`, which only observes the final
+    /// iteration's state and would not stop the compiler from proving the
+    /// earlier `n - 1` calls are dead stores -- so every entry written by
+    /// every call to `peak_probs_for` feeds an opaque value and no
+    /// iteration's work can be eliminated.
+    pub fn time_serial_pdf_pass(&self) -> (f64, usize) {
         let n_topics = self.params.n_topics;
         let n_regions = self.params.n_regions;
         let mut buf = vec![0.0f64; n_topics * n_regions];
+        let n_peaks = self.corpus.ptoken_coords.len();
+        let mut acc = 0.0f64;
         let start = std::time::Instant::now();
-        for i_peak in 0..self.corpus.ptoken_coords.len() {
+        for i_peak in 0..n_peaks {
             self.peak_probs_for(i_peak, &mut buf);
+            let sum: f64 = buf.iter().sum();
+            acc += std::hint::black_box(sum);
         }
-        // Consume `buf` so the optimizer cannot eliminate the loop entirely.
-        std::hint::black_box(&buf);
-        start.elapsed().as_secs_f64()
+        let elapsed = start.elapsed().as_secs_f64();
+        // Consume `acc` so the accumulation itself cannot be optimized away.
+        std::hint::black_box(acc);
+        (elapsed, n_peaks)
     }
 
     /// Update peak-token -> topic/subregion assignments (y, c) via one Gibbs
