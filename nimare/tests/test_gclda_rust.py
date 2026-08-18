@@ -596,3 +596,22 @@ def test_both_implementations_report_matching_phase_keys(small_corpus, mni_mask,
 
     assert model.phase_times_["total"] > 0
     assert rust_meta["phase_times"]["total"] > 0
+
+
+def test_synthetic_corpus_is_deterministic_and_well_formed():
+    """The generator must be reproducible and produce usable GCLDA input."""
+    import sys
+
+    sys.path.insert(0, os.path.join(REPO_ROOT, "benchmarks"))
+    from gclda_synthetic import make_synthetic_corpus
+
+    counts_a, coords_a = make_synthetic_corpus(n_docs=20, n_terms=15, n_peaks=100, seed=3)
+    counts_b, coords_b = make_synthetic_corpus(n_docs=20, n_terms=15, n_peaks=100, seed=3)
+
+    pd.testing.assert_frame_equal(counts_a, counts_b)
+    pd.testing.assert_frame_equal(coords_a, coords_b)
+    assert counts_a.shape == (20, 15)
+    assert len(coords_a) == 100
+    assert set(coords_a["id"]).issubset(set(counts_a.index))
+    assert (counts_a.to_numpy() >= 0).all()
+    assert (counts_a.to_numpy().sum(axis=1) > 0).all(), "every document needs tokens"
