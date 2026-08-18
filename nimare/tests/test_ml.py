@@ -7,8 +7,16 @@ from typing import Any
 import numpy as np
 import pytest
 from scipy import sparse
+from sklearn.compose import ColumnTransformer
 from sklearn.decomposition import TruncatedSVD
 from sklearn.linear_model import Ridge
+from sklearn.model_selection import (
+    GridSearchCV,
+    GroupKFold,
+    GroupShuffleSplit,
+    cross_val_score,
+)
+from sklearn.pipeline import make_pipeline
 from sklearn.utils import Bunch
 
 from nimare.meta.kernel import MKDAKernel
@@ -17,7 +25,6 @@ from nimare.nimads import Studyset
 from nimare.utils import get_masker, get_template
 
 RANDOM_SEED = 13
-TEST_DATA_PERCENTAGE = 0.33
 
 
 @pytest.fixture(scope="session")
@@ -216,6 +223,8 @@ def test_ma_feature_dataset_initialization(ma_feature_dataset):
     np.testing.assert_array_equal(ds.provenance["source"]["ids"], ds.ids)
     assert sparse.issparse(ds._map_features)
     assert ds._map_features.shape == (6, 2)
+    assert ds.map_columns == slice(0, 2)
+    assert ds.descriptor_columns == slice(2, 3)
     np.testing.assert_array_equal(
         ds._descriptor_features.ravel(),
         [1.0, 1.0, 1.0, 0.0, 0.0, 0.0],
@@ -309,57 +318,83 @@ def test_ma_feature_dataset_to_sklearn(ma_feature_dataset):
         expected_sparse=True,
     )
     assert bunch.data is ds.features
+    assert bunch.map_columns == ds.map_columns
+    assert bunch.descriptor_columns == ds.descriptor_columns
 
 
-def test_ma_feature_dataset_split(ma_feature_dataset):
-    """Dataset grouped split preserves row alignment and avoids study leakage."""
+def test_ma_feature_dataset_make_preprocessor(ma_feature_dataset):
+    """Map reduction leaves descriptor columns unchanged."""
     ds = ma_feature_dataset
-
-    train, test = ds.split(
-        test_size=TEST_DATA_PERCENTAGE,
-        random_state=RANDOM_SEED,
-    )
-
-    assert set(train.study_ids).isdisjoint(test.study_ids)
-    assert sorted(np.concatenate([train.ids, test.ids])) == sorted(ds.ids)
-
-    expected_target_by_id = dict(zip(ds.ids, ds.target, strict=False))
-    expected_features_by_id = dict(zip(ds.ids, ds.features.toarray(), strict=False))
-    for split_dataset in (train, test):
-        for row_id, row_target in zip(split_dataset.ids, split_dataset.target, strict=False):
-            assert row_target == expected_target_by_id[row_id]
-        for row_id, row_features in zip(
-            split_dataset.ids,
-            split_dataset.features.toarray(),
-            strict=False,
-        ):
-            np.testing.assert_array_equal(row_features, expected_features_by_id[row_id])
-
-
-def test_ma_feature_dataset_apply_map_reducer(ma_feature_dataset):
-    """Map reducers transform map columns while preserving descriptors and metadata."""
-    ds = ma_feature_dataset
-    descriptor_name = "motor_label"
-    descriptor_idx = ds.feature_names.index(descriptor_name)
-    descriptor_values = _get_data_column(ds.features, descriptor_idx)
-    reducer = make_map_reducer(
-        "truncated_svd",
+    preprocessor = ds.make_preprocessor(
         n_components=1,
         random_state=RANDOM_SEED,
     )
 
-    reduced = ds.apply_map_reducer(reducer, fit=True)
+    assert isinstance(preprocessor, ColumnTransformer)
+    assert not hasattr(preprocessor, "transformers_")
 
-    assert reduced is not ds
-    np.testing.assert_array_equal(reduced.ids, ds.ids)
-    np.testing.assert_array_equal(reduced.study_ids, ds.study_ids)
-    assert reduced.feature_names == ["feature_0", descriptor_name]
-    assert reduced.features.shape == (len(ds.ids), 2)
-    assert not sparse.issparse(reduced.features)
-    np.testing.assert_array_equal(reduced.target, ds.target)
-    np.testing.assert_array_equal(reduced.features[:, 1], descriptor_values)
-    reduced.provenance["source"]["ids"].append("s4")
-    np.testing.assert_array_equal(ds.provenance["source"]["ids"], ds.ids)
+    transformed = preprocessor.fit_transform(ds.features)
+    if sparse.issparse(transformed):
+        transformed = transformed.toarray()
+
+    assert transformed.shape == (len(ds.ids), 2)
+    np.testing.assert_array_equal(transformed[:, 1], ds._descriptor_features.ravel())
+
+
+@pytest.mark.parametrize(
+    ("test_size", "splitter_type"),
+    [(None, GroupKFold), (1, GroupShuffleSplit)],
+)
+def test_ma_feature_dataset_make_cv_binds_groups(
+    ma_feature_dataset,
+    test_size,
+    splitter_type,
+):
+    """CV splitters always use the dataset's study groups."""
+    ds = ma_feature_dataset.copy()
+    ds.study_ids = np.repeat(["study_0", "study_1", "study_2"], 2)
+    cv = ds.make_cv(
+        n_splits=3,
+        test_size=test_size,
+        random_state=RANDOM_SEED,
+    )
+
+    assert isinstance(cv._inner, splitter_type)
+    assert cv.get_n_splits(ds.features, ds.target) == 3
+
+    bogus_groups = np.asarray([f"row_{idx}" for idx in range(len(ds.ids))])
+    for train_idx, test_idx in cv.split(ds.features, ds.target, groups=bogus_groups):
+        assert set(ds.study_ids[train_idx]).isdisjoint(ds.study_ids[test_idx])
+
+
+def test_ma_feature_dataset_make_cv_rejects_too_many_folds(ma_feature_dataset):
+    """Grouped K-fold requires at least one study group per fold."""
+    ds = ma_feature_dataset.copy()
+    ds.study_ids = np.repeat(["study_0", "study_1", "study_2"], 2)
+
+    with pytest.raises(ValueError, match="n_splits cannot exceed"):
+        ds.make_cv(n_splits=4)
+
+
+def test_ma_feature_dataset_sklearn_pipeline(ma_feature_dataset):
+    """The preprocessor and bound CV work in sklearn model selection."""
+    ds = ma_feature_dataset.copy()
+    ds.study_ids = np.repeat(["study_0", "study_1", "study_2"], 2)
+    pipeline = make_pipeline(
+        ds.make_preprocessor(n_components=1, random_state=RANDOM_SEED),
+        Ridge(),
+    )
+
+    scores = cross_val_score(pipeline, ds.features, ds.target, cv=ds.make_cv(n_splits=3))
+    assert scores.shape == (3,)
+
+    search = GridSearchCV(
+        pipeline,
+        {"ridge__alpha": [0.5, 1.0]},
+        cv=ds.make_cv(n_splits=3),
+    )
+    search.fit(ds.features, ds.target)
+    assert search.best_estimator_ is not None
 
 
 def test_ma_feature_dataset_copy(ma_feature_dataset):
@@ -399,8 +434,6 @@ def test_ma_feature_extractor_initialization():
     assert extractor.target_field == {"source": "annotations", "field": "motor_label"}
     assert extractor.target_transformer is None
     assert extractor.missing_coordinates == "drop"
-    assert extractor.test_size is None
-    assert extractor.random_state is None
     assert extractor.cache_maps is True
     assert extractor.memory is None
     assert extractor.memory_level == 1
@@ -433,7 +466,7 @@ def test_ma_feature_extractor_selected_values_alignment(ml_studyset):
 
 
 def test_ma_feature_extractor_transform(ml_studyset):
-    """Transform a Studyset into grouped train/test MAFeatureDatasets."""
+    """Transform a Studyset into one aligned MAFeatureDataset."""
     studyset = ml_studyset
     descriptor_name = "motor_label"
     target_name = "target_score"
@@ -447,59 +480,102 @@ def test_ma_feature_extractor_transform(ml_studyset):
         kernel_transformer=MKDAKernel(r=4, value=1),
         descriptor_fields=[{"source": "annotations", "field": descriptor_name}],
         target_field={"source": "annotations", "field": target_name},
-        test_size=TEST_DATA_PERCENTAGE,
-        random_state=RANDOM_SEED,
     )
 
-    train_dataset, test_dataset = extractor.transform(studyset)
+    dataset = extractor.transform(studyset)
 
-    assert isinstance(train_dataset, MAFeatureDataset)
-    assert isinstance(test_dataset, MAFeatureDataset)
-    assert sparse.issparse(train_dataset._map_features)
-    assert sparse.issparse(test_dataset._map_features)
-    assert train_dataset._masker is studyset.masker
-    assert test_dataset._masker is studyset.masker
-    assert "motor_label" in train_dataset.feature_names
-    assert "target_score" not in train_dataset.feature_names
-    assert set(train_dataset.study_ids).isdisjoint(set(test_dataset.study_ids))
+    assert isinstance(dataset, MAFeatureDataset)
+    assert len(dataset.ids) == len(studyset.ids)
+    assert sparse.issparse(dataset._map_features)
+    assert dataset._masker is studyset.masker
+    assert descriptor_name in dataset.feature_names
+    assert target_name not in dataset.feature_names
 
-    train_bunch = train_dataset.to_sklearn()
-    test_bunch = test_dataset.to_sklearn()
+    bunch = dataset.to_sklearn()
     assert_sklearn_bunch_valid(
-        train_bunch,
+        bunch,
+        expected_feature_rows=len(studyset.ids),
+        expected_feature_names=dataset.feature_names,
         expected_columns_by_group={descriptor_name: descriptor_by_study},
         expected_target_by_group=target_by_study,
         expected_sparse=True,
     )
-    assert_sklearn_bunch_valid(
-        test_bunch,
-        expected_feature_names=train_dataset.feature_names,
-        expected_columns_by_group={descriptor_name: descriptor_by_study},
-        expected_target_by_group=target_by_study,
-        expected_sparse=True,
+
+
+@pytest.mark.parametrize(
+    ("missing_coordinates", "keep_missing"),
+    [("drop", False), ("include", True)],
+)
+def test_ma_feature_extractor_handles_missing_coordinates(
+    ml_studyset,
+    missing_coordinates,
+    keep_missing,
+):
+    """Drop or retain analyses without coordinates."""
+    studyset = ml_studyset.copy()
+    missing_study = studyset.studies[2]
+    missing_analysis = missing_study.analyses[0]
+    missing_id = f"{missing_study.id}-{missing_analysis.id}"
+    missing_analysis.points = []
+
+    extractor = MAFeatureExtractor(
+        kernel_transformer=MKDAKernel(r=4, value=1),
+        descriptor_fields=[{"source": "annotations", "field": "motor_label"}],
+        target_field={"source": "annotations", "field": "target_score"},
+        missing_coordinates=missing_coordinates,
     )
+
+    dataset = extractor.transform(studyset)
+
+    expected_ids = studyset.ids if keep_missing else studyset.ids[studyset.ids != missing_id]
+    np.testing.assert_array_equal(dataset.ids, expected_ids)
+    expected_annotations = studyset.annotations_df.set_index("id").loc[expected_ids]
+    np.testing.assert_array_equal(
+        dataset._descriptor_features.ravel(), expected_annotations["motor_label"]
+    )
+    np.testing.assert_array_equal(dataset.target, expected_annotations["target_score"])
+    assert dataset.provenance["dropped_ids"] == ([] if keep_missing else [missing_id])
+
+    if keep_missing:
+        missing_row = np.flatnonzero(dataset.ids == missing_id)[0]
+        assert dataset._map_features[missing_row].nnz == 0
+
+
+def test_ma_feature_extractor_rejects_invalid_missing_coordinates(ml_studyset):
+    """Reject an unsupported missing-coordinate mode."""
+    extractor = MAFeatureExtractor(
+        kernel_transformer=object(),
+        missing_coordinates="invalid",
+    )
+
+    with pytest.raises(ValueError, match="missing_coordinates must be"):
+        extractor.transform(ml_studyset)
 
 
 def test_ma_feature_extractor_reuses_map_cache(ml_studyset):
-    """Repeated extraction with unchanged settings reuses cached map features."""
+    """Reuse unchanged map inputs and invalidate changed inputs."""
 
     class CountingKernel:
-        def __init__(self):
+        def __init__(self, scale=1):
             self.n_calls = 0
+            self.scale = scale
+
+        def get_params(self):
+            return {"scale": self.scale}
 
         def transform(self, studyset, return_type="sparse"):
             self.n_calls += 1
             assert return_type == "sparse"
             n_rows = len(studyset.ids)
-            data = np.arange(n_rows * 3, dtype=float).reshape(n_rows, 3)
+            data = self.scale * np.arange(n_rows * 3, dtype=float).reshape(n_rows, 3)
             return sparse.csr_matrix(data)
 
-    studyset = ml_studyset
+    studyset = ml_studyset.copy()
     kernel = CountingKernel()
     extractor = MAFeatureExtractor(kernel_transformer=kernel)
 
-    first_dataset, _ = extractor.transform(studyset)
-    second_dataset, _ = extractor.transform(studyset)
+    first_dataset = extractor.transform(studyset)
+    second_dataset = extractor.transform(studyset)
 
     assert kernel.n_calls == 1
     assert first_dataset._map_features is not second_dataset._map_features
@@ -508,56 +584,19 @@ def test_ma_feature_extractor_reuses_map_cache(ml_studyset):
         second_dataset._map_features.toarray(),
     )
 
+    coordinates = studyset.coordinates.copy()
+    coordinates.loc[0, "x"] += 1
+    studyset.coordinates = coordinates
+    extractor.transform(studyset)
+    assert kernel.n_calls == 2
 
-def test_ma_feature_extractor_transform_with_map_reducer(ml_studyset):
-    """Reduce train/test map features and export sklearn Bunches."""
-    studyset = ml_studyset
-    descriptor_name = "motor_label"
-    target_name = "target_score"
-    descriptor_by_study = {
-        study.id: study.analyses[0].annotations[descriptor_name] for study in studyset.studies
-    }
-    target_by_study = {
-        study.id: study.analyses[0].annotations[target_name] for study in studyset.studies
-    }
-    extractor = MAFeatureExtractor(
-        kernel_transformer=MKDAKernel(r=4, value=1),
-        descriptor_fields=[{"source": "annotations", "field": descriptor_name}],
-        target_field={"source": "annotations", "field": target_name},
-        test_size=TEST_DATA_PERCENTAGE,
-        random_state=RANDOM_SEED,
+    kernel.scale = 2
+    scaled_dataset = extractor.transform(studyset)
+    assert kernel.n_calls == 3
+    np.testing.assert_array_equal(
+        scaled_dataset._map_features.toarray(),
+        2 * second_dataset._map_features.toarray(),
     )
-
-    train_dataset, test_dataset = extractor.transform(
-        studyset,
-        map_reducer="truncated_svd",
-    )
-    train_bunch = train_dataset.to_sklearn()
-    test_bunch = test_dataset.to_sklearn()
-
-    assert_sklearn_bunch_valid(
-        train_bunch,
-        expected_columns_by_group={descriptor_name: descriptor_by_study},
-        expected_target_by_group=target_by_study,
-        estimator=Ridge(),
-    )
-    feature_names = list(train_bunch.feature_names)
-    assert_sklearn_bunch_valid(
-        test_bunch,
-        expected_feature_names=feature_names,
-        expected_columns_by_group={descriptor_name: descriptor_by_study},
-        expected_target_by_group=target_by_study,
-    )
-    assert feature_names.count(descriptor_name) == 1
-    assert target_name not in feature_names
-
-    assert set(train_bunch.groups).isdisjoint(set(test_bunch.groups))
-
-    original_map_feature_count = int(np.count_nonzero(studyset.masker.mask_img.get_fdata()))
-    reduced_map_feature_count = len(
-        [feature_name for feature_name in feature_names if feature_name != descriptor_name]
-    )
-    assert 0 < reduced_map_feature_count < original_map_feature_count
 
 
 def test_make_map_reducer_truncated_svd():
