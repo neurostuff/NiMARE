@@ -67,11 +67,45 @@ Create `rust/gclda/tests/profile_pdf.rs`:
 //! `time_serial_pdf_pass` must actually evaluate every peak and report a
 //! positive duration, so the Task 1 gate measurement is trustworthy.
 
+use gclda::io::{nifti::load_mask_xyz, tsv::load_corpus};
+use gclda::model::{Model, Params};
+use std::path::PathBuf;
+
 mod common;
+use common::load;
+
+fn fixture(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name)
+}
+
+/// Build a model from the committed fixtures with region Gaussians populated.
+/// Mirrors the construction in `tests/sampler_peaks.rs` -- `common/mod.rs`
+/// exposes only `repo_path`/`load`/`bits_to_f64`, no model builder.
+fn fixture_model() -> Model {
+    let mask_meta = load("mask_xyz.json");
+    let mask_path = common::repo_path(mask_meta["path"].as_str().unwrap());
+    let corpus = load_corpus(&fixture("counts.tsv"), &fixture("coordinates.tsv")).unwrap();
+    let mask = load_mask_xyz(&mask_path).unwrap();
+    let params = Params {
+        n_topics: 3,
+        n_regions: 2,
+        symmetric: true,
+        alpha: 0.1,
+        beta: 0.01,
+        gamma: 0.01,
+        delta: 1.0,
+        dobs: 25.0,
+        roi_size: 50.0,
+        seed_init: 1,
+    };
+    let mut model = Model::new(corpus, mask, params).unwrap();
+    model.update_regions().unwrap();
+    model
+}
 
 #[test]
 fn serial_pdf_pass_reports_positive_time() {
-    let model = common::tiny_model();
+    let model = fixture_model();
     let seconds = model.time_serial_pdf_pass();
     assert!(
         seconds > 0.0,
@@ -80,7 +114,8 @@ fn serial_pdf_pass_reports_positive_time() {
 }
 ```
 
-If `rust/gclda/tests/common/mod.rs` does not already expose a `tiny_model()` helper, add one that builds a `Model` from the smallest committed fixture the other integration tests use. Reuse whatever construction path those tests already use rather than inventing a second one.
+`common/mod.rs` is NOT modified by this task — it exposes only `repo_path`,
+`load`, and `bits_to_f64`, and this test needs no addition to it.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -171,7 +206,7 @@ Compute `serial_pdf_pass_seconds / 1.348` — 1.348 s/iter is the measured Rust 
 
 ```bash
 git add rust/gclda/src/bin/gclda-train.rs rust/gclda/src/sampler/peaks.rs \
-        rust/gclda/tests/profile_pdf.rs rust/gclda/tests/common/mod.rs
+        rust/gclda/tests/profile_pdf.rs
 git diff --cached --stat
 git commit -m "[ENH] Add --profile-pdf diagnostic to measure PDF share of peak sampling
 
@@ -235,7 +270,6 @@ fn fixture_model() -> Model {
         dobs: 25.0,
         roi_size: 50.0,
         seed_init: 1,
-        peak_block_size: 8192,
     };
     let mut model = Model::new(corpus, mask, params).unwrap();
     model.update_regions().unwrap();
@@ -385,8 +419,7 @@ Expected: all PASS (33 existing + 2 new).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add rust/gclda/src/sampler/peaks.rs rust/gclda/tests/peak_probs_block.rs \
-        rust/gclda/tests/common/mod.rs
+git add rust/gclda/src/sampler/peaks.rs rust/gclda/tests/peak_probs_block.rs
 git diff --cached --stat
 git commit -m "[ENH] Add peak_probs_block for parallel per-block PDF evaluation
 
@@ -509,7 +542,11 @@ In `rust/gclda/src/model.rs`, add to `Params`:
 `rust/gclda/tests/loglik.rs`, `rust/gclda/tests/outputs.rs`,
 `rust/gclda/tests/pairwise_sum_wiring.rs`,
 `rust/gclda/tests/sampler_peaks.rs`, `rust/gclda/tests/sampler_regions.rs`,
-`rust/gclda/tests/sampler_words.rs`.
+`rust/gclda/tests/sampler_words.rs`, plus the two test files created earlier in
+this plan: `rust/gclda/tests/profile_pdf.rs` (Task 1) and
+`rust/gclda/tests/peak_probs_block.rs` (Task 2).
+
+Add those last two to this task's `git add` list as well.
 
 Expect a wall of compile errors on first build; that is this change, not a
 mistake. `cargo build` lists every site.
@@ -632,6 +669,11 @@ Expected: all PASS, including all four Level 2 configurations. **The Level 2 and
 ```bash
 git add rust/gclda/src/sampler/peaks.rs rust/gclda/src/model.rs \
         rust/gclda/src/output.rs rust/gclda/src/bin/gclda-train.rs \
+        rust/gclda/tests/profile_pdf.rs rust/gclda/tests/peak_probs_block.rs \
+        rust/gclda/tests/loglik.rs rust/gclda/tests/outputs.rs \
+        rust/gclda/tests/init_golden.rs rust/gclda/tests/pairwise_sum_wiring.rs \
+        rust/gclda/tests/sampler_peaks.rs rust/gclda/tests/sampler_regions.rs \
+        rust/gclda/tests/sampler_words.rs \
         nimare/annotate/gclda.py nimare/annotate/gclda_rs.py \
         nimare/tests/test_gclda_rust.py
 git diff --cached --stat
@@ -881,7 +923,25 @@ originals plus `rust/gclda/tests/peak_probs_block.rs` added in Task 2).
 
 In `rust/gclda/src/rng.rs`, add `sample_from_unnormalized_f32` mirroring the existing `f64` version exactly — same sequential accumulation, same comparison structure, same error on a non-positive total — operating on `&[f32]` and accumulating in `f32`.
 
-In `rust/gclda/src/sampler/peaks.rs`, extract the per-peak body into a generic private function parameterized on `F: Float`, and have `update_peak_assignments` dispatch once on `params.compute_dtype` to the `f64` or `f32` instantiation. Dispatch **once per sweep**, not per peak.
+In `rust/gclda/src/sampler/peaks.rs`:
+
+1. **Make the block primitive generic.** `peak_probs_block` and
+   `peak_probs_block_forced` currently take `out: &mut [f64]`. Change both to
+   `out: &mut [F]` with `F: Float`, evaluating through `pdf_generic`. Without
+   this the `f32` path has no way to produce `f32` densities and the flag
+   buys nothing — the whole point is that the Gaussian evaluation itself runs
+   narrow. Under `F = f32` the block reads the `regions_f32` mirror; under
+   `F = f64` it reads the `f64` originals exactly as today.
+
+2. **Make the per-peak body generic.** Extract it into a private function
+   parameterized on `F: Float`, and have `update_peak_assignments` dispatch
+   once on `params.compute_dtype` to the `f64` or `f32` instantiation.
+   Dispatch **once per sweep**, not per peak.
+
+The `f64` instantiation must remain bit-identical to the pre-Task-5 code.
+`tests/peak_probs_block.rs` from Task 2 keeps proving block-vs-per-peak
+bit-identity at `f64`, and the Level 2/3 suites prove end-to-end identity; if
+either fails after this refactor, stop and report rather than adjusting them.
 
 - [ ] **Step 7: Add the CLI flag**
 
