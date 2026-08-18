@@ -615,3 +615,55 @@ def test_synthetic_corpus_is_deterministic_and_well_formed():
     assert set(coords_a["id"]).issubset(set(counts_a.index))
     assert (counts_a.to_numpy() >= 0).all()
     assert (counts_a.to_numpy().sum(axis=1) > 0).all(), "every document needs tokens"
+
+
+def test_full_precision_coordinates_survive_the_tsv_boundary(tmp_path):
+    """Coordinates must cross the Python->TSV->Python boundary bit-exactly.
+
+    The Rust trainer reads coordinates with Rust's `str::parse::<f64>`, which is
+    correctly rounded. pandas' default C float parser (`xstrtod`) is not, and
+    disagrees by 1 ULP on values with enough significant digits -- about 2.5% of
+    real Neurosynth coordinates. That 1-ULP input difference is not cosmetic: it
+    propagates through `region_sums`/`region_cross` into `regions_mu`/`regions_sigma`
+    and then into `spatial_dists`, breaking bit-exactness of `p_topic_g_voxel` and
+    `p_voxel_g_topic` against Rust.
+
+    This went unnoticed because every synthetic fixture rounds coordinates to one
+    decimal, which both parsers agree on. Any Python code that re-reads an exported
+    coordinates TSV in order to compare against Rust must therefore ask for a
+    correctly-rounded parse explicitly.
+    """
+    import sys
+
+    sys.path.insert(0, os.path.join(REPO_ROOT, "benchmarks"))
+    import bench_gclda_rust
+
+    # Values chosen to be misparsed by pandas' default (non-round-trip) parser.
+    coords = pd.DataFrame(
+        {
+            "id": ["s-000", "s-000", "s-001"],
+            "x": [-39.28741326378636, 21.975766541566877, 13.769677887668871],
+            "y": [21.975766541566877, 13.769677887668871, -39.28741326378636],
+            "z": [13.769677887668871, -39.28741326378636, 21.975766541566877],
+        }
+    )
+    counts = pd.DataFrame([[1, 2], [3, 4]], index=["s-000", "s-001"], columns=["a", "b"])
+
+    out_dir = str(tmp_path / "tsvs")
+    counts_path, coords_path = annotate.gclda_rs.export_gclda_tsvs(counts, coords, out_dir)
+
+    reread = pd.read_csv(coords_path, sep="\t", float_precision="round_trip")
+    for axis in ("x", "y", "z"):
+        np.testing.assert_array_equal(
+            reread[axis].to_numpy(),
+            coords[axis].to_numpy(),
+            err_msg=f"{axis} did not round-trip bit-exactly through the TSV",
+        )
+
+    # The benchmark's Python child must use that same correctly-rounded parse,
+    # or it silently feeds Python different coordinates than Rust and the
+    # equality check fails at real-corpus scale for reasons unrelated to the port.
+    assert 'float_precision="round_trip"' in bench_gclda_rust.CHILD_SCRIPT, (
+        "the benchmark child script must parse coordinates with "
+        'float_precision="round_trip" to match the Rust trainer'
+    )

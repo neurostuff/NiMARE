@@ -124,7 +124,14 @@ with open(sys.argv[1], encoding="utf-8") as fo:
     args = json.load(fo)
 
 counts = pd.read_csv(args["counts_path"], sep="\t", index_col="id")
-coords = pd.read_csv(args["coordinates_path"], sep="\t")
+# float_precision="round_trip" is required, not cosmetic: pandas' default C
+# float parser is not correctly rounded and disagrees with Rust's
+# `str::parse::<f64>` by 1 ULP on ~2.5% of real Neurosynth coordinates, which
+# propagates through the region statistics into the voxel probability matrices
+# and breaks the equality check for reasons unrelated to the port.
+coords = pd.read_csv(
+    args["coordinates_path"], sep="\t", float_precision="round_trip"
+)
 
 t0 = time.perf_counter()
 model = GCLDAModel(
@@ -593,6 +600,13 @@ def parse_args():
         default=15.0,
         help="Socket timeout (seconds) for the Neurosynth fetch attempt.",
     )
+    parser.add_argument(
+        "--neurosynth-data-dir",
+        default=None,
+        help="Directory holding the cached Neurosynth v7 download. Defaults to NiMARE's "
+        "own cache location (~/.nimare). Set this when the cache lives elsewhere, so the "
+        "benchmark uses the real corpus instead of skipping the scale.",
+    )
     parser.add_argument("--out", default=None, help="Write the full JSON report here.")
     return parser.parse_args()
 
@@ -619,7 +633,9 @@ def main():
 
     if args.scale == "neurosynth":
         count_df, coordinates_df, corpus_meta = load_neurosynth_corpus(
-            seed=args.seed, timeout=args.neurosynth_timeout
+            seed=args.seed,
+            timeout=args.neurosynth_timeout,
+            data_dir=args.neurosynth_data_dir,
         )
         if count_df is None:
             message = (
