@@ -48,6 +48,24 @@ impl Model {
         }
     }
 
+    /// Time one serial pass of `peak_probs_for` over every peak, into a single
+    /// reusable buffer. Diagnostic only: used by `--profile-pdf` to measure what
+    /// share of the peak-sampling phase is PDF evaluation, which is the number
+    /// the block-wise parallelization decision is gated on. Not called during
+    /// normal training.
+    pub fn time_serial_pdf_pass(&self) -> f64 {
+        let n_topics = self.params.n_topics;
+        let n_regions = self.params.n_regions;
+        let mut buf = vec![0.0f64; n_topics * n_regions];
+        let start = std::time::Instant::now();
+        for i_peak in 0..self.corpus.ptoken_coords.len() {
+            self.peak_probs_for(i_peak, &mut buf);
+        }
+        // Consume `buf` so the optimizer cannot eliminate the loop entirely.
+        std::hint::black_box(&buf);
+        start.elapsed().as_secs_f64()
+    }
+
     /// Update peak-token -> topic/subregion assignments (y, c) via one Gibbs
     /// sweep.
     ///

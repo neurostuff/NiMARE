@@ -121,6 +121,13 @@ struct Args {
     /// harness against the Python port. Not used in normal training runs.
     #[arg(long)]
     dump_state_dir: Option<PathBuf>,
+
+    /// Diagnostic: before training, time one serial pass of Gaussian PDF
+    /// evaluation over every peak and print the result, then continue.
+    /// Used to measure what fraction of the peak-sampling phase is PDF
+    /// evaluation. Not part of normal training.
+    #[arg(long, default_value_t = false)]
+    profile_pdf: bool,
 }
 
 /// Preflight-check that `path` can be opened, and if not, produce an error
@@ -173,6 +180,11 @@ fn run(args: Args) -> Result<(), GcldaError> {
     };
 
     let mut model = Model::new(corpus, mask, params)?;
+
+    if args.profile_pdf {
+        let seconds = model.time_serial_pdf_pass();
+        println!("profile_pdf: serial_pdf_pass_seconds={seconds:.6}");
+    }
 
     // The callback is invoked from inside `fit`'s loop (src/output.rs),
     // right where Python's `_update` calls `LGR.info`, so progress reaches
