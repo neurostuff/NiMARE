@@ -8,8 +8,9 @@
 //! Neurosynth scale. [`Model::compute_log_likelihood`] instead computes each
 //! observed token's dot product directly (`O(nnz * n_topics)` instead of
 //! `O(n_documents * n_word_types * n_topics)`, no dense allocation), and
-//! reuses [`Model::peak_probs_for`] rather than materializing the full
-//! `n_peaks x n_topics x n_regions` peak-probability array. The four cached
+//! reuses [`Model::peak_probs_block`] (one parallel block of peaks at a
+//! time, same as `update_peak_assignments`) rather than materializing the
+//! full `n_peaks x n_topics x n_regions` peak-probability array. The four cached
 //! per-call probability matrices (`docprobs_y`, `docprobs_z`, `regionprobs`,
 //! `wordprobs`) are computed with the same arithmetic Python uses, and both
 //! the peak (x) and word (w) terms preserve Python's per-element formula.
@@ -163,27 +164,44 @@ impl Model {
         // --- Peak (x) term ---
         // p(x|model, doc) = sum_r p(topic|doc) . p(subregion=r|topic) . p(x|subregion=r)
         //                 = sum_r sum_t docprobs_y[doc][t] * regionprobs[r][t] * peak_probs[t][r]
+        //
+        // PDF evaluation is done one parallel block of peaks at a time (see
+        // `Model::peak_probs_block`), mirroring `update_peak_assignments`.
+        // The accumulation into `x_loglikely` below stays sequential and in
+        // peak order -- it is a floating-point reduction, and reassociating
+        // it would change the result.
         let mut x_loglikely = 0.0f64;
-        let mut peak_probs = vec![0.0f64; n_topics * n_regions];
-        for i_ptoken in 0..self.corpus.ptoken_doc_idx.len() {
-            let doc = self.corpus.ptoken_doc_idx[i_ptoken] as usize;
-            self.peak_probs_for(i_ptoken, &mut peak_probs);
+        let n_ptokens = self.corpus.ptoken_doc_idx.len();
+        let stride = n_topics * n_regions;
+        let block_size = self.params.peak_block_size.max(1);
+        let mut block_buf = vec![0.0f64; block_size.min(n_ptokens.max(1)) * stride];
+        let mut block_start = 0usize;
+        while block_start < n_ptokens {
+            let len = block_size.min(n_ptokens - block_start);
+            self.peak_probs_block(block_start, len, &mut block_buf);
+            for i in 0..len {
+                let i_ptoken = block_start + i;
+                let peak_probs = &block_buf[i * stride..(i + 1) * stride];
 
-            let mut p_x = 0.0f64;
-            for j_region in 0..n_regions {
-                // p_region_g_doc[t] = docprobs_y[doc][t] * regionprobs[j_region][t]
-                // p_x_rd = sum_t p_region_g_doc[t] * peak_probs[t][j_region]
-                let mut p_x_rd = 0.0f64;
-                for t in 0..n_topics {
-                    let p_topic_g_doc = docprobs_y[Model::at(doc, t, n_topics)];
-                    let p_region_g_topic = regionprobs[Model::at(j_region, t, n_topics)];
-                    let p_region_g_doc = p_topic_g_doc * p_region_g_topic;
-                    let p_x_r = peak_probs[Model::at(t, j_region, n_regions)];
-                    p_x_rd += p_region_g_doc * p_x_r;
+                let doc = self.corpus.ptoken_doc_idx[i_ptoken] as usize;
+
+                let mut p_x = 0.0f64;
+                for j_region in 0..n_regions {
+                    // p_region_g_doc[t] = docprobs_y[doc][t] * regionprobs[j_region][t]
+                    // p_x_rd = sum_t p_region_g_doc[t] * peak_probs[t][j_region]
+                    let mut p_x_rd = 0.0f64;
+                    for t in 0..n_topics {
+                        let p_topic_g_doc = docprobs_y[Model::at(doc, t, n_topics)];
+                        let p_region_g_topic = regionprobs[Model::at(j_region, t, n_topics)];
+                        let p_region_g_doc = p_topic_g_doc * p_region_g_topic;
+                        let p_x_r = peak_probs[Model::at(t, j_region, n_regions)];
+                        p_x_rd += p_region_g_doc * p_x_r;
+                    }
+                    p_x += p_x_rd;
                 }
-                p_x += p_x_rd;
+                x_loglikely += p_x.ln();
             }
-            x_loglikely += p_x.ln();
+            block_start += len;
         }
 
         // --- Word (w) term ---
