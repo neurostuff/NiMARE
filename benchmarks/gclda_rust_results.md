@@ -54,6 +54,13 @@ as a same-run baseline (it agrees with the prior Python numbers within run-to-ru
 time within peak sampling. The pre-change Rust binary did not report them — it evaluated
 Gaussian PDFs fused into the sequential per-peak loop, with no separable PDF phase to time.
 
+Note that `peak_pdf` + `peak_sample` does not sum exactly to the reported `peak_sampling`
+(Python: 2.063 + 14.491 = 16.554 s vs. 16.749 s, a 1.2% gap; Rust after: 3.902 + 13.739 =
+17.641 s vs. 17.537 s, a 0.6% gap). This is expected, not an error: each figure is an
+independent median taken across the 3 repeats, so sub-phase medians need not sum to the
+phase median, and the per-iteration `region_totals` pre-pass sits inside `peak_sampling` but
+is not attributed to either sub-phase.
+
 Per-iteration cost is 2.707 s (Python) vs 2.131 s (Rust, after). *Extrapolated* to a full
 5,000-iteration production run: **≈3.76 h Python vs ≈2.96 h Rust** — these two figures are
 extrapolations from a 20-iteration measurement, not measured full runs.
@@ -211,31 +218,52 @@ It also runs only every `loglikely_freq` iterations.
 ### The Amdahl ceiling on future parallelization — and a correction to the design spec
 
 Task 1's measurement implies a hard ceiling on how much further parallelizing *this specific
-algorithm* can help. Peak sampling was 50.75% of pre-change Rust total runtime
-(26.96 s / 53.14 s), and only 35.5-37.9% of that phase is the parallelizable PDF evaluation —
-so **the parallelizable fraction of total pre-change Rust runtime is only ~22.6%.** The
-remaining **~77.2% is inherently sequential** (word sampling plus the sequential body of peak
-sampling — the per-peak topic/region draw itself, which must stay in order for bit-exactness).
+algorithm* can help. **The parallelizable fraction must be built from every parallel
+component's measured per-iteration cost, not from a single phase's share multiplied by a
+single sub-fraction** — an earlier draft of this section did the latter (peak sampling was
+50.75% of pre-change total, of which 35.5-37.9% was PDF evaluation, "so" ~22.6% of total) and
+that arithmetic does not reconcile: 0.5075 × 0.355–0.379 = 18.0–19.2%, not 22.6%. The error
+was one of scope, not multiplication: it counted only the peak-sampler's own PDF evaluation
+and silently dropped the other two components that are *also* parallel — log-likelihood's PDF
+pass (which this plan also parallelized, commit `869200b`) and region update (already
+rayon-parallel before this plan). Rebuilt from named, measured per-iteration inputs, all
+against the pre-change Rust binary:
 
-By Amdahl's law, with infinitely fast hardware for the parallel 22.6%:
+| Component | Measured cost | Per-iteration | Source |
+|---|---|---:|---|
+| Peak-sampler PDF evaluation | 0.511 s (median of 3, Task 1 `--profile-pdf`) | 0.511 s/iter | Measured directly per-iteration (the 1.348 s phase it was measured against is itself 26.96 s / 20 iters) |
+| Log-likelihood PDF evaluation | 0.511 s per computation (same `n_peaks × T × R` Gaussian PDF set; Task 4 parallelized it), run every `loglikely_freq=10` iterations | 0.511 / 10 ≈ 0.0511 s/iter | Amortized over the run frequency |
+| Region update (rayon-parallel) | 0.076 s / 20 iterations | 0.076 / 20 = 0.0038 s/iter | Pre-change Neurosynth measurement |
+| **Total parallelizable** | | **0.511 + 0.0511 + 0.0038 = 0.5659 s/iter** | |
+| Pre-change Rust total | 53.14 s / 20 iterations | 2.657 s/iter | Pre-change Neurosynth measurement |
 
 ```
-ceiling = 1 / (1 - 0.226) ≈ 1.29x over pre-change Rust
+parallelizable fraction = 0.5659 / 2.657 ≈ 0.213  →  21.3%
+sequential fraction      = 1 − 0.213 ≈ 0.787       →  78.7%
+Amdahl ceiling = 1 / (1 − 0.213) ≈ 1.271x over pre-change Rust
 ```
 
-This plan measured a **1.25x internal Rust speedup** (53.14 s → 42.63 s), i.e. **~96% of the
-theoretical ceiling** — there is very little headroom left in parallelizing this algorithm
-further without changing its sequential structure (e.g. SparseLDA-style bucket decomposition,
-which is out of scope here because it changes RNG consumption and breaks bit-exactness).
+**Revised: the parallelizable fraction of total pre-change Rust runtime is ~21.3%** (not
+22.6%), and **~78.7% is inherently sequential** (not 77.2%) — word sampling plus the
+sequential body of peak sampling, the per-peak topic/region draw itself, which must stay in
+order for bit-exactness.
+
+This plan measured a **1.247x internal Rust speedup** (53.14 s → 42.628 s), i.e.
+**1.247 / 1.271 ≈ 98.1% of the theoretical ceiling** — there is very little headroom left in
+parallelizing this algorithm further without changing its sequential structure (e.g.
+SparseLDA-style bucket decomposition, which is out of scope here because it changes RNG
+consumption and breaks bit-exactness). As a sanity check, the measured speedup (1.247x) must
+be ≤ the ceiling, and it is (1.247x ≤ 1.271x), with only ~2% of headroom remaining — consistent
+with a plan that captured nearly all of the available parallelism.
 
 **This corrects the design spec's `docs/superpowers/specs/2026-08-18-gclda-blockwise-pdf-design.md`
 "Out of scope → GPU offload" note**, which estimated the parallel-safe fraction at ~44% of
 runtime and an Amdahl ceiling of **1.79x**, with block-wise CPU parallelism expected to
 capture ~1.5x of that (leaving ~1.17x incremental for GPU offload). The 44%/1.79x figures
 predate Task 1's direct measurement and were themselves an estimate, not a measurement; the
-measured parallelizable fraction is roughly half that (22.6%), and the corrected ceiling is
-**1.29x, not 1.79x**. Since this plan's CPU-only fix already captured ~96% of the 1.29x
-ceiling, a GPU offload would have at most ~0.03x of headroom left over the current Rust
+measured parallelizable fraction is roughly a fifth of that (21.3%), and the corrected ceiling
+is **1.271x, not 1.79x**. Since this plan's CPU-only fix already captured ~98% of the 1.271x
+ceiling, a GPU offload would have at most ~0.02x of headroom left over the current Rust
 implementation — the GPU option was already low-value under the original (wrong) estimate,
 and is essentially worthless under the corrected one. It should not be pursued for this
 algorithm's current sequential structure.
@@ -271,10 +299,12 @@ algorithm's current sequential structure.
   10,000,000 — produced all four probability matrices bit-identical to the Python
   implementation.
 - **There is little room left to parallelize this algorithm further.** The measured
-  sequential fraction (77.2% of pre-change Rust runtime) sets an Amdahl ceiling of ~1.29x
-  over pre-change Rust, and this plan already captured ~96% of that ceiling. Both the
-  original spec's GPU-offload estimate (1.79x ceiling) and any similar future proposal should
-  be evaluated against the corrected 1.29x figure, not the original one.
+  sequential fraction (78.7% of pre-change Rust runtime, built from the peak-sampler PDF,
+  log-likelihood PDF, and region-update per-iteration costs — see the derivation above) sets
+  an Amdahl ceiling of ~1.271x over pre-change Rust, and this plan already captured ~98% of
+  that ceiling. Both the original spec's GPU-offload estimate (1.79x ceiling) and any similar
+  future proposal should be evaluated against the corrected 1.271x figure, not the original
+  one.
 
 ## Test suite status
 
