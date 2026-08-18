@@ -44,7 +44,7 @@ DEFAULT_TRAIN_PARAMS = {
     "dobs": 25.0,
     "roi_size": 50.0,
     "seed_init": 1,
-    "peak_block_size": 8192,
+    "peak_block_size": None,  # None -> gclda-train sizes the block from its byte budget
     "n_iters": 5000,
     "loglikely_freq": 10,
     "output_dtype": "f64",
@@ -321,8 +321,6 @@ def train_gclda_rust(count_df, coordinates_df, mask, out_dir, binary=None, **par
             str(merged["roi_size"]),
             "--seed-init",
             str(merged["seed_init"]),
-            "--peak-block-size",
-            str(merged["peak_block_size"]),
             "--n-iters",
             str(merged["n_iters"]),
             "--loglikely-freq",
@@ -332,6 +330,12 @@ def train_gclda_rust(count_df, coordinates_df, mask, out_dir, binary=None, **par
             "--threads",
             str(merged["threads"]),
         ]
+
+        # Omitted when None so gclda-train derives the block size from its own
+        # byte budget, which keeps the buffer roughly constant instead of
+        # letting it grow linearly with n_topics.
+        if merged["peak_block_size"] is not None:
+            cmd += ["--peak-block-size", str(merged["peak_block_size"])]
 
         completed = subprocess.run(cmd, capture_output=True, text=True)
         if completed.returncode != 0:

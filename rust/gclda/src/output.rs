@@ -319,6 +319,10 @@ fn write_model_json(model: &Model, dir: &Path) -> Result<(), GcldaError> {
         "dobs": p.dobs,
         "roi_size": p.roi_size,
         "seed_init": p.seed_init,
+        // The RESOLVED value, not the flag: when --peak-block-size is omitted
+        // it is derived from a byte budget, so recording it here is what makes
+        // a run's block size reproducible from its outputs alone.
+        "peak_block_size": p.peak_block_size,
         "n_iters": model.n_iters,
         "loglikely_freq": model.loglikely_freq,
         "ids": model.corpus.ids,

@@ -99,11 +99,18 @@ struct Args {
     #[arg(long, default_value_t = 1)]
     seed_init: u32,
 
-    /// Peaks per parallel PDF-evaluation block. Larger blocks expose more
-    /// parallelism; buffer cost is
+    /// Peaks per parallel PDF-evaluation block. Larger blocks amortize rayon's
+    /// per-block dispatch cost over more work; buffer cost is
     /// `peak_block_size * n_topics * n_regions * 8` bytes.
-    #[arg(long, default_value_t = 8192)]
-    peak_block_size: usize,
+    ///
+    /// Omit to derive it from [`PEAK_BLOCK_BYTE_BUDGET`], which keeps the
+    /// buffer at a roughly constant size instead of letting it grow linearly
+    /// with `n_topics`. Measured at Neurosynth scale with T=100: a 256-peak
+    /// block spends 3.93 s/iter in PDF evaluation against Python's 0.103 s,
+    /// 8,192 spends 0.188 s, and 65,536 spends 0.078 s -- i.e. the block size
+    /// alone moves this phase from 38x slower than numba to 1.3x faster.
+    #[arg(long)]
+    peak_block_size: Option<usize>,
 
     /// Total number of training iterations to run.
     #[arg(long, default_value_t = 5000)]
@@ -134,6 +141,42 @@ struct Args {
     /// evaluation. Not part of normal training.
     #[arg(long, default_value_t = false)]
     profile_pdf: bool,
+}
+
+/// Target size, in bytes, for the peak PDF block buffer when
+/// `--peak-block-size` is not given explicitly.
+///
+/// A fixed *count* makes the buffer grow linearly with `n_topics`
+/// (8,192 peaks costs 13 MB at T=100 but 131 MB at T=1000); a fixed *byte*
+/// budget holds it roughly constant while still giving rayon large enough
+/// blocks to amortize dispatch. 100 MB was chosen because the measured
+/// sweep at Neurosynth scale (T=100) put the knee of the curve near a
+/// 65,536-peak block, which is ~105 MB, while costing only ~39 MiB of
+/// additional peak RSS against a total footprint of ~253 MiB.
+const PEAK_BLOCK_BYTE_BUDGET: usize = 100_000_000;
+
+/// Resolve `--peak-block-size` into a concrete peak count.
+///
+/// `None` derives it from [`PEAK_BLOCK_BYTE_BUDGET`]. An explicit `0` is
+/// rejected rather than silently coerced: the sampler's `.max(1)` would turn
+/// it into one-peak blocks, which the sweep measured at roughly 3x slower
+/// overall, and a silent 3x slowdown from a typo is worse than an error.
+fn resolve_peak_block_size(
+    requested: Option<usize>,
+    n_topics: usize,
+    n_regions: usize,
+) -> Result<usize, GcldaError> {
+    match requested {
+        Some(0) => Err(GcldaError::Parse(
+            "--peak-block-size must be at least 1 (omit it to size the block automatically)"
+                .to_string(),
+        )),
+        Some(n) => Ok(n),
+        None => {
+            let per_peak = n_topics * n_regions * std::mem::size_of::<f64>();
+            Ok((PEAK_BLOCK_BYTE_BUDGET / per_peak.max(1)).max(1))
+        }
+    }
 }
 
 /// Preflight-check that `path` can be opened, and if not, produce an error
@@ -183,7 +226,11 @@ fn run(args: Args) -> Result<(), GcldaError> {
         dobs: args.dobs,
         roi_size: args.roi_size,
         seed_init: args.seed_init,
-        peak_block_size: args.peak_block_size,
+        peak_block_size: resolve_peak_block_size(
+            args.peak_block_size,
+            args.n_topics,
+            args.n_regions,
+        )?,
     };
 
     let mut model = Model::new(corpus, mask, params)?;
