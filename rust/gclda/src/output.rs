@@ -331,6 +331,8 @@ fn write_model_json(model: &Model, dir: &Path) -> Result<(), GcldaError> {
         "phase_times": {
             "word_sampling": model.phase_times.word_sampling,
             "peak_sampling": model.phase_times.peak_sampling,
+            "peak_pdf": model.phase_times.peak_pdf,
+            "peak_sample": model.phase_times.peak_sample,
             "region_update": model.phase_times.region_update,
             "loglikelihood": model.phase_times.loglikelihood,
             "total": model.phase_times.total,

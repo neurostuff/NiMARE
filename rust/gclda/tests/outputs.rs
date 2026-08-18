@@ -47,6 +47,7 @@ fn build_model() -> Model {
         dobs: 25.0,
         roi_size: 50.0,
         seed_init: 1,
+        peak_block_size: 8192,
     };
     Model::new(corpus, mask, params).unwrap()
 }
@@ -92,7 +93,8 @@ assert len(ids["mask_shape"]) == 3
 n_voxels = ids["n_voxels"]
 assert n_voxels > 0
 assert set(ids["phase_times"].keys()) == {{
-    "word_sampling", "peak_sampling", "region_update", "loglikelihood", "total"
+    "word_sampling", "peak_sampling", "peak_pdf", "peak_sample",
+    "region_update", "loglikelihood", "total"
 }}
 assert all(v >= 0 for v in ids["phase_times"].values())
 assert ids["phase_times"]["total"] > 0

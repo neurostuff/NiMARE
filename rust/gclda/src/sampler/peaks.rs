@@ -177,66 +177,82 @@ impl Model {
 
         let mut peak_topic_probs = vec![0.0f64; n_topics];
         let mut probs_pdf = vec![0.0f64; n_regions * n_topics];
-        // Reused across peaks: peak_probs_for fills this with p(x|topic,region)
-        // for the current peak, indexed topic * n_regions + region.
-        let mut peak_probs = vec![0.0f64; n_topics * n_regions];
 
         let n_ptokens = self.corpus.ptoken_doc_idx.len();
-        for i_ptoken in 0..n_ptokens {
-            let doc = self.corpus.ptoken_doc_idx[i_ptoken] as usize;
-            let topic = self.peak_topic_idx[i_ptoken] as usize;
-            let region = self.peak_region_idx[i_ptoken] as usize;
 
-            self.n_peak_tokens_region_by_topic[Model::at(region, topic, n_topics)] -= 1;
-            self.n_peak_tokens_doc_by_topic[Model::at(doc, topic, n_topics)] -= 1;
-            region_totals[topic] -= 1.0;
+        let stride = n_topics * n_regions;
+        let block_size = self.params.peak_block_size.max(1);
+        let mut block_buf = vec![0.0f64; block_size.min(n_ptokens.max(1)) * stride];
 
-            self.peak_probs_for(i_ptoken, &mut peak_probs);
+        let mut block_start = 0usize;
+        while block_start < n_ptokens {
+            let len = block_size.min(n_ptokens - block_start);
 
-            let mut max_logp = f64::NEG_INFINITY;
-            for i_topic in 0..n_topics {
-                let doc_topic_peak_counts =
-                    self.n_peak_tokens_doc_by_topic[Model::at(doc, i_topic, n_topics)] as f64
-                        + gamma;
-                let logp = self.n_word_tokens_doc_by_topic[Model::at(doc, i_topic, n_topics)]
-                    as f64
-                    * (1.0 / doc_topic_peak_counts).ln_1p();
-                peak_topic_probs[i_topic] = logp;
-                if logp > max_logp {
-                    max_logp = logp;
-                }
-            }
+            let t_pdf = std::time::Instant::now();
+            self.peak_probs_block(block_start, len, &mut block_buf);
+            self.phase_times.peak_pdf += t_pdf.elapsed().as_secs_f64();
 
-            for i_topic in 0..n_topics {
-                peak_topic_probs[i_topic] = (peak_topic_probs[i_topic] - max_logp).exp();
-            }
+            let t_sample = std::time::Instant::now();
+            for i in 0..len {
+                let i_ptoken = block_start + i;
+                let peak_probs = &block_buf[i * stride..(i + 1) * stride];
 
-            let mut flat_idx = 0usize;
-            for j_region in 0..n_regions {
+                let doc = self.corpus.ptoken_doc_idx[i_ptoken] as usize;
+                let topic = self.peak_topic_idx[i_ptoken] as usize;
+                let region = self.peak_region_idx[i_ptoken] as usize;
+
+                self.n_peak_tokens_region_by_topic[Model::at(region, topic, n_topics)] -= 1;
+                self.n_peak_tokens_doc_by_topic[Model::at(doc, topic, n_topics)] -= 1;
+                region_totals[topic] -= 1.0;
+
+                let mut max_logp = f64::NEG_INFINITY;
                 for i_topic in 0..n_topics {
-                    probs_pdf[flat_idx] = peak_probs[Model::at(i_topic, j_region, n_regions)]
-                        * ((self.n_peak_tokens_region_by_topic
-                            [Model::at(j_region, i_topic, n_topics)]
-                            as f64
-                            + delta)
-                            / (region_totals[i_topic] + region_total_prior))
-                        * (self.n_peak_tokens_doc_by_topic[Model::at(doc, i_topic, n_topics)]
-                            as f64
-                            + alpha)
-                        * peak_topic_probs[i_topic];
-                    flat_idx += 1;
+                    let doc_topic_peak_counts =
+                        self.n_peak_tokens_doc_by_topic[Model::at(doc, i_topic, n_topics)] as f64
+                            + gamma;
+                    let logp = self.n_word_tokens_doc_by_topic[Model::at(doc, i_topic, n_topics)]
+                        as f64
+                        * (1.0 / doc_topic_peak_counts).ln_1p();
+                    peak_topic_probs[i_topic] = logp;
+                    if logp > max_logp {
+                        max_logp = logp;
+                    }
                 }
+
+                for i_topic in 0..n_topics {
+                    peak_topic_probs[i_topic] = (peak_topic_probs[i_topic] - max_logp).exp();
+                }
+
+                let mut flat_idx = 0usize;
+                for j_region in 0..n_regions {
+                    for i_topic in 0..n_topics {
+                        probs_pdf[flat_idx] = peak_probs[Model::at(i_topic, j_region, n_regions)]
+                            * ((self.n_peak_tokens_region_by_topic
+                                [Model::at(j_region, i_topic, n_topics)]
+                                as f64
+                                + delta)
+                                / (region_totals[i_topic] + region_total_prior))
+                            * (self.n_peak_tokens_doc_by_topic[Model::at(doc, i_topic, n_topics)]
+                                as f64
+                                + alpha)
+                            * peak_topic_probs[i_topic];
+                        flat_idx += 1;
+                    }
+                }
+
+                let sampled_idx = rng.sample_from_unnormalized(&probs_pdf)?;
+                let region = sampled_idx / n_topics;
+                let topic = sampled_idx % n_topics;
+
+                self.n_peak_tokens_region_by_topic[Model::at(region, topic, n_topics)] += 1;
+                self.n_peak_tokens_doc_by_topic[Model::at(doc, topic, n_topics)] += 1;
+                region_totals[topic] += 1.0;
+                self.peak_topic_idx[i_ptoken] = topic as u32;
+                self.peak_region_idx[i_ptoken] = region as u32;
             }
+            self.phase_times.peak_sample += t_sample.elapsed().as_secs_f64();
 
-            let sampled_idx = rng.sample_from_unnormalized(&probs_pdf)?;
-            let region = sampled_idx / n_topics;
-            let topic = sampled_idx % n_topics;
-
-            self.n_peak_tokens_region_by_topic[Model::at(region, topic, n_topics)] += 1;
-            self.n_peak_tokens_doc_by_topic[Model::at(doc, topic, n_topics)] += 1;
-            region_totals[topic] += 1.0;
-            self.peak_topic_idx[i_ptoken] = topic as u32;
-            self.peak_region_idx[i_ptoken] = region as u32;
+            block_start += len;
         }
 
         Ok(())

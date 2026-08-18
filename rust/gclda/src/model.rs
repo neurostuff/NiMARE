@@ -21,11 +21,15 @@ pub struct Params {
     pub dobs: f64,
     pub roi_size: f64,
     pub seed_init: u32,
+    /// Number of peaks whose Gaussian densities are evaluated per parallel
+    /// block in `update_peak_assignments`. Buffer cost is
+    /// `peak_block_size * n_topics * n_regions * 8` bytes.
+    pub peak_block_size: usize,
 }
 
 /// Cumulative per-phase wall-clock time (seconds), accumulated across every
 /// [`Model::update`] call within the most recent [`Model::fit`]. Mirrors
-/// Python's `GCLDAModel.phase_times_` exactly (same five keys), so a
+/// Python's `GCLDAModel.phase_times_` exactly (same seven keys), so a
 /// benchmark driver can compare Rust against Python phase-by-phase rather
 /// than as one aggregate ratio.
 ///
@@ -43,6 +47,12 @@ pub struct Params {
 pub struct PhaseTimes {
     pub word_sampling: f64,
     pub peak_sampling: f64,
+    /// Time spent evaluating peak Gaussian densities. Subset of
+    /// `peak_sampling`.
+    pub peak_pdf: f64,
+    /// Time spent in the sequential per-peak sampling body. Subset of
+    /// `peak_sampling`.
+    pub peak_sample: f64,
     pub region_update: f64,
     pub loglikelihood: f64,
     pub total: f64,

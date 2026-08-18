@@ -23,6 +23,7 @@ fn initial_state_matches_python_constructor() {
             alpha: 0.1, beta: 0.01, gamma: 0.01, delta: 1.0,
             dobs: 25.0, roi_size: 50.0,
             seed_init: cfg["seed_init"].as_u64().unwrap() as u32,
+            peak_block_size: 8192,
         };
         let corpus = load_corpus(&fixture("counts.tsv"), &fixture("coordinates.tsv")).unwrap();
         let mask = load_mask_xyz(&mask_path).unwrap();
@@ -59,7 +60,7 @@ fn symmetric_with_odd_regions_is_rejected() {
     let params = Params {
         n_topics: 3, n_regions: 3, symmetric: true,
         alpha: 0.1, beta: 0.01, gamma: 0.01, delta: 1.0,
-        dobs: 25.0, roi_size: 50.0, seed_init: 1,
+        dobs: 25.0, roi_size: 50.0, seed_init: 1, peak_block_size: 8192,
     };
     assert!(Model::new(corpus, mask, params).is_err());
 }

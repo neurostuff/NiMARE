@@ -99,6 +99,12 @@ struct Args {
     #[arg(long, default_value_t = 1)]
     seed_init: u32,
 
+    /// Peaks per parallel PDF-evaluation block. Larger blocks expose more
+    /// parallelism; buffer cost is
+    /// `peak_block_size * n_topics * n_regions * 8` bytes.
+    #[arg(long, default_value_t = 8192)]
+    peak_block_size: usize,
+
     /// Total number of training iterations to run.
     #[arg(long, default_value_t = 5000)]
     n_iters: usize,
@@ -177,6 +183,7 @@ fn run(args: Args) -> Result<(), GcldaError> {
         dobs: args.dobs,
         roi_size: args.roi_size,
         seed_init: args.seed_init,
+        peak_block_size: args.peak_block_size,
     };
 
     let mut model = Model::new(corpus, mask, params)?;

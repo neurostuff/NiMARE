@@ -44,6 +44,7 @@ DEFAULT_TRAIN_PARAMS = {
     "dobs": 25.0,
     "roi_size": 50.0,
     "seed_init": 1,
+    "peak_block_size": 8192,
     "n_iters": 5000,
     "loglikely_freq": 10,
     "output_dtype": "f64",
@@ -266,9 +267,9 @@ def train_gclda_rust(count_df, coordinates_df, mask, out_dir, binary=None, **par
     **params
         Training hyperparameters: ``n_topics``, ``n_regions``, ``symmetric``,
         ``alpha``, ``beta``, ``gamma``, ``delta``, ``dobs``, ``roi_size``,
-        ``seed_init``, ``n_iters``, ``loglikely_freq``, ``output_dtype``
-        (``"f64"`` or ``"f32"``), ``threads``. Unspecified values fall back
-        to :data:`DEFAULT_TRAIN_PARAMS`.
+        ``seed_init``, ``peak_block_size``, ``n_iters``, ``loglikely_freq``,
+        ``output_dtype`` (``"f64"`` or ``"f32"``), ``threads``. Unspecified
+        values fall back to :data:`DEFAULT_TRAIN_PARAMS`.
 
     Returns
     -------
@@ -320,6 +321,8 @@ def train_gclda_rust(count_df, coordinates_df, mask, out_dir, binary=None, **par
             str(merged["roi_size"]),
             "--seed-init",
             str(merged["seed_init"]),
+            "--peak-block-size",
+            str(merged["peak_block_size"]),
             "--n-iters",
             str(merged["n_iters"]),
             "--loglikely-freq",

@@ -615,6 +615,8 @@ class GCLDAModel(NiMAREBase):
         self.phase_times_ = {
             "word_sampling": 0.0,
             "peak_sampling": 0.0,
+            "peak_pdf": 0.0,
+            "peak_sample": 0.0,
             "region_update": 0.0,
             "loglikelihood": 0.0,
             "total": 0.0,
@@ -880,7 +882,9 @@ class GCLDAModel(NiMAREBase):
         np.random.seed(randseed)
 
         # Retrieve p(x|r,y) for all subregions
+        t_pdf = time.perf_counter()
         peak_probs = self._get_peak_probs(self)
+        self.phase_times_["peak_pdf"] += time.perf_counter() - t_pdf
         region_by_topic = self.topics["n_peak_tokens_region_by_topic"]
         doc_by_topic = self.topics["n_peak_tokens_doc_by_topic"]
         word_doc_by_topic = self.topics["n_word_tokens_doc_by_topic"]
@@ -889,6 +893,7 @@ class GCLDAModel(NiMAREBase):
         delta = self.params["delta"]
         alpha = self.params["alpha"]
         gamma = self.params["gamma"]
+        t_sample = time.perf_counter()
         _jit_update_peak_assignments(
             randseed,
             self.data["ptoken_doc_idx"],
@@ -902,6 +907,7 @@ class GCLDAModel(NiMAREBase):
             alpha,
             gamma,
         )
+        self.phase_times_["peak_sample"] += time.perf_counter() - t_sample
 
     def _update_regions(self):
         """Update spatial distribution parameters (Gaussians params for all subregions).

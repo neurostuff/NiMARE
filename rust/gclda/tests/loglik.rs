@@ -64,6 +64,7 @@ fn log_likelihood_matches_python() {
             dobs: 25.0,
             roi_size: 50.0,
             seed_init,
+            peak_block_size: 8192,
         };
         let mut model = Model::new(corpus, mask, params).unwrap();
         model.update_regions().unwrap();

@@ -27,6 +27,7 @@ fn peak_topic_region_sweep_matches_python() {
         dobs: 25.0,
         roi_size: 50.0,
         seed_init: 1,
+        peak_block_size: 8192,
     };
     let mut model = Model::new(corpus, mask, params).unwrap();
 

@@ -71,6 +71,7 @@ fn p_topic_g_voxel_row_sum_matches_python_at_n_topics_100() {
         dobs: 25.0,
         roi_size: 50.0,
         seed_init: 1,
+        peak_block_size: 8192,
     };
     let mut model = Model::new(corpus, mask, params).unwrap();
     model.fit(2, 1, None, |_, _| {}).unwrap();

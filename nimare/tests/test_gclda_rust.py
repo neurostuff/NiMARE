@@ -585,11 +585,17 @@ def test_both_implementations_report_matching_phase_keys(small_corpus, mni_mask,
     with open(tmp_path / "out" / "model.json") as fo:
         rust_meta = json.load(fo)
 
-    expected = {"word_sampling", "peak_sampling", "region_update", "loglikelihood", "total"}
+    expected = {
+        "word_sampling", "peak_sampling", "peak_pdf", "peak_sample",
+        "region_update", "loglikelihood", "total",
+    }
     assert set(model.phase_times_) == expected
     assert set(rust_meta["phase_times"]) == expected
 
-    sub_phases = ["word_sampling", "peak_sampling", "region_update", "loglikelihood"]
+    sub_phases = [
+        "word_sampling", "peak_sampling", "peak_pdf", "peak_sample",
+        "region_update", "loglikelihood",
+    ]
     for key in sub_phases:
         assert model.phase_times_[key] > 0, f"python {key} was not timed (reports 0.0)"
         assert rust_meta["phase_times"][key] > 0, f"rust {key} was not timed (reports 0.0)"
@@ -667,3 +673,47 @@ def test_full_precision_coordinates_survive_the_tsv_boundary(tmp_path):
         "the benchmark child script must parse coordinates with "
         'float_precision="round_trip" to match the Rust trainer'
     )
+
+
+@requires_rust
+@pytest.mark.parametrize("block_size", [1, 7, 8192, 10_000_000])
+def test_rust_outputs_are_invariant_to_peak_block_size(
+    small_corpus, mni_mask, tmp_path, block_size
+):
+    """Block size must not change a single bit of any output.
+
+    Blocking the peak sampler is only legal because Gaussian evaluation is
+    order-independent while sampling is not. The failure modes it introduces
+    are off-by-one at block boundaries and mishandling of the partial final
+    block, neither of which shows up as a crash -- only as different numbers.
+    Block size 7 is deliberately a non-power-of-2 that does not divide the
+    peak count evenly; 10_000_000 exceeds the corpus so the whole run is one
+    partial block; 1 makes every block partial.
+    """
+    counts, coords = small_corpus
+    mask_path = str(tmp_path / "mask.nii.gz")
+    mni_mask.to_filename(mask_path)
+
+    out_dir = str(tmp_path / f"out_{block_size}")
+    annotate.gclda_rs.train_gclda_rust(
+        counts, coords, mask=mask_path, out_dir=out_dir, binary=BINARY,
+        n_topics=4, n_regions=2, symmetric=True, n_iters=5, loglikely_freq=5,
+        peak_block_size=block_size,
+    )
+
+    reference_dir = str(tmp_path / "out_reference")
+    annotate.gclda_rs.train_gclda_rust(
+        counts, coords, mask=mask_path, out_dir=reference_dir, binary=BINARY,
+        n_topics=4, n_regions=2, symmetric=True, n_iters=5, loglikely_freq=5,
+        peak_block_size=8192,
+    )
+
+    for name in (
+        "p_topic_g_voxel", "p_voxel_g_topic", "p_topic_g_word", "p_word_g_topic",
+        "peak_topic_idx", "peak_region_idx", "n_peak_tokens_region_by_topic",
+    ):
+        got = np.load(os.path.join(out_dir, f"{name}.npy"))
+        want = np.load(os.path.join(reference_dir, f"{name}.npy"))
+        np.testing.assert_array_equal(
+            got, want, err_msg=f"{name} changed with peak_block_size={block_size}"
+        )
