@@ -717,3 +717,26 @@ def test_rust_outputs_are_invariant_to_peak_block_size(
         np.testing.assert_array_equal(
             got, want, err_msg=f"{name} changed with peak_block_size={block_size}"
         )
+
+
+def test_benchmark_driver_exposes_blockwise_flags():
+    """The benchmark must be able to sweep the new knobs, and record them.
+
+    A benchmark that cannot vary block size cannot produce the thread- and
+    block-scaling evidence this optimization is justified by, and one that
+    does not record the setting produces numbers nobody can reproduce.
+    """
+    import sys
+
+    sys.path.insert(0, os.path.join(REPO_ROOT, "benchmarks"))
+    import bench_gclda_rust
+
+    argv = ["--scale", "tiny", "--peak-block-size", "512"]
+    old = sys.argv
+    try:
+        sys.argv = ["bench_gclda_rust.py", *argv]
+        args = bench_gclda_rust.parse_args()
+    finally:
+        sys.argv = old
+
+    assert args.peak_block_size == 512

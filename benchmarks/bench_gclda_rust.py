@@ -355,6 +355,7 @@ def run_rust_once(binary, counts_path, coords_path, mask_path, out_dir, params, 
         "--loglikely-freq", str(params["loglikely_freq"]),
         "--output-dtype", str(params.get("output_dtype", "f64")),
         "--threads", str(params.get("threads", 0)),
+        "--peak-block-size", str(params.get("peak_block_size", 8192)),
     ]
     report_path = out_dir / "time_report.txt" if report_path is None else report_path
     rc, out, err, wall, peak_kb, rss_method = _run_timed_subprocess(cmd, report_path)
@@ -584,6 +585,12 @@ def parse_args():
     )
     parser.add_argument("--loglikely-freq", type=int, default=None)
     parser.add_argument("--threads", type=int, default=0)
+    parser.add_argument(
+        "--peak-block-size",
+        type=int,
+        default=8192,
+        help="Peaks per parallel PDF-evaluation block in the Rust trainer.",
+    )
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--seed", type=int, default=0, help="Corpus generation seed.")
     parser.add_argument("--seed-init", type=int, default=1, help="Model sampler seed.")
@@ -678,6 +685,7 @@ def main():
         n_iters=args.n_iters,
         loglikely_freq=loglikely_freq,
         threads=args.threads,
+        peak_block_size=args.peak_block_size,
     )
 
     counts_path, coords_path = export_gclda_tsvs(
