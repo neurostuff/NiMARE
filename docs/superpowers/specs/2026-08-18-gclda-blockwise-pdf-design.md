@@ -2,7 +2,9 @@
 
 Date: 2026-08-18
 Branch: `rs-gclda`
-Status: approved, ready for implementation planning
+Status: implemented (block-wise PDF evaluation); the float32 compute path described below was
+**cut before implementation** (commit `0c9bec5`) and never built — see "Post-implementation
+correction" at the bottom.
 
 Follow-up to `2026-08-15-gclda-rust-port-design.md`, addressing the one regression that
 benchmark measurement exposed in the completed port.
@@ -50,9 +52,9 @@ only the sampling is sequential. Blocking recovers both.
 | Strategy | Evaluate PDFs one block of peaks at a time, in parallel; sample each block sequentially |
 | Block size | `--peak-block-size`, default 8192 |
 | Bit-exactness | **Preserved** for the default f64 path; guarded by the existing Level 2/3 suite |
-| float32 scope | PDF evaluation and sampling weights; region parameters stay f64 |
-| float32 flag | `--compute-dtype {f64,f32}`, default `f64`, distinct from the existing `--output-dtype` |
-| float32 validation | Short-run tolerance against f64, documented experimental |
+| float32 scope **(cut — not implemented)** | PDF evaluation and sampling weights; region parameters stay f64 |
+| float32 flag **(cut — not implemented)** | `--compute-dtype {f64,f32}`, default `f64`, distinct from the existing `--output-dtype` |
+| float32 validation **(cut — not implemented)** | Short-run tolerance against f64, documented experimental |
 | Sequencing | Measure the PDF/sampling split **before** implementing |
 
 ## Design
@@ -127,6 +129,11 @@ exists, not because it is significant on its own.
 
 ### 3. float32 compute path
 
+**CUT before implementation (commit `0c9bec5`) — never built.** This section is kept in
+place, unedited, as the record of what was designed and descoped rather than deleted; see
+"Post-implementation correction" at the bottom for why. Nothing described under this heading
+exists in the codebase.
+
 `--compute-dtype {f64,f32}` (default `f64`). This is **separate from `--output-dtype`**, which
 affects only serialization of the two large `V x T` matrices and never the computation.
 
@@ -193,7 +200,9 @@ the key new test: it targets precisely where this change can break — off-by-on
 boundaries and mishandling of the partial final block. The value `7` is deliberately chosen as
 a non-power-of-2 that does not divide the peak count evenly.
 
-**New — float32 tolerance.** `f32` versus `f64` outputs compared with a relative tolerance over
+**New — float32 tolerance. (CUT — not implemented; the float32 path was cut before
+implementation, see "Post-implementation correction" at the bottom, so this test was never
+written. Kept in place as the record of what was planned.)** `f32` versus `f64` outputs compared with a relative tolerance over
 a small number of iterations, before sampling divergence can accumulate, plus an assertion that
 the `f64` default remains bit-exact against Python. The flag is documented as experimental; this
 test establishes that it runs and produces plausible output, and deliberately makes no claim of
@@ -215,14 +224,18 @@ equality gate must pass before any new timing is recorded.
 
 ## Files touched
 
-- `rust/gclda/src/sampler/peaks.rs` — block loop, `peak_probs_block`, generic float
-- `rust/gclda/src/gaussian.rs` — generic / `f32` PDF evaluation
+Below, items marked **(cut — not implemented)** describe the float32 compute path, which was
+cut before implementation (commit `0c9bec5`); see "Post-implementation correction" at the
+bottom. Everything else in this list was implemented as described.
+
+- `rust/gclda/src/sampler/peaks.rs` — block loop, `peak_probs_block`; generic float **(cut — not implemented)**
+- `rust/gclda/src/gaussian.rs` — generic / `f32` PDF evaluation **(cut — not implemented; file never touched)**
 - `rust/gclda/src/loglik.rs` — block-wise PDF consumption
-- `rust/gclda/src/model.rs` — `f32` region-parameter mirror, sub-phase timing
-- `rust/gclda/src/bin/gclda-train.rs` — `--peak-block-size`, `--compute-dtype`
+- `rust/gclda/src/model.rs` — sub-phase timing; `f32` region-parameter mirror **(cut — not implemented)**
+- `rust/gclda/src/bin/gclda-train.rs` — `--peak-block-size`; `--compute-dtype` **(cut — not implemented)**
 - `nimare/annotate/gclda.py` — matching sub-phase timing keys
 - `nimare/annotate/gclda_rs.py` — pass new parameters through `train_gclda_rust`
-- `nimare/tests/test_gclda_rust.py` — block-size invariance, `f32` tolerance
+- `nimare/tests/test_gclda_rust.py` — block-size invariance; `f32` tolerance **(cut — not implemented)**
 - `benchmarks/bench_gclda_rust.py` — expose the new flags
 - `benchmarks/gclda_rust_results.md` — updated measurements
 
@@ -233,11 +246,19 @@ equality gate must pass before any new timing is recorded.
   Python produce different results even when both are correct. That removes exact comparison as
   a test and replaces it with tolerance-based statistical comparison. It is a separate decision
   on its own merits, taken after this work lands and is trusted.
-- **GPU offload.** *(Figures corrected after measurement -- see below.)* The parallel-safe
-  fraction is ~22.6% of runtime, so Amdahl caps total speedup at **1.29x** over the pre-change
-  Rust even with infinitely fast hardware. Block-wise CPU parallelism captures ~1.27x of
-  that, leaving ~1.17x incremental for a CUDA/wgpu dependency, a hardware requirement, and near
-  certain loss of bit-exactness. Not recommended.
+- **GPU offload.** *(Figures corrected twice after measurement — see "Post-implementation
+  correction" below.)* The final measured parallel-safe fraction is ~21.3% of pre-change Rust
+  runtime, with ~78.7% inherently sequential collapsed-Gibbs work (word sampling plus the
+  per-peak sampling body) that no accelerator touches regardless of hardware speed. A naive
+  Amdahl derivation from that split gives a ceiling of ~1.271x over pre-change Rust, but
+  `benchmarks/gclda_rust_results.md` records a block-size-sweep measurement — 1.319x internal
+  speedup at `--peak-block-size 65536` — that exceeds this "ceiling," because blocking also
+  improves cache locality in the sequential phase, an effect the pure-parallelization Amdahl
+  model does not capture. So 1.271x should not be treated as a hard bound. The conclusion
+  nonetheless stands on the sequential-fraction argument alone: GPU offload can only address
+  the ~21.3% that block-wise CPU parallelism already captures with 28 cores, so the
+  incremental value of a CUDA/wgpu dependency, a hardware requirement, and near-certain loss
+  of bit-exactness is low. Not recommended.
 - **PyO3 bindings.** A usability improvement, not a performance one, and it would make peak
   memory *worse* by keeping the dense count DataFrame resident in Python alongside Rust's
   working set.
@@ -248,18 +269,39 @@ equality gate must pass before any new timing is recorded.
 
 ## Post-implementation correction (2026-08-18)
 
-Two figures in this spec were written before the gate measurement and are wrong. They are
-corrected here rather than silently edited away, because the error is the point:
+Three things in this spec were written before the gate measurement, or before later
+decisions, and needed correction after the fact. They are corrected here rather than
+silently edited away, because the error is the point:
 
 - **The projected ~1.5x total rested on PDF evaluation being 75-80% of the peak-sampling
   phase.** Task 1 measured it at **35.5-37.9%**, which revised the projection to ~1.2x before
   any optimization code was written. The measured outcome was **1.27x**.
-- **The GPU "Out of scope" note originally cited a 44% parallel-safe fraction and a 1.79x
-  Amdahl ceiling.** Both came from the same wrong assumption. Measured, the parallel-safe
-  fraction is ~22.6% and the ceiling is ~1.29x, so the case against GPU offload is *stronger*
-  than this spec first argued, not weaker.
 
-~77.2% of Rust runtime is inherently sequential collapsed-Gibbs work (word sampling plus the
-peak-sampling body). That is the ceiling on any future parallelization of this algorithm.
+- **The GPU "Out of scope" note went through three stages, not one correction.** The
+  original draft (as first written) estimated a 44% parallel-safe fraction and a 1.79x Amdahl
+  ceiling. An intermediate correction — made after Task 1's PDF-share measurement but from an
+  accounting that counted only the peak-sampler's own PDF evaluation and dropped
+  log-likelihood's PDF pass and region update — revised this to ~22.6% / 1.29x. The "Out of
+  scope" bullet above has since been updated in place to the final figures below, rather than
+  left at that intermediate stage. The final measured derivation, built from all three
+  parallel-safe components and recorded in `benchmarks/gclda_rust_results.md`,
+  corrects this again to **~21.3% / 1.271x / 78.7% sequential**. That document also shows that
+  even the final 1.271x figure is not a hard ceiling on total achievable speedup: a
+  block-size-sweep measurement at `--peak-block-size 65536` reached 1.319x internal speedup,
+  3.7% above it, because blocking improves cache locality in the sequential sampling body in a
+  way the pure-parallelization Amdahl model does not account for. The case against GPU offload
+  still holds — it rests on the ~78.7% sequential fraction, not on the exact ceiling number —
+  but is *stronger* than this spec first argued (44%/1.79x), not weaker.
+
+- **The float32 compute path (Decisions table, Section 3, and the corresponding testing and
+  Files-touched entries above) was cut before implementation, commit `0c9bec5`, and never
+  built.** Only block-wise f64 PDF evaluation shipped. The float32 material above is left in
+  place, marked cut-and-not-implemented, as the record of what was designed and descoped
+  rather than deleted.
+
+~78.7% of Rust runtime is inherently sequential collapsed-Gibbs work (word sampling plus the
+peak-sampling body). That is the best current estimate of the parallel-safe/sequential split
+for this algorithm, but — per the GPU bullet above — it should not be treated as a hard
+ceiling on total achievable speedup.
 
 Measured results: `benchmarks/gclda_rust_results.md`.

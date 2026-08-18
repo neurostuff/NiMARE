@@ -58,8 +58,12 @@ Note that `peak_pdf` + `peak_sample` does not sum exactly to the reported `peak_
 (Python: 2.063 + 14.491 = 16.554 s vs. 16.749 s, a 1.2% gap; Rust after: 3.902 + 13.739 =
 17.641 s vs. 17.537 s, a 0.6% gap). This is expected, not an error: each figure is an
 independent median taken across the 3 repeats, so sub-phase medians need not sum to the
-phase median, and the per-iteration `region_totals` pre-pass sits inside `peak_sampling` but
-is not attributed to either sub-phase.
+phase median. For Rust, the per-iteration `region_totals` pre-pass also sits inside
+`peak_sampling` but is not attributed to either sub-phase, contributing to its gap; this
+pre-pass exists only in the Rust implementation, so it does not apply to the Python side —
+Python's `_get_peak_probs`/`_update_peak_assignments` are the only two peak-sampling
+components, and its 1.2% gap is attributable entirely to independent-median noise across the
+3 repeats.
 
 Per-iteration cost is 2.707 s (Python) vs 2.131 s (Rust, after). *Extrapolated* to a full
 5,000-iteration production run: **≈3.76 h Python vs ≈2.96 h Rust** — these two figures are
@@ -91,10 +95,15 @@ Very small blocks (256) are actively harmful: the per-block parallel-launch over
 dominates, and `peak_pdf` alone costs 39.3 s — nearly 5x the entire Python peak-sampling
 phase. Blocks of 1,024 recover most but not all of the win. 8,192 lands close to the top of
 the curve with peak RSS barely above the unblocked baseline (~13 MB of buffer as designed:
-8,192 × 100 × 2 × 8 B ≈ 13 MB). 65,536 is marginally faster still but starts trading away the
-memory win it was designed to protect (292 MiB vs 253 MiB, i.e. roughly 8x the theoretical
-buffer size at this peak count). **8,192 remains the right default**: it captures effectively
-all of the available speedup while keeping peak RSS within noise of the un-blocked figure.
+8,192 × 100 × 2 × 8 B ≈ 13 MB). 65,536 is marginally faster still but starts trading away some
+of the memory win: peak RSS rises to 292.0 MiB from 252.7 MiB, a ~39 MiB increase. This does
+not fully reconcile with the buffer's own size: going from an 8,192-peak block (~13 MB) to a
+65,536-peak block (65,536 × 100 × 2 × 8 B ≈ 105 MB) should add roughly 92 MB of buffer, over
+twice the ~39 MiB RSS increase actually measured. No verified explanation for that gap (partial
+overlap with freed allocations, lazy page commit, or something else) is available here — it is
+reported as unexplained rather than rationalized. **8,192 remains the right default**: it
+captures effectively all of the available speedup while keeping peak RSS within noise of the
+un-blocked figure.
 
 ## Scaling over `n_topics` (synthetic `small`)
 
@@ -184,7 +193,12 @@ exists:
    a 1.348 s phase), not the 75-80% the spec assumed. That single measurement revised the
    achievable projection down to **~1.2x** before a line of the block-wise code existed —
    the original 1.5x number was never achievable even in principle, because it rested on an
-   unverified assumption about where time was going.
+   unverified assumption about where time was going. (Disclosure: the `time_serial_pdf_pass`
+   timer used for this measurement sums the buffer and calls `black_box` on it *inside* the
+   timed region, an intentional anti-elision guard added after review; that adds T×R additions
+   per peak beyond pure PDF evaluation, so 0.511 s slightly overstates the true PDF-evaluation
+   cost, and every figure derived from it below — including the Amdahl-ceiling arithmetic —
+   inherits that same small bias.)
 4. **This plan's fix: chunked parallel evaluation.** Evaluate PDFs in parallel blocks
    (default 8,192 peaks) while sampling remains strictly sequential within and across
    blocks — recovering the 28-way parallelism for the ~35-38% of the phase that actually is
@@ -248,25 +262,56 @@ Amdahl ceiling = 1 / (1 − 0.213) ≈ 1.271x over pre-change Rust
 sequential body of peak sampling, the per-peak topic/region draw itself, which must stay in
 order for bit-exactness.
 
-This plan measured a **1.247x internal Rust speedup** (53.14 s → 42.628 s), i.e.
-**1.247 / 1.271 ≈ 98.1% of the theoretical ceiling** — there is very little headroom left in
-parallelizing this algorithm further without changing its sequential structure (e.g.
-SparseLDA-style bucket decomposition, which is out of scope here because it changes RNG
-consumption and breaks bit-exactness). As a sanity check, the measured speedup (1.247x) must
-be ≤ the ceiling, and it is (1.247x ≤ 1.271x), with only ~2% of headroom remaining — consistent
-with a plan that captured nearly all of the available parallelism.
+This plan measured a **1.247x internal Rust speedup** at the default block size (53.14 s →
+42.628 s over the 20-iteration Neurosynth run), i.e. **1.247 / 1.271 ≈ 98.1% of the
+arithmetic ceiling above** — on its face, very little headroom left in parallelizing this
+algorithm further without changing its sequential structure (e.g. SparseLDA-style bucket
+decomposition, out of scope here because it changes RNG consumption and breaks
+bit-exactness).
 
-**This corrects the design spec's `docs/superpowers/specs/2026-08-18-gclda-blockwise-pdf-design.md`
-"Out of scope → GPU offload" note**, which estimated the parallel-safe fraction at ~44% of
-runtime and an Amdahl ceiling of **1.79x**, with block-wise CPU parallelism expected to
-capture ~1.5x of that (leaving ~1.17x incremental for GPU offload). The 44%/1.79x figures
-predate Task 1's direct measurement and were themselves an estimate, not a measurement; the
-measured parallelizable fraction is roughly a fifth of that (21.3%), and the corrected ceiling
-is **1.271x, not 1.79x**. Since this plan's CPU-only fix already captured ~98% of the 1.271x
-ceiling, a GPU offload would have at most ~0.02x of headroom left over the current Rust
-implementation — the GPU option was already low-value under the original (wrong) estimate,
-and is essentially worthless under the corrected one. It should not be pursued for this
-algorithm's current sequential structure.
+**But the ceiling above is not actually a hard bound, and the block-size sweep proves it.**
+The block-size sweep (above) measured Rust total time of 20.15 s over 10 iterations at
+`--peak-block-size 65536` — 2.015 s/iter, versus 2.657 s/iter pre-change, an internal speedup
+of **1.319x**. That is 3.7% *above* the 1.271x ceiling this section derives. The Amdahl
+arithmetic itself is not wrong — it correctly sums the measured per-iteration cost of every
+parallel-safe component — but the *model* it feeds is wrong: pure Amdahl assumes the only
+effect of parallelizing a fraction of the work is that fraction getting faster. It does not
+account for blocking also changing the **sequential** phase's memory-access pattern. Once PDF
+values are precomputed into a block buffer, the per-peak sampling body reads a hot,
+contiguous, already-computed array instead of computing `pdf()` calls inline — better cache
+locality in exactly the part of the loop the model treats as fixed and untouchable. That
+effect plausibly grows with block size (more values precomputed contiguously ahead of the
+sequential reads), consistent with the 65,536 row beating the ceiling while the 8,192 row
+(1.247x) sits under it.
+
+So: the parallelization arithmetic above (21.3% / 78.7%) remains useful as an estimate of the
+*parallel* component's contribution, and it is why GPU offload is unattractive (see below).
+But it must not be read as a hard ceiling on total achievable speedup — the measured data
+contradicts that reading.
+
+**This also affects the design spec's `docs/superpowers/specs/2026-08-18-gclda-blockwise-pdf-design.md`
+"Out of scope → GPU offload" note**, which has gone through three stages. The **original**
+draft (before any measurement) estimated the parallel-safe fraction at ~44% of runtime and an
+Amdahl ceiling of **1.79x**, with block-wise CPU parallelism expected to capture ~1.5x of
+that, leaving ~1.17x incremental for GPU offload. An **intermediate correction**, made after
+Task 1's PDF-share measurement but before this document's full per-component accounting,
+revised this to ~22.6% / **1.29x** — itself built from a scope error (it counted only the
+peak-sampler's own PDF evaluation and dropped log-likelihood's PDF pass and region update, as
+described above) compounded with an arithmetic slip. The **final measured derivation**, above,
+corrects both errors and lands at 21.3% / 1.271x / 78.7% sequential — but, per the caveat just
+above, this describes the parallel-safe fraction, not a hard ceiling on total speedup.
+
+**The case against GPU offload still holds, but rests on the sequential fraction, not on the
+ceiling number.** ~78.7% of pre-change Rust runtime is word sampling plus the sequential body
+of peak sampling — the per-peak topic/region draw itself, which must execute in order for
+bit-exactness — and no GPU accelerates that part regardless of hardware speed. A GPU can only
+help the ~21.3% that is already parallel-safe, which block-wise CPU parallelism already
+exploits with 28 cores; the incremental value of trading a CUDA/wgpu dependency, a hardware
+requirement, and near-certain loss of bit-exactness for that remaining slice is low. It should
+not be pursued for this algorithm's current sequential structure. (The block-size-sweep
+evidence above means the *precise* remaining headroom is genuinely unknown — cache-locality
+gains might still be extracted from further CPU-side tuning — but nothing about that evidence
+makes a GPU more attractive, since a GPU cannot exploit CPU cache locality either.)
 
 ### Recommended follow-up
 
@@ -298,13 +343,16 @@ algorithm's current sequential structure.
   configuration — including the full 507,891-peak corpus, and block sizes 1, 7, 8,192, and
   10,000,000 — produced all four probability matrices bit-identical to the Python
   implementation.
-- **There is little room left to parallelize this algorithm further.** The measured
-  sequential fraction (78.7% of pre-change Rust runtime, built from the peak-sampler PDF,
-  log-likelihood PDF, and region-update per-iteration costs — see the derivation above) sets
-  an Amdahl ceiling of ~1.271x over pre-change Rust, and this plan already captured ~98% of
-  that ceiling. Both the original spec's GPU-offload estimate (1.79x ceiling) and any similar
-  future proposal should be evaluated against the corrected 1.271x figure, not the original
-  one.
+- **The algorithm's parallel-safe fraction is small, but "little room left" is not proven.**
+  The measured parallel-safe fraction (21.3% of pre-change Rust runtime, built from the
+  peak-sampler PDF, log-likelihood PDF, and region-update per-iteration costs — see the
+  derivation above) is real and is why GPU offload is unattractive: ~78.7% is inherently
+  sequential collapsed-Gibbs work no accelerator touches. But the naive Amdahl ceiling this
+  implies (~1.271x) is **not a hard bound** — the 65,536-block-size sweep measured 1.319x
+  internal speedup, 3.7% above it, because blocking also improves cache locality in the
+  sequential sampling body (see "The Amdahl ceiling..." above). Any future proposal should be
+  judged on whether it touches the sequential 78.7%, not against the 1.271x figure as if it
+  were an unbreakable limit.
 
 ## Test suite status
 
