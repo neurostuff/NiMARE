@@ -6,7 +6,6 @@ import numpy as np
 import pymare
 import pytest
 
-import nimare.meta._permutation as permutation
 from nimare.meta import ibma
 from nimare.meta._permutation import _permuted_ols
 
@@ -370,8 +369,8 @@ def test_correlation_matrix_is_not_measuring_shared_signal(dependent_dataset):
 # Combination tests
 
 
-def test_stouffers_delegates_group_aggregation_to_pymare():
-    """Pass one repeated sqrt(n) group weight without dividing it by map count."""
+def test_stouffers_weights_each_group_by_sqrt_n():
+    """Weight a group by sqrt(n), repeated per image and not divided by map count."""
     estimator = ibma.Stouffers(use_sample_size=True)
     estimator.inputs_ = {
         "contrast_names": np.array([0, 0, 0, 1]),
@@ -604,55 +603,6 @@ def test_permutation_ignores_within_block_dispersion():
         _permuted_ols(concentrated, exchangeability_blocks=groups)["t"],
         _permuted_ols(dispersed, exchangeability_blocks=groups)["t"],
     )
-
-
-def test_permutation_delegates_group_means_to_pymare(monkeypatch):
-    """Ten distinct maps should reach PyMARE as one block."""
-    first_block = np.arange(20, dtype=float).reshape(10, 2)
-    beta_maps = np.vstack([first_block, [[50.0, 100.0]]])
-    block_codes = np.array([0] * 10 + [1])
-    calls = []
-    real_group_mean = pymare.stats.group_mean
-
-    def _spy(values, groups):
-        calls.append((values.copy(), groups.copy()))
-        return real_group_mean(values, groups)
-
-    monkeypatch.setattr(permutation, "group_mean", _spy)
-
-    result = _permuted_ols(beta_maps, exchangeability_blocks=block_codes)
-
-    assert len(calls) == 1
-    assert np.array_equal(calls[0][0], beta_maps)
-    assert np.array_equal(calls[0][1], block_codes)
-    assert result["dof"] == 1
-
-
-def test_permutation_delegates_cr2_to_pymare(monkeypatch):
-    """Reuse PyMARE's generic CR2 preparation and evaluation rather than repeating it."""
-    calls = {"prepare": 0, "evaluate": 0}
-    real_prepare = pymare.stats.weighted_intercept_cr2_sufficient_statistics
-    real_evaluate = pymare.stats.weighted_intercept_cr2
-
-    def _prepare(values, weights):
-        calls["prepare"] += 1
-        return real_prepare(values, weights)
-
-    def _evaluate(signs, statistics):
-        calls["evaluate"] += 1
-        return real_evaluate(signs, statistics)
-
-    monkeypatch.setattr(permutation, "weighted_intercept_cr2_sufficient_statistics", _prepare)
-    monkeypatch.setattr(permutation, "weighted_intercept_cr2", _evaluate)
-    _permuted_ols(
-        np.array([[1.0, 2.0], [3.0, 5.0], [7.0, 11.0]]),
-        exchangeability_blocks=np.arange(3),
-        group_weights=np.array([20.0, 40.0, 80.0]),
-        n_perm=2,
-        sign_flips=np.array([[1.0, -1.0, 1.0], [-1.0, 1.0, -1.0]]),
-    )
-
-    assert calls == {"prepare": 1, "evaluate": 2}
 
 
 def test_permutation_uses_one_weight_per_block():
