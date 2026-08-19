@@ -161,6 +161,30 @@ def test_pymare_weighting_kwargs(weight_scheme, codes, expected):
     assert estimator._pymare_weighting_kwargs(np.arange(len(codes))) == expected
 
 
+@pytest.mark.parametrize("estimator", REPRESENTATIVE_ESTIMATORS)
+@pytest.mark.parametrize("parameter", ["resample", "memory_limit"])
+def test_parameters_removed_in_0_2_0_say_so(estimator, parameter):
+    """A parameter dropped in 0.2.0 must explain itself, not point at 'resample__'.
+
+    Both were silently swallowed by ``**kwargs`` until unknown arguments started raising, so
+    calls still passing them are out there -- two of NiMARE's own examples were.
+    """
+    with pytest.raises(TypeError, match=f"{parameter} was removed in 0.2.0"):
+        estimator(**{parameter: True})
+
+
+@pytest.mark.parametrize("estimator", REPRESENTATIVE_ESTIMATORS)
+def test_unknown_kwargs_point_at_the_resampling_prefix(estimator):
+    """Anything else unrecognized should still name itself and the prefix that does work."""
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        estimator(not_a_parameter=1)
+
+    # And a genuine resampling argument is accepted.
+    assert estimator(resample__interpolation="nearest")._resample_kwargs["interpolation"] == (
+        "nearest"
+    )
+
+
 def test_stouffers_rejects_the_removed_normalization_parameter():
     """The removed parameter should explain itself rather than raise a bare TypeError."""
     with pytest.raises(TypeError, match="normalize_contrast_weights was removed"):

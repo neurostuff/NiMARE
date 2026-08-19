@@ -84,6 +84,23 @@ as NaN.""",
 
 _DOC_PLACEHOLDER = re.compile(r"^(?P<indent> *)%\((?P<key>\w+)\)s *$")
 
+#: Constructor arguments that used to exist, and what to tell a caller still passing one.
+#: Without these, the generic "unexpected keyword argument" error points at the
+#: ``resample__`` prefix, which for these names is the wrong advice: they are gone, not
+#: renamed, and prefixing them would silently forward nonsense to
+#: :func:`~nilearn.image.resample_to_img`.
+_REMOVED_PARAMETERS = {
+    "resample": (
+        "resample was removed in 0.2.0. Images are now resampled only when their shape or "
+        "affine differs from the mask's, which needs no switch. Pass 'resample__<name>' to "
+        "control how that resampling is done."
+    ),
+    "memory_limit": (
+        "memory_limit was removed in 0.2.0. Input images are loaded, resampled and masked "
+        "one at a time, so peak memory no longer depends on a limit set here."
+    ),
+}
+
 
 def _fill_doc(cls):
     """Substitute the shared blocks of :data:`_DOC_DICT` into a class docstring.
@@ -201,6 +218,10 @@ class IBMAEstimator(Estimator):
         # Reject any extraneous kwargs, rather than silently computing a plausible result
         # with settings the caller never asked for.
         other_kwargs = sorted(set(kwargs) - set(resample_kwargs))
+        removed = [name for name in other_kwargs if name in _REMOVED_PARAMETERS]
+        if removed:
+            raise TypeError(" ".join(_REMOVED_PARAMETERS[name] for name in removed))
+
         if other_kwargs:
             raise TypeError(
                 f"{type(self).__name__} got unexpected keyword argument(s): "
