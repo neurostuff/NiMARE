@@ -23,8 +23,8 @@ class IBMAWorkflow(Workflow):
     Parameters
     ----------
     estimator : :class:`~nimare.meta.ibma.IBMAEstimator`, :obj:`str` {'stouffers', 'fishers', \
-    'hedges', 'permutedols', 'wleastsquares', 'dersimonianlaird', 'samplesizebl'. 'variancebl'}, \
-    or optional
+    'hedges', 'permutedols', 'wleastsquares', 'dersimonianlaird', 'samplesizebl'. \
+    'variancebl'}, or optional
         Meta-analysis estimator. Default is :class:`~nimare.meta.cbma.ale.ALE`.
     corrector : :class:`~nimare.correct.Corrector`, :obj:`str` {'montecarlo', 'fdr', \
     'bonferroni'} or optional

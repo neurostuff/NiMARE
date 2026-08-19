@@ -89,7 +89,9 @@ pprint(results.bibtex_)
 # -----------------------------------------------------------------------------
 from nimare.meta.ibma import Fishers
 
-meta = Fishers()
+# Weighted Fisher uses one sample-size coefficient per study. This is a
+# different weighting family from Stouffer's conventional sqrt(n) weights.
+meta = Fishers(use_sample_size=True)
 results = meta.fit(studyset)
 
 plot_stat_map(
@@ -123,6 +125,33 @@ plot_stat_map(
 )
 
 corrector = FWECorrector(method="montecarlo", n_iters=100, n_cores=1)
+cresult = corrector.transform(results)
+
+plot_stat_map(
+    cresult.get_map("z_level-voxel_corr-FWE_method-montecarlo"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+)
+
+print("Description:")
+pprint(cresult.description_)
+print("References:")
+pprint(cresult.bibtex_)
+
+###############################################################################
+# Sample-size-weighted permuted OLS
+# -----------------------------------------------------------------------------
+# When one study contributes several beta maps, treating them as independent
+# gives that study disproportionate weight. ``PermutedOLS`` groups images by
+# ``study_id`` by default: it forms one mean contribution per study and
+# sign-flips that study as a whole exchangeability block. Setting
+# ``use_sample_size=True`` additionally weights each study's contribution by its
+# participant count, using a CR2 cluster-robust variance referred to
+# Satterthwaite degrees of freedom.
+meta = PermutedOLS(two_sided=True, use_sample_size=True)
+results = meta.fit(studyset)
 cresult = corrector.transform(results)
 
 plot_stat_map(
