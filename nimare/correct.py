@@ -251,9 +251,12 @@ class Corrector(NiMAREBase):
         for rm in self._required_maps:
             p = result.maps[rm]
 
-            # Find NaNs in the p value map, and mask them out
+            # Find NaNs in the p value map, and mask them out. Prefilled with NaN rather
+            # than left uninitialized: nothing is written back at those positions, and
+            # whatever the allocator happened to hold there reads as a real p value -- often
+            # a significant one, so voxels no model covered would survive thresholding.
             nonnan_mask = ~np.isnan(p)
-            p_corr = np.empty_like(p)
+            p_corr = np.full_like(p, np.nan)
             p_no_nans = p[nonnan_mask]
 
             # Call the correction method
