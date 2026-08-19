@@ -35,13 +35,31 @@ class DependenceModel:
         same participants.
     image_indices : None or :obj:`numpy.ndarray` of shape (K,), optional
         Which images of the full dataset these rows are. Default is all of them, in order.
+    blocks : None or :obj:`numpy.ndarray` of shape (K,), optional
+        Already-resolved block labels. Only :meth:`for_images` passes this; see
+        :attr:`blocks`.
+
+    Attributes
+    ----------
+    blocks : :obj:`numpy.ndarray` of shape (K,)
+        Exchangeability blocks, one label per image, never None. Ungrouped images each become
+        their own block, so collapsing a block to its mean is the identity.
+
+        Resolved once for the full set of images and then carried through every restriction,
+        so that a label means the same thing in every bag. Re-deriving it per bag would let a
+        bag that happens to hold one image per group fall back to image indices while the
+        dataset-wide labels are group codes, and those two label spaces do not line up.
     """
 
-    def __init__(self, codes, image_indices=None):
+    def __init__(self, codes, image_indices=None, blocks=None):
         self.codes = np.asarray(codes)
         self.image_indices = (
             np.arange(self.codes.size) if image_indices is None else np.asarray(image_indices)
         )
+        if blocks is None:
+            blocks = self.codes if self.has_dependence else self.image_indices
+        self.blocks = np.asarray(blocks)
+        self._encoded = None
 
     def for_images(self, image_mask):
         """Restrict the grouping to a subset of images, such as one liberal-mask bag."""
@@ -49,7 +67,15 @@ class DependenceModel:
         return DependenceModel(
             self.codes[image_mask],
             image_indices=self.image_indices[image_mask],
+            blocks=self.blocks[image_mask],
         )
+
+    @property
+    def _encoded_blocks(self):
+        """Cache :func:`~pymare.stats.encode_groups`, which several properties below want."""
+        if self._encoded is None:
+            self._encoded = encode_groups(self.blocks, n_observations=self.blocks.size)
+        return self._encoded
 
     @property
     def has_dependence(self):
@@ -70,23 +96,13 @@ class DependenceModel:
         return self.codes if self.has_dependence else None
 
     @property
-    def blocks(self):
-        """Exchangeability blocks, one label per image, never None.
-
-        Ungrouped images each become their own block, so collapsing a block to its mean is
-        the identity. Those blocks are dataset-wide image indices, which keeps a null drawn
-        once for the whole brain indexable from every liberal-mask bag.
-        """
-        return self.codes if self.has_dependence else self.image_indices
-
-    @property
     def group_order(self):
         """Unique block labels, ordered by first occurrence.
 
         The order :func:`~pymare.stats.encode_groups` assigns, and so the column order that
         per-group weights and sign flips must follow.
         """
-        return encode_groups(self.blocks, n_observations=self.blocks.size)[1]
+        return self._encoded_blocks[1]
 
     @property
     def n_groups(self):
@@ -94,13 +110,24 @@ class DependenceModel:
         return int(self.group_order.size)
 
     @property
+    def supports_inference(self):
+        """Whether there are at least two independent units to compare.
+
+        With one block every image comes from the same participants, so nothing in these
+        images says how much a second sample would have differed. Every estimator here needs
+        that spread: PyMARE's cluster-robust sandwich, Stouffer's between-group variance and
+        the sign-flip null all reject a single block outright.
+        """
+        return self.n_groups >= 2
+
+    @property
     def dof(self):
-        """Degrees of freedom from the group count, floored at one.
+        """Degrees of freedom from the group count.
 
         For the combination tests only. The meta-regression estimators report PyMARE's
         Satterthwaite degrees of freedom instead.
         """
-        return max(self.n_groups - 1, 1)
+        return self.n_groups - 1
 
     def per_group(self, values):
         """Reduce one value per image to one per group, in :attr:`group_order`.
@@ -108,5 +135,7 @@ class DependenceModel:
         The mean, not the first value: a group whose images disagree about their sample size
         has no right answer, and averaging beats privileging row order.
         """
-        codes = encode_groups(self.blocks, n_observations=self.blocks.size)[0]
-        return group_mean(np.asarray(values, dtype=float)[:, None], codes).ravel()
+        return group_mean(
+            np.asarray(values, dtype=float)[:, None],
+            self._encoded_blocks[0],
+        ).ravel()

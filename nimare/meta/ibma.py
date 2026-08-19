@@ -3,7 +3,7 @@
 from __future__ import division
 
 import logging
-from collections import Counter
+import re
 
 import nibabel as nib
 import numpy as np
@@ -20,6 +20,7 @@ except ImportError:
     # nilearn >= 0.12.0; nilearn <= 0.12.1
     from nilearn._utils.niimg_conversions import check_same_fov
 
+from pymare.estimators.estimators import WEIGHT_SCHEMES
 from pymare.stats import estimate_null_correlation
 
 from nimare import _version
@@ -29,7 +30,6 @@ from nimare.meta._permutation import _empirical_max_p, _permuted_ols
 from nimare.meta.utils import _apply_liberal_mask
 from nimare.transforms import d_to_g, p_to_z, t_to_d, t_to_z
 from nimare.utils import (
-    _boolean_unmask,
     _check_ncores,
     get_masker,
     get_masker_mask_image,
@@ -38,9 +38,77 @@ from nimare.utils import (
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
 
-# Mirrored from PyMARE so a typo is rejected at construction, not after the caller has
-# assembled and masked a whole dataset.
-WEIGHT_SCHEMES = frozenset({"individual", "rescale", "collapse"})
+#: Parameter descriptions and prose shared by the estimators below, substituted into their
+#: docstrings by :func:`_fill_doc` so that a wording fix lands in one place. Written relative
+#: to the placeholder: the first line of a block sits where the placeholder sat, and the rest
+#: is indented from there.
+_DOC_DICT = {
+    "aggressive_mask": """aggressive_mask : :obj:`bool`, optional
+    Voxels with a value of zero of NaN in any of the input maps will be removed
+    from the analysis.
+    If False, all voxels are included by running a separate analysis on bags
+    of voxels that belong that have a valid value across the same studies.
+    Default is False.""",
+    "groupby": """groupby : None, :obj:`str`, array-like, or False, optional
+    How to identify images that share participants and are therefore dependent. None (the
+    default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
+    instead, for a paper contributing independent samples (e.g. patients and controls).
+    An array supplies one label per image. False treats every image as independent, which
+    inflates significance whenever that is untrue. Default is None.""",
+    "weighting": """weight_scheme : {'rescale', 'individual', 'collapse'}, optional
+    How images within a group are weighted, passed to PyMARE. ``'rescale'`` (the default)
+    divides each image's weight by its group size, so a group's total weight does not grow
+    with the number of maps it contributed -- the correlated-effects model of
+    :footcite:t:`hedges2010robust`, weighted as in :footcite:t:`fisher2015robumeta`.
+    ``'individual'`` leaves the weights alone; ``'collapse'`` fits one row per group.
+    Group labels also switch the standard errors to CR2 and the reference to a t
+    distribution with Satterthwaite degrees of freedom :footcite:p:`tipton2015small`.
+rho : :obj:`float`, optional
+    Assumed within-group correlation, in [0, 1]. Enters only through tau^2, to which
+    results are weakly sensitive. Default is 0.8, matching ``robumeta``. Ignored when
+    ``weight_scheme='individual'``. Together the two choose a working model in the sense
+    of :footcite:t:`pustejovsky2022expanding`: cluster-robust standard errors stay valid
+    if it is wrong, so the choice costs precision rather than validity.""",
+    "cluster_robust_warning": """Cluster-robust inference is asymptotic in the number of *groups*, not images. PyMARE warns
+at 10 or fewer groups, where robust variance estimation is anti-conservative
+:footcite:p:`hedges2010robust`, and when the Satterthwaite degrees of freedom fall below
+about 4 :footcite:p:`tipton2015small`. Both are common for small meta-analyses.""",
+    "liberal_mask_notes": """By default, image-based meta-analysis estimators run the analysis in bags of voxels,
+where each bag holds the voxels that have a valid value across the same set of studies.
+A voxel is therefore only dropped from the studies that are missing it. Setting
+``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
+input map from the analysis entirely. Either way, a bag whose valid images all belong to
+one group is skipped -- one group cannot support the inference -- and its voxels come back
+as NaN.""",
+}
+
+_DOC_PLACEHOLDER = re.compile(r"^(?P<indent> *)%\((?P<key>\w+)\)s *$")
+
+
+def _fill_doc(cls):
+    """Substitute the shared blocks of :data:`_DOC_DICT` into a class docstring.
+
+    Re-indents each block to its placeholder's own indentation rather than using ``%``
+    formatting directly: Python 3.13 strips a docstring's common leading whitespace at
+    compile time and earlier versions do not, so a block written at one fixed indentation
+    would come out wrong on one of them.
+    """
+    if not cls.__doc__:
+        return cls
+
+    lines = []
+    for line in cls.__doc__.split("\n"):
+        match = _DOC_PLACEHOLDER.match(line)
+        if match is None:
+            lines.append(line)
+            continue
+
+        indent = match.group("indent")
+        block = _DOC_DICT[match.group("key")]
+        lines.extend(indent + text if text else "" for text in block.split("\n"))
+
+    cls.__doc__ = "\n".join(lines)
+    return cls
 
 
 class IBMAEstimator(Estimator):
@@ -82,6 +150,13 @@ class IBMAEstimator(Estimator):
     #: do. Cluster-robust standard errors are distribution-free, so estimating a whole-brain
     #: correlation for the meta-regression estimators would produce something nothing reads.
     _requires_corr_matrix = False
+
+    #: How this estimator reacts to a masker that averages across voxels (e.g. a
+    #: :class:`~nilearn.maskers.NiftiLabelsMasker`) rather than only selecting them.
+    #: ``"reject"`` for the combination tests, whose statistics are invalid once voxels are
+    #: averaged; ``"warn"`` where the bias is real but unquantified; None where it does not
+    #: apply.
+    _voxel_averaging = "warn"
 
     def __init__(
         self,
@@ -266,11 +341,97 @@ class IBMAEstimator(Estimator):
     def _dependence(self, study_mask=None):
         """Return the :class:`~nimare.meta._dependence.DependenceModel` for the images fitted.
 
-        ``study_mask`` holds the image indices, as ``_fit_model`` receives them from the
-        liberal-mask path; None means all images.
+        ``study_mask`` holds the image indices the model is fitted over; None means every
+        image, which is what a caller reasoning about the whole dataset wants. Inside
+        ``_fit_model`` it is always explicit, supplied by :meth:`_fit_over_bags`.
         """
         model = DependenceModel(self.inputs_["contrast_names"])
         return model if study_mask is None else model.for_images(study_mask)
+
+    def _resolve_masker(self, dataset):
+        """Adopt the dataset's masker when none was supplied, and check it is usable here."""
+        self.masker = self.masker or dataset.masker
+        if self._voxel_averaging is None or isinstance(self.masker, NiftiMasker):
+            return
+
+        if self._voxel_averaging == "reject":
+            raise ValueError(
+                f"A {type(self.masker)} mask has been detected. "
+                "Only NiftiMaskers are allowed for this Estimator. "
+                "This is because aggregation, such as averaging values across ROIs, "
+                "will produce invalid results."
+            )
+
+        LGR.warning(
+            f"A {type(self.masker)} mask has been detected. "
+            "Masks which average across voxels will likely produce biased results when used "
+            "with this Estimator."
+        )
+
+    def _model_bags(self, input_names):
+        """Yield ``(study_mask, voxel_mask, arrays)`` for each model to fit.
+
+        One entry under ``aggressive_mask``, covering every image; otherwise one per
+        liberal-mask bag. ``arrays`` holds one (K x V) array per name in ``input_names``,
+        in that order.
+        """
+        if self.aggressive_mask:
+            voxel_mask = self.inputs_["aggressive_mask"]
+            n_images = len(self.inputs_["id"])
+            arrays = [self.inputs_[name][:, voxel_mask] for name in input_names]
+            yield np.arange(n_images), voxel_mask, arrays
+            return
+
+        bag_lists = [self.inputs_["data_bags"][name] for name in input_names]
+        for bags in zip(*bag_lists):
+            yield bags[0]["study_mask"], bags[0]["voxel_mask"], [bag["values"] for bag in bags]
+
+    def _fit_over_bags(self, input_names, map_names, **kwargs):
+        """Run ``_fit_model`` over every model this estimator fits, and assemble its maps.
+
+        Collects the outputs of ``_fit_model`` -- which come back in the order of
+        ``map_names`` -- into full-length voxel maps. Voxels no model covers are left NaN, as
+        :func:`~nimare.utils._boolean_unmask` already leaves them on the aggressive path.
+
+        Parameters
+        ----------
+        input_names : :obj:`list` of :obj:`str`
+            The ``inputs_`` keys holding the image data, in the order ``_fit_model`` takes
+            them as positional arguments.
+        map_names : :obj:`list` of :obj:`str`
+            Output map names, in the order ``_fit_model`` returns them.
+        kwargs
+            Passed through to ``_fit_model`` unchanged.
+
+        Returns
+        -------
+        :obj:`dict` of :obj:`numpy.ndarray`
+            One 1D map per entry in ``map_names``.
+        """
+        n_voxels = self.inputs_[input_names[0]].shape[1]
+        maps = {name: np.full(n_voxels, np.nan, dtype=float) for name in map_names}
+
+        n_skipped = 0
+        for study_mask, voxel_mask, arrays in self._model_bags(input_names):
+            if not self._dependence(study_mask).supports_inference:
+                # Every image here comes from one group, so there is no independent
+                # replication to estimate a variance from. Leave the voxels NaN rather than
+                # report a statistic the data cannot support.
+                n_skipped += 1
+                continue
+
+            results = self._fit_model(*arrays, study_mask=study_mask, **kwargs)
+            for name, values in zip(map_names, results):
+                maps[name][voxel_mask] = values
+
+        if n_skipped:
+            LGR.warning(
+                "Skipped %d bag(s) of voxels whose images all come from a single group; "
+                "one group cannot support the inference, so those voxels are NaN.",
+                n_skipped,
+            )
+
+        return maps
 
     def _dof_map(self, study_mask, n_voxels, est_summary=None):
         """Return the degrees of freedom map, one value per voxel.
@@ -289,14 +450,6 @@ class IBMAEstimator(Estimator):
 
         # (p, d) with p == 1, since every IBMA model is intercept-only.
         return np.asarray(dof, dtype=float).reshape(-1)[:n_voxels]
-
-    @staticmethod
-    def _all_images(study_mask, n_images):
-        """Return ``study_mask``, or every image when the caller passed None.
-
-        Only the liberal-mask path supplies a mask; the aggressive path fits every image.
-        """
-        return np.arange(n_images) if study_mask is None else study_mask
 
     def _sample_sizes_for_mask(self, study_mask):
         """Return per-image sample sizes aligned to a fitted model.
@@ -341,11 +494,10 @@ class IBMAEstimator(Estimator):
     def _preprocess_dependence(self, dataset):
         """Identify groups of images that are statistically dependent.
 
-        Populates ``contrast_names`` (an integer group index per image),
-        ``num_contrasts`` (images per group) and, for the combination tests
-        only, ``corr_matrix`` (the empirical null correlation between the input
-        maps). Estimators pass these on so that their inference accounts for
-        the dependence.
+        Populates ``contrast_names`` (an integer group index per image) and, for the
+        combination tests only, ``corr_matrix`` (the empirical null correlation between the
+        input maps). Estimators pass these on so that their inference accounts for the
+        dependence.
         """
         labels = self._resolve_group_labels(dataset)
 
@@ -367,23 +519,21 @@ class IBMAEstimator(Estimator):
         # depends on string hash randomization, which would make seeded permutations
         # irreproducible. str() first so a mix of label types still orders.
         label_to_int = {label: i for i, label in enumerate(sorted(set(labels), key=str))}
-        label_counts = Counter(labels)
-
         self.inputs_["contrast_names"] = np.array([label_to_int[label] for label in labels])
-        self.inputs_["num_contrasts"] = np.array([label_counts[label] for label in labels])
 
-        n_studies = len(self.inputs_["id"])
-        n_unique = np.unique(self.inputs_["contrast_names"]).size
-        if n_studies == n_unique:
-            # Every group contains exactly one image, so there is no
-            # within-group dependence to correct for.
+        dependence = self._dependence()
+        if not dependence.has_dependence:
+            # Every group contains exactly one image, so there is no within-group dependence
+            # to correct for. DependenceModel owns that decision; see its `has_dependence`.
             return
 
+        n_studies = len(self.inputs_["id"])
+        n_groups = dependence.n_groups
         if not self._requires_corr_matrix:
             LGR.info(
                 "Accounting for dependence among %d image(s) from %d group(s).",
                 n_studies,
-                n_unique,
+                n_groups,
             )
             return
 
@@ -396,8 +546,20 @@ class IBMAEstimator(Estimator):
             return
         maps = self.inputs_[image_names[0]]
 
-        if self.aggressive_mask:
-            maps = maps[:, self.inputs_["aggressive_mask"]]
+        # Correlate only where every image has a usable value. A single NaN makes
+        # np.corrcoef return NaN for that image's whole row, which estimate_null_correlation
+        # then reads as zero correlation -- silently discarding the dependence it was called
+        # to measure. The aggressive mask already guarantees this; the liberal path does not.
+        finite_voxels = np.all(np.isfinite(maps), axis=0)
+        if finite_voxels.sum() < 2:
+            LGR.warning(
+                "Fewer than two voxels have a valid value in every image, so the null "
+                "correlation between images cannot be estimated. Dependence between the "
+                "%d image(s) will not be corrected for.",
+                n_studies,
+            )
+            return
+        maps = maps[:, finite_voxels]
 
         # Correlating the raw maps measures how much studies agree, not how dependent they
         # are: every map carries the same activation, so studies independent by construction
@@ -413,7 +575,7 @@ class IBMAEstimator(Estimator):
             "Correcting for dependence among %d image(s) from %d group(s) "
             "(max off-diagonal correlation %.3f).",
             n_studies,
-            n_unique,
+            n_groups,
             np.nanmax(np.abs(off_diagonal)) if off_diagonal.size else np.nan,
         )
 
@@ -452,6 +614,7 @@ class _PyMARERegressionEstimator(IBMAEstimator):
         return {"weight_scheme": self.weight_scheme, "rho": self.rho}
 
 
+@_fill_doc
 class Fishers(IBMAEstimator):
     """An image-based meta-analytic test using t- or z-statistic images.
 
@@ -476,18 +639,8 @@ class Fishers(IBMAEstimator):
 
     Parameters
     ----------
-    aggressive_mask : :obj:`bool`, optional
-        Voxels with a value of zero of NaN in any of the input maps will be removed
-        from the analysis.
-        If False, all voxels are included by running a separate analysis on bags
-        of voxels that belong that have a valid value across the same studies.
-        Default is False.
-    groupby : None, :obj:`str`, array-like, or False, optional
-        How to identify images that share participants and are therefore dependent. None (the
-        default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
-        instead, for a paper contributing independent samples (e.g. patients and controls).
-        An array supplies one label per image. False treats every image as independent, which
-        inflates significance whenever that is untrue. Default is None.
+    %(aggressive_mask)s
+    %(groupby)s
     use_sample_size : :obj:`bool`, optional
         Whether to assign each study a total weighted-Fisher coefficient equal
         to its sample size. Repeated images divide that coefficient internally
@@ -503,6 +656,10 @@ class Fishers(IBMAEstimator):
     -----
     Requires ``z`` images.
 
+    When ``groupby`` finds a group holding more than one image, Fisher's chi-squared reference
+    is replaced by the scaled one of :footcite:t:`brown1975method`, whose scale factor is
+    estimated from the null correlation between the input maps :footcite:p:`kost2002combining`.
+
     :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
 
     ============== ===============================================================================
@@ -516,11 +673,7 @@ class Fishers(IBMAEstimator):
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will result in invalid results. It cannot be used with these types of maskers.
 
-    By default, image-based meta-analysis estimators run the analysis in bags of voxels,
-    where each bag holds the voxels that have a valid value across the same set of studies.
-    A voxel is therefore only dropped from the studies that are missing it. Setting
-    ``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
-    input map from the analysis entirely.
+    %(liberal_mask_notes)s
 
     References
     ----------
@@ -535,6 +688,9 @@ class Fishers(IBMAEstimator):
     # Brown's method needs the null correlation between the input maps; see
     # IBMAEstimator._requires_corr_matrix.
     _requires_corr_matrix = True
+
+    # Averaging across voxels invalidates the combination outright.
+    _voxel_averaging = "reject"
 
     _required_inputs = {"z_maps": ("image", "z")}
 
@@ -558,11 +714,9 @@ class Fishers(IBMAEstimator):
             description += " Studies received weighted-Fisher coefficients equal to sample size."
         return description
 
-    def _fit_model(self, stat_maps, study_mask=None, corr=None):
+    def _fit_model(self, stat_maps, *, study_mask, corr=None):
         """Fit the model to the data."""
-        n_studies, n_voxels = stat_maps.shape
-
-        study_mask = self._all_images(study_mask, n_studies)
+        n_voxels = stat_maps.shape[1]
 
         est = pymare.estimators.FisherCombinationTest(mode=self._mode)
 
@@ -591,45 +745,17 @@ class Fishers(IBMAEstimator):
 
     def _fit(self, dataset):
         self.dataset = dataset
-        self.masker = self.masker or dataset.masker
-        if not isinstance(self.masker, NiftiMasker):
-            raise ValueError(
-                f"A {type(self.masker)} mask has been detected. "
-                "Only NiftiMaskers are allowed for this Estimator. "
-                "This is because aggregation, such as averaging values across ROIs, "
-                "will produce invalid results."
-            )
+        self._resolve_masker(dataset)
 
-        if self.aggressive_mask:
-            voxel_mask = self.inputs_["aggressive_mask"]
-            result_maps = self._fit_model(
-                self.inputs_["z_maps"][:, voxel_mask],
-                corr=self.inputs_["corr_matrix"],
-            )
-
-            z_map, p_map, dof_map = tuple(
-                map(lambda x: _boolean_unmask(x, voxel_mask), result_maps)
-            )
-        else:
-            n_voxels = self.inputs_["z_maps"].shape[1]
-            z_map = np.zeros(n_voxels, dtype=float)
-            p_map = np.zeros(n_voxels, dtype=float)
-            dof_map = np.zeros(n_voxels, dtype=float)
-            for bag in self.inputs_["data_bags"]["z_maps"]:
-                (
-                    z_map[bag["voxel_mask"]],
-                    p_map[bag["voxel_mask"]],
-                    dof_map[bag["voxel_mask"]],
-                ) = self._fit_model(
-                    bag["values"], bag["study_mask"], corr=self.inputs_["corr_matrix"]
-                )
-
-        maps = {"z": z_map, "p": p_map, "dof": dof_map}
-        description = self._description_text()
-
-        return maps, {}, description
+        maps = self._fit_over_bags(
+            ["z_maps"],
+            ["z", "p", "dof"],
+            corr=self.inputs_["corr_matrix"],
+        )
+        return maps, {}, self._description_text()
 
 
+@_fill_doc
 class Stouffers(IBMAEstimator):
     """A t-test on z-statistic images.
 
@@ -657,18 +783,8 @@ class Stouffers(IBMAEstimator):
 
     Parameters
     ----------
-    aggressive_mask : :obj:`bool`, optional
-        Voxels with a value of zero of NaN in any of the input maps will be removed
-        from the analysis.
-        If False, all voxels are included by running a separate analysis on bags
-        of voxels that belong that have a valid value across the same studies.
-        Default is False.
-    groupby : None, :obj:`str`, array-like, or False, optional
-        How to identify images that share participants and are therefore dependent. None (the
-        default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
-        instead, for a paper contributing independent samples (e.g. patients and controls).
-        An array supplies one label per image. False treats every image as independent, which
-        inflates significance whenever that is untrue. Default is None.
+    %(aggressive_mask)s
+    %(groupby)s
     use_sample_size : :obj:`bool`, optional
         Whether to use sample sizes for weights (i.e., "weighted Stouffer's") or not,
         as described in :footcite:t:`zaykin2011optimally`.
@@ -683,6 +799,10 @@ class Stouffers(IBMAEstimator):
     -----
     Requires ``z`` images and optionally the sample size metadata field.
 
+    When ``groupby`` finds a group holding more than one image, the images in a group are
+    combined into one variance-standardized statistic and the sum's variance is inflated by
+    the null correlation between them :footcite:p:`kost2002combining`.
+
     :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
 
     ============== ===============================================================================
@@ -696,11 +816,7 @@ class Stouffers(IBMAEstimator):
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will result in invalid results. It cannot be used with these types of maskers.
 
-    By default, image-based meta-analysis estimators run the analysis in bags of voxels,
-    where each bag holds the voxels that have a valid value across the same set of studies.
-    A voxel is therefore only dropped from the studies that are missing it. Setting
-    ``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
-    input map from the analysis entirely.
+    %(liberal_mask_notes)s
 
     References
     ----------
@@ -715,6 +831,9 @@ class Stouffers(IBMAEstimator):
     # The variance inflation term needs the null correlation between the input maps;
     # see IBMAEstimator._requires_corr_matrix.
     _requires_corr_matrix = True
+
+    # Averaging across voxels invalidates the combination outright.
+    _voxel_averaging = "reject"
 
     _required_inputs = {"z_maps": ("image", "z")}
 
@@ -760,11 +879,9 @@ class Stouffers(IBMAEstimator):
 
         return description
 
-    def _fit_model(self, stat_maps, study_mask=None, corr=None):
+    def _fit_model(self, stat_maps, *, study_mask, corr=None):
         """Fit the model to the data."""
         n_studies, n_voxels = stat_maps.shape
-
-        study_mask = self._all_images(study_mask, n_studies)
 
         groups = self._dependence(study_mask).labels
         sub_corr = None
@@ -800,46 +917,17 @@ class Stouffers(IBMAEstimator):
 
     def _fit(self, dataset):
         self.dataset = dataset
-        self.masker = self.masker or dataset.masker
-        if not isinstance(self.masker, NiftiMasker):
-            raise ValueError(
-                f"A {type(self.masker)} mask has been detected. "
-                "Only NiftiMaskers are allowed for this Estimator. "
-                "This is because aggregation, such as averaging values across ROIs, "
-                "will produce invalid results."
-            )
+        self._resolve_masker(dataset)
 
-        if self.aggressive_mask:
-            voxel_mask = self.inputs_["aggressive_mask"]
-
-            result_maps = self._fit_model(
-                self.inputs_["z_maps"][:, voxel_mask],
-                corr=self.inputs_["corr_matrix"],
-            )
-
-            z_map, p_map, dof_map = tuple(
-                map(lambda x: _boolean_unmask(x, voxel_mask), result_maps)
-            )
-        else:
-            n_voxels = self.inputs_["z_maps"].shape[1]
-            z_map = np.zeros(n_voxels, dtype=float)
-            p_map = np.zeros(n_voxels, dtype=float)
-            dof_map = np.zeros(n_voxels, dtype=float)
-            for bag in self.inputs_["data_bags"]["z_maps"]:
-                (
-                    z_map[bag["voxel_mask"]],
-                    p_map[bag["voxel_mask"]],
-                    dof_map[bag["voxel_mask"]],
-                ) = self._fit_model(
-                    bag["values"], bag["study_mask"], corr=self.inputs_["corr_matrix"]
-                )
-
-        maps = {"z": z_map, "p": p_map, "dof": dof_map}
-        description = self._description_text()
-
-        return maps, {}, description
+        maps = self._fit_over_bags(
+            ["z_maps"],
+            ["z", "p", "dof"],
+            corr=self.inputs_["corr_matrix"],
+        )
+        return maps, {}, self._description_text()
 
 
+@_fill_doc
 class WeightedLeastSquares(_PyMARERegressionEstimator):
     """Weighted least-squares meta-regression.
 
@@ -872,30 +960,9 @@ class WeightedLeastSquares(_PyMARERegressionEstimator):
 
     Parameters
     ----------
-    aggressive_mask : :obj:`bool`, optional
-        Voxels with a value of zero of NaN in any of the input maps will be removed
-        from the analysis.
-        If False, all voxels are included by running a separate analysis on bags
-        of voxels that belong that have a valid value across the same studies.
-        Default is False.
-    groupby : None, :obj:`str`, array-like, or False, optional
-        How to identify images that share participants and are therefore dependent. None (the
-        default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
-        instead, for a paper contributing independent samples (e.g. patients and controls).
-        An array supplies one label per image. False treats every image as independent, which
-        inflates significance whenever that is untrue. Default is None.
-    weight_scheme : {'rescale', 'individual', 'collapse'}, optional
-        How images within a group are weighted, passed to PyMARE. ``'rescale'`` (the default)
-        divides each image's weight by its group size, so a group's total weight does not grow
-        with the number of maps it contributed -- the correlated-effects model of
-        :footcite:t:`hedges2010robust`, weighted as in :footcite:t:`fisher2015robumeta`.
-        ``'individual'`` leaves the weights alone; ``'collapse'`` fits one row per group.
-        Group labels also switch the standard errors to CR2 and the reference to a t
-        distribution with Satterthwaite degrees of freedom :footcite:p:`tipton2015small`.
-    rho : :obj:`float`, optional
-        Assumed within-group correlation, in [0, 1]. Enters only through tau^2, to which
-        results are weakly sensitive. Default is 0.8, matching ``robumeta``. Ignored when
-        ``weight_scheme='individual'``.
+    %(aggressive_mask)s
+    %(groupby)s
+    %(weighting)s
     tau2 : :obj:`float` or 1D :class:`numpy.ndarray`, optional
         Assumed/known value of tau^2. Must be >= 0. Default is 0.
 
@@ -915,20 +982,13 @@ class WeightedLeastSquares(_PyMARERegressionEstimator):
 
     Warnings
     --------
-    Cluster-robust inference is asymptotic in the number of *groups*, not images. PyMARE warns
-    at 10 or fewer groups, where robust variance estimation is anti-conservative
-    :footcite:p:`hedges2010robust`, and when the Satterthwaite degrees of freedom fall below
-    about 4 :footcite:p:`tipton2015small`. Both are common for small meta-analyses.
+    %(cluster_robust_warning)s
 
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will likely result in biased results. The extent of this bias is currently
     unknown.
 
-    By default, image-based meta-analysis estimators run the analysis in bags of voxels,
-    where each bag holds the voxels that have a valid value across the same set of studies.
-    A voxel is therefore only dropped from the studies that are missing it. Setting
-    ``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
-    input map from the analysis entirely.
+    %(liberal_mask_notes)s
 
     References
     ----------
@@ -956,14 +1016,9 @@ class WeightedLeastSquares(_PyMARERegressionEstimator):
         )
         return description
 
-    def _fit_model(self, beta_maps, varcope_maps, study_mask=None):
+    def _fit_model(self, beta_maps, varcope_maps, *, study_mask):
         """Fit the model to the data."""
-        n_studies, n_voxels = beta_maps.shape
-
-        study_mask = self._all_images(study_mask, n_studies)
-
-        # None when there is nothing to correct for, which is how PyMARE is told to use
-        # model-based inference rather than cluster-robust ("sandwich") standard errors.
+        n_voxels = beta_maps.shape[1]
         groups = self._dependence(study_mask).labels
 
         pymare_dset = pymare.Dataset(y=beta_maps, v=varcope_maps, g=groups)
@@ -984,53 +1039,18 @@ class WeightedLeastSquares(_PyMARERegressionEstimator):
 
     def _fit(self, dataset):
         self.dataset = dataset
-        self.masker = self.masker or dataset.masker
-        if not isinstance(self.masker, NiftiMasker):
-            LGR.warning(
-                f"A {type(self.masker)} mask has been detected. "
-                "Masks which average across voxels will likely produce biased results when used "
-                "with this Estimator."
-            )
+        self._resolve_masker(dataset)
 
-        if self.aggressive_mask:
-            voxel_mask = self.inputs_["aggressive_mask"]
-            result_maps = self._fit_model(
-                self.inputs_["beta_maps"][:, voxel_mask],
-                self.inputs_["varcope_maps"][:, voxel_mask],
-            )
-
-            z_map, p_map, est_map, se_map, dof_map = tuple(
-                map(lambda x: _boolean_unmask(x, voxel_mask), result_maps)
-            )
-        else:
-            n_voxels = self.inputs_["beta_maps"].shape[1]
-
-            z_map, p_map, est_map, se_map = [np.zeros(n_voxels, dtype=float) for _ in range(4)]
-            dof_map = np.zeros(n_voxels, dtype=float)
-
-            beta_bags = self.inputs_["data_bags"]["beta_maps"]
-            varcope_bags = self.inputs_["data_bags"]["varcope_maps"]
-            for beta_bag, varcope_bag in zip(beta_bags, varcope_bags):
-                (
-                    z_map[beta_bag["voxel_mask"]],
-                    p_map[beta_bag["voxel_mask"]],
-                    est_map[beta_bag["voxel_mask"]],
-                    se_map[beta_bag["voxel_mask"]],
-                    dof_map[beta_bag["voxel_mask"]],
-                ) = self._fit_model(
-                    beta_bag["values"],
-                    varcope_bag["values"],
-                    beta_bag["study_mask"],
-                )
-
+        maps = self._fit_over_bags(
+            ["beta_maps", "varcope_maps"],
+            ["z", "p", "est", "se", "dof"],
+        )
         # tau2 is a float, not a map, so it can't go into the results dictionary
         tables = {"level-estimator": pd.DataFrame(columns=["tau2"], data=[self.tau2])}
-        maps = {"z": z_map, "p": p_map, "est": est_map, "se": se_map, "dof": dof_map}
-        description = self._description_text()
-
-        return maps, tables, description
+        return maps, tables, self._description_text()
 
 
+@_fill_doc
 class DerSimonianLaird(_PyMARERegressionEstimator):
     """DerSimonian-Laird meta-regression estimator.
 
@@ -1059,30 +1079,9 @@ class DerSimonianLaird(_PyMARERegressionEstimator):
 
     Parameters
     ----------
-    aggressive_mask : :obj:`bool`, optional
-        Voxels with a value of zero of NaN in any of the input maps will be removed
-        from the analysis.
-        If False, all voxels are included by running a separate analysis on bags
-        of voxels that belong that have a valid value across the same studies.
-        Default is False.
-    groupby : None, :obj:`str`, array-like, or False, optional
-        How to identify images that share participants and are therefore dependent. None (the
-        default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
-        instead, for a paper contributing independent samples (e.g. patients and controls).
-        An array supplies one label per image. False treats every image as independent, which
-        inflates significance whenever that is untrue. Default is None.
-    weight_scheme : {'rescale', 'individual', 'collapse'}, optional
-        How images within a group are weighted, passed to PyMARE. ``'rescale'`` (the default)
-        divides each image's weight by its group size, so a group's total weight does not grow
-        with the number of maps it contributed -- the correlated-effects model of
-        :footcite:t:`hedges2010robust`, weighted as in :footcite:t:`fisher2015robumeta`.
-        ``'individual'`` leaves the weights alone; ``'collapse'`` fits one row per group.
-        Group labels also switch the standard errors to CR2 and the reference to a t
-        distribution with Satterthwaite degrees of freedom :footcite:p:`tipton2015small`.
-    rho : :obj:`float`, optional
-        Assumed within-group correlation, in [0, 1]. Enters only through tau^2, to which
-        results are weakly sensitive. Default is 0.8, matching ``robumeta``. Ignored when
-        ``weight_scheme='individual'``.
+    %(aggressive_mask)s
+    %(groupby)s
+    %(weighting)s
 
     Notes
     -----
@@ -1101,20 +1100,13 @@ class DerSimonianLaird(_PyMARERegressionEstimator):
 
     Warnings
     --------
-    Cluster-robust inference is asymptotic in the number of *groups*, not images. PyMARE warns
-    at 10 or fewer groups, where robust variance estimation is anti-conservative
-    :footcite:p:`hedges2010robust`, and when the Satterthwaite degrees of freedom fall below
-    about 4 :footcite:p:`tipton2015small`. Both are common for small meta-analyses.
+    %(cluster_robust_warning)s
 
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will likely result in biased results. The extent of this bias is currently
     unknown.
 
-    By default, image-based meta-analysis estimators run the analysis in bags of voxels,
-    where each bag holds the voxels that have a valid value across the same set of studies.
-    A voxel is therefore only dropped from the studies that are missing it. Setting
-    ``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
-    input map from the analysis entirely.
+    %(liberal_mask_notes)s
 
     References
     ----------
@@ -1139,14 +1131,9 @@ class DerSimonianLaird(_PyMARERegressionEstimator):
         )
         return description
 
-    def _fit_model(self, beta_maps, varcope_maps, study_mask=None):
+    def _fit_model(self, beta_maps, varcope_maps, *, study_mask):
         """Fit the model to the data."""
-        n_studies, n_voxels = beta_maps.shape
-
-        study_mask = self._all_images(study_mask, n_studies)
-
-        # None when there is nothing to correct for, which is how PyMARE is told to use
-        # model-based inference rather than cluster-robust ("sandwich") standard errors.
+        n_voxels = beta_maps.shape[1]
         groups = self._dependence(study_mask).labels
 
         pymare_dset = pymare.Dataset(y=beta_maps, v=varcope_maps, g=groups)
@@ -1165,61 +1152,16 @@ class DerSimonianLaird(_PyMARERegressionEstimator):
 
     def _fit(self, dataset):
         self.dataset = dataset
-        self.masker = self.masker or dataset.masker
-        if not isinstance(self.masker, NiftiMasker):
-            LGR.warning(
-                f"A {type(self.masker)} mask has been detected. "
-                "Masks which average across voxels will likely produce biased results when used "
-                "with this Estimator."
-            )
+        self._resolve_masker(dataset)
 
-        if self.aggressive_mask:
-            voxel_mask = self.inputs_["aggressive_mask"]
-            result_maps = self._fit_model(
-                self.inputs_["beta_maps"][:, voxel_mask],
-                self.inputs_["varcope_maps"][:, voxel_mask],
-            )
-
-            z_map, p_map, est_map, se_map, tau2_map, dof_map = tuple(
-                map(lambda x: _boolean_unmask(x, voxel_mask), result_maps)
-            )
-        else:
-            n_voxels = self.inputs_["beta_maps"].shape[1]
-
-            z_map, p_map, est_map, se_map, tau2_map = [
-                np.zeros(n_voxels, dtype=float) for _ in range(5)
-            ]
-            dof_map = np.zeros(n_voxels, dtype=float)
-
-            beta_bags = self.inputs_["data_bags"]["beta_maps"]
-            varcope_bags = self.inputs_["data_bags"]["varcope_maps"]
-            for beta_bag, varcope_bag in zip(beta_bags, varcope_bags):
-                (
-                    z_map[beta_bag["voxel_mask"]],
-                    p_map[beta_bag["voxel_mask"]],
-                    est_map[beta_bag["voxel_mask"]],
-                    se_map[beta_bag["voxel_mask"]],
-                    tau2_map[beta_bag["voxel_mask"]],
-                    dof_map[beta_bag["voxel_mask"]],
-                ) = self._fit_model(
-                    beta_bag["values"],
-                    varcope_bag["values"],
-                    beta_bag["study_mask"],
-                )
-
-        maps = {
-            "z": z_map,
-            "p": p_map,
-            "est": est_map,
-            "se": se_map,
-            "tau2": tau2_map,
-            "dof": dof_map,
-        }
-        description = self._description_text()
-
-        return maps, {}, description
+        maps = self._fit_over_bags(
+            ["beta_maps", "varcope_maps"],
+            ["z", "p", "est", "se", "tau2", "dof"],
+        )
+        return maps, {}, self._description_text()
 
 
+@_fill_doc
 class Hedges(_PyMARERegressionEstimator):
     """Hedges meta-regression estimator.
 
@@ -1248,30 +1190,9 @@ class Hedges(_PyMARERegressionEstimator):
 
     Parameters
     ----------
-    aggressive_mask : :obj:`bool`, optional
-        Voxels with a value of zero of NaN in any of the input maps will be removed
-        from the analysis.
-        If False, all voxels are included by running a separate analysis on bags
-        of voxels that belong that have a valid value across the same studies.
-        Default is False.
-    groupby : None, :obj:`str`, array-like, or False, optional
-        How to identify images that share participants and are therefore dependent. None (the
-        default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
-        instead, for a paper contributing independent samples (e.g. patients and controls).
-        An array supplies one label per image. False treats every image as independent, which
-        inflates significance whenever that is untrue. Default is None.
-    weight_scheme : {'rescale', 'individual', 'collapse'}, optional
-        How images within a group are weighted, passed to PyMARE. ``'rescale'`` (the default)
-        divides each image's weight by its group size, so a group's total weight does not grow
-        with the number of maps it contributed -- the correlated-effects model of
-        :footcite:t:`hedges2010robust`, weighted as in :footcite:t:`fisher2015robumeta`.
-        ``'individual'`` leaves the weights alone; ``'collapse'`` fits one row per group.
-        Group labels also switch the standard errors to CR2 and the reference to a t
-        distribution with Satterthwaite degrees of freedom :footcite:p:`tipton2015small`.
-    rho : :obj:`float`, optional
-        Assumed within-group correlation, in [0, 1]. Enters only through tau^2, to which
-        results are weakly sensitive. Default is 0.8, matching ``robumeta``. Ignored when
-        ``weight_scheme='individual'``.
+    %(aggressive_mask)s
+    %(groupby)s
+    %(weighting)s
 
     Notes
     -----
@@ -1290,20 +1211,13 @@ class Hedges(_PyMARERegressionEstimator):
 
     Warnings
     --------
-    Cluster-robust inference is asymptotic in the number of *groups*, not images. PyMARE warns
-    at 10 or fewer groups, where robust variance estimation is anti-conservative
-    :footcite:p:`hedges2010robust`, and when the Satterthwaite degrees of freedom fall below
-    about 4 :footcite:p:`tipton2015small`. Both are common for small meta-analyses.
+    %(cluster_robust_warning)s
 
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will likely result in biased results. The extent of this bias is currently
     unknown.
 
-    By default, image-based meta-analysis estimators run the analysis in bags of voxels,
-    where each bag holds the voxels that have a valid value across the same set of studies.
-    A voxel is therefore only dropped from the studies that are missing it. Setting
-    ``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
-    input map from the analysis entirely.
+    %(liberal_mask_notes)s
 
     References
     ----------
@@ -1327,14 +1241,9 @@ class Hedges(_PyMARERegressionEstimator):
         )
         return description
 
-    def _fit_model(self, beta_maps, varcope_maps, study_mask=None):
+    def _fit_model(self, beta_maps, varcope_maps, *, study_mask):
         """Fit the model to the data."""
-        n_studies, n_voxels = beta_maps.shape
-
-        study_mask = self._all_images(study_mask, n_studies)
-
-        # None when there is nothing to correct for, which is how PyMARE is told to use
-        # model-based inference rather than cluster-robust ("sandwich") standard errors.
+        n_voxels = beta_maps.shape[1]
         groups = self._dependence(study_mask).labels
 
         pymare_dset = pymare.Dataset(y=beta_maps, v=varcope_maps, g=groups)
@@ -1353,61 +1262,16 @@ class Hedges(_PyMARERegressionEstimator):
 
     def _fit(self, dataset):
         self.dataset = dataset
-        self.masker = self.masker or dataset.masker
-        if not isinstance(self.masker, NiftiMasker):
-            LGR.warning(
-                f"A {type(self.masker)} mask has been detected. "
-                "Masks which average across voxels will likely produce biased results when used "
-                "with this Estimator."
-            )
+        self._resolve_masker(dataset)
 
-        if self.aggressive_mask:
-            voxel_mask = self.inputs_["aggressive_mask"]
-            result_maps = self._fit_model(
-                self.inputs_["beta_maps"][:, voxel_mask],
-                self.inputs_["varcope_maps"][:, voxel_mask],
-            )
-
-            z_map, p_map, est_map, se_map, tau2_map, dof_map = tuple(
-                map(lambda x: _boolean_unmask(x, voxel_mask), result_maps)
-            )
-        else:
-            n_voxels = self.inputs_["beta_maps"].shape[1]
-
-            z_map, p_map, est_map, se_map, tau2_map = [
-                np.zeros(n_voxels, dtype=float) for _ in range(5)
-            ]
-            dof_map = np.zeros(n_voxels, dtype=float)
-
-            beta_bags = self.inputs_["data_bags"]["beta_maps"]
-            varcope_bags = self.inputs_["data_bags"]["varcope_maps"]
-            for beta_bag, varcope_bag in zip(beta_bags, varcope_bags):
-                (
-                    z_map[beta_bag["voxel_mask"]],
-                    p_map[beta_bag["voxel_mask"]],
-                    est_map[beta_bag["voxel_mask"]],
-                    se_map[beta_bag["voxel_mask"]],
-                    tau2_map[beta_bag["voxel_mask"]],
-                    dof_map[beta_bag["voxel_mask"]],
-                ) = self._fit_model(
-                    beta_bag["values"],
-                    varcope_bag["values"],
-                    beta_bag["study_mask"],
-                )
-
-        maps = {
-            "z": z_map,
-            "p": p_map,
-            "est": est_map,
-            "se": se_map,
-            "tau2": tau2_map,
-            "dof": dof_map,
-        }
-        description = self._description_text()
-
-        return maps, {}, description
+        maps = self._fit_over_bags(
+            ["beta_maps", "varcope_maps"],
+            ["z", "p", "est", "se", "tau2", "dof"],
+        )
+        return maps, {}, self._description_text()
 
 
+@_fill_doc
 class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
     """Method estimates with known sample sizes but unknown sampling variances.
 
@@ -1436,30 +1300,9 @@ class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
 
     Parameters
     ----------
-    aggressive_mask : :obj:`bool`, optional
-        Voxels with a value of zero of NaN in any of the input maps will be removed
-        from the analysis.
-        If False, all voxels are included by running a separate analysis on bags
-        of voxels that belong that have a valid value across the same studies.
-        Default is False.
-    groupby : None, :obj:`str`, array-like, or False, optional
-        How to identify images that share participants and are therefore dependent. None (the
-        default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
-        instead, for a paper contributing independent samples (e.g. patients and controls).
-        An array supplies one label per image. False treats every image as independent, which
-        inflates significance whenever that is untrue. Default is None.
-    weight_scheme : {'rescale', 'individual', 'collapse'}, optional
-        How images within a group are weighted, passed to PyMARE. ``'rescale'`` (the default)
-        divides each image's weight by its group size, so a group's total weight does not grow
-        with the number of maps it contributed -- the correlated-effects model of
-        :footcite:t:`hedges2010robust`, weighted as in :footcite:t:`fisher2015robumeta`.
-        ``'individual'`` leaves the weights alone; ``'collapse'`` fits one row per group.
-        Group labels also switch the standard errors to CR2 and the reference to a t
-        distribution with Satterthwaite degrees of freedom :footcite:p:`tipton2015small`.
-    rho : :obj:`float`, optional
-        Assumed within-group correlation, in [0, 1]. Enters only through tau^2, to which
-        results are weakly sensitive. Default is 0.8, matching ``robumeta``. Ignored when
-        ``weight_scheme='individual'``.
+    %(aggressive_mask)s
+    %(groupby)s
+    %(weighting)s
     method : {'ml', 'reml'}, optional
         The estimation method to use. The available options are
 
@@ -1491,20 +1334,13 @@ class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
 
     Warnings
     --------
-    Cluster-robust inference is asymptotic in the number of *groups*, not images. PyMARE warns
-    at 10 or fewer groups, where robust variance estimation is anti-conservative
-    :footcite:p:`hedges2010robust`, and when the Satterthwaite degrees of freedom fall below
-    about 4 :footcite:p:`tipton2015small`. Both are common for small meta-analyses.
+    %(cluster_robust_warning)s
 
     Likelihood-based estimators are not parallelized across voxels, so this
     method should not be used on full brains, unless you can submit your code
     to a job scheduler.
 
-    By default, image-based meta-analysis estimators run the analysis in bags of voxels,
-    where each bag holds the voxels that have a valid value across the same set of studies.
-    A voxel is therefore only dropped from the studies that are missing it. Setting
-    ``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
-    input map from the analysis entirely.
+    %(liberal_mask_notes)s
 
     See Also
     --------
@@ -1516,6 +1352,10 @@ class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
         "beta_maps": ("image", "beta"),
         "sample_sizes": ("metadata", "sample_sizes"),
     }
+
+    # Sampling variance is estimated from the maps themselves here, so averaging voxels
+    # rescales the estimate along with the effect rather than biasing one against the other.
+    _voxel_averaging = None
 
     def __init__(self, method="ml", **kwargs):
         super().__init__(**kwargs)
@@ -1531,17 +1371,11 @@ class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
         )
         return description
 
-    def _fit_model(self, beta_maps, study_mask=None):
+    def _fit_model(self, beta_maps, *, study_mask):
         """Fit the model to the data."""
-        n_studies, n_voxels = beta_maps.shape
-
-        study_mask = self._all_images(study_mask, n_studies)
-
+        n_voxels = beta_maps.shape[1]
         sample_sizes = self._sample_sizes_for_mask(study_mask)
         n_maps = np.tile(sample_sizes, (n_voxels, 1)).T
-
-        # None when there is nothing to correct for, which is how PyMARE is told to use
-        # model-based inference rather than cluster-robust ("sandwich") standard errors.
         groups = self._dependence(study_mask).labels
 
         pymare_dset = pymare.Dataset(y=beta_maps, n=n_maps, g=groups)
@@ -1564,50 +1398,16 @@ class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
 
     def _fit(self, dataset):
         self.dataset = dataset
-        self.masker = self.masker or dataset.masker
+        self._resolve_masker(dataset)
 
-        if self.aggressive_mask:
-            voxel_mask = self.inputs_["aggressive_mask"]
-            result_maps = self._fit_model(
-                self.inputs_["beta_maps"][:, voxel_mask],
-            )
-
-            z_map, p_map, est_map, se_map, tau2_map, sigma2_map, dof_map = tuple(
-                map(lambda x: _boolean_unmask(x, voxel_mask), result_maps)
-            )
-        else:
-            n_voxels = self.inputs_["beta_maps"].shape[1]
-
-            z_map, p_map, est_map, se_map, tau2_map, sigma2_map = [
-                np.zeros(n_voxels, dtype=float) for _ in range(6)
-            ]
-            dof_map = np.zeros(n_voxels, dtype=float)
-
-            for bag in self.inputs_["data_bags"]["beta_maps"]:
-                (
-                    z_map[bag["voxel_mask"]],
-                    p_map[bag["voxel_mask"]],
-                    est_map[bag["voxel_mask"]],
-                    se_map[bag["voxel_mask"]],
-                    tau2_map[bag["voxel_mask"]],
-                    sigma2_map[bag["voxel_mask"]],
-                    dof_map[bag["voxel_mask"]],
-                ) = self._fit_model(bag["values"], bag["study_mask"])
-
-        maps = {
-            "z": z_map,
-            "p": p_map,
-            "est": est_map,
-            "se": se_map,
-            "tau2": tau2_map,
-            "sigma2": sigma2_map,
-            "dof": dof_map,
-        }
-        description = self._description_text()
-
-        return maps, {}, description
+        maps = self._fit_over_bags(
+            ["beta_maps"],
+            ["z", "p", "est", "se", "tau2", "sigma2", "dof"],
+        )
+        return maps, {}, self._description_text()
 
 
+@_fill_doc
 class VarianceBasedLikelihood(_PyMARERegressionEstimator):
     """A likelihood-based meta-analysis method for estimates with known variances.
 
@@ -1637,30 +1437,9 @@ class VarianceBasedLikelihood(_PyMARERegressionEstimator):
 
     Parameters
     ----------
-    aggressive_mask : :obj:`bool`, optional
-        Voxels with a value of zero of NaN in any of the input maps will be removed
-        from the analysis.
-        If False, all voxels are included by running a separate analysis on bags
-        of voxels that belong that have a valid value across the same studies.
-        Default is False.
-    groupby : None, :obj:`str`, array-like, or False, optional
-        How to identify images that share participants and are therefore dependent. None (the
-        default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
-        instead, for a paper contributing independent samples (e.g. patients and controls).
-        An array supplies one label per image. False treats every image as independent, which
-        inflates significance whenever that is untrue. Default is None.
-    weight_scheme : {'rescale', 'individual', 'collapse'}, optional
-        How images within a group are weighted, passed to PyMARE. ``'rescale'`` (the default)
-        divides each image's weight by its group size, so a group's total weight does not grow
-        with the number of maps it contributed -- the correlated-effects model of
-        :footcite:t:`hedges2010robust`, weighted as in :footcite:t:`fisher2015robumeta`.
-        ``'individual'`` leaves the weights alone; ``'collapse'`` fits one row per group.
-        Group labels also switch the standard errors to CR2 and the reference to a t
-        distribution with Satterthwaite degrees of freedom :footcite:p:`tipton2015small`.
-    rho : :obj:`float`, optional
-        Assumed within-group correlation, in [0, 1]. Enters only through tau^2, to which
-        results are weakly sensitive. Default is 0.8, matching ``robumeta``. Ignored when
-        ``weight_scheme='individual'``.
+    %(aggressive_mask)s
+    %(groupby)s
+    %(weighting)s
     method : {'ml', 'reml'}, optional
         The estimation method to use. The available options are
 
@@ -1690,10 +1469,7 @@ class VarianceBasedLikelihood(_PyMARERegressionEstimator):
 
     Warnings
     --------
-    Cluster-robust inference is asymptotic in the number of *groups*, not images. PyMARE warns
-    at 10 or fewer groups, where robust variance estimation is anti-conservative
-    :footcite:p:`hedges2010robust`, and when the Satterthwaite degrees of freedom fall below
-    about 4 :footcite:p:`tipton2015small`. Both are common for small meta-analyses.
+    %(cluster_robust_warning)s
 
     Likelihood-based estimators are not parallelized across voxels, so this
     method should not be used on full brains, unless you can submit your code
@@ -1703,11 +1479,7 @@ class VarianceBasedLikelihood(_PyMARERegressionEstimator):
     will likely result in biased results. The extent of this bias is currently
     unknown.
 
-    By default, image-based meta-analysis estimators run the analysis in bags of voxels,
-    where each bag holds the voxels that have a valid value across the same set of studies.
-    A voxel is therefore only dropped from the studies that are missing it. Setting
-    ``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
-    input map from the analysis entirely.
+    %(liberal_mask_notes)s
 
     References
     ----------
@@ -1735,14 +1507,9 @@ class VarianceBasedLikelihood(_PyMARERegressionEstimator):
         )
         return description
 
-    def _fit_model(self, beta_maps, varcope_maps, study_mask=None):
+    def _fit_model(self, beta_maps, varcope_maps, *, study_mask):
         """Fit the model to the data."""
-        n_studies, n_voxels = beta_maps.shape
-
-        study_mask = self._all_images(study_mask, n_studies)
-
-        # None when there is nothing to correct for, which is how PyMARE is told to use
-        # model-based inference rather than cluster-robust ("sandwich") standard errors.
+        n_voxels = beta_maps.shape[1]
         groups = self._dependence(study_mask).labels
 
         pymare_dset = pymare.Dataset(y=beta_maps, v=varcope_maps, g=groups)
@@ -1764,62 +1531,16 @@ class VarianceBasedLikelihood(_PyMARERegressionEstimator):
 
     def _fit(self, dataset):
         self.dataset = dataset
-        self.masker = self.masker or dataset.masker
+        self._resolve_masker(dataset)
 
-        if not isinstance(self.masker, NiftiMasker):
-            LGR.warning(
-                f"A {type(self.masker)} mask has been detected. "
-                "Masks which average across voxels will likely produce biased results when used "
-                "with this Estimator."
-            )
-
-        if self.aggressive_mask:
-            voxel_mask = self.inputs_["aggressive_mask"]
-            result_maps = self._fit_model(
-                self.inputs_["beta_maps"][:, voxel_mask],
-                self.inputs_["varcope_maps"][:, voxel_mask],
-            )
-
-            z_map, p_map, est_map, se_map, tau2_map, dof_map = tuple(
-                map(lambda x: _boolean_unmask(x, voxel_mask), result_maps)
-            )
-        else:
-            n_voxels = self.inputs_["beta_maps"].shape[1]
-
-            z_map, p_map, est_map, se_map, tau2_map = [
-                np.zeros(n_voxels, dtype=float) for _ in range(5)
-            ]
-            dof_map = np.zeros(n_voxels, dtype=float)
-
-            beta_bags = self.inputs_["data_bags"]["beta_maps"]
-            varcope_bags = self.inputs_["data_bags"]["varcope_maps"]
-            for beta_bag, varcope_bag in zip(beta_bags, varcope_bags):
-                (
-                    z_map[beta_bag["voxel_mask"]],
-                    p_map[beta_bag["voxel_mask"]],
-                    est_map[beta_bag["voxel_mask"]],
-                    se_map[beta_bag["voxel_mask"]],
-                    tau2_map[beta_bag["voxel_mask"]],
-                    dof_map[beta_bag["voxel_mask"]],
-                ) = self._fit_model(
-                    beta_bag["values"],
-                    varcope_bag["values"],
-                    beta_bag["study_mask"],
-                )
-
-        maps = {
-            "z": z_map,
-            "p": p_map,
-            "est": est_map,
-            "se": se_map,
-            "tau2": tau2_map,
-            "dof": dof_map,
-        }
-        description = self._description_text()
-
-        return maps, {}, description
+        maps = self._fit_over_bags(
+            ["beta_maps", "varcope_maps"],
+            ["z", "p", "est", "se", "tau2", "dof"],
+        )
+        return maps, {}, self._description_text()
 
 
+@_fill_doc
 class PermutedOLS(IBMAEstimator):
     r"""An analysis with permuted ordinary least squares (OLS).
 
@@ -1850,18 +1571,8 @@ class PermutedOLS(IBMAEstimator):
 
     Parameters
     ----------
-    aggressive_mask : :obj:`bool`, optional
-        Voxels with a value of zero of NaN in any of the input maps will be removed
-        from the analysis.
-        If False, all voxels are included by running a separate analysis on bags
-        of voxels that belong that have a valid value across the same studies.
-        Default is False.
-    groupby : None, :obj:`str`, array-like, or False, optional
-        How to identify images that share participants and are therefore dependent. None (the
-        default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
-        instead, for a paper contributing independent samples (e.g. patients and controls).
-        An array supplies one label per image. False treats every image as independent, which
-        inflates significance whenever that is untrue. Default is None.
+    %(aggressive_mask)s
+    %(groupby)s
     use_sample_size : :obj:`bool`, optional
         Whether to weight each group's contribution by its sample size. When False (the
         default), every group is weighted equally and the statistic is the ordinary one-sample
@@ -1901,11 +1612,7 @@ class PermutedOLS(IBMAEstimator):
     count, and one dominant study can drag them well below it. PyMARE warns below about 4
     :footcite:p:`tipton2015small`.
 
-    By default, image-based meta-analysis estimators run the analysis in bags of voxels,
-    where each bag holds the voxels that have a valid value across the same set of studies.
-    A voxel is therefore only dropped from the studies that are missing it. Setting
-    ``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
-    input map from the analysis entirely.
+    %(liberal_mask_notes)s
 
     References
     ----------
@@ -1918,6 +1625,10 @@ class PermutedOLS(IBMAEstimator):
     """
 
     _required_inputs = {"beta_maps": ("image", "beta")}
+
+    # The sign-flip null is distribution-free, so label averaging biases it no more than it
+    # biases the maps it is given.
+    _voxel_averaging = None
 
     def __init__(
         self,
@@ -1967,12 +1678,13 @@ class PermutedOLS(IBMAEstimator):
             raise ValueError("Sample sizes must be finite positive values.")
         return dependence.blocks, weights
 
-    def _fit_model(self, beta_maps, n_perm=0, study_mask=None, n_jobs=None, sign_flips=None):
-        """Fit the model to the data."""
-        n_maps, n_voxels = beta_maps.shape
+    def _fit_model(self, beta_maps, *, study_mask, n_perm=0, n_jobs=None, sign_flips=None):
+        """Fit the model to the data.
 
-        study_mask = self._all_images(study_mask, n_maps)
-
+        With ``n_perm`` the max-statistic null is left in ``null_distributions_`` rather than
+        returned, so the maps this hands back are the same three whatever ``n_perm`` is.
+        """
+        n_voxels = beta_maps.shape[1]
         blocks, weights = self._blocks_and_weights(study_mask)
 
         result = _permuted_ols(
@@ -1993,40 +1705,14 @@ class PermutedOLS(IBMAEstimator):
 
         t_map = result["t"].squeeze()
         dof = result["dof"]
-        z_map = t_to_z(t_map, dof)
-        dof_map = np.full(n_voxels, dof, dtype=float)
-
-        return result["logp_max_t"].squeeze(), t_map, z_map, dof_map
+        return t_map, t_to_z(t_map, dof), np.full(n_voxels, dof, dtype=float)
 
     def _fit(self, dataset):
         self.dataset = dataset
+        self._resolve_masker(dataset)
 
-        if self.aggressive_mask:
-            voxel_mask = self.inputs_["aggressive_mask"]
-            result_maps = self._fit_model(self.inputs_["beta_maps"][:, voxel_mask])
-
-            # Skip log_p_map
-            t_map, z_map, dof_map = tuple(
-                map(lambda x: _boolean_unmask(x, voxel_mask), result_maps[1:])
-            )
-        else:
-            n_voxels = self.inputs_["beta_maps"].shape[1]
-            t_map = np.zeros(n_voxels, dtype=float)
-            z_map = np.zeros(n_voxels, dtype=float)
-            dof_map = np.zeros(n_voxels, dtype=float)
-
-            for bag in self.inputs_["data_bags"]["beta_maps"]:
-                (
-                    _,  # Skip log_p_map
-                    t_map[bag["voxel_mask"]],
-                    z_map[bag["voxel_mask"]],
-                    dof_map[bag["voxel_mask"]],
-                ) = self._fit_model(bag["values"], study_mask=bag["study_mask"])
-
-        maps = {"t": t_map, "z": z_map, "dof": dof_map}
-        description = self._description_text()
-
-        return maps, {}, description
+        maps = self._fit_over_bags(["beta_maps"], ["t", "z", "dof"])
+        return maps, {}, self._description_text()
 
     def correct_fwe_montecarlo(self, result, n_iters=5000, n_cores=1):
         """Perform FWE correction using the max-value permutation method.
@@ -2074,42 +1760,34 @@ class PermutedOLS(IBMAEstimator):
             raise ValueError("n_iters must be a positive integer.")
         n_cores = _check_ncores(n_cores)
 
-        n_images = len(self.inputs_["id"])
-        # Sorted, so that searchsorted below can map each bag's labels onto the columns of
-        # the shared sign-flip matrix.
+        # One column per dataset-wide exchangeability block. Every bag draws its signs from
+        # this one matrix, so a block that appears in two bags is flipped the same way in
+        # both and the null describes the whole brain rather than one bag of it. Sorted,
+        # because searchsorted below is what maps a bag's blocks onto these columns --
+        # DependenceModel.blocks guarantees the two label spaces are the same.
         global_labels = np.unique(self._dependence().blocks)
         rng = np.random.RandomState(self.random_state)
         global_sign_flips = rng.choice((-1.0, 1.0), size=(n_iters, global_labels.size))
 
-        if self.aggressive_mask:
-            model_bags = [
-                {
-                    "values": self.inputs_["beta_maps"][:, self.inputs_["aggressive_mask"]],
-                    "study_mask": np.arange(n_images),
-                    "voxel_mask": self.inputs_["aggressive_mask"],
-                }
-            ]
-        else:
-            model_bags = self.inputs_["data_bags"]["beta_maps"]
-
         n_voxels = self.inputs_["beta_maps"].shape[1]
         observed_t = np.full(n_voxels, np.nan, dtype=float)
         h0_max_t = np.full(n_iters, -np.inf, dtype=float)
-        for bag in model_bags:
-            study_mask = bag["study_mask"]
+        for study_mask, voxel_mask, (values,) in self._model_bags(["beta_maps"]):
+            dependence = self._dependence(study_mask)
+            if not dependence.supports_inference:
+                # Skipped by _fit too, so these voxels have no observed statistic to correct.
+                continue
+
             # group_order is by first occurrence, which is the column order _permuted_ols
             # expects; map those onto the shared matrix's sorted columns.
-            local_indices = np.searchsorted(
-                global_labels, self._dependence(study_mask).group_order
-            )
-            bag_result = self._fit_model(
-                bag["values"],
-                n_perm=n_iters,
+            local_indices = np.searchsorted(global_labels, dependence.group_order)
+            observed_t[voxel_mask] = self._fit_model(
+                values,
                 study_mask=study_mask,
+                n_perm=n_iters,
                 n_jobs=n_cores,
                 sign_flips=global_sign_flips[:, local_indices],
-            )
-            observed_t[bag["voxel_mask"]] = bag_result[1]
+            )[0]
             np.maximum(
                 h0_max_t,
                 self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"],
@@ -2143,6 +1821,7 @@ class PermutedOLS(IBMAEstimator):
         return maps, {}, description
 
 
+@_fill_doc
 class FixedEffectsHedges(_PyMARERegressionEstimator):
     """Fixed Effects Hedges meta-regression estimator.
 
@@ -2164,30 +1843,9 @@ class FixedEffectsHedges(_PyMARERegressionEstimator):
 
     Parameters
     ----------
-    aggressive_mask : :obj:`bool`, optional
-        Voxels with a value of zero of NaN in any of the input maps will be removed
-        from the analysis.
-        If False, all voxels are included by running a separate analysis on bags
-        of voxels that belong that have a valid value across the same studies.
-        Default is False.
-    groupby : None, :obj:`str`, array-like, or False, optional
-        How to identify images that share participants and are therefore dependent. None (the
-        default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
-        instead, for a paper contributing independent samples (e.g. patients and controls).
-        An array supplies one label per image. False treats every image as independent, which
-        inflates significance whenever that is untrue. Default is None.
-    weight_scheme : {'rescale', 'individual', 'collapse'}, optional
-        How images within a group are weighted, passed to PyMARE. ``'rescale'`` (the default)
-        divides each image's weight by its group size, so a group's total weight does not grow
-        with the number of maps it contributed -- the correlated-effects model of
-        :footcite:t:`hedges2010robust`, weighted as in :footcite:t:`fisher2015robumeta`.
-        ``'individual'`` leaves the weights alone; ``'collapse'`` fits one row per group.
-        Group labels also switch the standard errors to CR2 and the reference to a t
-        distribution with Satterthwaite degrees of freedom :footcite:p:`tipton2015small`.
-    rho : :obj:`float`, optional
-        Assumed within-group correlation, in [0, 1]. Enters only through tau^2, to which
-        results are weakly sensitive. Default is 0.8, matching ``robumeta``. Ignored when
-        ``weight_scheme='individual'``.
+    %(aggressive_mask)s
+    %(groupby)s
+    %(weighting)s
     tau2 : :obj:`float` or 1D :class:`numpy.ndarray`, optional
         Assumed/known value of tau^2. Must be >= 0. Default is 0.
 
@@ -2207,20 +1865,13 @@ class FixedEffectsHedges(_PyMARERegressionEstimator):
 
     Warnings
     --------
-    Cluster-robust inference is asymptotic in the number of *groups*, not images. PyMARE warns
-    at 10 or fewer groups, where robust variance estimation is anti-conservative
-    :footcite:p:`hedges2010robust`, and when the Satterthwaite degrees of freedom fall below
-    about 4 :footcite:p:`tipton2015small`. Both are common for small meta-analyses.
+    %(cluster_robust_warning)s
 
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will likely result in biased results. The extent of this bias is currently
     unknown.
 
-    By default, image-based meta-analysis estimators run the analysis in bags of voxels,
-    where each bag holds the voxels that have a valid value across the same set of studies.
-    A voxel is therefore only dropped from the studies that are missing it. Setting
-    ``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
-    input map from the analysis entirely.
+    %(liberal_mask_notes)s
 
     References
     ----------
@@ -2249,12 +1900,9 @@ class FixedEffectsHedges(_PyMARERegressionEstimator):
         )
         return description
 
-    def _fit_model(self, t_maps, study_mask=None):
+    def _fit_model(self, t_maps, *, study_mask):
         """Fit the model to the data."""
-        n_studies, n_voxels = t_maps.shape
-
-        study_mask = self._all_images(study_mask, n_studies)
-
+        n_voxels = t_maps.shape[1]
         sample_sizes = self._sample_sizes_for_mask(study_mask)
         n_maps = np.tile(sample_sizes, (n_voxels, 1)).T
 
@@ -2264,8 +1912,6 @@ class FixedEffectsHedges(_PyMARERegressionEstimator):
 
         del n_maps, sample_sizes, cohens_maps
 
-        # None when there is nothing to correct for, which is how PyMARE is told to use
-        # model-based inference rather than cluster-robust ("sandwich") standard errors.
         groups = self._dependence(study_mask).labels
 
         pymare_dset = pymare.Dataset(y=hedges_maps, v=var_hedges_maps, g=groups)
@@ -2286,39 +1932,9 @@ class FixedEffectsHedges(_PyMARERegressionEstimator):
 
     def _fit(self, dataset):
         self.dataset = dataset
-        self.masker = self.masker or dataset.masker
-        if not isinstance(self.masker, NiftiMasker):
-            LGR.warning(
-                f"A {type(self.masker)} mask has been detected. "
-                "Masks which average across voxels will likely produce biased results when used "
-                "with this Estimator."
-            )
+        self._resolve_masker(dataset)
 
-        if self.aggressive_mask:
-            voxel_mask = self.inputs_["aggressive_mask"]
-            result_maps = self._fit_model(self.inputs_["t_maps"][:, voxel_mask])
-
-            z_map, p_map, est_map, se_map, dof_map = tuple(
-                map(lambda x: _boolean_unmask(x, voxel_mask), result_maps)
-            )
-        else:
-            n_voxels = self.inputs_["t_maps"].shape[1]
-
-            z_map, p_map, est_map, se_map = [np.zeros(n_voxels, dtype=float) for _ in range(4)]
-            dof_map = np.zeros(n_voxels, dtype=float)
-
-            for bag in self.inputs_["data_bags"]["t_maps"]:
-                (
-                    z_map[bag["voxel_mask"]],
-                    p_map[bag["voxel_mask"]],
-                    est_map[bag["voxel_mask"]],
-                    se_map[bag["voxel_mask"]],
-                    dof_map[bag["voxel_mask"]],
-                ) = self._fit_model(bag["values"], bag["study_mask"])
-
+        maps = self._fit_over_bags(["t_maps"], ["z", "p", "est", "se", "dof"])
         # tau2 is a float, not a map, so it can't go into the results dictionary
         tables = {"level-estimator": pd.DataFrame(columns=["tau2"], data=[self.tau2])}
-        maps = {"z": z_map, "p": p_map, "est": est_map, "se": se_map, "dof": dof_map}
-        description = self._description_text()
-
-        return maps, tables, description
+        return maps, tables, self._description_text()

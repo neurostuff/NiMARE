@@ -1,13 +1,28 @@
 """Tests for dependence handling in IBMA estimators."""
 
 import copy
+import logging
 
 import numpy as np
 import pymare
 import pytest
+from nilearn.maskers import NiftiMasker
 
 from nimare.meta import ibma
+from nimare.meta._dependence import DependenceModel
 from nimare.meta._permutation import _permuted_ols
+from nimare.meta.utils import _apply_liberal_mask
+
+
+class _FakeDataset:
+    """Stand in for a Dataset when only its masker is read.
+
+    ``_fit`` is exercised directly here so that hand-built bags can pin an exact coverage
+    pattern, which a real Dataset of NIfTI files cannot.
+    """
+
+    def __init__(self, masker):
+        self.masker = masker
 
 # Estimators backed by a PyMARE meta-regression estimator, which take weight_scheme/rho and
 # report Satterthwaite degrees of freedom.
@@ -245,7 +260,10 @@ def test_combination_dof_counts_groups_not_images(estimator, dependent_dataset):
 @pytest.mark.parametrize("estimator", REGRESSION_ESTIMATORS)
 def test_regression_dof_is_pymare_satterthwaite(estimator, dependent_dataset):
     """The dof map must be PyMARE's `fe_dof`, not a recomputation or a count of images."""
-    meta = estimator()
+    # Aggressive masking, so that one model covers the whole map and its `fe_dof` can be
+    # compared against every in-mask voxel. The liberal path fits one model per bag, each
+    # with its own dof; that is covered by test_liberal_mask_dof_is_per_bag.
+    meta = estimator(aggressive_mask=True)
     results = meta.fit(dependent_dataset)
 
     n_images = len(meta.inputs_["id"])
@@ -277,7 +295,8 @@ def test_regression_dof_is_pymare_satterthwaite(estimator, dependent_dataset):
                 meta.inputs_[name][:, voxel_mask]
                 for name, (type_, _) in meta._required_inputs.items()
                 if type_ == "image"
-            ]
+            ],
+            study_mask=np.arange(n_images),
         )
     finally:
         pymare.estimators.estimators.MetaRegressionResults = real
@@ -366,6 +385,123 @@ def test_correlation_matrix_is_not_measuring_shared_signal(dependent_dataset):
     assert within > between  # the repeated study is where dependence lives
 
 
+# Liberal-mask bags
+
+
+def _bagged_estimator(cls, arrays, codes, **kwargs):
+    """Return ``cls`` with hand-built liberal-mask bags, bypassing image loading.
+
+    ``arrays`` maps each ``_required_inputs`` image name to a (K x V) array whose NaNs define
+    the coverage pattern the bags are cut from.
+    """
+    meta = cls(**kwargs)
+    meta.aggressive_mask = False
+    meta.masker = NiftiMasker()
+    n_images, _ = next(iter(arrays.values())).shape
+
+    keys = ["values", "voxel_mask", "study_mask"]
+    meta.inputs_ = {
+        "id": [f"img{i}" for i in range(n_images)],
+        "contrast_names": np.asarray(codes),
+        "corr_matrix": None,
+        "data_bags": {
+            name: [dict(zip(keys, bag)) for bag in zip(*_apply_liberal_mask(values))]
+            for name, values in arrays.items()
+        },
+        **arrays,
+    }
+    return meta
+
+
+def _single_group_bag_arrays(names, seed=0):
+    """Return arrays whose last two voxels are covered only by images 0 and 1.
+
+    Images 0 and 1 share group 0, so that bag holds two images but only one group.
+    """
+    rng = np.random.RandomState(seed)
+    arrays = {}
+    for i_name, name in enumerate(names):
+        values = np.abs(rng.normal(size=(4, 8))) + 0.5
+        if name != "varcope_maps":
+            values = values + 0.5 * (-1) ** i_name
+        values[2, 6:] = np.nan
+        values[3, 6:] = np.nan
+        arrays[name] = values
+    return arrays
+
+
+@pytest.mark.parametrize("estimator", ALL_ESTIMATORS)
+def test_single_group_bags_are_skipped_not_fatal(estimator, caplog):
+    """A bag whose images all share one group has no independent replication.
+
+    PyMARE and the sign-flip null both reject a single block outright, so before this was
+    handled such a bag aborted the whole fit -- and a study contributing several maps with
+    coverage the others lack is ordinary.
+    """
+    image_names = [
+        name for name, (type_, _) in estimator._required_inputs.items() if type_ == "image"
+    ]
+    arrays = _single_group_bag_arrays(image_names)
+    meta = _bagged_estimator(estimator, arrays, codes=[0, 0, 1, 1])
+    if "sample_sizes" in estimator._required_inputs:
+        meta.inputs_["sample_sizes"] = np.array([[25.0], [25.0], [30.0], [30.0]])
+    meta.generate_description = False
+
+    with caplog.at_level(logging.WARNING, logger="nimare.meta.ibma"):
+        maps, _, _ = meta._fit(_FakeDataset(meta.masker))
+
+    assert "single group" in caplog.text
+    # The well-covered voxels still get an answer; the single-group bag comes back NaN.
+    assert np.isfinite(maps["z" if "z" in maps else "t"][:6]).all()
+    assert np.isnan(maps["z" if "z" in maps else "t"][6:]).all()
+
+
+def test_permuted_ols_fwe_handles_a_bag_with_one_image_per_group():
+    """The shared sign-flip matrix is indexed by block label, so bags must agree on those.
+
+    A bag holding one image from each of two studies has no within-bag dependence, but its
+    blocks still have to be the dataset-wide group codes -- falling back to image indices
+    would index past the end of the shared matrix.
+    """
+    rng = np.random.RandomState(0)
+    betas = rng.normal(size=(4, 8)) + 0.5
+    # Voxels 6-7 are covered only by images 1 and 3, which belong to different studies.
+    betas[0, 6:] = np.nan
+    betas[2, 6:] = np.nan
+
+    meta = _bagged_estimator(ibma.PermutedOLS, {"beta_maps": betas}, codes=[0, 0, 1, 1])
+    bags = meta.inputs_["data_bags"]["beta_maps"]
+    assert [bag["study_mask"].size for bag in bags] == [4, 2], "fixture must produce a mixed bag"
+
+    maps, _, _ = meta.correct_fwe_montecarlo(None, n_iters=20)
+
+    p_map = maps["p_level-voxel"]
+    assert np.isfinite(p_map).all()
+    assert np.all((p_map > 0) & (p_map <= 1))
+
+
+def test_blocks_keep_one_label_space_across_bags():
+    """Restricting to a bag must not switch which label space `blocks` is drawn from."""
+    full = DependenceModel(np.array([0, 0, 1, 1]))
+    assert np.array_equal(full.blocks, [0, 0, 1, 1])
+
+    # One image per group: no within-bag dependence, but the labels are still group codes.
+    bag = full.for_images(np.array([1, 3]))
+    assert bag.labels is None
+    assert np.array_equal(bag.blocks, [0, 1])
+    assert set(bag.group_order) <= set(np.unique(full.blocks))
+
+    # With no dependence anywhere, blocks are dataset-wide image indices in both.
+    independent = DependenceModel(np.array([0, 1, 2, 3]))
+    assert np.array_equal(independent.for_images(np.array([1, 3])).blocks, [1, 3])
+
+
+def test_single_group_model_reports_no_support():
+    """One block cannot support the inference, whatever the image count."""
+    assert not DependenceModel(np.array([0, 0, 0])).supports_inference
+    assert DependenceModel(np.array([0, 0, 1])).supports_inference
+
+
 # Combination tests
 
 
@@ -374,7 +510,6 @@ def test_stouffers_weights_each_group_by_sqrt_n():
     estimator = ibma.Stouffers(use_sample_size=True)
     estimator.inputs_ = {
         "contrast_names": np.array([0, 0, 0, 1]),
-        "num_contrasts": np.array([3, 3, 3, 1]),
         "corr_matrix": np.eye(4),
         "sample_sizes": np.array([[25.0], [25.0], [25.0], [100.0]]),
         "id": ["a", "b", "c", "d"],
@@ -401,7 +536,6 @@ def test_stouffers_aggregates_groups_whenever_they_exist():
     estimator = ibma.Stouffers()
     estimator.inputs_ = {
         "contrast_names": np.array([0, 0, 0, 1]),
-        "num_contrasts": np.array([3, 3, 3, 1]),
         "corr_matrix": np.eye(4),
         "id": ["a", "b", "c", "d"],
     }
@@ -427,7 +561,6 @@ def test_fishers_passes_one_sample_size_coefficient_per_study_to_pymare():
     estimator = ibma.Fishers(use_sample_size=True)
     estimator.inputs_ = {
         "contrast_names": np.array([0, 0, 0, 1]),
-        "num_contrasts": np.array([3, 3, 3, 1]),
         "corr_matrix": np.eye(4),
         "sample_sizes": np.array([[25.0], [25.0], [25.0], [100.0]]),
         "id": ["a", "b", "c", "d"],
@@ -455,6 +588,44 @@ def test_fishers_preserves_two_sided_positional_argument():
 
     assert estimator.two_sided is False
     assert estimator.use_sample_size is False
+
+
+@pytest.mark.parametrize("estimator", COMBINATION_ESTIMATORS)
+def test_null_correlation_ignores_voxels_missing_from_any_image(estimator):
+    """A NaN anywhere must not wipe out the correlation it was called to measure.
+
+    np.corrcoef propagates one NaN across a whole row, and estimate_null_correlation reads a
+    non-finite entry as zero correlation -- so correlating the unmasked maps silently
+    discarded the dependence for any image with a single missing voxel.
+    """
+    rng = np.random.RandomState(0)
+    shared = rng.normal(size=(1, 400))
+    # Images 0 and 1 are the same study, so they should come out strongly correlated.
+    maps = np.vstack(
+        [shared + 0.05 * rng.normal(size=(1, 400)) for _ in range(2)]
+        + [rng.normal(size=(1, 400)) for _ in range(2)]
+    )
+    image_name = next(iter(estimator._required_inputs))
+
+    def _corr(values):
+        meta = estimator()
+        meta.aggressive_mask = False
+        meta.inputs_ = {
+            "id": ["a", "b", "c", "d"],
+            image_name: values,
+            "corr_matrix": None,
+        }
+        meta._resolve_group_labels = lambda _: ["s0", "s0", "s1", "s2"]
+        meta._preprocess_dependence(None)
+        return meta.inputs_["corr_matrix"]
+
+    clean = _corr(maps)
+    with_gap = maps.copy()
+    with_gap[0, 3] = np.nan
+    dirty = _corr(with_gap)
+
+    assert clean[0, 1] > 0.8
+    assert np.allclose(dirty, clean, atol=0.05)
 
 
 # PermutedOLS
@@ -502,8 +673,9 @@ def test_permuted_ols_blocks_follow_groupby(groupby, grouped, dependent_dataset)
 
 def test_permuted_ols_dof_counts_groups(dependent_dataset):
     """Grouping must cost degrees of freedom, not preserve the image count."""
-    grouped = ibma.PermutedOLS().fit(dependent_dataset)
-    ungrouped = ibma.PermutedOLS(groupby=False).fit(dependent_dataset)
+    # Aggressive masking, so one model covers the whole map and the dof is a single number.
+    grouped = ibma.PermutedOLS(aggressive_mask=True).fit(dependent_dataset)
+    ungrouped = ibma.PermutedOLS(aggressive_mask=True, groupby=False).fit(dependent_dataset)
 
     n_images = len(ungrouped.estimator.inputs_["id"])
     n_groups = np.unique(grouped.estimator.inputs_["contrast_names"]).size
@@ -513,6 +685,31 @@ def test_permuted_ols_dof_counts_groups(dependent_dataset):
     grouped_dof = grouped.maps["dof"]
     assert set(ungrouped_dof[np.isfinite(ungrouped_dof)].tolist()) == {float(n_images - 1)}
     assert set(grouped_dof[np.isfinite(grouped_dof)].tolist()) == {float(n_groups - 1)}
+
+
+def test_liberal_mask_dof_is_per_bag(dependent_dataset):
+    """Under the liberal mask each bag is its own model, so its dof counts only its blocks.
+
+    A bag covered by fewer images therefore reports fewer degrees of freedom than one covered
+    by all of them, which is the point of fitting per bag rather than dropping the voxels.
+    """
+    grouped = ibma.PermutedOLS().fit(dependent_dataset)
+    ungrouped = ibma.PermutedOLS(groupby=False).fit(dependent_dataset)
+
+    n_images = len(ungrouped.estimator.inputs_["id"])
+    bags = ungrouped.estimator.inputs_["data_bags"]["beta_maps"]
+    assert len({bag["study_mask"].size for bag in bags}) > 1, "fixture must vary its coverage"
+
+    # Ungrouped, every image is its own block, so a bag's dof is exactly its image count - 1.
+    expected = {float(bag["study_mask"].size - 1) for bag in bags}
+    ungrouped_dof = ungrouped.maps["dof"]
+    assert set(ungrouped_dof[np.isfinite(ungrouped_dof)].tolist()) <= expected
+    assert np.nanmax(ungrouped_dof) == float(n_images - 1)
+
+    # Grouping collapses images to groups, so it can only cost degrees of freedom.
+    valid = np.isfinite(grouped.maps["dof"]) & np.isfinite(ungrouped_dof)
+    assert valid.any()
+    assert np.all(grouped.maps["dof"][valid] <= ungrouped_dof[valid])
 
 
 def test_permuted_ols_sample_size_weights_shrink_the_dof(dependent_dataset):

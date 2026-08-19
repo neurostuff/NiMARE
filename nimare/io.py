@@ -102,21 +102,25 @@ def _select_image_path(url, filename):
     return candidates[0]
 
 
-def _add_image_path(images, image_type, image_path, analysis_id=None):
+def _add_image_path(images, image_type, image_path, analysis_id=None, key=None):
     """Record one image path, keeping the first of any duplicate types.
 
     Two images of the same type on one analysis are ambiguous, and silently keeping the last
     one makes the choice invisible. Keep the first and say what was dropped.
+
+    ``key`` names the destination entry when it differs from ``image_type``, as it does for
+    the studyset store's ``<type>__source`` columns.
     """
-    if images.get(image_type) is not None:
+    key = image_type if key is None else key
+    if images.get(key) is not None:
         location = f" on analysis {analysis_id}" if analysis_id else ""
         LGR.warning(
             f"Multiple '{image_type}' images found{location}. Keeping "
-            f"'{images[image_type]}' and ignoring '{image_path}'."
+            f"'{images[key]}' and ignoring '{image_path}'."
         )
         return
 
-    images[image_type] = image_path
+    images[key] = image_path
 
 
 COORDINATE_METADATA_PREFIX = "coordinate_"

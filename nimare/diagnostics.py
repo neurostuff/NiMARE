@@ -284,8 +284,23 @@ def _is_voxelwise_masker(masker, n_features):
     return round_trip_values.ndim == 1 and round_trip_values.shape[0] == n_features
 
 
+def _cluster_ids(label_arr):
+    """Return the cluster labels in a label map, in ascending order.
+
+    Selects the positive labels rather than dropping the first unique value: a map in which
+    every voxel survived thresholding has no background label to drop, and
+    ``np.unique(label_arr)[1:]`` would silently discard its only real cluster.
+    """
+    label_arr = np.asanyarray(label_arr)
+    return np.unique(label_arr[label_arr > 0]).tolist()
+
+
 def _build_cluster_summary_context(masker, label_map, label_vector, cluster_ids):
-    """Precompute cluster summaries in array space when possible."""
+    """Precompute cluster summaries in array space when possible.
+
+    The returned context carries ``cluster_ids`` so that every consumer reads the same list
+    rather than re-deriving it from the label map.
+    """
     label_vector = np.squeeze(np.asarray(label_vector))
     if _is_voxelwise_masker(masker, label_vector.shape[0]):
         rounded_labels = np.rint(label_vector).astype(np.int32, copy=False)
@@ -308,6 +323,7 @@ def _build_cluster_summary_context(masker, label_map, label_vector, cluster_ids)
         if all(cluster_idx.size > 0 for cluster_idx in cluster_indices):
             return {
                 "mode": "masked_array",
+                "cluster_ids": list(cluster_ids),
                 "cluster_indices": cluster_indices,
             }
 
@@ -315,6 +331,7 @@ def _build_cluster_summary_context(masker, label_map, label_vector, cluster_ids)
     cluster_masker.fit(label_map)
     return {
         "mode": "image",
+        "cluster_ids": list(cluster_ids),
         "cluster_masker": cluster_masker,
     }
 
@@ -625,8 +642,7 @@ class Diagnostics(NiMAREBase):
         for sign, label_map, label_map_name, meta_ids in zip(
             signs, label_maps, label_map_names, meta_ids_lst
         ):
-            label_arr = np.asanyarray(label_map.dataobj)
-            cluster_ids = sorted(list(np.unique(label_arr)[1:]))
+            cluster_ids = _cluster_ids(label_map.dataobj)
             tail_contexts.append(
                 {
                     "sign": sign,
@@ -835,21 +851,12 @@ class Jackknife(Diagnostics):
         stat_prop_values : 1D :obj:`numpy.ndarray`
             1D array with the contribution of `expid` in each cluster of `label_map`.
         """
-        if cluster_summary_context is None:
-            raise ValueError("Jackknife requires a precomputed cluster_summary_context.")
-
-        target_value_map = target_value_map or _get_target_value_map(result)
-        voxelwise_stat_prop_values, masker = self._leave_one_out_values(
-            expid,
-            sign,
-            result,
-            target_value_map,
-        )
-        return _summarize_cluster_values(
-            voxelwise_stat_prop_values,
-            masker,
-            cluster_summary_context,
-        )
+        context = {
+            "sign": sign,
+            "label_map": label_map,
+            "cluster_summary_context": cluster_summary_context,
+        }
+        return self._transform_batch(expid, [context], result, target_value_map)[0]
 
 
 class FocusCounter(Diagnostics):
@@ -913,7 +920,11 @@ class FocusCounter(Diagnostics):
 
         affine = label_map.affine
         label_arr = np.asanyarray(label_map.dataobj)
-        clust_ids = sorted(list(np.unique(label_arr)[1:]))
+        clust_ids = (
+            _cluster_ids(label_arr)
+            if cluster_summary_context is None
+            else cluster_summary_context["cluster_ids"]
+        )
 
         if self._is_pairwaise_estimator:
             coordinates_df = (

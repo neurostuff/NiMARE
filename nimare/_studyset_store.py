@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-import logging
 import os
 from dataclasses import dataclass
 from functools import lru_cache
@@ -14,6 +13,7 @@ import pandas as pd
 
 from nimare.io import (
     POINT_RELATIONSHIP_COLUMNS,
+    _add_image_path,
     _extract_coerced_sample_sizes,
     _extract_coordinate_row_metadata,
     _normalize_image_type,
@@ -26,8 +26,6 @@ from nimare.utils import (
     get_masker,
     get_template,
 )
-
-LGR = logging.getLogger(__name__)
 
 _ID_COLS = ["id", "study_id", "contrast_id"]
 _TABLE_ATTRS = ("ids", "coordinates", "images", "metadata", "annotations", "texts")
@@ -348,17 +346,13 @@ def _build_tables_from_source(source_dict):
                 if not image_value:
                     continue
 
-                source_col = f"{image_type}__source"
-                if source_col in image_row:
-                    # Two images of the same type on one analysis are ambiguous; keep the
-                    # first rather than silently letting the last one win.
-                    LGR.warning(
-                        f"Multiple '{image_type}' images found on analysis {full_id}. Keeping "
-                        f"'{image_row[source_col]}' and ignoring '{image_value}'."
-                    )
-                    continue
-
-                image_row[source_col] = image_value
+                _add_image_path(
+                    image_row,
+                    image_type,
+                    image_value,
+                    analysis_id=full_id,
+                    key=f"{image_type}__source",
+                )
                 if image.get("space") and "space" not in image_row:
                     image_row["space"] = image.get("space")
             image_rows.append(image_row)
