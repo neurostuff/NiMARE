@@ -43,12 +43,9 @@ class DependenceModel:
     ----------
     blocks : :obj:`numpy.ndarray` of shape (K,)
         Exchangeability blocks, one label per image, never None. Ungrouped images each become
-        their own block, so collapsing a block to its mean is the identity.
-
-        Resolved once for the full set of images and then carried through every restriction,
-        so that a label means the same thing in every bag. Re-deriving it per bag would let a
-        bag that happens to hold one image per group fall back to image indices while the
-        dataset-wide labels are group codes, and those two label spaces do not line up.
+        their own block, so collapsing a block to its mean is the identity. Resolved once for
+        the full set of images and carried through every restriction, so that a label means
+        the same thing in every bag.
     """
 
     def __init__(self, codes, image_indices=None, blocks=None):
@@ -139,3 +136,11 @@ class DependenceModel:
             np.asarray(values, dtype=float)[:, None],
             self._encoded_blocks[0],
         ).ravel()
+
+    def per_image(self, values):
+        """Replace each image's value with its group's mean, keeping one value per image.
+
+        The group-constant form of :meth:`per_group`, for the PyMARE estimators that take a
+        weight per image but require every image in a group to agree on it.
+        """
+        return self.per_group(values)[self._encoded_blocks[0]]

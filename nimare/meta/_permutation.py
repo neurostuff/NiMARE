@@ -42,8 +42,7 @@ def _permutation_maxima(
     # How many (batch x n_voxels) arrays are live at the peak of one batch. The unweighted
     # path holds the permuted sums plus the statistic it derives from them in place; the CR2
     # sandwich additionally holds a second set of sign-flipped sums, the group means, the meat
-    # and a square-root temporary. Counting two for both left the CR2 path threefold over the
-    # budget it was given, which is the opposite of what a memory bound is for.
+    # and a square-root temporary.
     arrays_per_permutation = 3 if cr2_sufficient_statistics is None else 7
     bytes_per_permutation = max(1, arrays_per_permutation * n_voxels * np.dtype(float).itemsize)
     batch_size = max(1, max_bytes // bytes_per_permutation)
@@ -124,6 +123,12 @@ def _permuted_ols(
     -------
     :obj:`dict`
         With keys ``"t"``, ``"logp_max_t"``, ``"h0_max_t"`` and ``"dof"``.
+
+        Only ``"t"``, ``"h0_max_t"`` and ``"dof"`` are read by NiMARE.
+        :meth:`~nimare.meta.ibma.PermutedOLS.correct_fwe_montecarlo` merges the per-bag
+        ``"h0_max_t"`` into one whole-brain null and derives its own p-values from that, so
+        the per-call ``"logp_max_t"`` is kept for parity with Nilearn's return value rather
+        than because anything downstream consumes it.
     """
     target_vars = np.asarray(target_vars, dtype=float)
     if target_vars.ndim != 2:

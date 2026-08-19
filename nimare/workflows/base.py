@@ -118,10 +118,14 @@ def _unset_params(obj, kwargs):
     alone, and is treated as the latter.
     """
     defaults = _init_defaults(type(obj))
+    # set_params only accepts what the most-derived __init__ names, while _init_defaults
+    # walks the whole MRO. Intersect the two: a parameter that a base class names but a
+    # subclass only forwards through **kwargs has to be skipped, or set_params rejects it.
+    settable = set(obj.get_params(deep=False))
 
     unset = {}
     for key, value in kwargs.items():
-        if key not in defaults or not hasattr(obj, key):
+        if key not in defaults or key not in settable or not hasattr(obj, key):
             continue
 
         if _holds_default(getattr(obj, key), defaults[key]):
@@ -144,8 +148,8 @@ def _check_input(obj, clss, options, **kwargs):
         if obj == FWECorrector:
             kwargs["method"] = obj_str
 
-    # Apply kwargs (including n_cores) when obj is a class or string
-    if isinstance(obj, (str, type)):
+    # Apply kwargs (including n_cores) when the caller named a class rather than an instance
+    if isinstance(obj, type):
         return _check_type(obj, clss, **_supported_kwargs(obj, kwargs))
 
     # The object is already instantiated. Fill in the workflow's settings for any parameter

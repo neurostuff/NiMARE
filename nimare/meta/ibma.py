@@ -27,7 +27,7 @@ from nimare import _version
 from nimare.estimator import Estimator
 from nimare.meta._dependence import DependenceModel, hashable_label
 from nimare.meta._permutation import _empirical_max_p, _permuted_ols
-from nimare.meta.utils import _apply_liberal_mask
+from nimare.meta.utils import _liberal_mask_bags, _liberal_mask_values
 from nimare.transforms import d_to_g, p_to_z, t_to_d, t_to_z
 from nimare.utils import (
     _check_ncores,
@@ -198,9 +198,8 @@ class IBMAEstimator(Estimator):
         # Identify any kwargs
         resample_kwargs = {k: v for k, v in kwargs.items() if k.startswith("resample__")}
 
-        # Reject any extraneous kwargs. Accepting them silently lets a stale specification
-        # (e.g. an argument that has since been renamed) produce a complete, plausible result
-        # computed with settings the caller never asked for.
+        # Reject any extraneous kwargs, rather than silently computing a plausible result
+        # with settings the caller never asked for.
         other_kwargs = sorted(set(kwargs) - set(resample_kwargs))
         if other_kwargs:
             raise TypeError(
@@ -278,10 +277,16 @@ class IBMAEstimator(Estimator):
             ):
                 LGR.warning(f"Masking out {n_bad_voxels} additional voxels.")
         else:
-            keys = ["values", "voxel_mask", "study_mask"]
+            # One grouping for every input, worked out once. Besides being the cheaper half
+            # of the work, it is what keeps the per-input bag lists aligned.
+            bags = _liberal_mask_bags(validity)
             for name in image_names:
-                data_bags = zip(*_apply_liberal_mask(self.inputs_[name], validity=validity))
-                self.inputs_["data_bags"][name] = [dict(zip(keys, bag)) for bag in data_bags]
+                self.inputs_["data_bags"][name] = [
+                    {"values": values, "voxel_mask": voxel_mask, "study_mask": study_mask}
+                    for values, (voxel_mask, study_mask) in zip(
+                        _liberal_mask_values(self.inputs_[name], bags), bags
+                    )
+                ]
 
         self._preprocess_dependence(dataset)
 
@@ -309,10 +314,8 @@ class IBMAEstimator(Estimator):
 
         # Masking one image at a time only gives bit-for-bit the same answer when the masker
         # does nothing but select voxels, which is how NiMARE configures a NiftiMasker.
-        # Standardizing and detrending deliberately rescale each voxel across images, while
-        # NiftiLabelsMasker's label averaging and smoothing both accumulate in a different
-        # order depending on how many images they are handed, which shifts the last bits of
-        # a float32 result. Anything other than plain voxel selection keeps the 4D path.
+        # Standardizing, detrending, smoothing and label averaging all depend on how many
+        # images the masker is handed at once, so they keep the 4D path.
         selects_voxels_only = (
             isinstance(masker, NiftiMasker)
             and not getattr(masker, "standardize", False)
@@ -447,20 +450,31 @@ class IBMAEstimator(Estimator):
         if dof is None:
             return np.full(n_voxels, self._dependence(study_mask).dof, dtype=float)
 
-        # (p, d) with p == 1, since every IBMA model is intercept-only.
-        return np.asarray(dof, dtype=float).reshape(-1)[:n_voxels]
+        # PyMARE returns (p, n_voxels) with p == 1, since every IBMA model is
+        # intercept-only. Reshape rather than slice, so any other shape raises here instead
+        # of being silently broadcast or clipped into the output map.
+        return np.asarray(dof, dtype=float).reshape(n_voxels)
 
     def _sample_sizes_for_mask(self, study_mask):
         """Return per-image sample sizes aligned to a fitted model.
 
-        Validation is left to PyMARE, which rejects non-finite or non-positive
-        weights and, for the grouped combination tests, requires repeated rows
-        in a group to carry equal weights.
+        Validation is left to PyMARE, which rejects non-finite or non-positive weights.
         """
         return np.asarray(
             [np.mean(self.inputs_["sample_sizes"][idx]) for idx in study_mask],
             dtype=float,
         )
+
+    def _group_sample_sizes_for_mask(self, study_mask):
+        """Return per-image sample sizes averaged within each dependence group.
+
+        PyMARE's grouped combination tests take one weight per image but require every image
+        in a group to agree on it, and a study routinely reports a different sample size per
+        contrast. Averaging within the group is what :class:`PermutedOLS` already does to
+        build its per-group weights; this is the same reduction, held at one value per image.
+        """
+        dependence = self._dependence(study_mask)
+        return dependence.per_image(self._sample_sizes_for_mask(study_mask))
 
     def _resolve_group_labels(self, dataset):
         """Return one group label per image, in ``inputs_["id"]`` order."""
@@ -547,14 +561,15 @@ class IBMAEstimator(Estimator):
 
         # Correlate only where every image has a usable value. A single NaN makes
         # np.corrcoef return NaN for that image's whole row, which estimate_null_correlation
-        # then reads as zero correlation -- silently discarding the dependence it was called
-        # to measure. The aggressive mask already guarantees this; the liberal path does not.
+        # reads as zero correlation. The aggressive mask already guarantees this; the liberal
+        # path does not.
         finite_voxels = np.all(np.isfinite(maps), axis=0)
         if finite_voxels.sum() < 2:
             LGR.warning(
                 "Fewer than two voxels have a valid value in every image, so the null "
-                "correlation between images cannot be estimated. Dependence between the "
-                "%d image(s) will not be corrected for.",
+                "correlation between the %d image(s) cannot be estimated. They are still "
+                "grouped, but the reference distribution will not be inflated for the "
+                "correlation within a group, so p-values may be anti-conservative.",
                 n_studies,
             )
             return
@@ -563,9 +578,8 @@ class IBMAEstimator(Estimator):
         # Correlating the raw maps measures how much studies agree, not how dependent they
         # are: every map carries the same activation, so studies independent by construction
         # still come out correlated. estimate_null_correlation strips the shared signal
-        # first, which is what Brown's method and Stouffer's inflation term require. Passing
-        # the groups inverts the shrinkage centering induces exactly rather than rescaling
-        # it, which matters when few images are combined.
+        # first, which is what Brown's method and Stouffer's inflation term require, and the
+        # groups let it invert the shrinkage that centering induces.
         corr_matrix = estimate_null_correlation(maps, groups=self.inputs_["contrast_names"])
         self.inputs_["corr_matrix"] = corr_matrix
 
@@ -579,13 +593,37 @@ class IBMAEstimator(Estimator):
         )
 
 
+#: How to read each entry of ``_PyMARERegressionEstimator._extra_maps`` off a fitted PyMARE
+#: estimator, so that a subclass names the extra maps it returns instead of restating the
+#: whole unpacking.
+_EXTRA_MAP_SOURCES = {
+    "tau2": lambda est, summary: summary.tau2.squeeze(),
+    "sigma2": lambda est, summary: est.params_["sigma2"].squeeze(),
+}
+
+
 class _PyMARERegressionEstimator(IBMAEstimator):
     """Base class for the IBMA estimators backed by a PyMARE meta-regression estimator.
 
     These all share the same two dependence parameters, because the PyMARE estimators
-    underneath them do. The combination tests (:class:`Fishers`, :class:`Stouffers`) have a
-    different parameterization in PyMARE and so do not inherit from this.
+    underneath them do, and the same fit: build a PyMARE dataset, fit, and read the fixed
+    effects off the summary. A subclass supplies :attr:`_pymare_estimator_class` and, where
+    they differ from the defaults, :attr:`_image_inputs`, :attr:`_extra_maps`,
+    :meth:`_pymare_estimator_kwargs`, :meth:`_pymare_dataset` and :meth:`_tables`.
+
+    The combination tests (:class:`Fishers`, :class:`Stouffers`) have a different
+    parameterization in PyMARE and so do not inherit from this.
     """
+
+    #: The PyMARE estimator this wraps.
+    _pymare_estimator_class = None
+
+    #: ``inputs_`` keys holding image data, in the order ``_pymare_dataset`` reads them.
+    _image_inputs = ("beta_maps", "varcope_maps")
+
+    #: Maps returned between the shared "z"/"p"/"est"/"se" and the trailing "dof". Each name
+    #: must have an entry in :data:`_EXTRA_MAP_SOURCES`.
+    _extra_maps = ()
 
     def __init__(self, weight_scheme="rescale", rho=0.8, **kwargs):
         if weight_scheme not in WEIGHT_SCHEMES:
@@ -611,6 +649,60 @@ class _PyMARERegressionEstimator(IBMAEstimator):
         if self.weight_scheme == "individual" or self._dependence(study_mask).labels is None:
             return {"weight_scheme": self.weight_scheme}
         return {"weight_scheme": self.weight_scheme, "rho": self.rho}
+
+    def _pymare_estimator_kwargs(self):
+        """Return the arguments specific to :attr:`_pymare_estimator_class`."""
+        return {}
+
+    def _pymare_estimator(self, study_mask):
+        """Return the PyMARE estimator to fit over the current model's images."""
+        return self._pymare_estimator_class(
+            **self._pymare_estimator_kwargs(),
+            **self._pymare_weighting_kwargs(study_mask),
+        )
+
+    def _pymare_dataset(self, arrays, study_mask):
+        """Return the PyMARE dataset for the current model.
+
+        The default is a beta map and its sampling variance; estimators that take something
+        else, or that derive their inputs first, override this.
+        """
+        beta_maps, varcope_maps = arrays
+        return pymare.Dataset(
+            y=beta_maps,
+            v=varcope_maps,
+            g=self._dependence(study_mask).labels,
+        )
+
+    def _tables(self):
+        """Return the non-map outputs of a fit."""
+        return {}
+
+    def _fit_model(self, *arrays, study_mask):
+        """Fit the model to the data."""
+        est = self._pymare_estimator(study_mask)
+        est.fit_dataset(self._pymare_dataset(arrays, study_mask))
+        est_summary = est.summary()
+
+        fe_stats = est_summary.get_fe_stats()
+        return (
+            fe_stats["z"].squeeze(),
+            fe_stats["p"].squeeze(),
+            fe_stats["est"].squeeze(),
+            fe_stats["se"].squeeze(),
+            *(_EXTRA_MAP_SOURCES[name](est, est_summary) for name in self._extra_maps),
+            self._dof_map(study_mask, arrays[0].shape[1], est_summary),
+        )
+
+    def _fit(self, dataset):
+        self.dataset = dataset
+        self._resolve_masker(dataset)
+
+        maps = self._fit_over_bags(
+            list(self._image_inputs),
+            ["z", "p", "est", "se", *self._extra_maps, "dof"],
+        )
+        return maps, self._tables(), self._description_text()
 
 
 @_fill_doc
@@ -644,7 +736,8 @@ class Fishers(IBMAEstimator):
         Whether to assign each study a total weighted-Fisher coefficient equal
         to its sample size. Repeated images divide that coefficient internally
         in PyMARE, so image multiplicity does not change the study's total
-        weight. Default is False, preserving ordinary Fisher/Brown inference.
+        weight, and a group whose images report different sample sizes is weighted by
+        their mean. Default is False, preserving ordinary Fisher/Brown inference.
     two_sided : :obj:`bool`, optional
         If True, performs an unsigned t-test. Both positive and negative effects are considered;
         the null hypothesis is that the effect is zero. If False, only positive effects are
@@ -728,7 +821,7 @@ class Fishers(IBMAEstimator):
 
         weights = None
         if self.use_sample_size:
-            weights = self._sample_sizes_for_mask(study_mask)[:, None]
+            weights = self._group_sample_sizes_for_mask(study_mask)[:, None]
 
         # Group labels and optional weights are per-image, so they are passed
         # as single columns rather than tiled across every voxel.
@@ -786,8 +879,8 @@ class Stouffers(IBMAEstimator):
     %(groupby)s
     use_sample_size : :obj:`bool`, optional
         Whether to use sample sizes for weights (i.e., "weighted Stouffer's") or not,
-        as described in :footcite:t:`zaykin2011optimally`.
-        Default is False.
+        as described in :footcite:t:`zaykin2011optimally`. A group whose images report
+        different sample sizes is weighted by their mean. Default is False.
     two_sided : :obj:`bool`, optional
         If True, performs an unsigned t-test. Both positive and negative effects are considered;
         the null hypothesis is that the effect is zero. If False, only positive effects are
@@ -899,8 +992,7 @@ class Stouffers(IBMAEstimator):
         )
 
         if self.use_sample_size:
-            sample_sizes = self._sample_sizes_for_mask(study_mask)
-            weights *= np.sqrt(sample_sizes)
+            weights *= np.sqrt(self._group_sample_sizes_for_mask(study_mask))
 
         # Weights and group labels are per-image, not per-voxel, so they are
         # passed as columns rather than tiled across the whole map.
@@ -1001,6 +1093,8 @@ class WeightedLeastSquares(_PyMARERegressionEstimator):
 
     _required_inputs = {"beta_maps": ("image", "beta"), "varcope_maps": ("image", "varcope")}
 
+    _pymare_estimator_class = pymare.estimators.WeightedLeastSquares
+
     def __init__(self, tau2=0, **kwargs):
         super().__init__(**kwargs)
         self.tau2 = tau2
@@ -1015,38 +1109,13 @@ class WeightedLeastSquares(_PyMARERegressionEstimator):
         )
         return description
 
-    def _fit_model(self, beta_maps, varcope_maps, *, study_mask):
-        """Fit the model to the data."""
-        n_voxels = beta_maps.shape[1]
-        groups = self._dependence(study_mask).labels
+    def _pymare_estimator_kwargs(self):
+        return {"tau2": self.tau2}
 
-        pymare_dset = pymare.Dataset(y=beta_maps, v=varcope_maps, g=groups)
-        est = pymare.estimators.WeightedLeastSquares(
-            tau2=self.tau2,
-            **self._pymare_weighting_kwargs(study_mask),
-        )
-        est.fit_dataset(pymare_dset)
-        est_summary = est.summary()
-
-        fe_stats = est_summary.get_fe_stats()
-        z_map = fe_stats["z"].squeeze()
-        p_map = fe_stats["p"].squeeze()
-        est_map = fe_stats["est"].squeeze()
-        se_map = fe_stats["se"].squeeze()
-        dof_map = self._dof_map(study_mask, n_voxels, est_summary)
-        return z_map, p_map, est_map, se_map, dof_map
-
-    def _fit(self, dataset):
-        self.dataset = dataset
-        self._resolve_masker(dataset)
-
-        maps = self._fit_over_bags(
-            ["beta_maps", "varcope_maps"],
-            ["z", "p", "est", "se", "dof"],
-        )
-        # tau2 is a float, not a map, so it can't go into the results dictionary
-        tables = {"level-estimator": pd.DataFrame(columns=["tau2"], data=[self.tau2])}
-        return maps, tables, self._description_text()
+    def _tables(self):
+        # tau2 is an assumed constant here, not a map, so it can't go into the results
+        # dictionary.
+        return {"level-estimator": pd.DataFrame(columns=["tau2"], data=[self.tau2])}
 
 
 @_fill_doc
@@ -1119,6 +1188,9 @@ class DerSimonianLaird(_PyMARERegressionEstimator):
 
     _required_inputs = {"beta_maps": ("image", "beta"), "varcope_maps": ("image", "varcope")}
 
+    _pymare_estimator_class = pymare.estimators.DerSimonianLaird
+    _extra_maps = ("tau2",)
+
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
@@ -1129,35 +1201,6 @@ class DerSimonianLaird(_PyMARERegressionEstimator):
             "\\citep{dersimonian1986meta,kosmidis2017improving}."
         )
         return description
-
-    def _fit_model(self, beta_maps, varcope_maps, *, study_mask):
-        """Fit the model to the data."""
-        n_voxels = beta_maps.shape[1]
-        groups = self._dependence(study_mask).labels
-
-        pymare_dset = pymare.Dataset(y=beta_maps, v=varcope_maps, g=groups)
-        est = pymare.estimators.DerSimonianLaird(**self._pymare_weighting_kwargs(study_mask))
-        est.fit_dataset(pymare_dset)
-        est_summary = est.summary()
-
-        fe_stats = est_summary.get_fe_stats()
-        z_map = fe_stats["z"].squeeze()
-        p_map = fe_stats["p"].squeeze()
-        est_map = fe_stats["est"].squeeze()
-        se_map = fe_stats["se"].squeeze()
-        tau2_map = est_summary.tau2.squeeze()
-        dof_map = self._dof_map(study_mask, n_voxels, est_summary)
-        return z_map, p_map, est_map, se_map, tau2_map, dof_map
-
-    def _fit(self, dataset):
-        self.dataset = dataset
-        self._resolve_masker(dataset)
-
-        maps = self._fit_over_bags(
-            ["beta_maps", "varcope_maps"],
-            ["z", "p", "est", "se", "tau2", "dof"],
-        )
-        return maps, {}, self._description_text()
 
 
 @_fill_doc
@@ -1230,6 +1273,9 @@ class Hedges(_PyMARERegressionEstimator):
 
     _required_inputs = {"beta_maps": ("image", "beta"), "varcope_maps": ("image", "varcope")}
 
+    _pymare_estimator_class = pymare.estimators.Hedges
+    _extra_maps = ("tau2",)
+
     def _generate_description(self):
         description = (
             f"An image-based meta-analysis was performed with NiMARE {__version__} "
@@ -1239,35 +1285,6 @@ class Hedges(_PyMARERegressionEstimator):
             "voxel-wise basis."
         )
         return description
-
-    def _fit_model(self, beta_maps, varcope_maps, *, study_mask):
-        """Fit the model to the data."""
-        n_voxels = beta_maps.shape[1]
-        groups = self._dependence(study_mask).labels
-
-        pymare_dset = pymare.Dataset(y=beta_maps, v=varcope_maps, g=groups)
-        est = pymare.estimators.Hedges(**self._pymare_weighting_kwargs(study_mask))
-        est.fit_dataset(pymare_dset)
-        est_summary = est.summary()
-
-        fe_stats = est_summary.get_fe_stats()
-        z_map = fe_stats["z"].squeeze()
-        p_map = fe_stats["p"].squeeze()
-        est_map = fe_stats["est"].squeeze()
-        se_map = fe_stats["se"].squeeze()
-        tau2_map = est_summary.tau2.squeeze()
-        dof_map = self._dof_map(study_mask, n_voxels, est_summary)
-        return z_map, p_map, est_map, se_map, tau2_map, dof_map
-
-    def _fit(self, dataset):
-        self.dataset = dataset
-        self._resolve_masker(dataset)
-
-        maps = self._fit_over_bags(
-            ["beta_maps", "varcope_maps"],
-            ["z", "p", "est", "se", "tau2", "dof"],
-        )
-        return maps, {}, self._description_text()
 
 
 @_fill_doc
@@ -1352,6 +1369,10 @@ class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
         "sample_sizes": ("metadata", "sample_sizes"),
     }
 
+    _pymare_estimator_class = pymare.estimators.SampleSizeBasedLikelihoodEstimator
+    _image_inputs = ("beta_maps",)
+    _extra_maps = ("tau2", "sigma2")
+
     # Sampling variance is estimated from the maps themselves here, so averaging voxels
     # rescales the estimate along with the effect rather than biasing one against the other.
     _voxel_averaging = None
@@ -1370,40 +1391,17 @@ class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
         )
         return description
 
-    def _fit_model(self, beta_maps, *, study_mask):
-        """Fit the model to the data."""
-        n_voxels = beta_maps.shape[1]
+    def _pymare_estimator_kwargs(self):
+        return {"method": self.method}
+
+    def _pymare_dataset(self, arrays, study_mask):
+        (beta_maps,) = arrays
         sample_sizes = self._sample_sizes_for_mask(study_mask)
-        n_maps = np.tile(sample_sizes, (n_voxels, 1)).T
-        groups = self._dependence(study_mask).labels
-
-        pymare_dset = pymare.Dataset(y=beta_maps, n=n_maps, g=groups)
-        est = pymare.estimators.SampleSizeBasedLikelihoodEstimator(
-            method=self.method,
-            **self._pymare_weighting_kwargs(study_mask),
+        return pymare.Dataset(
+            y=beta_maps,
+            n=np.tile(sample_sizes, (beta_maps.shape[1], 1)).T,
+            g=self._dependence(study_mask).labels,
         )
-        est.fit_dataset(pymare_dset)
-        est_summary = est.summary()
-        fe_stats = est_summary.get_fe_stats()
-
-        z_map = fe_stats["z"].squeeze()
-        p_map = fe_stats["p"].squeeze()
-        est_map = fe_stats["est"].squeeze()
-        se_map = fe_stats["se"].squeeze()
-        tau2_map = est_summary.tau2.squeeze()
-        sigma2_map = est.params_["sigma2"].squeeze()
-        dof_map = self._dof_map(study_mask, n_voxels, est_summary)
-        return z_map, p_map, est_map, se_map, tau2_map, sigma2_map, dof_map
-
-    def _fit(self, dataset):
-        self.dataset = dataset
-        self._resolve_masker(dataset)
-
-        maps = self._fit_over_bags(
-            ["beta_maps"],
-            ["z", "p", "est", "se", "tau2", "sigma2", "dof"],
-        )
-        return maps, {}, self._description_text()
 
 
 @_fill_doc
@@ -1492,6 +1490,9 @@ class VarianceBasedLikelihood(_PyMARERegressionEstimator):
 
     _required_inputs = {"beta_maps": ("image", "beta"), "varcope_maps": ("image", "varcope")}
 
+    _pymare_estimator_class = pymare.estimators.VarianceBasedLikelihoodEstimator
+    _extra_maps = ("tau2",)
+
     def __init__(self, method="ml", **kwargs):
         super().__init__(**kwargs)
         self.method = method
@@ -1506,37 +1507,8 @@ class VarianceBasedLikelihood(_PyMARERegressionEstimator):
         )
         return description
 
-    def _fit_model(self, beta_maps, varcope_maps, *, study_mask):
-        """Fit the model to the data."""
-        n_voxels = beta_maps.shape[1]
-        groups = self._dependence(study_mask).labels
-
-        pymare_dset = pymare.Dataset(y=beta_maps, v=varcope_maps, g=groups)
-        est = pymare.estimators.VarianceBasedLikelihoodEstimator(
-            method=self.method,
-            **self._pymare_weighting_kwargs(study_mask),
-        )
-        est.fit_dataset(pymare_dset)
-        est_summary = est.summary()
-        fe_stats = est_summary.get_fe_stats()
-
-        z_map = fe_stats["z"].squeeze()
-        p_map = fe_stats["p"].squeeze()
-        est_map = fe_stats["est"].squeeze()
-        se_map = fe_stats["se"].squeeze()
-        tau2_map = est_summary.tau2.squeeze()
-        dof_map = self._dof_map(study_mask, n_voxels, est_summary)
-        return z_map, p_map, est_map, se_map, tau2_map, dof_map
-
-    def _fit(self, dataset):
-        self.dataset = dataset
-        self._resolve_masker(dataset)
-
-        maps = self._fit_over_bags(
-            ["beta_maps", "varcope_maps"],
-            ["z", "p", "est", "se", "tau2", "dof"],
-        )
-        return maps, {}, self._description_text()
+    def _pymare_estimator_kwargs(self):
+        return {"method": self.method}
 
 
 @_fill_doc
@@ -1884,6 +1856,9 @@ class FixedEffectsHedges(_PyMARERegressionEstimator):
 
     _required_inputs = {"t_maps": ("image", "t"), "sample_sizes": ("metadata", "sample_sizes")}
 
+    _pymare_estimator_class = pymare.estimators.WeightedLeastSquares
+    _image_inputs = ("t_maps",)
+
     def __init__(self, tau2=0, **kwargs):
         super().__init__(**kwargs)
         self.tau2 = tau2
@@ -1899,41 +1874,25 @@ class FixedEffectsHedges(_PyMARERegressionEstimator):
         )
         return description
 
-    def _fit_model(self, t_maps, *, study_mask):
-        """Fit the model to the data."""
-        n_voxels = t_maps.shape[1]
-        sample_sizes = self._sample_sizes_for_mask(study_mask)
-        n_maps = np.tile(sample_sizes, (n_voxels, 1)).T
+    def _pymare_estimator_kwargs(self):
+        return {"tau2": self.tau2}
 
-        # Calculate Hedge's g maps: Standardized mean
+    def _pymare_dataset(self, arrays, study_mask):
+        (t_maps,) = arrays
+        n_maps = np.tile(self._sample_sizes_for_mask(study_mask), (t_maps.shape[1], 1)).T
+
+        # Hedges' g: the standardized mean, with the variance of bias-corrected Cohen's d.
         cohens_maps = t_to_d(t_maps, n_maps)
         hedges_maps, var_hedges_maps = d_to_g(cohens_maps, n_maps, return_variance=True)
+        del n_maps, cohens_maps
 
-        del n_maps, sample_sizes, cohens_maps
-
-        groups = self._dependence(study_mask).labels
-
-        pymare_dset = pymare.Dataset(y=hedges_maps, v=var_hedges_maps, g=groups)
-        est = pymare.estimators.WeightedLeastSquares(
-            tau2=self.tau2,
-            **self._pymare_weighting_kwargs(study_mask),
+        return pymare.Dataset(
+            y=hedges_maps,
+            v=var_hedges_maps,
+            g=self._dependence(study_mask).labels,
         )
-        est.fit_dataset(pymare_dset)
-        est_summary = est.summary()
 
-        fe_stats = est_summary.get_fe_stats()
-        z_map = fe_stats["z"].squeeze()
-        p_map = fe_stats["p"].squeeze()
-        est_map = fe_stats["est"].squeeze()
-        se_map = fe_stats["se"].squeeze()
-        dof_map = self._dof_map(study_mask, n_voxels, est_summary)
-        return z_map, p_map, est_map, se_map, dof_map
-
-    def _fit(self, dataset):
-        self.dataset = dataset
-        self._resolve_masker(dataset)
-
-        maps = self._fit_over_bags(["t_maps"], ["z", "p", "est", "se", "dof"])
-        # tau2 is a float, not a map, so it can't go into the results dictionary
-        tables = {"level-estimator": pd.DataFrame(columns=["tau2"], data=[self.tau2])}
-        return maps, tables, self._description_text()
+    def _tables(self):
+        # tau2 is an assumed constant here, not a map, so it can't go into the results
+        # dictionary.
+        return {"level-estimator": pd.DataFrame(columns=["tau2"], data=[self.tau2])}

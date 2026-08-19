@@ -287,9 +287,8 @@ def _is_voxelwise_masker(masker, n_features):
 def _cluster_ids(label_arr):
     """Return the cluster labels in a label map, in ascending order.
 
-    Selects the positive labels rather than dropping the first unique value: a map in which
-    every voxel survived thresholding has no background label to drop, and
-    ``np.unique(label_arr)[1:]`` would silently discard its only real cluster.
+    Selects the positive labels rather than dropping the first unique value, which would
+    discard a real cluster in a map that has no background label left.
     """
     label_arr = np.asanyarray(label_arr)
     return np.unique(label_arr[label_arr > 0]).tolist()
@@ -298,8 +297,7 @@ def _cluster_ids(label_arr):
 def _build_cluster_summary_context(masker, label_map, label_vector, cluster_ids):
     """Precompute cluster summaries in array space when possible.
 
-    The returned context carries ``cluster_ids`` so that every consumer reads the same list
-    rather than re-deriving it from the label map.
+    The returned context carries ``cluster_ids`` so every consumer reads the same list.
     """
     label_vector = np.squeeze(np.asarray(label_vector))
     if _is_voxelwise_masker(masker, label_vector.shape[0]):
@@ -985,6 +983,13 @@ class ResampledStability(NiMAREBase):
         to define clusters.
         This can be None if the ``target_image`` is already thresholded
         (e.g., a cluster-level corrected map). Default is None.
+
+        .. note::
+            Unlike :class:`Diagnostics`, this class has not been renamed to
+            ``target_threshold``, because the value is also reused as the cluster-forming
+            threshold when the ``"subsample"`` policy re-runs Monte Carlo FWE correction,
+            where it is read as a p-value. The two uses want different units and should be
+            split before either is renamed.
     cluster_threshold : int or None, optional
         Cluster size threshold, in voxels.
         If None, then no cluster size threshold will be applied.

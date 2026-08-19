@@ -294,7 +294,8 @@ def test_mask_images_keeps_one_4d_transform_when_the_masker_does_more_than_selec
     masked = estimator._mask_images(masker, mask_img, filenames)
 
     imgs = [estimator._load_image(f, mask_img) for f in filenames]
-    assert np.array_equal(masked, masker.transform(concat_imgs(imgs, ensure_ndim=4)), True)
+    together = masker.transform(concat_imgs(imgs, ensure_ndim=4))
+    assert np.array_equal(masked, together, equal_nan=True)
     # Confirm the parameter really does change the answer, so that this test would notice the
     # per-image shortcut being taken here.
     plain = clone(testdata_ibma.masker).fit()

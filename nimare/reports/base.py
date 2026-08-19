@@ -122,7 +122,7 @@ CORRECTOR_TEMPLATE = """\
 DIAGNOSTIC_TEMPLATE = """\
 <h2 class="sub-report-group">Target image: {target_image}</h2>
 <ul class="elem-desc">
-<li>Voxel-level threshold: {voxel_thresh}</li>
+<li>Target image threshold: {target_threshold}</li>
 <li>Cluster size threshold: {cluster_threshold}</li>
 <li>Number of cores: {n_cores}</li>
 </ul>

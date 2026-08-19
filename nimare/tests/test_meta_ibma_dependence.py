@@ -1,6 +1,5 @@
 """Tests for dependence handling in IBMA estimators."""
 
-import copy
 import logging
 
 import numpy as np
@@ -49,6 +48,23 @@ ALL_ESTIMATORS = [*PYMARE_ESTIMATORS, ibma.PermutedOLS]
 REPRESENTATIVE_ESTIMATORS = [ibma.Fishers, ibma.DerSimonianLaird, ibma.PermutedOLS]
 
 
+def _capture_kwargs(monkeypatch, target, name):
+    """Patch ``target.name`` with a pass-through spy, and return the dict it records into.
+
+    The four tests that check what NiMARE hands PyMARE differ only in which callable they
+    watch and which argument they assert on.
+    """
+    captured = {}
+    real = getattr(target, name)
+
+    def _spy(**kwargs):
+        captured.update(kwargs)
+        return real(**kwargs)
+
+    monkeypatch.setattr(target, name, _spy)
+    return captured
+
+
 def _explicit_cr2_weighted_t(contributions, weights):
     """Return an intercept-only WLS t with singleton-cluster CR2 variance."""
     weights = np.asarray(weights, dtype=float)
@@ -64,14 +80,38 @@ def _explicit_cr2_weighted_t(contributions, weights):
 
 @pytest.fixture(scope="module")
 def dependent_dataset(testdata_ibma_multiple_contrasts):
-    """Return repeated images whose study groups share one participant count."""
-    dataset = copy.deepcopy(testdata_ibma_multiple_contrasts)
-    for _, indices in dataset.metadata.groupby("study_id").groups.items():
-        indices = list(indices)
-        value = copy.deepcopy(dataset.metadata.at[indices[0], "sample_sizes"])
-        for index in indices:
-            dataset.metadata.at[index, "sample_sizes"] = copy.deepcopy(value)
-    return dataset
+    """Return a dataset in which some studies contributed several images.
+
+    Its sample sizes are left as they are, which means a study's contrasts disagree about
+    them -- ``pain.nidm`` reports 25, 20, 9 and 12. That is what real data looks like, so
+    every estimator here has to cope with it.
+    """
+    metadata = testdata_ibma_multiple_contrasts.metadata
+    # sample_sizes holds lists, which are unhashable, so reduce before counting.
+    sizes = metadata["sample_sizes"].map(lambda value: float(np.mean(value)))
+    assert (
+        sizes.groupby(metadata["study_id"]).nunique().max() > 1
+    ), "fixture must vary sample size within a study"
+    return testdata_ibma_multiple_contrasts
+
+
+@pytest.fixture(scope="module")
+def fitted(dependent_dataset):
+    """Fit an estimator on ``dependent_dataset`` once per configuration, then reuse it.
+
+    A fit is by far the slowest thing in this file, and several tests read different things
+    off the same one -- the maps, the dof map, the resolved grouping. Keyword values must be
+    hashable; a test that passes an array calls ``fit`` itself.
+    """
+    cache = {}
+
+    def _fit(estimator, **kwargs):
+        key = (estimator, tuple(sorted(kwargs.items())))
+        if key not in cache:
+            cache[key] = estimator(**kwargs).fit(dependent_dataset)
+        return cache[key]
+
+    return _fit
 
 
 # Parameters
@@ -131,26 +171,24 @@ def test_stouffers_rejects_the_removed_normalization_parameter():
 
 
 @pytest.mark.parametrize("estimator", REPRESENTATIVE_ESTIMATORS)
-def test_no_dependence_when_unrepeated_or_opted_out(estimator, testdata_ibma, dependent_dataset):
+def test_no_dependence_when_unrepeated_or_opted_out(estimator, testdata_ibma, fitted):
     """`labels` is None both when no study repeats and when the caller opts out."""
     unrepeated = estimator()
     unrepeated.fit(testdata_ibma)
     assert unrepeated._dependence().labels is None
     assert unrepeated.inputs_["corr_matrix"] is None
 
-    opted_out = estimator(groupby=False)
-    opted_out.fit(dependent_dataset)
+    opted_out = fitted(estimator, groupby=False).estimator
     assert opted_out._dependence().labels is None
 
 
 @pytest.mark.parametrize("estimator", ALL_ESTIMATORS)
-def test_grouping_recorded_and_correlation_gated(estimator, dependent_dataset):
+def test_grouping_recorded_and_correlation_gated(estimator, fitted):
     """Every estimator records the grouping; only the combination tests estimate a correlation.
 
     Parametrized over all nine because `_requires_corr_matrix` genuinely varies by class.
     """
-    meta = estimator()
-    meta.fit(dependent_dataset)
+    meta = fitted(estimator).estimator
 
     n_images = len(meta.inputs_["id"])
     groups = meta._dependence().labels
@@ -168,10 +206,9 @@ def test_grouping_recorded_and_correlation_gated(estimator, dependent_dataset):
         assert corr is None
 
 
-def test_groupby_accepts_a_metadata_field(dependent_dataset):
+def test_groupby_accepts_a_metadata_field(fitted):
     """A metadata column can define the grouping instead of study_id."""
-    meta = ibma.Stouffers(groupby="sample_sizes")
-    meta.fit(dependent_dataset)
+    meta = fitted(ibma.Stouffers, groupby="sample_sizes").estimator
 
     labels = meta.inputs_["dependence_groups"]
     assert len(labels) == len(meta.inputs_["id"])
@@ -182,9 +219,9 @@ def test_groupby_accepts_a_metadata_field(dependent_dataset):
             assert (codes[left] == codes[right]) == (labels[left] == labels[right])
 
 
-def test_groupby_accepts_an_explicit_label_array(dependent_dataset):
+def test_groupby_accepts_an_explicit_label_array(dependent_dataset, fitted):
     """Users can supply one label per image directly."""
-    n_images = len(ibma.Stouffers().fit(dependent_dataset).estimator.inputs_["id"])
+    n_images = len(fitted(ibma.Stouffers).estimator.inputs_["id"])
     labels = np.zeros(n_images, dtype=int)
 
     meta = ibma.Stouffers(groupby=labels)
@@ -199,12 +236,12 @@ def test_groupby_rejects_a_mismatched_label_array(dependent_dataset):
         ibma.Stouffers(groupby=np.array([0, 1])).fit(dependent_dataset)
 
 
-def test_groupby_can_split_a_study_back_into_independent_samples(dependent_dataset):
+def test_groupby_can_split_a_study_back_into_independent_samples(dependent_dataset, fitted):
     """Splitting a study apart must reproduce the ungrouped result.
 
     The NeuroVault case where one paper uploads patients and controls separately.
     """
-    reference = ibma.DerSimonianLaird(groupby=False).fit(dependent_dataset)
+    reference = fitted(ibma.DerSimonianLaird, groupby=False)
     n_images = len(reference.estimator.inputs_["id"])
 
     split = ibma.DerSimonianLaird(groupby=np.arange(n_images)).fit(dependent_dataset)
@@ -219,14 +256,14 @@ def test_groupby_can_split_a_study_back_into_independent_samples(dependent_datas
 
 
 @pytest.mark.parametrize("estimator", PYMARE_ESTIMATORS)
-def test_dependence_changes_inference(estimator, dependent_dataset):
+def test_dependence_changes_inference(estimator, fitted):
     """Correcting for dependence should move both the estimates and the p-values.
 
     Widening standard errors alone would leave image multiplicity changing the point
     estimate; the default weighting gives every group the same total weight first.
     """
-    corrected = estimator().fit(dependent_dataset)
-    naive = estimator(groupby=False).fit(dependent_dataset)
+    corrected = fitted(estimator)
+    naive = fitted(estimator, groupby=False)
 
     corrected_p = corrected.maps["p"]
     naive_p = naive.maps["p"]
@@ -245,10 +282,10 @@ def test_dependence_changes_inference(estimator, dependent_dataset):
 
 
 @pytest.mark.parametrize("estimator", COMBINATION_ESTIMATORS)
-def test_combination_dof_counts_groups_not_images(estimator, dependent_dataset):
+def test_combination_dof_counts_groups_not_images(estimator, fitted):
     """A study contributing several images must not buy degrees of freedom."""
-    meta = estimator()
-    results = meta.fit(dependent_dataset)
+    results = fitted(estimator)
+    meta = results.estimator
 
     n_images = len(meta.inputs_["id"])
     n_groups = np.unique(meta.inputs_["contrast_names"]).size
@@ -259,13 +296,13 @@ def test_combination_dof_counts_groups_not_images(estimator, dependent_dataset):
 
 
 @pytest.mark.parametrize("estimator", REGRESSION_ESTIMATORS)
-def test_regression_dof_is_pymare_satterthwaite(estimator, dependent_dataset):
+def test_regression_dof_is_pymare_satterthwaite(estimator, fitted, monkeypatch):
     """The dof map must be PyMARE's `fe_dof`, not a recomputation or a count of images."""
     # Aggressive masking, so that one model covers the whole map and its `fe_dof` can be
     # compared against every in-mask voxel. The liberal path fits one model per bag, each
     # with its own dof; that is covered by test_liberal_mask_dof_is_per_bag.
-    meta = estimator(aggressive_mask=True)
-    results = meta.fit(dependent_dataset)
+    results = fitted(estimator, aggressive_mask=True)
+    meta = results.estimator
 
     n_images = len(meta.inputs_["id"])
     group_count_dof = meta._dependence().dof
@@ -289,18 +326,11 @@ def test_regression_dof_is_pymare_satterthwaite(estimator, dependent_dataset):
             super().__init__(*args, **kwargs)
             captured["fe_dof"] = self.fe_dof
 
-    pymare.estimators.estimators.MetaRegressionResults = _Spy
-    try:
-        maps = meta._fit_model(
-            *[
-                meta.inputs_[name][:, voxel_mask]
-                for name, (type_, _) in meta._required_inputs.items()
-                if type_ == "image"
-            ],
-            study_mask=np.arange(n_images),
-        )
-    finally:
-        pymare.estimators.estimators.MetaRegressionResults = real
+    monkeypatch.setattr(pymare.estimators.estimators, "MetaRegressionResults", _Spy)
+    maps = meta._fit_model(
+        *[meta.inputs_[name][:, voxel_mask] for name in meta._image_inputs],
+        study_mask=np.arange(n_images),
+    )
 
     assert captured["fe_dof"] is not None
     assert np.allclose(maps[-1], np.ravel(captured["fe_dof"]))
@@ -308,7 +338,7 @@ def test_regression_dof_is_pymare_satterthwaite(estimator, dependent_dataset):
 
 @pytest.mark.parametrize("aggressive_mask", [True, False])
 @pytest.mark.parametrize("estimator", ALL_ESTIMATORS)
-def test_fit_produces_well_formed_maps(estimator, aggressive_mask, dependent_dataset):
+def test_fit_produces_well_formed_maps(estimator, aggressive_mask, fitted):
     """Every estimator returns usable maps under both masking strategies.
 
     Well-formedness only. Robust standard errors are not guaranteed to be larger than
@@ -316,8 +346,8 @@ def test_fit_produces_well_formed_maps(estimator, aggressive_mask, dependent_dat
     reported sampling variances, so an overstated varcope can legitimately shrink them --
     which leaves no inequality to assert here.
     """
-    meta = estimator(aggressive_mask=aggressive_mask)
-    results = meta.fit(dependent_dataset)
+    results = fitted(estimator, aggressive_mask=aggressive_mask)
+    meta = results.estimator
 
     assert np.isfinite(results.maps["z"]).any()
 
@@ -336,20 +366,20 @@ def test_fit_produces_well_formed_maps(estimator, aggressive_mask, dependent_dat
 
 
 @pytest.mark.parametrize("weight_scheme", ["individual", "rescale", "collapse"])
-def test_every_weight_scheme_runs(weight_scheme, dependent_dataset):
+def test_every_weight_scheme_runs(weight_scheme, fitted):
     """All three PyMARE schemes must be reachable from NiMARE."""
-    results = ibma.DerSimonianLaird(weight_scheme=weight_scheme).fit(dependent_dataset)
+    results = fitted(ibma.DerSimonianLaird, weight_scheme=weight_scheme)
 
     assert np.isfinite(results.maps["z"]).any()
 
 
-def test_rho_barely_moves_the_result(dependent_dataset):
+def test_rho_barely_moves_the_result(fitted):
     """Sweeping rho barely moves the result, because it enters only through tau^2.
 
     This is what makes 0.8 a safe default and a sensitivity sweep cheap.
     """
-    low = ibma.DerSimonianLaird(rho=0.0).fit(dependent_dataset).maps["z"]
-    high = ibma.DerSimonianLaird(rho=1.0).fit(dependent_dataset).maps["z"]
+    low = fitted(ibma.DerSimonianLaird, rho=0.0).maps["z"]
+    high = fitted(ibma.DerSimonianLaird, rho=1.0).maps["z"]
 
     valid = np.isfinite(low) & np.isfinite(high)
     assert valid.any()
@@ -365,14 +395,13 @@ def test_rho_barely_moves_the_result(dependent_dataset):
     assert np.percentile(shift, 95) < 0.05 * spread
 
 
-def test_correlation_matrix_is_not_measuring_shared_signal(dependent_dataset):
+def test_correlation_matrix_is_not_measuring_shared_signal(fitted):
     """Studies that are independent by construction must look independent.
 
     Correlating the raw maps conflates dependence with agreement, which would spread the
     variance correction across the whole analysis instead of the repeated study.
     """
-    meta = ibma.Stouffers()
-    meta.fit(dependent_dataset)
+    meta = fitted(ibma.Stouffers).estimator
 
     corr = meta.inputs_["corr_matrix"]
     groups = meta.inputs_["contrast_names"]
@@ -512,7 +541,8 @@ def test_multi_input_bags_stay_aligned(estimator, testdata_ibma):
     Varcope values that are non-positive or too small to square are blanked during
     preprocessing, which gives the varcopes a coverage pattern their betas do not have. Cut
     per input, the two bag lists then describe different voxels and ``zip`` pairs them up
-    anyway -- or drops the tail outright.
+    anyway -- or drops the tail outright. One shared grouping is also the cheaper half of
+    the work, so the masks below are the same objects, not merely equal ones.
     """
     meta = estimator(aggressive_mask=False)
     meta.fit(testdata_ibma)
@@ -522,89 +552,68 @@ def test_multi_input_bags_stay_aligned(estimator, testdata_ibma):
 
     assert len(beta_bags) == len(varcope_bags)
     for beta_bag, varcope_bag in zip(beta_bags, varcope_bags):
-        assert np.array_equal(beta_bag["voxel_mask"], varcope_bag["voxel_mask"])
-        assert np.array_equal(beta_bag["study_mask"], varcope_bag["study_mask"])
+        assert beta_bag["voxel_mask"] is varcope_bag["voxel_mask"]
+        assert beta_bag["study_mask"] is varcope_bag["study_mask"]
         assert beta_bag["values"].shape == varcope_bag["values"].shape
 
 
 # Combination tests
 
 
-def test_stouffers_weights_each_group_by_sqrt_n():
-    """Weight a group by sqrt(n), repeated per image and not divided by map count."""
-    estimator = ibma.Stouffers(use_sample_size=True)
-    estimator.inputs_ = {
+@pytest.mark.parametrize(
+    "estimator,expected",
+    [
+        # Fisher weights a study by its sample size; Stouffer by the square root of it.
+        (ibma.Fishers, [25.0, 25.0, 25.0, 100.0]),
+        (ibma.Stouffers, [5.0, 5.0, 5.0, 10.0]),
+    ],
+)
+def test_combination_weights_are_constant_within_a_group(estimator, expected, monkeypatch):
+    """One weight per group, repeated per image and not divided by map count.
+
+    PyMARE rejects a group whose images carry different weights, and a study routinely
+    reports a different sample size per contrast -- 20/25/30 below. The group's mean, 25, is
+    what every one of its images must be weighted by.
+    """
+    meta = estimator(use_sample_size=True)
+    meta.inputs_ = {
         "contrast_names": np.array([0, 0, 0, 1]),
         "corr_matrix": np.eye(4),
-        "sample_sizes": np.array([[25.0], [25.0], [25.0], [100.0]]),
+        "sample_sizes": np.array([[20.0], [25.0], [30.0], [100.0]]),
         "id": ["a", "b", "c", "d"],
     }
 
-    captured = {}
-    real_dataset = ibma.pymare.Dataset
+    captured = _capture_kwargs(monkeypatch, ibma.pymare, "Dataset")
+    meta._fit_model(np.ones((4, 5)), study_mask=np.arange(4), corr=np.eye(4))
 
-    def _spy(**kwargs):
-        captured.update(kwargs)
-        return real_dataset(**kwargs)
-
-    ibma.pymare.Dataset = _spy
-    try:
-        estimator._fit_model(np.ones((4, 5)), study_mask=np.arange(4), corr=np.eye(4))
-    finally:
-        ibma.pymare.Dataset = real_dataset
-
-    assert np.allclose(np.asarray(captured["n"]).ravel(), [5.0, 5.0, 5.0, 10.0])
+    assert np.allclose(np.asarray(captured["n"]).ravel(), expected)
 
 
-def test_stouffers_aggregates_groups_whenever_they_exist():
+@pytest.mark.parametrize("estimator", COMBINATION_ESTIMATORS)
+def test_combination_weights_survive_heterogeneous_group_sample_sizes(estimator, fitted):
+    """A study reporting a different sample size per contrast must still fit.
+
+    Passing a study's per-image sample sizes straight through makes PyMARE reject the whole
+    fit, because it requires one weight per group.
+    """
+    results = fitted(estimator, use_sample_size=True)
+
+    assert np.isfinite(results.maps["z"]).any()
+
+
+def test_stouffers_aggregates_groups_whenever_they_exist(monkeypatch):
     """Aggregate whenever groups exist, so a prolific study cannot outvote its peers."""
-    estimator = ibma.Stouffers()
-    estimator.inputs_ = {
+    meta = ibma.Stouffers()
+    meta.inputs_ = {
         "contrast_names": np.array([0, 0, 0, 1]),
         "corr_matrix": np.eye(4),
         "id": ["a", "b", "c", "d"],
     }
 
-    captured = {}
-    real_estimator = ibma.pymare.estimators.StoufferCombinationTest
-
-    def _spy(**kwargs):
-        captured.update(kwargs)
-        return real_estimator(**kwargs)
-
-    ibma.pymare.estimators.StoufferCombinationTest = _spy
-    try:
-        estimator._fit_model(np.ones((4, 5)), study_mask=np.arange(4), corr=np.eye(4))
-    finally:
-        ibma.pymare.estimators.StoufferCombinationTest = real_estimator
+    captured = _capture_kwargs(monkeypatch, ibma.pymare.estimators, "StoufferCombinationTest")
+    meta._fit_model(np.ones((4, 5)), study_mask=np.arange(4), corr=np.eye(4))
 
     assert captured["group_level"] is True
-
-
-def test_fishers_passes_one_sample_size_coefficient_per_study_to_pymare():
-    """Weighted Fisher receives repeated group weights, not image-count weights."""
-    estimator = ibma.Fishers(use_sample_size=True)
-    estimator.inputs_ = {
-        "contrast_names": np.array([0, 0, 0, 1]),
-        "corr_matrix": np.eye(4),
-        "sample_sizes": np.array([[25.0], [25.0], [25.0], [100.0]]),
-        "id": ["a", "b", "c", "d"],
-    }
-
-    captured = {}
-    real_dataset = ibma.pymare.Dataset
-
-    def _spy(**kwargs):
-        captured.update(kwargs)
-        return real_dataset(**kwargs)
-
-    ibma.pymare.Dataset = _spy
-    try:
-        estimator._fit_model(np.ones((4, 5)), study_mask=np.arange(4), corr=np.eye(4))
-    finally:
-        ibma.pymare.Dataset = real_dataset
-
-    assert np.array_equal(np.asarray(captured["n"]).ravel(), [25.0, 25.0, 25.0, 100.0])
 
 
 def test_fishers_preserves_two_sided_positional_argument():
@@ -681,10 +690,9 @@ def test_permuted_ols_matches_nilearn_when_ungrouped():
 
 
 @pytest.mark.parametrize("groupby,grouped", [(None, True), (False, False)])
-def test_permuted_ols_blocks_follow_groupby(groupby, grouped, dependent_dataset):
+def test_permuted_ols_blocks_follow_groupby(groupby, grouped, fitted):
     """Grouping collapses a study's images into one block; opting out makes it the identity."""
-    meta = ibma.PermutedOLS(groupby=groupby)
-    meta.fit(dependent_dataset)
+    meta = fitted(ibma.PermutedOLS, groupby=groupby).estimator
 
     n_images = len(meta.inputs_["id"])
     blocks, weights = meta._blocks_and_weights(np.arange(n_images))
@@ -696,51 +704,46 @@ def test_permuted_ols_blocks_follow_groupby(groupby, grouped, dependent_dataset)
         assert np.array_equal(blocks, np.arange(n_images))
 
 
-def test_permuted_ols_dof_counts_groups(dependent_dataset):
-    """Grouping must cost degrees of freedom, not preserve the image count."""
-    # Aggressive masking, so one model covers the whole map and the dof is a single number.
-    grouped = ibma.PermutedOLS(aggressive_mask=True).fit(dependent_dataset)
-    ungrouped = ibma.PermutedOLS(aggressive_mask=True, groupby=False).fit(dependent_dataset)
+@pytest.mark.parametrize("aggressive_mask", [True, False], ids=["aggressive", "liberal"])
+def test_permuted_ols_dof_counts_blocks_not_images(aggressive_mask, fitted):
+    """Each model's dof counts the blocks it was fitted over, not the images it saw.
+
+    Under the aggressive mask one model covers the whole map, so the dof is a single number.
+    Under the liberal mask each bag is its own model, so a bag covered by fewer images
+    reports fewer degrees of freedom -- which is the point of fitting per bag rather than
+    dropping the voxels.
+    """
+    grouped = fitted(ibma.PermutedOLS, aggressive_mask=aggressive_mask)
+    ungrouped = fitted(ibma.PermutedOLS, aggressive_mask=aggressive_mask, groupby=False)
 
     n_images = len(ungrouped.estimator.inputs_["id"])
-    n_groups = np.unique(grouped.estimator.inputs_["contrast_names"]).size
-
     # Outside the mask the map is NaN, as every other float map already is.
     ungrouped_dof = ungrouped.maps["dof"]
     grouped_dof = grouped.maps["dof"]
-    assert set(ungrouped_dof[np.isfinite(ungrouped_dof)].tolist()) == {float(n_images - 1)}
-    assert set(grouped_dof[np.isfinite(grouped_dof)].tolist()) == {float(n_groups - 1)}
 
-
-def test_liberal_mask_dof_is_per_bag(dependent_dataset):
-    """Under the liberal mask each bag is its own model, so its dof counts only its blocks.
-
-    A bag covered by fewer images therefore reports fewer degrees of freedom than one covered
-    by all of them, which is the point of fitting per bag rather than dropping the voxels.
-    """
-    grouped = ibma.PermutedOLS().fit(dependent_dataset)
-    ungrouped = ibma.PermutedOLS(groupby=False).fit(dependent_dataset)
-
-    n_images = len(ungrouped.estimator.inputs_["id"])
-    bags = ungrouped.estimator.inputs_["data_bags"]["beta_maps"]
-    assert len({bag["study_mask"].size for bag in bags}) > 1, "fixture must vary its coverage"
-
-    # Ungrouped, every image is its own block, so a bag's dof is exactly its image count - 1.
-    expected = {float(bag["study_mask"].size - 1) for bag in bags}
-    ungrouped_dof = ungrouped.maps["dof"]
+    # Ungrouped, every image is its own block, so a model's dof is its image count - 1.
+    if aggressive_mask:
+        expected = {float(n_images - 1)}
+    else:
+        bags = ungrouped.estimator.inputs_["data_bags"]["beta_maps"]
+        assert len({bag["study_mask"].size for bag in bags}) > 1, "fixture must vary coverage"
+        expected = {float(bag["study_mask"].size - 1) for bag in bags}
     assert set(ungrouped_dof[np.isfinite(ungrouped_dof)].tolist()) <= expected
     assert np.nanmax(ungrouped_dof) == float(n_images - 1)
 
     # Grouping collapses images to groups, so it can only cost degrees of freedom.
-    valid = np.isfinite(grouped.maps["dof"]) & np.isfinite(ungrouped_dof)
+    valid = np.isfinite(grouped_dof) & np.isfinite(ungrouped_dof)
     assert valid.any()
-    assert np.all(grouped.maps["dof"][valid] <= ungrouped_dof[valid])
+    assert np.all(grouped_dof[valid] <= ungrouped_dof[valid])
+    if aggressive_mask:
+        n_groups = np.unique(grouped.estimator.inputs_["contrast_names"]).size
+        assert set(grouped_dof[np.isfinite(grouped_dof)].tolist()) == {float(n_groups - 1)}
 
 
-def test_permuted_ols_sample_size_weights_shrink_the_dof(dependent_dataset):
+def test_permuted_ols_sample_size_weights_shrink_the_dof(fitted):
     """Unequal weights make Satterthwaite dof fall below the group count."""
-    equal = ibma.PermutedOLS().fit(dependent_dataset)
-    weighted = ibma.PermutedOLS(use_sample_size=True).fit(dependent_dataset)
+    equal = fitted(ibma.PermutedOLS)
+    weighted = fitted(ibma.PermutedOLS, use_sample_size=True)
 
     valid = np.isfinite(weighted.maps["dof"]) & np.isfinite(equal.maps["dof"])
     assert valid.any()
@@ -748,10 +751,9 @@ def test_permuted_ols_sample_size_weights_shrink_the_dof(dependent_dataset):
     assert np.isfinite(weighted.maps["z"]).any()
 
 
-def test_permuted_ols_weights_each_group_once(dependent_dataset):
+def test_permuted_ols_weights_each_group_once(fitted):
     """A study's sample size must not be counted once per map it uploaded."""
-    meta = ibma.PermutedOLS(use_sample_size=True)
-    meta.fit(dependent_dataset)
+    meta = fitted(ibma.PermutedOLS, use_sample_size=True).estimator
 
     n_images = len(meta.inputs_["id"])
     _, weights = meta._blocks_and_weights(np.arange(n_images))
@@ -761,11 +763,18 @@ def test_permuted_ols_weights_each_group_once(dependent_dataset):
     assert group_order.size < n_images
 
 
-def test_permuted_ols_fwe_shares_one_null_across_bags(dependent_dataset):
+@pytest.mark.parametrize(
+    "aggressive_mask,use_sample_size",
+    [(False, False), (True, True)],
+    ids=["liberal-unweighted", "aggressive-weighted"],
+)
+def test_permuted_ols_fwe_shares_one_null_across_bags(
+    aggressive_mask, use_sample_size, dependent_dataset
+):
     """The max-statistic null must describe the whole brain, not one bag of it."""
     from nimare.correct import FWECorrector
 
-    meta = ibma.PermutedOLS(aggressive_mask=False)
+    meta = ibma.PermutedOLS(aggressive_mask=aggressive_mask, use_sample_size=use_sample_size)
     corrector = FWECorrector(method="montecarlo", n_iters=20)
     corrected = corrector.transform(meta.fit(dependent_dataset))
 
@@ -774,33 +783,20 @@ def test_permuted_ols_fwe_shares_one_null_across_bags(dependent_dataset):
     assert null.shape == (20,)
     assert np.all(np.isfinite(null))
 
-    logp = corrected.maps["logp_level-voxel_corr-FWE_method-montecarlo"]
-    finite = logp[np.isfinite(logp)]
-    assert finite.size
-    assert np.all(finite >= 0)
-
-
-def test_permuted_ols_fwe_smoke(dependent_dataset):
-    """FWE correction runs on the aggressive-mask path too."""
-    from nimare.correct import FWECorrector
-
-    meta = ibma.PermutedOLS(use_sample_size=True)
-    corrected = FWECorrector(method="montecarlo", n_iters=20).transform(
-        meta.fit(dependent_dataset)
-    )
-
     p_map = corrected.maps["p_level-voxel_corr-FWE_method-montecarlo"]
-    finite = p_map[np.isfinite(p_map)]
-    assert finite.size
-    assert np.all(finite > 0)
-    assert np.all(finite <= 1)
+    finite_p = p_map[np.isfinite(p_map)]
+    assert finite_p.size
+    assert np.all((finite_p > 0) & (finite_p <= 1))
+
+    logp = corrected.maps["logp_level-voxel_corr-FWE_method-montecarlo"]
+    assert np.all(logp[np.isfinite(logp)] >= 0)
 
 
 # The permutation module itself
 
 
 def test_permutation_collapses_blocks_to_their_means():
-    """The statistic is over group means, so within-block spread is irrelevant."""
+    """The statistic is over block means, so within-block spread is irrelevant."""
     beta_maps = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 7.0]])
     groups = np.array([0, 0, 1])
 
@@ -811,19 +807,13 @@ def test_permutation_collapses_blocks_to_their_means():
     assert np.allclose(result["t"].squeeze(), expected)
     assert result["dof"] == 1
 
-
-def test_permutation_ignores_within_block_dispersion():
-    """Changing within-block spread at fixed block means must not alter inference."""
-    groups = np.array([0, 0, 1, 1, 2, 2])
-    block_means = np.array([[1.0, 2.0], [3.0, 5.0], [8.0, 13.0]])
-    concentrated = np.repeat(block_means, 2, axis=0)
-    dispersed = concentrated.copy()
-    dispersed[::2] -= 10
-    dispersed[1::2] += 10
-
+    # Spreading the first block's maps apart around the same mean must change nothing.
+    dispersed = beta_maps.copy()
+    dispersed[0] -= 10.0
+    dispersed[1] += 10.0
     assert np.allclose(
-        _permuted_ols(concentrated, exchangeability_blocks=groups)["t"],
         _permuted_ols(dispersed, exchangeability_blocks=groups)["t"],
+        result["t"],
     )
 
 

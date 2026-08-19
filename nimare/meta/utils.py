@@ -583,44 +583,30 @@ def _calculate_cluster_measures(arr3d, threshold, conn, tail="upper"):
     return max_size, max_mass
 
 
-def _apply_liberal_mask(data, validity=None):
-    """Separate input image data in bags of voxels that have a valid value across the same studies.
+def _liberal_mask_bags(mask):
+    """Group voxels by which studies cover them.
 
     Parameters
     ----------
-    data : (S x V) :class:`numpy.ndarray`
-        2D numpy array (S x V) of images, where S is study and V is voxel.
-    validity : None or (S x V) :class:`numpy.ndarray` of :obj:`bool`, optional
-        Which entries of ``data`` are usable. Default is those that are neither NaN nor zero.
-        An estimator with several image inputs passes one shared array for all of them, so
-        that every input is cut into the same bags and the resulting lists line up.
+    mask : (S x V) :class:`numpy.ndarray` of :obj:`bool`
+        Which entries of the image data are usable.
 
     Returns
     -------
-    values_lst : :obj:`list` of :obj:`numpy.ndarray`
-        List of 2D numpy arrays (s x v) of images, where the voxel v have a valid
-        value in study s.
-    voxel_mask_lst : :obj:`list` of :obj:`numpy.ndarray`
-        List of 1D numpy arrays (v) of voxel indices for the corresponding bag.
-    study_mask_lst : :obj:`list` of :obj:`numpy.ndarray`
-        List of 1D numpy arrays (s) of study indices for the corresponding bag.
+    :obj:`list` of :obj:`tuple`
+        One ``(voxel_mask, study_mask)`` pair per bag, in order of first appearance. Bags
+        covered by fewer than two studies are dropped, since they cannot be fitted.
 
     Notes
     -----
-    Voxels are grouped by their coverage pattern -- which studies have a valid value there.
-    Comparing patterns pairwise is quadratic in the number of voxels, which at 2 mm
-    resolution dominates the runtime of an entire image-based meta-analysis. Instead each
-    voxel's pattern is packed into bytes and handed to :func:`numpy.unique`, so the grouping
-    costs one sort.
+    Split out from :func:`_apply_liberal_mask` because an estimator with several image
+    inputs cuts them all along one shared coverage pattern, so the grouping is worked out
+    once and every input is then sliced with it.
 
-    Bags are returned in order of first appearance, i.e. sorted by their lowest voxel index.
-
+    Each voxel's pattern is packed into bytes and handed to :func:`numpy.unique`, so the
+    grouping costs one sort rather than a quadratic pairwise comparison.
     """
     MIN_STUDY_THRESH = 2
-
-    # Which studies contribute a usable value at each voxel. This (S x V) boolean array is
-    # the voxel's identity for grouping purposes.
-    mask = (~np.isnan(data) & (data != 0)) if validity is None else np.asarray(validity)
 
     # Pack each voxel's column of S booleans into ceil(S / 8) bytes, so that a whole pattern
     # is a single row np.unique can sort on. Padding bits are zero for every voxel alike, so
@@ -641,17 +627,60 @@ def _apply_liberal_mask(data, validity=None):
     group_sizes = np.bincount(inverse, minlength=first_idx.size)[by_appearance]
     group_bounds = np.concatenate(([0], np.cumsum(group_sizes)))
 
-    values_lst, voxel_mask_lst, study_mask_lst = [], [], []
+    bags = []
     for group in range(first_idx.size):
         voxel_mask = voxels_by_group[group_bounds[group] : group_bounds[group + 1]]
         # Identical by construction for every voxel in the group.
         study_mask = np.flatnonzero(mask[:, voxel_mask[0]])
 
-        if study_mask.size < MIN_STUDY_THRESH:
-            continue
+        if study_mask.size >= MIN_STUDY_THRESH:
+            bags.append((voxel_mask, study_mask))
 
-        values_lst.append(data[np.ix_(study_mask, voxel_mask)].astype(np.float64, copy=False))
-        voxel_mask_lst.append(voxel_mask)
-        study_mask_lst.append(study_mask)
+    return bags
 
-    return values_lst, voxel_mask_lst, study_mask_lst
+
+def _liberal_mask_values(data, bags):
+    """Slice one image input into the bags of :func:`_liberal_mask_bags`."""
+    return [
+        data[np.ix_(study_mask, voxel_mask)].astype(np.float64, copy=False)
+        for voxel_mask, study_mask in bags
+    ]
+
+
+def _apply_liberal_mask(data, validity=None):
+    """Separate input image data in bags of voxels that have a valid value across the same studies.
+
+    Parameters
+    ----------
+    data : (S x V) :class:`numpy.ndarray`
+        2D numpy array (S x V) of images, where S is study and V is voxel.
+    validity : None or (S x V) :class:`numpy.ndarray` of :obj:`bool`, optional
+        Which entries of ``data`` are usable. Default is those that are neither NaN nor zero.
+
+    Returns
+    -------
+    values_lst : :obj:`list` of :obj:`numpy.ndarray`
+        List of 2D numpy arrays (s x v) of images, where the voxel v have a valid
+        value in study s.
+    voxel_mask_lst : :obj:`list` of :obj:`numpy.ndarray`
+        List of 1D numpy arrays (v) of voxel indices for the corresponding bag.
+    study_mask_lst : :obj:`list` of :obj:`numpy.ndarray`
+        List of 1D numpy arrays (s) of study indices for the corresponding bag.
+
+    Notes
+    -----
+    Bags are returned in order of first appearance, i.e. sorted by their lowest voxel index.
+
+    An estimator with several image inputs should call :func:`_liberal_mask_bags` and
+    :func:`_liberal_mask_values` instead, so that the grouping is worked out once for all of
+    them rather than repeated per input.
+
+    """
+    mask = (~np.isnan(data) & (data != 0)) if validity is None else np.asarray(validity)
+    bags = _liberal_mask_bags(mask)
+
+    return (
+        _liberal_mask_values(data, bags),
+        [voxel_mask for voxel_mask, _ in bags],
+        [study_mask for _, study_mask in bags],
+    )

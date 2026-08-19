@@ -85,7 +85,7 @@ def test_cbma_workflow_smoke(
         (MKDAChi2, FWECorrector(method="montecarlo", n_iters=10), [FocusCounter]),
         ("mkdachi", "bonferroni", FocusCounter),
         ("mkdachi2", "bonferroni", "jackknife"),
-        (ALESubtraction(n_iters=10), "fdr", Jackknife(voxel_thresh=0.01)),
+        (ALESubtraction(n_iters=10), "fdr", Jackknife(target_threshold=0.01)),
         (ALE, "montecarlo", None),
         (Fishers, "montecarlo", "jackknife"),
     ],
@@ -392,7 +392,22 @@ def test_unset_params_handles_array_valued_parameters():
     # groupby is not one of the settings a workflow fans out, but it must not blow up while
     # the fanned-out ones are being checked.
     assert _unset_params(estimator, {"groupby": False, "n_cores": 4}) == {}
-    assert _unset_params(Stouffers(), {"groupby": False}) == {"groupby": False}
+
+
+def test_unset_params_skips_what_set_params_would_reject():
+    """A parameter a base class names but a subclass only forwards must not be selected.
+
+    ``Stouffers`` takes ``groupby`` through ``**kwargs``, so it is absent from
+    ``get_params()`` and ``set_params(groupby=...)`` raises. Selecting it here would turn a
+    workflow setting that does not apply into a crash.
+    """
+    from nimare.workflows.base import _unset_params
+
+    estimator = Stouffers()
+
+    assert "groupby" not in estimator.get_params()
+    assert estimator.groupby is None
+    assert _unset_params(estimator, {"groupby": False}) == {}
 
 
 @pytest.mark.parametrize(
