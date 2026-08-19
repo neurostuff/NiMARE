@@ -216,26 +216,34 @@ class IBMAEstimator(Estimator):
         ``study_mask`` holds the image indices, as ``_fit_model`` receives them from the
         liberal-mask path; None means all images.
         """
-        model = DependenceModel(
-            self.inputs_["contrast_names"],
-            enabled=self.groupby is not False,
-        )
+        model = DependenceModel(self.inputs_["contrast_names"])
         return model if study_mask is None else model.for_images(study_mask)
 
-    def _fe_dof_map(self, est_summary, study_mask, n_voxels):
-        """Return the fixed-effect degrees of freedom, one value per voxel.
+    def _dof_map(self, study_mask, n_voxels, est_summary=None):
+        """Return the degrees of freedom map, one value per voxel.
 
-        PyMARE reports Satterthwaite degrees of freedom whenever group labels were supplied
-        :footcite:p:`tipton2015small`; these are non-integer and vary by voxel. Without
-        labels there is no cluster-robust covariance and hence no ``fe_dof``, so fall back
-        to the group count.
+        PyMARE reports Satterthwaite degrees of freedom whenever group labels reached a
+        meta-regression estimator :footcite:p:`tipton2015small`; these are non-integer and
+        vary by voxel. The combination tests have no covariance to derive them from, and
+        neither does a fit without group labels, so both fall back to the group count.
+
+        Always float, so that out-of-mask voxels come back as NaN like every other map. An
+        integer map would carry ``INT_MIN`` there instead.
         """
-        dof = est_summary.fe_dof
+        dof = None if est_summary is None else est_summary.fe_dof
         if dof is None:
             return np.full(n_voxels, self._dependence(study_mask).dof, dtype=float)
 
         # (p, d) with p == 1, since every IBMA model is intercept-only.
         return np.asarray(dof, dtype=float).reshape(-1)[:n_voxels]
+
+    @staticmethod
+    def _all_images(study_mask, n_images):
+        """Return ``study_mask``, or every image when the caller passed None.
+
+        Only the liberal-mask path supplies a mask; the aggressive path fits every image.
+        """
+        return np.arange(n_images) if study_mask is None else study_mask
 
     def _sample_sizes_for_mask(self, study_mask):
         """Return per-image sample sizes aligned to a fitted model.
@@ -256,7 +264,7 @@ class IBMAEstimator(Estimator):
             # collected and aligned.
             return [hashable_label(v) for v in self.inputs_["dependence_groups"]]
 
-        if self.groupby is not None and self.groupby is not False:
+        if self.groupby is not None and self.groupby is not False:  # explicit labels
             labels = [hashable_label(v) for v in np.asarray(self.groupby).ravel()]
             if len(labels) != len(self.inputs_["id"]):
                 raise ValueError(
@@ -288,6 +296,20 @@ class IBMAEstimator(Estimator):
         """
         labels = self._resolve_group_labels(dataset)
 
+        if self.groupby is False:
+            # Give every image its own label, so that "no dependence" is expressed in the
+            # codes themselves rather than as a flag every consumer has to remember to read.
+            # The resolved labels are still worth computing: they are what says whether the
+            # caller has opted out of a correction they actually needed.
+            repeated = len(labels) - len(set(labels))
+            if repeated:
+                LGR.warning(
+                    f"{repeated} image(s) share a group with another image, but "
+                    "groupby=False was requested, so they will be treated as independent. "
+                    "This inflates significance."
+                )
+            labels = list(self.inputs_["id"])
+
         # Sorting keeps the code assignment stable across runs; plain set() iteration
         # depends on string hash randomization, which would make seeded permutations
         # irreproducible. str() first so a mix of label types still orders.
@@ -302,14 +324,6 @@ class IBMAEstimator(Estimator):
         if n_studies == n_unique:
             # Every group contains exactly one image, so there is no
             # within-group dependence to correct for.
-            return
-
-        if self.groupby is False:
-            LGR.warning(
-                f"{n_studies - n_unique} image(s) share a group with another image, but "
-                "groupby=False was requested, so they will be treated as independent. "
-                "This inflates significance."
-            )
             return
 
         if not self._requires_corr_matrix:
@@ -495,10 +509,7 @@ class Fishers(IBMAEstimator):
         """Fit the model to the data."""
         n_studies, n_voxels = stat_maps.shape
 
-        if study_mask is None:
-            # If no mask is provided, assume all studies are included. This is always the case
-            # when using the aggressive mask.
-            study_mask = np.arange(n_studies)
+        study_mask = self._all_images(study_mask, n_studies)
 
         est = pymare.estimators.FisherCombinationTest(mode=self._mode)
 
@@ -521,7 +532,7 @@ class Fishers(IBMAEstimator):
 
         z_map = est_summary.z.squeeze()
         p_map = est_summary.p.squeeze()
-        dof_map = np.tile(self._dependence(study_mask).dof, n_voxels).astype(np.int32)
+        dof_map = self._dof_map(study_mask, n_voxels)
 
         return z_map, p_map, dof_map
 
@@ -700,10 +711,7 @@ class Stouffers(IBMAEstimator):
         """Fit the model to the data."""
         n_studies, n_voxels = stat_maps.shape
 
-        if study_mask is None:
-            # If no mask is provided, assume all studies are included. This is always the case
-            # when using the aggressive mask.
-            study_mask = np.arange(n_studies)
+        study_mask = self._all_images(study_mask, n_studies)
 
         groups = self._dependence(study_mask).labels
         sub_corr = None
@@ -733,7 +741,7 @@ class Stouffers(IBMAEstimator):
 
         z_map = est_summary.z.squeeze()
         p_map = est_summary.p.squeeze()
-        dof_map = np.tile(self._dependence(study_mask).dof, n_voxels).astype(np.int32)
+        dof_map = self._dof_map(study_mask, n_voxels)
 
         return z_map, p_map, dof_map
 
@@ -899,10 +907,7 @@ class WeightedLeastSquares(_PyMARERegressionEstimator):
         """Fit the model to the data."""
         n_studies, n_voxels = beta_maps.shape
 
-        if study_mask is None:
-            # If no mask is provided, assume all studies are included. This is always the case
-            # when using the aggressive mask.
-            study_mask = np.arange(n_studies)
+        study_mask = self._all_images(study_mask, n_studies)
 
         # None when there is nothing to correct for, which is how PyMARE is told to use
         # model-based inference rather than cluster-robust ("sandwich") standard errors.
@@ -921,7 +926,7 @@ class WeightedLeastSquares(_PyMARERegressionEstimator):
         p_map = fe_stats["p"].squeeze()
         est_map = fe_stats["est"].squeeze()
         se_map = fe_stats["se"].squeeze()
-        dof_map = self._fe_dof_map(est_summary, study_mask, n_voxels)
+        dof_map = self._dof_map(study_mask, n_voxels, est_summary)
         return z_map, p_map, est_map, se_map, dof_map
 
     def _fit(self, dataset):
@@ -1085,10 +1090,7 @@ class DerSimonianLaird(_PyMARERegressionEstimator):
         """Fit the model to the data."""
         n_studies, n_voxels = beta_maps.shape
 
-        if study_mask is None:
-            # If no mask is provided, assume all studies are included. This is always the case
-            # when using the aggressive mask.
-            study_mask = np.arange(n_studies)
+        study_mask = self._all_images(study_mask, n_studies)
 
         # None when there is nothing to correct for, which is how PyMARE is told to use
         # model-based inference rather than cluster-robust ("sandwich") standard errors.
@@ -1105,7 +1107,7 @@ class DerSimonianLaird(_PyMARERegressionEstimator):
         est_map = fe_stats["est"].squeeze()
         se_map = fe_stats["se"].squeeze()
         tau2_map = est_summary.tau2.squeeze()
-        dof_map = self._fe_dof_map(est_summary, study_mask, n_voxels)
+        dof_map = self._dof_map(study_mask, n_voxels, est_summary)
         return z_map, p_map, est_map, se_map, tau2_map, dof_map
 
     def _fit(self, dataset):
@@ -1276,10 +1278,7 @@ class Hedges(_PyMARERegressionEstimator):
         """Fit the model to the data."""
         n_studies, n_voxels = beta_maps.shape
 
-        if study_mask is None:
-            # If no mask is provided, assume all studies are included. This is always the case
-            # when using the aggressive mask.
-            study_mask = np.arange(n_studies)
+        study_mask = self._all_images(study_mask, n_studies)
 
         # None when there is nothing to correct for, which is how PyMARE is told to use
         # model-based inference rather than cluster-robust ("sandwich") standard errors.
@@ -1296,7 +1295,7 @@ class Hedges(_PyMARERegressionEstimator):
         est_map = fe_stats["est"].squeeze()
         se_map = fe_stats["se"].squeeze()
         tau2_map = est_summary.tau2.squeeze()
-        dof_map = self._fe_dof_map(est_summary, study_mask, n_voxels)
+        dof_map = self._dof_map(study_mask, n_voxels, est_summary)
         return z_map, p_map, est_map, se_map, tau2_map, dof_map
 
     def _fit(self, dataset):
@@ -1483,10 +1482,7 @@ class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
         """Fit the model to the data."""
         n_studies, n_voxels = beta_maps.shape
 
-        if study_mask is None:
-            # If no mask is provided, assume all studies are included. This is always the case
-            # when using the aggressive mask.
-            study_mask = np.arange(n_studies)
+        study_mask = self._all_images(study_mask, n_studies)
 
         sample_sizes = self._sample_sizes_for_mask(study_mask)
         n_maps = np.tile(sample_sizes, (n_voxels, 1)).T
@@ -1510,7 +1506,7 @@ class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
         se_map = fe_stats["se"].squeeze()
         tau2_map = est_summary.tau2.squeeze()
         sigma2_map = est.params_["sigma2"].squeeze()
-        dof_map = self._fe_dof_map(est_summary, study_mask, n_voxels)
+        dof_map = self._dof_map(study_mask, n_voxels, est_summary)
         return z_map, p_map, est_map, se_map, tau2_map, sigma2_map, dof_map
 
     def _fit(self, dataset):
@@ -1690,10 +1686,7 @@ class VarianceBasedLikelihood(_PyMARERegressionEstimator):
         """Fit the model to the data."""
         n_studies, n_voxels = beta_maps.shape
 
-        if study_mask is None:
-            # If no mask is provided, assume all studies are included. This is always the case
-            # when using the aggressive mask.
-            study_mask = np.arange(n_studies)
+        study_mask = self._all_images(study_mask, n_studies)
 
         # None when there is nothing to correct for, which is how PyMARE is told to use
         # model-based inference rather than cluster-robust ("sandwich") standard errors.
@@ -1713,7 +1706,7 @@ class VarianceBasedLikelihood(_PyMARERegressionEstimator):
         est_map = fe_stats["est"].squeeze()
         se_map = fe_stats["se"].squeeze()
         tau2_map = est_summary.tau2.squeeze()
-        dof_map = self._fe_dof_map(est_summary, study_mask, n_voxels)
+        dof_map = self._dof_map(study_mask, n_voxels, est_summary)
         return z_map, p_map, est_map, se_map, tau2_map, dof_map
 
     def _fit(self, dataset):
@@ -1905,29 +1898,29 @@ class PermutedOLS(IBMAEstimator):
     def _blocks_and_weights(self, study_mask):
         """Return per-image block labels and one optional weight per block.
 
+        The block order is :attr:`DependenceModel.group_order`, which callers that need it
+        read from :meth:`_dependence` rather than having it handed back here twice.
+
         ``groupby=False``, or a dataset in which no group holds more than one image, gives
         every image its own block, so collapsing is the identity and the ordinary one-sample
         test is recovered.
         """
         dependence = self._dependence(study_mask)
         if not self.use_sample_size:
-            return dependence.blocks, dependence.group_order, None
+            return dependence.blocks, None
 
         weights = dependence.per_group(self._sample_sizes_for_mask(study_mask))
         if np.any(~np.isfinite(weights)) or np.any(weights <= 0):
             raise ValueError("Sample sizes must be finite positive values.")
-        return dependence.blocks, dependence.group_order, weights
+        return dependence.blocks, weights
 
     def _fit_model(self, beta_maps, n_perm=0, study_mask=None, n_jobs=None, sign_flips=None):
         """Fit the model to the data."""
         n_maps, n_voxels = beta_maps.shape
 
-        if study_mask is None:
-            # If no mask is provided, assume all studies are included. This is always the case
-            # when using the aggressive mask.
-            study_mask = np.arange(n_maps)
+        study_mask = self._all_images(study_mask, n_maps)
 
-        blocks, _, weights = self._blocks_and_weights(study_mask)
+        blocks, weights = self._blocks_and_weights(study_mask)
 
         result = _permuted_ols(
             beta_maps,
@@ -2207,10 +2200,7 @@ class FixedEffectsHedges(_PyMARERegressionEstimator):
         """Fit the model to the data."""
         n_studies, n_voxels = t_maps.shape
 
-        if study_mask is None:
-            # If no mask is provided, assume all studies are included. This is always the case
-            # when using the aggressive mask.
-            study_mask = np.arange(n_studies)
+        study_mask = self._all_images(study_mask, n_studies)
 
         sample_sizes = self._sample_sizes_for_mask(study_mask)
         n_maps = np.tile(sample_sizes, (n_voxels, 1)).T
@@ -2238,7 +2228,7 @@ class FixedEffectsHedges(_PyMARERegressionEstimator):
         p_map = fe_stats["p"].squeeze()
         est_map = fe_stats["est"].squeeze()
         se_map = fe_stats["se"].squeeze()
-        dof_map = self._fe_dof_map(est_summary, study_mask, n_voxels)
+        dof_map = self._dof_map(study_mask, n_voxels, est_summary)
         return z_map, p_map, est_map, se_map, dof_map
 
     def _fit(self, dataset):

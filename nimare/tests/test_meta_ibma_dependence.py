@@ -513,7 +513,7 @@ def test_permuted_ols_uses_one_block_per_image_when_ungrouped(dependent_dataset)
     meta.fit(dependent_dataset)
 
     n_images = len(meta.inputs_["id"])
-    blocks, _, weights = meta._blocks_and_weights(np.arange(n_images))
+    blocks, weights = meta._blocks_and_weights(np.arange(n_images))
 
     assert np.array_equal(blocks, np.arange(n_images))
     assert weights is None
@@ -525,7 +525,7 @@ def test_permuted_ols_groups_repeated_images(dependent_dataset):
     meta.fit(dependent_dataset)
 
     n_images = len(meta.inputs_["id"])
-    blocks, _, _ = meta._blocks_and_weights(np.arange(n_images))
+    blocks, _ = meta._blocks_and_weights(np.arange(n_images))
 
     assert np.unique(blocks).size < n_images
 
@@ -562,10 +562,11 @@ def test_permuted_ols_weights_each_group_once(dependent_dataset):
     meta.fit(dependent_dataset)
 
     n_images = len(meta.inputs_["id"])
-    blocks, labels, weights = meta._blocks_and_weights(np.arange(n_images))
+    _, weights = meta._blocks_and_weights(np.arange(n_images))
+    group_order = meta._dependence().group_order
 
-    assert weights.shape == (labels.size,)
-    assert labels.size < n_images
+    assert weights.shape == (group_order.size,)
+    assert group_order.size < n_images
 
 
 def test_permuted_ols_fwe_shares_one_null_across_bags(dependent_dataset):
@@ -800,3 +801,20 @@ def test_permutation_parallel_null_is_reproducible():
 
     assert np.array_equal(single_job["h0_max_t"], two_jobs["h0_max_t"])
     assert np.array_equal(single_job["logp_max_t"], two_jobs["logp_max_t"])
+
+
+@pytest.mark.parametrize("estimator", ALL_ESTIMATORS)
+def test_dof_map_is_float_with_nan_outside_the_mask(estimator, dependent_dataset):
+    """One dof contract for every estimator, combination tests included.
+
+    An integer map carries ``INT_MIN`` outside the mask, not NaN, and casting there emits a
+    RuntimeWarning.
+    """
+    results = estimator().fit(dependent_dataset)
+    dof = results.maps["dof"]
+
+    assert dof.dtype.kind == "f"
+    assert np.isfinite(dof).any()
+    outside = ~results.estimator.inputs_["aggressive_mask"]
+    if outside.any():
+        assert np.isnan(dof[outside]).all()

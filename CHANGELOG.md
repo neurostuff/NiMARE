@@ -16,7 +16,8 @@ All notable changes to NiMARE releases are documented in this page.
   one FWE null across liberal-mask bags.
 - [FIX] Report the degrees of freedom the p-values were drawn from: Satterthwaite for the
   meta-regression estimators, independent-group count for the combination tests. **The `dof`
-  map is now floating point rather than `int32`.**
+  map is now floating point rather than `int32`**, so voxels outside the mask are NaN like
+  every other map rather than `INT_MIN`.
 - [FIX] Estimate the correlation used by Brown's method and Stouffer's variance inflation from
   signal-removed residuals. Correlating the raw maps measured agreement rather than
   dependence, so independent studies appeared strongly correlated.

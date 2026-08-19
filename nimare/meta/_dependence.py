@@ -35,17 +35,13 @@ class DependenceModel:
         same participants.
     image_indices : None or :obj:`numpy.ndarray` of shape (K,), optional
         Which images of the full dataset these rows are. Default is all of them, in order.
-    enabled : :obj:`bool`, optional
-        False (``groupby=False``) makes every image independent regardless of the codes.
-        Default is True.
     """
 
-    def __init__(self, codes, image_indices=None, enabled=True):
+    def __init__(self, codes, image_indices=None):
         self.codes = np.asarray(codes)
         self.image_indices = (
             np.arange(self.codes.size) if image_indices is None else np.asarray(image_indices)
         )
-        self.enabled = bool(enabled)
 
     def for_images(self, image_mask):
         """Restrict the grouping to a subset of images, such as one liberal-mask bag."""
@@ -53,13 +49,16 @@ class DependenceModel:
         return DependenceModel(
             self.codes[image_mask],
             image_indices=self.image_indices[image_mask],
-            enabled=self.enabled,
         )
 
     @property
     def has_dependence(self):
-        """Whether any group holds more than one image."""
-        return self.enabled and np.unique(self.codes).size < self.codes.size
+        """Whether any group holds more than one image.
+
+        ``groupby=False`` is expressed upstream by giving every image its own code, so this
+        is the only place dependence is decided.
+        """
+        return np.unique(self.codes).size < self.codes.size
 
     @property
     def labels(self):
