@@ -4,38 +4,6 @@ All notable changes to NiMARE releases are documented in this page.
 
 ## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.20.0...HEAD)
 
-- [ENH] Add a `groupby` parameter to the IBMA estimators, identifying images that share
-  participants. Defaults to `study_id`; accepts a metadata field name, an array of labels, or
-  `False` for none.
-- [ENH] Expose PyMARE's `weight_scheme` and `rho` on the six meta-regression estimators. The
-  default (`"rescale"`, `rho=0.8`) is the correlated-effects model of Hedges, Tipton & Johnson
-  (2010) as weighted by `robumeta`, so a group's total weight no longer grows with the number
-  of maps it contributed. Requires PyMARE 0.0.11.
-- [ENH] `PermutedOLS` now combines one contribution per group instead of one per image,
-  sign-flips each group as a whole exchangeability block, gains `use_sample_size`, and shares
-  one FWE null across liberal-mask bags.
-- [FIX] Report the degrees of freedom the p-values were drawn from: Satterthwaite for the
-  meta-regression estimators, independent-group count for the combination tests. **The `dof`
-  map is now floating point rather than `int32`**, so voxels outside the mask are NaN like
-  every other map rather than `INT_MIN`.
-- [FIX] Estimate the correlation used by Brown's method and Stouffer's variance inflation from
-  signal-removed residuals. Correlating the raw maps measured agreement rather than
-  dependence, so independent studies appeared strongly correlated.
-- [FIX] Only estimate that correlation for `Fishers` and `Stouffers`; the others paid for a
-  whole-brain correlation they never read.
-- [FIX] Estimate the variance components from correlated-effects weights, which no longer
-  biases tau-squared (and sigma-squared) low when a study contributes several images.
-- [FIX] Derive group indices in a run-stable order, keyed on image ids, so seeded permutation
-  results are reproducible.
-- [FIX] `PermutedOLS` no longer calls `nilearn.mass_univariate.permuted_ols`; the equivalent
-  one-sample scheme now lives in `nimare.meta._permutation`, derived from Nilearn's BSD-3
-  implementation, since `exchangeability_blocks` is missing from some supported versions. The
-  observed `t` map is unchanged to floating-point tolerance.
-- [API] **Removed `Stouffers.normalize_contrast_weights`.** Grouped images are now combined
-  into one variance-standardized statistic per group, so it has nothing left to switch; pass
-  `groupby=False` instead. Not a rename -- the old parameter divided weights by image count
-  and kept every row.
-
 ## [0.20.0](https://github.com/neurostuff/NiMARE/compare/0.19.0...0.20.0) - 2026-05-14
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
