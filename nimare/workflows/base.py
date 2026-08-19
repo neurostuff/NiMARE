@@ -7,6 +7,8 @@ import logging
 import os.path as op
 from abc import abstractmethod
 
+import numpy as np
+
 from nimare.base import NiMAREBase
 from nimare.correct import Corrector, FDRCorrector, FWECorrector
 from nimare.diagnostics import Diagnostics, FocusCounter, Jackknife
@@ -91,11 +93,29 @@ def _supported_kwargs(clss, kwargs):
     return supported
 
 
+def _holds_default(current, default):
+    """Whether an attribute still holds the value its ``__init__`` signature named.
+
+    ``==`` is not enough on its own: an array-valued parameter returns an array of
+    comparisons, whose truth value is ambiguous, and a type that refuses the comparison
+    altogether raises. Treat both as "the caller set this" rather than guessing.
+    """
+    if current is default:
+        return True
+
+    try:
+        return bool(np.array_equal(current, default))
+    except (TypeError, ValueError):
+        return False
+
+
 def _unset_params(obj, kwargs):
     """Select the ``kwargs`` an already-initialized object left at its own defaults.
 
     A parameter counts as unset when the instance still holds the default from its
-    ``__init__`` signature, so an explicitly configured object keeps its own settings.
+    ``__init__`` signature, so an explicitly configured object keeps its own settings. A
+    caller who passed the default value explicitly is indistinguishable from one who left it
+    alone, and is treated as the latter.
     """
     defaults = _init_defaults(type(obj))
 
@@ -104,9 +124,7 @@ def _unset_params(obj, kwargs):
         if key not in defaults or not hasattr(obj, key):
             continue
 
-        current = getattr(obj, key)
-        default = defaults[key]
-        if current is default or current == default:
+        if _holds_default(getattr(obj, key), defaults[key]):
             unset[key] = value
 
     return unset
@@ -202,7 +220,9 @@ class Workflow(NiMAREBase):
         }
         diag_kwargs["n_cores"] = self.n_cores
         if diagnostics is None:
-            diagnostics = [self._diag_default(**_supported_kwargs(self._diag_default, diag_kwargs))]
+            diagnostics = [
+                self._diag_default(**_supported_kwargs(self._diag_default, diag_kwargs))
+            ]
         else:
             diagnostics = [
                 _check_input(diagnostic, Diagnostics, self._diag_options, **diag_kwargs)

@@ -22,6 +22,11 @@ from pymare.stats import (
 )
 from sklearn.utils import check_random_state
 
+#: How much memory one batch of permutations may allocate. Permuting every draw at once is
+#: fastest but scales with n_perm x n_voxels, which for a whole-brain null is far more than a
+#: workstation has; batching trades a little speed for a bound that does not depend on either.
+_MAX_BATCH_BYTES = 64 * 1024**2
+
 
 def _permutation_maxima(
     sign_flips,
@@ -33,7 +38,14 @@ def _permutation_maxima(
 ):
     """Calculate null maxima in memory-bounded vectorized batches."""
     n_voxels = group_contributions.shape[1]
-    bytes_per_permutation = max(1, 2 * n_voxels * np.dtype(float).itemsize)
+
+    # How many (batch x n_voxels) arrays are live at the peak of one batch. The unweighted
+    # path holds the permuted sums plus the statistic it derives from them in place; the CR2
+    # sandwich additionally holds a second set of sign-flipped sums, the group means, the meat
+    # and a square-root temporary. Counting two for both left the CR2 path threefold over the
+    # budget it was given, which is the opposite of what a memory bound is for.
+    arrays_per_permutation = 3 if cr2_sufficient_statistics is None else 7
+    bytes_per_permutation = max(1, arrays_per_permutation * n_voxels * np.dtype(float).itemsize)
     batch_size = max(1, max_bytes // bytes_per_permutation)
     maxima = np.empty(sign_flips.shape[0], dtype=float)
 
@@ -194,7 +206,7 @@ def _permuted_ols(
             raise ValueError("sign_flips may only contain -1 and 1.")
 
     n_jobs = effective_n_jobs(n_jobs)
-    max_bytes = 64 * 1024**2
+    max_bytes = _MAX_BATCH_BYTES
     if n_jobs == 1 or n_perm == 1:
         h0_max_t = _permutation_maxima(
             sign_flips,

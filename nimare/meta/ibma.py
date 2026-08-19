@@ -69,12 +69,12 @@ rho : :obj:`float`, optional
     ``weight_scheme='individual'``. Together the two choose a working model in the sense
     of :footcite:t:`pustejovsky2022expanding`: cluster-robust standard errors stay valid
     if it is wrong, so the choice costs precision rather than validity.""",
-    "cluster_robust_warning": """Cluster-robust inference is asymptotic in the number of *groups*, not images. PyMARE warns
-at 10 or fewer groups, where robust variance estimation is anti-conservative
-:footcite:p:`hedges2010robust`, and when the Satterthwaite degrees of freedom fall below
-about 4 :footcite:p:`tipton2015small`. Both are common for small meta-analyses.""",
-    "liberal_mask_notes": """By default, image-based meta-analysis estimators run the analysis in bags of voxels,
-where each bag holds the voxels that have a valid value across the same set of studies.
+    "cluster_robust_warning": """Cluster-robust inference is asymptotic in the number of *groups*,
+not images. PyMARE warns at 10 or fewer groups, where robust variance estimation is
+anti-conservative :footcite:p:`hedges2010robust`, and when the Satterthwaite degrees of freedom
+fall below about 4 :footcite:p:`tipton2015small`. Both are common for small meta-analyses.""",
+    "liberal_mask_notes": """By default, image-based meta-analysis estimators run the analysis in
+bags of voxels, where each bag holds the voxels that have a valid value across the same studies.
 A voxel is therefore only dropped from the studies that are missing it. Setting
 ``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
 input map from the analysis entirely. Either way, a bag whose valid images all belong to
@@ -238,54 +238,50 @@ class IBMAEstimator(Estimator):
             # A dictionary to collect data, to be further reduced by the liberal mask.
             self.inputs_["data_bags"] = {}
 
-        for name, (type_, _) in self._required_inputs.items():
-            if type_ == "image":
-                # Mask required input images using either the dataset's mask or the estimator's.
-                temp_arr = self._mask_images(masker, mask_img, self.inputs_[name])
-                if name == "varcope_maps":
-                    min_varcope = 1.0 / np.sqrt(np.finfo(temp_arr.dtype).max)
-                    invalid_mask = ~np.isfinite(temp_arr) | (temp_arr <= min_varcope)
-                    if np.any(invalid_mask):
-                        n_invalid = int(np.sum(invalid_mask))
-                        LGR.warning(
-                            "Found %d non-finite, non-positive, or tiny varcope values; "
-                            "setting to NaN.",
-                            n_invalid,
-                        )
-                        temp_arr = temp_arr.copy()
-                        temp_arr[invalid_mask] = np.nan
+        image_names = [
+            name for name, (type_, _) in self._required_inputs.items() if type_ == "image"
+        ]
+        for name in image_names:
+            # Mask required input images using either the dataset's mask or the estimator's.
+            temp_arr = self._mask_images(masker, mask_img, self.inputs_[name])
+            if name == "varcope_maps":
+                min_varcope = 1.0 / np.sqrt(np.finfo(temp_arr.dtype).max)
+                invalid_mask = ~np.isfinite(temp_arr) | (temp_arr <= min_varcope)
+                if np.any(invalid_mask):
+                    n_invalid = int(np.sum(invalid_mask))
+                    LGR.warning(
+                        "Found %d non-finite, non-positive, or tiny varcope values; "
+                        "setting to NaN.",
+                        n_invalid,
+                    )
+                    temp_arr = temp_arr.copy()
+                    temp_arr[invalid_mask] = np.nan
 
-                # To save memory, we only save the original image array and perform masking later
-                # in the estimator if self.aggressive_mask is True.
-                self.inputs_[name] = temp_arr
+            # To save memory, we only save the original image array and perform masking later
+            # in the estimator if self.aggressive_mask is True.
+            self.inputs_[name] = temp_arr
 
-                if self.aggressive_mask:
-                    # Determine the good voxels here
-                    nonzero_voxels_bool = np.all(temp_arr != 0, axis=0)
-                    nonnan_voxels_bool = np.all(~np.isnan(temp_arr), axis=0)
-                    good_voxels_bool = np.logical_and(nonzero_voxels_bool, nonnan_voxels_bool)
+        # A model reads every image input at once, so an entry is usable only where all of
+        # them are. Both masking strategies intersect over inputs for that reason -- and for
+        # the liberal path it also keeps the per-input bag lists aligned, since a varcope
+        # blanked above would otherwise cut its maps into different bags from its betas.
+        validity = np.logical_and.reduce(
+            [~np.isnan(self.inputs_[name]) & (self.inputs_[name] != 0) for name in image_names]
+        )
 
-                    if "aggressive_mask" not in self.inputs_.keys():
-                        self.inputs_["aggressive_mask"] = good_voxels_bool
-                    else:
-                        # Require voxels to be valid across all image-based inputs.
-                        self.inputs_["aggressive_mask"] = np.logical_and(
-                            self.inputs_["aggressive_mask"],
-                            good_voxels_bool,
-                        )
-                else:
-                    data_bags = zip(*_apply_liberal_mask(temp_arr))
-
-                    keys = ["values", "voxel_mask", "study_mask"]
-                    self.inputs_["data_bags"][name] = [dict(zip(keys, bag)) for bag in data_bags]
-
-        # Further reduce image-based inputs to remove "bad" voxels
-        # (voxels with zeros or NaNs in any studies)
         if self.aggressive_mask:
+            # Further reduce image-based inputs to remove "bad" voxels
+            # (voxels with zeros or NaNs in any studies)
+            self.inputs_["aggressive_mask"] = np.all(validity, axis=0)
             if n_bad_voxels := (
                 self.inputs_["aggressive_mask"].size - self.inputs_["aggressive_mask"].sum()
             ):
                 LGR.warning(f"Masking out {n_bad_voxels} additional voxels.")
+        else:
+            keys = ["values", "voxel_mask", "study_mask"]
+            for name in image_names:
+                data_bags = zip(*_apply_liberal_mask(self.inputs_[name], validity=validity))
+                self.inputs_["data_bags"][name] = [dict(zip(keys, bag)) for bag in data_bags]
 
         self._preprocess_dependence(dataset)
 
@@ -382,6 +378,8 @@ class IBMAEstimator(Estimator):
             yield np.arange(n_images), voxel_mask, arrays
             return
 
+        # Every input was cut into the same bags by _preprocess_input, so the lists zip and
+        # one bag's masks describe all of them.
         bag_lists = [self.inputs_["data_bags"][name] for name in input_names]
         for bags in zip(*bag_lists):
             yield bags[0]["study_mask"], bags[0]["voxel_mask"], [bag["values"] for bag in bags]
@@ -390,8 +388,8 @@ class IBMAEstimator(Estimator):
         """Run ``_fit_model`` over every model this estimator fits, and assemble its maps.
 
         Collects the outputs of ``_fit_model`` -- which come back in the order of
-        ``map_names`` -- into full-length voxel maps. Voxels no model covers are left NaN, as
-        :func:`~nimare.utils._boolean_unmask` already leaves them on the aggressive path.
+        ``map_names`` -- into full-length voxel maps. Voxels no model covers come back NaN,
+        the same way out-of-mask voxels already did.
 
         Parameters
         ----------
@@ -426,8 +424,9 @@ class IBMAEstimator(Estimator):
 
         if n_skipped:
             LGR.warning(
-                "Skipped %d bag(s) of voxels whose images all come from a single group; "
-                "one group cannot support the inference, so those voxels are NaN.",
+                "Skipped %d set(s) of voxels whose valid images all come from a single group. "
+                "One group carries no independent replication to estimate a variance from, so "
+                "those voxels are NaN.",
                 n_skipped,
             )
 

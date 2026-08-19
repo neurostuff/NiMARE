@@ -24,6 +24,7 @@ class _FakeDataset:
     def __init__(self, masker):
         self.masker = masker
 
+
 # Estimators backed by a PyMARE meta-regression estimator, which take weight_scheme/rho and
 # report Satterthwaite degrees of freedom.
 REGRESSION_ESTIMATORS = [
@@ -502,6 +503,30 @@ def test_single_group_model_reports_no_support():
     assert DependenceModel(np.array([0, 0, 1])).supports_inference
 
 
+@pytest.mark.parametrize(
+    "estimator", [ibma.WeightedLeastSquares, ibma.DerSimonianLaird, ibma.VarianceBasedLikelihood]
+)
+def test_multi_input_bags_stay_aligned(estimator, testdata_ibma):
+    """Every image input must be cut into the same bags, so the parallel lists zip.
+
+    Varcope values that are non-positive or too small to square are blanked during
+    preprocessing, which gives the varcopes a coverage pattern their betas do not have. Cut
+    per input, the two bag lists then describe different voxels and ``zip`` pairs them up
+    anyway -- or drops the tail outright.
+    """
+    meta = estimator(aggressive_mask=False)
+    meta.fit(testdata_ibma)
+
+    beta_bags = meta.inputs_["data_bags"]["beta_maps"]
+    varcope_bags = meta.inputs_["data_bags"]["varcope_maps"]
+
+    assert len(beta_bags) == len(varcope_bags)
+    for beta_bag, varcope_bag in zip(beta_bags, varcope_bags):
+        assert np.array_equal(beta_bag["voxel_mask"], varcope_bag["voxel_mask"])
+        assert np.array_equal(beta_bag["study_mask"], varcope_bag["study_mask"])
+        assert beta_bag["values"].shape == varcope_bag["values"].shape
+
+
 # Combination tests
 
 
@@ -919,3 +944,49 @@ def test_permutation_parallel_null_is_reproducible():
 
     assert np.array_equal(single_job["h0_max_t"], two_jobs["h0_max_t"])
     assert np.array_equal(single_job["logp_max_t"], two_jobs["logp_max_t"])
+
+
+@pytest.mark.parametrize("use_weights", [False, True])
+def test_permutation_batches_stay_within_their_memory_budget(use_weights, monkeypatch):
+    """The batch size must reflect what a batch actually allocates.
+
+    The CR2 sandwich holds several times more (batch x n_voxels) arrays than the unweighted
+    path, so one count for both left it far over the budget it was handed. Measured rather
+    than asserted from the source, because most of the allocation happens inside PyMARE.
+    """
+    import tracemalloc
+
+    from nimare.meta import _permutation
+
+    beta_maps = np.random.RandomState(0).normal(size=(6, 4000))
+    groups = np.repeat(np.arange(3), 2)
+    weights = np.array([1.0, 4.0, 9.0]) if use_weights else None
+
+    budget = 1 << 20  # 1 MiB: small enough that several batches are needed
+    monkeypatch.setattr(_permutation, "_MAX_BATCH_BYTES", budget)
+
+    peaks = []
+    real_maxima = _permutation._permutation_maxima
+
+    def _measured(*args, **kwargs):
+        tracemalloc.start()
+        try:
+            return real_maxima(*args, **kwargs)
+        finally:
+            peaks.append(tracemalloc.get_traced_memory()[1])
+            tracemalloc.stop()
+
+    monkeypatch.setattr(_permutation, "_permutation_maxima", _measured)
+
+    _permutation._permuted_ols(
+        beta_maps,
+        exchangeability_blocks=groups,
+        group_weights=weights,
+        n_perm=40,
+        random_state=0,
+    )
+
+    assert peaks
+    # Slack for the null array and bookkeeping, but nowhere near the threefold overshoot an
+    # undercounted budget produced.
+    assert max(peaks) < 2 * budget

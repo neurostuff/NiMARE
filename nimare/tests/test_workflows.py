@@ -376,3 +376,52 @@ def test_contrast_workflow_ale_thresholding_path_smoke(testdata_cbma_full):
     result = workflow.fit(dset1, dset2)
 
     assert isinstance(result, nimare.results.MetaResult)
+
+
+def test_unset_params_handles_array_valued_parameters():
+    """Sniffing defaults must not choke on a parameter whose value is an array.
+
+    ``current == default`` returns an array for these, and ``if`` on an array raises
+    "truth value ... is ambiguous" -- so a workflow handed an estimator with an array-valued
+    parameter used to fail before it ran anything.
+    """
+    from nimare.workflows.base import _unset_params
+
+    estimator = Stouffers(groupby=np.array([0, 0, 1]))
+
+    # groupby is not one of the settings a workflow fans out, but it must not blow up while
+    # the fanned-out ones are being checked.
+    assert _unset_params(estimator, {"groupby": False, "n_cores": 4}) == {}
+    assert _unset_params(Stouffers(), {"groupby": False}) == {"groupby": False}
+
+
+@pytest.mark.parametrize(
+    "current,default,expected",
+    [
+        (1, 1, True),
+        (1, 2, False),
+        (None, None, True),
+        (1.65, None, False),
+        ("z", "z", True),
+        (np.array([0, 1]), None, False),
+        (np.array([0, 1]), np.array([0, 1]), True),
+        (np.array([0, 1]), np.array([0, 2]), False),
+        (np.array([0, 1]), np.array([0, 1, 2]), False),
+    ],
+)
+def test_holds_default(current, default, expected):
+    """Equality must answer yes/no for every parameter shape, never raise."""
+    from nimare.workflows.base import _holds_default
+
+    assert _holds_default(current, default) is expected
+
+
+def test_holds_default_survives_an_uncomparable_type():
+    """A type that refuses comparison counts as caller-configured, not as a crash."""
+    from nimare.workflows.base import _holds_default
+
+    class _Hostile:
+        def __eq__(self, other):
+            raise TypeError("no comparison here")
+
+    assert _holds_default(_Hostile(), None) is False

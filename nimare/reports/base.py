@@ -333,6 +333,10 @@ def _gen_fig_summary(img_key, threshold, out_filename):
 
 def _gen_figures(results, img_key, diag_name, threshold, fig_dir):
     """Generate html and png objects for the report."""
+    # An unthresholded diagnostic plots everything above zero, matching what
+    # Diagnostics.transform does with a threshold of None.
+    threshold = 0 if threshold is None else threshold
+
     # Plot brain images if not empty
     if (results.maps[img_key] > threshold).any():
         img = results.get_map(img_key)
@@ -621,7 +625,7 @@ class Report:
         for diagnostic in self.results.diagnostics:
             img_key = diagnostic.target_image
             diag_name = diagnostic.__class__.__name__
-            threshold = diagnostic.voxel_thresh
+            threshold = diagnostic.target_threshold
 
             _gen_fig_summary(img_key, threshold, self.fig_dir / "corrector_figure-summary.html")
             _gen_diag_summary(diagnostic, self.fig_dir / "diagnostics_summary.html")

@@ -5,6 +5,7 @@ import logging
 import os
 import re
 from collections import Counter, defaultdict
+from functools import lru_cache
 from itertools import groupby
 from operator import itemgetter
 from pathlib import Path
@@ -43,6 +44,21 @@ SUPPORTED_IMAGE_TYPES = frozenset(
 _IMAGE_SUFFIXES = (".nii", ".nii.gz", ".img", ".hdr", ".mgz", ".mgh", ".gii", ".gii.gz")
 
 
+@lru_cache(maxsize=None)
+def _warn_unsupported_image_type(value_type):
+    """Report an unsupported image value type once, however many images carry it.
+
+    A neurostore studyset can hold thousands of images of a type NiMARE cannot use. What the
+    reader needs is the name of the type, which is the same every time, so repeating the line
+    per image would bury the rest of the log without adding anything. Cached rather than
+    counted per conversion because the fact is about NiMARE, not about one studyset.
+    """
+    LGR.warning(
+        f"Skipping image(s) with unsupported value type {value_type!r}. "
+        f"Supported types are: {', '.join(sorted(SUPPORTED_IMAGE_TYPES))}."
+    )
+
+
 def _normalize_image_type(value_type):
     """Convert a NIMADS image value type into a NiMARE Dataset image column name.
 
@@ -63,10 +79,7 @@ def _normalize_image_type(value_type):
         image_type = "varcope"
 
     if image_type not in SUPPORTED_IMAGE_TYPES:
-        LGR.warning(
-            f"Skipping image with unsupported value type {value_type!r}. "
-            f"Supported types are: {', '.join(sorted(SUPPORTED_IMAGE_TYPES))}."
-        )
+        _warn_unsupported_image_type(value_type)
         return None
 
     return image_type

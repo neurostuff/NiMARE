@@ -583,13 +583,17 @@ def _calculate_cluster_measures(arr3d, threshold, conn, tail="upper"):
     return max_size, max_mass
 
 
-def _apply_liberal_mask(data):
+def _apply_liberal_mask(data, validity=None):
     """Separate input image data in bags of voxels that have a valid value across the same studies.
 
     Parameters
     ----------
     data : (S x V) :class:`numpy.ndarray`
         2D numpy array (S x V) of images, where S is study and V is voxel.
+    validity : None or (S x V) :class:`numpy.ndarray` of :obj:`bool`, optional
+        Which entries of ``data`` are usable. Default is those that are neither NaN nor zero.
+        An estimator with several image inputs passes one shared array for all of them, so
+        that every input is cut into the same bags and the resulting lists line up.
 
     Returns
     -------
@@ -616,7 +620,7 @@ def _apply_liberal_mask(data):
 
     # Which studies contribute a usable value at each voxel. This (S x V) boolean array is
     # the voxel's identity for grouping purposes.
-    mask = ~np.isnan(data) & (data != 0)
+    mask = (~np.isnan(data) & (data != 0)) if validity is None else np.asarray(validity)
 
     # Pack each voxel's column of S booleans into ceil(S / 8) bytes, so that a whole pattern
     # is a single row np.unique can sort on. Padding bits are zero for every voxel alike, so
