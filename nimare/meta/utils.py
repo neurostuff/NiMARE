@@ -583,7 +583,6 @@ def _calculate_cluster_measures(arr3d, threshold, conn, tail="upper"):
     return max_size, max_mass
 
 
-@jit(nopython=True, cache=True)
 def _apply_liberal_mask(data):
     """Separate input image data in bags of voxels that have a valid value across the same studies.
 
@@ -604,52 +603,50 @@ def _apply_liberal_mask(data):
 
     Notes
     -----
-    Parts of the function are implemented with nested for loops to
-    improve the speed with the numba compiler.
+    Voxels are grouped by their coverage pattern -- which studies have a valid value there.
+    Comparing patterns pairwise is quadratic in the number of voxels, which at 2 mm
+    resolution dominates the runtime of an entire image-based meta-analysis. Instead each
+    voxel's pattern is packed into bytes and handed to :func:`numpy.unique`, so the grouping
+    costs one sort.
+
+    Bags are returned in order of first appearance, i.e. sorted by their lowest voxel index.
 
     """
     MIN_STUDY_THRESH = 2
 
-    n_voxels = data.shape[1]
-    # Get indices of non-nan and zero value of studies for each voxel
+    # Which studies contribute a usable value at each voxel. This (S x V) boolean array is
+    # the voxel's identity for grouping purposes.
     mask = ~np.isnan(data) & (data != 0)
-    study_by_voxels_idxs = [np.where(mask[:, i])[0] for i in range(n_voxels)]
 
-    # Group studies by the same number of non-nan voxels
-    matches = []
-    all_indices = []
-    for col_i in range(n_voxels):
-        if col_i in all_indices:
-            continue
+    # Pack each voxel's column of S booleans into ceil(S / 8) bytes, so that a whole pattern
+    # is a single row np.unique can sort on. Padding bits are zero for every voxel alike, so
+    # they cannot merge two distinct patterns.
+    keys = np.ascontiguousarray(np.packbits(mask, axis=0).T)
+    _, first_idx, inverse = np.unique(keys, axis=0, return_index=True, return_inverse=True)
+    # Older numpy returned a column vector here; newer versions return 1D.
+    inverse = np.reshape(inverse, -1)
 
-        vox_match = [col_i]
-        all_indices.append(col_i)
-        for col_j in range(col_i + 1, n_voxels):
-            if (
-                len(study_by_voxels_idxs[col_i]) == len(study_by_voxels_idxs[col_j])
-                and np.array_equal(study_by_voxels_idxs[col_i], study_by_voxels_idxs[col_j])
-                and col_j not in all_indices
-            ):
-                vox_match.append(col_j)
-                all_indices.append(col_j)
+    # np.unique orders groups lexicographically by packed pattern. Reorder to first
+    # appearance so the bags come back in the same order the voxels do.
+    by_appearance = np.argsort(first_idx, kind="stable")
+    appearance_rank = np.empty(first_idx.size, dtype=np.intp)
+    appearance_rank[by_appearance] = np.arange(first_idx.size)
 
-        matches.append(np.array(vox_match))
+    # Sorting voxels by group puts each bag's voxel indices in one contiguous, ascending run.
+    voxels_by_group = np.argsort(appearance_rank[inverse], kind="stable")
+    group_sizes = np.bincount(inverse, minlength=first_idx.size)[by_appearance]
+    group_bounds = np.concatenate(([0], np.cumsum(group_sizes)))
 
     values_lst, voxel_mask_lst, study_mask_lst = [], [], []
-    for voxel_mask in matches:
-        n_masked_voxels = len(voxel_mask)
-        # This is the same for all voxels in the match
-        study_mask = study_by_voxels_idxs[voxel_mask[0]]
+    for group in range(first_idx.size):
+        voxel_mask = voxels_by_group[group_bounds[group] : group_bounds[group + 1]]
+        # Identical by construction for every voxel in the group.
+        study_mask = np.flatnonzero(mask[:, voxel_mask[0]])
 
-        if len(study_mask) < MIN_STUDY_THRESH:
+        if study_mask.size < MIN_STUDY_THRESH:
             continue
 
-        values = np.zeros((len(study_mask), n_masked_voxels))
-        for vox_i, vox in enumerate(voxel_mask):
-            for std_i, study in enumerate(study_mask):
-                values[std_i, vox_i] = data[study, vox]
-
-        values_lst.append(values)
+        values_lst.append(data[np.ix_(study_mask, voxel_mask)].astype(np.float64, copy=False))
         voxel_mask_lst.append(voxel_mask)
         study_mask_lst.append(study_mask)
 

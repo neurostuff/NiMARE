@@ -275,12 +275,15 @@ def test_jackknife_smoke(
     image_name = "_".join(target_image.split("_")[1:])
     image_name = f"_{image_name}" if image_name else image_name
 
-    # For ibma.WeightedLeastSquares we have both positive and negative tail combined.
-    contribution_table = (
-        results.tables[f"{target_image}_diag-Jackknife_tab-counts"]
-        if estimator == ibma.WeightedLeastSquares
-        else results.tables[f"{target_image}_diag-Jackknife_tab-counts_tail-positive"]
+    # Whether an IBMA result has one tail or two depends on whether its z map has negative
+    # values below the threshold, so resolve the table by what is actually present: a
+    # two-tailed IBMA merges both tails into one table, everything else splits by tail.
+    table_name = f"{target_image}_diag-Jackknife_tab-counts"
+    contribution_table = results.tables.get(
+        table_name,
+        results.tables.get(f"{table_name}_tail-positive"),
     )
+    assert contribution_table is not None
 
     clusters_table = results.tables[f"{target_image}_tab-clust"]
     label_maps = results.maps[f"label{image_name}_tail-positive"]

@@ -922,7 +922,7 @@ class CBMAEstimator(Estimator):
 
         else:
             if vfwe_only:
-                LGR.warn(
+                LGR.warning(
                     "In order to run this method with the 'vfwe_only' option, "
                     "the Estimator must use the 'montecarlo' null_method. "
                     "Running permutations from scratch."

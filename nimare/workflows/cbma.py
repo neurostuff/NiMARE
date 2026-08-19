@@ -51,12 +51,14 @@ class CBMAWorkflow(Workflow):
         An optional voxel-level threshold that may be applied to the ``target_image`` in the
         :class:`~nimare.diagnostics.Diagnostics` class to define clusters. This can be None or 0
         if the ``target_image`` is already thresholded (e.g., a cluster-level corrected map).
-        If diagnostics are passed as initialized objects, this parameter will be ignored.
+        If diagnostics are passed as initialized objects, this parameter is applied only
+        to those that left the corresponding parameter at its default.
         Default is 1.65, which corresponds to p-value = .05, one-tailed.
     cluster_threshold : :obj:`int` or None, optional
         Cluster size threshold, in :term:`voxels<voxel>`.
         If None, then no cluster size threshold will be applied.
-        If diagnostics are passed as initialized objects, this parameter will be ignored.
+        If diagnostics are passed as initialized objects, this parameter is applied only
+        to those that left the corresponding parameter at its default.
         Default is 10.
     output_dir : :obj:`str`, optional
         Output directory in which to save results. If the directory doesn't
@@ -65,7 +67,7 @@ class CBMAWorkflow(Workflow):
         Number of cores to use for parallelization.
         If <=0, defaults to using all available cores.
         If estimator, corrector, or diagnostics are passed as initialized objects, this parameter
-        will be ignored.
+        is applied only to those that left ``n_cores`` at its default.
         Default is 1.
     """
 
@@ -124,12 +126,14 @@ class PairwiseCBMAWorkflow(Workflow):
         An optional voxel-level threshold that may be applied to the ``target_image`` in the
         :class:`~nimare.diagnostics.Diagnostics` class to define clusters. This can be None or 0
         if the ``target_image`` is already thresholded (e.g., a cluster-level corrected map).
-        If diagnostics are passed as initialized objects, this parameter will be ignored.
+        If diagnostics are passed as initialized objects, this parameter is applied only
+        to those that left the corresponding parameter at its default.
         Default is 1.65, which corresponds to p-value = .05, one-tailed.
     cluster_threshold : :obj:`int` or None, optional
         Cluster size threshold, in :term:`voxels<voxel>`.
         If None, then no cluster size threshold will be applied.
-        If diagnostics are passed as initialized objects, this parameter will be ignored.
+        If diagnostics are passed as initialized objects, this parameter is applied only
+        to those that left the corresponding parameter at its default.
         Default is 10.
     output_dir : :obj:`str`, optional
         Output directory in which to save results. If the directory doesn't
@@ -138,7 +142,7 @@ class PairwiseCBMAWorkflow(Workflow):
         Number of cores to use for parallelization.
         If <=0, defaults to using all available cores.
         If estimator, corrector, or diagnostics are passed as initialized objects, this parameter
-        will be ignored.
+        is applied only to those that left ``n_cores`` at its default.
         Default is 1.
     """
 
@@ -300,7 +304,8 @@ class ContrastWorkflow(NiMAREBase):
     n_cores : :obj:`int`, optional
         Number of cores to use for parallelization.
         If ``main_estimator``, ``pairwise_estimator``, or ``corrector`` are passed as
-        already-initialized instances this parameter will be ignored for those objects.
+        already-initialized instances this parameter is applied only to those that left
+        ``n_cores`` at its default.
         Default is 1.
     """
 

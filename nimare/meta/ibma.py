@@ -54,6 +54,12 @@ class IBMAEstimator(Estimator):
 
         - New parameter: ``groupby``, identifying which images are statistically dependent on
           each other because they come from the same participants.
+        - ``aggressive_mask`` now defaults to False, so voxels are no longer dropped just
+          because they are missing from one input map.
+        - ``generate_description`` is now accepted and forwarded, as it is for CBMA
+          estimators. It was previously swallowed by ``**kwargs`` and had no effect.
+        - Unrecognized keyword arguments now raise :obj:`TypeError` instead of being logged
+          and ignored.
 
     .. versionchanged:: 0.2.1
 
@@ -79,9 +85,10 @@ class IBMAEstimator(Estimator):
 
     def __init__(
         self,
-        aggressive_mask=True,
+        aggressive_mask=False,
         memory=Memory(location=None, verbose=0),
         memory_level=0,
+        generate_description=True,
         *,
         mask=None,
         groupby=None,
@@ -100,7 +107,11 @@ class IBMAEstimator(Estimator):
             mask = get_masker(mask, memory=memory, memory_level=memory_level)
         self.masker = mask
 
-        super().__init__(memory=memory, memory_level=memory_level)
+        super().__init__(
+            memory=memory,
+            memory_level=memory_level,
+            generate_description=generate_description,
+        )
 
         # defaults for resampling images (nilearn's defaults do not work well)
         self._resample_kwargs = {
@@ -112,10 +123,16 @@ class IBMAEstimator(Estimator):
         # Identify any kwargs
         resample_kwargs = {k: v for k, v in kwargs.items() if k.startswith("resample__")}
 
-        # Flag any extraneous kwargs
-        other_kwargs = dict(set(kwargs.items()) - set(resample_kwargs.items()))
+        # Reject any extraneous kwargs. Accepting them silently lets a stale specification
+        # (e.g. an argument that has since been renamed) produce a complete, plausible result
+        # computed with settings the caller never asked for.
+        other_kwargs = sorted(set(kwargs) - set(resample_kwargs))
         if other_kwargs:
-            LGR.warn(f"Unused keyword arguments found: {tuple(other_kwargs.items())}")
+            raise TypeError(
+                f"{type(self).__name__} got unexpected keyword argument(s): "
+                f"{', '.join(repr(k) for k in other_kwargs)}. Resampling arguments must be "
+                "prefixed with 'resample__'."
+            )
 
         # Update the default resampling parameters
         resample_kwargs = {k.split("resample__")[1]: v for k, v in resample_kwargs.items()}
@@ -148,21 +165,8 @@ class IBMAEstimator(Estimator):
 
         for name, (type_, _) in self._required_inputs.items():
             if type_ == "image":
-                # Resampling will only occur if shape/affines are different
-                imgs = [
-                    (
-                        nib.load(img)
-                        if check_same_fov(nib.load(img), reference_masker=mask_img)
-                        else resample_to_img(nib.load(img), mask_img, **self._resample_kwargs)
-                    )
-                    for img in self.inputs_[name]
-                ]
-
-                # input to NiFtiLabelsMasker must be 4d
-                img4d = concat_imgs(imgs, ensure_ndim=4)
-
                 # Mask required input images using either the dataset's mask or the estimator's.
-                temp_arr = masker.transform(img4d)
+                temp_arr = self._mask_images(masker, mask_img, self.inputs_[name])
                 if name == "varcope_maps":
                     min_varcope = 1.0 / np.sqrt(np.finfo(temp_arr.dtype).max)
                     invalid_mask = ~np.isfinite(temp_arr) | (temp_arr <= min_varcope)
@@ -209,6 +213,55 @@ class IBMAEstimator(Estimator):
                 LGR.warning(f"Masking out {n_bad_voxels} additional voxels.")
 
         self._preprocess_dependence(dataset)
+
+    def _load_image(self, filename, mask_img):
+        """Load one input image, resampling it only if its FOV differs from the mask's."""
+        img = nib.load(filename)
+        if check_same_fov(img, reference_masker=mask_img):
+            return img
+
+        return resample_to_img(img, mask_img, **self._resample_kwargs)
+
+    def _mask_images(self, masker, mask_img, filenames):
+        """Return an (S x V) array holding the in-mask values of each input image.
+
+        Where possible, images are loaded, resampled and masked one at a time. Concatenating
+        them into a single 4D image first would hold a full-resolution copy of the entire
+        studyset in memory -- at 2 mm that is roughly 7 MB per image, an order of magnitude
+        more than the masked array it is immediately reduced to -- only to discard it.
+        """
+        filenames = list(filenames)
+        if not filenames:
+            raise ValueError(
+                f"No images were found for a required input of {type(self).__name__}."
+            )
+
+        # Masking one image at a time only gives bit-for-bit the same answer when the masker
+        # does nothing but select voxels, which is how NiMARE configures a NiftiMasker.
+        # Standardizing and detrending deliberately rescale each voxel across images, while
+        # NiftiLabelsMasker's label averaging and smoothing both accumulate in a different
+        # order depending on how many images they are handed, which shifts the last bits of
+        # a float32 result. Anything other than plain voxel selection keeps the 4D path.
+        selects_voxels_only = (
+            isinstance(masker, NiftiMasker)
+            and not getattr(masker, "standardize", False)
+            and not getattr(masker, "detrend", False)
+            and getattr(masker, "smoothing_fwhm", None) is None
+        )
+        if not selects_voxels_only:
+            imgs = [self._load_image(filename, mask_img) for filename in filenames]
+            return masker.transform(concat_imgs(imgs, ensure_ndim=4))
+
+        data = None
+        for i, filename in enumerate(filenames):
+            # A one-image list keeps the masker on its 4D code path; a bare 3D image comes
+            # back as a 1D array instead.
+            row = masker.transform([self._load_image(filename, mask_img)])
+            if data is None:
+                data = np.empty((len(filenames), row.shape[1]), dtype=row.dtype)
+            data[i] = row[0]
+
+        return data
 
     def _dependence(self, study_mask=None):
         """Return the :class:`~nimare.meta._dependence.DependenceModel` for the images fitted.
@@ -428,7 +481,7 @@ class Fishers(IBMAEstimator):
         from the analysis.
         If False, all voxels are included by running a separate analysis on bags
         of voxels that belong that have a valid value across the same studies.
-        Default is True.
+        Default is False.
     groupby : None, :obj:`str`, array-like, or False, optional
         How to identify images that share participants and are therefore dependent. None (the
         default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
@@ -463,11 +516,11 @@ class Fishers(IBMAEstimator):
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will result in invalid results. It cannot be used with these types of maskers.
 
-    By default, all image-based meta-analysis estimators adopt an aggressive masking
-    strategy, in which any voxels with a value of zero in any of the input maps
-    will be removed from the analysis. Setting ``aggressive_mask=False`` will
-    instead run tha analysis in bags of voxels that have a valid value across
-    the same studies.
+    By default, image-based meta-analysis estimators run the analysis in bags of voxels,
+    where each bag holds the voxels that have a valid value across the same set of studies.
+    A voxel is therefore only dropped from the studies that are missing it. Setting
+    ``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
+    input map from the analysis entirely.
 
     References
     ----------
@@ -609,7 +662,7 @@ class Stouffers(IBMAEstimator):
         from the analysis.
         If False, all voxels are included by running a separate analysis on bags
         of voxels that belong that have a valid value across the same studies.
-        Default is True.
+        Default is False.
     groupby : None, :obj:`str`, array-like, or False, optional
         How to identify images that share participants and are therefore dependent. None (the
         default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
@@ -643,11 +696,11 @@ class Stouffers(IBMAEstimator):
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will result in invalid results. It cannot be used with these types of maskers.
 
-    By default, all image-based meta-analysis estimators adopt an aggressive masking
-    strategy, in which any voxels with a value of zero in any of the input maps
-    will be removed from the analysis. Setting ``aggressive_mask=False`` will
-    instead run tha analysis in bags of voxels that have a valid value across
-    the same studies.
+    By default, image-based meta-analysis estimators run the analysis in bags of voxels,
+    where each bag holds the voxels that have a valid value across the same set of studies.
+    A voxel is therefore only dropped from the studies that are missing it. Setting
+    ``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
+    input map from the analysis entirely.
 
     References
     ----------
@@ -824,7 +877,7 @@ class WeightedLeastSquares(_PyMARERegressionEstimator):
         from the analysis.
         If False, all voxels are included by running a separate analysis on bags
         of voxels that belong that have a valid value across the same studies.
-        Default is True.
+        Default is False.
     groupby : None, :obj:`str`, array-like, or False, optional
         How to identify images that share participants and are therefore dependent. None (the
         default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
@@ -871,11 +924,11 @@ class WeightedLeastSquares(_PyMARERegressionEstimator):
     will likely result in biased results. The extent of this bias is currently
     unknown.
 
-    By default, all image-based meta-analysis estimators adopt an aggressive masking
-    strategy, in which any voxels with a value of zero in any of the input maps
-    will be removed from the analysis. Setting ``aggressive_mask=False`` will
-    instead run tha analysis in bags of voxels that have a valid value across
-    the same studies.
+    By default, image-based meta-analysis estimators run the analysis in bags of voxels,
+    where each bag holds the voxels that have a valid value across the same set of studies.
+    A voxel is therefore only dropped from the studies that are missing it. Setting
+    ``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
+    input map from the analysis entirely.
 
     References
     ----------
@@ -1011,7 +1064,7 @@ class DerSimonianLaird(_PyMARERegressionEstimator):
         from the analysis.
         If False, all voxels are included by running a separate analysis on bags
         of voxels that belong that have a valid value across the same studies.
-        Default is True.
+        Default is False.
     groupby : None, :obj:`str`, array-like, or False, optional
         How to identify images that share participants and are therefore dependent. None (the
         default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
@@ -1057,11 +1110,11 @@ class DerSimonianLaird(_PyMARERegressionEstimator):
     will likely result in biased results. The extent of this bias is currently
     unknown.
 
-    By default, all image-based meta-analysis estimators adopt an aggressive masking
-    strategy, in which any voxels with a value of zero in any of the input maps
-    will be removed from the analysis. Setting ``aggressive_mask=False`` will
-    instead run tha analysis in bags of voxels that have a valid value across
-    the same studies.
+    By default, image-based meta-analysis estimators run the analysis in bags of voxels,
+    where each bag holds the voxels that have a valid value across the same set of studies.
+    A voxel is therefore only dropped from the studies that are missing it. Setting
+    ``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
+    input map from the analysis entirely.
 
     References
     ----------
@@ -1200,7 +1253,7 @@ class Hedges(_PyMARERegressionEstimator):
         from the analysis.
         If False, all voxels are included by running a separate analysis on bags
         of voxels that belong that have a valid value across the same studies.
-        Default is True.
+        Default is False.
     groupby : None, :obj:`str`, array-like, or False, optional
         How to identify images that share participants and are therefore dependent. None (the
         default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
@@ -1246,11 +1299,11 @@ class Hedges(_PyMARERegressionEstimator):
     will likely result in biased results. The extent of this bias is currently
     unknown.
 
-    By default, all image-based meta-analysis estimators adopt an aggressive masking
-    strategy, in which any voxels with a value of zero in any of the input maps
-    will be removed from the analysis. Setting ``aggressive_mask=False`` will
-    instead run tha analysis in bags of voxels that have a valid value across
-    the same studies.
+    By default, image-based meta-analysis estimators run the analysis in bags of voxels,
+    where each bag holds the voxels that have a valid value across the same set of studies.
+    A voxel is therefore only dropped from the studies that are missing it. Setting
+    ``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
+    input map from the analysis entirely.
 
     References
     ----------
@@ -1388,7 +1441,7 @@ class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
         from the analysis.
         If False, all voxels are included by running a separate analysis on bags
         of voxels that belong that have a valid value across the same studies.
-        Default is True.
+        Default is False.
     groupby : None, :obj:`str`, array-like, or False, optional
         How to identify images that share participants and are therefore dependent. None (the
         default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
@@ -1447,11 +1500,11 @@ class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
     method should not be used on full brains, unless you can submit your code
     to a job scheduler.
 
-    By default, all image-based meta-analysis estimators adopt an aggressive masking
-    strategy, in which any voxels with a value of zero in any of the input maps
-    will be removed from the analysis. Setting ``aggressive_mask=False`` will
-    instead run tha analysis in bags of voxels that have a valid value across
-    the same studies.
+    By default, image-based meta-analysis estimators run the analysis in bags of voxels,
+    where each bag holds the voxels that have a valid value across the same set of studies.
+    A voxel is therefore only dropped from the studies that are missing it. Setting
+    ``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
+    input map from the analysis entirely.
 
     See Also
     --------
@@ -1589,7 +1642,7 @@ class VarianceBasedLikelihood(_PyMARERegressionEstimator):
         from the analysis.
         If False, all voxels are included by running a separate analysis on bags
         of voxels that belong that have a valid value across the same studies.
-        Default is True.
+        Default is False.
     groupby : None, :obj:`str`, array-like, or False, optional
         How to identify images that share participants and are therefore dependent. None (the
         default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
@@ -1650,11 +1703,11 @@ class VarianceBasedLikelihood(_PyMARERegressionEstimator):
     will likely result in biased results. The extent of this bias is currently
     unknown.
 
-    By default, all image-based meta-analysis estimators adopt an aggressive masking
-    strategy, in which any voxels with a value of zero in any of the input maps
-    will be removed from the analysis. Setting ``aggressive_mask=False`` will
-    instead run tha analysis in bags of voxels that have a valid value across
-    the same studies.
+    By default, image-based meta-analysis estimators run the analysis in bags of voxels,
+    where each bag holds the voxels that have a valid value across the same set of studies.
+    A voxel is therefore only dropped from the studies that are missing it. Setting
+    ``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
+    input map from the analysis entirely.
 
     References
     ----------
@@ -1802,7 +1855,7 @@ class PermutedOLS(IBMAEstimator):
         from the analysis.
         If False, all voxels are included by running a separate analysis on bags
         of voxels that belong that have a valid value across the same studies.
-        Default is True.
+        Default is False.
     groupby : None, :obj:`str`, array-like, or False, optional
         How to identify images that share participants and are therefore dependent. None (the
         default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
@@ -1848,11 +1901,11 @@ class PermutedOLS(IBMAEstimator):
     count, and one dominant study can drag them well below it. PyMARE warns below about 4
     :footcite:p:`tipton2015small`.
 
-    By default, all image-based meta-analysis estimators adopt an aggressive masking
-    strategy, in which any voxels with a value of zero in any of the input maps
-    will be removed from the analysis. Setting ``aggressive_mask=False`` will
-    instead run tha analysis in bags of voxels that have a valid value across
-    the same studies.
+    By default, image-based meta-analysis estimators run the analysis in bags of voxels,
+    where each bag holds the voxels that have a valid value across the same set of studies.
+    A voxel is therefore only dropped from the studies that are missing it. Setting
+    ``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
+    input map from the analysis entirely.
 
     References
     ----------
@@ -2116,7 +2169,7 @@ class FixedEffectsHedges(_PyMARERegressionEstimator):
         from the analysis.
         If False, all voxels are included by running a separate analysis on bags
         of voxels that belong that have a valid value across the same studies.
-        Default is True.
+        Default is False.
     groupby : None, :obj:`str`, array-like, or False, optional
         How to identify images that share participants and are therefore dependent. None (the
         default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
@@ -2163,11 +2216,11 @@ class FixedEffectsHedges(_PyMARERegressionEstimator):
     will likely result in biased results. The extent of this bias is currently
     unknown.
 
-    By default, all image-based meta-analysis estimators adopt an aggressive masking
-    strategy, in which any voxels with a value of zero in any of the input maps
-    will be removed from the analysis. Setting ``aggressive_mask=False`` will
-    instead run tha analysis in bags of voxels that have a valid value across
-    the same studies.
+    By default, image-based meta-analysis estimators run the analysis in bags of voxels,
+    where each bag holds the voxels that have a valid value across the same set of studies.
+    A voxel is therefore only dropped from the studies that are missing it. Setting
+    ``aggressive_mask=True`` instead removes any voxel with a value of zero or NaN in any
+    input map from the analysis entirely.
 
     References
     ----------
