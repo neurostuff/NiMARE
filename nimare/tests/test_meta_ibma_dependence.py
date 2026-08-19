@@ -28,6 +28,11 @@ PYMARE_ESTIMATORS = [*COMBINATION_ESTIMATORS, *REGRESSION_ESTIMATORS]
 
 ALL_ESTIMATORS = [*PYMARE_ESTIMATORS, ibma.PermutedOLS]
 
+# One estimator per family. Behaviour that lives entirely in IBMAEstimator cannot vary by
+# subclass, so sweeping all nine would re-run the same base-class lines nine times; these
+# three still catch a subclass that forgets to forward its kwargs.
+REPRESENTATIVE_ESTIMATORS = [ibma.Fishers, ibma.DerSimonianLaird, ibma.PermutedOLS]
+
 
 def _explicit_cr2_weighted_t(contributions, weights):
     """Return an intercept-only WLS t with singleton-cluster CR2 variance."""
@@ -82,31 +87,23 @@ def test_weighting_parameter_defaults(estimator):
     assert instance.rho == 0.8
 
 
-def test_pymare_weighting_kwargs_pass_through():
-    """Pass PyMARE its own parameters, not a NiMARE translation of them."""
-    estimator = ibma.WeightedLeastSquares(weight_scheme="collapse", rho=1.0)
-    estimator.inputs_ = {"contrast_names": np.array([0, 0, 1])}
+@pytest.mark.parametrize(
+    "weight_scheme,codes,expected",
+    [
+        ("collapse", [0, 0, 1], {"weight_scheme": "collapse", "rho": 0.8}),
+        ("rescale", [0, 0, 1], {"weight_scheme": "rescale", "rho": 0.8}),
+        # 'individual' models no within-group correlation, and PyMARE warns if handed rho.
+        ("individual", [0, 0, 1], {"weight_scheme": "individual"}),
+        # No image is repeated, so there is no within-group correlation to assume.
+        ("rescale", [0, 1, 2], {"weight_scheme": "rescale"}),
+    ],
+)
+def test_pymare_weighting_kwargs(weight_scheme, codes, expected):
+    """Pass PyMARE its own parameters, and only the ones that apply."""
+    estimator = ibma.WeightedLeastSquares(weight_scheme=weight_scheme)
+    estimator.inputs_ = {"contrast_names": np.array(codes)}
 
-    assert estimator._pymare_weighting_kwargs(np.arange(3)) == {
-        "weight_scheme": "collapse",
-        "rho": 1.0,
-    }
-
-
-def test_rho_is_withheld_from_the_individual_scheme():
-    """Withhold rho: PyMARE warns when a scheme that models no correlation receives it."""
-    estimator = ibma.WeightedLeastSquares(weight_scheme="individual")
-    estimator.inputs_ = {"contrast_names": np.array([0, 0, 1])}
-
-    assert estimator._pymare_weighting_kwargs(np.arange(3)) == {"weight_scheme": "individual"}
-
-
-def test_rho_is_withheld_when_there_is_no_dependence():
-    """Without groups there is no within-group correlation to assume."""
-    estimator = ibma.DerSimonianLaird()
-    estimator.inputs_ = {"contrast_names": np.array([0, 1, 2])}
-
-    assert estimator._pymare_weighting_kwargs(np.arange(3)) == {"weight_scheme": "rescale"}
+    assert estimator._pymare_weighting_kwargs(np.arange(len(codes))) == expected
 
 
 def test_stouffers_rejects_the_removed_normalization_parameter():
@@ -118,42 +115,25 @@ def test_stouffers_rejects_the_removed_normalization_parameter():
 # groupby
 
 
-@pytest.mark.parametrize("estimator", PYMARE_ESTIMATORS)
-def test_no_correction_without_repeated_studies(estimator, testdata_ibma):
-    """One image per study means there is nothing to correct."""
-    meta = estimator()
-    meta.fit(testdata_ibma)
+@pytest.mark.parametrize("estimator", REPRESENTATIVE_ESTIMATORS)
+def test_no_dependence_when_unrepeated_or_opted_out(estimator, testdata_ibma, dependent_dataset):
+    """`labels` is None both when no study repeats and when the caller opts out."""
+    unrepeated = estimator()
+    unrepeated.fit(testdata_ibma)
+    assert unrepeated._dependence().labels is None
+    assert unrepeated.inputs_["corr_matrix"] is None
 
-    assert meta.inputs_["corr_matrix"] is None
-    assert meta._dependence().labels is None
-
-
-@pytest.mark.parametrize("estimator", COMBINATION_ESTIMATORS)
-def test_corr_matrix_built_for_combination_tests(estimator, dependent_dataset):
-    """Brown's method and Stouffer's inflation term both need the correlation."""
-    meta = estimator()
-    meta.fit(dependent_dataset)
-
-    corr = meta.inputs_["corr_matrix"]
-    n_images = len(meta.inputs_["id"])
-    assert corr is not None
-    assert corr.shape == (n_images, n_images)
+    opted_out = estimator(groupby=False)
+    opted_out.fit(dependent_dataset)
+    assert opted_out._dependence().labels is None
 
 
-@pytest.mark.parametrize("estimator", [*REGRESSION_ESTIMATORS, ibma.PermutedOLS])
-def test_corr_matrix_not_built_for_estimators_that_never_read_it(estimator, dependent_dataset):
-    """Cluster-robust inference is distribution-free, so no correlation is estimated."""
-    meta = estimator()
-    meta.fit(dependent_dataset)
+@pytest.mark.parametrize("estimator", ALL_ESTIMATORS)
+def test_grouping_recorded_and_correlation_gated(estimator, dependent_dataset):
+    """Every estimator records the grouping; only the combination tests estimate a correlation.
 
-    assert meta.inputs_["corr_matrix"] is None
-    # ...but the grouping is still recorded and used.
-    assert meta._dependence().labels is not None
-
-
-@pytest.mark.parametrize("estimator", PYMARE_ESTIMATORS)
-def test_groups_are_found_for_repeated_studies(estimator, dependent_dataset):
-    """A study contributing two images should be recognized as one group."""
+    Parametrized over all nine because `_requires_corr_matrix` genuinely varies by class.
+    """
     meta = estimator()
     meta.fit(dependent_dataset)
 
@@ -163,14 +143,14 @@ def test_groups_are_found_for_repeated_studies(estimator, dependent_dataset):
     assert len(groups) == n_images
     assert np.unique(groups).size < n_images
 
-
-@pytest.mark.parametrize("estimator", PYMARE_ESTIMATORS)
-def test_groupby_false_skips_correction(estimator, dependent_dataset):
-    """groupby=False must opt out even when studies repeat."""
-    meta = estimator(groupby=False)
-    meta.fit(dependent_dataset)
-
-    assert meta._dependence().labels is None
+    corr = meta.inputs_["corr_matrix"]
+    if meta._requires_corr_matrix:
+        # Brown's method and Stouffer's inflation term both need it.
+        assert corr is not None
+        assert corr.shape == (n_images, n_images)
+    else:
+        # Cluster-robust inference is distribution-free, so nothing would read it.
+        assert corr is None
 
 
 def test_groupby_accepts_a_metadata_field(dependent_dataset):
@@ -264,34 +244,29 @@ def test_combination_dof_counts_groups_not_images(estimator, dependent_dataset):
 
 
 @pytest.mark.parametrize("estimator", REGRESSION_ESTIMATORS)
-def test_regression_dof_is_satterthwaite(estimator, dependent_dataset):
-    """The reported dof must be the one PyMARE drew its p-values from."""
+def test_regression_dof_is_pymare_satterthwaite(estimator, dependent_dataset):
+    """The dof map must be PyMARE's `fe_dof`, not a recomputation or a count of images."""
     meta = estimator()
     results = meta.fit(dependent_dataset)
 
     n_images = len(meta.inputs_["id"])
-    dof = results.maps["dof"]
-    reported = dof[np.isfinite(dof) & (dof > 0)]
+    group_count_dof = meta._dependence().dof
+    reported = results.maps["dof"]
+    reported = reported[np.isfinite(reported)]
     assert reported.size
-
     # Satterthwaite dof are non-integer and cannot exceed what the images support.
     assert np.all(reported < n_images - 1)
     assert not np.allclose(reported, np.round(reported))
+    assert not np.allclose(reported, group_count_dof)
 
-
-@pytest.mark.parametrize("estimator", REGRESSION_ESTIMATORS)
-def test_regression_dof_matches_pymare(estimator, dependent_dataset):
-    """The dof map must be PyMARE's fe_dof, not a recomputation of it."""
-    meta = estimator()
-    meta.fit(dependent_dataset)
-
+    # And they are literally what PyMARE reported, not something derived alongside it.
     voxel_mask = meta.inputs_["aggressive_mask"]
     captured = {}
     # summary() resolves this name from the estimators module, which imported it directly,
     # so patching pymare.results would not be seen.
-    real_summary_type = pymare.estimators.estimators.MetaRegressionResults
+    real = pymare.estimators.estimators.MetaRegressionResults
 
-    class _Spy(real_summary_type):
+    class _Spy(real):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
             captured["fe_dof"] = self.fe_dof
@@ -306,36 +281,39 @@ def test_regression_dof_matches_pymare(estimator, dependent_dataset):
             ]
         )
     finally:
-        pymare.estimators.estimators.MetaRegressionResults = real_summary_type
+        pymare.estimators.estimators.MetaRegressionResults = real
 
     assert captured["fe_dof"] is not None
     assert np.allclose(maps[-1], np.ravel(captured["fe_dof"]))
 
 
-@pytest.mark.parametrize("estimator", PYMARE_ESTIMATORS)
-def test_dependence_produces_usable_maps(estimator, dependent_dataset):
-    """The corrected fit must still yield finite, well-formed statistics.
+@pytest.mark.parametrize("aggressive_mask", [True, False])
+@pytest.mark.parametrize("estimator", ALL_ESTIMATORS)
+def test_fit_produces_well_formed_maps(estimator, aggressive_mask, dependent_dataset):
+    """Every estimator returns usable maps under both masking strategies.
 
-    Only well-formedness: robust standard errors are not guaranteed to be larger than
-    model-based ones. RVE estimates between-group variability rather than trusting the
-    reported sampling variances, so when those are overstated -- common for real varcope
-    maps -- the robust error can legitimately come out smaller.
+    Well-formedness only. Robust standard errors are not guaranteed to be larger than
+    model-based ones -- RVE estimates between-group variability rather than trusting the
+    reported sampling variances, so an overstated varcope can legitimately shrink them --
+    which leaves no inequality to assert here.
     """
-    results = estimator().fit(dependent_dataset)
-
-    assert np.isfinite(results.maps["z"]).any()
-    finite_p = results.maps["p"][np.isfinite(results.maps["p"])]
-    assert np.all(finite_p >= 0)
-    assert np.all(finite_p <= 1)
-
-
-@pytest.mark.parametrize("estimator", PYMARE_ESTIMATORS)
-def test_dependence_with_liberal_mask(estimator, dependent_dataset):
-    """The liberal-mask path subsets images, so groups must be subset too."""
-    meta = estimator(aggressive_mask=False)
+    meta = estimator(aggressive_mask=aggressive_mask)
     results = meta.fit(dependent_dataset)
 
     assert np.isfinite(results.maps["z"]).any()
+
+    if "p" in results.maps:
+        finite_p = results.maps["p"][np.isfinite(results.maps["p"])]
+        assert np.all((finite_p >= 0) & (finite_p <= 1))
+
+    # Float, so voxels outside the mask read as NaN rather than INT_MIN.
+    dof = results.maps["dof"]
+    assert dof.dtype.kind == "f"
+    assert np.isfinite(dof).any()
+    if aggressive_mask:
+        outside = ~meta.inputs_["aggressive_mask"]
+        if outside.any():
+            assert np.isnan(dof[outside]).all()
 
 
 @pytest.mark.parametrize("weight_scheme", ["individual", "rescale", "collapse"])
@@ -507,27 +485,20 @@ def test_permuted_ols_matches_nilearn_when_ungrouped():
     assert np.allclose(np.ravel(nilearn_t), np.ravel(nimare_t))
 
 
-def test_permuted_ols_uses_one_block_per_image_when_ungrouped(dependent_dataset):
-    """Setting groupby=False must make collapsing the identity."""
-    meta = ibma.PermutedOLS(groupby=False)
+@pytest.mark.parametrize("groupby,grouped", [(None, True), (False, False)])
+def test_permuted_ols_blocks_follow_groupby(groupby, grouped, dependent_dataset):
+    """Grouping collapses a study's images into one block; opting out makes it the identity."""
+    meta = ibma.PermutedOLS(groupby=groupby)
     meta.fit(dependent_dataset)
 
     n_images = len(meta.inputs_["id"])
     blocks, weights = meta._blocks_and_weights(np.arange(n_images))
 
-    assert np.array_equal(blocks, np.arange(n_images))
     assert weights is None
-
-
-def test_permuted_ols_groups_repeated_images(dependent_dataset):
-    """The default must sign-flip a study's images as one unit."""
-    meta = ibma.PermutedOLS()
-    meta.fit(dependent_dataset)
-
-    n_images = len(meta.inputs_["id"])
-    blocks, _ = meta._blocks_and_weights(np.arange(n_images))
-
-    assert np.unique(blocks).size < n_images
+    if grouped:
+        assert np.unique(blocks).size < n_images
+    else:
+        assert np.array_equal(blocks, np.arange(n_images))
 
 
 def test_permuted_ols_dof_counts_groups(dependent_dataset):
@@ -801,20 +772,3 @@ def test_permutation_parallel_null_is_reproducible():
 
     assert np.array_equal(single_job["h0_max_t"], two_jobs["h0_max_t"])
     assert np.array_equal(single_job["logp_max_t"], two_jobs["logp_max_t"])
-
-
-@pytest.mark.parametrize("estimator", ALL_ESTIMATORS)
-def test_dof_map_is_float_with_nan_outside_the_mask(estimator, dependent_dataset):
-    """One dof contract for every estimator, combination tests included.
-
-    An integer map carries ``INT_MIN`` outside the mask, not NaN, and casting there emits a
-    RuntimeWarning.
-    """
-    results = estimator().fit(dependent_dataset)
-    dof = results.maps["dof"]
-
-    assert dof.dtype.kind == "f"
-    assert np.isfinite(dof).any()
-    outside = ~results.estimator.inputs_["aggressive_mask"]
-    if outside.any():
-        assert np.isnan(dof[outside]).all()

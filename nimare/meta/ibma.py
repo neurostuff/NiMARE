@@ -561,7 +561,7 @@ class Fishers(IBMAEstimator):
             n_voxels = self.inputs_["z_maps"].shape[1]
             z_map = np.zeros(n_voxels, dtype=float)
             p_map = np.zeros(n_voxels, dtype=float)
-            dof_map = np.zeros(n_voxels, dtype=np.int32)
+            dof_map = np.zeros(n_voxels, dtype=float)
             for bag in self.inputs_["data_bags"]["z_maps"]:
                 (
                     z_map[bag["voxel_mask"]],
@@ -771,7 +771,7 @@ class Stouffers(IBMAEstimator):
             n_voxels = self.inputs_["z_maps"].shape[1]
             z_map = np.zeros(n_voxels, dtype=float)
             p_map = np.zeros(n_voxels, dtype=float)
-            dof_map = np.zeros(n_voxels, dtype=np.int32)
+            dof_map = np.zeros(n_voxels, dtype=float)
             for bag in self.inputs_["data_bags"]["z_maps"]:
                 (
                     z_map[bag["voxel_mask"]],
@@ -953,7 +953,7 @@ class WeightedLeastSquares(_PyMARERegressionEstimator):
             n_voxels = self.inputs_["beta_maps"].shape[1]
 
             z_map, p_map, est_map, se_map = [np.zeros(n_voxels, dtype=float) for _ in range(4)]
-            dof_map = np.zeros(n_voxels, dtype=np.int32)
+            dof_map = np.zeros(n_voxels, dtype=float)
 
             beta_bags = self.inputs_["data_bags"]["beta_maps"]
             varcope_bags = self.inputs_["data_bags"]["varcope_maps"]
@@ -1136,7 +1136,7 @@ class DerSimonianLaird(_PyMARERegressionEstimator):
             z_map, p_map, est_map, se_map, tau2_map = [
                 np.zeros(n_voxels, dtype=float) for _ in range(5)
             ]
-            dof_map = np.zeros(n_voxels, dtype=np.int32)
+            dof_map = np.zeros(n_voxels, dtype=float)
 
             beta_bags = self.inputs_["data_bags"]["beta_maps"]
             varcope_bags = self.inputs_["data_bags"]["varcope_maps"]
@@ -1324,7 +1324,7 @@ class Hedges(_PyMARERegressionEstimator):
             z_map, p_map, est_map, se_map, tau2_map = [
                 np.zeros(n_voxels, dtype=float) for _ in range(5)
             ]
-            dof_map = np.zeros(n_voxels, dtype=np.int32)
+            dof_map = np.zeros(n_voxels, dtype=float)
 
             beta_bags = self.inputs_["data_bags"]["beta_maps"]
             varcope_bags = self.inputs_["data_bags"]["varcope_maps"]
@@ -1528,7 +1528,7 @@ class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
             z_map, p_map, est_map, se_map, tau2_map, sigma2_map = [
                 np.zeros(n_voxels, dtype=float) for _ in range(6)
             ]
-            dof_map = np.zeros(n_voxels, dtype=np.int32)
+            dof_map = np.zeros(n_voxels, dtype=float)
 
             for bag in self.inputs_["data_bags"]["beta_maps"]:
                 (
@@ -1736,7 +1736,7 @@ class VarianceBasedLikelihood(_PyMARERegressionEstimator):
             z_map, p_map, est_map, se_map, tau2_map = [
                 np.zeros(n_voxels, dtype=float) for _ in range(5)
             ]
-            dof_map = np.zeros(n_voxels, dtype=np.int32)
+            dof_map = np.zeros(n_voxels, dtype=float)
 
             beta_bags = self.inputs_["data_bags"]["beta_maps"]
             varcope_bags = self.inputs_["data_bags"]["varcope_maps"]
@@ -2252,7 +2252,7 @@ class FixedEffectsHedges(_PyMARERegressionEstimator):
             n_voxels = self.inputs_["t_maps"].shape[1]
 
             z_map, p_map, est_map, se_map = [np.zeros(n_voxels, dtype=float) for _ in range(4)]
-            dof_map = np.zeros(n_voxels, dtype=np.int32)
+            dof_map = np.zeros(n_voxels, dtype=float)
 
             for bag in self.inputs_["data_bags"]["t_maps"]:
                 (
