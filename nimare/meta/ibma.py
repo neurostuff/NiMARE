@@ -50,7 +50,7 @@ class IBMAEstimator(Estimator):
         Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
         a future release. Prefer :class:`~nimare.nimads.Studyset`.
 
-    .. versionchanged:: 0.20.1
+    .. versionchanged:: 0.21.0
 
         - New parameter: ``groupby``, identifying which images are statistically dependent on
           each other because they come from the same participants.
@@ -402,7 +402,7 @@ class _PyMARERegressionEstimator(IBMAEstimator):
 class Fishers(IBMAEstimator):
     """An image-based meta-analytic test using t- or z-statistic images.
 
-    .. versionchanged:: 0.20.1
+    .. versionchanged:: 0.21.0
 
         * New parameter: ``groupby``, identifying images contributed by the same participants.
         * The ``dof`` map now counts independent groups rather than images.
@@ -580,7 +580,7 @@ class Fishers(IBMAEstimator):
 class Stouffers(IBMAEstimator):
     """A t-test on z-statistic images.
 
-    .. versionchanged:: 0.20.1
+    .. versionchanged:: 0.21.0
 
         * New parameter: ``groupby``, identifying images contributed by the same participants.
         * The ``dof`` map now counts independent groups rather than images.
@@ -596,7 +596,7 @@ class Stouffers(IBMAEstimator):
             where only one-sided tests were performed.
         * Add correction for multiple contrasts within a study.
         * New parameter: ``normalize_contrast_weights`` to normalized the weights by the
-            number of contrasts in each study. Removed again in 0.20.1; see ``groupby``.
+            number of contrasts in each study. Removed again in 0.21.0; see ``groupby``.
 
     .. versionchanged:: 0.2.1
 
@@ -673,7 +673,7 @@ class Stouffers(IBMAEstimator):
     ):
         if "normalize_contrast_weights" in kwargs:
             raise TypeError(
-                "normalize_contrast_weights was removed in 0.20.1. Repeated images are now "
+                "normalize_contrast_weights was removed in 0.21.0. Repeated images are now "
                 "combined into one variance-standardized statistic per group whenever "
                 "`groupby` finds a group with more than one image, so the parameter no "
                 "longer has anything to switch. Pass groupby=False to treat every image as "
@@ -790,7 +790,7 @@ class Stouffers(IBMAEstimator):
 class WeightedLeastSquares(_PyMARERegressionEstimator):
     """Weighted least-squares meta-regression.
 
-    .. versionchanged:: 0.20.1
+    .. versionchanged:: 0.21.0
 
         * New parameters: ``groupby``, ``weight_scheme`` and ``rho``.
         * The ``dof`` map now reports Satterthwaite degrees of freedom for the CR2 standard
@@ -981,7 +981,7 @@ class WeightedLeastSquares(_PyMARERegressionEstimator):
 class DerSimonianLaird(_PyMARERegressionEstimator):
     """DerSimonian-Laird meta-regression estimator.
 
-    .. versionchanged:: 0.20.1
+    .. versionchanged:: 0.21.0
 
         * New parameters: ``groupby``, ``weight_scheme`` and ``rho``.
         * The ``dof`` map now reports Satterthwaite degrees of freedom for the CR2 standard
@@ -1170,7 +1170,7 @@ class DerSimonianLaird(_PyMARERegressionEstimator):
 class Hedges(_PyMARERegressionEstimator):
     """Hedges meta-regression estimator.
 
-    .. versionchanged:: 0.20.1
+    .. versionchanged:: 0.21.0
 
         * New parameters: ``groupby``, ``weight_scheme`` and ``rho``.
         * The ``dof`` map now reports Satterthwaite degrees of freedom for the CR2 standard
@@ -1358,7 +1358,7 @@ class Hedges(_PyMARERegressionEstimator):
 class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
     """Method estimates with known sample sizes but unknown sampling variances.
 
-    .. versionchanged:: 0.20.1
+    .. versionchanged:: 0.21.0
 
         * New parameters: ``groupby``, ``weight_scheme`` and ``rho``.
         * The ``dof`` map now reports Satterthwaite degrees of freedom for the CR2 standard
@@ -1558,7 +1558,7 @@ class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
 class VarianceBasedLikelihood(_PyMARERegressionEstimator):
     """A likelihood-based meta-analysis method for estimates with known variances.
 
-    .. versionchanged:: 0.20.1
+    .. versionchanged:: 0.21.0
 
         * New parameters: ``groupby``, ``weight_scheme`` and ``rho``.
         * The ``dof`` map now reports Satterthwaite degrees of freedom for the CR2 standard
@@ -1770,7 +1770,7 @@ class VarianceBasedLikelihood(_PyMARERegressionEstimator):
 class PermutedOLS(IBMAEstimator):
     r"""An analysis with permuted ordinary least squares (OLS).
 
-    .. versionchanged:: 0.20.1
+    .. versionchanged:: 0.21.0
 
         * New parameters: ``groupby`` and ``use_sample_size``.
         * The statistic is computed over one contribution per group, referred to Satterthwaite
@@ -1978,7 +1978,7 @@ class PermutedOLS(IBMAEstimator):
     def correct_fwe_montecarlo(self, result, n_iters=5000, n_cores=1):
         """Perform FWE correction using the max-value permutation method.
 
-        .. versionchanged:: 0.20.1
+        .. versionchanged:: 0.21.0
 
             One sign-flip null is now shared across every liberal-mask bag, so the
             max-statistic distribution describes the whole brain rather than one bag of it.
@@ -2093,7 +2093,7 @@ class PermutedOLS(IBMAEstimator):
 class FixedEffectsHedges(_PyMARERegressionEstimator):
     """Fixed Effects Hedges meta-regression estimator.
 
-    .. versionchanged:: 0.20.1
+    .. versionchanged:: 0.21.0
 
         * New parameters: ``groupby``, ``weight_scheme`` and ``rho``.
         * The ``dof`` map now reports Satterthwaite degrees of freedom for the CR2 standard
