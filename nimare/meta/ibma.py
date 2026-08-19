@@ -211,20 +211,10 @@ class IBMAEstimator(Estimator):
         self._preprocess_dependence(dataset)
 
     def _dependence(self, study_mask=None):
-        """Return the grouping of the images being fitted.
+        """Return the :class:`~nimare.meta._dependence.DependenceModel` for the images fitted.
 
-        Built per call rather than cached, because the liberal-mask path fits bags in which
-        only some of a group's images are present, so the grouping has to describe the bag.
-
-        Parameters
-        ----------
-        study_mask : None or :obj:`numpy.ndarray`, optional
-            Indices of the images being fitted, as supplied to ``_fit_model`` by the
-            liberal-mask path. None means all images.
-
-        Returns
-        -------
-        :obj:`~nimare.meta._dependence.DependenceModel`
+        ``study_mask`` holds the image indices, as ``_fit_model`` receives them from the
+        liberal-mask path; None means all images.
         """
         model = DependenceModel(
             self.inputs_["contrast_names"],
@@ -235,17 +225,10 @@ class IBMAEstimator(Estimator):
     def _fe_dof_map(self, est_summary, study_mask, n_voxels):
         """Return the fixed-effect degrees of freedom, one value per voxel.
 
-        PyMARE reports Satterthwaite degrees of freedom for the CR2
-        cluster-robust standard errors whenever group labels were supplied
-        :footcite:p:`tipton2015small`, which is the reference distribution its
-        p-values were actually drawn from. These are non-integer and vary by
-        voxel under the liberal mask. When no labels reached PyMARE there is no
-        cluster-robust covariance and hence no ``fe_dof``, so fall back to the
-        group count.
-
-        See Also
-        --------
-        nimare.meta._dependence.DependenceModel.dof
+        PyMARE reports Satterthwaite degrees of freedom whenever group labels were supplied
+        :footcite:p:`tipton2015small`; these are non-integer and vary by voxel. Without
+        labels there is no cluster-robust covariance and hence no ``fe_dof``, so fall back
+        to the group count.
         """
         dof = est_summary.fe_dof
         if dof is None:
@@ -801,11 +784,9 @@ class WeightedLeastSquares(_PyMARERegressionEstimator):
 
     .. versionchanged:: 0.20.1
 
-        * New parameters: ``groupby``, ``weight_scheme`` and ``rho``, controlling how images
-          contributed by the same participants are grouped and weighted.
-        * The ``dof`` map now reports the Satterthwaite degrees of freedom of the CR2
-          cluster-robust standard errors, which is what the p-values are drawn from. It is
-          floating point rather than ``int32``, and varies by voxel under the liberal mask.
+        * New parameters: ``groupby``, ``weight_scheme`` and ``rho``.
+        * The ``dof`` map now reports Satterthwaite degrees of freedom for the CR2 standard
+          errors. It is floating point rather than ``int32``, and varies by voxel.
 
     .. versionchanged:: 0.2.1
 
@@ -997,11 +978,9 @@ class DerSimonianLaird(_PyMARERegressionEstimator):
 
     .. versionchanged:: 0.20.1
 
-        * New parameters: ``groupby``, ``weight_scheme`` and ``rho``, controlling how images
-          contributed by the same participants are grouped and weighted.
-        * The ``dof`` map now reports the Satterthwaite degrees of freedom of the CR2
-          cluster-robust standard errors, which is what the p-values are drawn from. It is
-          floating point rather than ``int32``, and varies by voxel under the liberal mask.
+        * New parameters: ``groupby``, ``weight_scheme`` and ``rho``.
+        * The ``dof`` map now reports Satterthwaite degrees of freedom for the CR2 standard
+          errors. It is floating point rather than ``int32``, and varies by voxel.
 
     .. versionchanged:: 0.2.1
 
@@ -1191,11 +1170,9 @@ class Hedges(_PyMARERegressionEstimator):
 
     .. versionchanged:: 0.20.1
 
-        * New parameters: ``groupby``, ``weight_scheme`` and ``rho``, controlling how images
-          contributed by the same participants are grouped and weighted.
-        * The ``dof`` map now reports the Satterthwaite degrees of freedom of the CR2
-          cluster-robust standard errors, which is what the p-values are drawn from. It is
-          floating point rather than ``int32``, and varies by voxel under the liberal mask.
+        * New parameters: ``groupby``, ``weight_scheme`` and ``rho``.
+        * The ``dof`` map now reports Satterthwaite degrees of freedom for the CR2 standard
+          errors. It is floating point rather than ``int32``, and varies by voxel.
 
     .. versionchanged:: 0.2.1
 
@@ -1384,11 +1361,9 @@ class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
 
     .. versionchanged:: 0.20.1
 
-        * New parameters: ``groupby``, ``weight_scheme`` and ``rho``, controlling how images
-          contributed by the same participants are grouped and weighted.
-        * The ``dof`` map now reports the Satterthwaite degrees of freedom of the CR2
-          cluster-robust standard errors, which is what the p-values are drawn from. It is
-          floating point rather than ``int32``, and varies by voxel under the liberal mask.
+        * New parameters: ``groupby``, ``weight_scheme`` and ``rho``.
+        * The ``dof`` map now reports Satterthwaite degrees of freedom for the CR2 standard
+          errors. It is floating point rather than ``int32``, and varies by voxel.
 
     .. versionchanged:: 0.2.1
 
@@ -1589,11 +1564,9 @@ class VarianceBasedLikelihood(_PyMARERegressionEstimator):
 
     .. versionchanged:: 0.20.1
 
-        * New parameters: ``groupby``, ``weight_scheme`` and ``rho``, controlling how images
-          contributed by the same participants are grouped and weighted.
-        * The ``dof`` map now reports the Satterthwaite degrees of freedom of the CR2
-          cluster-robust standard errors, which is what the p-values are drawn from. It is
-          floating point rather than ``int32``, and varies by voxel under the liberal mask.
+        * New parameters: ``groupby``, ``weight_scheme`` and ``rho``.
+        * The ``dof`` map now reports Satterthwaite degrees of freedom for the CR2 standard
+          errors. It is floating point rather than ``int32``, and varies by voxel.
 
     .. versionchanged:: 0.2.1
 
@@ -1806,14 +1779,12 @@ class PermutedOLS(IBMAEstimator):
 
     .. versionchanged:: 0.20.1
 
-        * New parameters: ``groupby``, identifying images that are statistically dependent,
-          and ``use_sample_size``, weighting each group by its participant count.
-        * The statistic is now computed over one contribution per group, and its reference is
-          the Satterthwaite degrees of freedom of the CR2 cluster-robust standard error rather
-          than a count of images.
-        * Nilearn's :func:`~nilearn.mass_univariate.permuted_ols` is no longer called; the
-          equivalent one-sample scheme is implemented in NiMARE so that exchangeability blocks
-          work on every supported Nilearn version. The observed ``t`` map is unchanged.
+        * New parameters: ``groupby`` and ``use_sample_size``.
+        * The statistic is computed over one contribution per group, referred to Satterthwaite
+          degrees of freedom rather than a count of images.
+        * Nilearn's :func:`~nilearn.mass_univariate.permuted_ols` is no longer called, so
+          exchangeability blocks work on every supported Nilearn version. The ``t`` map is
+          unchanged.
 
     .. versionchanged:: 0.2.1
 
@@ -1862,12 +1833,11 @@ class PermutedOLS(IBMAEstimator):
     Requires ``beta`` images, and ``sample_sizes`` metadata when ``use_sample_size=True``.
 
     Each group contributes the mean of its available images, so a study that uploaded fifty
-    maps carries the same weight as one that uploaded a single map. Groups are then sign-flipped
-    as whole exchangeability blocks :footcite:p:`winkler2014permutation`. With equal weights the
-    statistic reduces algebraically to the ordinary one-sample t over group means; with sample
-    size weights it is the intercept-only CR2 cluster-robust statistic of
-    :footcite:t:`hedges2010robust`, referred to Satterthwaite degrees of freedom
-    :footcite:p:`tipton2015small`.
+    maps carries the same weight as one that uploaded a single map. Groups are sign-flipped as
+    whole exchangeability blocks :footcite:p:`winkler2014permutation`. Equal weights reduce the
+    statistic to the ordinary one-sample t over group means; sample-size weights make it the
+    intercept-only CR2 statistic of :footcite:t:`hedges2010robust`, referred to Satterthwaite
+    degrees of freedom :footcite:p:`tipton2015small`.
 
     :meth:`fit` produces a :class:`~nimare.results.MetaResult` object with the following maps:
 
@@ -1881,10 +1851,9 @@ class PermutedOLS(IBMAEstimator):
 
     Warnings
     --------
-    With ``use_sample_size=True`` the degrees of freedom are Satterthwaite rather than a count
-    of groups, and one dominant study can drag them well below the group count. PyMARE warns
-    when they fall under about 4, where the approximation leaves the range
-    :footcite:t:`tipton2015small` validated.
+    With ``use_sample_size=True`` the degrees of freedom are Satterthwaite rather than a group
+    count, and one dominant study can drag them well below it. PyMARE warns below about 4
+    :footcite:p:`tipton2015small`.
 
     By default, all image-based meta-analysis estimators adopt an aggressive masking
     strategy, in which any voxels with a value of zero in any of the input maps
@@ -2133,11 +2102,9 @@ class FixedEffectsHedges(_PyMARERegressionEstimator):
 
     .. versionchanged:: 0.20.1
 
-        * New parameters: ``groupby``, ``weight_scheme`` and ``rho``, controlling how images
-          contributed by the same participants are grouped and weighted.
-        * The ``dof`` map now reports the Satterthwaite degrees of freedom of the CR2
-          cluster-robust standard errors, which is what the p-values are drawn from. It is
-          floating point rather than ``int32``, and varies by voxel under the liberal mask.
+        * New parameters: ``groupby``, ``weight_scheme`` and ``rho``.
+        * The ``dof`` map now reports Satterthwaite degrees of freedom for the CR2 standard
+          errors. It is floating point rather than ``int32``, and varies by voxel.
 
     .. versionadded:: 0.4.0
 

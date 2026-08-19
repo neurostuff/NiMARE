@@ -143,13 +143,11 @@ pprint(cresult.bibtex_)
 ###############################################################################
 # Sample-size-weighted permuted OLS
 # -----------------------------------------------------------------------------
-# When one study contributes several beta maps, treating them as independent
-# gives that study disproportionate weight. ``PermutedOLS`` groups images by
-# ``study_id`` by default: it forms one mean contribution per study and
-# sign-flips that study as a whole exchangeability block. Setting
-# ``use_sample_size=True`` additionally weights each study's contribution by its
-# participant count, using a CR2 cluster-robust variance referred to
-# Satterthwaite degrees of freedom.
+# When one study contributes several beta maps, treating them as independent gives
+# that study disproportionate weight. ``PermutedOLS`` groups by ``study_id`` by
+# default: one mean contribution per study, sign-flipped as a whole exchangeability
+# block. ``use_sample_size=True`` also weights each study by its participant count,
+# with a CR2 cluster-robust variance.
 meta = PermutedOLS(two_sided=True, use_sample_size=True)
 results = meta.fit(studyset)
 cresult = corrector.transform(results)

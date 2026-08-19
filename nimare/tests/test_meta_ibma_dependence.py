@@ -54,9 +54,7 @@ def dependent_dataset(testdata_ibma_multiple_contrasts):
     return dataset
 
 
-# ---------------------------------------------------------------------------
 # Parameters
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("estimator", ALL_ESTIMATORS)
@@ -117,9 +115,7 @@ def test_stouffers_rejects_the_removed_normalization_parameter():
         ibma.Stouffers(normalize_contrast_weights=True)
 
 
-# ---------------------------------------------------------------------------
 # groupby
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("estimator", PYMARE_ESTIMATORS)
@@ -224,9 +220,7 @@ def test_groupby_can_split_a_study_back_into_independent_samples(dependent_datas
         assert np.allclose(reference.maps[name][valid], split.maps[name][valid])
 
 
-# ---------------------------------------------------------------------------
 # Inference
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("estimator", PYMARE_ESTIMATORS)
@@ -395,9 +389,7 @@ def test_correlation_matrix_is_not_measuring_shared_signal(dependent_dataset):
     assert within > between  # the repeated study is where dependence lives
 
 
-# ---------------------------------------------------------------------------
 # Combination tests
-# ---------------------------------------------------------------------------
 
 
 def test_stouffers_delegates_group_aggregation_to_pymare():
@@ -488,9 +480,7 @@ def test_fishers_preserves_two_sided_positional_argument():
     assert estimator.use_sample_size is False
 
 
-# ---------------------------------------------------------------------------
 # PermutedOLS
-# ---------------------------------------------------------------------------
 
 
 def test_permuted_ols_matches_nilearn_when_ungrouped():
@@ -613,9 +603,7 @@ def test_permuted_ols_fwe_smoke(dependent_dataset):
     assert np.all(finite <= 1)
 
 
-# ---------------------------------------------------------------------------
 # The permutation module itself
-# ---------------------------------------------------------------------------
 
 
 def test_permutation_collapses_blocks_to_their_means():
