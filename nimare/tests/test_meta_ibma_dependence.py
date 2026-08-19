@@ -534,6 +534,39 @@ def test_permuted_ols_fwe_handles_a_bag_with_one_image_per_group():
     assert np.all((p_map > 0) & (p_map <= 1))
 
 
+def test_permuted_ols_fwe_is_not_saturated_by_a_small_bag():
+    """A two-image bag must not set the max-statistic threshold for the whole brain.
+
+    A t statistic carries the degrees of freedom of the bag it came from, so a two-image bag
+    reaches |t| in the tens or hundreds where a well-covered bag reaches 8 -- and yet is the
+    weaker result once both are referred to their own null. Maximizing over t therefore let a
+    handful of thinly covered voxels dominate the null and nothing anywhere survived. z is
+    pivotal, so the maximum compares like with like.
+    """
+    rng = np.random.RandomState(0)
+    betas = rng.normal(0.0, 1.0, size=(8, 40)) + 3.0
+
+    # Voxels 32+ are covered only by images 0 and 1, which nearly agree. One degree of
+    # freedom and a tiny spread give an enormous t but only a middling z.
+    betas[2:, 32:] = np.nan
+    betas[0, 32:] = 1.0
+    betas[1, 32:] = 1.05
+
+    meta = _bagged_estimator(ibma.PermutedOLS, {"beta_maps": betas}, codes=np.arange(8))
+    meta.generate_description = False
+    fit_maps, _, _ = meta._fit(_FakeDataset(meta.masker))
+
+    well_covered, thin = slice(0, 32), slice(32, 40)
+    assert np.nanmax(np.abs(fit_maps["t"][thin])) > np.nanmax(np.abs(fit_maps["t"][well_covered]))
+    assert np.nanmax(np.abs(fit_maps["z"][thin])) < np.nanmax(np.abs(fit_maps["z"][well_covered]))
+
+    maps, _, _ = meta.correct_fwe_montecarlo(None, n_iters=200)
+
+    p_map = maps["p_level-voxel"]
+    assert np.isfinite(p_map).all()
+    assert p_map[well_covered].min() < 0.05, "the thin bag swallowed the whole-brain threshold"
+
+
 def test_blocks_keep_one_label_space_across_bags():
     """Restricting to a bag must not switch which label space `blocks` is drawn from."""
     full = DependenceModel(np.array([0, 0, 1, 1]))

@@ -676,7 +676,8 @@ def _apply_liberal_mask(data, validity=None):
     them rather than repeated per input.
 
     """
-    mask = (~np.isnan(data) & (data != 0)) if validity is None else np.asarray(validity)
+    # isfinite, not ~isnan: an infinite value is not a usable statistic either.
+    mask = np.isfinite(data) & (data != 0) if validity is None else np.asarray(validity)
     bags = _liberal_mask_bags(mask)
 
     return (
