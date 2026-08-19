@@ -4,52 +4,36 @@ All notable changes to NiMARE releases are documented in this page.
 
 ## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.20.0...HEAD)
 
-- [ENH] Add a `groupby` parameter to the IBMA estimators, identifying images that are
-  statistically dependent because they come from the same participants. It defaults to
-  `study_id`, accepts a metadata field name or an explicit array of labels, and accepts
-  `False` to treat every image as independent. A paper that uploads genuinely independent
-  samples -- patients and controls, say -- can now say so.
-- [ENH] Expose PyMARE's `weight_scheme` and `rho` on `WeightedLeastSquares`,
-  `DerSimonianLaird`, `Hedges`, `SampleSizeBasedLikelihood`, `VarianceBasedLikelihood` and
-  `FixedEffectsHedges`. The default, `weight_scheme="rescale"` with `rho=0.8`, is the
-  correlated-effects working model of Hedges, Tipton & Johnson (2010) as weighted by the R
-  package `robumeta`: a group's total weight no longer grows with the number of maps it
-  contributed. Requires PyMARE 0.0.11.
-- [FIX] Report the degrees of freedom the p-values were actually drawn from. The
-  meta-regression estimators now report PyMARE's Satterthwaite degrees of freedom for their
-  CR2 cluster-robust standard errors, and the combination tests report the number of
-  independent groups minus one rather than the number of images minus one. **The `dof` map is
-  now floating point rather than `int32`.**
-- [FIX] Estimate the between-image correlation used by Brown's method and Stouffer's variance
-  inflation from signal-removed residuals. Correlating the raw maps measured how much studies
-  agreed rather than how dependent they were, so independent studies appeared strongly
-  correlated. Removing the signal shrinks the remaining correlation by a known amount, which
-  is now inverted exactly rather than approximated, so the estimate holds up when few images
-  are being combined.
-- [FIX] Only estimate that correlation matrix for `Fishers` and `Stouffers`, which are the
-  only estimators that read it. The others previously paid for a whole-brain correlation they
-  never used.
-- [FIX] Estimate the variance components from correlated-effects weights, so that a study
-  contributing several images no longer shrinks them. Repeated images agree with each other by
-  construction, and counting them as independent biased tau-squared low in `DerSimonianLaird`,
-  `Hedges` and `VarianceBasedLikelihood`, and sigma-squared low in `SampleSizeBasedLikelihood`.
-- [FIX] Derive group indices in a run-stable order so seeded permutation results are
-  reproducible, and align them to image ids rather than relying on row order.
-- [ENH] `PermutedOLS` now combines one contribution per group rather than one per image, with
-  an optional `use_sample_size` weighting, and sign-flips each group as a whole exchangeability
-  block. Its FWE null is now shared across liberal-mask bags, so the max-statistic distribution
-  describes the whole brain rather than one bag of it. The observed statistic for the ungrouped,
-  unweighted case is unchanged.
-- [FIX] `PermutedOLS` no longer calls `nilearn.mass_univariate.permuted_ols`. The equivalent
+- [ENH] Add a `groupby` parameter to the IBMA estimators, identifying images that share
+  participants. Defaults to `study_id`; accepts a metadata field name, an array of labels, or
+  `False` for none.
+- [ENH] Expose PyMARE's `weight_scheme` and `rho` on the six meta-regression estimators. The
+  default (`"rescale"`, `rho=0.8`) is the correlated-effects model of Hedges, Tipton & Johnson
+  (2010) as weighted by `robumeta`, so a group's total weight no longer grows with the number
+  of maps it contributed. Requires PyMARE 0.0.11.
+- [ENH] `PermutedOLS` now combines one contribution per group instead of one per image,
+  sign-flips each group as a whole exchangeability block, gains `use_sample_size`, and shares
+  one FWE null across liberal-mask bags.
+- [FIX] Report the degrees of freedom the p-values were drawn from: Satterthwaite for the
+  meta-regression estimators, independent-group count for the combination tests. **The `dof`
+  map is now floating point rather than `int32`.**
+- [FIX] Estimate the correlation used by Brown's method and Stouffer's variance inflation from
+  signal-removed residuals. Correlating the raw maps measured agreement rather than
+  dependence, so independent studies appeared strongly correlated.
+- [FIX] Only estimate that correlation for `Fishers` and `Stouffers`; the others paid for a
+  whole-brain correlation they never read.
+- [FIX] Estimate the variance components from correlated-effects weights, which no longer
+  biases tau-squared (and sigma-squared) low when a study contributes several images.
+- [FIX] Derive group indices in a run-stable order, keyed on image ids, so seeded permutation
+  results are reproducible.
+- [FIX] `PermutedOLS` no longer calls `nilearn.mass_univariate.permuted_ols`; the equivalent
   one-sample scheme now lives in `nimare.meta._permutation`, derived from Nilearn's BSD-3
-  licensed implementation, because the `exchangeability_blocks` argument is not available in
-  every supported Nilearn version. The observed `t` map is identical to Nilearn's to
-  floating-point tolerance; only the permutation RNG stream differs.
-- [API] **Removed `Stouffers.normalize_contrast_weights`.** Repeated images are now combined
-  into one variance-standardized statistic per group whenever `groupby` finds a group holding
-  more than one image, so the parameter has nothing left to switch. Pass `groupby=False` to
-  treat every image as independent instead. This is not a rename: the removed parameter divided
-  weights by image count and kept every row.
+  implementation, since `exchangeability_blocks` is missing from some supported versions. The
+  observed `t` map is unchanged to floating-point tolerance.
+- [API] **Removed `Stouffers.normalize_contrast_weights`.** Grouped images are now combined
+  into one variance-standardized statistic per group, so it has nothing left to switch; pass
+  `groupby=False` instead. Not a rename -- the old parameter divided weights by image count
+  and kept every row.
 
 ## [0.20.0](https://github.com/neurostuff/NiMARE/compare/0.19.0...0.20.0) - 2026-05-14
 

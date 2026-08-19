@@ -20,10 +20,11 @@ except ImportError:
     # nilearn >= 0.12.0; nilearn <= 0.12.1
     from nilearn._utils.niimg_conversions import check_same_fov
 
-from pymare.stats import encode_groups, estimate_null_correlation, group_mean
+from pymare.stats import estimate_null_correlation
 
 from nimare import _version
 from nimare.estimator import Estimator
+from nimare.meta._dependence import DependenceModel, hashable_label
 from nimare.meta._permutation import _empirical_max_p, _permuted_ols
 from nimare.meta.utils import _apply_liberal_mask
 from nimare.transforms import d_to_g, p_to_z, t_to_d, t_to_z
@@ -37,9 +38,8 @@ from nimare.utils import (
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
 
-# Weighting schemes accepted by the PyMARE meta-regression estimators, mirrored here so
-# that an invalid value is rejected when the NiMARE estimator is constructed rather than
-# after the caller has assembled and masked a whole dataset.
+# Mirrored from PyMARE so a typo is rejected at construction, not after the caller has
+# assembled and masked a whole dataset.
 WEIGHT_SCHEMES = frozenset({"individual", "rescale", "collapse"})
 
 
@@ -73,10 +73,8 @@ class IBMAEstimator(Estimator):
     """
 
     #: Whether this estimator reads ``inputs_["corr_matrix"]``. Only the combination tests
-    #: do: Fisher's needs it for Brown's method and Stouffer's for its variance inflation
-    #: term. The meta-regression estimators use cluster-robust standard errors, which are
-    #: distribution-free and need no correlation estimate, so computing one for them would
-    #: be a whole-brain correlation nothing ever reads.
+    #: do. Cluster-robust standard errors are distribution-free, so estimating a whole-brain
+    #: correlation for the meta-regression estimators would produce something nothing reads.
     _requires_corr_matrix = False
 
     def __init__(
@@ -212,45 +210,27 @@ class IBMAEstimator(Estimator):
 
         self._preprocess_dependence(dataset)
 
-    def _dependence_groups(self, study_mask=None):
-        """Return per-image group labels for dependence-aware estimation.
+    def _dependence(self, study_mask=None):
+        """Return the grouping of the images being fitted.
 
-        Returns None when there is nothing to correct for -- either because
-        ``groupby=False``, or because every group contains a single image -- in
-        which case estimators fall back to their standard,
-        independence-assuming inference.
+        Built per call rather than cached, because the liberal-mask path fits bags in which
+        only some of a group's images are present, so the grouping has to describe the bag.
 
         Parameters
         ----------
         study_mask : None or :obj:`numpy.ndarray`, optional
-            Indices of the images being fitted, as supplied to ``_fit_model``
-            by the liberal-mask path. None means all images.
+            Indices of the images being fitted, as supplied to ``_fit_model`` by the
+            liberal-mask path. None means all images.
+
+        Returns
+        -------
+        :obj:`~nimare.meta._dependence.DependenceModel`
         """
-        if self.groupby is False:
-            return None
-
-        groups = self.inputs_["contrast_names"]
-        if np.unique(groups).size == groups.size:
-            return None
-
-        return groups if study_mask is None else groups[study_mask]
-
-    def _effective_dof(self, study_mask):
-        """Return the degrees of freedom actually backing a combination test.
-
-        Combining p- or z-values is asymptotic in the number of independent
-        *groups*, not the number of images, so a study that contributed several
-        images buys no extra degrees of freedom. Reporting ``n_images - 1``
-        would overstate the evidence and disagree with the reference
-        distribution the p-values were drawn from.
-
-        The meta-regression estimators do not use this: PyMARE reports
-        Satterthwaite degrees of freedom for them, which is strictly more
-        informative. See :meth:`_fe_dof_map`.
-        """
-        groups = self._dependence_groups(study_mask)
-        n_units = np.unique(groups).size if groups is not None else len(study_mask)
-        return max(int(n_units) - 1, 1)
+        model = DependenceModel(
+            self.inputs_["contrast_names"],
+            enabled=self.groupby is not False,
+        )
+        return model if study_mask is None else model.for_images(study_mask)
 
     def _fe_dof_map(self, est_summary, study_mask, n_voxels):
         """Return the fixed-effect degrees of freedom, one value per voxel.
@@ -262,10 +242,14 @@ class IBMAEstimator(Estimator):
         voxel under the liberal mask. When no labels reached PyMARE there is no
         cluster-robust covariance and hence no ``fe_dof``, so fall back to the
         group count.
+
+        See Also
+        --------
+        nimare.meta._dependence.DependenceModel.dof
         """
         dof = est_summary.fe_dof
         if dof is None:
-            return np.full(n_voxels, self._effective_dof(study_mask), dtype=float)
+            return np.full(n_voxels, self._dependence(study_mask).dof, dtype=float)
 
         # (p, d) with p == 1, since every IBMA model is intercept-only.
         return np.asarray(dof, dtype=float).reshape(-1)[:n_voxels]
@@ -282,27 +266,15 @@ class IBMAEstimator(Estimator):
             dtype=float,
         )
 
-    @staticmethod
-    def _hashable_label(value):
-        """Return a hashable stand-in for one group label.
-
-        Metadata fields arrive as lists -- ``sample_sizes`` is ``[25]``, not ``25`` -- and a
-        list cannot go into the set used to assign group codes. Tuples compare and hash by
-        value, so two images carrying equal metadata still land in the same group.
-        """
-        if isinstance(value, (list, tuple, np.ndarray)):
-            return tuple(np.asarray(value).ravel().tolist())
-        return value
-
     def _resolve_group_labels(self, dataset):
         """Return one group label per image, in ``inputs_["id"]`` order."""
         if isinstance(self.groupby, str):
             # Registered as a metadata requirement in __init__, so it is already
             # collected and aligned.
-            return [self._hashable_label(v) for v in self.inputs_["dependence_groups"]]
+            return [hashable_label(v) for v in self.inputs_["dependence_groups"]]
 
         if self.groupby is not None and self.groupby is not False:
-            labels = [self._hashable_label(v) for v in np.asarray(self.groupby).ravel()]
+            labels = [hashable_label(v) for v in np.asarray(self.groupby).ravel()]
             if len(labels) != len(self.inputs_["id"]):
                 raise ValueError(
                     f"groupby must contain one label per image: expected "
@@ -333,10 +305,9 @@ class IBMAEstimator(Estimator):
         """
         labels = self._resolve_group_labels(dataset)
 
-        # Convert each label to a unique integer value. Sorting keeps the
-        # mapping stable across runs; plain set() iteration depends on string
-        # hash randomization, which would make seeded permutations
-        # irreproducible. str() first so that a mix of label types still orders.
+        # Sorting keeps the code assignment stable across runs; plain set() iteration
+        # depends on string hash randomization, which would make seeded permutations
+        # irreproducible. str() first so a mix of label types still orders.
         label_to_int = {label: i for i, label in enumerate(sorted(set(labels), key=str))}
         label_counts = Counter(labels)
 
@@ -378,15 +349,12 @@ class IBMAEstimator(Estimator):
         if self.aggressive_mask:
             maps = maps[:, self.inputs_["aggressive_mask"]]
 
-        # Correlating the raw maps would measure how much the studies agree,
-        # not how dependent they are: every map carries the same underlying
-        # activation, so even studies that are independent by construction come
-        # out strongly correlated. estimate_null_correlation removes the shared
-        # signal first, which is what Brown's method and Stouffer's inflation
-        # term actually require.
-        # Passing the groups lets the estimator invert the shrinkage that
-        # centering induces exactly, instead of only rescaling it, which matters
-        # when few images are being combined.
+        # Correlating the raw maps measures how much studies agree, not how dependent they
+        # are: every map carries the same activation, so studies independent by construction
+        # still come out correlated. estimate_null_correlation strips the shared signal
+        # first, which is what Brown's method and Stouffer's inflation term require. Passing
+        # the groups inverts the shrinkage centering induces exactly rather than rescaling
+        # it, which matters when few images are combined.
         corr_matrix = estimate_null_correlation(maps, groups=self.inputs_["contrast_names"])
         self.inputs_["corr_matrix"] = corr_matrix
 
@@ -429,7 +397,7 @@ class _PyMARERegressionEstimator(IBMAEstimator):
         ``rho`` is omitted under ``weight_scheme="individual"``, which models no
         within-group correlation and warns if it is supplied anyway.
         """
-        if self.weight_scheme == "individual" or self._dependence_groups(study_mask) is None:
+        if self.weight_scheme == "individual" or self._dependence(study_mask).labels is None:
             return {"weight_scheme": self.weight_scheme}
         return {"weight_scheme": self.weight_scheme, "rho": self.rho}
 
@@ -465,13 +433,11 @@ class Fishers(IBMAEstimator):
         of voxels that belong that have a valid value across the same studies.
         Default is True.
     groupby : None, :obj:`str`, array-like, or False, optional
-        How to identify images that are statistically dependent on each other because they
-        come from the same participants. None (the default) groups images by ``study_id``.
-        A :obj:`str` names a metadata field to group by instead, which is useful when one
-        paper contributes genuinely independent samples (e.g. patients and controls) that
-        should not be pooled. An array supplies one label per image directly. False treats
-        every image as independent, which inflates significance whenever that is not true.
-        Default is None.
+        How to identify images that share participants and are therefore dependent. None (the
+        default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
+        instead, for a paper contributing independent samples (e.g. patients and controls).
+        An array supplies one label per image. False treats every image as independent, which
+        inflates significance whenever that is untrue. Default is None.
     use_sample_size : :obj:`bool`, optional
         Whether to assign each study a total weighted-Fisher coefficient equal
         to its sample size. Repeated images divide that coefficient internally
@@ -555,7 +521,7 @@ class Fishers(IBMAEstimator):
 
         # When studies contribute several images, Brown's method replaces
         # Fisher's chi-squared reference with a scaled one.
-        groups = self._dependence_groups(study_mask)
+        groups = self._dependence(study_mask).labels
         sub_corr = None
         if groups is not None and corr is not None:
             sub_corr = corr[np.ix_(study_mask, study_mask)]
@@ -572,7 +538,7 @@ class Fishers(IBMAEstimator):
 
         z_map = est_summary.z.squeeze()
         p_map = est_summary.p.squeeze()
-        dof_map = np.tile(self._effective_dof(study_mask), n_voxels).astype(np.int32)
+        dof_map = np.tile(self._dependence(study_mask).dof, n_voxels).astype(np.int32)
 
         return z_map, p_map, dof_map
 
@@ -651,13 +617,11 @@ class Stouffers(IBMAEstimator):
         of voxels that belong that have a valid value across the same studies.
         Default is True.
     groupby : None, :obj:`str`, array-like, or False, optional
-        How to identify images that are statistically dependent on each other because they
-        come from the same participants. None (the default) groups images by ``study_id``.
-        A :obj:`str` names a metadata field to group by instead, which is useful when one
-        paper contributes genuinely independent samples (e.g. patients and controls) that
-        should not be pooled. An array supplies one label per image directly. False treats
-        every image as independent, which inflates significance whenever that is not true.
-        Default is None.
+        How to identify images that share participants and are therefore dependent. None (the
+        default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
+        instead, for a paper contributing independent samples (e.g. patients and controls).
+        An array supplies one label per image. False treats every image as independent, which
+        inflates significance whenever that is untrue. Default is None.
     use_sample_size : :obj:`bool`, optional
         Whether to use sample sizes for weights (i.e., "weighted Stouffer's") or not,
         as described in :footcite:t:`zaykin2011optimally`.
@@ -758,7 +722,7 @@ class Stouffers(IBMAEstimator):
             # when using the aggressive mask.
             study_mask = np.arange(n_studies)
 
-        groups = self._dependence_groups(study_mask)
+        groups = self._dependence(study_mask).labels
         sub_corr = None
         if groups is not None and corr is not None:
             sub_corr = corr[np.ix_(study_mask, study_mask)]
@@ -786,7 +750,7 @@ class Stouffers(IBMAEstimator):
 
         z_map = est_summary.z.squeeze()
         p_map = est_summary.p.squeeze()
-        dof_map = np.tile(self._effective_dof(study_mask), n_voxels).astype(np.int32)
+        dof_map = np.tile(self._dependence(study_mask).dof, n_voxels).astype(np.int32)
 
         return z_map, p_map, dof_map
 
@@ -873,31 +837,23 @@ class WeightedLeastSquares(_PyMARERegressionEstimator):
         of voxels that belong that have a valid value across the same studies.
         Default is True.
     groupby : None, :obj:`str`, array-like, or False, optional
-        How to identify images that are statistically dependent on each other because they
-        come from the same participants. None (the default) groups images by ``study_id``.
-        A :obj:`str` names a metadata field to group by instead, which is useful when one
-        paper contributes genuinely independent samples (e.g. patients and controls) that
-        should not be pooled. An array supplies one label per image directly. False treats
-        every image as independent, which inflates significance whenever that is not true.
-        Default is None.
+        How to identify images that share participants and are therefore dependent. None (the
+        default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
+        instead, for a paper contributing independent samples (e.g. patients and controls).
+        An array supplies one label per image. False treats every image as independent, which
+        inflates significance whenever that is untrue. Default is None.
     weight_scheme : {'rescale', 'individual', 'collapse'}, optional
-        How images belonging to one group are weighted, passed through to PyMARE.
-        ``'rescale'`` (the default) divides each image's weight by the number of images its
-        group contributed, so a group's total weight does not grow with the number of maps it
-        uploaded -- the correlated-effects working model of :footcite:t:`hedges2010robust`,
-        weighted as in :footcite:t:`fisher2015robumeta`. ``'individual'`` leaves the weights
-        alone, so the point estimate is unchanged and only the standard errors account for the
-        dependence. ``'collapse'`` reduces each group to a single row before fitting, and
-        requires more groups than predictors. Whichever scheme is used, supplying group labels
-        switches the standard errors to the CR2 cluster-robust estimator of
-        :footcite:t:`hedges2010robust` and the reference to a t distribution with Satterthwaite
-        degrees of freedom :footcite:p:`tipton2015small`. Default is 'rescale'.
+        How images within a group are weighted, passed to PyMARE. ``'rescale'`` (the default)
+        divides each image's weight by its group size, so a group's total weight does not grow
+        with the number of maps it contributed -- the correlated-effects model of
+        :footcite:t:`hedges2010robust`, weighted as in :footcite:t:`fisher2015robumeta`.
+        ``'individual'`` leaves the weights alone; ``'collapse'`` fits one row per group.
+        Group labels also switch the standard errors to CR2 and the reference to a t
+        distribution with Satterthwaite degrees of freedom :footcite:p:`tipton2015small`.
     rho : :obj:`float`, optional
-        Assumed correlation between images within a group, in [0, 1]. Enters only through the
-        estimation of tau^2, to which results are weakly sensitive; under cluster-robust
-        inference the weights affect efficiency but never the validity of the standard errors
-        :footcite:p:`hedges2010robust`. Default is 0.8, matching the R package ``robumeta``.
-        Ignored when ``weight_scheme='individual'``.
+        Assumed within-group correlation, in [0, 1]. Enters only through tau^2, to which
+        results are weakly sensitive. Default is 0.8, matching ``robumeta``. Ignored when
+        ``weight_scheme='individual'``.
     tau2 : :obj:`float` or 1D :class:`numpy.ndarray`, optional
         Assumed/known value of tau^2. Must be >= 0. Default is 0.
 
@@ -917,12 +873,10 @@ class WeightedLeastSquares(_PyMARERegressionEstimator):
 
     Warnings
     --------
-    Cluster-robust inference is asymptotic in the number of *groups*, not the number of images.
-    PyMARE warns when there are 10 or fewer groups, where robust variance estimation is known to
-    be anti-conservative :footcite:p:`hedges2010robust`, and again when the Satterthwaite degrees
-    of freedom fall below about 4, where the reference distribution leaves the range
-    :footcite:t:`tipton2015small` validated. Both are common for small meta-analyses; read the
-    ``dof`` map before the p-values.
+    Cluster-robust inference is asymptotic in the number of *groups*, not images. PyMARE warns
+    at 10 or fewer groups, where robust variance estimation is anti-conservative
+    :footcite:p:`hedges2010robust`, and when the Satterthwaite degrees of freedom fall below
+    about 4 :footcite:p:`tipton2015small`. Both are common for small meta-analyses.
 
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will likely result in biased results. The extent of this bias is currently
@@ -969,10 +923,9 @@ class WeightedLeastSquares(_PyMARERegressionEstimator):
             # when using the aggressive mask.
             study_mask = np.arange(n_studies)
 
-        # Studies contributing several images are handled with cluster-robust
-        # ("sandwich") standard errors; groups is None when there is nothing
-        # to correct for, in which case pymare uses model-based inference.
-        groups = self._dependence_groups(study_mask)
+        # None when there is nothing to correct for, which is how PyMARE is told to use
+        # model-based inference rather than cluster-robust ("sandwich") standard errors.
+        groups = self._dependence(study_mask).labels
 
         pymare_dset = pymare.Dataset(y=beta_maps, v=varcope_maps, g=groups)
         est = pymare.estimators.WeightedLeastSquares(
@@ -1076,31 +1029,23 @@ class DerSimonianLaird(_PyMARERegressionEstimator):
         of voxels that belong that have a valid value across the same studies.
         Default is True.
     groupby : None, :obj:`str`, array-like, or False, optional
-        How to identify images that are statistically dependent on each other because they
-        come from the same participants. None (the default) groups images by ``study_id``.
-        A :obj:`str` names a metadata field to group by instead, which is useful when one
-        paper contributes genuinely independent samples (e.g. patients and controls) that
-        should not be pooled. An array supplies one label per image directly. False treats
-        every image as independent, which inflates significance whenever that is not true.
-        Default is None.
+        How to identify images that share participants and are therefore dependent. None (the
+        default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
+        instead, for a paper contributing independent samples (e.g. patients and controls).
+        An array supplies one label per image. False treats every image as independent, which
+        inflates significance whenever that is untrue. Default is None.
     weight_scheme : {'rescale', 'individual', 'collapse'}, optional
-        How images belonging to one group are weighted, passed through to PyMARE.
-        ``'rescale'`` (the default) divides each image's weight by the number of images its
-        group contributed, so a group's total weight does not grow with the number of maps it
-        uploaded -- the correlated-effects working model of :footcite:t:`hedges2010robust`,
-        weighted as in :footcite:t:`fisher2015robumeta`. ``'individual'`` leaves the weights
-        alone, so the point estimate is unchanged and only the standard errors account for the
-        dependence. ``'collapse'`` reduces each group to a single row before fitting, and
-        requires more groups than predictors. Whichever scheme is used, supplying group labels
-        switches the standard errors to the CR2 cluster-robust estimator of
-        :footcite:t:`hedges2010robust` and the reference to a t distribution with Satterthwaite
-        degrees of freedom :footcite:p:`tipton2015small`. Default is 'rescale'.
+        How images within a group are weighted, passed to PyMARE. ``'rescale'`` (the default)
+        divides each image's weight by its group size, so a group's total weight does not grow
+        with the number of maps it contributed -- the correlated-effects model of
+        :footcite:t:`hedges2010robust`, weighted as in :footcite:t:`fisher2015robumeta`.
+        ``'individual'`` leaves the weights alone; ``'collapse'`` fits one row per group.
+        Group labels also switch the standard errors to CR2 and the reference to a t
+        distribution with Satterthwaite degrees of freedom :footcite:p:`tipton2015small`.
     rho : :obj:`float`, optional
-        Assumed correlation between images within a group, in [0, 1]. Enters only through the
-        estimation of tau^2, to which results are weakly sensitive; under cluster-robust
-        inference the weights affect efficiency but never the validity of the standard errors
-        :footcite:p:`hedges2010robust`. Default is 0.8, matching the R package ``robumeta``.
-        Ignored when ``weight_scheme='individual'``.
+        Assumed within-group correlation, in [0, 1]. Enters only through tau^2, to which
+        results are weakly sensitive. Default is 0.8, matching ``robumeta``. Ignored when
+        ``weight_scheme='individual'``.
 
     Notes
     -----
@@ -1119,12 +1064,10 @@ class DerSimonianLaird(_PyMARERegressionEstimator):
 
     Warnings
     --------
-    Cluster-robust inference is asymptotic in the number of *groups*, not the number of images.
-    PyMARE warns when there are 10 or fewer groups, where robust variance estimation is known to
-    be anti-conservative :footcite:p:`hedges2010robust`, and again when the Satterthwaite degrees
-    of freedom fall below about 4, where the reference distribution leaves the range
-    :footcite:t:`tipton2015small` validated. Both are common for small meta-analyses; read the
-    ``dof`` map before the p-values.
+    Cluster-robust inference is asymptotic in the number of *groups*, not images. PyMARE warns
+    at 10 or fewer groups, where robust variance estimation is anti-conservative
+    :footcite:p:`hedges2010robust`, and when the Satterthwaite degrees of freedom fall below
+    about 4 :footcite:p:`tipton2015small`. Both are common for small meta-analyses.
 
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will likely result in biased results. The extent of this bias is currently
@@ -1168,10 +1111,9 @@ class DerSimonianLaird(_PyMARERegressionEstimator):
             # when using the aggressive mask.
             study_mask = np.arange(n_studies)
 
-        # Studies contributing several images are handled with cluster-robust
-        # ("sandwich") standard errors; groups is None when there is nothing
-        # to correct for, in which case pymare uses model-based inference.
-        groups = self._dependence_groups(study_mask)
+        # None when there is nothing to correct for, which is how PyMARE is told to use
+        # model-based inference rather than cluster-robust ("sandwich") standard errors.
+        groups = self._dependence(study_mask).labels
 
         pymare_dset = pymare.Dataset(y=beta_maps, v=varcope_maps, g=groups)
         est = pymare.estimators.DerSimonianLaird(**self._pymare_weighting_kwargs(study_mask))
@@ -1281,31 +1223,23 @@ class Hedges(_PyMARERegressionEstimator):
         of voxels that belong that have a valid value across the same studies.
         Default is True.
     groupby : None, :obj:`str`, array-like, or False, optional
-        How to identify images that are statistically dependent on each other because they
-        come from the same participants. None (the default) groups images by ``study_id``.
-        A :obj:`str` names a metadata field to group by instead, which is useful when one
-        paper contributes genuinely independent samples (e.g. patients and controls) that
-        should not be pooled. An array supplies one label per image directly. False treats
-        every image as independent, which inflates significance whenever that is not true.
-        Default is None.
+        How to identify images that share participants and are therefore dependent. None (the
+        default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
+        instead, for a paper contributing independent samples (e.g. patients and controls).
+        An array supplies one label per image. False treats every image as independent, which
+        inflates significance whenever that is untrue. Default is None.
     weight_scheme : {'rescale', 'individual', 'collapse'}, optional
-        How images belonging to one group are weighted, passed through to PyMARE.
-        ``'rescale'`` (the default) divides each image's weight by the number of images its
-        group contributed, so a group's total weight does not grow with the number of maps it
-        uploaded -- the correlated-effects working model of :footcite:t:`hedges2010robust`,
-        weighted as in :footcite:t:`fisher2015robumeta`. ``'individual'`` leaves the weights
-        alone, so the point estimate is unchanged and only the standard errors account for the
-        dependence. ``'collapse'`` reduces each group to a single row before fitting, and
-        requires more groups than predictors. Whichever scheme is used, supplying group labels
-        switches the standard errors to the CR2 cluster-robust estimator of
-        :footcite:t:`hedges2010robust` and the reference to a t distribution with Satterthwaite
-        degrees of freedom :footcite:p:`tipton2015small`. Default is 'rescale'.
+        How images within a group are weighted, passed to PyMARE. ``'rescale'`` (the default)
+        divides each image's weight by its group size, so a group's total weight does not grow
+        with the number of maps it contributed -- the correlated-effects model of
+        :footcite:t:`hedges2010robust`, weighted as in :footcite:t:`fisher2015robumeta`.
+        ``'individual'`` leaves the weights alone; ``'collapse'`` fits one row per group.
+        Group labels also switch the standard errors to CR2 and the reference to a t
+        distribution with Satterthwaite degrees of freedom :footcite:p:`tipton2015small`.
     rho : :obj:`float`, optional
-        Assumed correlation between images within a group, in [0, 1]. Enters only through the
-        estimation of tau^2, to which results are weakly sensitive; under cluster-robust
-        inference the weights affect efficiency but never the validity of the standard errors
-        :footcite:p:`hedges2010robust`. Default is 0.8, matching the R package ``robumeta``.
-        Ignored when ``weight_scheme='individual'``.
+        Assumed within-group correlation, in [0, 1]. Enters only through tau^2, to which
+        results are weakly sensitive. Default is 0.8, matching ``robumeta``. Ignored when
+        ``weight_scheme='individual'``.
 
     Notes
     -----
@@ -1324,12 +1258,10 @@ class Hedges(_PyMARERegressionEstimator):
 
     Warnings
     --------
-    Cluster-robust inference is asymptotic in the number of *groups*, not the number of images.
-    PyMARE warns when there are 10 or fewer groups, where robust variance estimation is known to
-    be anti-conservative :footcite:p:`hedges2010robust`, and again when the Satterthwaite degrees
-    of freedom fall below about 4, where the reference distribution leaves the range
-    :footcite:t:`tipton2015small` validated. Both are common for small meta-analyses; read the
-    ``dof`` map before the p-values.
+    Cluster-robust inference is asymptotic in the number of *groups*, not images. PyMARE warns
+    at 10 or fewer groups, where robust variance estimation is anti-conservative
+    :footcite:p:`hedges2010robust`, and when the Satterthwaite degrees of freedom fall below
+    about 4 :footcite:p:`tipton2015small`. Both are common for small meta-analyses.
 
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will likely result in biased results. The extent of this bias is currently
@@ -1372,10 +1304,9 @@ class Hedges(_PyMARERegressionEstimator):
             # when using the aggressive mask.
             study_mask = np.arange(n_studies)
 
-        # Studies contributing several images are handled with cluster-robust
-        # ("sandwich") standard errors; groups is None when there is nothing
-        # to correct for, in which case pymare uses model-based inference.
-        groups = self._dependence_groups(study_mask)
+        # None when there is nothing to correct for, which is how PyMARE is told to use
+        # model-based inference rather than cluster-robust ("sandwich") standard errors.
+        groups = self._dependence(study_mask).labels
 
         pymare_dset = pymare.Dataset(y=beta_maps, v=varcope_maps, g=groups)
         est = pymare.estimators.Hedges(**self._pymare_weighting_kwargs(study_mask))
@@ -1485,31 +1416,23 @@ class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
         of voxels that belong that have a valid value across the same studies.
         Default is True.
     groupby : None, :obj:`str`, array-like, or False, optional
-        How to identify images that are statistically dependent on each other because they
-        come from the same participants. None (the default) groups images by ``study_id``.
-        A :obj:`str` names a metadata field to group by instead, which is useful when one
-        paper contributes genuinely independent samples (e.g. patients and controls) that
-        should not be pooled. An array supplies one label per image directly. False treats
-        every image as independent, which inflates significance whenever that is not true.
-        Default is None.
+        How to identify images that share participants and are therefore dependent. None (the
+        default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
+        instead, for a paper contributing independent samples (e.g. patients and controls).
+        An array supplies one label per image. False treats every image as independent, which
+        inflates significance whenever that is untrue. Default is None.
     weight_scheme : {'rescale', 'individual', 'collapse'}, optional
-        How images belonging to one group are weighted, passed through to PyMARE.
-        ``'rescale'`` (the default) divides each image's weight by the number of images its
-        group contributed, so a group's total weight does not grow with the number of maps it
-        uploaded -- the correlated-effects working model of :footcite:t:`hedges2010robust`,
-        weighted as in :footcite:t:`fisher2015robumeta`. ``'individual'`` leaves the weights
-        alone, so the point estimate is unchanged and only the standard errors account for the
-        dependence. ``'collapse'`` reduces each group to a single row before fitting, and
-        requires more groups than predictors. Whichever scheme is used, supplying group labels
-        switches the standard errors to the CR2 cluster-robust estimator of
-        :footcite:t:`hedges2010robust` and the reference to a t distribution with Satterthwaite
-        degrees of freedom :footcite:p:`tipton2015small`. Default is 'rescale'.
+        How images within a group are weighted, passed to PyMARE. ``'rescale'`` (the default)
+        divides each image's weight by its group size, so a group's total weight does not grow
+        with the number of maps it contributed -- the correlated-effects model of
+        :footcite:t:`hedges2010robust`, weighted as in :footcite:t:`fisher2015robumeta`.
+        ``'individual'`` leaves the weights alone; ``'collapse'`` fits one row per group.
+        Group labels also switch the standard errors to CR2 and the reference to a t
+        distribution with Satterthwaite degrees of freedom :footcite:p:`tipton2015small`.
     rho : :obj:`float`, optional
-        Assumed correlation between images within a group, in [0, 1]. Enters only through the
-        estimation of tau^2, to which results are weakly sensitive; under cluster-robust
-        inference the weights affect efficiency but never the validity of the standard errors
-        :footcite:p:`hedges2010robust`. Default is 0.8, matching the R package ``robumeta``.
-        Ignored when ``weight_scheme='individual'``.
+        Assumed within-group correlation, in [0, 1]. Enters only through tau^2, to which
+        results are weakly sensitive. Default is 0.8, matching ``robumeta``. Ignored when
+        ``weight_scheme='individual'``.
     method : {'ml', 'reml'}, optional
         The estimation method to use. The available options are
 
@@ -1541,12 +1464,10 @@ class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
 
     Warnings
     --------
-    Cluster-robust inference is asymptotic in the number of *groups*, not the number of images.
-    PyMARE warns when there are 10 or fewer groups, where robust variance estimation is known to
-    be anti-conservative :footcite:p:`hedges2010robust`, and again when the Satterthwaite degrees
-    of freedom fall below about 4, where the reference distribution leaves the range
-    :footcite:t:`tipton2015small` validated. Both are common for small meta-analyses; read the
-    ``dof`` map before the p-values.
+    Cluster-robust inference is asymptotic in the number of *groups*, not images. PyMARE warns
+    at 10 or fewer groups, where robust variance estimation is anti-conservative
+    :footcite:p:`hedges2010robust`, and when the Satterthwaite degrees of freedom fall below
+    about 4 :footcite:p:`tipton2015small`. Both are common for small meta-analyses.
 
     Likelihood-based estimators are not parallelized across voxels, so this
     method should not be used on full brains, unless you can submit your code
@@ -1595,10 +1516,9 @@ class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
         sample_sizes = self._sample_sizes_for_mask(study_mask)
         n_maps = np.tile(sample_sizes, (n_voxels, 1)).T
 
-        # Studies contributing several images are handled with cluster-robust
-        # ("sandwich") standard errors; groups is None when there is nothing
-        # to correct for, in which case pymare uses model-based inference.
-        groups = self._dependence_groups(study_mask)
+        # None when there is nothing to correct for, which is how PyMARE is told to use
+        # model-based inference rather than cluster-robust ("sandwich") standard errors.
+        groups = self._dependence(study_mask).labels
 
         pymare_dset = pymare.Dataset(y=beta_maps, n=n_maps, g=groups)
         est = pymare.estimators.SampleSizeBasedLikelihoodEstimator(
@@ -1702,31 +1622,23 @@ class VarianceBasedLikelihood(_PyMARERegressionEstimator):
         of voxels that belong that have a valid value across the same studies.
         Default is True.
     groupby : None, :obj:`str`, array-like, or False, optional
-        How to identify images that are statistically dependent on each other because they
-        come from the same participants. None (the default) groups images by ``study_id``.
-        A :obj:`str` names a metadata field to group by instead, which is useful when one
-        paper contributes genuinely independent samples (e.g. patients and controls) that
-        should not be pooled. An array supplies one label per image directly. False treats
-        every image as independent, which inflates significance whenever that is not true.
-        Default is None.
+        How to identify images that share participants and are therefore dependent. None (the
+        default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
+        instead, for a paper contributing independent samples (e.g. patients and controls).
+        An array supplies one label per image. False treats every image as independent, which
+        inflates significance whenever that is untrue. Default is None.
     weight_scheme : {'rescale', 'individual', 'collapse'}, optional
-        How images belonging to one group are weighted, passed through to PyMARE.
-        ``'rescale'`` (the default) divides each image's weight by the number of images its
-        group contributed, so a group's total weight does not grow with the number of maps it
-        uploaded -- the correlated-effects working model of :footcite:t:`hedges2010robust`,
-        weighted as in :footcite:t:`fisher2015robumeta`. ``'individual'`` leaves the weights
-        alone, so the point estimate is unchanged and only the standard errors account for the
-        dependence. ``'collapse'`` reduces each group to a single row before fitting, and
-        requires more groups than predictors. Whichever scheme is used, supplying group labels
-        switches the standard errors to the CR2 cluster-robust estimator of
-        :footcite:t:`hedges2010robust` and the reference to a t distribution with Satterthwaite
-        degrees of freedom :footcite:p:`tipton2015small`. Default is 'rescale'.
+        How images within a group are weighted, passed to PyMARE. ``'rescale'`` (the default)
+        divides each image's weight by its group size, so a group's total weight does not grow
+        with the number of maps it contributed -- the correlated-effects model of
+        :footcite:t:`hedges2010robust`, weighted as in :footcite:t:`fisher2015robumeta`.
+        ``'individual'`` leaves the weights alone; ``'collapse'`` fits one row per group.
+        Group labels also switch the standard errors to CR2 and the reference to a t
+        distribution with Satterthwaite degrees of freedom :footcite:p:`tipton2015small`.
     rho : :obj:`float`, optional
-        Assumed correlation between images within a group, in [0, 1]. Enters only through the
-        estimation of tau^2, to which results are weakly sensitive; under cluster-robust
-        inference the weights affect efficiency but never the validity of the standard errors
-        :footcite:p:`hedges2010robust`. Default is 0.8, matching the R package ``robumeta``.
-        Ignored when ``weight_scheme='individual'``.
+        Assumed within-group correlation, in [0, 1]. Enters only through tau^2, to which
+        results are weakly sensitive. Default is 0.8, matching ``robumeta``. Ignored when
+        ``weight_scheme='individual'``.
     method : {'ml', 'reml'}, optional
         The estimation method to use. The available options are
 
@@ -1756,12 +1668,10 @@ class VarianceBasedLikelihood(_PyMARERegressionEstimator):
 
     Warnings
     --------
-    Cluster-robust inference is asymptotic in the number of *groups*, not the number of images.
-    PyMARE warns when there are 10 or fewer groups, where robust variance estimation is known to
-    be anti-conservative :footcite:p:`hedges2010robust`, and again when the Satterthwaite degrees
-    of freedom fall below about 4, where the reference distribution leaves the range
-    :footcite:t:`tipton2015small` validated. Both are common for small meta-analyses; read the
-    ``dof`` map before the p-values.
+    Cluster-robust inference is asymptotic in the number of *groups*, not images. PyMARE warns
+    at 10 or fewer groups, where robust variance estimation is anti-conservative
+    :footcite:p:`hedges2010robust`, and when the Satterthwaite degrees of freedom fall below
+    about 4 :footcite:p:`tipton2015small`. Both are common for small meta-analyses.
 
     Likelihood-based estimators are not parallelized across voxels, so this
     method should not be used on full brains, unless you can submit your code
@@ -1812,10 +1722,9 @@ class VarianceBasedLikelihood(_PyMARERegressionEstimator):
             # when using the aggressive mask.
             study_mask = np.arange(n_studies)
 
-        # Studies contributing several images are handled with cluster-robust
-        # ("sandwich") standard errors; groups is None when there is nothing
-        # to correct for, in which case pymare uses model-based inference.
-        groups = self._dependence_groups(study_mask)
+        # None when there is nothing to correct for, which is how PyMARE is told to use
+        # model-based inference rather than cluster-robust ("sandwich") standard errors.
+        groups = self._dependence(study_mask).labels
 
         pymare_dset = pymare.Dataset(y=beta_maps, v=varcope_maps, g=groups)
         est = pymare.estimators.VarianceBasedLikelihoodEstimator(
@@ -1931,13 +1840,11 @@ class PermutedOLS(IBMAEstimator):
         of voxels that belong that have a valid value across the same studies.
         Default is True.
     groupby : None, :obj:`str`, array-like, or False, optional
-        How to identify images that are statistically dependent on each other because they
-        come from the same participants. None (the default) groups images by ``study_id``.
-        A :obj:`str` names a metadata field to group by instead, which is useful when one
-        paper contributes genuinely independent samples (e.g. patients and controls) that
-        should not be pooled. An array supplies one label per image directly. False treats
-        every image as independent, which inflates significance whenever that is not true.
-        Default is None.
+        How to identify images that share participants and are therefore dependent. None (the
+        default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
+        instead, for a paper contributing independent samples (e.g. patients and controls).
+        An array supplies one label per image. False treats every image as independent, which
+        inflates significance whenever that is untrue. Default is None.
     use_sample_size : :obj:`bool`, optional
         Whether to weight each group's contribution by its sample size. When False (the
         default), every group is weighted equally and the statistic is the ordinary one-sample
@@ -2033,22 +1940,14 @@ class PermutedOLS(IBMAEstimator):
         every image its own block, so collapsing is the identity and the ordinary one-sample
         test is recovered.
         """
-        groups = self._dependence_groups(study_mask)
-        if groups is None:
-            groups = np.asarray(study_mask)
-
+        dependence = self._dependence(study_mask)
         if not self.use_sample_size:
-            return groups, None, None
+            return dependence.blocks, dependence.group_order, None
 
-        codes, labels = encode_groups(groups, n_observations=groups.size)
-        sample_sizes = self._sample_sizes_for_mask(study_mask)
-        # The mean, not the first value: a group whose images disagree about sample size has
-        # no single right answer, and averaging degrades more gracefully than privileging
-        # whichever image happens to come first.
-        weights = group_mean(sample_sizes[:, None], codes).ravel()
+        weights = dependence.per_group(self._sample_sizes_for_mask(study_mask))
         if np.any(~np.isfinite(weights)) or np.any(weights <= 0):
             raise ValueError("Sample sizes must be finite positive values.")
-        return groups, labels, weights
+        return dependence.blocks, dependence.group_order, weights
 
     def _fit_model(self, beta_maps, n_perm=0, study_mask=None, n_jobs=None, sign_flips=None):
         """Fit the model to the data."""
@@ -2161,10 +2060,9 @@ class PermutedOLS(IBMAEstimator):
         n_cores = _check_ncores(n_cores)
 
         n_images = len(self.inputs_["id"])
-        all_blocks, _, _ = self._blocks_and_weights(np.arange(n_images))
         # Sorted, so that searchsorted below can map each bag's labels onto the columns of
         # the shared sign-flip matrix.
-        global_labels = np.unique(all_blocks)
+        global_labels = np.unique(self._dependence().blocks)
         rng = np.random.RandomState(self.random_state)
         global_sign_flips = rng.choice((-1.0, 1.0), size=(n_iters, global_labels.size))
 
@@ -2184,11 +2082,11 @@ class PermutedOLS(IBMAEstimator):
         h0_max_t = np.full(n_iters, -np.inf, dtype=float)
         for bag in model_bags:
             study_mask = bag["study_mask"]
-            blocks, _, _ = self._blocks_and_weights(study_mask)
-            # encode_groups orders labels by first occurrence, which is the column order
-            # _permuted_ols expects; map those onto the shared matrix's sorted columns.
-            local_labels = encode_groups(blocks, n_observations=blocks.size)[1]
-            local_indices = np.searchsorted(global_labels, local_labels)
+            # group_order is by first occurrence, which is the column order _permuted_ols
+            # expects; map those onto the shared matrix's sorted columns.
+            local_indices = np.searchsorted(
+                global_labels, self._dependence(study_mask).group_order
+            )
             bag_result = self._fit_model(
                 bag["values"],
                 n_perm=n_iters,
@@ -2260,31 +2158,23 @@ class FixedEffectsHedges(_PyMARERegressionEstimator):
         of voxels that belong that have a valid value across the same studies.
         Default is True.
     groupby : None, :obj:`str`, array-like, or False, optional
-        How to identify images that are statistically dependent on each other because they
-        come from the same participants. None (the default) groups images by ``study_id``.
-        A :obj:`str` names a metadata field to group by instead, which is useful when one
-        paper contributes genuinely independent samples (e.g. patients and controls) that
-        should not be pooled. An array supplies one label per image directly. False treats
-        every image as independent, which inflates significance whenever that is not true.
-        Default is None.
+        How to identify images that share participants and are therefore dependent. None (the
+        default) groups by ``study_id``. A :obj:`str` names a metadata field to group by
+        instead, for a paper contributing independent samples (e.g. patients and controls).
+        An array supplies one label per image. False treats every image as independent, which
+        inflates significance whenever that is untrue. Default is None.
     weight_scheme : {'rescale', 'individual', 'collapse'}, optional
-        How images belonging to one group are weighted, passed through to PyMARE.
-        ``'rescale'`` (the default) divides each image's weight by the number of images its
-        group contributed, so a group's total weight does not grow with the number of maps it
-        uploaded -- the correlated-effects working model of :footcite:t:`hedges2010robust`,
-        weighted as in :footcite:t:`fisher2015robumeta`. ``'individual'`` leaves the weights
-        alone, so the point estimate is unchanged and only the standard errors account for the
-        dependence. ``'collapse'`` reduces each group to a single row before fitting, and
-        requires more groups than predictors. Whichever scheme is used, supplying group labels
-        switches the standard errors to the CR2 cluster-robust estimator of
-        :footcite:t:`hedges2010robust` and the reference to a t distribution with Satterthwaite
-        degrees of freedom :footcite:p:`tipton2015small`. Default is 'rescale'.
+        How images within a group are weighted, passed to PyMARE. ``'rescale'`` (the default)
+        divides each image's weight by its group size, so a group's total weight does not grow
+        with the number of maps it contributed -- the correlated-effects model of
+        :footcite:t:`hedges2010robust`, weighted as in :footcite:t:`fisher2015robumeta`.
+        ``'individual'`` leaves the weights alone; ``'collapse'`` fits one row per group.
+        Group labels also switch the standard errors to CR2 and the reference to a t
+        distribution with Satterthwaite degrees of freedom :footcite:p:`tipton2015small`.
     rho : :obj:`float`, optional
-        Assumed correlation between images within a group, in [0, 1]. Enters only through the
-        estimation of tau^2, to which results are weakly sensitive; under cluster-robust
-        inference the weights affect efficiency but never the validity of the standard errors
-        :footcite:p:`hedges2010robust`. Default is 0.8, matching the R package ``robumeta``.
-        Ignored when ``weight_scheme='individual'``.
+        Assumed within-group correlation, in [0, 1]. Enters only through tau^2, to which
+        results are weakly sensitive. Default is 0.8, matching ``robumeta``. Ignored when
+        ``weight_scheme='individual'``.
     tau2 : :obj:`float` or 1D :class:`numpy.ndarray`, optional
         Assumed/known value of tau^2. Must be >= 0. Default is 0.
 
@@ -2304,12 +2194,10 @@ class FixedEffectsHedges(_PyMARERegressionEstimator):
 
     Warnings
     --------
-    Cluster-robust inference is asymptotic in the number of *groups*, not the number of images.
-    PyMARE warns when there are 10 or fewer groups, where robust variance estimation is known to
-    be anti-conservative :footcite:p:`hedges2010robust`, and again when the Satterthwaite degrees
-    of freedom fall below about 4, where the reference distribution leaves the range
-    :footcite:t:`tipton2015small` validated. Both are common for small meta-analyses; read the
-    ``dof`` map before the p-values.
+    Cluster-robust inference is asymptotic in the number of *groups*, not images. PyMARE warns
+    at 10 or fewer groups, where robust variance estimation is anti-conservative
+    :footcite:p:`hedges2010robust`, and when the Satterthwaite degrees of freedom fall below
+    about 4 :footcite:p:`tipton2015small`. Both are common for small meta-analyses.
 
     Masking approaches which average across voxels (e.g., NiftiLabelsMaskers)
     will likely result in biased results. The extent of this bias is currently
@@ -2366,10 +2254,9 @@ class FixedEffectsHedges(_PyMARERegressionEstimator):
 
         del n_maps, sample_sizes, cohens_maps
 
-        # Studies contributing several images are handled with cluster-robust
-        # ("sandwich") standard errors; groups is None when there is nothing
-        # to correct for, in which case pymare uses model-based inference.
-        groups = self._dependence_groups(study_mask)
+        # None when there is nothing to correct for, which is how PyMARE is told to use
+        # model-based inference rather than cluster-robust ("sandwich") standard errors.
+        groups = self._dependence(study_mask).labels
 
         pymare_dset = pymare.Dataset(y=hedges_maps, v=var_hedges_maps, g=groups)
         est = pymare.estimators.WeightedLeastSquares(

@@ -129,7 +129,7 @@ def test_no_correction_without_repeated_studies(estimator, testdata_ibma):
     meta.fit(testdata_ibma)
 
     assert meta.inputs_["corr_matrix"] is None
-    assert meta._dependence_groups() is None
+    assert meta._dependence().labels is None
 
 
 @pytest.mark.parametrize("estimator", COMBINATION_ESTIMATORS)
@@ -152,7 +152,7 @@ def test_corr_matrix_not_built_for_estimators_that_never_read_it(estimator, depe
 
     assert meta.inputs_["corr_matrix"] is None
     # ...but the grouping is still recorded and used.
-    assert meta._dependence_groups() is not None
+    assert meta._dependence().labels is not None
 
 
 @pytest.mark.parametrize("estimator", PYMARE_ESTIMATORS)
@@ -162,7 +162,7 @@ def test_groups_are_found_for_repeated_studies(estimator, dependent_dataset):
     meta.fit(dependent_dataset)
 
     n_images = len(meta.inputs_["id"])
-    groups = meta._dependence_groups()
+    groups = meta._dependence().labels
     assert groups is not None
     assert len(groups) == n_images
     assert np.unique(groups).size < n_images
@@ -174,7 +174,7 @@ def test_groupby_false_skips_correction(estimator, dependent_dataset):
     meta = estimator(groupby=False)
     meta.fit(dependent_dataset)
 
-    assert meta._dependence_groups() is None
+    assert meta._dependence().labels is None
 
 
 def test_groupby_accepts_a_metadata_field(dependent_dataset):
@@ -211,8 +211,7 @@ def test_groupby_rejects_a_mismatched_label_array(dependent_dataset):
 def test_groupby_can_split_a_study_back_into_independent_samples(dependent_dataset):
     """Splitting a study apart must reproduce the ungrouped result.
 
-    This is the NeuroVault case where one paper uploads patients and controls
-    separately: the images share a study_id but not their participants.
+    The NeuroVault case where one paper uploads patients and controls separately.
     """
     reference = ibma.DerSimonianLaird(groupby=False).fit(dependent_dataset)
     n_images = len(reference.estimator.inputs_["id"])
@@ -234,9 +233,8 @@ def test_groupby_can_split_a_study_back_into_independent_samples(dependent_datas
 def test_dependence_changes_inference(estimator, dependent_dataset):
     """Correcting for dependence should move both the estimates and the p-values.
 
-    Widening standard errors alone would leave image multiplicity changing the
-    point estimate. The default weighting instead gives every group the same
-    total weight before the estimator's own rule is applied.
+    Widening standard errors alone would leave image multiplicity changing the point
+    estimate; the default weighting gives every group the same total weight first.
     """
     corrected = estimator().fit(dependent_dataset)
     naive = estimator(groupby=False).fit(dependent_dataset)
@@ -324,12 +322,10 @@ def test_regression_dof_matches_pymare(estimator, dependent_dataset):
 def test_dependence_produces_usable_maps(estimator, dependent_dataset):
     """The corrected fit must still yield finite, well-formed statistics.
 
-    Note that robust standard errors are *not* guaranteed to be larger than
-    model-based ones. RVE estimates the empirical between-group variability
-    rather than trusting the reported sampling variances, so when those
-    variances are overstated -- common for real varcope maps -- the robust
-    error can legitimately come out smaller. The guarantee is consistency
-    under dependence, not conservatism, so this only checks well-formedness.
+    Only well-formedness: robust standard errors are not guaranteed to be larger than
+    model-based ones. RVE estimates between-group variability rather than trusting the
+    reported sampling variances, so when those are overstated -- common for real varcope
+    maps -- the robust error can legitimately come out smaller.
     """
     results = estimator().fit(dependent_dataset)
 
@@ -359,8 +355,7 @@ def test_every_weight_scheme_runs(weight_scheme, dependent_dataset):
 def test_rho_barely_moves_the_result(dependent_dataset):
     """Sweeping rho barely moves the result, because it enters only through tau^2.
 
-    This is what makes 0.8 a safe default and a sensitivity sweep cheap; see
-    Hedges, Tipton & Johnson (2010).
+    This is what makes 0.8 a safe default and a sensitivity sweep cheap.
     """
     low = ibma.DerSimonianLaird(rho=0.0).fit(dependent_dataset).maps["z"]
     high = ibma.DerSimonianLaird(rho=1.0).fit(dependent_dataset).maps["z"]
@@ -382,10 +377,8 @@ def test_rho_barely_moves_the_result(dependent_dataset):
 def test_correlation_matrix_is_not_measuring_shared_signal(dependent_dataset):
     """Studies that are independent by construction must look independent.
 
-    Correlating the raw maps conflates dependence with agreement: every map
-    carries the same underlying activation, so unrelated studies come out
-    strongly correlated and the variance correction is applied to the whole
-    analysis rather than to the repeated study.
+    Correlating the raw maps conflates dependence with agreement, which would spread the
+    variance correction across the whole analysis instead of the repeated study.
     """
     meta = ibma.Stouffers()
     meta.fit(dependent_dataset)

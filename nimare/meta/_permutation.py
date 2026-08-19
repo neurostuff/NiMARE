@@ -1,20 +1,13 @@
 """One-sample OLS over group contributions, with blockwise sign-flip inference.
 
-This module is NiMARE-owned code derived from Nilearn's
-:func:`nilearn.mass_univariate.permuted_ols`, which is distributed under the BSD 3-Clause
-license. The argument names, the ``h0_max_t`` / ``logp_max_t`` outputs and the max-statistic
-permutation scheme all follow it, so results are comparable and the two can be swapped.
-
-Only the one-sample max-statistic scheme is carried over. Nilearn's TFCE, cluster-level and
-confound-orthogonalization paths are not, because NiMARE's
-:class:`~nimare.meta.ibma.PermutedOLS` does not use them. The code lives here rather than being
-called from Nilearn because the exchangeability-block argument is not available in every
-supported Nilearn version, and because the group-weighted statistic has no equivalent there.
-The blockwise sign-flip scheme itself is from Winkler et al. (2014).
-
-Every statistic is evaluated through PyMARE: :func:`pymare.stats.weighted_intercept_cr2` for the
-CR2 sandwich, or :func:`pymare.stats.one_sample_t_from_sufficient_statistics` for the cheaper
-equal-weight form it reduces to.
+Derived from Nilearn's :func:`nilearn.mass_univariate.permuted_ols` (BSD 3-Clause): the
+argument names, the ``h0_max_t`` / ``logp_max_t`` outputs and the max-statistic scheme all
+follow it, so the two can be swapped. Only the one-sample scheme is carried over -- Nilearn's
+TFCE, cluster-level and confound-orthogonalization paths are not, since
+:class:`~nimare.meta.ibma.PermutedOLS` does not use them. It lives here because Nilearn's
+``exchangeability_blocks`` argument is missing from some supported versions, and because the
+group-weighted statistic has no equivalent there. The sign-flip scheme is from Winkler et al.
+(2014); every statistic is evaluated through :mod:`pymare.stats`.
 """
 
 import numpy as np
@@ -147,17 +140,15 @@ def _permuted_ols(
     )
     cr2_sufficient_statistics = None
     if group_weights is None:
-        # Equal weights make the CR2 sandwich collapse to s^2 / m, so the cheaper
-        # sufficient-statistic form computes exactly the same statistic.
+        # Equal weights collapse the CR2 sandwich to s^2 / m, so the cheaper
+        # sufficient-statistic form gives the same statistic and the degrees of freedom are
+        # exactly m - 1. Asserting that beats calling satterthwaite_dof, which warns below 4
+        # about an approximation that is not being made here.
         observed_t = one_sample_t_from_sufficient_statistics(
             group_sums,
             group_sum_squares,
             n_samples,
         )
-        # With equal weights the CR2 sandwich is exactly s^2 / m, so the Satterthwaite
-        # degrees of freedom provably come out at m - 1. Assert that rather than computing
-        # it: satterthwaite_dof warns below 4, which would fire on every small unweighted
-        # meta-analysis about an approximation that is not being made here.
         dof = float(n_samples - 1)
     else:
         weights = np.asarray(group_weights, dtype=float).ravel()
