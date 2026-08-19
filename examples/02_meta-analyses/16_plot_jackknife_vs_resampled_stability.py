@@ -358,24 +358,26 @@ plot_stat_map(
     figure=fig,
 )
 
-if contrib_df is not None and not contrib_df.empty:
-    label_key = f"label_{TARGET_IMAGE}_tail-positive"
-    if label_key in result_jk.maps:
-        plot_stat_map(
-            result_jk.get_map(label_key),
-            cut_coords=5,
-            display_mode="z",
-            title="Jackknife — cluster label map (colour = cluster ID)",
-            threshold=0.5,
-            cmap="Set1",
-            symmetric_cbar=False,
-            axes=axes[1],
-            figure=fig,
-        )
-    else:
-        axes[1].set_title("Jackknife label map not available")
+# Jackknife strips the leading statistic prefix ("z_") when it builds the
+# label-map key, so the key is ``label_<target_image without prefix>_tail-<tail>``.
+image_suffix = "_".join(TARGET_IMAGE.split("_")[1:])
+label_key = f"label_{image_suffix}_tail-positive" if image_suffix else "label_tail-positive"
+
+if result_jk.maps.get(label_key) is not None:
+    plot_stat_map(
+        result_jk.get_map(label_key),
+        cut_coords=5,
+        display_mode="z",
+        title="Jackknife — cluster label map (colour = cluster ID)",
+        threshold=0.5,
+        cmap="Set1",
+        symmetric_cbar=False,
+        axes=axes[1],
+        figure=fig,
+    )
 else:
-    axes[1].set_title("No clusters found for Jackknife")
+    axes[1].axis("off")
+    axes[1].set_title("Jackknife label map not available")
 
 plot_stat_map(
     result_loo.get_map(stability_key),
