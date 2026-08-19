@@ -297,6 +297,47 @@ pprint(results.bibtex_)
 
 
 ###############################################################################
+# Why that map looks washed out: beta units
+# -----------------------------------------------------------------------------
+# ``Hedges`` and ``DerSimonianLaird`` fit raw ``beta`` maps, and in this studyset those are
+# not on a common scale. Each study reports betas in whatever units its pipeline produced:
+# the per-study spatial standard deviation spans a factor of ~2300 here, and the varcopes
+# track it (the ratio between the two varies only ~2.5x), so this is a difference in units,
+# not in precision.
+#
+# Having varcopes does not rescue it. ``tau2`` is estimated from the observed spread of the
+# betas, which those units dominate -- its median here is ~2830, orders of magnitude above
+# the varcopes, against ~0.05 for the same studies expressed as Hedges’ g. Once ``tau2``
+# swamps every varcope, the weights ``1 / (v + tau2)`` all collapse to the same value and
+# the fit degenerates into an unweighted mean of incommensurable betas with a badly
+# inflated standard error. That is the pale, speckled map above.
+#
+# Fixed-effect fits such as ``WeightedLeastSquares`` keep a correct false-positive rate, as
+# any fixed set of weights does, but they lose power: inverse-variance weighting reads a
+# large unit as low precision and downweights that study by the square of its scale.
+#
+# The estimators that are unaffected are the ones whose inputs are already scale-free.
+# ``Stouffers`` and ``Fishers`` combine ``z`` maps, and ``FixedEffectsHedges`` below turns
+# ``t`` maps into a standardized effect size. On this studyset those three agree with each
+# other to r >= 0.97, while the beta-based fits correlate no better than ~0.87 with them.
+# For random effects on a scale-free input, build the two maps yourself. With
+# ``return_variance=True``, :func:`~nimare.transforms.d_to_g` returns *both* halves a
+# meta-regression needs: Hedges’ g, which is the effect estimate and goes in the ``beta``
+# slot, and the sampling variance of g, which goes in the ``varcope`` slot::
+#
+#     n_maps = np.tile(sample_sizes, (t_maps.shape[1], 1)).T
+#     g, var_g = d_to_g(t_to_d(t_maps, n_maps), n_maps, return_variance=True)
+#     pymare.estimators.DerSimonianLaird().fit(
+#         y=g, v=var_g, X=np.ones((g.shape[0], 1))
+#     )
+#
+# On this studyset that gives tau2 ~ 0.05 and a map correlating at r = 0.98 with the
+# z-based fits, against tau2 ~ 2830 for the same estimator on the raw betas.
+#
+# None of this applies if your betas do share a scale -- percent signal change, say, or a
+# single pipeline throughout. Then beta and varcope meta-regression is the right tool.
+
+###############################################################################
 # Fixed Effects Meta-Analysis with Hedges’ g
 # -----------------------------------------------------------------------------
 from nimare.meta.ibma import FixedEffectsHedges
