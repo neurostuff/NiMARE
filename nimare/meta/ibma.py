@@ -28,7 +28,7 @@ from nimare.estimator import Estimator
 from nimare.meta._dependence import DependenceModel, hashable_label
 from nimare.meta._permutation import _empirical_max_p, _permuted_ols
 from nimare.meta.utils import _liberal_mask_bags, _liberal_mask_values
-from nimare.transforms import d_to_g, p_to_z, t_to_d, t_to_z
+from nimare.transforms import d_to_g, p_to_z, t_to_d, t_to_z, z_to_p
 from nimare.utils import (
     _check_ncores,
     get_masker,
@@ -1554,6 +1554,9 @@ class PermutedOLS(IBMAEstimator):
         * Nilearn's :func:`~nilearn.mass_univariate.permuted_ols` is no longer called, so
           exchangeability blocks work on every supported Nilearn version. The ``t`` map is
           unchanged.
+        * New output: an uncorrected ``p`` map, which makes
+          :class:`~nimare.correct.FDRCorrector` and Bonferroni correction usable here as they
+          already were for every other estimator.
 
     .. versionchanged:: 0.2.1
 
@@ -1603,6 +1606,7 @@ class PermutedOLS(IBMAEstimator):
     ============== ===============================================================================
     "t"            T-statistic map from one-sample test.
     "z"            Z-statistic map from one-sample test.
+    "p"            P-value map from one-sample test, referred to the t distribution.
     "dof"          Degrees of freedom map from one-sample test.
     ============== ===============================================================================
 
@@ -1707,13 +1711,21 @@ class PermutedOLS(IBMAEstimator):
 
         t_map = result["t"].squeeze()
         dof = result["dof"]
-        return t_map, t_to_z(t_map, dof), np.full(n_voxels, dof, dtype=float)
+        z_map = t_to_z(t_map, dof)
+
+        # A Corrector reads "p", and FDR and Bonferroni have nothing to work from without
+        # it. Derived from the z map rather than from t directly, which is how the rest of
+        # NiMARE converts and keeps the two maps in exact agreement. The tail is the one the
+        # permutation test and the corrected map already use.
+        p_map = z_to_p(z_map, tail="two" if self.two_sided else "one")
+
+        return t_map, z_map, p_map, np.full(n_voxels, dof, dtype=float)
 
     def _fit(self, dataset):
         self.dataset = dataset
         self._resolve_masker(dataset)
 
-        maps = self._fit_over_bags(["beta_maps"], ["t", "z", "dof"])
+        maps = self._fit_over_bags(["beta_maps"], ["t", "z", "p", "dof"])
         return maps, {}, self._description_text()
 
     def correct_fwe_montecarlo(self, result, n_iters=5000, n_cores=1):
@@ -1785,7 +1797,7 @@ class PermutedOLS(IBMAEstimator):
             # group_order is by first occurrence, which is the column order _permuted_ols
             # expects; map those onto the shared matrix's sorted columns.
             local_indices = np.searchsorted(global_labels, dependence.group_order)
-            _, bag_z, bag_dof = self._fit_model(
+            _, bag_z, _, bag_dof = self._fit_model(
                 values,
                 study_mask=study_mask,
                 n_perm=n_iters,
