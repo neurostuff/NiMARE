@@ -1,5 +1,6 @@
 """Test nimare.transforms."""
 
+import logging
 import re
 
 import nibabel as nib
@@ -35,6 +36,60 @@ def test_ImageTransformer(testdata_ibma):
     new_dset = t_transformer.transform(dset)
     new_t_files = new_dset.images["t"].tolist()
     assert t_files[:-1] == new_t_files[:-1]
+
+
+@pytest.mark.parametrize("target", ["d", "g", "g_var"])
+def test_resolve_transforms_standardized_effect_sizes(testdata_ibma, target):
+    """Match the direct conversion from t and the sample size."""
+    masker = testdata_ibma.masker
+    row = testdata_ibma.images.iloc[0]
+    sample_sizes = testdata_ibma.metadata.loc[
+        testdata_ibma.metadata["id"] == row["id"], "sample_sizes"
+    ].iloc[0]
+    available = {"t": row["t"], "sample_sizes": sample_sizes}
+
+    img = transforms.resolve_transforms(target, dict(available), masker)
+
+    n = transforms.sample_sizes_to_sample_size(sample_sizes)
+    d = transforms.t_to_d(masker.transform(available["t"]), n)
+    g, g_var = transforms.d_to_g(d, n, return_variance=True)
+    expected = {"d": d, "g": g, "g_var": g_var}[target]
+
+    assert np.allclose(masker.transform(img), expected)
+
+
+def test_resolve_transforms_reaches_g_from_z_alone(testdata_ibma):
+    """A studyset with only z maps can still get to a standardized effect size, via t."""
+    masker = testdata_ibma.masker
+    row = testdata_ibma.images.iloc[0]
+    sample_sizes = testdata_ibma.metadata.loc[
+        testdata_ibma.metadata["id"] == row["id"], "sample_sizes"
+    ].iloc[0]
+
+    img = transforms.resolve_transforms("g", {"z": row["z"], "sample_sizes": sample_sizes}, masker)
+
+    assert img is not None
+    assert np.isfinite(masker.transform(img)).any()
+
+
+@pytest.mark.parametrize("target", ["d", "g", "g_var"])
+def test_resolve_transforms_needs_a_sample_size(testdata_ibma, target):
+    """Without a sample size there is nothing to standardize by, so decline rather than guess."""
+    row = testdata_ibma.images.iloc[0]
+
+    assert transforms.resolve_transforms(target, {"t": row["t"]}, testdata_ibma.masker) is None
+
+
+def test_resolve_transforms_warns_on_multiple_group_sample_sizes(testdata_ibma, caplog):
+    """Warn when the one-sample conversion is applied to more than one group."""
+    row = testdata_ibma.images.iloc[0]
+
+    with caplog.at_level(logging.WARNING, logger="nimare.transforms"):
+        transforms.resolve_transforms(
+            "g", {"t": row["t"], "sample_sizes": [20, 20]}, testdata_ibma.masker
+        )
+
+    assert "one-sample" in caplog.text
 
 
 def test_transform_images(testdata_ibma):
