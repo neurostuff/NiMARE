@@ -159,10 +159,11 @@ def test_small_sample_correction_defers_to_pymare_by_default(estimator):
     assert est.small_sample_correction == expected
 
 
+@pytest.mark.parametrize("estimator", REGRESSION_ESTIMATORS)
 @pytest.mark.parametrize("correction", ["knapp-hartung", "knapp-hartung-conservative", "wald"])
-def test_small_sample_correction_is_forwarded(correction):
+def test_small_sample_correction_is_forwarded(estimator, correction):
     """An explicit choice must reach the PyMARE estimator and change the inference."""
-    meta = ibma.DerSimonianLaird(small_sample_correction=correction)
+    meta = estimator(small_sample_correction=correction)
     meta.inputs_ = {"contrast_names": np.array([0, 1, 2])}
 
     assert meta._pymare_estimator(np.arange(3)).small_sample_correction == correction
