@@ -34,6 +34,56 @@ def _sample_from_unnormalized(weights):
     return weights.shape[0] - 1
 
 
+def _inv3_logdet(sigma):
+    """Invert a 3x3 matrix in closed form and return its log-determinant.
+
+    Uses the adjugate formula with a fixed operation order. Unlike LAPACK,
+    this is bit-for-bit reproducible across platforms and BLAS builds.
+
+    Parameters
+    ----------
+    sigma : (3, 3) :obj:`numpy.ndarray`
+        A symmetric positive-definite matrix.
+
+    Returns
+    -------
+    inv : (3, 3) :obj:`numpy.ndarray`
+        The matrix inverse.
+    logdet : :obj:`float`
+        The natural log of the determinant.
+    """
+    a00, a01, a02 = sigma[0, 0], sigma[0, 1], sigma[0, 2]
+    a10, a11, a12 = sigma[1, 0], sigma[1, 1], sigma[1, 2]
+    a20, a21, a22 = sigma[2, 0], sigma[2, 1], sigma[2, 2]
+
+    c00 = a11 * a22 - a12 * a21
+    c01 = a02 * a21 - a01 * a22
+    c02 = a01 * a12 - a02 * a11
+    c10 = a12 * a20 - a10 * a22
+    c11 = a00 * a22 - a02 * a20
+    c12 = a02 * a10 - a00 * a12
+    c20 = a10 * a21 - a11 * a20
+    c21 = a01 * a20 - a00 * a21
+    c22 = a00 * a11 - a01 * a10
+
+    det = a00 * c00 + a01 * c10 + a02 * c20
+    if not det > 0.0:
+        raise np.linalg.LinAlgError("Region covariance must be positive definite.")
+
+    inv = np.empty((3, 3), dtype=np.float64)
+    inv[0, 0] = c00 / det
+    inv[0, 1] = c01 / det
+    inv[0, 2] = c02 / det
+    inv[1, 0] = c10 / det
+    inv[1, 1] = c11 / det
+    inv[1, 2] = c12 / det
+    inv[2, 0] = c20 / det
+    inv[2, 1] = c21 / det
+    inv[2, 2] = c22 / det
+
+    return inv, np.log(det)
+
+
 @njit(cache=True, parallel=True)
 def _jit_spatial_pdf(points, mean, precision, log_norm):
     """Evaluate one Gaussian PDF over many points."""
@@ -692,10 +742,8 @@ class GCLDAModel(NiMAREBase):
 
     def _cache_region_pdf_params(self, topic_idx, region_idx, sigma):
         """Cache Gaussian parameters used repeatedly during sampling and decoding."""
-        sign, logdet = np.linalg.slogdet(sigma)
-        if sign <= 0:
-            raise np.linalg.LinAlgError("Region covariance must be positive definite.")
-        self.topics["regions_precision"][topic_idx, region_idx, ...] = np.linalg.inv(sigma)
+        inv, logdet = _inv3_logdet(sigma)
+        self.topics["regions_precision"][topic_idx, region_idx, ...] = inv
         self.topics["regions_log_norm"][topic_idx, region_idx] = -0.5 * (
             sigma.shape[0] * np.log(2 * np.pi) + logdet
         )
@@ -981,7 +1029,7 @@ class GCLDAModel(NiMAREBase):
 
         # Go over all observed peaks and add p(x|model) to running total
         for i_ptoken in range(len(self.data["ptoken_doc_idx"])):
-            doc = self.data["ptoken_doc_idx"][i_ptoken] - 1  # convert didx from 1-idx to 0-idx
+            doc = self.data["ptoken_doc_idx"][i_ptoken]
             p_x = 0  # Running total for p(x|d) across subregions:
             # Compute p(x_i|d) for each subregion separately and then
             # sum across the subregions
@@ -1016,10 +1064,8 @@ class GCLDAModel(NiMAREBase):
 
         # Go over all observed word tokens and add p(w|model) to running total
         for i_wtoken in range(len(self.data["wtoken_word_idx"])):
-            # convert wtoken_word_idx from 1-idx to 0-idx
-            word_token = self.data["wtoken_word_idx"][i_wtoken] - 1
-            # convert wtoken_doc_idx from 1-idx to 0-idx
-            doc = self.data["wtoken_doc_idx"][i_wtoken] - 1
+            word_token = self.data["wtoken_word_idx"][i_wtoken]
+            doc = self.data["wtoken_doc_idx"][i_wtoken]
             # Probability of sampling current w token from d
             p_wtoken = p_wtoken_g_doc[doc, word_token]
             # Add log-probability of current token to running total for all w tokens
