@@ -12,6 +12,7 @@ import pymare
 from joblib import Memory
 from nilearn.image import concat_imgs, resample_to_img
 from nilearn.maskers import NiftiMasker
+from scipy import stats as sp_stats
 
 try:
     # nilearn >= 0.13.0
@@ -31,6 +32,7 @@ from nimare.meta.utils import _liberal_mask_bags, _liberal_mask_values
 from nimare.transforms import d_to_g, p_to_z, t_to_d, t_to_z, z_to_p
 from nimare.utils import (
     _check_ncores,
+    _minimum_positive_float,
     get_masker,
     get_masker_mask_image,
 )
@@ -83,6 +85,12 @@ as NaN.""",
 }
 
 _DOC_PLACEHOLDER = re.compile(r"^(?P<indent> *)%\((?P<key>\w+)\)s *$")
+
+#: The largest z that :func:`scipy.stats.norm.isf` returns for a representable p-value,
+#: i.e. for the smallest positive double. A p-value any further into the tail is exactly
+#: zero in double precision and ``isf`` of that is infinite, so this is where the
+#: combination tests' z maps are bounded rather than left non-finite.
+_MAX_FINITE_Z = float(sp_stats.norm.isf(_minimum_positive_float(np.float64)))
 
 #: Constructor arguments that used to exist, and what to tell a caller still passing one.
 #: Without these, the generic "unexpected keyword argument" error points at the
@@ -502,6 +510,34 @@ class IBMAEstimator(Estimator):
         dependence = self._dependence(study_mask)
         return dependence.per_image(self._sample_sizes_for_mask(study_mask))
 
+    @staticmethod
+    def _combination_stats(est_summary):
+        """Return the z and p maps of a combination test, with the tail underflow bounded.
+
+        PyMARE reports z as ``isf(p)``. Far enough into the tail p underflows to exactly
+        zero, so z comes back infinite -- 856 voxels of the 21-study pain studyset, for
+        Fisher's. An infinite z reaches the results map, where it breaks thresholding, any
+        maximum over the map, and plotting. Bound it at :data:`_MAX_FINITE_Z`, keeping the
+        sign PyMARE assigned. The p map needs no repair; it is already clipped when the
+        :class:`~nimare.results.MetaResult` is built.
+        """
+        z_map = np.asarray(est_summary.z, dtype=float).squeeze()
+        p_map = np.asarray(est_summary.p, dtype=float).squeeze()
+
+        underflowed = np.isinf(z_map)
+        if underflowed.any():
+            LGR.warning(
+                "The combined p-value underflowed to zero at %d voxel(s), leaving an "
+                "infinite z. Reporting %.2f there, the largest z a double-precision "
+                "p-value can represent.",
+                int(underflowed.sum()),
+                _MAX_FINITE_Z,
+            )
+            z_map = z_map.copy()
+            z_map[underflowed] = _MAX_FINITE_Z * np.sign(z_map[underflowed])
+
+        return z_map, p_map
+
     def _resolve_group_labels(self, dataset):
         """Return one group label per image, in ``inputs_["id"]`` order."""
         if isinstance(self.groupby, str):
@@ -855,8 +891,7 @@ class Fishers(IBMAEstimator):
         est.fit_dataset(pymare_dset, corr=sub_corr)
         est_summary = est.summary()
 
-        z_map = est_summary.z.squeeze()
-        p_map = est_summary.p.squeeze()
+        z_map, p_map = self._combination_stats(est_summary)
         dof_map = self._dof_map(study_mask, n_voxels)
 
         return z_map, p_map, dof_map
@@ -1026,8 +1061,7 @@ class Stouffers(IBMAEstimator):
         est.fit_dataset(pymare_dset, corr=sub_corr)
         est_summary = est.summary()
 
-        z_map = est_summary.z.squeeze()
-        p_map = est_summary.p.squeeze()
+        z_map, p_map = self._combination_stats(est_summary)
         dof_map = self._dof_map(study_mask, n_voxels)
 
         return z_map, p_map, dof_map

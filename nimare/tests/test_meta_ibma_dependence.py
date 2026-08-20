@@ -715,6 +715,50 @@ def test_stouffers_aggregates_groups_whenever_they_exist(monkeypatch):
     assert captured["group_level"] is True
 
 
+@pytest.mark.parametrize("estimator", COMBINATION_ESTIMATORS)
+def test_combination_z_is_finite_when_the_combined_p_underflows(estimator, caplog):
+    """An underflowed p must not leave an infinite z in the results map.
+
+    PyMARE reports z as isf(p), and p is exactly zero in double precision beyond about
+    z = 38. An infinite z breaks thresholding, plotting and any maximum over the map.
+    """
+    # Twenty strongly concordant studies drive the combined p below double precision.
+    z_maps = np.full((20, 4), 12.0)
+    z_maps[:, 1] *= -1  # the same magnitude, opposite direction
+    z_maps[:, 2] = 0.5  # ordinary values must be untouched
+    z_maps[:, 3] = -0.5
+
+    meta = estimator()
+    meta.inputs_ = {
+        "contrast_names": np.arange(20),
+        "corr_matrix": None,
+        "id": [f"s{i}" for i in range(20)],
+    }
+    with caplog.at_level(logging.WARNING, logger="nimare.meta.ibma"):
+        z_map, p_map, _ = meta._fit_model(z_maps, study_mask=np.arange(20))
+
+    assert np.isfinite(z_map).all()
+    assert np.abs(z_map[0]) <= ibma._MAX_FINITE_Z
+    assert "underflowed" in caplog.text
+    # The sign of the bounded voxels survives, and the unaffected ones keep their values.
+    assert z_map[0] > 0 and z_map[1] < 0
+    assert np.abs(z_map[2]) < ibma._MAX_FINITE_Z
+    assert np.all(p_map >= 0)
+
+
+def test_max_finite_z_is_the_double_precision_limit():
+    """The bound must be where a p-value stops being representable, not a round number."""
+    from scipy import stats
+
+    from nimare.utils import _minimum_positive_float
+
+    assert ibma._MAX_FINITE_Z == stats.norm.isf(_minimum_positive_float(np.float64))
+    assert np.isfinite(ibma._MAX_FINITE_Z)
+    # It is the largest finite z isf can produce: one p-value further out is zero, and isf
+    # of zero is the infinity being replaced.
+    assert np.isinf(stats.norm.isf(0.0))
+
+
 def test_fishers_preserves_two_sided_positional_argument():
     """Adding sample-size weighting must not reinterpret released positional calls."""
     estimator = ibma.Fishers(False)
