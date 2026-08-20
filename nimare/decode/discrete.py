@@ -3,14 +3,13 @@
 import numpy as np
 import pandas as pd
 from nilearn.image import load_img
-from pymare.stats import log_chi2_sf
 from scipy.stats import binom
 
 from nimare.decode.base import Decoder
 from nimare.decode.utils import weight_priors
 from nimare.meta.kernel import KernelTransformer, MKDAKernel
 from nimare.stats import nlogp_bonferroni, nlogp_fdr, one_way, pearson, two_way
-from nimare.transforms import nlogp_to_z
+from nimare.transforms import chi2_to_nlogp, nlogp_to_z
 from nimare.utils import _check_type, _clip_p_values, _mask_img_to_bool, get_masker
 
 
@@ -342,7 +341,7 @@ def brainmap_decode(
         ]
     ).T
     chi2_ri = two_way(cells)
-    nlogp_ri = log_chi2_sf(chi2_ri, 1)
+    nlogp_ri = chi2_to_nlogp(chi2_ri, 1)
     sign_ri = np.sign(p_selected_g_term - p_selected_g_noterm).ravel()  # pylint: disable=no-member
 
     # Ignore rare features
@@ -629,7 +628,7 @@ def neurosynth_decode(
     # Significance testing
     # One-way chi-square test for uniformity of term frequency across terms
     chi2_fi = one_way(n_selected_term, n_term)
-    nlogp_fi = log_chi2_sf(chi2_fi, 1)
+    nlogp_fi = chi2_to_nlogp(chi2_fi, 1)
     sign_fi = np.sign(
         n_selected_term - np.mean(n_selected_term)
     ).ravel()  # pylint: disable=no-member
@@ -642,7 +641,7 @@ def neurosynth_decode(
         ]
     ).T
     chi2_ri = two_way(cells)
-    nlogp_ri = log_chi2_sf(chi2_ri, 1)
+    nlogp_ri = chi2_to_nlogp(chi2_ri, 1)
     sign_ri = np.sign(p_selected_g_term - p_selected_g_noterm).ravel()  # pylint: disable=no-member
 
     # Multiple comparisons correction across terms. Separately done for FI and RI.

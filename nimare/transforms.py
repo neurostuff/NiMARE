@@ -10,6 +10,7 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 from nilearn.reporting import get_clusters_table
+from pymare.stats import log_chi2_sf
 from scipy import special, stats
 
 from nimare.base import NiMAREBase
@@ -843,6 +844,34 @@ def t_and_beta_to_varcope(t, beta):
     return varcope
 
 
+#: ``sqrt(2)`` and ``log(2)``, which every tail below is expressed in terms of.
+_SQRT2 = np.sqrt(2.0)
+_LOG2 = np.log(2.0)
+
+
+def _log_erfc(y):
+    """Return ``log(erfc(y))``, staying finite where ``erfc`` itself underflows.
+
+    Every normal and chi-squared tail NiMARE reports reduces to one of these.
+    :func:`scipy.special.erfc` is accurate to a relative 1e-16 wherever it is
+    representable, so its logarithm is accurate to about that absolutely, and it costs a
+    third of what :func:`scipy.special.log_ndtr` does -- which matters, because these run
+    once per voxel. Past ``y = 25.4`` the value is denormal or zero, and there only
+    ``log_ndtr`` still carries it; the two agree to 2e-14 relative across the join.
+    """
+    shape = np.shape(y)
+    y = np.atleast_1d(np.asarray(y, dtype=float))
+    tail = special.erfc(y)
+    with np.errstate(divide="ignore"):
+        out = np.log(tail)
+
+    underflowed = tail < np.finfo(float).tiny
+    if underflowed.any():
+        out[underflowed] = _LOG2 + special.log_ndtr(-y[underflowed] * _SQRT2)
+
+    return out.reshape(shape)
+
+
 def z_to_nlogp(z, tail="two"):
     """Convert z-values to ``nlogp``, the natural logarithm of the p-value.
 
@@ -850,7 +879,7 @@ def z_to_nlogp(z, tail="two"):
 
     The log-space counterpart of :func:`z_to_p`, and the only place NiMARE evaluates the
     normal tail. A p-value stops being representable below about 5e-324, which bounds
-    :func:`z_to_p` at a z of 38.5; :func:`scipy.special.log_ndtr` keeps going.
+    :func:`z_to_p` at a z of 38.5; this keeps going, via :func:`_log_erfc`.
 
     Parameters
     ----------
@@ -872,9 +901,10 @@ def z_to_nlogp(z, tail="two"):
     """
     z = np.asarray(z, dtype=float)
     if tail == "two":
-        nlogp = np.log(2.0) + special.log_ndtr(-np.abs(z))
+        # Twice the upper tail is exactly erfc(|z| / sqrt(2)), so doubling costs nothing.
+        nlogp = _log_erfc(np.abs(z) / _SQRT2)
     elif tail == "one":
-        nlogp = special.log_ndtr(-z)
+        nlogp = _log_erfc(z / _SQRT2) - _LOG2
     else:
         raise ValueError('Argument "tail" must be one of ["one", "two"]')
 
@@ -1112,6 +1142,43 @@ def z_to_t(z_values, dof):
     if t_values.shape == ():
         t_values = t_values[()]
     return t_values
+
+
+def chi2_to_nlogp(chi2_values, dof):
+    """Convert chi-squared statistics to ``nlogp``, the natural logarithm of the p-value.
+
+    .. versionadded:: 0.21.0
+
+    The upper tail, which is the only one a chi-squared test uses.
+
+    Parameters
+    ----------
+    chi2_values : array_like
+        Chi-squared statistics.
+    dof : :obj:`int`
+        Degrees of freedom.
+
+    Returns
+    -------
+    nlogp : array_like
+        Natural logarithms of the p-values, as :func:`z_to_nlogp` returns them.
+
+    Notes
+    -----
+    One degree of freedom, the common case here, is evaluated through :func:`_log_erfc`.
+    The general case defers to :func:`pymare.stats.log_chi2_sf`, which is equally accurate
+    but reaches the non-underflowing majority of values through
+    :meth:`scipy.stats.rv_continuous.logsf` and so costs about a microsecond each -- two
+    orders of magnitude more, which voxelwise use cannot afford.
+    """
+    chi2_values = np.asarray(chi2_values, dtype=float)
+    if np.ndim(dof) == 0 and dof == 1:
+        # A chi-squared on one degree of freedom is a squared standard normal, so its upper
+        # tail is the two-tailed normal tail at sqrt(x), i.e. erfc(sqrt(x / 2)). The cap is
+        # against log(1), which rounding can reach at a statistic of essentially zero.
+        return np.minimum(_log_erfc(np.sqrt(chi2_values / 2.0)), 0.0)
+
+    return log_chi2_sf(chi2_values, dof)
 
 
 def t_to_d(t_values, sample_sizes):

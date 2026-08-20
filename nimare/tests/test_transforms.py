@@ -2,10 +2,12 @@
 
 import logging
 import re
+import time
 
 import nibabel as nib
 import numpy as np
 import pytest
+from pymare.stats import log_chi2_sf
 from scipy import stats
 
 from nimare import transforms
@@ -487,3 +489,60 @@ def test_z_to_t_round_trips_past_the_old_ceiling():
     assert np.max(np.abs(z)) > 8.13, "fixture must reach past the old ceiling"
 
     assert np.allclose(transforms.z_to_t(z, 20), t, rtol=1e-6)
+
+
+@pytest.mark.parametrize("dof", [1, 2, 7])
+def test_chi2_to_nlogp_matches_the_general_implementation(dof):
+    """The one-dof shortcut must agree with the general chi-squared tail it bypasses."""
+    chi2_values = np.array([0.0, 0.5, 3.0, 100.0, 1400.0, 5000.0])
+
+    nlogp = transforms.chi2_to_nlogp(chi2_values, dof)
+
+    assert np.allclose(nlogp, log_chi2_sf(chi2_values, dof), atol=1e-10)
+    assert np.all(nlogp <= 0)
+
+
+def test_chi2_to_nlogp_passes_where_the_survival_function_underflows():
+    """``chi2.logsf`` is -inf from a chi-squared of about 1416 on; this must not be."""
+    chi2_values = np.array([1500.0, 1e4, 1e5])
+
+    nlogp = transforms.chi2_to_nlogp(chi2_values, 1)
+
+    assert np.all(np.isinf(stats.chi2.logsf(chi2_values, 1))), "fixture must be past the cliff"
+    assert np.all(np.isfinite(nlogp))
+    # The exact identity for one degree of freedom, computed independently.
+    expected = np.log(2.0) + stats.norm.logcdf(-np.sqrt(chi2_values))
+    assert np.allclose(nlogp, expected, rtol=1e-12)
+
+
+def test_chi2_to_nlogp_is_cheap_for_one_degree_of_freedom():
+    """The one-dof path is what makes voxelwise use affordable, so hold it to a budget.
+
+    ``pymare.stats.log_chi2_sf`` reaches non-underflowing values through
+    ``scipy.stats.chi2.logsf`` at about a microsecond each, which cost MKDAChi2 a 19x
+    slowdown; going through ``erfc`` instead is about 25ns.
+    """
+    chi2_values = np.random.default_rng(0).chisquare(1, size=200_000)
+
+    start = time.perf_counter()
+    transforms.chi2_to_nlogp(chi2_values, 1)
+    elapsed = time.perf_counter() - start
+
+    # The general path takes ~0.4s for this many values; the budget is deliberately loose
+    # enough to survive a loaded machine while still catching a regression to it.
+    assert elapsed < 0.1, f"one-dof chi-squared tail took {elapsed:.3f}s for 200k values"
+
+
+@pytest.mark.parametrize("tail", ["one", "two"])
+def test_z_to_nlogp_agrees_with_the_log_ndtr_route(tail):
+    """The erfc-based tail must match the log_ndtr one it replaced, across the join."""
+    z = np.concatenate([np.linspace(-40.0, 40.0, 20001), np.array([50.0, 200.0])])
+
+    nlogp = transforms.z_to_nlogp(z, tail)
+
+    if tail == "two":
+        expected = np.log(2.0) + stats.norm.logcdf(-np.abs(z))
+    else:
+        expected = stats.norm.logcdf(-z)
+    assert np.all(np.isfinite(nlogp))
+    assert np.allclose(nlogp, np.minimum(expected, 0.0), rtol=1e-12, atol=1e-12)

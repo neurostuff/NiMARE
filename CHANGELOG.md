@@ -29,8 +29,18 @@ All notable changes to NiMARE releases are documented in this page.
   * `p` maps are unchanged in kind: still float32, still floored at 1e-45. Past that floor
     `-log10(p_map)` and the `logp` map no longer agree, and the `logp` map is the one to read.
   * New public conversions: `transforms.nlogp_to_z`, `transforms.z_to_nlogp`,
-    `transforms.t_to_nlogp`, `stats.nlogp_bonferroni`, `stats.nlogp_fdr`. The generic
-    `Corrector.correct_*` methods now take and return `nlogp` values.
+    `transforms.t_to_nlogp`, `transforms.chi2_to_nlogp`, `stats.nlogp_bonferroni`,
+    `stats.nlogp_fdr`. The generic `Corrector.correct_*` methods now take and return `nlogp`
+    values.
+  * The normal and chi-squared tails are evaluated through `erfc` and its logarithm, falling
+    back to `log_ndtr` only where `erfc` underflows. `scipy.stats.chi2.logsf`, which
+    `pymare.stats.log_chi2_sf` uses for values that have not underflowed, costs about a
+    microsecond each and made `MKDAChi2` 19x slower; this is about 25ns and equally accurate,
+    leaving roughly 4ms per `MKDAChi2` fit for the extra `exp` that materializes the `p` map.
+  * `z_to_t` floors its internal p-value at the smallest *normal* double rather than the
+    smallest positive one. Inverse-t implementations may return infinity for a denormal, and
+    SciPy does on some platforms, so `|z|` past 37.5 now saturates portably instead of
+    producing a machine-dependent infinity.
   * Requires a PyMARE that reports log p-values: `CombinationTestResults.logp`,
     `get_fe_stats()['logp']` and `stats.log_chi2_sf`, all of which are `nlogp` despite the
     names. That is newer than `0.0.11rc1`; the `pymare` pin still reads `>=0.0.11rc1` and

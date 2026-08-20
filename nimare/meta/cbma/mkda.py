@@ -5,7 +5,6 @@ import logging
 import nibabel as nib
 import numpy as np
 from joblib import Memory, Parallel, delayed
-from pymare.stats import log_chi2_sf
 from scipy import ndimage
 from scipy import sparse as sp_sparse
 from scipy.stats import chi2
@@ -17,7 +16,7 @@ from nimare.meta.cbma.utils import collect_csr_ma_maps, require_masked_csr
 from nimare.meta.kernel import KDAKernel, MKDAKernel
 from nimare.meta.utils import _calculate_cluster_measures
 from nimare.stats import nlogp_fdr, null_to_p, one_way, two_way_counts
-from nimare.transforms import nlogp_to_z, p_to_z
+from nimare.transforms import chi2_to_nlogp, nlogp_to_z, p_to_z
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
@@ -514,13 +513,13 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         # One-way chi-square test for uniformity of activation in each group
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels), n_selected)
-        pAgF_nlogp_vals = log_chi2_sf(pAgF_chi2_vals, 1)
+        pAgF_nlogp_vals = chi2_to_nlogp(pAgF_chi2_vals, 1)
         pAgF_p_vals = np.exp(pAgF_nlogp_vals)
         pAgF_sign = np.sign(n_selected_active_voxels - np.mean(n_selected_active_voxels))
         pAgF_z = np.sqrt(pAgF_chi2_vals) * pAgF_sign
 
         pAgU_chi2_vals = one_way(np.squeeze(n_unselected_active_voxels), n_unselected)
-        pAgU_nlogp_vals = log_chi2_sf(pAgU_chi2_vals, 1)
+        pAgU_nlogp_vals = chi2_to_nlogp(pAgU_chi2_vals, 1)
         pAgU_p_vals = np.exp(pAgU_nlogp_vals)
         pAgU_sign = np.sign(n_unselected_active_voxels - np.mean(n_unselected_active_voxels))
         pAgU_z = np.sqrt(pAgU_chi2_vals) * pAgU_sign
@@ -536,7 +535,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         del n_selected_active_voxels, n_unselected_active_voxels
 
-        pFgA_nlogp_vals = log_chi2_sf(pFgA_chi2_vals, 1)
+        pFgA_nlogp_vals = chi2_to_nlogp(pFgA_chi2_vals, 1)
         pFgA_p_vals = np.exp(pFgA_nlogp_vals)
         pFgA_sign = np.sign(pAgF - pAgU).ravel()
         pFgA_z = np.sqrt(pFgA_chi2_vals) * pFgA_sign

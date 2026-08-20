@@ -327,7 +327,6 @@ def test_mask_images_rejects_an_empty_input(testdata_ibma):
         estimator._mask_images(testdata_ibma.masker, testdata_ibma.masker.mask_img, [])
 
 
-<<<<<<< HEAD
 def test_shared_masked_image_cache_reuses_rows(testdata_ibma, monkeypatch):
     """A shared store must give the same masked values while loading each file once.
 
@@ -376,7 +375,8 @@ def test_masked_image_cache_is_off_by_default(testdata_ibma, monkeypatch):
 
     assert estimator._masked_image_cache is None
     assert len(loaded) == 2 * n_images
-=======
+
+
 @pytest.mark.parametrize("estimator", [ibma.Fishers, ibma.Stouffers])
 def test_combination_tests_report_a_tail_the_p_map_cannot_hold(estimator):
     """Twenty concordant studies drive the combined p below double precision.
@@ -442,4 +442,3 @@ def test_combination_tests_report_no_evidence_as_zero(estimator):
     assert z_map[2] > 3
     assert z_map[3] > 0 and z_map[4] < 0
     assert np.isclose(z_map[3], -z_map[4])
->>>>>>> 9ccdda7 (switch to using lossless nlogp logp to convert statistical values over using lossy p values)

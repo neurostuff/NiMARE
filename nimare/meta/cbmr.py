@@ -7,7 +7,6 @@ from functools import wraps
 
 import numpy as np
 import pandas as pd
-from pymare.stats import log_chi2_sf
 
 try:
     import torch  # type: ignore[import-not-found]
@@ -20,7 +19,7 @@ from nimare import _version
 from nimare.estimator import Estimator
 from nimare.meta import models
 from nimare.results import MetaResult
-from nimare.transforms import nlogp_to_z, z_to_nlogp
+from nimare.transforms import chi2_to_nlogp, nlogp_to_z, z_to_nlogp
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _clip_p_values,
@@ -1255,7 +1254,7 @@ class CBMRInference(object):
             cov_log_intensity,
             contrast_log_intensity,
         )
-        nlogp_vals_spatial = log_chi2_sf(chi_sq_spatial, m)
+        nlogp_vals_spatial = chi2_to_nlogp(chi_sq_spatial, m)
         if is_homogeneity_test:
             z_stats_spatial = nlogp_to_z(nlogp_vals_spatial, tail="one")
         else:
@@ -1381,7 +1380,7 @@ class CBMRInference(object):
             contrast_covariance = con_moderator @ cov_moderator_coef @ con_moderator.T
             solved = np.linalg.solve(contrast_covariance, contrast_moderator_coef)
             chi_sq_moderator = contrast_moderator_coef.T @ solved
-            nlogp_vals_moderator = log_chi2_sf(chi_sq_moderator, m_con_moderator)
+            nlogp_vals_moderator = chi2_to_nlogp(chi_sq_moderator, m_con_moderator)
             z_stats_moderator = nlogp_to_z(nlogp_vals_moderator, tail="two")
 
         return {

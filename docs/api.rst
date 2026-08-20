@@ -244,6 +244,7 @@ all NiMARE workflows.
    transforms.z_to_p
    transforms.z_to_nlogp
    transforms.t_to_nlogp
+   transforms.chi2_to_nlogp
 
 
 .. _api_extract_ref:
