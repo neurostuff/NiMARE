@@ -2,6 +2,7 @@
 
 import copy
 import json
+import logging
 import os
 
 import pandas as pd
@@ -909,3 +910,32 @@ def test_convert_neurovault_to_dataset_retries_collection_json(monkeypatch, tmp_
 def test_resolve_sample_sizes(sample_sizes, expected_sample_size):
     """Test modal sample size heuristic."""
     assert io._resolve_sample_size(sample_sizes) == expected_sample_size
+
+
+def test_unsupported_image_type_warns_once_per_type(caplog):
+    """A studyset full of unusable images should say so once, not once per image.
+
+    The warning names a value type, which is the same for every image carrying it, so
+    repeating it thousands of times for a large neurostore studyset would bury the log
+    without telling the reader anything new.
+    """
+    io._warn_unsupported_image_type.cache_clear()
+
+    with caplog.at_level(logging.WARNING, logger="nimare.io"):
+        for _ in range(50):
+            assert io._normalize_image_type("F map") is None
+        for _ in range(50):
+            assert io._normalize_image_type("chi-squared map") is None
+
+    messages = [r.message for r in caplog.records if "unsupported value type" in r.message]
+    assert len(messages) == 2
+    assert any("'F map'" in m for m in messages)
+    assert any("'chi-squared map'" in m for m in messages)
+
+
+def test_supported_image_types_are_still_normalized():
+    """Deduplicating the warning must not change which types are accepted."""
+    assert io._normalize_image_type("Z map") == "z"
+    assert io._normalize_image_type("variance") == "varcope"
+    assert io._normalize_image_type("T map") == "t"
+    assert io._normalize_image_type(None) is None

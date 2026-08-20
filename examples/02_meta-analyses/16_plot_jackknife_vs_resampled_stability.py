@@ -60,6 +60,10 @@ N_ITERS = 50       # increase to ≥5000 for real analyses
 N_RESAMPLES = 20   # increase to ≥100 for real analyses
 RANDOM_STATE = 42
 
+# Fixed axial slices, so every panel below shows the same anatomy and the maps
+# can be compared directly.
+CUT_COORDS = [-38, -2, 18, 40, 60]
+
 ###############################################################################
 # Load data and fit the baseline ALE meta-analysis
 # -----------------------------------------------------------------------------
@@ -90,7 +94,7 @@ TARGET_IMAGE = "z_desc-size_level-cluster_corr-FWE_method-montecarlo"
 # z-map.  This is the map that the diagnostics will characterise.
 plot_stat_map(
     result.get_map(TARGET_IMAGE),
-    cut_coords=5,
+    cut_coords=CUT_COORDS,
     display_mode="z",
     title="ALE — cluster-level FWE corrected z-map (baseline)",
     threshold=1.65,
@@ -297,7 +301,7 @@ fig, axes = plt.subplots(len(configs), 1, figsize=(14, 4 * len(configs)))
 for ax, (res, title) in zip(axes, configs):
     plot_stat_map(
         res.get_map(stability_key),
-        cut_coords=5,
+        cut_coords=CUT_COORDS,
         display_mode="z",
         title=f"Stability — {title}",
         threshold=0.1,
@@ -308,7 +312,8 @@ for ax, (res, title) in zip(axes, configs):
         axes=ax,
         figure=fig,
     )
-fig.tight_layout()
+# ``tight_layout`` is deliberately omitted: nilearn draws its title inside the
+# axes, so shrinking the rows makes each title collide with the row above.
 plt.show()
 
 ###############################################################################
@@ -347,7 +352,7 @@ fig, axes = plt.subplots(3, 1, figsize=(14, 11))
 
 plot_stat_map(
     result.get_map(TARGET_IMAGE),
-    cut_coords=5,
+    cut_coords=CUT_COORDS,
     display_mode="z",
     title="ALE — cluster-level FWE corrected z-map (baseline)",
     threshold=1.65,
@@ -358,28 +363,30 @@ plot_stat_map(
     figure=fig,
 )
 
-if contrib_df is not None and not contrib_df.empty:
-    label_key = f"label_{TARGET_IMAGE}_tail-positive"
-    if label_key in result_jk.maps:
-        plot_stat_map(
-            result_jk.get_map(label_key),
-            cut_coords=5,
-            display_mode="z",
-            title="Jackknife — cluster label map (colour = cluster ID)",
-            threshold=0.5,
-            cmap="Set1",
-            symmetric_cbar=False,
-            axes=axes[1],
-            figure=fig,
-        )
-    else:
-        axes[1].set_title("Jackknife label map not available")
+# Jackknife strips the leading statistic prefix ("z_") when it builds the
+# label-map key, so the key is ``label_<target_image without prefix>_tail-<tail>``.
+image_suffix = "_".join(TARGET_IMAGE.split("_")[1:])
+label_key = f"label_{image_suffix}_tail-positive" if image_suffix else "label_tail-positive"
+
+if result_jk.maps.get(label_key) is not None:
+    plot_stat_map(
+        result_jk.get_map(label_key),
+        cut_coords=CUT_COORDS,
+        display_mode="z",
+        title="Jackknife — cluster label map (colour = cluster ID)",
+        threshold=0.5,
+        cmap="Set1",
+        symmetric_cbar=False,
+        axes=axes[1],
+        figure=fig,
+    )
 else:
-    axes[1].set_title("No clusters found for Jackknife")
+    axes[1].axis("off")
+    axes[1].set_title("Jackknife label map not available")
 
 plot_stat_map(
     result_loo.get_map(stability_key),
-    cut_coords=5,
+    cut_coords=CUT_COORDS,
     display_mode="z",
     title="ResampledStability — leave-one-out voxelwise stability (0–1)",
     threshold=0.1,
@@ -391,7 +398,7 @@ plot_stat_map(
     figure=fig,
 )
 
-fig.tight_layout()
+# See the note above: no ``tight_layout`` for nilearn panels.
 plt.show()
 
 ###############################################################################

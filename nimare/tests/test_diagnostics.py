@@ -78,6 +78,38 @@ def test_summarize_cluster_values_image_mode():
     assert np.allclose(reduced, np.array([2.0, 3.0]))
 
 
+def test_cluster_ids_survive_a_map_with_no_background():
+    """A fully suprathreshold map has one real cluster, not zero.
+
+    Nilearn derives cluster ids with ``np.unique(label_map)[1:]``, which assumes a background
+    label is present. NiMARE pads a border so that call succeeds, but it then crops the border
+    off again -- so deriving ids the same way here would report no clusters for a map whose
+    table lists several.
+    """
+    rng = np.random.RandomState(0)
+    data = rng.uniform(3.0, 5.0, size=(5, 5, 5)).astype(np.float32)
+    img = nib.Nifti1Image(data, np.diag([2.0, 2.0, 2.0, 1.0]))
+
+    assert diagnostics._needs_background_border(img, 1.65)
+    clusters_table, label_maps = diagnostics._get_clusters_table(
+        img, 1.65, 0, True, return_label_maps=True
+    )
+
+    assert not clusters_table.empty
+    ids = diagnostics._cluster_ids(label_maps[0].dataobj)
+    assert ids == [1]
+    # The border must be gone again, so the label map still lines up with the input.
+    assert label_maps[0].shape == img.shape
+    assert np.array_equal(label_maps[0].affine, img.affine)
+
+
+def test_cluster_ids_excludes_background():
+    """The ordinary case is unchanged: label 0 is background, not a cluster."""
+    label_arr = np.array([[0, 1, 1], [0, 0, 2]])
+
+    assert diagnostics._cluster_ids(label_arr) == [1, 2]
+
+
 def test_get_target_value_map_prefers_deterministic_priority():
     """Target value map selection should use explicit key priority."""
     result = SimpleNamespace(maps={"z": None, "est": None, "stat": None})
@@ -275,12 +307,15 @@ def test_jackknife_smoke(
     image_name = "_".join(target_image.split("_")[1:])
     image_name = f"_{image_name}" if image_name else image_name
 
-    # For ibma.WeightedLeastSquares we have both positive and negative tail combined.
-    contribution_table = (
-        results.tables[f"{target_image}_diag-Jackknife_tab-counts"]
-        if estimator == ibma.WeightedLeastSquares
-        else results.tables[f"{target_image}_diag-Jackknife_tab-counts_tail-positive"]
+    # Whether an IBMA result has one tail or two depends on whether its z map has negative
+    # values below the threshold, so resolve the table by what is actually present: a
+    # two-tailed IBMA merges both tails into one table, everything else splits by tail.
+    table_name = f"{target_image}_diag-Jackknife_tab-counts"
+    contribution_table = results.tables.get(
+        table_name,
+        results.tables.get(f"{table_name}_tail-positive"),
     )
+    assert contribution_table is not None
 
     clusters_table = results.tables[f"{target_image}_tab-clust"]
     label_maps = results.maps[f"label{image_name}_tail-positive"]

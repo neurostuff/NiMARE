@@ -10,7 +10,7 @@ import ntpath
 import os
 import os.path as op
 import re
-from functools import wraps
+from functools import lru_cache, wraps
 from tempfile import mkstemp
 
 import joblib
@@ -1342,22 +1342,28 @@ def reduce_idx(idx_list):
     -------
     reduced_idx_list : :obj:`list` of :obj:`tuple` of :obj:`int`
         A list of two-element tuples of indices of matched braces corresponding to BibTeX entries.
+
+    Notes
+    -----
+    Brace pairs are properly nested, so once they are sorted by opening index a pair is
+    contained in an earlier one exactly when some earlier pair closes after it. That makes
+    the running maximum of the closing indices enough to decide, rather than comparing every
+    pair against every other.
+
     """
-    idx_list2 = [idx_item[0] for idx_item in idx_list]
-    idx = np.argsort(idx_list2)
-    idx_list = [idx_list[i] for i in idx]
+    if not idx_list:
+        return []
 
-    df = pd.DataFrame(data=idx_list, columns=["start", "end"])
+    starts, ends = np.transpose(idx_list)
+    order = np.argsort(starts, kind="stable")
+    ends = ends[order]
 
-    good_idx = []
-    df["within"] = False
-    for i, row in df.iterrows():
-        df["within"] = df["within"] | ((df["start"] > row["start"]) & (df["end"] < row["end"]))
-        if not df.iloc[i]["within"]:
-            good_idx.append(i)
+    # Largest closing index among the pairs that open earlier; -1 for the first pair, which
+    # nothing can contain.
+    enclosing_end = np.maximum.accumulate(np.concatenate(([-1], ends[:-1])))
+    outermost = enclosing_end <= ends
 
-    idx_list = [idx_list[i] for i in good_idx]
-    return idx_list
+    return [idx_list[i] for i in order[outermost]]
 
 
 def index_bibtex_identifiers(string, idx_list):
@@ -1443,6 +1449,25 @@ def reduce_references(citations, reference_list):
     return reduced_reference_list
 
 
+@lru_cache(maxsize=1)
+def _bibtex_reference_list():
+    """Return every entry in the packaged BibTeX file, as a tuple of strings.
+
+    The file ships with NiMARE and does not change within a session, but every
+    :class:`~nimare.results.MetaResult` asks for its references, so parsing it once and
+    reusing the result keeps that off the cost of each ``fit``.
+    """
+    bibtex_file = op.join(get_resource_path(), "references.bib")
+    with open(bibtex_file, "r") as fo:
+        bibtex_string = fo.read()
+
+    braces_idx = find_braces(bibtex_string)
+    red_braces_idx = reduce_idx(braces_idx)
+    bibtex_idx = index_bibtex_identifiers(bibtex_string, red_braces_idx)
+
+    return tuple(bibtex_string[start : end + 1] for start, end in bibtex_idx)
+
+
 def get_description_references(description):
     """Find BibTeX references for citations in a methods description.
 
@@ -1456,16 +1481,8 @@ def get_description_references(description):
     bibtex_string : :obj:`str`
         A string containing BibTeX entries, limited only to the citations in the description.
     """
-    bibtex_file = op.join(get_resource_path(), "references.bib")
-    with open(bibtex_file, "r") as fo:
-        bibtex_string = fo.read()
-
-    braces_idx = find_braces(bibtex_string)
-    red_braces_idx = reduce_idx(braces_idx)
-    bibtex_idx = index_bibtex_identifiers(bibtex_string, red_braces_idx)
     citations = find_citations(description)
-    reference_list = [bibtex_string[start : end + 1] for start, end in bibtex_idx]
-    reduced_reference_list = reduce_references(citations, reference_list)
+    reduced_reference_list = reduce_references(citations, _bibtex_reference_list())
 
     bibtex_string = "\n".join(reduced_reference_list)
     return bibtex_string

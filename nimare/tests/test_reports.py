@@ -9,7 +9,7 @@ from nimare.correct import FWECorrector
 from nimare.diagnostics import FocusCounter, Jackknife
 from nimare.meta.cbma import ALESubtraction
 from nimare.meta.ibma import FixedEffectsHedges, Stouffers
-from nimare.reports.base import Reportlet, run_reports
+from nimare.reports.base import Reportlet, _gen_diag_summary, run_reports
 from nimare.workflows import CBMAWorkflow, IBMAWorkflow, PairwiseCBMAWorkflow
 
 
@@ -21,13 +21,13 @@ from nimare.workflows import CBMAWorkflow, IBMAWorkflow, PairwiseCBMAWorkflow
         (
             "mkdachi2",
             FWECorrector(method="montecarlo", n_iters=10),
-            Jackknife(voxel_thresh=0.1),
+            Jackknife(target_threshold=0.1),
             "pairwise_cbma",
         ),
         (
             ALESubtraction(n_iters=10),
             "fdr",
-            FocusCounter(voxel_thresh=0.01, display_second_group=True),
+            FocusCounter(target_threshold=0.01, display_second_group=True),
             "pairwise_cbma",
         ),
     ],
@@ -151,7 +151,7 @@ def test_reports_alesubtraction_montecarlo_uses_pairwise_mass_map(
             vfwe_only=False,
             voxel_thresh=0.05,
         ),
-        diagnostics=FocusCounter(voxel_thresh=0.01, display_second_group=True),
+        diagnostics=FocusCounter(target_threshold=0.01, display_second_group=True),
         output_dir=tmpdir,
     )
     results = workflow.fit(dset1, dset2)
@@ -182,3 +182,22 @@ def test_reportlet_reads_utf8_html(tmp_path):
 
     assert len(reportlet.components) == 1
     assert expected_text in reportlet.components[0][0]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [{"target_threshold": 1.65}, {"voxel_thresh": 1.65}],
+    ids=["target_threshold", "deprecated-alias"],
+)
+def test_diagnostic_summary_reports_the_threshold_that_was_used(tmp_path, kwargs, recwarn):
+    """The summary must show the threshold clustering actually used.
+
+    Workflows pass their ``voxel_thresh`` on as ``target_threshold``, so a template keyed on
+    the deprecated ``voxel_thresh`` renders "None" for every workflow-generated report.
+    """
+    diagnostic = Jackknife(**kwargs)
+    out_filename = tmp_path / "diagnostics_summary.html"
+
+    _gen_diag_summary(diagnostic, out_filename)
+
+    assert "1.65" in out_filename.read_text(encoding="UTF-8")

@@ -251,9 +251,10 @@ class Corrector(NiMAREBase):
         for rm in self._required_maps:
             p = result.maps[rm]
 
-            # Find NaNs in the p value map, and mask them out
+            # Find NaNs in the p value map, and mask them out. Prefilled with NaN, since
+            # nothing is written back at those positions.
             nonnan_mask = ~np.isnan(p)
-            p_corr = np.empty_like(p)
+            p_corr = np.full_like(p, np.nan)
             p_no_nans = p[nonnan_mask]
 
             # Call the correction method

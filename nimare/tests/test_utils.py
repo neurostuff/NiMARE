@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 
 from nimare import utils
+from nimare.meta import utils as utils_meta
 from nimare.meta.utils import _apply_liberal_mask
 
 
@@ -275,3 +276,109 @@ def test_apply_liberal_mask():
 
     for pred_val, true_val in zip(pred_data, true_data):
         assert np.array_equal(pred_val, true_val)
+
+
+def test_apply_liberal_mask_groups_voxels_that_are_not_adjacent():
+    """Voxels sharing a coverage pattern belong in one bag, however they are ordered.
+
+    Voxels 0 and 2 are covered by the same studies but are separated by a voxel with a
+    different pattern, so a grouping that only compares neighbours would split them.
+    """
+    data = np.array(
+        [
+            [1.0, np.nan, 2.0],
+            [3.0, 4.0, 5.0],
+            [6.0, 7.0, 8.0],
+        ]
+    )
+
+    values, voxel_masks, study_masks = _apply_liberal_mask(data)
+
+    assert len(values) == 2
+    # Bags come back in order of first appearance, so the {0, 2} bag leads.
+    assert np.array_equal(voxel_masks[0], [0, 2])
+    assert np.array_equal(study_masks[0], [0, 1, 2])
+    assert np.array_equal(values[0], [[1.0, 2.0], [3.0, 5.0], [6.0, 8.0]])
+
+    assert np.array_equal(voxel_masks[1], [1])
+    assert np.array_equal(study_masks[1], [1, 2])
+    assert np.array_equal(values[1], [[4.0], [7.0]])
+
+
+def test_apply_liberal_mask_treats_zeros_as_missing_and_drops_thin_bags():
+    """Exact zeros mark a study as absent, and a voxel needs two studies to be fitted."""
+    # Voxel 0 is covered by every study; voxel 1 only by the last, via an explicit zero.
+    data = np.array([[1.0, 0.0], [2.0, 0.0], [3.0, 4.0]])
+
+    values, voxel_masks, study_masks = _apply_liberal_mask(data)
+
+    assert len(values) == 1
+    assert np.array_equal(voxel_masks[0], [0])
+    assert np.array_equal(study_masks[0], [0, 1, 2])
+
+
+def test_apply_liberal_mask_partitions_every_covered_voxel():
+    """Every voxel with at least two studies lands in exactly one bag."""
+    rng = np.random.default_rng(0)
+    data = rng.normal(size=(12, 400))
+    data[rng.random(data.shape) < 0.3] = np.nan
+
+    values, voxel_masks, study_masks = _apply_liberal_mask(data)
+
+    covered = (~np.isnan(data)).sum(axis=0) >= 2
+    assigned = np.concatenate(voxel_masks)
+    assert np.array_equal(np.sort(assigned), np.flatnonzero(covered))
+
+    for value, voxel_mask, study_mask in zip(values, voxel_masks, study_masks):
+        # Every voxel in a bag really is covered by exactly the bag's studies.
+        pattern = ~np.isnan(data[:, voxel_mask])
+        assert np.array_equal(np.flatnonzero(pattern[:, 0]), study_mask)
+        assert pattern[study_mask].all()
+        assert np.array_equal(value, data[np.ix_(study_mask, voxel_mask)])
+
+
+def test_liberal_mask_bags_and_values_compose_to_apply_liberal_mask():
+    """The split entry points must cut the data exactly as the combined one does.
+
+    ``IBMAEstimator`` groups once and slices each image input with the result, which is
+    roughly 40% cheaper for a beta/varcope estimator than regrouping per input. That is only
+    safe while the two paths agree.
+    """
+    rng = np.random.default_rng(0)
+    data = rng.normal(size=(8, 300))
+    data[rng.random(data.shape) < 0.3] = np.nan
+    mask = ~np.isnan(data) & (data != 0)
+
+    values, voxel_masks, study_masks = _apply_liberal_mask(data)
+    bags = utils_meta._liberal_mask_bags(mask)
+    shared_values = utils_meta._liberal_mask_values(data, bags)
+
+    assert len(bags) == len(values) > 1
+    for value, voxel_mask, study_mask, (bag_voxels, bag_studies), shared in zip(
+        values, voxel_masks, study_masks, bags, shared_values
+    ):
+        assert np.array_equal(voxel_mask, bag_voxels)
+        assert np.array_equal(study_mask, bag_studies)
+        assert np.array_equal(value, shared)
+
+
+def test_reduce_idx_keeps_only_outermost_brace_pairs():
+    """Braces nested inside an entry are discarded, whatever order they arrive in."""
+    # In "{a{b}}{c}" the (2, 4) pair sits inside (0, 5); (6, 8) stands alone.
+    braces = utils.find_braces("{a{b}}{c}")
+
+    assert utils.reduce_idx(braces) == [(0, 5), (6, 8)]
+    # The original implementation sorted its input, so shuffled input must not matter.
+    assert utils.reduce_idx(braces[::-1]) == [(0, 5), (6, 8)]
+    assert utils.reduce_idx([]) == []
+
+
+def test_bibtex_reference_list_is_cached():
+    """The packaged BibTeX file is parsed once, not on every ``fit``."""
+    utils._bibtex_reference_list.cache_clear()
+    first = utils._bibtex_reference_list()
+    second = utils._bibtex_reference_list()
+
+    assert first is second
+    assert utils._bibtex_reference_list.cache_info().hits == 1
+    assert all(entry.startswith("@") for entry in first)

@@ -90,3 +90,25 @@ def test_p_to_z_uses_float32_probability_floor():
 
     assert np.all(np.isfinite(z_values))
     assert np.all(z_values > 0)
+
+
+def test_corrector_leaves_nan_p_values_as_nan():
+    """Voxels with no p value keep it, rather than picking one up from the output buffer."""
+
+    class _Result:
+        def __init__(self, p):
+            self.maps = {"p": p, "z": np.ones_like(p), "logp": np.ones_like(p)}
+            self.estimator = None
+            self.tables = {}
+
+    p = np.random.RandomState(0).uniform(0.001, 1.0, size=1000)
+    uncovered = np.zeros(p.size, dtype=bool)
+    uncovered[::7] = True
+    p[uncovered] = np.nan
+
+    corr_maps, _, _ = FDRCorrector(alpha=0.05)._transform(_Result(p), "correct_fdr_indep")
+
+    for name in ("p", "z", "logp"):
+        assert np.isnan(corr_maps[name][uncovered]).all(), name
+    # The voxels that do have p values are still corrected.
+    assert np.isfinite(corr_maps["p"][~uncovered]).all()

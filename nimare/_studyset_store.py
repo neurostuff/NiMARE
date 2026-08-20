@@ -12,11 +12,13 @@ import numpy as np
 import pandas as pd
 
 from nimare.io import (
-    DEFAULT_MAP_TYPE_CONVERSION,
     POINT_RELATIONSHIP_COLUMNS,
+    _add_image_path,
     _extract_coerced_sample_sizes,
     _extract_coordinate_row_metadata,
+    _normalize_image_type,
     _point_value_kind_to_coordinate_column,
+    _select_image_path,
 )
 from nimare.utils import (
     _transform_coordinates_to_space,
@@ -53,22 +55,6 @@ def _rows_to_df(rows, columns, *, normalize_none_strings=False):
                 df[col] = df[col].map(lambda value: None if value == "None" else value)
     sort_col = "id" if "id" in df.columns else columns[0]
     return df.sort_values(by=sort_col).reset_index(drop=True)
-
-
-def _normalize_image_type(value_type):
-    """Convert NIMADS image type names into NiMARE Dataset image column names."""
-    if value_type in DEFAULT_MAP_TYPE_CONVERSION:
-        return DEFAULT_MAP_TYPE_CONVERSION[value_type]
-
-    if not isinstance(value_type, str):
-        return None
-
-    value_type = value_type.strip().lower()
-    if value_type.endswith(" map"):
-        value_type = value_type[: -len(" map")]
-    if value_type == "variance":
-        return "varcope"
-    return value_type
 
 
 def _structural_copy_source_dict(source_dict):
@@ -356,11 +342,17 @@ def _build_tables_from_source(source_dict):
                 if image_type is None:
                     continue
 
-                image_value = image.get("url") or image.get("filename")
-                if not isinstance(image_value, str) or not image_value:
+                image_value = _select_image_path(image.get("url"), image.get("filename"))
+                if not image_value:
                     continue
 
-                image_row[f"{image_type}__source"] = image_value
+                _add_image_path(
+                    image_row,
+                    image_type,
+                    image_value,
+                    analysis_id=full_id,
+                    key=f"{image_type}__source",
+                )
                 if image.get("space") and "space" not in image_row:
                     image_row["space"] = image.get("space")
             image_rows.append(image_row)
