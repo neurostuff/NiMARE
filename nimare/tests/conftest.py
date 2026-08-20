@@ -1,6 +1,7 @@
 """Generate fixtures for tests."""
 
 import copy
+import gc
 import os
 from shutil import copyfile
 
@@ -18,6 +19,35 @@ from nimare.utils import get_resource_path, load_json
 
 # Only enable the following once in a while for a check for SettingWithCopyWarnings
 # pd.options.mode.chained_assignment = "raise"
+
+
+@pytest.fixture(autouse=True)
+def _cheap_forced_collections():
+    """Keep the collections nilearn forces from re-walking the whole heap on every image read.
+
+    :func:`nilearn._utils.niimg.safe_get_data` runs a full :func:`gc.collect` every time it
+    reads an image's data array, to stop the transient copy it makes from doubling peak
+    memory. A full collection walks every tracked object, and importing NiMARE's dependency
+    tree alone leaves over 400,000 of them alive, so each call costs ~0.2 s. The suite reads
+    images tens of thousands of times -- once per study for every estimator fit, and once per
+    fit for every leave-one-out refit -- and those collections, not the meta-analyses, were
+    the bulk of the wall clock.
+
+    :func:`gc.freeze` moves the objects alive at this point into the permanent generation,
+    which collections skip, so nilearn's collections only walk what the test itself allocates.
+    Freezing is a splice of the generation lists, not a traversal, so it costs nothing per
+    test. Unfreezing afterwards is what keeps this from being a leak: anything this test
+    stranded is back under the collector's control before the next one starts, so peak memory
+    is bounded by a single test rather than by the session.
+
+    No test's inputs, assertions or tolerances change -- only how long the interpreter spends
+    re-tracing objects that are not going away.
+    """
+    gc.freeze()
+    try:
+        yield
+    finally:
+        gc.unfreeze()
 
 
 @pytest.fixture(scope="session")
