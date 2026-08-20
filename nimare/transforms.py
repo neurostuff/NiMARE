@@ -120,8 +120,11 @@ class ImageTransformer(NiMAREBase):
 
     Parameters
     ----------
-    target : {'z', 'p', 'beta', 'varcope'} or list
+    target : {'z', 'p', 't', 'beta', 'varcope', 'd', 'g', 'g_var'} or list
         Target image type. Multiple target types may be specified as a list.
+        ``'g'`` and ``'g_var'`` give a standardized effect size and its variance, which
+        unlike :term:`beta` and :term:`varcope` are comparable across studies whose
+        pipelines used different units.
     overwrite : :obj:`bool`, optional
         Whether to overwrite existing files or not. Default is False.
 
@@ -191,7 +194,7 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
     ----------
     images_df : :class:`pandas.DataFrame`
         DataFrame with paths to images for studies in Dataset.
-    target : {'z', 'p', 'beta', 'varcope'}
+    target : {'z', 'p', 't', 'beta', 'varcope', 'd', 'g', 'g_var'}
         Target data type.
     masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker used to define orientation and resolution of images.
@@ -213,7 +216,7 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
     """
     new_images_df = images_df.copy()  # Work on a copy of the images_df
 
-    valid_targets = {"t", "z", "p", "beta", "varcope"}
+    valid_targets = {"t", "z", "p", "beta", "varcope", "d", "g", "g_var"}
     if target not in valid_targets:
         raise ValueError(
             f"Target type {target} not supported. Must be one of: {', '.join(valid_targets)}"
@@ -284,8 +287,10 @@ def resolve_transforms(target, available_data, masker):
 
     Parameters
     ----------
-    target : {'z', 'p', 't', 'beta', 'varcope'}
-        Target image type.
+    target : {'z', 'p', 't', 'beta', 'varcope', 'd', 'g', 'g_var'}
+        Target image type. ``'d'`` is Cohen's d, ``'g'`` is Hedges' g and ``'g_var'`` is the
+        sampling variance of g; the latter two are the effect estimate and variance a
+        meta-regression takes.
     available_data : dict
         Dictionary mapping data types to their values. Images in the dictionary
         are paths to files.
@@ -330,6 +335,36 @@ def resolve_transforms(target, available_data, masker):
             return t
         else:
             return None
+    elif target in ("d", "g", "g_var"):
+        # All three start from t and the sample size. t itself resolves from z, so a
+        # studyset holding only z maps can still reach a standardized effect size.
+        if "t" not in available_data.keys():
+            temp = resolve_transforms("t", available_data, masker)
+            if temp is not None:
+                available_data["t"] = temp
+
+        if ("t" not in available_data.keys()) or ("sample_sizes" not in available_data.keys()):
+            return None
+
+        sample_sizes = available_data["sample_sizes"]
+        if np.size(sample_sizes) > 1:
+            LGR.warning(
+                "Converting to '%s' from %d group sample sizes. The conversion is the "
+                "one-sample d = t / sqrt(N), so a between-group contrast will come out "
+                "wrong; that needs both group sizes separately.",
+                target,
+                np.size(sample_sizes),
+            )
+        sample_size = sample_sizes_to_sample_size(sample_sizes)
+
+        d = t_to_d(masker.transform(available_data["t"]), sample_size)
+        if target == "d":
+            values = d
+        else:
+            g, g_var = d_to_g(d, sample_size, return_variance=True)
+            values = g if target == "g" else g_var
+
+        return masker.inverse_transform(values.squeeze())
     elif target == "beta":
         if "t" not in available_data.keys():
             # will return none given no transform/target exists
