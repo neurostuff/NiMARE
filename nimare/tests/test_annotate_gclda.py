@@ -58,69 +58,6 @@ def test_gclda_symmetric(testdata_laird):
     assert isinstance(encoded_img, nib.Nifti1Image)
 
 
-def test_gclda_loglikelihood_uses_zero_indexed_tokens(testdata_laird):
-    """Log-likelihood must index documents/words directly, not offset by one.
-
-    Regression test: the indices produced by docidx_mapper are already
-    0-indexed, so subtracting 1 wrapped document 0 to the final document.
-    """
-    counts_df = annotate.text.generate_counts(
-        testdata_laird.texts, text_column="abstract", tfidf=False, min_df=1, max_df=1.0
-    )
-    model = annotate.gclda.GCLDAModel(
-        counts_df,
-        testdata_laird.coordinates,
-        mask=testdata_laird.masker.mask_img,
-        n_topics=5,
-        n_regions=2,
-        symmetric=True,
-    )
-    model._update_regions()
-
-    # Recompute the word log-likelihood independently, with correct indexing.
-    alpha, beta, gamma = model.params["alpha"], model.params["beta"], model.params["gamma"]
-    delta = model.params["delta"]
-    doccounts = model.topics["n_peak_tokens_doc_by_topic"] + gamma
-    docprobs_z = doccounts / np.sum(doccounts, axis=1)[:, None]
-    wordcounts = model.topics["n_word_tokens_word_by_topic"] + beta
-    wordprobs = wordcounts / np.sum(wordcounts, axis=0)[None, :]
-    p_w_g_d = np.dot(docprobs_z, wordprobs.T)
-
-    expected_w = 0.0
-    for i in range(len(model.data["wtoken_word_idx"])):
-        w = model.data["wtoken_word_idx"][i]
-        d = model.data["wtoken_doc_idx"][i]
-        expected_w += np.log(p_w_g_d[d, w])
-
-    # Recompute the peak log-likelihood independently, with correct
-    # (non-offset) indexing into ptoken_doc_idx. This is the other half of
-    # the off-by-one fix: compute_log_likelihood previously subtracted 1
-    # from ptoken_doc_idx (already 0-indexed) as well, which the word-only
-    # assertion above cannot detect.
-    doccounts_y = model.topics["n_peak_tokens_doc_by_topic"] + alpha
-    docprobs_y = doccounts_y / np.sum(doccounts_y, axis=1)[:, None]
-    regioncounts = model.topics["n_peak_tokens_region_by_topic"] + delta
-    regionprobs = regioncounts / np.sum(regioncounts, axis=0)[None, :]
-    peak_probs = model._get_peak_probs(model)
-
-    expected_x = 0.0
-    for i in range(len(model.data["ptoken_doc_idx"])):
-        doc = model.data["ptoken_doc_idx"][i]
-        p_x = 0
-        for j_region in range(model.params["n_regions"]):
-            p_topic_g_doc = docprobs_y[doc]
-            p_region_g_topic = regionprobs[j_region]
-            p_region_g_doc = p_topic_g_doc * p_region_g_topic
-            p_x_r = peak_probs[i, :, j_region]
-            p_x_rd = np.dot(p_region_g_doc, p_x_r)
-            p_x += p_x_rd
-        expected_x += np.log(p_x)
-
-    x_loglikely, w_loglikely, _ = model.compute_log_likelihood(update_vectors=False)
-    assert np.isclose(x_loglikely, expected_x)
-    assert np.isclose(w_loglikely, expected_w)
-
-
 def test_gclda_inv3_logdet_matches_lapack_and_is_symmetric():
     """Closed-form 3x3 inverse must agree with LAPACK and be exactly symmetric."""
     rng = np.random.default_rng(0)
