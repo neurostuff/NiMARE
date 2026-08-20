@@ -328,7 +328,10 @@ pprint(results.bibtex_)
 #
 # There is no supported random-effects counterpart: ``FixedEffectsHedges`` is fixed-effect
 # only, and no NiMARE estimator fits a standardized effect size with a between-study
-# variance.
+# variance. Its inputs are a transform away, though:
+# ``ImageTransformer(target=["g", "g_var"])`` writes Hedges’ g and its sampling
+# variance, which are the effect estimate and variance a meta-regression takes. So what is
+# missing is an estimator that reads them, not a way to build them.
 #
 # None of this applies if your betas do share a scale -- percent signal change, say, or a
 # single pipeline throughout. Then beta and varcope meta-regression is the right tool.
