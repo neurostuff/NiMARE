@@ -482,6 +482,48 @@ def test_t_to_nlogp_matches_the_tail_of_t_to_z():
     assert np.all(np.isfinite(nlogp))
 
 
+@pytest.mark.parametrize("dof", [1, 2, 5, 10, 20, 50, 100, 200, 500])
+def test_z_to_t_inverts_t_to_z_at_every_degree_of_freedom(dof):
+    """The two directions must agree well past where either SciPy routine works.
+
+    ``scipy.stats.t.isf`` needs a representable p-value and degrades before it runs out of
+    one; ``scipy.stats.t.logsf`` underflows to -inf at high ``dof``. Both directions fall
+    back to the power law the t tail becomes, so the round trip has to hold anyway.
+    """
+    t = np.array([-1000.0, -100.0, -20.0, -5.0, -1.0, 0.0, 1.0, 5.0, 20.0, 100.0, 1000.0])
+
+    z = transforms.t_to_z(t, dof)
+    assert np.all(np.isfinite(z)), "t_to_z used to return inf once t.logsf underflowed"
+
+    back = transforms.z_to_t(z, dof)
+    # 1% covers the narrow band where the p-value has underflowed but the expansion is not
+    # yet tight; everywhere else this is 1e-11.
+    assert np.allclose(back, t, rtol=1e-2)
+
+
+def test_t_to_z_passes_where_the_log_survival_function_underflows():
+    """``t.logsf`` returns -inf from t = 96 at dof = 500, which would put inf in a z map."""
+    t = np.array([96.0, 1000.0])
+
+    z = transforms.t_to_z(t, 500)
+
+    assert np.all(np.isinf(stats.t.logsf(t, 500))), "fixture must be past SciPy's underflow"
+    assert np.all(np.isfinite(z))
+    assert np.all(np.diff(z) > 0), "must stay monotone in t"
+
+
+def test_z_to_t_reaches_a_t_no_p_value_could_invert():
+    """|z| = 50 on 10 dof matches a t of 8e54, which no representable p-value reaches.
+
+    SciPy's inverse t returns 2.5e31 at best here, and infinity on some platforms.
+    """
+    t_values = transforms.z_to_t(np.array([-50.0, 50.0]), dof=10)
+
+    assert np.all(np.isfinite(t_values))
+    assert np.isclose(t_values[1], 8.047e54, rtol=1e-3)
+    assert t_values[0] == -t_values[1]
+
+
 def test_z_to_t_round_trips_past_the_old_ceiling():
     """z_to_t floored its p at machine epsilon, so t saturated from |z| = 8.13 on."""
     t = np.array([-1000.0, -100.0, -20.0, 0.0, 20.0, 100.0, 1000.0])

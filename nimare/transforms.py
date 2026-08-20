@@ -1033,9 +1033,9 @@ def t_to_nlogp(t_values, dof, tail="two"):
     """
     t_values = np.asarray(t_values, dtype=float)
     if tail == "two":
-        nlogp = np.log(2.0) + stats.t.logsf(np.abs(t_values), dof)
+        nlogp = _LOG2 + _log_t_sf(np.abs(t_values), dof)
     elif tail == "one":
-        nlogp = stats.t.logsf(t_values, dof)
+        nlogp = _log_t_sf(t_values, dof)
     else:
         raise ValueError('Argument "tail" must be one of ["one", "two"]')
 
@@ -1051,7 +1051,8 @@ def t_to_z(t_values, dof):
     .. versionchanged:: 0.21.0
 
         The tail is evaluated in log space, so ``|z|`` is no longer bounded at 8.13 by an
-        epsilon floor on the internal p-value. Values below that bound are unchanged.
+        epsilon floor on the internal p-value, nor by ``scipy.stats.t.logsf`` underflowing at
+        high ``dof``. Values below those bounds are unchanged.
 
     .. versionadded:: 0.0.3
 
@@ -1086,13 +1087,61 @@ def t_to_z(t_values, dof):
     return z_values
 
 
+def _log_t_power_law(dof):
+    """Return ``log C`` in the far t tail, where ``sf(t) -> C * t ** -dof``.
+
+    Both t conversions bottom out in this expansion. The neglected term is of relative order
+    ``dof / t**2``, so it is exact to machine precision by the time a p-value has stopped
+    being representable, and useless for a shallow tail.
+    """
+    return (
+        special.gammaln((dof + 1) / 2.0)
+        - special.gammaln(dof / 2.0)
+        - 0.5 * np.log(np.pi)
+        + ((dof - 2) / 2.0) * np.log(dof)
+    )
+
+
+def _log_t_sf(t, dof):
+    """Return ``log(sf(t))`` for the t distribution, finite where SciPy's underflows.
+
+    :meth:`scipy.stats.rv_continuous.logsf` computes the survival function and takes its
+    logarithm afterwards, so it returns ``-inf`` as soon as that underflows -- at ``t = 96``
+    for ``dof = 500``, and ``t = 591`` for ``dof = 200``, which would put an infinity in a
+    z map. Past those points :func:`_log_t_power_law` carries the tail.
+    """
+    shape = np.shape(t)
+    t = np.atleast_1d(np.asarray(t, dtype=float))
+    with np.errstate(divide="ignore"):
+        out = np.asarray(stats.t.logsf(t, dof), dtype=float).copy()
+
+    underflowed = ~np.isfinite(out) & np.isfinite(t) & (t > 0)
+    if underflowed.any():
+        out[underflowed] = _log_t_power_law(dof) - dof * np.log(t[underflowed])
+
+    return out.reshape(shape)
+
+
+def _asymptotic_t_isf(nlogp, dof):
+    """Invert the far t tail from an ``nlogp``, where a p-value cannot reach.
+
+    Inverts :func:`_log_t_power_law`: ``log t = (log C - nlogp) / dof``. Accurate to 1e-15
+    in ``log t`` at the smallest representable p-value for ``dof`` up to 20, and to 1e-7 at
+    ``dof = 100``; correspondingly poor for a shallow tail, which is the region
+    :meth:`scipy.stats.rv_continuous.isf` handles.
+    """
+    # An overflow here is the honest answer: at dof = 1 and |z| = 50 the matched t is 1e544.
+    with np.errstate(over="ignore"):
+        return np.exp((_log_t_power_law(dof) - nlogp) / dof)
+
+
 def z_to_t(z_values, dof):
     """Convert z-statistics to t-statistics.
 
     .. versionchanged:: 0.21.0
 
-        The internal p-value is floored at the smallest normal double rather than at machine
-        epsilon, which had saturated ``t`` from ``|z| = 8.13`` on.
+        Evaluated from an ``nlogp`` rather than from a p-value floored at machine epsilon,
+        which had saturated ``t`` from ``|z| = 8.13`` on.
 
     .. versionadded:: 0.0.3
 
@@ -1111,9 +1160,14 @@ def z_to_t(z_values, dof):
     Notes
     -----
     The t and normal tail probabilities are matched, as in :func:`t_to_z`. SciPy has no
-    log-space inverse t, so unlike every other conversion here this direction is bounded:
-    past ``|z| = 37.5`` the p-value it inverts is the smallest one an inverse t can take,
-    and the returned ``t`` saturates there rather than continuing to grow.
+    log-space inverse t, so two routes are tried and the one that reproduces the tail it was
+    inverted from is kept: :meth:`scipy.stats.rv_continuous.isf`, which needs a representable
+    p-value, and :func:`_asymptotic_t_isf`, which does not. Round-tripping ``t_to_z`` is exact
+    to 1e-11 for the degrees of freedom a meta-analysis produces, and to 1% in the narrow
+    band where the p-value has underflowed but the expansion is not yet tight.
+
+    An infinity therefore means the matched ``t`` exceeds a double -- 1e544 at ``dof = 1``,
+    ``|z| = 50`` -- rather than that the conversion gave up.
 
     References
     ----------
@@ -1121,12 +1175,24 @@ def z_to_t(z_values, dof):
     """
     z_values = np.asarray(z_values, dtype=float)
 
-    # As in t_to_z: invert the one-tailed p of |z| and reapply the sign. The floor is the
-    # smallest *normal* double, not the smallest positive one: a denormal carries only a
-    # handful of mantissa bits, and inverse-t implementations are entitled to return
-    # infinity rather than invert one -- SciPy does on some platforms.
-    p = np.maximum(z_to_p(np.abs(z_values), tail="one"), np.finfo(float).tiny)
-    t_values = np.sign(z_values) * stats.t.isf(p, dof) + 0.0
+    # As in t_to_z: invert the one-tailed tail of |z| and reapply the sign.
+    nlogp = z_to_nlogp(np.abs(z_values), tail="one")
+    magnitude = _asymptotic_t_isf(nlogp, dof)
+
+    # Keep whichever candidate actually reproduces the tail it was inverted from. The
+    # expansion is exact deep in the tail and loose in the shallow part; SciPy's inverse t is
+    # the reverse, needs a representable p-value besides, and degrades before it runs out of
+    # one -- 142% off at dof = 100, p = 4e-202. Scoring both against the forward tail picks
+    # the right one at every dof without a tuned crossover.
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        from_p = stats.t.isf(np.exp(nlogp), dof)
+        magnitude = np.where(
+            np.abs(_log_t_sf(from_p, dof) - nlogp) <= np.abs(_log_t_sf(magnitude, dof) - nlogp),
+            from_p,
+            magnitude,
+        )
+
+    t_values = np.sign(z_values) * magnitude + 0.0
 
     t_values = np.asarray(t_values)
     if t_values.shape == ():
