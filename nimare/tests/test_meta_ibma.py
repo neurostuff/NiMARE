@@ -325,3 +325,53 @@ def test_mask_images_rejects_an_empty_input(testdata_ibma):
 
     with pytest.raises(ValueError, match="No images were found"):
         estimator._mask_images(testdata_ibma.masker, testdata_ibma.masker.mask_img, [])
+
+
+def test_shared_masked_image_cache_reuses_rows(testdata_ibma, monkeypatch):
+    """A shared store must give the same masked values while loading each file once.
+
+    :class:`~nimare.diagnostics.Jackknife` refits an estimator once per study over subsets of
+    one fixed set of images, so without sharing, the number of times each file is loaded,
+    resampled and masked grows with the size of the studyset.
+    """
+    reference = ibma.Fishers()
+    reference.fit(testdata_ibma)
+    expected = reference.inputs_["z_maps"]
+
+    loaded = []
+    real_load_image = ibma.IBMAEstimator._load_image
+
+    def _counting_load_image(self, filename, mask_img):
+        loaded.append(filename)
+        return real_load_image(self, filename, mask_img)
+
+    monkeypatch.setattr(ibma.IBMAEstimator, "_load_image", _counting_load_image)
+
+    cache = {}
+    for _ in range(2):
+        estimator = ibma.Fishers()
+        estimator.share_masked_image_cache(cache)
+        estimator.fit(testdata_ibma)
+        np.testing.assert_array_equal(estimator.inputs_["z_maps"], expected)
+
+    assert len(loaded) == len(set(loaded)) == len(cache) == expected.shape[0]
+
+
+def test_masked_image_cache_is_off_by_default(testdata_ibma, monkeypatch):
+    """Nothing is held onto, or reused, unless a caller asks for it."""
+    loaded = []
+    real_load_image = ibma.IBMAEstimator._load_image
+
+    def _counting_load_image(self, filename, mask_img):
+        loaded.append(filename)
+        return real_load_image(self, filename, mask_img)
+
+    monkeypatch.setattr(ibma.IBMAEstimator, "_load_image", _counting_load_image)
+
+    estimator = ibma.Fishers()
+    estimator.fit(testdata_ibma)
+    n_images = estimator.inputs_["z_maps"].shape[0]
+    estimator.fit(testdata_ibma)
+
+    assert estimator._masked_image_cache is None
+    assert len(loaded) == 2 * n_images

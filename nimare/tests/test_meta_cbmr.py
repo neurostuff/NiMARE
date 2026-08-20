@@ -84,6 +84,28 @@ def inference_results(testdata_cbmr_simulated, cbmr_result):
     )
 
 
+def _assert_frame_equal_by_block(left, right):
+    """Assert two frames match, comparing their values as one block.
+
+    Every check :func:`pandas.testing.assert_frame_equal` makes is made below -- axes,
+    axis names and dtypes, then the values -- but it makes them column by column. These
+    frames carry one row per group and one column per voxel, a few hundred thousand of them,
+    so that walk costs about thirty seconds per table: several times more than fitting the
+    model the table summarizes. The values are compared exactly rather than within a
+    tolerance, so this is the stricter of the two.
+    """
+    for axis_name, left_axis, right_axis in (
+        ("index", left.index, right.index),
+        ("columns", left.columns, right.columns),
+    ):
+        assert left_axis.name == right_axis.name, axis_name
+        assert left_axis.dtype == right_axis.dtype, axis_name
+        assert left_axis.equals(right_axis), axis_name
+
+    assert left.dtypes.equals(right.dtypes)
+    np.testing.assert_array_equal(left.to_numpy(), right.to_numpy())
+
+
 @pytest.fixture(
     scope="session",
     params=[
@@ -296,7 +318,7 @@ def test_cbmr_summary_tables_match_legacy_from_dict_construction(cbmr_result):
         )
 
     for table_name, legacy_table in legacy_tables.items():
-        pd.testing.assert_frame_equal(cbmr_result.tables[table_name], legacy_table)
+        _assert_frame_equal_by_block(cbmr_result.tables[table_name], legacy_table)
 
 
 def test_cbmr_inference(inference_results):

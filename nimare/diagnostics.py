@@ -11,7 +11,6 @@ import pandas as pd
 from joblib import Parallel, delayed
 from nilearn.maskers import NiftiLabelsMasker
 from nilearn.reporting import get_clusters_table
-from scipy.spatial.distance import cdist
 from tqdm.auto import tqdm
 
 from nimare.base import NiMAREBase
@@ -236,6 +235,61 @@ def _get_clusters_table_and_label_maps(
     return peak_clusters_table, label_maps
 
 
+def _count_foci_per_cluster(label_arr, clust_ids, ijk):
+    """Count how many of ``ijk`` fall within one voxel of each cluster in ``label_arr``.
+
+    A focus counts towards a cluster when some voxel of that cluster lies less than one
+    voxel away from it, which is the same rule as measuring every cluster voxel's distance
+    to every focus and keeping the foci with a hit. Doing it that way costs one pass over the
+    whole volume per cluster, so a map with a few hundred clusters spends minutes on
+    distances that a focus's own neighbourhood already settles: only integer voxels strictly
+    inside a unit ball around the focus can qualify, and there are at most 27 of those.
+
+    Parameters
+    ----------
+    label_arr : 3D :obj:`numpy.ndarray`
+        Cluster label map. Zero is background.
+    clust_ids : :obj:`list`
+        Cluster labels to count for, in the order the counts are returned in.
+    ijk : (N, 3) array_like
+        Matrix subscripts of the foci, which need not be integers.
+
+    Returns
+    -------
+    :obj:`numpy.ndarray`
+        One count per entry of ``clust_ids``.
+    """
+    counts = dict.fromkeys(clust_ids, 0)
+    ijk = np.atleast_2d(np.asarray(ijk, dtype=float))
+    if ijk.size == 0:
+        return np.array([counts[c_val] for c_val in clust_ids])
+
+    shape = np.asarray(label_arr.shape)
+    # The 27 integer offsets around a focus's containing voxel. Every voxel within a unit
+    # distance of any point in that voxel is among them.
+    offsets = np.stack(np.meshgrid(*([np.arange(-1, 2)] * 3), indexing="ij"), axis=-1)
+    offsets = offsets.reshape(-1, 3)
+
+    for focus in ijk:
+        candidates = np.floor(focus).astype(np.int64) + offsets
+        in_bounds = np.all((candidates >= 0) & (candidates < shape), axis=1)
+        candidates = candidates[in_bounds]
+        if not candidates.size:
+            continue
+
+        near = np.sum(np.square(candidates - focus), axis=1) < 1.0
+        candidates = candidates[near]
+        if not candidates.size:
+            continue
+
+        labels = label_arr[candidates[:, 0], candidates[:, 1], candidates[:, 2]]
+        for c_val in np.unique(labels):
+            if c_val in counts:
+                counts[c_val] += 1
+
+    return np.array([counts[c_val] for c_val in clust_ids])
+
+
 def _cluster_masker_kwargs():
     """Return standardized kwargs for label-based cluster summaries."""
     return _filter_kwargs(
@@ -457,12 +511,18 @@ class Diagnostics(NiMAREBase):
 
         return list(batches.values())
 
-    def _transform_batch(self, expid, tail_contexts, result, target_value_map=None):
+    def _transform_batch(
+        self, expid, tail_contexts, result, target_value_map=None, image_cache=None
+    ):
         """Apply transform to one study ID for each tail in a batch.
 
         Returns one 1D array per entry in ``tail_contexts``, in the same order. Subclasses
         whose per-experiment work does not vary across a batch should override this to do
         that work once and derive every tail's contributions from it.
+
+        ``image_cache`` is a store the caller shares across every experiment of one
+        :meth:`transform`, for subclasses that would otherwise redo work per experiment that
+        does not depend on the experiment. Diagnostics that read no images ignore it.
         """
         return [
             self._transform(
@@ -523,6 +583,12 @@ class Diagnostics(NiMAREBase):
         self._is_pairwaise_estimator = issubclass(type(result.estimator), PairwiseCBMAEstimator)
         masker = result.estimator.masker
         diag_name = self.__class__.__name__
+
+        # One store per call, shared by every per-experiment job below. Keeping it local means
+        # it is released with this call, rather than living on through the diagnostic that
+        # ``result`` keeps a reference to. Its entries are only valid while the input files
+        # are unchanged, which is another reason not to let it outlive the call.
+        image_cache = {}
 
         # Collect the thresholded cluster map
         if self.target_image in result.maps:
@@ -673,6 +739,7 @@ class Diagnostics(NiMAREBase):
                             batch_contexts,
                             result,
                             target_value_map,
+                            image_cache,
                         )
                         for expid in meta_ids
                     ),
@@ -740,7 +807,7 @@ class Jackknife(Diagnostics):
     averaging the resulting proportion values across all voxels in each cluster.
     """
 
-    def _leave_one_out_values(self, expid, sign, result, target_value_map):
+    def _leave_one_out_values(self, expid, sign, result, target_value_map, image_cache=None):
         """Refit the Estimator without ``expid`` and return voxelwise proportional reductions.
 
         Parameters
@@ -754,6 +821,10 @@ class Jackknife(Diagnostics):
             A MetaResult produced by a coordinate- or image-based meta-analysis.
         target_value_map : :obj:`str`
             Name of the map used for per-cluster contribution calculations.
+        image_cache : :obj:`dict` or None
+            Store shared with the other refits of the same :meth:`transform`, so that the
+            input images are masked once rather than once per left-out study. None masks them
+            afresh, which is what a single refit outside ``transform`` wants.
 
         Returns
         -------
@@ -765,6 +836,13 @@ class Jackknife(Diagnostics):
         # We need to copy the estimator because it will otherwise overwrite the original version
         # with one missing a study in its inputs.
         estimator = copy.deepcopy(result.estimator)
+
+        # Every refit here masks the same files, so hand each copy the one store shared by
+        # this call. It is attached after the copy so that ``deepcopy`` does not duplicate it,
+        # and so that the caller's own estimator is left as it was.
+        share_cache = getattr(estimator, "share_masked_image_cache", None)
+        if share_cache is not None and image_cache is not None:
+            share_cache(image_cache)
 
         if self._is_pairwaise_estimator:
             all_ids = estimator.inputs_["id1"] if sign == POSTAIL_LBL else estimator.inputs_["id2"]
@@ -796,7 +874,9 @@ class Jackknife(Diagnostics):
 
         return 1 - prop_values, estimator.masker
 
-    def _transform_batch(self, expid, tail_contexts, result, target_value_map=None):
+    def _transform_batch(
+        self, expid, tail_contexts, result, target_value_map=None, image_cache=None
+    ):
         """Apply transform to one study ID for each tail in a batch.
 
         The leave-one-out refit is the expensive part and does not vary within a batch, so it
@@ -812,6 +892,7 @@ class Jackknife(Diagnostics):
             tail_contexts[0]["sign"],
             result,
             target_value_map,
+            image_cache,
         )
         return [
             _summarize_cluster_values(
@@ -936,17 +1017,7 @@ class FocusCounter(Diagnostics):
         coords = coordinates_df.loc[coordinates_df["id"] == expid]
         ijk = mm2vox(coords[["x", "y", "z"]], affine)
 
-        focus_counts = []
-        for c_val in clust_ids:
-            cluster_mask = label_arr == c_val
-            cluster_idx = np.vstack(np.where(cluster_mask))
-            distances = cdist(cluster_idx.T, ijk)
-            distances = distances < 1
-            distances = np.any(distances, axis=0)
-            n_included_voxels = np.sum(distances)
-            focus_counts.append(n_included_voxels)
-
-        return np.array(focus_counts)
+        return _count_foci_per_cluster(label_arr, clust_ids, ijk)
 
 
 class ResampledStability(NiMAREBase):
