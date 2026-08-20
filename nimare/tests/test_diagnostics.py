@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from nilearn.maskers import NiftiLabelsMasker
+from scipy.spatial.distance import cdist
 
 from nimare import diagnostics
 from nimare.meta import cbma, ibma
@@ -101,6 +102,61 @@ def test_cluster_ids_survive_a_map_with_no_background():
     # The border must be gone again, so the label map still lines up with the input.
     assert label_maps[0].shape == img.shape
     assert np.array_equal(label_maps[0].affine, img.affine)
+
+
+def test_count_foci_per_cluster_matches_all_pairs_distances():
+    """Focus counts must match measuring every cluster voxel against every focus.
+
+    :func:`nimare.diagnostics._count_foci_per_cluster` only looks at the voxels neighbouring
+    each focus, rather than scanning the volume once per cluster. The two agree because no
+    voxel further away than a focus's own neighbourhood can be within one voxel of it, and
+    this pins that down over shapes, label dtypes, out-of-bounds foci and foci that sit
+    exactly on a voxel centre.
+    """
+
+    def all_pairs(label_arr, clust_ids, ijk):
+        counts = []
+        for c_val in clust_ids:
+            cluster_idx = np.vstack(np.where(label_arr == c_val))
+            distances = cdist(cluster_idx.T, ijk)
+            counts.append(np.sum(np.any(distances < 1, axis=0)))
+        return np.array(counts)
+
+    rng = np.random.default_rng(0)
+    compared = 0
+    for i_trial in range(60):
+        shape = tuple(rng.integers(3, 9, size=3))
+        n_labels = int(rng.integers(1, 6))
+        dtype = rng.choice([np.int16, np.int32, np.float64])
+        label_arr = rng.integers(0, n_labels + 1, size=shape).astype(dtype)
+        clust_ids = diagnostics._cluster_ids(label_arr)
+        if not clust_ids:
+            continue
+
+        # Foci are drawn past the edges of the volume as well as inside it, and every third
+        # trial puts them exactly on voxel centres, which is the boundary case for "within
+        # one voxel".
+        ijk = rng.uniform(-1.5, np.array(shape) + 1.5, size=(int(rng.integers(1, 12)), 3))
+        if i_trial % 3 == 0:
+            ijk = np.round(ijk)
+
+        np.testing.assert_array_equal(
+            diagnostics._count_foci_per_cluster(label_arr, clust_ids, ijk),
+            all_pairs(label_arr, clust_ids, ijk),
+            err_msg=f"trial {i_trial}, shape {shape}",
+        )
+        compared += 1
+
+    assert compared > 40, "too few trials produced clusters to compare"
+
+
+def test_count_foci_per_cluster_with_no_foci():
+    """A study contributing no foci scores zero everywhere, not an empty array."""
+    label_arr = np.array([[[1, 1], [0, 2]]], dtype=np.int16)
+
+    counts = diagnostics._count_foci_per_cluster(label_arr, [1, 2], np.empty((0, 3)))
+
+    assert np.array_equal(counts, [0, 0])
 
 
 def test_cluster_ids_excludes_background():

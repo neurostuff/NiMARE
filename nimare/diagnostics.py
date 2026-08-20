@@ -11,7 +11,6 @@ import pandas as pd
 from joblib import Parallel, delayed
 from nilearn.maskers import NiftiLabelsMasker
 from nilearn.reporting import get_clusters_table
-from scipy.spatial.distance import cdist
 from tqdm.auto import tqdm
 
 from nimare.base import NiMAREBase
@@ -234,6 +233,61 @@ def _get_clusters_table_and_label_maps(
         two_sided or (masked_peak_data < 0).any(),
     )
     return peak_clusters_table, label_maps
+
+
+def _count_foci_per_cluster(label_arr, clust_ids, ijk):
+    """Count how many of ``ijk`` fall within one voxel of each cluster in ``label_arr``.
+
+    A focus counts towards a cluster when some voxel of that cluster lies less than one
+    voxel away from it, which is the same rule as measuring every cluster voxel's distance
+    to every focus and keeping the foci with a hit. Doing it that way costs one pass over the
+    whole volume per cluster, so a map with a few hundred clusters spends minutes on
+    distances that a focus's own neighbourhood already settles: only integer voxels strictly
+    inside a unit ball around the focus can qualify, and there are at most 27 of those.
+
+    Parameters
+    ----------
+    label_arr : 3D :obj:`numpy.ndarray`
+        Cluster label map. Zero is background.
+    clust_ids : :obj:`list`
+        Cluster labels to count for, in the order the counts are returned in.
+    ijk : (N, 3) array_like
+        Matrix subscripts of the foci, which need not be integers.
+
+    Returns
+    -------
+    :obj:`numpy.ndarray`
+        One count per entry of ``clust_ids``.
+    """
+    counts = dict.fromkeys(clust_ids, 0)
+    ijk = np.atleast_2d(np.asarray(ijk, dtype=float))
+    if ijk.size == 0:
+        return np.array([counts[c_val] for c_val in clust_ids])
+
+    shape = np.asarray(label_arr.shape)
+    # The 27 integer offsets around a focus's containing voxel. Every voxel within a unit
+    # distance of any point in that voxel is among them.
+    offsets = np.stack(np.meshgrid(*([np.arange(-1, 2)] * 3), indexing="ij"), axis=-1)
+    offsets = offsets.reshape(-1, 3)
+
+    for focus in ijk:
+        candidates = np.floor(focus).astype(np.int64) + offsets
+        in_bounds = np.all((candidates >= 0) & (candidates < shape), axis=1)
+        candidates = candidates[in_bounds]
+        if not candidates.size:
+            continue
+
+        near = np.sum(np.square(candidates - focus), axis=1) < 1.0
+        candidates = candidates[near]
+        if not candidates.size:
+            continue
+
+        labels = label_arr[candidates[:, 0], candidates[:, 1], candidates[:, 2]]
+        for c_val in np.unique(labels):
+            if c_val in counts:
+                counts[c_val] += 1
+
+    return np.array([counts[c_val] for c_val in clust_ids])
 
 
 def _cluster_masker_kwargs():
@@ -963,17 +1017,7 @@ class FocusCounter(Diagnostics):
         coords = coordinates_df.loc[coordinates_df["id"] == expid]
         ijk = mm2vox(coords[["x", "y", "z"]], affine)
 
-        focus_counts = []
-        for c_val in clust_ids:
-            cluster_mask = label_arr == c_val
-            cluster_idx = np.vstack(np.where(cluster_mask))
-            distances = cdist(cluster_idx.T, ijk)
-            distances = distances < 1
-            distances = np.any(distances, axis=0)
-            n_included_voxels = np.sum(distances)
-            focus_counts.append(n_included_voxels)
-
-        return np.array(focus_counts)
+        return _count_foci_per_cluster(label_arr, clust_ids, ijk)
 
 
 class ResampledStability(NiMAREBase):
