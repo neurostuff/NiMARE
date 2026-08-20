@@ -981,7 +981,7 @@ class GCLDAModel(NiMAREBase):
 
         # Go over all observed peaks and add p(x|model) to running total
         for i_ptoken in range(len(self.data["ptoken_doc_idx"])):
-            doc = self.data["ptoken_doc_idx"][i_ptoken] - 1  # convert didx from 1-idx to 0-idx
+            doc = self.data["ptoken_doc_idx"][i_ptoken]
             p_x = 0  # Running total for p(x|d) across subregions:
             # Compute p(x_i|d) for each subregion separately and then
             # sum across the subregions
@@ -1016,10 +1016,8 @@ class GCLDAModel(NiMAREBase):
 
         # Go over all observed word tokens and add p(w|model) to running total
         for i_wtoken in range(len(self.data["wtoken_word_idx"])):
-            # convert wtoken_word_idx from 1-idx to 0-idx
-            word_token = self.data["wtoken_word_idx"][i_wtoken] - 1
-            # convert wtoken_doc_idx from 1-idx to 0-idx
-            doc = self.data["wtoken_doc_idx"][i_wtoken] - 1
+            word_token = self.data["wtoken_word_idx"][i_wtoken]
+            doc = self.data["wtoken_doc_idx"][i_wtoken]
             # Probability of sampling current w token from d
             p_wtoken = p_wtoken_g_doc[doc, word_token]
             # Add log-probability of current token to running total for all w tokens
