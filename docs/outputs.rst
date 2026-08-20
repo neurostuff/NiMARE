@@ -26,9 +26,7 @@ Some of the values found in NiMARE include:
 - ``z``: Z-statistic
 - ``t``: T-statistic
 - ``p``: p-value
-- ``logp``: Negative base-ten logarithm of p-value. Evaluated in log space, so it carries
-  tails past the smallest p-value a float can hold; where ``p`` has bottomed out at its
-  floor, this is the map to read.
+- ``logp``: Negative base-ten logarithm of p-value.
 - ``chi2``: Chi-squared value
 - ``prob``: Probability value
 - ``stat``: Test value of meta-analytic algorithm (e.g., ALE values for ALE, OF values for MKDA)

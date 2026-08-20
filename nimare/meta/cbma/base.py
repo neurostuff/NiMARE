@@ -284,8 +284,6 @@ class CBMAEstimator(Estimator):
             "stat": stat_values,
             "p": p_values,
             "z": z_values,
-            # From log(p): the stored float32 p floors at a -log10(p) of 44.85, while the
-            # histogram null resolves tails far below that.
             "logp": _nlogp_to_logp_values(np.log(p_values)),
         }
         description = self._description_text()

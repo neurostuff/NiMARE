@@ -877,9 +877,7 @@ def z_to_nlogp(z, tail="two"):
 
     .. versionadded:: 0.21.0
 
-    The log-space counterpart of :func:`z_to_p`, and the only place NiMARE evaluates the
-    normal tail. A p-value stops being representable below about 5e-324, which bounds
-    :func:`z_to_p` at a z of 38.5; this keeps going, via :func:`_log_erfc`.
+    The log-space counterpart of :func:`z_to_p`.
 
     Parameters
     ----------
@@ -947,13 +945,7 @@ def nlogp_to_z(nlogp, tail="two"):
 
     .. versionadded:: 0.21.0
 
-    The log-space counterpart of :func:`p_to_z`, and the only place NiMARE inverts the
-    normal tail. :func:`scipy.special.ndtri_exp` inverts the normal from a log probability
-    directly, so an ``nlogp`` of -11513 (a p of 1e-5000) still returns its z of about 152,
-    where :func:`p_to_z` is bounded at 38.5 by the smallest representable p-value. Only
-    useful where the caller has an ``nlogp`` from the source, e.g. from
-    :meth:`scipy.stats.rv_continuous.logsf`; a p-value that already underflowed to zero has
-    nothing left to recover.
+    The log-space counterpart of :func:`p_to_z`.
 
     Parameters
     ----------
@@ -1086,8 +1078,6 @@ def t_to_z(t_values, dof):
     """
     t_values = np.asarray(t_values, dtype=float)
 
-    # Working from |t| keeps both tails on the accurate branch of logsf; the trailing
-    # addition turns the -0.0 that t == 0 produces back into 0.0.
     nlogp = t_to_nlogp(np.abs(t_values), dof, tail="one")
     z_values = np.sign(t_values) * nlogp_to_z(nlogp, tail="one") + 0.0
 

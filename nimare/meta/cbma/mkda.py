@@ -1263,9 +1263,6 @@ class MKDAChi2(PairwiseCBMAEstimator):
         >>> corrector = FDRCorrector(method='indep', alpha=0.05)
         >>> cresult = corrector.transform(result)
         """
-        # Corrected off the logp maps, not the p maps: p is stored as a float32 and so
-        # floors at 1e-45, which would cap every statistic derived from it. The step-up
-        # procedure only rescales, so it does not depend on ``alpha``.
         corrected = {}
         for label in ("uniformity", "group2", "association"):
             nlogp = -np.log(10.0) * result.get_map(f"logp_desc-{label}", return_type="array")
