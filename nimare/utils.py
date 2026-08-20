@@ -47,15 +47,26 @@ def _clip_p_values(p_values, dtype=DEFAULT_FLOAT_DTYPE, copy=True):
 
 
 def _clip_logp_values(logp_values, dtype=DEFAULT_FLOAT_DTYPE, copy=True):
-    """Clip -log10(p) values to the range implied by a floating p-value dtype."""
+    """Clip -log10(p) values to the finite range of a floating dtype.
+
+    Only the non-finite ends are clipped: below at zero, since a p-value of at most one
+    cannot give a negative ``-log10(p)``, and above at the largest value the dtype holds,
+    which a p-value of exactly zero would otherwise map to positive infinity.
+
+    Deliberately *not* clipped at ``-log10(smallest positive p)``. That was the range
+    implied by storing the p-value itself, which for float32 is about 44.85, or a z of
+    14.1 -- and clipping a logarithm to the range of the unlogged quantity throws away the
+    headroom that taking the logarithm bought. A ``-log10(p)`` of 5000 is an ordinary
+    float32 and describes a z of about 152, so a statistic computed in log space can be
+    stored here without being truncated on the way in.
+    """
     dtype = np.dtype(dtype)
     logp_values = (
         np.array(logp_values, dtype=dtype, copy=True)
         if copy
         else np.asarray(logp_values, dtype=dtype)
     )
-    max_value = -np.log10(_minimum_positive_float(dtype))
-    return np.clip(logp_values, dtype.type(0), max_value, out=logp_values)
+    return np.clip(logp_values, dtype.type(0), np.finfo(dtype).max, out=logp_values)
 
 
 def _p_to_logp_values(p_values, dtype=DEFAULT_FLOAT_DTYPE, copy=True):

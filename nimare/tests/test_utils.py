@@ -278,6 +278,30 @@ def test_apply_liberal_mask():
         assert np.array_equal(pred_val, true_val)
 
 
+def test_clip_logp_values_keeps_values_a_p_value_could_not_hold():
+    """A -log10(p) must not be clipped to the range of the p-value it came from.
+
+    Storing p itself bottoms out around 1.4e-45 in float32, i.e. -log10(p) of 44.85 or a z
+    of 14.1. Clipping the logarithm there would discard anything computed in log space,
+    which is the whole reason for computing in log space.
+    """
+    values = np.array([0.0, 44.85, 100.0, 1000.0, 5000.0])
+
+    clipped = utils._clip_logp_values(values)
+
+    assert np.allclose(clipped, values)
+    assert clipped.dtype == np.dtype(utils.DEFAULT_FLOAT_DTYPE)
+
+
+def test_clip_logp_values_still_bounds_the_non_finite_ends():
+    """Only the ends a float cannot hold are clipped: negatives and infinity."""
+    clipped = utils._clip_logp_values(np.array([-5.0, 0.0, 3.0, np.inf]))
+
+    assert clipped[0] == 0.0, "p <= 1 cannot give a negative -log10(p)"
+    assert clipped[2] == 3.0
+    assert np.isfinite(clipped[3]) and clipped[3] > 1e30, "infinity becomes the dtype max"
+
+
 def test_apply_liberal_mask_groups_voxels_that_are_not_adjacent():
     """Voxels sharing a coverage pattern belong in one bag, however they are ordered.
 

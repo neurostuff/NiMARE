@@ -6,8 +6,10 @@ import re
 import nibabel as nib
 import numpy as np
 import pytest
+from scipy import stats
 
 from nimare import transforms
+from nimare.utils import DEFAULT_FLOAT_DTYPE
 
 
 def test_ImageTransformer(testdata_ibma):
@@ -36,6 +38,75 @@ def test_ImageTransformer(testdata_ibma):
     new_dset = t_transformer.transform(dset)
     new_t_files = new_dset.images["t"].tolist()
     assert t_files[:-1] == new_t_files[:-1]
+
+
+def test_t_to_z_is_unchanged_below_the_old_ceiling():
+    """The log-space tail must reproduce the previous values wherever they were not capped.
+
+    The old implementation floored its internal p-value at the machine epsilon of its
+    dtype, which truncated |z| at about 8.13.
+    """
+    rng = np.random.default_rng(0)
+    for dof in (5, 20, 100):
+        t = rng.normal(0, 2.5, size=50_000)
+        z = transforms.t_to_z(t, dof)
+        # Matched tail probabilities, computed independently of the implementation.
+        expected = np.sign(t) * stats.norm.isf(stats.t.sf(np.abs(t), dof))
+        below = np.abs(z) < 8.0
+        assert below.mean() > 0.99
+        assert np.allclose(z[below], expected[below], atol=1e-10)
+
+
+def test_t_to_z_keeps_going_past_the_old_ceiling():
+    """A large t must no longer saturate, and must keep its sign."""
+    t = np.array([-1000.0, -50.0, 0.0, 50.0, 1000.0])
+
+    z = transforms.t_to_z(t, 20)
+
+    assert np.all(np.abs(z[[0, 1, 3, 4]]) > 8.13), "these all used to be clipped to 8.13"
+    assert np.allclose(z, -z[::-1]), "must stay antisymmetric in t"
+    assert z[2] == 0.0
+    assert np.allclose(np.abs(z[[1, 4]]), [9.755, 14.630], atol=1e-3)
+    # And the result is representable in the dtype the maps are stored in.
+    assert np.all(np.isfinite(np.asarray(z, dtype=DEFAULT_FLOAT_DTYPE)))
+
+
+@pytest.mark.parametrize("tail", ["one", "two"])
+def test_log_p_to_z_matches_p_to_z_while_p_is_representable(tail):
+    """Agree with the ordinary conversion wherever the p-value is still representable.
+
+    ``p_to_z`` clips its input to the float32 range the maps are stored in, so the two only
+    have to agree above that floor; below it, only the log-space form carries a value.
+    """
+    p = np.array([0.5, 0.05, 1e-8, 1e-20, 1e-30])
+    assert np.all(p > np.finfo(DEFAULT_FLOAT_DTYPE).tiny), "fixture must stay representable"
+
+    assert np.allclose(
+        transforms.log_p_to_z(np.log(p), tail=tail),
+        transforms.p_to_z(p.astype(np.float64), tail=tail),
+        atol=1e-7,
+    )
+
+
+def test_log_p_to_z_passes_where_p_to_z_runs_out():
+    """Past the smallest representable p, only the log-space form still carries a value."""
+    # p = 1e-5000: zero in any float, so p_to_z can only return its floor.
+    log_p = -5000 * np.log(10)
+
+    z = transforms.log_p_to_z(log_p, tail="one")
+
+    assert 151 < z < 152
+    assert transforms.p_to_z(np.array([0.0]), tail="one")[0] < 15
+    # Round-trip through float32 storage, which holds z and -log10(p) alike.
+    stored = DEFAULT_FLOAT_DTYPE(z)
+    assert np.isfinite(stored)
+    assert np.isclose(float(stored), z, rtol=1e-6)
+
+
+def test_log_p_to_z_rejects_an_unknown_tail():
+    """Mirror p_to_z rather than silently choosing a tail."""
+    with pytest.raises(ValueError, match='"tail" must be one of'):
+        transforms.log_p_to_z(-1.0, tail="three")
 
 
 @pytest.mark.parametrize("target", ["d", "g", "g_var"])

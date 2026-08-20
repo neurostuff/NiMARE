@@ -10,7 +10,7 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 from nilearn.reporting import get_clusters_table
-from scipy import stats
+from scipy import special, stats
 
 from nimare.base import NiMAREBase
 from nimare.studyset import normalize_collection
@@ -910,13 +910,63 @@ def p_to_z(p, tail="two"):
     return z
 
 
+def log_p_to_z(log_p, tail="two"):
+    """Convert log p-values to (unsigned) z-values, without materializing the p-value.
+
+    .. versionadded:: 0.21.0
+
+    The log-space counterpart of :func:`p_to_z`. A p-value stops being representable below
+    about 1e-45 in float32 and 5e-324 in float64, which bounds :func:`p_to_z` at a z of
+    roughly 14 and 38 respectively. Taking the log first moves that ceiling out of reach:
+    :func:`scipy.special.ndtri_exp` inverts the normal from a log probability directly, so
+    a ``log_p`` of -11513 (a p of 1e-5000) still returns its z of about 152.
+
+    Only useful where the caller can produce a log p-value at the source, e.g. from
+    :meth:`scipy.stats.rv_continuous.logsf`. A p-value that has already underflowed to zero
+    carries no information left to recover.
+
+    Parameters
+    ----------
+    log_p : array_like
+        Natural logarithm of the p-values. Note natural, not base 10, matching SciPy's
+        ``logsf`` and ``logcdf``.
+    tail : {'one', 'two'}, optional
+        Whether the p-values come from a one-tailed or two-tailed test. Default is 'two'.
+
+    Returns
+    -------
+    z : array_like
+        Z-statistics (unsigned).
+
+    See Also
+    --------
+    p_to_z : The same conversion for a p-value that is already a number.
+    """
+    log_p = np.asarray(log_p, dtype=float)
+    if tail == "two":
+        # p_to_z halves a two-tailed p before inverting; in log space that is a subtraction.
+        z = -special.ndtri_exp(log_p - np.log(2.0))
+    elif tail == "one":
+        z = -special.ndtri_exp(log_p)
+        z = np.array(z)
+        z[z < 0] = 0
+    else:
+        raise ValueError('Argument "tail" must be one of ["one", "two"]')
+
+    if z.shape == ():
+        z = z[()]
+    return z
+
+
 def t_to_z(t_values, dof):
     """Convert t-statistics to z-statistics.
 
-    .. versionadded:: 0.0.3
+    .. versionchanged:: 0.21.0
 
-    An implementation of :footcite:t:`hughett2008accurate` from Vanessa Sochat's TtoZ package
-    :footcite:p:`sochat2015ttoz`.
+        The tail is evaluated in log space, so ``|z|`` is no longer bounded at about 8.13.
+        Values below that bound are unchanged.
+
+    .. versionadded:: 0.0.3
 
     Parameters
     ----------
@@ -928,62 +978,35 @@ def t_to_z(t_values, dof):
     Returns
     -------
     z_values : array_like
-        Z-statistics
+        Z-statistics, carrying the sign of ``t_values``.
 
-    License
-    -------
-    The MIT License (MIT)
-    Copyright (c) 2015 Vanessa Sochat
+    Notes
+    -----
+    The t and normal tail probabilities are matched, which is the transform of
+    :footcite:t:`hughett2008accurate`. It is evaluated through
+    :meth:`~scipy.stats.rv_continuous.logsf` and :func:`scipy.special.ndtri_exp` rather
+    than through the p-value itself: the earlier implementation floored that p-value at the
+    machine epsilon of its dtype, and since epsilon measures precision rather than
+    magnitude, it truncated ``|z|`` at about 8.13 for float64. A ``t`` of 1000 on 20
+    degrees of freedom reports 14.63 now and reported 8.13 before.
 
-    Permission is hereby granted, free of charge, to any person obtaining a copy of this software
-    and associated documentation files (the "Software"), to deal in the Software without
-    restriction, including without limitation the rights to use, copy, modify, merge, publish,
-    distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the
-    Software is furnished to do so, subject to the following conditions:
-
-    The above copyright notice and this permission notice shall be included in all copies or
-    substantial portions of the Software.
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-    INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-    PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
-    FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-    ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-    SOFTWARE.
+    Non-finite input propagates: an infinite ``t`` gives an infinite ``z``, and NaN gives
+    NaN.
 
     References
     ----------
     .. footbibliography::
     """
-    # Select just the nonzero voxels
-    nonzero = t_values[t_values != 0]
+    t_values = np.asarray(t_values, dtype=float)
 
-    # We will store our results here
-    z_values_nonzero = np.zeros(len(nonzero))
+    # The one-tailed log p of |t|, then the normal quantile of it. Working from |t| and
+    # reapplying the sign keeps both tails on the accurate branch of logsf.
+    log_p = stats.t.logsf(np.abs(t_values), dof)
+    # The trailing addition turns the -0.0 that t == 0 produces back into 0.0.
+    z_values = np.sign(t_values) * log_p_to_z(log_p, tail="one") + 0.0
 
-    # Select values less than or == 0, and greater than zero
-    c = np.zeros(len(nonzero))
-    k1 = nonzero <= c
-    k2 = nonzero > c
-
-    # Subset the data into two sets
-    t1 = nonzero[k1]
-    t2 = nonzero[k2]
-
-    # Calculate p values for <=0
-    p_values_t1 = stats.t.cdf(t1, df=dof)
-    p_values_t1[p_values_t1 < np.finfo(p_values_t1.dtype).eps] = np.finfo(p_values_t1.dtype).eps
-    z_values_t1 = stats.norm.ppf(p_values_t1)
-
-    # Calculate p values for > 0
-    p_values_t2 = stats.t.cdf(-t2, df=dof)
-    p_values_t2[p_values_t2 < np.finfo(p_values_t2.dtype).eps] = np.finfo(p_values_t2.dtype).eps
-    z_values_t2 = -stats.norm.ppf(p_values_t2)
-    z_values_nonzero[k1] = z_values_t1
-    z_values_nonzero[k2] = z_values_t2
-
-    z_values = np.zeros(t_values.shape)
-    z_values[t_values != 0] = z_values_nonzero
+    if z_values.shape == ():
+        z_values = z_values[()]
     return z_values
 
 
