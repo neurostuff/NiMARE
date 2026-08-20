@@ -38,10 +38,7 @@ def _inv3_logdet(sigma):
     """Invert a 3x3 matrix in closed form and return its log-determinant.
 
     Uses the adjugate formula with a fixed operation order. Unlike LAPACK,
-    this is bit-for-bit reproducible across platforms and BLAS builds, which
-    allows the Rust implementation to match Python exactly. It is also
-    exactly symmetric for symmetric input, and about 2.5x faster than the
-    ``inv`` + ``slogdet`` pair it replaces.
+    this is bit-for-bit reproducible across platforms and BLAS builds.
 
     Parameters
     ----------
