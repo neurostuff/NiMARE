@@ -22,6 +22,7 @@ from nimare.utils import (
     _check_ncores,
     _clip_p_values,
     _mask_coverage_to_null_ijk,
+    _minimum_positive_float,
     _nlogp_to_logp_values,
     _p_to_logp_values,
     vox2mm,
@@ -1265,7 +1266,13 @@ class MKDAChi2(PairwiseCBMAEstimator):
         """
         corrected = {}
         for label in ("uniformity", "group2", "association"):
-            nlogp = -np.log(10.0) * result.get_map(f"logp_desc-{label}", return_type="array")
+            # The p map while it holds a value, the logp map past its float32 floor.
+            p_vals = result.get_map(f"p_desc-{label}", return_type="array")
+            nlogp = np.log(_clip_p_values(p_vals, dtype=np.float64))
+            floored = p_vals <= _minimum_positive_float(p_vals.dtype)
+            if floored.any():
+                logp_vals = result.get_map(f"logp_desc-{label}", return_type="array")
+                nlogp = np.where(floored, -np.log(10.0) * logp_vals, nlogp)
             nlogp_FDR = nlogp_fdr(nlogp, method="bh")
             sign = np.sign(result.get_map(f"z_desc-{label}", return_type="array"))
             corrected[label] = (

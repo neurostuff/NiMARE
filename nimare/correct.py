@@ -10,7 +10,12 @@ from nimare.base import NiMAREBase
 from nimare.results import MetaResult
 from nimare.stats import nlogp_bonferroni, nlogp_fdr
 from nimare.transforms import nlogp_to_z
-from nimare.utils import DEFAULT_FLOAT_DTYPE, _clip_p_values, _nlogp_to_logp_values
+from nimare.utils import (
+    DEFAULT_FLOAT_DTYPE,
+    _clip_p_values,
+    _minimum_positive_float,
+    _nlogp_to_logp_values,
+)
 
 LGR = logging.getLogger(__name__)
 
@@ -107,15 +112,23 @@ class Corrector(NiMAREBase):
     def _uncorrected_nlogp(self, result, rm):
         """Return the ``nlogp`` values to correct.
 
-        Read from the ``logp`` map wherever the estimator produced one. The ``p`` map is
-        stored as a float32 and so floors at 1e-45, which would cap every corrected
-        statistic derived from it however far below that the real tail fell.
+        Taken from the ``p`` map while it holds one, and from the ``logp`` map past its
+        floor. Neither alone will do: ``p`` is stored as a float32 and bottoms out at 1e-45,
+        which would cap every corrected statistic derived from it however deep the real tail
+        went, while a float32 *logarithm* carries coarser relative precision on p than a
+        float32 p does, which would cost a digit everywhere else.
         """
+        p = np.asarray(result.maps[rm])
+        nlogp = np.log(_clip_p_values(p, dtype=np.float64))
+
         logp_map_name = self._secondary_map_names(rm)[1]
         if logp_map_name in result.maps:
-            return -np.log(10.0) * np.asarray(result.maps[logp_map_name], dtype=np.float64)
+            floored = p <= _minimum_positive_float(p.dtype)
+            if floored.any():
+                logp = np.asarray(result.maps[logp_map_name], dtype=np.float64)
+                nlogp = np.where(floored, -np.log(10.0) * logp, nlogp)
 
-        return np.log(_clip_p_values(result.maps[rm], dtype=np.float64))
+        return nlogp
 
     def _generate_secondary_maps(self, result, corr_maps, rm, nlogp):
         """Generate corrected version of z and logp maps if they exist."""
