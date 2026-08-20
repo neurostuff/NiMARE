@@ -543,10 +543,6 @@ class ALE(CBMAEstimator):
         ss_thresh = self._p_to_summarystat(0.001)
         cluster_mask = self._threshold_clusters_by_size(stat_values, ss_thresh, cutoffs["cfwe"])
 
-        # The cutoffs gate the uncorrected maps rather than producing new statistics, so
-        # each of the three is masked as it stands: p and -log10(p) to their no-evidence
-        # values of 1 and 0, z to zero. Deriving logp from p instead would floor it at the
-        # 44.85 a float32 p-value bottoms out at.
         one = np.array(1.0, dtype=DEFAULT_FLOAT_DTYPE)
         logp_values = result.get_map("logp", return_type="array")
         p_vfwe = np.where(voxel_mask, p_values, one).astype(DEFAULT_FLOAT_DTYPE, copy=False)

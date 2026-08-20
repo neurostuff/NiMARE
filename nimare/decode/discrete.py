@@ -359,9 +359,7 @@ def brainmap_decode(
         nlogp_corr_fi = nlogp_fi
         nlogp_corr_ri = nlogp_ri
 
-    # Compute z-values from the nlogp values: on a dataset the size of Neurosynth these
-    # tails run well past the smallest p-value a float can hold, which is all the reported
-    # p-value can say once it reaches its floor.
+    # Compute z-values
     p_corr_fi = _clip_p_values(np.exp(nlogp_corr_fi), dtype=np.float64, copy=False)
     p_corr_ri = _clip_p_values(np.exp(nlogp_corr_ri), dtype=np.float64, copy=False)
     z_corr_fi = nlogp_to_z(nlogp_corr_fi, "two") * sign_fi
@@ -655,9 +653,7 @@ def neurosynth_decode(
         nlogp_corr_fi = nlogp_fi
         nlogp_corr_ri = nlogp_ri
 
-    # Compute z-values from the nlogp values: on a dataset the size of Neurosynth these
-    # tails run well past the smallest p-value a float can hold, which is all the reported
-    # p-value can say once it reaches its floor.
+    # Compute z-values
     p_corr_fi = _clip_p_values(np.exp(nlogp_corr_fi), dtype=np.float64, copy=False)
     p_corr_ri = _clip_p_values(np.exp(nlogp_corr_ri), dtype=np.float64, copy=False)
     z_corr_fi = nlogp_to_z(nlogp_corr_fi, "two") * sign_fi

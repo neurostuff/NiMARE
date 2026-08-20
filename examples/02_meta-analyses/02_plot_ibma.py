@@ -353,25 +353,3 @@ print("Description:")
 pprint(results.description_)
 print("References:")
 pprint(results.bibtex_)
-
-###############################################################################
-# Reading the deep tail: ``logp`` rather than ``p``
-# -----------------------------------------------------------------------------
-# Every estimator reports ``p``, ``logp`` (which is ``-log10(p)``) and ``z``. The ``p`` map
-# is stored as a float32, so it bottoms out at 1e-45 and ties every voxel below that at the
-# same value. ``logp`` is computed from the ``nlogp`` the estimator produced -- the natural
-# logarithm of the p-value -- never from the stored ``p``, so it keeps going, as does ``z``.
-# Threshold on ``p`` or on ``logp`` interchangeably; read magnitudes off ``logp``.
-import numpy as np
-
-meta = Fishers()
-results = meta.fit(studyset)
-
-p_map = results.get_map("p", return_type="array")
-logp_map = results.get_map("logp", return_type="array")
-at_floor = p_map == np.float32(1e-45)
-
-print(f"{at_floor.sum()} voxel(s) have a p-value below what a float32 can hold")
-if at_floor.any():
-    print(f"the deepest -log10(p) there is {logp_map[at_floor].max():.1f}")
-    print(f"-log10(p) read off the p map instead would cap at {-np.log10(1e-45):.2f}")
