@@ -199,6 +199,10 @@ class IBMAEstimator(Estimator):
             mask = get_masker(mask, memory=memory, memory_level=memory_level)
         self.masker = mask
 
+        # Filled in only when a caller asks for masked images to be reused between fits; see
+        # ``share_masked_image_cache``.
+        self._masked_image_cache = None
+
         super().__init__(
             memory=memory,
             memory_level=memory_level,
@@ -324,6 +328,30 @@ class IBMAEstimator(Estimator):
 
         return resample_to_img(img, mask_img, **self._resample_kwargs)
 
+    def share_masked_image_cache(self, cache):
+        """Reuse already-masked input images across repeated fits of the same studyset.
+
+        A leave-one-out diagnostic fits this estimator once per study, over subsets of one
+        fixed set of images. Masking is per-image and does not depend on which other images
+        are in the fit, so the default -- reload, resample and mask every file on every fit --
+        repeats the same work a number of times that grows with the square of the studyset.
+
+        Parameters
+        ----------
+        cache : :obj:`dict` or None
+            Mapping used to hold one masked row per image path. Callers that want the reuse
+            to span several estimators (the copies a diagnostic refits) must hand the same
+            dict to each of them; passing None turns the reuse off again. The caller owns the
+            dict, and therefore its lifetime: entries live until it is dropped. It is only
+            valid while the files it was filled from are unchanged.
+
+        Notes
+        -----
+        The cached row is never handed out, only copied into each fit's own array, so a
+        caller that edits ``inputs_`` cannot corrupt a later fit.
+        """
+        self._masked_image_cache = cache
+
     def _mask_images(self, masker, mask_img, filenames):
         """Return an (S x V) array holding the in-mask values of each input image.
 
@@ -352,14 +380,23 @@ class IBMAEstimator(Estimator):
             imgs = [self._load_image(filename, mask_img) for filename in filenames]
             return masker.transform(concat_imgs(imgs, ensure_ndim=4))
 
+        # Only the one-image-at-a-time path can be reused, since it is the only one whose
+        # result for a file does not depend on the rest of the fit.
+        cache = getattr(self, "_masked_image_cache", None)
+
         data = None
         for i, filename in enumerate(filenames):
-            # A one-image list keeps the masker on its 4D code path; a bare 3D image comes
-            # back as a 1D array instead.
-            row = masker.transform([self._load_image(filename, mask_img)])
+            row = None if cache is None else cache.get(filename)
+            if row is None:
+                # A one-image list keeps the masker on its 4D code path; a bare 3D image
+                # comes back as a 1D array instead.
+                row = masker.transform([self._load_image(filename, mask_img)])[0]
+                if cache is not None:
+                    cache[filename] = row
+
             if data is None:
-                data = np.empty((len(filenames), row.shape[1]), dtype=row.dtype)
-            data[i] = row[0]
+                data = np.empty((len(filenames), row.shape[0]), dtype=row.dtype)
+            data[i] = row
 
         return data
 

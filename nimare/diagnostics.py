@@ -457,12 +457,18 @@ class Diagnostics(NiMAREBase):
 
         return list(batches.values())
 
-    def _transform_batch(self, expid, tail_contexts, result, target_value_map=None):
+    def _transform_batch(
+        self, expid, tail_contexts, result, target_value_map=None, image_cache=None
+    ):
         """Apply transform to one study ID for each tail in a batch.
 
         Returns one 1D array per entry in ``tail_contexts``, in the same order. Subclasses
         whose per-experiment work does not vary across a batch should override this to do
         that work once and derive every tail's contributions from it.
+
+        ``image_cache`` is a store the caller shares across every experiment of one
+        :meth:`transform`, for subclasses that would otherwise redo work per experiment that
+        does not depend on the experiment. Diagnostics that read no images ignore it.
         """
         return [
             self._transform(
@@ -523,6 +529,12 @@ class Diagnostics(NiMAREBase):
         self._is_pairwaise_estimator = issubclass(type(result.estimator), PairwiseCBMAEstimator)
         masker = result.estimator.masker
         diag_name = self.__class__.__name__
+
+        # One store per call, shared by every per-experiment job below. Keeping it local means
+        # it is released with this call, rather than living on through the diagnostic that
+        # ``result`` keeps a reference to. Its entries are only valid while the input files
+        # are unchanged, which is another reason not to let it outlive the call.
+        image_cache = {}
 
         # Collect the thresholded cluster map
         if self.target_image in result.maps:
@@ -673,6 +685,7 @@ class Diagnostics(NiMAREBase):
                             batch_contexts,
                             result,
                             target_value_map,
+                            image_cache,
                         )
                         for expid in meta_ids
                     ),
@@ -740,7 +753,7 @@ class Jackknife(Diagnostics):
     averaging the resulting proportion values across all voxels in each cluster.
     """
 
-    def _leave_one_out_values(self, expid, sign, result, target_value_map):
+    def _leave_one_out_values(self, expid, sign, result, target_value_map, image_cache=None):
         """Refit the Estimator without ``expid`` and return voxelwise proportional reductions.
 
         Parameters
@@ -754,6 +767,10 @@ class Jackknife(Diagnostics):
             A MetaResult produced by a coordinate- or image-based meta-analysis.
         target_value_map : :obj:`str`
             Name of the map used for per-cluster contribution calculations.
+        image_cache : :obj:`dict` or None
+            Store shared with the other refits of the same :meth:`transform`, so that the
+            input images are masked once rather than once per left-out study. None masks them
+            afresh, which is what a single refit outside ``transform`` wants.
 
         Returns
         -------
@@ -765,6 +782,13 @@ class Jackknife(Diagnostics):
         # We need to copy the estimator because it will otherwise overwrite the original version
         # with one missing a study in its inputs.
         estimator = copy.deepcopy(result.estimator)
+
+        # Every refit here masks the same files, so hand each copy the one store shared by
+        # this call. It is attached after the copy so that ``deepcopy`` does not duplicate it,
+        # and so that the caller's own estimator is left as it was.
+        share_cache = getattr(estimator, "share_masked_image_cache", None)
+        if share_cache is not None and image_cache is not None:
+            share_cache(image_cache)
 
         if self._is_pairwaise_estimator:
             all_ids = estimator.inputs_["id1"] if sign == POSTAIL_LBL else estimator.inputs_["id2"]
@@ -796,7 +820,9 @@ class Jackknife(Diagnostics):
 
         return 1 - prop_values, estimator.masker
 
-    def _transform_batch(self, expid, tail_contexts, result, target_value_map=None):
+    def _transform_batch(
+        self, expid, tail_contexts, result, target_value_map=None, image_cache=None
+    ):
         """Apply transform to one study ID for each tail in a batch.
 
         The leave-one-out refit is the expensive part and does not vary within a batch, so it
@@ -812,6 +838,7 @@ class Jackknife(Diagnostics):
             tail_contexts[0]["sign"],
             result,
             target_value_map,
+            image_cache,
         )
         return [
             _summarize_cluster_values(
