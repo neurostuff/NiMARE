@@ -28,7 +28,7 @@ from nimare.estimator import Estimator
 from nimare.meta._dependence import DependenceModel, hashable_label
 from nimare.meta._permutation import _empirical_max_p, _permuted_ols
 from nimare.meta.utils import _liberal_mask_bags, _liberal_mask_values
-from nimare.transforms import d_to_g, nlogp_to_z, p_to_z, t_to_d, t_to_nlogp, t_to_z
+from nimare.transforms import d_to_g, p_to_z, t_to_d, t_to_nlogp, t_to_z
 from nimare.utils import (
     _check_ncores,
     _nlogp_to_logp_values,
@@ -554,22 +554,13 @@ class IBMAEstimator(Estimator):
     def _combination_maps(est_summary):
         """Return the z, p and logp maps of a fitted PyMARE combination test.
 
-        PyMARE reports z as the one-tailed inverse of the p-value it reports, which is
-        negative wherever that p exceeds 0.5 and ``-inf`` wherever the two-sided correction
-        capped it at 1. That gives the *least* significant voxels the largest magnitudes,
-        with the sign of the effect inverted, and puts infinities in the results map. Take
-        the magnitude from the ``nlogp`` and the direction from PyMARE's sign instead,
-        which is the convention :func:`~nimare.transforms.p_to_z` follows everywhere else:
-        no evidence reads as zero.
+        PyMARE evaluates all three in log space, so the z map and the logp map both carry
+        tails past the smallest p-value a float can hold.
         """
-        nlogp_map = np.asarray(est_summary.logp, dtype=float).squeeze()
-        direction = np.sign(np.asarray(est_summary.z, dtype=float).squeeze())
-
         return (
-            # The trailing addition turns the -0.0 of a zero magnitude back into 0.0.
-            direction * nlogp_to_z(nlogp_map, tail="one") + 0.0,
+            np.asarray(est_summary.z, dtype=float).squeeze(),
             np.asarray(est_summary.p, dtype=float).squeeze(),
-            _nlogp_to_logp_values(nlogp_map),
+            _nlogp_to_logp_values(np.asarray(est_summary.logp, dtype=float).squeeze()),
         )
 
     def _resolve_group_labels(self, dataset):

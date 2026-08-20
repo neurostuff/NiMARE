@@ -22,10 +22,6 @@ All notable changes to NiMARE releases are documented in this page.
   * FDR and Bonferroni correction now read the `logp` map where the estimator produced one,
     so corrected `z` and `logp` are no longer re-truncated at the float32 p-value floor.
   * `CBMR` z-statistics are no longer clamped to +/-10.
-  * `Fishers` and `Stouffers` no longer report `-inf` z-statistics where the two-sided
-    correction caps the combined p-value at 1 (1905 voxels of the 21-study pain dataset).
-    The magnitude now comes from the `nlogp` and the direction from the tail that won,
-    so no evidence reads as zero rather than as the largest magnitude in the map.
   * `p` maps are unchanged in kind: still float32, still floored at 1e-45. Past that floor
     `-log10(p_map)` and the `logp` map no longer agree, and the `logp` map is the one to read.
   * New public conversions: `transforms.nlogp_to_z`, `transforms.z_to_nlogp`,
@@ -41,10 +37,15 @@ All notable changes to NiMARE releases are documented in this page.
     smallest positive one. Inverse-t implementations may return infinity for a denormal, and
     SciPy does on some platforms, so `|z|` past 37.5 now saturates portably instead of
     producing a machine-dependent infinity.
-  * Requires a PyMARE that reports log p-values: `CombinationTestResults.logp`,
-    `get_fe_stats()['logp']` and `stats.log_chi2_sf`, all of which are `nlogp` despite the
-    names. That is newer than `0.0.11rc1`; the `pymare` pin still reads `>=0.0.11rc1` and
-    should be tightened once such a release is cut.
+  * Requires PyMARE `0.0.11rc4` or newer, which reports log p-values:
+    `CombinationTestResults.logp`, `get_fe_stats()['logp']` and `stats.log_chi2_sf`, all of
+    which are `nlogp` despite the names. That release also fixes the two-sided
+    (`two_sided=True`) z-statistic of `Fishers` and `Stouffers`: it was the inverse of the
+    already-doubled p-value, so it was `-inf` where that p-value was capped at 1 and
+    negative wherever it exceeded 0.5, giving the least significant voxels the largest
+    magnitudes. The reported `z` is now the concordant statistic itself, which is finite
+    everywhere, carries the direction of the tail that won, and is larger in magnitude at
+    every voxel. `p` and `logp` are unchanged, so no threshold on those moves.
 
 ## [0.20.0](https://github.com/neurostuff/NiMARE/compare/0.19.0...0.20.0) - 2026-05-14
 

@@ -421,12 +421,7 @@ def test_regression_estimators_report_the_nlogp_value(testdata_ibma):
 
 @pytest.mark.parametrize("estimator", [ibma.Fishers, ibma.Stouffers])
 def test_combination_tests_report_no_evidence_as_zero(estimator):
-    """A capped two-sided p-value must read as no evidence, not as infinite evidence.
-
-    PyMARE reports z as the one-tailed inverse of the p-value it reports, so a p capped at 1
-    came back as ``-inf`` and a p just under 0.5 as a growing negative number: the least
-    significant voxels had the largest magnitudes, with the sign of the effect inverted.
-    """
+    """A capped two-sided p-value must read as no evidence, not as infinite evidence."""
     # Two studies pulling equally in opposite directions, then agreeing.
     z_maps = np.array([[0.0, 0.4, 3.0, 12.0, -12.0], [0.0, -0.4, 3.0, 12.0, -12.0]])
 
@@ -434,7 +429,7 @@ def test_combination_tests_report_no_evidence_as_zero(estimator):
     meta.inputs_ = {"contrast_names": np.arange(2), "corr_matrix": None, "id": ["a", "b"]}
     z_map, p_map, logp_map, _ = meta._fit_model(z_maps, study_mask=np.arange(2))
 
-    assert np.all(np.isfinite(z_map)), "z used to be -inf wherever p was capped at 1"
+    assert np.all(np.isfinite(z_map))
     assert np.allclose(p_map[:2], 1.0)
     assert np.array_equal(z_map[:2], [0.0, 0.0])
     assert np.array_equal(logp_map[:2], [0.0, 0.0])
