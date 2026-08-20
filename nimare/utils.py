@@ -47,15 +47,24 @@ def _clip_p_values(p_values, dtype=DEFAULT_FLOAT_DTYPE, copy=True):
 
 
 def _clip_logp_values(logp_values, dtype=DEFAULT_FLOAT_DTYPE, copy=True):
-    """Clip -log10(p) values to the range implied by a floating p-value dtype."""
+    """Clip -log10(p) values to the finite range of a floating dtype.
+
+    Only the non-finite ends are clipped: below at zero, since a p-value of at most one
+    cannot give a negative ``-log10(p)``, and above at the largest value the dtype holds,
+    which a p-value of exactly zero would otherwise map to positive infinity.
+
+    Deliberately *not* clipped at ``-log10(smallest positive p)``, which for float32 is
+    44.85, or a z of 14.1. Clipping a logarithm to the range of the unlogged quantity throws
+    away the headroom that taking the logarithm bought; a ``-log10(p)`` of 5000 is an
+    ordinary float32 and describes a z of about 152.
+    """
     dtype = np.dtype(dtype)
     logp_values = (
         np.array(logp_values, dtype=dtype, copy=True)
         if copy
         else np.asarray(logp_values, dtype=dtype)
     )
-    max_value = -np.log10(_minimum_positive_float(dtype))
-    return np.clip(logp_values, dtype.type(0), max_value, out=logp_values)
+    return np.clip(logp_values, dtype.type(0), np.finfo(dtype).max, out=logp_values)
 
 
 def _p_to_logp_values(p_values, dtype=DEFAULT_FLOAT_DTYPE, copy=True):
@@ -64,6 +73,18 @@ def _p_to_logp_values(p_values, dtype=DEFAULT_FLOAT_DTYPE, copy=True):
     np.log10(p_values, out=p_values)
     np.negative(p_values, out=p_values)
     return p_values
+
+
+def _nlogp_to_logp_values(nlogp_values, dtype=DEFAULT_FLOAT_DTYPE):
+    """Convert ``nlogp`` values to the ``logp`` that NiMARE's maps hold.
+
+    The one bridge between the two: ``nlogp`` is the natural logarithm, as SciPy and PyMARE
+    return it, while ``logp`` is base ten and negated. Unlike :func:`_p_to_logp_values` this
+    never materializes the p-value, so it carries tails a float cannot represent.
+    """
+    # The trailing addition turns the -0.0 that a p-value of one produces back into 0.0.
+    logp_values = np.asarray(nlogp_values, dtype=np.float64) / -np.log(10.0) + 0.0
+    return _clip_logp_values(logp_values, dtype=dtype, copy=False)
 
 
 def _mask_img_to_bool(mask_img):

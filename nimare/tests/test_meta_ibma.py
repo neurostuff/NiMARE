@@ -23,7 +23,7 @@ from nimare.tests.utils import get_test_data_path
             {},
             FDRCorrector,
             {"method": "indep", "alpha": 0.001},
-            ("z", "p", "dof"),
+            ("z", "p", "logp", "dof"),
             id="Fishers",
         ),
         pytest.param(
@@ -31,7 +31,7 @@ from nimare.tests.utils import get_test_data_path
             {"use_sample_size": False, "groupby": False},
             None,
             {},
-            ("z", "p", "dof"),
+            ("z", "p", "logp", "dof"),
             id="Stouffers",
         ),
         pytest.param(
@@ -39,7 +39,7 @@ from nimare.tests.utils import get_test_data_path
             {"use_sample_size": True, "groupby": False},
             None,
             {},
-            ("z", "p", "dof"),
+            ("z", "p", "logp", "dof"),
             id="Stouffers_sample_weighted",
         ),
         pytest.param(
@@ -47,7 +47,7 @@ from nimare.tests.utils import get_test_data_path
             {"use_sample_size": False},
             None,
             {},
-            ("z", "p", "dof"),
+            ("z", "p", "logp", "dof"),
             id="Stouffers_grouped",
         ),
         pytest.param(
@@ -55,7 +55,7 @@ from nimare.tests.utils import get_test_data_path
             {"use_sample_size": True},
             None,
             {},
-            ("z", "p", "dof"),
+            ("z", "p", "logp", "dof"),
             id="Stouffers_sample_grouped",
         ),
         pytest.param(
@@ -63,7 +63,7 @@ from nimare.tests.utils import get_test_data_path
             {"tau2": 0},
             None,
             {},
-            ("z", "p", "est", "se", "dof"),
+            ("z", "p", "logp", "est", "se", "dof"),
             id="WeightedLeastSquares",
         ),
         pytest.param(
@@ -71,7 +71,7 @@ from nimare.tests.utils import get_test_data_path
             {},
             None,
             {},
-            ("z", "p", "est", "se", "tau2", "dof"),
+            ("z", "p", "logp", "est", "se", "tau2", "dof"),
             id="DerSimonianLaird",
         ),
         pytest.param(
@@ -79,7 +79,7 @@ from nimare.tests.utils import get_test_data_path
             {},
             None,
             {},
-            ("z", "p", "est", "se", "tau2", "dof"),
+            ("z", "p", "logp", "est", "se", "tau2", "dof"),
             id="Hedges",
         ),
         pytest.param(
@@ -87,7 +87,7 @@ from nimare.tests.utils import get_test_data_path
             {"method": "ml"},
             None,
             {},
-            ("z", "p", "est", "se", "tau2", "sigma2", "dof"),
+            ("z", "p", "logp", "est", "se", "tau2", "sigma2", "dof"),
             id="SampleSizeBasedLikelihood_ml",
         ),
         pytest.param(
@@ -95,7 +95,7 @@ from nimare.tests.utils import get_test_data_path
             {"method": "reml"},
             None,
             {},
-            ("z", "p", "est", "se", "tau2", "sigma2", "dof"),
+            ("z", "p", "logp", "est", "se", "tau2", "sigma2", "dof"),
             id="SampleSizeBasedLikelihood_reml",
         ),
         pytest.param(
@@ -103,7 +103,7 @@ from nimare.tests.utils import get_test_data_path
             {"method": "ml"},
             None,
             {},
-            ("z", "p", "est", "se", "tau2", "dof"),
+            ("z", "p", "logp", "est", "se", "tau2", "dof"),
             id="VarianceBasedLikelihood_ml",
         ),
         pytest.param(
@@ -111,7 +111,7 @@ from nimare.tests.utils import get_test_data_path
             {"method": "reml"},
             None,
             {},
-            ("z", "p", "est", "se", "tau2", "dof"),
+            ("z", "p", "logp", "est", "se", "tau2", "dof"),
             id="VarianceBasedLikelihood_reml",
         ),
         pytest.param(
@@ -119,7 +119,7 @@ from nimare.tests.utils import get_test_data_path
             {"two_sided": True},
             FWECorrector,
             {"method": "montecarlo", "n_iters": 100, "n_cores": 1},
-            ("t", "z", "dof"),
+            ("t", "z", "p", "logp", "dof"),
             id="PermutedOLS",
         ),
         pytest.param(
@@ -127,7 +127,7 @@ from nimare.tests.utils import get_test_data_path
             {"tau2": 0},
             None,
             {},
-            ("z", "p", "est", "se", "dof"),
+            ("z", "p", "logp", "est", "se", "dof"),
             id="FixedEffectsHedges",
         ),
     ],
@@ -375,3 +375,65 @@ def test_masked_image_cache_is_off_by_default(testdata_ibma, monkeypatch):
 
     assert estimator._masked_image_cache is None
     assert len(loaded) == 2 * n_images
+
+
+@pytest.mark.parametrize("estimator", [ibma.Fishers, ibma.Stouffers])
+def test_combination_tests_report_a_tail_the_p_map_cannot_hold(estimator):
+    """Twenty concordant studies drive the combined p below double precision.
+
+    PyMARE reports the log p-value, so z and the logp map both keep going; the p map can
+    only report the float32 floor.
+    """
+    z_maps = np.full((20, 4), 12.0)
+    z_maps[:, 1] *= -1  # the same magnitude, opposite direction
+    z_maps[:, 2] = 0.5  # ordinary values must be untouched
+    z_maps[:, 3] = -0.5
+
+    meta = estimator()
+    meta.inputs_ = {
+        "contrast_names": np.arange(20),
+        "corr_matrix": None,
+        "id": [f"s{i}" for i in range(20)],
+    }
+    z_map, p_map, logp_map, _ = meta._fit_model(z_maps, study_mask=np.arange(20))
+
+    assert np.all(np.isfinite(z_map)), "z used to come back infinite here"
+    assert np.abs(z_map[0]) > 38.5, "past the deepest z a p-value could describe"
+    assert z_map[0] > 0 and z_map[1] < 0, "the sign of the combined effect survives"
+    assert logp_map[0] > 500, "the -log10(p) map used to be capped at 44.85"
+    assert p_map[0] == 0.0, "the p-value itself has nowhere left to go"
+    # Ordinary voxels agree with the p-value they came from.
+    assert np.allclose(logp_map[2:], -np.log10(p_map[2:]), rtol=1e-5)
+
+
+def test_regression_estimators_report_the_nlogp_value(testdata_ibma):
+    """The logp map must agree with the p map wherever p is still representable."""
+    results = ibma.DerSimonianLaird().fit(testdata_ibma)
+
+    p_map = results.get_map("p", return_type="array")
+    logp_map = results.get_map("logp", return_type="array")
+
+    covered = np.isfinite(p_map) & (p_map > np.finfo(np.float32).tiny)
+    assert covered.any()
+    assert np.allclose(logp_map[covered], -np.log10(p_map[covered]), atol=1e-4)
+    assert np.array_equal(np.isnan(p_map), np.isnan(logp_map))
+
+
+@pytest.mark.parametrize("estimator", [ibma.Fishers, ibma.Stouffers])
+def test_combination_tests_report_no_evidence_as_zero(estimator):
+    """A capped two-sided p-value must read as no evidence, not as infinite evidence."""
+    # Two studies pulling equally in opposite directions, then agreeing.
+    z_maps = np.array([[0.0, 0.4, 3.0, 12.0, -12.0], [0.0, -0.4, 3.0, 12.0, -12.0]])
+
+    meta = estimator()
+    meta.inputs_ = {"contrast_names": np.arange(2), "corr_matrix": None, "id": ["a", "b"]}
+    z_map, p_map, logp_map, _ = meta._fit_model(z_maps, study_mask=np.arange(2))
+
+    assert np.all(np.isfinite(z_map))
+    assert np.allclose(p_map[:2], 1.0)
+    assert np.array_equal(z_map[:2], [0.0, 0.0])
+    assert np.array_equal(logp_map[:2], [0.0, 0.0])
+    # Real evidence keeps its magnitude and its direction.
+    assert z_map[2] > 3
+    assert z_map[3] > 0 and z_map[4] < 0
+    assert np.isclose(z_map[3], -z_map[4])

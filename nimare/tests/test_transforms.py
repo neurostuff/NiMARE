@@ -2,12 +2,16 @@
 
 import logging
 import re
+import time
 
 import nibabel as nib
 import numpy as np
 import pytest
+from pymare.stats import log_chi2_sf
+from scipy import stats
 
 from nimare import transforms
+from nimare.utils import DEFAULT_FLOAT_DTYPE
 
 
 def test_ImageTransformer(testdata_ibma):
@@ -388,3 +392,199 @@ def test_z_to_t_clips_extreme_tail_probabilities():
     assert np.all(np.isfinite(t_values))
     assert t_values[0] < 0
     assert t_values[1] > 0
+
+
+def test_t_to_z_is_unchanged_below_the_old_ceiling():
+    """The log-space tail must reproduce the previous values wherever they were not capped.
+
+    The old implementation floored its internal p-value at the machine epsilon of its dtype,
+    which truncated |z| at about 8.13.
+    """
+    rng = np.random.default_rng(0)
+    for dof in (5, 20, 100):
+        t = rng.normal(0, 2.5, size=50_000)
+        z = transforms.t_to_z(t, dof)
+        # Matched tail probabilities, computed independently of the implementation.
+        expected = np.sign(t) * stats.norm.isf(stats.t.sf(np.abs(t), dof))
+        below = np.abs(z) < 8.0
+        assert below.mean() > 0.99
+        assert np.allclose(z[below], expected[below], atol=1e-10)
+
+
+def test_t_to_z_keeps_going_past_the_old_ceiling():
+    """A large t must no longer saturate, and must keep its sign."""
+    t = np.array([-1000.0, -50.0, 0.0, 50.0, 1000.0])
+
+    z = transforms.t_to_z(t, 20)
+
+    assert np.all(np.abs(z[[0, 1, 3, 4]]) > 8.13), "these all used to be clipped to 8.13"
+    assert np.allclose(z, -z[::-1]), "must stay antisymmetric in t"
+    assert z[2] == 0.0
+    assert np.allclose(np.abs(z[[1, 4]]), [9.755, 14.630], atol=1e-3)
+    # And the result is representable in the dtype the maps are stored in.
+    assert np.all(np.isfinite(np.asarray(z, dtype=DEFAULT_FLOAT_DTYPE)))
+
+
+@pytest.mark.parametrize("tail", ["one", "two"])
+def test_nlogp_to_z_matches_p_to_z_while_p_is_representable(tail):
+    """Agree with the ordinary conversion wherever the p-value is still a number."""
+    p = np.array([0.5, 0.05, 1e-8, 1e-20, 1e-300])
+
+    assert np.allclose(
+        transforms.nlogp_to_z(np.log(p), tail=tail),
+        transforms.p_to_z(p, tail=tail),
+        atol=1e-10,
+    )
+
+
+def test_nlogp_to_z_passes_where_p_to_z_runs_out():
+    """Past the smallest representable p, only the log-space form still carries a value."""
+    # p = 1e-5000: zero in any float, so p_to_z can only return its floor.
+    nlogp = -5000 * np.log(10)
+
+    z = transforms.nlogp_to_z(nlogp, tail="one")
+
+    assert 151 < z < 152
+    assert transforms.p_to_z(np.array([0.0]), tail="one")[0] < 39
+    # Round-trip through float32 storage, which holds z and -log10(p) alike.
+    stored = DEFAULT_FLOAT_DTYPE(z)
+    assert np.isfinite(stored)
+    assert np.isclose(float(stored), z, rtol=1e-6)
+
+
+@pytest.mark.parametrize("tail", ["one", "two"])
+def test_z_to_nlogp_inverts_nlogp_to_z(tail):
+    """The two log-space conversions must be inverses well past where a p-value dies."""
+    z = np.linspace(0.0, 100.0, 501)
+
+    assert np.allclose(transforms.nlogp_to_z(transforms.z_to_nlogp(z, tail), tail), z, atol=1e-8)
+
+
+@pytest.mark.parametrize("tail", ["one", "two"])
+def test_z_to_nlogp_matches_the_log_of_z_to_p(tail):
+    """Agree with the ordinary conversion wherever the p-value is still a number."""
+    z = np.array([-3.0, 0.0, 1.959963, 5.0, 20.0])
+
+    assert np.allclose(
+        transforms.z_to_nlogp(z, tail), np.log(transforms.z_to_p(z, tail)), atol=1e-12
+    )
+
+
+def test_t_to_nlogp_matches_the_tail_of_t_to_z():
+    """The t tail and the z NiMARE reports from it must describe the same probability."""
+    t = np.array([0.5, 2.0, 10.0, 50.0, 1000.0])
+
+    nlogp = transforms.t_to_nlogp(t, 20, tail="one")
+
+    assert np.allclose(nlogp, transforms.z_to_nlogp(transforms.t_to_z(t, 20), tail="one"))
+    # Two tails are one added log(2), and the deep tail stays finite.
+    assert np.allclose(transforms.t_to_nlogp(t, 20, tail="two"), nlogp + np.log(2.0))
+    assert np.all(np.isfinite(nlogp))
+
+
+@pytest.mark.parametrize("dof", [1, 2, 5, 10, 20, 50, 100, 200, 500])
+def test_z_to_t_inverts_t_to_z_at_every_degree_of_freedom(dof):
+    """The two directions must agree well past where either SciPy routine works.
+
+    ``scipy.stats.t.isf`` needs a representable p-value and degrades before it runs out of
+    one; ``scipy.stats.t.logsf`` underflows to -inf at high ``dof``. Both directions fall
+    back to the power law the t tail becomes, so the round trip has to hold anyway.
+    """
+    t = np.array([-1000.0, -100.0, -20.0, -5.0, -1.0, 0.0, 1.0, 5.0, 20.0, 100.0, 1000.0])
+
+    z = transforms.t_to_z(t, dof)
+    assert np.all(np.isfinite(z)), "t_to_z used to return inf once t.logsf underflowed"
+
+    back = transforms.z_to_t(z, dof)
+    # 1% covers the narrow band where the p-value has underflowed but the expansion is not
+    # yet tight; everywhere else this is 1e-11.
+    assert np.allclose(back, t, rtol=1e-2)
+
+
+def test_t_to_z_passes_where_the_log_survival_function_underflows():
+    """``t.logsf`` returns -inf from t = 96 at dof = 500, which would put inf in a z map."""
+    t = np.array([96.0, 1000.0])
+
+    z = transforms.t_to_z(t, 500)
+
+    assert np.all(np.isinf(stats.t.logsf(t, 500))), "fixture must be past SciPy's underflow"
+    assert np.all(np.isfinite(z))
+    assert np.all(np.diff(z) > 0), "must stay monotone in t"
+
+
+def test_z_to_t_reaches_a_t_no_p_value_could_invert():
+    """|z| = 50 on 10 dof matches a t of 8e54, which no representable p-value reaches.
+
+    SciPy's inverse t returns 2.5e31 at best here, and infinity on some platforms.
+    """
+    t_values = transforms.z_to_t(np.array([-50.0, 50.0]), dof=10)
+
+    assert np.all(np.isfinite(t_values))
+    assert np.isclose(t_values[1], 8.047e54, rtol=1e-3)
+    assert t_values[0] == -t_values[1]
+
+
+def test_z_to_t_round_trips_past_the_old_ceiling():
+    """z_to_t floored its p at machine epsilon, so t saturated from |z| = 8.13 on."""
+    t = np.array([-1000.0, -100.0, -20.0, 0.0, 20.0, 100.0, 1000.0])
+    z = transforms.t_to_z(t, 20)
+    assert np.max(np.abs(z)) > 8.13, "fixture must reach past the old ceiling"
+
+    assert np.allclose(transforms.z_to_t(z, 20), t, rtol=1e-6)
+
+
+@pytest.mark.parametrize("dof", [1, 2, 7])
+def test_chi2_to_nlogp_matches_the_general_implementation(dof):
+    """The one-dof shortcut must agree with the general chi-squared tail it bypasses."""
+    chi2_values = np.array([0.0, 0.5, 3.0, 100.0, 1400.0, 5000.0])
+
+    nlogp = transforms.chi2_to_nlogp(chi2_values, dof)
+
+    assert np.allclose(nlogp, log_chi2_sf(chi2_values, dof), atol=1e-10)
+    assert np.all(nlogp <= 0)
+
+
+def test_chi2_to_nlogp_passes_where_the_survival_function_underflows():
+    """``chi2.logsf`` is -inf from a chi-squared of about 1416 on; this must not be."""
+    chi2_values = np.array([1500.0, 1e4, 1e5])
+
+    nlogp = transforms.chi2_to_nlogp(chi2_values, 1)
+
+    assert np.all(np.isinf(stats.chi2.logsf(chi2_values, 1))), "fixture must be past the cliff"
+    assert np.all(np.isfinite(nlogp))
+    # The exact identity for one degree of freedom, computed independently.
+    expected = np.log(2.0) + stats.norm.logcdf(-np.sqrt(chi2_values))
+    assert np.allclose(nlogp, expected, rtol=1e-12)
+
+
+def test_chi2_to_nlogp_is_cheap_for_one_degree_of_freedom():
+    """The one-dof path is what makes voxelwise use affordable, so hold it to a budget.
+
+    ``pymare.stats.log_chi2_sf`` reaches non-underflowing values through
+    ``scipy.stats.chi2.logsf`` at about a microsecond each, which cost MKDAChi2 a 19x
+    slowdown; going through ``erfc`` instead is about 25ns.
+    """
+    chi2_values = np.random.default_rng(0).chisquare(1, size=200_000)
+
+    start = time.perf_counter()
+    transforms.chi2_to_nlogp(chi2_values, 1)
+    elapsed = time.perf_counter() - start
+
+    # The general path takes ~0.4s for this many values; the budget is deliberately loose
+    # enough to survive a loaded machine while still catching a regression to it.
+    assert elapsed < 0.1, f"one-dof chi-squared tail took {elapsed:.3f}s for 200k values"
+
+
+@pytest.mark.parametrize("tail", ["one", "two"])
+def test_z_to_nlogp_agrees_with_the_log_ndtr_route(tail):
+    """The erfc-based tail must match the log_ndtr one it replaced, across the join."""
+    z = np.concatenate([np.linspace(-40.0, 40.0, 20001), np.array([50.0, 200.0])])
+
+    nlogp = transforms.z_to_nlogp(z, tail)
+
+    if tail == "two":
+        expected = np.log(2.0) + stats.norm.logcdf(-np.abs(z))
+    else:
+        expected = stats.norm.logcdf(-z)
+    assert np.all(np.isfinite(nlogp))
+    assert np.allclose(nlogp, np.minimum(expected, 0.0), rtol=1e-12, atol=1e-12)

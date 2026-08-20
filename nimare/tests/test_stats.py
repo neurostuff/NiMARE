@@ -3,8 +3,18 @@
 import math
 
 import numpy as np
+import pytest
+from pymare.stats import bonferroni, fdr
 
-from nimare.stats import null_to_p, nullhist_to_p, one_way, two_way, two_way_counts
+from nimare.stats import (
+    nlogp_bonferroni,
+    nlogp_fdr,
+    null_to_p,
+    nullhist_to_p,
+    one_way,
+    two_way,
+    two_way_counts,
+)
 
 
 def test_null_to_p_float():
@@ -138,3 +148,52 @@ def test_two_way_counts_matches_two_way_reference():
     expected = two_way(cells)
     actual = two_way_counts(selected, unselected, 21, 17)
     assert np.allclose(actual, expected, equal_nan=True)
+
+
+@pytest.mark.parametrize("method", ["bh", "by"])
+def test_nlogp_fdr_matches_the_p_space_procedure(method):
+    """The step-up procedure must be the same one, only carried out in logs."""
+    rng = np.random.default_rng(0)
+    p = rng.uniform(1e-12, 1.0, size=5000)
+    # Ties, a p of exactly one, and the float32 storage floor all have to behave.
+    p[:5] = [1e-8, 1e-8, 0.5, 1.0, np.finfo(np.float32).tiny]
+
+    corrected = np.exp(nlogp_fdr(np.log(p), method=method))
+    expected = fdr(p.copy(), method=method)
+
+    assert np.allclose(corrected, expected, rtol=1e-10)
+    assert np.array_equal(np.argsort(corrected), np.argsort(expected))
+    assert np.array_equal(corrected <= 0.05, expected <= 0.05), "selection must not move"
+
+
+def test_nlogp_bonferroni_matches_the_p_space_procedure():
+    """Multiplying by the number of tests is adding its logarithm."""
+    rng = np.random.default_rng(1)
+    p = rng.uniform(1e-12, 1.0, size=1000)
+
+    corrected = np.exp(nlogp_bonferroni(np.log(p)))
+    expected = bonferroni(p.copy())
+
+    assert np.allclose(corrected, expected, rtol=1e-10)
+    assert np.array_equal(corrected <= 0.05, expected <= 0.05)
+
+
+@pytest.mark.parametrize("correct", [nlogp_bonferroni, nlogp_fdr])
+def test_log_corrections_carry_a_tail_no_p_value_could_hold(correct):
+    """A corrected p-value below the smallest double must survive as its logarithm."""
+    nlogp = np.zeros(1000)
+    nlogp[0] = -3000.0  # p = 10 ** -1303, zero in any float
+
+    corrected = correct(nlogp)
+
+    assert np.isfinite(corrected[0])
+    # Multiplying by 1000 tests moves the tail by log(1000), and no further.
+    assert np.isclose(corrected[0], -3000.0 + np.log(1000.0))
+    assert corrected[1] == 0.0, "a p-value of one stays one"
+
+
+@pytest.mark.parametrize("correct", [nlogp_bonferroni, nlogp_fdr])
+def test_log_corrections_reject_plain_p_values(correct):
+    """Passing p-values would adjust every one of them to 1, so say so instead."""
+    with pytest.raises(ValueError, match="natural logarithms"):
+        correct(np.array([0.01, 0.5]))

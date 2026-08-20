@@ -7,7 +7,6 @@ from functools import wraps
 
 import numpy as np
 import pandas as pd
-import scipy
 
 try:
     import torch  # type: ignore[import-not-found]
@@ -20,10 +19,11 @@ from nimare import _version
 from nimare.estimator import Estimator
 from nimare.meta import models
 from nimare.results import MetaResult
+from nimare.transforms import chi2_to_nlogp, nlogp_to_z, z_to_nlogp
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _clip_p_values,
-    _minimum_positive_float,
+    _nlogp_to_logp_values,
     b_spline_bases,
     dummy_encoding_moderators,
     get_masker,
@@ -1132,7 +1132,7 @@ class CBMRInference(object):
         cov_spatial_coef = self._get_group_spatial_covariance(involved_groups)
 
         if con_group.shape[0] == 1:
-            z_stats_spatial, p_vals_spatial = self._compute_group_wald_statistics(
+            z_stats_spatial, nlogp_vals_spatial = self._compute_group_wald_statistics(
                 simp_con_group,
                 involved_groups,
                 cov_spatial_coef,
@@ -1142,7 +1142,11 @@ class CBMRInference(object):
             )
             chi_sq_spatial = None
         else:
-            chi_sq_spatial, z_stats_spatial, p_vals_spatial = self._compute_group_glh_statistics(
+            (
+                chi_sq_spatial,
+                z_stats_spatial,
+                nlogp_vals_spatial,
+            ) = self._compute_group_glh_statistics(
                 simp_con_group,
                 involved_groups,
                 cov_spatial_coef,
@@ -1156,7 +1160,8 @@ class CBMRInference(object):
         return {
             "contrast_count": con_group.shape[0],
             "chi_square": chi_sq_spatial,
-            "p": p_vals_spatial,
+            "p": _clip_p_values(np.exp(nlogp_vals_spatial), dtype=DEFAULT_FLOAT_DTYPE),
+            "logp": _nlogp_to_logp_values(nlogp_vals_spatial),
             "z": z_stats_spatial,
         }
 
@@ -1211,16 +1216,8 @@ class CBMRInference(object):
         involved_var_log_intensity = simp_con_group**2 @ var_log_intensity
         involved_std_log_intensity = np.sqrt(involved_var_log_intensity)
         z_stats_spatial = contrast_log_intensity / involved_std_log_intensity
-        if n_con_group_involved == 1:
-            p_vals_spatial = scipy.stats.norm.sf(z_stats_spatial)
-        else:
-            p_vals_spatial = scipy.stats.norm.sf(abs(z_stats_spatial)) * 2
-        p_vals_spatial = _clip_p_values(
-            p_vals_spatial,
-            dtype=DEFAULT_FLOAT_DTYPE,
-            copy=False,
-        )
-        return z_stats_spatial, p_vals_spatial
+        tail = "one" if n_con_group_involved == 1 else "two"
+        return z_stats_spatial, z_to_nlogp(z_stats_spatial, tail=tail)
 
     def _compute_group_glh_statistics(
         self,
@@ -1257,25 +1254,14 @@ class CBMRInference(object):
             cov_log_intensity,
             contrast_log_intensity,
         )
-        p_vals_spatial = scipy.stats.chi2.sf(chi_sq_spatial, df=m)
-        p_vals_spatial = _clip_p_values(
-            p_vals_spatial,
-            dtype=DEFAULT_FLOAT_DTYPE,
-            copy=False,
-        )
+        nlogp_vals_spatial = chi2_to_nlogp(chi_sq_spatial, m)
         if is_homogeneity_test:
-            z_stats_spatial = scipy.stats.norm.isf(p_vals_spatial)
-            z_stats_spatial[z_stats_spatial < 0] = 0
+            z_stats_spatial = nlogp_to_z(nlogp_vals_spatial, tail="one")
         else:
-            z_p_values = np.maximum(
-                p_vals_spatial,
-                2 * _minimum_positive_float(p_vals_spatial.dtype),
-            )
-            z_stats_spatial = scipy.stats.norm.isf(z_p_values / 2)
+            z_stats_spatial = nlogp_to_z(nlogp_vals_spatial, tail="two")
             if simp_con_group.shape[0] == 1:
-                z_stats_spatial *= np.sign(contrast_log_intensity.flatten())
-        z_stats_spatial = np.clip(z_stats_spatial, a_min=-10, a_max=10)
-        return chi_sq_spatial, z_stats_spatial, p_vals_spatial
+                z_stats_spatial = z_stats_spatial * np.sign(contrast_log_intensity.flatten())
+        return chi_sq_spatial, z_stats_spatial, nlogp_vals_spatial
 
     def _store_group_inference_result(self, con_group_count, group_stats):
         """Write one computed group-inference result into result maps."""
@@ -1284,6 +1270,7 @@ class CBMRInference(object):
             if group_stats["contrast_count"] > 1:
                 self.result.maps[f"chiSquare_group-{contrast_name}"] = group_stats["chi_square"]
             self.result.maps[f"p_group-{contrast_name}"] = group_stats["p"]
+            self.result.maps[f"logp_group-{contrast_name}"] = group_stats["logp"]
             self.result.maps[f"z_group-{contrast_name}"] = group_stats["z"]
         else:
             if group_stats["contrast_count"] > 1:
@@ -1291,6 +1278,7 @@ class CBMRInference(object):
                     "chi_square"
                 ]
             self.result.maps[f"p_GLH_groups_{con_group_count}"] = group_stats["p"]
+            self.result.maps[f"logp_GLH_groups_{con_group_count}"] = group_stats["logp"]
             self.result.maps[f"z_GLH_groups_{con_group_count}"] = group_stats["z"]
 
     @_check_fit
@@ -1386,33 +1374,20 @@ class CBMRInference(object):
             involved_var_moderator_coef = con_moderator**2 @ var_moderator_coef
             involved_std_moderator_coef = np.sqrt(involved_var_moderator_coef)
             z_stats_moderator = contrast_moderator_coef / involved_std_moderator_coef
-            p_vals_moderator = scipy.stats.norm.sf(abs(z_stats_moderator)) * 2
-            p_vals_moderator = _clip_p_values(
-                p_vals_moderator,
-                dtype=np.asarray(p_vals_moderator).dtype,
-                copy=False,
-            )
+            nlogp_vals_moderator = z_to_nlogp(z_stats_moderator, tail="two")
             chi_sq_moderator = None
         else:
             contrast_covariance = con_moderator @ cov_moderator_coef @ con_moderator.T
             solved = np.linalg.solve(contrast_covariance, contrast_moderator_coef)
             chi_sq_moderator = contrast_moderator_coef.T @ solved
-            p_vals_moderator = scipy.stats.chi2.sf(chi_sq_moderator, df=m_con_moderator)
-            p_vals_moderator = _clip_p_values(
-                p_vals_moderator,
-                dtype=np.asarray(p_vals_moderator).dtype,
-                copy=False,
-            )
-            z_p_values = np.maximum(
-                p_vals_moderator,
-                2 * _minimum_positive_float(np.asarray(p_vals_moderator).dtype),
-            )
-            z_stats_moderator = scipy.stats.norm.isf(z_p_values / 2)
+            nlogp_vals_moderator = chi2_to_nlogp(chi_sq_moderator, m_con_moderator)
+            z_stats_moderator = nlogp_to_z(nlogp_vals_moderator, tail="two")
 
         return {
             "contrast_count": m_con_moderator,
             "chi_square": chi_sq_moderator,
-            "p": p_vals_moderator,
+            "p": _clip_p_values(np.exp(nlogp_vals_moderator), dtype=np.float64),
+            "logp": _nlogp_to_logp_values(nlogp_vals_moderator, dtype=np.float64),
             "z": z_stats_moderator,
         }
 
@@ -1431,6 +1406,10 @@ class CBMRInference(object):
                 data=np.array(moderator_stats["p"]),
                 columns=["p"],
             )
+            self.result.tables[f"logp_{contrast_name}"] = pd.DataFrame(
+                data=np.array(moderator_stats["logp"]),
+                columns=["logp"],
+            )
             self.result.tables[f"z_{contrast_name}"] = pd.DataFrame(
                 data=np.array(moderator_stats["z"]),
                 columns=["z"],
@@ -1446,6 +1425,10 @@ class CBMRInference(object):
             self.result.tables[f"p_GLH_moderators_{con_moderator_count}"] = pd.DataFrame(
                 data=np.array(moderator_stats["p"]),
                 columns=["p"],
+            )
+            self.result.tables[f"logp_GLH_moderators_{con_moderator_count}"] = pd.DataFrame(
+                data=np.array(moderator_stats["logp"]),
+                columns=["logp"],
             )
             self.result.tables[f"z_GLH_moderators_{con_moderator_count}"] = pd.DataFrame(
                 data=np.array(moderator_stats["z"]),

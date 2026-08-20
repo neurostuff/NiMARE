@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import scipy
+import scipy.special
 
 try:
     import torch
@@ -395,25 +396,33 @@ def test_cbmr_chi_square_log_intensity_matches_legacy_loop():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
-def test_cbmr_group_glh_uses_stable_chi_square_survival_function():
-    """Extreme chi-square statistics should retain nonzero p-values when representable."""
+@pytest.mark.parametrize("statistic", [10.0, np.sqrt(5000.0)])
+def test_cbmr_group_glh_evaluates_the_chi_square_tail_in_log_space(statistic):
+    """The GLH tail must stay finite past the chi-square whose p-value underflows.
+
+    ``chi2.sf`` is exactly zero from a chi-square of about 1416 on, which used to give a
+    p-value of zero and a z-statistic clamped to 10.
+    """
     inference = CBMRInference(device="cpu")
 
-    chi_square, z_values, p_values = inference._compute_group_glh_statistics(
+    chi_square, z_values, nlogp_values = inference._compute_group_glh_statistics(
         simp_con_group=np.array([[1.0]]),
         involved_groups=["group"],
         cov_spatial_coef=np.array([[1.0]]),
-        contrast_log_intensity=np.array([[10.0]]),
+        contrast_log_intensity=np.array([[statistic]]),
         X=np.array([[1.0]]),
         spatial_coef_dim=1,
         n_brain_voxel=1,
         is_homogeneity_test=False,
     )
 
-    np.testing.assert_allclose(chi_square, [100.0])
-    np.testing.assert_allclose(p_values, scipy.stats.chi2.sf(100.0, df=1), rtol=1e-6, atol=0)
-    assert p_values[0] > 0
+    np.testing.assert_allclose(chi_square, [statistic**2])
+    # The exact one-dof upper tail, computed independently of the implementation.
+    expected = np.log(2.0) + scipy.special.log_ndtr(-np.abs(statistic))
+    np.testing.assert_allclose(nlogp_values, expected, rtol=1e-6)
     assert np.isfinite(z_values[0])
+    if statistic > 30:
+        assert z_values[0] > 38.5, "z used to be clamped to 10 here"
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")

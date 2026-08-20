@@ -28,9 +28,10 @@ from nimare.estimator import Estimator
 from nimare.meta._dependence import DependenceModel, hashable_label
 from nimare.meta._permutation import _empirical_max_p, _permuted_ols
 from nimare.meta.utils import _liberal_mask_bags, _liberal_mask_values
-from nimare.transforms import d_to_g, p_to_z, t_to_d, t_to_z, z_to_p
+from nimare.transforms import d_to_g, p_to_z, t_to_d, t_to_nlogp, t_to_z
 from nimare.utils import (
     _check_ncores,
+    _nlogp_to_logp_values,
     get_masker,
     get_masker_mask_image,
 )
@@ -549,6 +550,19 @@ class IBMAEstimator(Estimator):
         dependence = self._dependence(study_mask)
         return dependence.per_image(self._sample_sizes_for_mask(study_mask))
 
+    @staticmethod
+    def _combination_maps(est_summary):
+        """Return the z, p and logp maps of a fitted PyMARE combination test.
+
+        PyMARE evaluates all three in log space, so the z map and the logp map both carry
+        tails past the smallest p-value a float can hold.
+        """
+        return (
+            np.asarray(est_summary.z, dtype=float).squeeze(),
+            np.asarray(est_summary.p, dtype=float).squeeze(),
+            _nlogp_to_logp_values(np.asarray(est_summary.logp, dtype=float).squeeze()),
+        )
+
     def _resolve_group_labels(self, dataset):
         """Return one group label per image, in ``inputs_["id"]`` order."""
         if isinstance(self.groupby, str):
@@ -775,6 +789,7 @@ class _PyMARERegressionEstimator(IBMAEstimator):
         return (
             fe_stats["z"].squeeze(),
             fe_stats["p"].squeeze(),
+            _nlogp_to_logp_values(fe_stats["logp"].squeeze()),
             fe_stats["est"].squeeze(),
             fe_stats["se"].squeeze(),
             *(_EXTRA_MAP_SOURCES[name](est, est_summary) for name in self._extra_maps),
@@ -787,7 +802,7 @@ class _PyMARERegressionEstimator(IBMAEstimator):
 
         maps = self._fit_over_bags(
             list(self._image_inputs),
-            ["z", "p", "est", "se", *self._extra_maps, "dof"],
+            ["z", "p", "logp", "est", "se", *self._extra_maps, "dof"],
         )
         return maps, self._tables(), self._description_text()
 
@@ -916,11 +931,10 @@ class Fishers(IBMAEstimator):
         est.fit_dataset(pymare_dset, corr=sub_corr)
         est_summary = est.summary()
 
-        z_map = est_summary.z.squeeze()
-        p_map = est_summary.p.squeeze()
+        z_map, p_map, logp_map = self._combination_maps(est_summary)
         dof_map = self._dof_map(study_mask, n_voxels)
 
-        return z_map, p_map, dof_map
+        return z_map, p_map, logp_map, dof_map
 
     def _fit(self, dataset):
         self.dataset = dataset
@@ -928,7 +942,7 @@ class Fishers(IBMAEstimator):
 
         maps = self._fit_over_bags(
             ["z_maps"],
-            ["z", "p", "dof"],
+            ["z", "p", "logp", "dof"],
             corr=self.inputs_["corr_matrix"],
         )
         return maps, {}, self._description_text()
@@ -1087,11 +1101,10 @@ class Stouffers(IBMAEstimator):
         est.fit_dataset(pymare_dset, corr=sub_corr)
         est_summary = est.summary()
 
-        z_map = est_summary.z.squeeze()
-        p_map = est_summary.p.squeeze()
+        z_map, p_map, logp_map = self._combination_maps(est_summary)
         dof_map = self._dof_map(study_mask, n_voxels)
 
-        return z_map, p_map, dof_map
+        return z_map, p_map, logp_map, dof_map
 
     def _fit(self, dataset):
         self.dataset = dataset
@@ -1099,7 +1112,7 @@ class Stouffers(IBMAEstimator):
 
         maps = self._fit_over_bags(
             ["z_maps"],
-            ["z", "p", "dof"],
+            ["z", "p", "logp", "dof"],
             corr=self.inputs_["corr_matrix"],
         )
         return maps, {}, self._description_text()
@@ -1770,16 +1783,23 @@ class PermutedOLS(IBMAEstimator):
 
         t_map = result["t"].squeeze()
         dof = result["dof"]
+        # Everything reported comes off one nlogp, so the four maps cannot disagree.
+        nlogp_map = t_to_nlogp(t_map, dof, tail="two" if self.two_sided else "one")
         z_map = t_to_z(t_map, dof)
-        p_map = z_to_p(z_map, tail="two" if self.two_sided else "one")
 
-        return t_map, z_map, p_map, np.full(n_voxels, dof, dtype=float)
+        return (
+            t_map,
+            z_map,
+            np.exp(nlogp_map),
+            _nlogp_to_logp_values(nlogp_map),
+            np.full(n_voxels, dof, dtype=float),
+        )
 
     def _fit(self, dataset):
         self.dataset = dataset
         self._resolve_masker(dataset)
 
-        maps = self._fit_over_bags(["beta_maps"], ["t", "z", "p", "dof"])
+        maps = self._fit_over_bags(["beta_maps"], ["t", "z", "p", "logp", "dof"])
         return maps, {}, self._description_text()
 
     def correct_fwe_montecarlo(self, result, n_iters=5000, n_cores=1):
@@ -1846,7 +1866,7 @@ class PermutedOLS(IBMAEstimator):
             # group_order is by first occurrence, which is the column order _permuted_ols
             # expects; map those onto the shared matrix's sorted columns.
             local_indices = np.searchsorted(global_labels, dependence.group_order)
-            _, bag_z, _, bag_dof = self._fit_model(
+            _, bag_z, _, _, bag_dof = self._fit_model(
                 values,
                 study_mask=study_mask,
                 n_perm=n_iters,
@@ -1866,13 +1886,13 @@ class PermutedOLS(IBMAEstimator):
         sign[sign == 0] = 1
         tail = "two" if self.two_sided else "one"
         z_map = p_to_z(p_map, tail=tail) * sign
-        log_p_map = -np.log10(p_map)
+        nlogp_map = -np.log10(p_map)
 
         self.null_distributions_ = {"values_level-voxel_corr-fwe_method-montecarlo": h0_max_z}
         maps = {
             "p_level-voxel": p_map,
             "z_level-voxel": z_map,
-            "logp_level-voxel": log_p_map,
+            "logp_level-voxel": nlogp_map,
         }
         description = (
             "Family-wise error rate correction was performed with a max-statistic null "

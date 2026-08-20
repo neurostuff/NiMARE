@@ -208,7 +208,7 @@ def null_to_p(test_value, null_array, tail="two", symmetric=False):
 
     # ensure p_value in the following range:
     # smallest_value <= p_value <= (1.0 - smallest_value)
-    smallest_value = np.maximum(np.finfo(float).eps, 1.0 / len(null_array))
+    smallest_value = 1.0 / len(null_array)
     result = np.maximum(smallest_value, np.minimum(p, 1.0 - smallest_value))
 
     if reconstruct:
@@ -294,3 +294,85 @@ def nullhist_to_p(test_values, histogram_weights, histogram_bins):
     if return_value:
         p_values = p_values[0]
     return p_values
+
+
+def _check_nlogp(nlogp):
+    """Return ``nlogp`` as a float array, rejecting anything that is not an ``nlogp``.
+
+    An ``nlogp`` is at most zero. Catching a positive one here turns the easy
+    mistake of passing p-values to a log-space correction into an error rather than into a
+    silently wrong result: every p-value would come back adjusted to one.
+    """
+    nlogp = np.asarray(nlogp, dtype=float)
+    if np.any(nlogp > 0):
+        raise ValueError(
+            "nlogp must hold natural logarithms of p-values, which are at most 0; got a "
+            f"maximum of {np.nanmax(nlogp)}."
+        )
+    return nlogp
+
+
+def nlogp_bonferroni(nlogp):
+    """Perform Bonferroni correction on ``nlogp`` values.
+
+    .. versionadded:: 0.21.0
+
+    The log-space counterpart of :func:`pymare.stats.bonferroni`. Multiplying by the number
+    of tests is an addition in logs, so nothing underflows on the way through and a corrected
+    p-value below the smallest representable double survives as its logarithm.
+
+    Parameters
+    ----------
+    nlogp : :obj:`numpy.ndarray`
+        Natural logarithms of the uncorrected p-values.
+
+    Returns
+    -------
+    :obj:`numpy.ndarray`
+        Natural logarithms of the corrected p-values.
+    """
+    nlogp = _check_nlogp(nlogp)
+    # The cap is against log(1): a corrected p-value cannot exceed one.
+    return np.minimum(nlogp + np.log(nlogp.size), 0.0)
+
+
+def nlogp_fdr(nlogp, method="bh"):
+    """Perform FDR correction on ``nlogp`` values.
+
+    .. versionadded:: 0.21.0
+
+    The log-space counterpart of :func:`pymare.stats.fdr`, step for step: the step-up
+    procedure only ever divides a p-value by a positive factor and takes running minima, both
+    of which carry over to logs unchanged. Sorting by ``nlogp`` is sorting by ``p``, so the
+    set of tests declared significant at any alpha is identical.
+
+    Parameters
+    ----------
+    nlogp : :obj:`numpy.ndarray`
+        Natural logarithms of the uncorrected p-values.
+    method : {"bh", "by"}, optional
+        Either "bh" (Benjamini-Hochberg :footcite:p:`benjamini1995controlling`) or "by"
+        (Benjamini-Yekutieli :footcite:p:`benjamini2001control`). Default is "bh".
+
+    Returns
+    -------
+    :obj:`numpy.ndarray`
+        Natural logarithms of the corrected p-values.
+
+    References
+    ----------
+    .. footbibliography::
+    """
+    nlogp = _check_nlogp(nlogp)
+    n_tests = nlogp.size
+
+    sort_idx = np.argsort(nlogp)
+    revert_idx = np.argsort(sort_idx)
+
+    log_ecdffactor = np.log(np.arange(1, n_tests + 1) / n_tests)
+    if method == "by":
+        log_ecdffactor = log_ecdffactor - np.log(np.sum(1 / np.arange(1, n_tests + 1)))
+
+    log_adjusted = nlogp[sort_idx] - log_ecdffactor
+    log_adjusted = np.minimum.accumulate(log_adjusted[::-1])[::-1]
+    return np.minimum(log_adjusted, 0.0)[revert_idx]

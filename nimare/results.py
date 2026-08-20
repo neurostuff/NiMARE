@@ -60,7 +60,6 @@ class MetaResult(NiMAREBase):
     masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker object.
     maps : :obj:`dict`
-        Keys are map names and values are 1D arrays.
     tables : :obj:`dict`
         Keys are table levels and values are pandas DataFrames.
     description_ : :obj:`str`
