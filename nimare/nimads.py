@@ -772,10 +772,13 @@ class Studyset:
     def __setstate__(self, state):
         """Restore state and re-install mutation tracking after unpickling."""
         self.__dict__.update(state)
+        self.__dict__.setdefault("_table_overrides", {})
         if self._studies is not None:
             self._install_mutation_tracking()
 
-    def _initialize_from_store(self, store, execution_profile, selection_full_ids=None):
+    def _initialize_from_store(
+        self, store, execution_profile, selection_full_ids=None, table_overrides=None
+    ):
         """Initialize Studyset state from a canonical store and execution profile."""
         self.id = store.studyset_id
         self.name = store.studyset_name or ""
@@ -787,16 +790,19 @@ class Studyset:
         )
         self._execution_profile = execution_profile
         self._projection_cache = {}
+        self._table_overrides = {} if table_overrides is None else dict(table_overrides)
         self._revision = 0
         self._studies = None
         self._annotations = None
         self._store_revision = 0
 
     @classmethod
-    def _from_store(cls, store, execution_profile, selection_full_ids=None):
+    def _from_store(cls, store, execution_profile, selection_full_ids=None, table_overrides=None):
         """Create a Studyset from an existing store without reparsing source payloads."""
         studyset = object.__new__(cls)
-        studyset._initialize_from_store(store, execution_profile, selection_full_ids)
+        studyset._initialize_from_store(
+            store, execution_profile, selection_full_ids, table_overrides
+        )
         return studyset
 
     def _selection_key(self):
@@ -865,6 +871,31 @@ class Studyset:
             return self._copy_table_cache(table_cache)
         return table_cache
 
+    def _apply_table_overrides(self, table_cache):
+        """Re-apply caller-assigned tables on top of a store-derived projection.
+
+        Tables assigned through the setters (e.g. the images that
+        :class:`~nimare.transforms.ImageTransformer` derives) are not part of the
+        canonical store, so any projection rebuilt from the store would otherwise
+        revert to the store's values. Rows the override does not cover keep their
+        store-derived values.
+        """
+        if not self._table_overrides:
+            return table_cache
+
+        ids = table_cache.get("ids")
+        selected = None if ids is None else set(np.asarray(ids, dtype=str).tolist())
+        for attr, override in self._table_overrides.items():
+            if selected is not None:
+                override = override.loc[override["id"].astype(str).isin(selected)]
+            base = table_cache.get(attr)
+            if base is not None and not base.empty:
+                retained = base.loc[~base["id"].astype(str).isin(set(override["id"]))]
+                if not retained.empty:
+                    override = pd.concat([override, retained], ignore_index=True)
+            table_cache[attr] = override.sort_values(by="id").reset_index(drop=True)
+        return table_cache
+
     def _get_projected_table_cache(
         self, *, target=None, mask=None, basepath=None, copy_tables=False
     ):
@@ -877,9 +908,11 @@ class Studyset:
         )
         cache_key = self._cache_key(execution_profile)
         if cache_key not in self._projection_cache:
-            self._projection_cache[cache_key] = self._studyset_store.projected_tables(
-                execution_profile,
-                self._selection_full_ids,
+            self._projection_cache[cache_key] = self._apply_table_overrides(
+                self._studyset_store.projected_tables(
+                    execution_profile,
+                    self._selection_full_ids,
+                )
             )
 
         table_cache = self._projection_cache[cache_key]
@@ -1096,6 +1129,11 @@ class Studyset:
         table_cache[attr] = df.sort_values(by="id").reset_index(drop=True)
         if update_ids and "id" in df.columns:
             table_cache["ids"] = np.sort(df["id"].astype(str).unique())
+
+        if not update_ids:
+            # Tables that redefine the ID space (coordinates) are left untracked,
+            # because the store owns the selection those IDs belong to.
+            self._table_overrides[attr] = table_cache[attr]
 
         default_key = self._cache_key(self._execution_profile)
         self._projection_cache[default_key] = table_cache
@@ -1597,6 +1635,7 @@ class Studyset:
             key: self._copy_table_cache(table_cache)
             for key, table_cache in self._projection_cache.items()
         }
+        result._table_overrides = {attr: df.copy() for attr, df in self._table_overrides.items()}
         result._revision = self._revision
         result._store_revision = self._store_revision
         if self._studies is not None:
@@ -1630,7 +1669,10 @@ class Studyset:
         )
         execution_profile = self._copy_execution_profile()
         return self.__class__._from_store(
-            self._studyset_store, execution_profile, selection_full_ids=resolved_ids
+            self._studyset_store,
+            execution_profile,
+            selection_full_ids=resolved_ids,
+            table_overrides=self._table_overrides,
         )
 
     def filter_annotations(self, labels, threshold=0.001, match="all"):
