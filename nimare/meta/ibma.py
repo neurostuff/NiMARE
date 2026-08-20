@@ -1554,9 +1554,7 @@ class PermutedOLS(IBMAEstimator):
         * Nilearn's :func:`~nilearn.mass_univariate.permuted_ols` is no longer called, so
           exchangeability blocks work on every supported Nilearn version. The ``t`` map is
           unchanged.
-        * New output: an uncorrected ``p`` map, which makes
-          :class:`~nimare.correct.FDRCorrector` and Bonferroni correction usable here as they
-          already were for every other estimator.
+        * New output: an uncorrected ``p`` map
 
     .. versionchanged:: 0.2.1
 
@@ -1712,11 +1710,6 @@ class PermutedOLS(IBMAEstimator):
         t_map = result["t"].squeeze()
         dof = result["dof"]
         z_map = t_to_z(t_map, dof)
-
-        # A Corrector reads "p", and FDR and Bonferroni have nothing to work from without
-        # it. Derived from the z map rather than from t directly, which is how the rest of
-        # NiMARE converts and keeps the two maps in exact agreement. The tail is the one the
-        # permutation test and the corrected map already use.
         p_map = z_to_p(z_map, tail="two" if self.two_sided else "one")
 
         return t_map, z_map, p_map, np.full(n_voxels, dof, dtype=float)
@@ -1776,11 +1769,6 @@ class PermutedOLS(IBMAEstimator):
             raise ValueError("n_iters must be a positive integer.")
         n_cores = _check_ncores(n_cores)
 
-        # One column per dataset-wide exchangeability block. Every bag draws its signs from
-        # this one matrix, so a block that appears in two bags is flipped the same way in
-        # both and the null describes the whole brain rather than one bag of it. Sorted,
-        # because searchsorted below is what maps a bag's blocks onto these columns --
-        # DependenceModel.blocks guarantees the two label spaces are the same.
         global_labels = np.unique(self._dependence().blocks)
         rng = np.random.RandomState(self.random_state)
         global_sign_flips = rng.choice((-1.0, 1.0), size=(n_iters, global_labels.size))
@@ -1806,13 +1794,6 @@ class PermutedOLS(IBMAEstimator):
             )
             observed_z[voxel_mask] = bag_z
 
-            # Maximize over z, not t. Bags hold different numbers of images, so their t
-            # statistics carry different degrees of freedom and are not on a common scale:
-            # a two-image bag reached |t| = 130 on the example studyset, which is only
-            # z = 2.8, and maximizing over t let those 47 voxels set the threshold for the
-            # whole brain. z is pivotal, so the max over it means the same thing everywhere.
-            # t -> z is monotone at a fixed dof, and dof is constant within a bag, so the
-            # already-maximized per-bag values can be converted directly.
             bag_null = self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]
             np.maximum(h0_max_z, t_to_z(bag_null, bag_dof[0]), out=h0_max_z)
 
