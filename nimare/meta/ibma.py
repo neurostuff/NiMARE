@@ -28,7 +28,7 @@ from nimare.estimator import Estimator
 from nimare.meta._dependence import DependenceModel, hashable_label
 from nimare.meta._permutation import _empirical_max_p, _permuted_ols
 from nimare.meta.utils import _liberal_mask_bags, _liberal_mask_values
-from nimare.transforms import d_to_g, p_to_z, t_to_d, t_to_z
+from nimare.transforms import d_to_g, p_to_z, t_to_d, t_to_z, z_to_p
 from nimare.utils import (
     _check_ncores,
     get_masker,
@@ -1554,6 +1554,7 @@ class PermutedOLS(IBMAEstimator):
         * Nilearn's :func:`~nilearn.mass_univariate.permuted_ols` is no longer called, so
           exchangeability blocks work on every supported Nilearn version. The ``t`` map is
           unchanged.
+        * New output: an uncorrected ``p`` map
 
     .. versionchanged:: 0.2.1
 
@@ -1603,6 +1604,7 @@ class PermutedOLS(IBMAEstimator):
     ============== ===============================================================================
     "t"            T-statistic map from one-sample test.
     "z"            Z-statistic map from one-sample test.
+    "p"            P-value map from one-sample test.
     "dof"          Degrees of freedom map from one-sample test.
     ============== ===============================================================================
 
@@ -1707,13 +1709,16 @@ class PermutedOLS(IBMAEstimator):
 
         t_map = result["t"].squeeze()
         dof = result["dof"]
-        return t_map, t_to_z(t_map, dof), np.full(n_voxels, dof, dtype=float)
+        z_map = t_to_z(t_map, dof)
+        p_map = z_to_p(z_map, tail="two" if self.two_sided else "one")
+
+        return t_map, z_map, p_map, np.full(n_voxels, dof, dtype=float)
 
     def _fit(self, dataset):
         self.dataset = dataset
         self._resolve_masker(dataset)
 
-        maps = self._fit_over_bags(["beta_maps"], ["t", "z", "dof"])
+        maps = self._fit_over_bags(["beta_maps"], ["t", "z", "p", "dof"])
         return maps, {}, self._description_text()
 
     def correct_fwe_montecarlo(self, result, n_iters=5000, n_cores=1):
@@ -1764,11 +1769,6 @@ class PermutedOLS(IBMAEstimator):
             raise ValueError("n_iters must be a positive integer.")
         n_cores = _check_ncores(n_cores)
 
-        # One column per dataset-wide exchangeability block. Every bag draws its signs from
-        # this one matrix, so a block that appears in two bags is flipped the same way in
-        # both and the null describes the whole brain rather than one bag of it. Sorted,
-        # because searchsorted below is what maps a bag's blocks onto these columns --
-        # DependenceModel.blocks guarantees the two label spaces are the same.
         global_labels = np.unique(self._dependence().blocks)
         rng = np.random.RandomState(self.random_state)
         global_sign_flips = rng.choice((-1.0, 1.0), size=(n_iters, global_labels.size))
@@ -1785,7 +1785,7 @@ class PermutedOLS(IBMAEstimator):
             # group_order is by first occurrence, which is the column order _permuted_ols
             # expects; map those onto the shared matrix's sorted columns.
             local_indices = np.searchsorted(global_labels, dependence.group_order)
-            _, bag_z, bag_dof = self._fit_model(
+            _, bag_z, _, bag_dof = self._fit_model(
                 values,
                 study_mask=study_mask,
                 n_perm=n_iters,
@@ -1794,13 +1794,6 @@ class PermutedOLS(IBMAEstimator):
             )
             observed_z[voxel_mask] = bag_z
 
-            # Maximize over z, not t. Bags hold different numbers of images, so their t
-            # statistics carry different degrees of freedom and are not on a common scale:
-            # a two-image bag reached |t| = 130 on the example studyset, which is only
-            # z = 2.8, and maximizing over t let those 47 voxels set the threshold for the
-            # whole brain. z is pivotal, so the max over it means the same thing everywhere.
-            # t -> z is monotone at a fixed dof, and dof is constant within a bag, so the
-            # already-maximized per-bag values can be converted directly.
             bag_null = self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]
             np.maximum(h0_max_z, t_to_z(bag_null, bag_dof[0]), out=h0_max_z)
 

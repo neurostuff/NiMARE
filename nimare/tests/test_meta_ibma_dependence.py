@@ -11,6 +11,7 @@ from nimare.meta import ibma
 from nimare.meta._dependence import DependenceModel
 from nimare.meta._permutation import _permuted_ols
 from nimare.meta.utils import _apply_liberal_mask
+from nimare.transforms import z_to_p
 
 
 class _FakeDataset:
@@ -532,6 +533,47 @@ def test_permuted_ols_fwe_handles_a_bag_with_one_image_per_group():
     p_map = maps["p_level-voxel"]
     assert np.isfinite(p_map).all()
     assert np.all((p_map > 0) & (p_map <= 1))
+
+
+def test_permuted_ols_reports_an_uncorrected_p_map(fitted):
+    """Without a ``p`` map, FDR and Bonferroni correction have nothing to read."""
+    from nimare.correct import FDRCorrector
+
+    results = fitted(ibma.PermutedOLS)
+
+    p_map = results.maps["p"]
+    finite = np.isfinite(p_map)
+    assert finite.any()
+    assert np.all((p_map[finite] > 0) & (p_map[finite] <= 1))
+    # Voxels the model did not cover stay NaN, as in every other map.
+    assert np.isnan(p_map[~np.isfinite(results.maps["t"])]).all()
+
+    corrected = FDRCorrector(method="indep", alpha=0.05).transform(results)
+    q_map = corrected.maps["p_corr-FDR_method-indep"]
+    covered = np.isfinite(q_map)
+    assert covered.any()
+    # Correcting can only raise a p-value.
+    assert np.all(q_map[covered] >= p_map[covered] - 1e-12)
+
+
+@pytest.mark.parametrize("two_sided", [True, False])
+def test_permuted_ols_p_map_agrees_with_its_z_map(two_sided):
+    """Match the z map's own p-value, on the tail the test was run on.
+
+    Deriving p from t independently would let the two maps disagree, since ``t_to_z`` floors
+    the tail probability it converts through.
+    """
+    betas = np.array([[1.0, -1.0], [1.2, -1.2], [0.8, -0.8], [1.1, -1.1]])
+    meta = _bagged_estimator(
+        ibma.PermutedOLS, {"beta_maps": betas}, codes=np.arange(4), two_sided=two_sided
+    )
+    meta.generate_description = False
+    maps, _, _ = meta._fit(_FakeDataset(meta.masker))
+
+    p = maps["p"]
+    assert np.allclose(p, z_to_p(maps["z"], tail="two" if two_sided else "one"))
+    # Voxel 1 is the mirror of voxel 0. Two-sided cannot tell them apart; one-sided must.
+    assert np.isclose(p[0], p[1]) == two_sided
 
 
 def test_permuted_ols_fwe_is_not_saturated_by_a_small_bag():
