@@ -121,6 +121,32 @@ def test_gclda_loglikelihood_uses_zero_indexed_tokens(testdata_laird):
     assert np.isclose(w_loglikely, expected_w)
 
 
+def test_gclda_inv3_logdet_matches_lapack_and_is_symmetric():
+    """Closed-form 3x3 inverse must agree with LAPACK and be exactly symmetric."""
+    rng = np.random.default_rng(0)
+    for _ in range(200):
+        m = rng.normal(size=(3, 3)) * rng.uniform(1, 60)
+        sigma = m @ m.T + 50.0 * np.eye(3) * rng.uniform(0.1, 3)
+
+        inv, logdet = annotate.gclda._inv3_logdet(sigma)
+
+        assert np.allclose(inv, np.linalg.inv(sigma), rtol=1e-10)
+        _, ref_logdet = np.linalg.slogdet(sigma)
+        assert np.isclose(logdet, ref_logdet, rtol=1e-12)
+        # Inverse of a symmetric matrix must itself be exactly symmetric.
+        assert np.array_equal(inv, inv.T)
+        # Deterministic: identical inputs give identical bits.
+        inv2, logdet2 = annotate.gclda._inv3_logdet(sigma.copy())
+        assert np.array_equal(inv, inv2) and logdet == logdet2
+
+
+def test_gclda_inv3_logdet_rejects_nonpositive_definite():
+    """A non-positive-definite covariance must raise, as the LAPACK path did."""
+    singular = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]])
+    with pytest.raises(np.linalg.LinAlgError):
+        annotate.gclda._inv3_logdet(singular)
+
+
 def test_gclda_asymmetric(testdata_laird):
     """A smoke test for GCLDA with three asymmetric regions."""
     counts_df = annotate.text.generate_counts(
