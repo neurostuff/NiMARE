@@ -20,7 +20,7 @@ except ImportError:
     # nilearn >= 0.12.0; nilearn <= 0.12.1
     from nilearn._utils.niimg_conversions import check_same_fov
 
-from pymare.estimators.estimators import WEIGHT_SCHEMES
+from pymare.estimators.estimators import SMALL_SAMPLE_CORRECTIONS, WEIGHT_SCHEMES
 from pymare.stats import estimate_null_correlation
 
 from nimare import _version
@@ -63,6 +63,16 @@ _DOC_DICT = {
     ``'individual'`` leaves the weights alone; ``'collapse'`` fits one row per group.
     Group labels also switch the standard errors to CR2 and the reference to a t
     distribution with Satterthwaite degrees of freedom :footcite:p:`tipton2015small`.
+small_sample_correction : None or {'knapp-hartung', 'knapp-hartung-conservative', 'wald'}, optional
+    How PyMARE corrects its model-based standard errors for a small number of studies,
+    passed through unchanged. The Wald reference treats an estimated tau^2 as if it were
+    known, which is anti-conservative with few studies; the Knapp-Hartung adjustment
+    rescales the variance by the observed weighted residual spread and refers it to a t
+    distribution :footcite:p:`knapp2003improved`. Default is None, which leaves each
+    PyMARE estimator on its own default -- the adjustment where tau^2 is estimated, and
+    ``'wald'`` for :class:`WeightedLeastSquares`, whose tau^2 is supplied rather than
+    estimated. Ignored once group labels are present, where CR2 and Satterthwaite degrees
+    of freedom are the correction instead.
 rho : :obj:`float`, optional
     Assumed within-group correlation, in [0, 1]. Enters only through tau^2, to which
     results are weakly sensitive. Default is 0.8, matching ``robumeta``. Ignored when
@@ -651,11 +661,18 @@ class _PyMARERegressionEstimator(IBMAEstimator):
     #: must have an entry in :data:`_EXTRA_MAP_SOURCES`.
     _extra_maps = ()
 
-    def __init__(self, weight_scheme="rescale", rho=0.8, **kwargs):
+    def __init__(self, weight_scheme="rescale", rho=0.8, small_sample_correction=None, **kwargs):
         if weight_scheme not in WEIGHT_SCHEMES:
             raise ValueError(
                 f"Invalid weight_scheme '{weight_scheme}'; must be one of "
                 f"{sorted(WEIGHT_SCHEMES)}."
+            )
+        if small_sample_correction is not None and (
+            small_sample_correction not in SMALL_SAMPLE_CORRECTIONS
+        ):
+            raise ValueError(
+                f"Invalid small_sample_correction '{small_sample_correction}'; must be None "
+                f"or one of {sorted(SMALL_SAMPLE_CORRECTIONS)}."
             )
         if not isinstance(rho, (int, float, np.integer, np.floating)) or isinstance(rho, bool):
             raise ValueError(f"Invalid rho {rho!r}; must be a number.")
@@ -664,6 +681,7 @@ class _PyMARERegressionEstimator(IBMAEstimator):
 
         self.weight_scheme = weight_scheme
         self.rho = float(rho)
+        self.small_sample_correction = small_sample_correction
         super().__init__(**kwargs)
 
     def _pymare_weighting_kwargs(self, study_mask):
@@ -682,10 +700,16 @@ class _PyMARERegressionEstimator(IBMAEstimator):
 
     def _pymare_estimator(self, study_mask):
         """Return the PyMARE estimator to fit over the current model's images."""
-        return self._pymare_estimator_class(
+        kwargs = {
             **self._pymare_estimator_kwargs(),
             **self._pymare_weighting_kwargs(study_mask),
-        )
+        }
+        # Omitted when None so that each PyMARE estimator keeps its own default, which
+        # differs: the ones that estimate tau^2 correct by default, WeightedLeastSquares
+        # does not, because its tau^2 is supplied rather than estimated.
+        if self.small_sample_correction is not None:
+            kwargs["small_sample_correction"] = self.small_sample_correction
+        return self._pymare_estimator_class(**kwargs)
 
     def _pymare_dataset(self, arrays, study_mask):
         """Return the PyMARE dataset for the current model.
