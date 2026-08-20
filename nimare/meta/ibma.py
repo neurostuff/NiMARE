@@ -1423,6 +1423,11 @@ class SampleSizeBasedLikelihood(_PyMARERegressionEstimator):
     def _pymare_dataset(self, arrays, study_mask):
         (beta_maps,) = arrays
         sample_sizes = self._sample_sizes_for_mask(study_mask)
+        # PyMARE accepts a (K x 1) column here and broadcasts it, which would be far
+        # cheaper. It is tiled anyway because this estimator optimizes numerically, and the
+        # two array layouts land on answers that differ in the last few digits; the saving
+        # does not justify moving published results, and this estimator is documented as
+        # unsuitable for whole-brain runs where the memory would matter.
         return pymare.Dataset(
             y=beta_maps,
             n=np.tile(sample_sizes, (beta_maps.shape[1], 1)).T,
@@ -1915,12 +1920,15 @@ class FixedEffectsHedges(_PyMARERegressionEstimator):
 
     def _pymare_dataset(self, arrays, study_mask):
         (t_maps,) = arrays
-        n_maps = np.tile(self._sample_sizes_for_mask(study_mask), (t_maps.shape[1], 1)).T
+        # One sample size per image, as a column. t_to_d and d_to_g are elementwise, so this
+        # broadcasts across voxels; tiling it to the full (K x V) shape first would allocate
+        # tens of megabytes at 2 mm to hold K distinct numbers.
+        sample_sizes = self._sample_sizes_for_mask(study_mask)[:, None]
 
         # Hedges' g: the standardized mean, with the variance of bias-corrected Cohen's d.
-        cohens_maps = t_to_d(t_maps, n_maps)
-        hedges_maps, var_hedges_maps = d_to_g(cohens_maps, n_maps, return_variance=True)
-        del n_maps, cohens_maps
+        cohens_maps = t_to_d(t_maps, sample_sizes)
+        hedges_maps, var_hedges_maps = d_to_g(cohens_maps, sample_sizes, return_variance=True)
+        del cohens_maps
 
         return pymare.Dataset(
             y=hedges_maps,

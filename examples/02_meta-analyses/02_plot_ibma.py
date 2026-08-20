@@ -316,23 +316,19 @@ pprint(results.bibtex_)
 # any fixed set of weights does, but they lose power: inverse-variance weighting reads a
 # large unit as low precision and downweights that study by the square of its scale.
 #
-# The estimators that are unaffected are the ones whose inputs are already scale-free.
-# ``Stouffers`` and ``Fishers`` combine ``z`` maps, and ``FixedEffectsHedges`` below turns
-# ``t`` maps into a standardized effect size. On this studyset those three agree with each
-# other to r >= 0.97, while the beta-based fits correlate no better than ~0.87 with them.
-# For random effects on a scale-free input, build the two maps yourself. With
-# ``return_variance=True``, :func:`~nimare.transforms.d_to_g` returns *both* halves a
-# meta-regression needs: Hedges’ g, which is the effect estimate and goes in the ``beta``
-# slot, and the sampling variance of g, which goes in the ``varcope`` slot::
+# The estimators that are unaffected are the ones whose inputs are already scale-free, so
+# reach for those instead when the betas are not on a shared scale. ``Stouffers`` and
+# ``Fishers`` combine ``z`` maps, and ``FixedEffectsHedges`` below turns ``t`` maps into
+# Hedges’ g, a standardized effect size. On this studyset those three agree with each other
+# to r >= 0.97, while the beta-based fits correlate no better than ~0.87 with them.
 #
-#     n_maps = np.tile(sample_sizes, (t_maps.shape[1], 1)).T
-#     g, var_g = d_to_g(t_to_d(t_maps, n_maps), n_maps, return_variance=True)
-#     pymare.estimators.DerSimonianLaird().fit(
-#         y=g, v=var_g, X=np.ones((g.shape[0], 1))
-#     )
+# Note that ``FixedEffectsHedges`` converts with ``d = t / sqrt(n)``, which is the
+# one-sample form. That suits a group activation map, but not a t map from a between-group
+# contrast, where the conversion needs both group sizes.
 #
-# On this studyset that gives tau2 ~ 0.05 and a map correlating at r = 0.98 with the
-# z-based fits, against tau2 ~ 2830 for the same estimator on the raw betas.
+# There is no supported random-effects counterpart: ``FixedEffectsHedges`` is fixed-effect
+# only, and no NiMARE estimator fits a standardized effect size with a between-study
+# variance.
 #
 # None of this applies if your betas do share a scale -- percent signal change, say, or a
 # single pipeline throughout. Then beta and varcope meta-regression is the right tool.
