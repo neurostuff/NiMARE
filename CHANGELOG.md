@@ -4,6 +4,38 @@ All notable changes to NiMARE releases are documented in this page.
 
 ## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.20.0...HEAD)
 
+### Changed
+
+* p-values are now evaluated and corrected in log space throughout, so reported statistics
+  are no longer truncated where a p-value underflows. Every affected statistic is a monotone
+  reparameterization of the same tail probability, so the set of results significant at any
+  threshold is unchanged; only magnitudes in the deep tail differ. Internally the currency is
+  `nlogp`, the natural logarithm of the p-value, as SciPy and PyMARE return it; the `logp`
+  maps keep holding `-log10(p)`.
+  * `z` maps: previously capped at 14.12 by an internal float32 p-value, and `t_to_z` at 8.13
+    by an epsilon floor. Both bounds are gone; the remaining bound, for nulls built from a
+    linear histogram, is 38.5.
+  * `logp` maps (`-log10(p)`): previously capped at 44.85, and at 15.65 for `MKDAChi2`.
+    No longer capped.
+  * New uncorrected `logp` maps on `ALE`, `MKDADensity`, `KDA`, `Fishers`, `Stouffers`,
+    `PermutedOLS` and the PyMARE-backed regression estimators, plus `CBMR` maps and tables.
+  * FDR and Bonferroni correction now read the `logp` map where the estimator produced one,
+    so corrected `z` and `logp` are no longer re-truncated at the float32 p-value floor.
+  * `CBMR` z-statistics are no longer clamped to +/-10.
+  * `Fishers` and `Stouffers` no longer report `-inf` z-statistics where the two-sided
+    correction caps the combined p-value at 1 (1905 voxels of the 21-study pain dataset).
+    The magnitude now comes from the `nlogp` and the direction from the tail that won,
+    so no evidence reads as zero rather than as the largest magnitude in the map.
+  * `p` maps are unchanged in kind: still float32, still floored at 1e-45. Past that floor
+    `-log10(p_map)` and the `logp` map no longer agree, and the `logp` map is the one to read.
+  * New public conversions: `transforms.nlogp_to_z`, `transforms.z_to_nlogp`,
+    `transforms.t_to_nlogp`, `stats.nlogp_bonferroni`, `stats.nlogp_fdr`. The generic
+    `Corrector.correct_*` methods now take and return `nlogp` values.
+  * Requires a PyMARE that reports log p-values: `CombinationTestResults.logp`,
+    `get_fe_stats()['logp']` and `stats.log_chi2_sf`, all of which are `nlogp` despite the
+    names. That is newer than `0.0.11rc1`; the `pymare` pin still reads `>=0.0.11rc1` and
+    should be tightened once such a release is cut.
+
 ## [0.20.0](https://github.com/neurostuff/NiMARE/compare/0.19.0...0.20.0) - 2026-05-14
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->

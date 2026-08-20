@@ -5,12 +5,12 @@ import logging
 from abc import abstractproperty
 
 import numpy as np
-from pymare.stats import bonferroni, fdr
 
 from nimare.base import NiMAREBase
 from nimare.results import MetaResult
-from nimare.transforms import p_to_z
-from nimare.utils import DEFAULT_FLOAT_DTYPE, _clip_p_values, _p_to_logp_values
+from nimare.stats import nlogp_bonferroni, nlogp_fdr
+from nimare.transforms import nlogp_to_z
+from nimare.utils import DEFAULT_FLOAT_DTYPE, _clip_p_values, _nlogp_to_logp_values
 
 LGR = logging.getLogger(__name__)
 
@@ -97,20 +97,36 @@ class Corrector(NiMAREBase):
                     "but none were found."
                 )
 
-    def _generate_secondary_maps(self, result, corr_maps, rm):
-        """Generate corrected version of z and log-p maps if they exist."""
-        p = _clip_p_values(corr_maps[rm], dtype=DEFAULT_FLOAT_DTYPE, copy=False)
-        corr_maps[rm] = p
-
+    @staticmethod
+    def _secondary_map_names(rm):
+        """Return the z and logp map names that go with a p map name."""
         if rm == "p":
-            z_map_name, logp_map_name = "z", "logp"
-        else:
-            z_map_name, logp_map_name = rm.replace("p_", "z_"), rm.replace("p_", "logp_")
+            return "z", "logp"
+        return rm.replace("p_", "z_"), rm.replace("p_", "logp_")
+
+    def _uncorrected_nlogp(self, result, rm):
+        """Return the ``nlogp`` values to correct.
+
+        Read from the ``logp`` map wherever the estimator produced one. The ``p`` map is
+        stored as a float32 and so floors at 1e-45, which would cap every corrected
+        statistic derived from it however far below that the real tail fell.
+        """
+        logp_map_name = self._secondary_map_names(rm)[1]
+        if logp_map_name in result.maps:
+            return -np.log(10.0) * np.asarray(result.maps[logp_map_name], dtype=np.float64)
+
+        return np.log(_clip_p_values(result.maps[rm], dtype=np.float64))
+
+    def _generate_secondary_maps(self, result, corr_maps, rm, nlogp):
+        """Generate corrected version of z and logp maps if they exist."""
+        corr_maps[rm] = _clip_p_values(corr_maps[rm], dtype=DEFAULT_FLOAT_DTYPE, copy=False)
+
+        z_map_name, logp_map_name = self._secondary_map_names(rm)
         if z_map_name in result.maps:
-            corr_maps[z_map_name] = p_to_z(p) * np.sign(result.maps[z_map_name])
+            corr_maps[z_map_name] = nlogp_to_z(nlogp) * np.sign(result.maps[z_map_name])
 
         if logp_map_name in result.maps:
-            corr_maps[logp_map_name] = _p_to_logp_values(p, dtype=DEFAULT_FLOAT_DTYPE)
+            corr_maps[logp_map_name] = _nlogp_to_logp_values(nlogp, dtype=DEFAULT_FLOAT_DTYPE)
 
         return corr_maps
 
@@ -249,23 +265,22 @@ class Corrector(NiMAREBase):
         # Create a dictionary of the corrected results
         corr_maps = {}
         for rm in self._required_maps:
-            p = result.maps[rm]
+            nlogp = self._uncorrected_nlogp(result, rm)
 
             # Find NaNs in the p value map, and mask them out. Prefilled with NaN, since
             # nothing is written back at those positions.
-            nonnan_mask = ~np.isnan(p)
-            p_corr = np.full_like(p, np.nan)
-            p_no_nans = p[nonnan_mask]
+            nonnan_mask = ~np.isnan(nlogp)
+            nlogp_corr = np.full_like(nlogp, np.nan)
 
             # Call the correction method
-            p_corr_no_nans, tables, description = getattr(self, method)(p_no_nans)
+            nlogp_corr_no_nans, tables, description = getattr(self, method)(nlogp[nonnan_mask])
 
             # Unmask the corrected p values based on the NaN mask
-            p_corr[nonnan_mask] = p_corr_no_nans
+            nlogp_corr[nonnan_mask] = nlogp_corr_no_nans
 
             # Create a dictionary of the corrected results
-            corr_maps[rm] = p_corr
-            self._generate_secondary_maps(result, corr_maps, rm)
+            corr_maps[rm] = np.exp(nlogp_corr)
+            self._generate_secondary_maps(result, corr_maps, rm, nlogp_corr)
 
         return corr_maps, tables, description
 
@@ -312,7 +327,7 @@ class FWECorrector(Corrector):
     def _name_suffix(self):
         return f"_corr-FWE_method-{self.method}"
 
-    def correct_fwe_bonferroni(self, p):
+    def correct_fwe_bonferroni(self, nlogp):
         """Perform Bonferroni FWE correction.
 
         This correction is based on the one described in :footcite:t:`bonferroni1936teoria` and
@@ -326,13 +341,13 @@ class FWECorrector(Corrector):
 
         Parameters
         ----------
-        p : :obj:`numpy.ndarray`
-            A 1D array of p values.
+        nlogp : :obj:`numpy.ndarray`
+            A 1D array of ``nlogp`` values.
 
         Returns
         -------
-        p_corr : :obj:`numpy.ndarray`
-            A 1D array of adjusted p values.
+        nlogp_corr : :obj:`numpy.ndarray`
+            A 1D array of adjusted ``nlogp`` values.
         tables : :obj:`dict`
             A dictionary of DataFrames with summary information from the correction.
             This correction method does not produce any tables, so it will be an empty dict.
@@ -345,13 +360,13 @@ class FWECorrector(Corrector):
 
         See Also
         --------
-        nimare.stats.bonferroni
+        nimare.stats.nlogp_bonferroni
         """
         description = (
             "Family-wise error rate correction was performed with the Bonferroni correction "
             "procedure \\citep{bonferroni1936teoria,shaffer1995multiple}."
         )
-        return bonferroni(p), {}, description
+        return nlogp_bonferroni(nlogp), {}, description
 
 
 class FDRCorrector(Corrector):
@@ -365,7 +380,9 @@ class FDRCorrector(Corrector):
         (for general or negatively correlated tests).
         Default is 'indep'.
     alpha : :obj:`float`, default=0.05
-        The FDR correction rate to use. Default is 0.05.
+        The FDR correction rate to use. Default is 0.05. Note that the step-up procedure
+        only rescales the p-values, so this does not affect the corrected maps; it is the
+        rate they are meant to be thresholded at.
 
     Notes
     -----
@@ -388,7 +405,7 @@ class FDRCorrector(Corrector):
     def _name_suffix(self):
         return f"_corr-FDR_method-{self.method}"
 
-    def correct_fdr_indep(self, p):
+    def correct_fdr_indep(self, nlogp):
         """Perform Benjamini-Hochberg FDR correction.
 
         This correction is based on the one described in :footcite:t:`benjamini1995controlling`.
@@ -403,13 +420,13 @@ class FDRCorrector(Corrector):
 
         Parameters
         ----------
-        p : :obj:`numpy.ndarray`
-            A 1D array of p values.
+        nlogp : :obj:`numpy.ndarray`
+            A 1D array of ``nlogp`` values.
 
         Returns
         -------
-        p_corr : :obj:`numpy.ndarray`
-            A 1D array of adjusted p values.
+        nlogp_corr : :obj:`numpy.ndarray`
+            A 1D array of adjusted ``nlogp`` values.
         tables : :obj:`dict`
             A dictionary of DataFrames with summary information from the correction.
             This correction method does not produce any tables, so it will be an empty dict.
@@ -422,15 +439,15 @@ class FDRCorrector(Corrector):
 
         See Also
         --------
-        pymare.stats.fdr
+        nimare.stats.nlogp_fdr
         """
         description = (
             "False discovery rate correction was performed with the Benjamini-Hochberg procedure "
             "\\citep{benjamini1995controlling}."
         )
-        return fdr(p, q=self.alpha, method="bh"), {}, description
+        return nlogp_fdr(nlogp, method="bh"), {}, description
 
-    def correct_fdr_negcorr(self, p):
+    def correct_fdr_negcorr(self, nlogp):
         """Perform Benjamini-Yekutieli FDR correction.
 
         This correction is based on the one described in :footcite:t:`benjamini2001control`.
@@ -444,13 +461,13 @@ class FDRCorrector(Corrector):
 
         Parameters
         ----------
-        p : :obj:`numpy.ndarray`
-            A 1D array of p values.
+        nlogp : :obj:`numpy.ndarray`
+            A 1D array of ``nlogp`` values.
 
         Returns
         -------
-        p_corr : :obj:`numpy.ndarray`
-            A 1D array of adjusted p values.
+        nlogp_corr : :obj:`numpy.ndarray`
+            A 1D array of adjusted ``nlogp`` values.
         tables : :obj:`dict`
             A dictionary of DataFrames with summary information from the correction.
             This correction method does not produce any tables, so it will be an empty dict.
@@ -471,10 +488,10 @@ class FDRCorrector(Corrector):
 
         See Also
         --------
-        pymare.stats.fdr
+        nimare.stats.nlogp_fdr
         """
         description = (
             "False discovery rate correction was performed with the Benjamini-Yekutieli procedure "
             "\\citep{benjamini2001control}."
         )
-        return fdr(p, q=self.alpha, method="by"), {}, description
+        return nlogp_fdr(nlogp, method="by"), {}, description

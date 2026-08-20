@@ -3,15 +3,14 @@
 import numpy as np
 import pandas as pd
 from nilearn.image import load_img
-from pymare.stats import bonferroni, fdr
-from scipy import special
+from pymare.stats import log_chi2_sf
 from scipy.stats import binom
 
 from nimare.decode.base import Decoder
 from nimare.decode.utils import weight_priors
 from nimare.meta.kernel import KernelTransformer, MKDAKernel
-from nimare.stats import one_way, pearson, two_way
-from nimare.transforms import p_to_z
+from nimare.stats import nlogp_bonferroni, nlogp_fdr, one_way, pearson, two_way
+from nimare.transforms import nlogp_to_z
 from nimare.utils import _check_type, _clip_p_values, _mask_img_to_bool, get_masker
 
 
@@ -330,8 +329,7 @@ def brainmap_decode(
 
     # Significance testing
     # Forward inference significance is determined with a binomial distribution
-    p_fi = binom.sf(k=n_selected_term, n=n_term_foci, p=p_selected)
-    p_fi = _clip_p_values(p_fi, dtype=p_fi.dtype, copy=False)
+    nlogp_fi = binom.logsf(k=n_selected_term, n=n_term_foci, p=p_selected)
     sign_fi = np.sign(
         n_selected_term - np.mean(n_selected_term)
     ).ravel()  # pylint: disable=no-member
@@ -344,28 +342,31 @@ def brainmap_decode(
         ]
     ).T
     chi2_ri = two_way(cells)
-    p_ri = special.chdtrc(1, chi2_ri)
-    p_ri = _clip_p_values(p_ri, dtype=p_ri.dtype, copy=False)
+    nlogp_ri = log_chi2_sf(chi2_ri, 1)
     sign_ri = np.sign(p_selected_g_term - p_selected_g_noterm).ravel()  # pylint: disable=no-member
 
     # Ignore rare features
-    p_fi[n_selected_term < 5] = 1.0
-    p_ri[n_selected_term < 5] = 1.0
+    nlogp_fi[n_selected_term < 5] = 0.0
+    nlogp_ri[n_selected_term < 5] = 0.0
 
     # Multiple comparisons correction across features. Separately done for FI and RI.
     if correction in ("bh", "by"):
-        p_corr_fi = fdr(p_fi, alpha=u, method=correction)
-        p_corr_ri = fdr(p_ri, alpha=u, method=correction)
+        nlogp_corr_fi = nlogp_fdr(nlogp_fi, method=correction)
+        nlogp_corr_ri = nlogp_fdr(nlogp_ri, method=correction)
     elif correction == "bonferroni":
-        p_corr_fi = bonferroni(p_fi)
-        p_corr_ri = bonferroni(p_ri)
+        nlogp_corr_fi = nlogp_bonferroni(nlogp_fi)
+        nlogp_corr_ri = nlogp_bonferroni(nlogp_ri)
     else:
-        p_corr_fi = p_fi
-        p_corr_ri = p_ri
+        nlogp_corr_fi = nlogp_fi
+        nlogp_corr_ri = nlogp_ri
 
-    # Compute z-values
-    z_corr_fi = p_to_z(p_corr_fi, "two") * sign_fi
-    z_corr_ri = p_to_z(p_corr_ri, "two") * sign_ri
+    # Compute z-values from the nlogp values: on a dataset the size of Neurosynth these
+    # tails run well past the smallest p-value a float can hold, which is all the reported
+    # p-value can say once it reaches its floor.
+    p_corr_fi = _clip_p_values(np.exp(nlogp_corr_fi), dtype=np.float64, copy=False)
+    p_corr_ri = _clip_p_values(np.exp(nlogp_corr_ri), dtype=np.float64, copy=False)
+    z_corr_fi = nlogp_to_z(nlogp_corr_fi, "two") * sign_fi
+    z_corr_ri = nlogp_to_z(nlogp_corr_ri, "two") * sign_ri
 
     # Effect size
     arr = np.array(
@@ -628,8 +629,7 @@ def neurosynth_decode(
     # Significance testing
     # One-way chi-square test for uniformity of term frequency across terms
     chi2_fi = one_way(n_selected_term, n_term)
-    p_fi = special.chdtrc(1, chi2_fi)
-    p_fi = _clip_p_values(p_fi, dtype=p_fi.dtype, copy=False)
+    nlogp_fi = log_chi2_sf(chi2_fi, 1)
     sign_fi = np.sign(
         n_selected_term - np.mean(n_selected_term)
     ).ravel()  # pylint: disable=no-member
@@ -642,24 +642,27 @@ def neurosynth_decode(
         ]
     ).T
     chi2_ri = two_way(cells)
-    p_ri = special.chdtrc(1, chi2_ri)
-    p_ri = _clip_p_values(p_ri, dtype=p_ri.dtype, copy=False)
+    nlogp_ri = log_chi2_sf(chi2_ri, 1)
     sign_ri = np.sign(p_selected_g_term - p_selected_g_noterm).ravel()  # pylint: disable=no-member
 
     # Multiple comparisons correction across terms. Separately done for FI and RI.
     if correction in ("bh", "by"):
-        p_corr_fi = fdr(p_fi, alpha=u, method=correction)
-        p_corr_ri = fdr(p_ri, alpha=u, method=correction)
+        nlogp_corr_fi = nlogp_fdr(nlogp_fi, method=correction)
+        nlogp_corr_ri = nlogp_fdr(nlogp_ri, method=correction)
     elif correction == "bonferroni":
-        p_corr_fi = bonferroni(p_fi)
-        p_corr_ri = bonferroni(p_ri)
+        nlogp_corr_fi = nlogp_bonferroni(nlogp_fi)
+        nlogp_corr_ri = nlogp_bonferroni(nlogp_ri)
     else:
-        p_corr_fi = p_fi
-        p_corr_ri = p_ri
+        nlogp_corr_fi = nlogp_fi
+        nlogp_corr_ri = nlogp_ri
 
-    # Compute z-values
-    z_corr_fi = p_to_z(p_corr_fi, "two") * sign_fi
-    z_corr_ri = p_to_z(p_corr_ri, "two") * sign_ri
+    # Compute z-values from the nlogp values: on a dataset the size of Neurosynth these
+    # tails run well past the smallest p-value a float can hold, which is all the reported
+    # p-value can say once it reaches its floor.
+    p_corr_fi = _clip_p_values(np.exp(nlogp_corr_fi), dtype=np.float64, copy=False)
+    p_corr_ri = _clip_p_values(np.exp(nlogp_corr_ri), dtype=np.float64, copy=False)
+    z_corr_fi = nlogp_to_z(nlogp_corr_fi, "two") * sign_fi
+    z_corr_ri = nlogp_to_z(nlogp_corr_ri, "two") * sign_ri
 
     # Effect size
     # est. prob. of brain state described by term finding activation in ROI

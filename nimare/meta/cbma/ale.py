@@ -543,23 +543,18 @@ class ALE(CBMAEstimator):
         ss_thresh = self._p_to_summarystat(0.001)
         cluster_mask = self._threshold_clusters_by_size(stat_values, ss_thresh, cutoffs["cfwe"])
 
+        # The cutoffs gate the uncorrected maps rather than producing new statistics, so
+        # each of the three is masked as it stands: p and -log10(p) to their no-evidence
+        # values of 1 and 0, z to zero. Deriving logp from p instead would floor it at the
+        # 44.85 a float32 p-value bottoms out at.
         one = np.array(1.0, dtype=DEFAULT_FLOAT_DTYPE)
-        eps = np.array(np.finfo(DEFAULT_FLOAT_DTYPE).eps, dtype=DEFAULT_FLOAT_DTYPE)
-        p_vfwe = np.where(voxel_mask, np.minimum(p_values, one), one).astype(
-            DEFAULT_FLOAT_DTYPE,
-            copy=False,
-        )
-        p_vfwe[voxel_mask] = np.maximum(p_vfwe[voxel_mask], eps)
-        p_cfwe = np.where(cluster_mask, np.minimum(p_values, one), one).astype(
-            DEFAULT_FLOAT_DTYPE,
-            copy=False,
-        )
-        p_cfwe[cluster_mask] = np.maximum(p_cfwe[cluster_mask], eps)
-
+        logp_values = result.get_map("logp", return_type="array")
+        p_vfwe = np.where(voxel_mask, p_values, one).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        p_cfwe = np.where(cluster_mask, p_values, one).astype(DEFAULT_FLOAT_DTYPE, copy=False)
         z_vfwe = np.where(voxel_mask, z_values, 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
         z_cfwe = np.where(cluster_mask, z_values, 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
-        logp_vfwe = _p_to_logp_values(p_vfwe, dtype=DEFAULT_FLOAT_DTYPE)
-        logp_cfwe = _p_to_logp_values(p_cfwe, dtype=DEFAULT_FLOAT_DTYPE)
+        logp_vfwe = np.where(voxel_mask, logp_values, 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        logp_cfwe = np.where(cluster_mask, logp_values, 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
 
         description = (
             "Family-wise error correction was approximated with predictive ALE "
@@ -571,10 +566,10 @@ class ALE(CBMAEstimator):
         maps = {
             "p_level-voxel": p_vfwe,
             "z_level-voxel": z_vfwe,
-            "logp_level-voxel": logp_vfwe.astype(DEFAULT_FLOAT_DTYPE, copy=False),
+            "logp_level-voxel": logp_vfwe,
             "p_desc-size_level-cluster": p_cfwe,
             "z_desc-size_level-cluster": z_cfwe,
-            "logp_desc-size_level-cluster": logp_cfwe.astype(DEFAULT_FLOAT_DTYPE, copy=False),
+            "logp_desc-size_level-cluster": logp_cfwe,
         }
         return maps, {}, description
 
@@ -801,7 +796,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         """Convert ALE subtraction tail counts into p-values and z-map signs."""
         left_tail = left_counts / n_iters
         right_tail = right_counts / n_iters
-        smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
+        smallest_value = 1.0 / n_iters
         p_values = 2.0 * np.minimum(left_tail, right_tail)
         p_values = np.maximum(smallest_value, np.minimum(p_values, 1.0 - smallest_value)).astype(
             DEFAULT_FLOAT_DTYPE,
@@ -818,7 +813,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         self, upper_counts, lower_counts, diff_ale_values, group1_mask, group2_mask, n_iters
     ):
         """Convert directional ALE subtraction tail counts into one-sided masked p-values."""
-        smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
+        smallest_value = 1.0 / n_iters
         p_values = np.ones(diff_ale_values.shape[0], dtype=DEFAULT_FLOAT_DTYPE)
         diff_signs = np.zeros(diff_ale_values.shape[0], dtype=DEFAULT_FLOAT_DTYPE)
 
@@ -1892,7 +1887,7 @@ class BalancedALESubtraction(PairwiseCBMAEstimator):
         half_alpha = self.alpha / 2.0
         low_threshold = np.percentile(min_null, 100.0 * half_alpha)
         high_threshold = np.percentile(max_null, 100.0 * (1.0 - half_alpha))
-        smallest = np.maximum(np.finfo(DEFAULT_FLOAT_DTYPE).eps, 1.0 / float(self.n_iters))
+        smallest = 1.0 / float(self.n_iters)
         p_map = np.ones(observed.shape[0], dtype=DEFAULT_FLOAT_DTYPE)
         z_map = np.zeros(observed.shape[0], dtype=DEFAULT_FLOAT_DTYPE)
 
@@ -2203,7 +2198,7 @@ class SCALE(CBMAEstimator):
         """
         del stat_values
         p_values = scale_values.astype(DEFAULT_FLOAT_DTYPE, copy=False) / self.n_iters
-        smallest_value = np.maximum(np.finfo(float).eps, 1.0 / self.n_iters)
+        smallest_value = 1.0 / self.n_iters
         p_values = np.maximum(smallest_value, np.minimum(p_values, 1.0 - smallest_value)).astype(
             DEFAULT_FLOAT_DTYPE,
             copy=False,

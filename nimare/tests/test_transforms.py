@@ -6,8 +6,10 @@ import re
 import nibabel as nib
 import numpy as np
 import pytest
+from scipy import stats
 
 from nimare import transforms
+from nimare.utils import DEFAULT_FLOAT_DTYPE
 
 
 def test_ImageTransformer(testdata_ibma):
@@ -388,3 +390,100 @@ def test_z_to_t_clips_extreme_tail_probabilities():
     assert np.all(np.isfinite(t_values))
     assert t_values[0] < 0
     assert t_values[1] > 0
+
+
+def test_t_to_z_is_unchanged_below_the_old_ceiling():
+    """The log-space tail must reproduce the previous values wherever they were not capped.
+
+    The old implementation floored its internal p-value at the machine epsilon of its dtype,
+    which truncated |z| at about 8.13.
+    """
+    rng = np.random.default_rng(0)
+    for dof in (5, 20, 100):
+        t = rng.normal(0, 2.5, size=50_000)
+        z = transforms.t_to_z(t, dof)
+        # Matched tail probabilities, computed independently of the implementation.
+        expected = np.sign(t) * stats.norm.isf(stats.t.sf(np.abs(t), dof))
+        below = np.abs(z) < 8.0
+        assert below.mean() > 0.99
+        assert np.allclose(z[below], expected[below], atol=1e-10)
+
+
+def test_t_to_z_keeps_going_past_the_old_ceiling():
+    """A large t must no longer saturate, and must keep its sign."""
+    t = np.array([-1000.0, -50.0, 0.0, 50.0, 1000.0])
+
+    z = transforms.t_to_z(t, 20)
+
+    assert np.all(np.abs(z[[0, 1, 3, 4]]) > 8.13), "these all used to be clipped to 8.13"
+    assert np.allclose(z, -z[::-1]), "must stay antisymmetric in t"
+    assert z[2] == 0.0
+    assert np.allclose(np.abs(z[[1, 4]]), [9.755, 14.630], atol=1e-3)
+    # And the result is representable in the dtype the maps are stored in.
+    assert np.all(np.isfinite(np.asarray(z, dtype=DEFAULT_FLOAT_DTYPE)))
+
+
+@pytest.mark.parametrize("tail", ["one", "two"])
+def test_nlogp_to_z_matches_p_to_z_while_p_is_representable(tail):
+    """Agree with the ordinary conversion wherever the p-value is still a number."""
+    p = np.array([0.5, 0.05, 1e-8, 1e-20, 1e-300])
+
+    assert np.allclose(
+        transforms.nlogp_to_z(np.log(p), tail=tail),
+        transforms.p_to_z(p, tail=tail),
+        atol=1e-10,
+    )
+
+
+def test_nlogp_to_z_passes_where_p_to_z_runs_out():
+    """Past the smallest representable p, only the log-space form still carries a value."""
+    # p = 1e-5000: zero in any float, so p_to_z can only return its floor.
+    nlogp = -5000 * np.log(10)
+
+    z = transforms.nlogp_to_z(nlogp, tail="one")
+
+    assert 151 < z < 152
+    assert transforms.p_to_z(np.array([0.0]), tail="one")[0] < 39
+    # Round-trip through float32 storage, which holds z and -log10(p) alike.
+    stored = DEFAULT_FLOAT_DTYPE(z)
+    assert np.isfinite(stored)
+    assert np.isclose(float(stored), z, rtol=1e-6)
+
+
+@pytest.mark.parametrize("tail", ["one", "two"])
+def test_z_to_nlogp_inverts_nlogp_to_z(tail):
+    """The two log-space conversions must be inverses well past where a p-value dies."""
+    z = np.linspace(0.0, 100.0, 501)
+
+    assert np.allclose(transforms.nlogp_to_z(transforms.z_to_nlogp(z, tail), tail), z, atol=1e-8)
+
+
+@pytest.mark.parametrize("tail", ["one", "two"])
+def test_z_to_nlogp_matches_the_log_of_z_to_p(tail):
+    """Agree with the ordinary conversion wherever the p-value is still a number."""
+    z = np.array([-3.0, 0.0, 1.959963, 5.0, 20.0])
+
+    assert np.allclose(
+        transforms.z_to_nlogp(z, tail), np.log(transforms.z_to_p(z, tail)), atol=1e-12
+    )
+
+
+def test_t_to_nlogp_matches_the_tail_of_t_to_z():
+    """The t tail and the z NiMARE reports from it must describe the same probability."""
+    t = np.array([0.5, 2.0, 10.0, 50.0, 1000.0])
+
+    nlogp = transforms.t_to_nlogp(t, 20, tail="one")
+
+    assert np.allclose(nlogp, transforms.z_to_nlogp(transforms.t_to_z(t, 20), tail="one"))
+    # Two tails are one added log(2), and the deep tail stays finite.
+    assert np.allclose(transforms.t_to_nlogp(t, 20, tail="two"), nlogp + np.log(2.0))
+    assert np.all(np.isfinite(nlogp))
+
+
+def test_z_to_t_round_trips_past_the_old_ceiling():
+    """z_to_t floored its p at machine epsilon, so t saturated from |z| = 8.13 on."""
+    t = np.array([-1000.0, -100.0, -20.0, 0.0, 20.0, 100.0, 1000.0])
+    z = transforms.t_to_z(t, 20)
+    assert np.max(np.abs(z)) > 8.13, "fixture must reach past the old ceiling"
+
+    assert np.allclose(transforms.z_to_t(z, 20), t, rtol=1e-6)

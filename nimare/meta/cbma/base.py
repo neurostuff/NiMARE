@@ -28,6 +28,7 @@ from nimare.utils import (
     _check_type,
     _mask_coverage_to_null_ijk,
     _mask_img_to_bool,
+    _nlogp_to_logp_values,
     _p_to_logp_values,
     get_masker,
     get_masker_mask_image,
@@ -279,7 +280,14 @@ class CBMAEstimator(Estimator):
 
         p_values, z_values = self._summarystat_to_p(stat_values, null_method=self.null_method)
 
-        maps = {"stat": stat_values, "p": p_values, "z": z_values}
+        maps = {
+            "stat": stat_values,
+            "p": p_values,
+            "z": z_values,
+            # From log(p): the stored float32 p floors at a -log10(p) of 44.85, while the
+            # histogram null resolves tails far below that.
+            "logp": _nlogp_to_logp_values(np.log(p_values)),
+        }
         description = self._description_text()
         return maps, {}, description
 

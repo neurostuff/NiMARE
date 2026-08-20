@@ -60,7 +60,9 @@ class MetaResult(NiMAREBase):
     masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker object.
     maps : :obj:`dict`
-        Keys are map names and values are 1D arrays.
+        Keys are map names and values are 1D arrays. ``p`` maps are clipped to the positive
+        range of a float32 and so bottom out at 1e-45; past that floor the ``logp``
+        (``-log10(p)``) map is the one that still distinguishes voxels.
     tables : :obj:`dict`
         Keys are table levels and values are pandas DataFrames.
     description_ : :obj:`str`

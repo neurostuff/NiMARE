@@ -238,9 +238,12 @@ all NiMARE workflows.
    transforms.t_to_d
    transforms.d_to_g
    transforms.p_to_z
+   transforms.nlogp_to_z
    transforms.t_to_z
    transforms.z_to_t
    transforms.z_to_p
+   transforms.z_to_nlogp
+   transforms.t_to_nlogp
 
 
 .. _api_extract_ref:
@@ -289,6 +292,8 @@ For more information about fetching data from the internet, see :ref:`fetching t
    stats.pearson
    stats.null_to_p
    stats.nullhist_to_p
+   stats.nlogp_bonferroni
+   stats.nlogp_fdr
 
 
 .. _api_generate_ref:
