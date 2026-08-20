@@ -1,5 +1,6 @@
 """Tests for dependence handling in IBMA estimators."""
 
+import inspect
 import logging
 
 import numpy as np
@@ -133,6 +134,69 @@ def test_weighting_parameters_are_validated(estimator):
         estimator(rho=1.5)
     with pytest.raises(ValueError, match="must be a number"):
         estimator(rho="0.8")
+
+
+@pytest.mark.parametrize("estimator", REGRESSION_ESTIMATORS)
+def test_small_sample_correction_is_validated(estimator):
+    """A misspelled correction should fail at construction, not reach PyMARE."""
+    with pytest.raises(ValueError, match="Invalid small_sample_correction"):
+        estimator(small_sample_correction="knapp_hartung")
+
+
+@pytest.mark.parametrize("estimator", REGRESSION_ESTIMATORS)
+def test_small_sample_correction_defers_to_pymare_by_default(estimator):
+    """None must leave the argument out, so each PyMARE estimator keeps its own default.
+
+    They differ: the estimators that estimate tau^2 correct by default, while
+    WeightedLeastSquares does not, since its tau^2 is supplied rather than estimated.
+    """
+    meta = estimator()
+    assert meta.small_sample_correction is None
+    meta.inputs_ = {"contrast_names": np.array([0, 1, 2])}
+
+    est = meta._pymare_estimator(np.arange(3))
+    expected = inspect.signature(type(est).__init__).parameters["small_sample_correction"].default
+    assert est.small_sample_correction == expected
+
+
+@pytest.mark.parametrize("correction", ["knapp-hartung", "knapp-hartung-conservative", "wald"])
+def test_small_sample_correction_is_forwarded(correction):
+    """An explicit choice must reach the PyMARE estimator and change the inference."""
+    meta = ibma.DerSimonianLaird(small_sample_correction=correction)
+    meta.inputs_ = {"contrast_names": np.array([0, 1, 2])}
+
+    assert meta._pymare_estimator(np.arange(3)).small_sample_correction == correction
+
+
+def test_small_sample_correction_changes_the_model_based_standard_errors(fitted):
+    """On the model-based path the correction must move the p-values, and only those."""
+    corrected = fitted(
+        ibma.DerSimonianLaird, groupby=False, small_sample_correction="knapp-hartung"
+    )
+    uncorrected = fitted(ibma.DerSimonianLaird, groupby=False, small_sample_correction="wald")
+
+    valid = np.isfinite(corrected.maps["p"]) & np.isfinite(uncorrected.maps["p"])
+    assert valid.any()
+    assert not np.allclose(corrected.maps["p"][valid], uncorrected.maps["p"][valid])
+    # Only the reference distribution changes; the point estimate is untouched.
+    assert np.allclose(corrected.maps["est"][valid], uncorrected.maps["est"][valid])
+
+
+def test_small_sample_correction_is_ignored_once_images_are_grouped(fitted):
+    """Group labels bring CR2 and Satterthwaite degrees of freedom, which replace it.
+
+    So the parameter is inert on the grouped path -- which is why PyMARE spells the
+    uncorrected option 'wald' rather than 'none'.
+    """
+    corrected = fitted(ibma.DerSimonianLaird, small_sample_correction="knapp-hartung")
+    uncorrected = fitted(ibma.DerSimonianLaird, small_sample_correction="wald")
+
+    assert np.unique(corrected.estimator.inputs_["contrast_names"]).size < len(
+        corrected.estimator.inputs_["id"]
+    ), "fixture must actually group something"
+    valid = np.isfinite(corrected.maps["p"]) & np.isfinite(uncorrected.maps["p"])
+    assert valid.any()
+    assert np.allclose(corrected.maps["p"][valid], uncorrected.maps["p"][valid])
 
 
 @pytest.mark.parametrize("estimator", REGRESSION_ESTIMATORS)
