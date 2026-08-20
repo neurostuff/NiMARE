@@ -1604,7 +1604,7 @@ class PermutedOLS(IBMAEstimator):
     ============== ===============================================================================
     "t"            T-statistic map from one-sample test.
     "z"            Z-statistic map from one-sample test.
-    "p"            P-value map from one-sample test, referred to the t distribution.
+    "p"            P-value map from one-sample test.
     "dof"          Degrees of freedom map from one-sample test.
     ============== ===============================================================================
 
