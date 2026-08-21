@@ -146,6 +146,32 @@ def test_non_spatial_factor_does_not_absorb_the_baseline(annotations):
     assert bound.n_parameters(N_BASES) == N_BASES + 2
 
 
+def test_additive_spatial_factors_are_rejected_as_unidentifiable(annotations):
+    """``~ s(a) + s(b)`` is rank deficient by a whole basis width, so it must be refused.
+
+    Each cell-means spatial factor's columns sum to the constant, so the two sums are equal and
+    their difference is exactly zero -- verified as a rank deficiency of exactly ``n_bases``,
+    independent of the data. Identifying it needs sum-to-zero constraints across levels, which
+    mgcv supplies via its ``sz`` basis and NiMARE does not implement. Refusing beats fitting a
+    singular design and reporting standard errors for it.
+    """
+    with pytest.raises(FormulaError, match="not jointly identifiable"):
+        bind(Design.from_formula("~ s(diagnosis) + s(drug)"), annotations)
+
+
+def test_one_spatial_factor_plus_a_non_spatial_one_is_fine(annotations):
+    """Only *spatial* factors compete for the constant, so this combination is identified."""
+    bound = bind(Design.from_formula("~ s(diagnosis) + drug"), annotations)
+    assert len(bound.baseline_blocks) == 1
+
+
+def test_spatial_interaction_is_the_identified_alternative(annotations):
+    """The form the error points to must actually work."""
+    bound = bind(Design.from_formula("~ s(diagnosis:drug)"), annotations)
+    assert len(bound.baseline_blocks) == 1
+    assert bound.blocks[0].n_columns == 4
+
+
 def test_spans_intercept_distinguishes_factors_from_covariates():
     """Only cell-means indicator blocks span the constant."""
     assert _spans_intercept(np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0]]))

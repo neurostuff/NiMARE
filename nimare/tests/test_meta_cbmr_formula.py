@@ -1,0 +1,191 @@
+"""End-to-end tests for the formula-specified CBMR estimator."""
+
+import logging
+import warnings
+
+import numpy as np
+import pytest
+
+try:
+    import torch  # noqa: F401
+except ImportError:
+    TORCH_INSTALLED = False
+else:
+    TORCH_INSTALLED = True
+    from nimare.meta.cbmr import CBMR
+    from nimare.meta.cbmr.distributions import DistributionError
+    from nimare.meta.cbmr.terms import FormulaError
+
+pytestmark = pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+
+FIT_KWARGS = dict(
+    spline_spacing=100,
+    n_iter=100,
+    tol=1e2,
+    device="cpu",
+    random_state=1,
+    generate_description=False,
+)
+
+
+@pytest.fixture(scope="module")
+def studyset():
+    """Return a small simulated Studyset with two factors and two standardized covariates."""
+    from nimare.generate import create_coordinate_studyset
+    from nimare.transforms import StandardizeField
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        _, studyset = create_coordinate_studyset(
+            foci=10, sample_size=(20, 40), n_studies=40, seed=11
+        )
+    annotations = studyset.annotations_df.copy()
+    n_rows = annotations.shape[0]
+    pattern = [
+        ("schizophrenia", "Yes"),
+        ("schizophrenia", "No"),
+        ("depression", "Yes"),
+        ("depression", "No"),
+    ]
+    annotations[["diagnosis", "drug_status"]] = [pattern[i % 4] for i in range(n_rows)]
+    annotations["sample_sizes"] = [studyset.metadata.sample_sizes[i][0] for i in range(n_rows)]
+    annotations["avg_age"] = np.arange(n_rows, dtype=float)
+    studyset.annotations_df = annotations
+    return StandardizeField(fields=["sample_sizes", "avg_age"]).transform(studyset)
+
+
+def _fit(formula, studyset, **overrides):
+    return CBMR(formula, **{**FIT_KWARGS, **overrides}).fit(dataset=studyset)
+
+
+def test_group_design_yields_one_intensity_map_per_cell(studyset):
+    """A spatial interaction of two factors should give a map per combination of levels."""
+    result = _fit("~ s(diagnosis:drug_status)", studyset)
+
+    expected = {
+        f"spatialIntensity_group-{diagnosis}-{drug}"
+        for diagnosis in ("schizophrenia", "depression")
+        for drug in ("Yes", "No")
+    }
+    assert expected <= set(result.maps)
+    assert all(np.all(np.isfinite(result.maps[name])) for name in expected)
+    assert all(np.all(result.maps[name] >= 0) for name in expected), "intensities are rates"
+
+
+def test_map_labels_come_from_factor_levels(studyset):
+    """Labels should read like the levels, not like patsy column names."""
+    result = _fit("~ s(diagnosis)", studyset)
+
+    assert "spatialIntensity_group-schizophrenia" in result.maps
+    assert not any("[" in name for name in result.maps), "patsy syntax leaked into map names"
+
+
+def test_scalar_moderator_lands_in_a_table(studyset):
+    """A term without ``s()`` has one coefficient, so it belongs in a table not a map."""
+    result = _fit("~ s(diagnosis) + standardized_sample_sizes", studyset)
+
+    table = result.tables["moderatorEffect_standardized_sample_sizes"]
+    assert list(table.columns) == ["column", "coefficient", "standard_error"]
+    assert len(table) == 1
+    assert not any("standardized_sample_sizes" in name for name in result.maps)
+
+
+def test_spatial_moderator_lands_in_a_map(studyset):
+    """A term with ``s()`` has a coefficient per voxel, so it belongs in a map.
+
+    The output type follows from the formula, which is the point of marking resolution per term.
+    """
+    result = _fit("~ s(diagnosis) + s(standardized_avg_age)", studyset)
+
+    assert "voxelwiseModeratorEffect_standardized_avg_age" in result.maps
+    assert result.maps["voxelwiseModeratorEffect_standardized_avg_age"].shape == (
+        result.maps["spatialIntensity_group-schizophrenia"].shape
+    )
+
+
+def test_mixed_design_splits_moderators_by_marker(studyset):
+    """One scalar moderator and one spatial moderator in a single model.
+
+    This is what the old API needed a third ``moderator_effect="mixed"`` mode plus two extra
+    keyword arguments to express.
+    """
+    result = _fit(
+        "~ s(diagnosis:drug_status) + standardized_sample_sizes + s(standardized_avg_age)",
+        studyset,
+    )
+
+    assert "voxelwiseModeratorEffect_standardized_avg_age" in result.maps
+    assert "moderatorEffect_standardized_sample_sizes" in result.tables
+
+
+def test_group_specific_scalar_slope(studyset):
+    """``diagnosis:n`` gives one scalar slope per diagnosis, which the old API could not.
+
+    Global moderator coefficients were pooled across groups by construction, since
+    ``moderators_linear`` was a single Linear rather than a ModuleDict.
+    """
+    result = _fit("~ diagnosis:standardized_sample_sizes", studyset)
+
+    table = result.tables["moderatorEffect_diagnosis-standardized_sample_sizes"]
+    assert len(table) == 2, "expected one slope per diagnosis"
+    assert np.all(np.isfinite(table["coefficient"]))
+
+
+def test_pooled_spatial_moderator(studyset):
+    """``s(n)`` alone is a spatial moderator pooled across groups, also newly expressible.
+
+    The old voxelwise path keyed moderator coefficients by group, so a pooled spatially varying
+    moderator had no representation.
+    """
+    result = _fit("~ s(standardized_sample_sizes)", studyset)
+
+    assert "voxelwiseModeratorEffect_standardized_sample_sizes" in result.maps
+    assert "spatialIntensity_group-Default" in result.maps
+
+
+def test_unidentifiable_additive_spatial_factors_are_refused(studyset):
+    """Refused at bind time rather than fitted as a singular design."""
+    with pytest.raises(FormulaError, match="not jointly identifiable"):
+        _fit("~ s(diagnosis) + s(drug_status)", studyset)
+
+
+def test_overdispersion_with_a_grouped_design(studyset):
+    """Overdispersion should fit where several experiments share a spatial map."""
+    result = _fit("~ s(diagnosis)", studyset, distribution="negativebinomial", lr=1e-2)
+
+    overdispersion = result.tables["overdispersion"]["overdispersion"].to_numpy()
+    assert len(overdispersion) == 2
+    assert np.all(overdispersion > 0)
+
+
+def test_overdispersion_with_a_spatial_covariate_is_refused(studyset):
+    """No two experiments share a map, so there is nothing to estimate overdispersion from."""
+    with pytest.raises(DistributionError, match="overdispersion"):
+        _fit("~ s(standardized_avg_age)", studyset, distribution="negativebinomial")
+
+
+def test_parameter_budget_is_logged(studyset, caplog):
+    """Each ``s()`` term costs a basis width per column; the user should be told."""
+    with caplog.at_level(logging.INFO, logger="nimare.meta.cbmr.estimator"):
+        _fit("~ s(diagnosis) + standardized_sample_sizes", studyset)
+
+    logged = "\n".join(caplog.messages)
+    assert "s(diagnosis)" in logged and "parameters" in logged
+    assert "distinct spatial map" in logged
+
+
+def test_unknown_column_is_reported_before_fitting(studyset):
+    """A typo should fail with the available columns, not deep inside patsy."""
+    with pytest.raises(FormulaError, match="Available columns"):
+        _fit("~ s(diagnosiss)", studyset)
+
+
+def test_description_names_the_design(studyset):
+    """The generated description should record what was actually fitted."""
+    result = CBMR(
+        "~ s(diagnosis) + standardized_sample_sizes",
+        **{**FIT_KWARGS, "generate_description": True},
+    ).fit(dataset=studyset)
+
+    assert "s(diagnosis)" in result.description_
+    assert "Poisson" in result.description_

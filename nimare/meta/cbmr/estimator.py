@@ -1,6 +1,7 @@
 """Coordinate-based meta-regression estimator."""
 
 import logging
+import re
 import time
 
 import nibabel as nib
@@ -1164,3 +1165,207 @@ class CBMREstimator(Estimator):
                 moderators,
                 moderator_coef,
             )
+
+
+class CBMR(CBMREstimator):
+    """Coordinate-based meta-regression specified by a formula.
+
+    .. versionadded:: 0.21.0
+
+    Where :class:`CBMREstimator` takes ``group_categories``, ``moderators`` and a
+    ``moderator_effect`` switch, this takes one formula in which each term states its own
+    spatial resolution::
+
+        CBMR("~ s(diagnosis:drug_status)")                 # a map per cell
+        CBMR("~ s(diagnosis) + sample_size")               # plus a scalar moderator
+        CBMR("~ s(diagnosis) + sample_size + s(avg_age)")  # one of each
+
+    ``s()`` crosses a term with the spline basis, making its coefficient a map; without it the
+    term gets a single coefficient. That is the whole global-versus-voxelwise distinction, and
+    stating it per term removes the need for a separate "mixed" mode. It also reaches designs
+    the older interface could not express at all -- ``s(sample_size)`` for a spatially varying
+    moderator pooled across groups, ``s(diagnosis) + s(drug_status)`` for additive spatial main
+    effects, ``diagnosis:sample_size`` for a group-specific scalar slope.
+
+    Parameters
+    ----------
+    formula : :obj:`str` or :class:`~nimare.meta.cbmr.terms.Design`
+        Model specification. See :mod:`nimare.meta.cbmr.terms` for the syntax, including why
+        there is never a scalar intercept and how the spatial baseline is resolved.
+    distribution : :obj:`str` or :class:`~nimare.meta.cbmr.distributions.Distribution`, optional
+        Observation distribution: ``"poisson"``, ``"negativebinomial"`` or
+        ``"clusterednegativebinomial"``. The overdispersion models need several experiments
+        sharing each spatial map, so they cannot be combined with a continuously varying spatial
+        term; :meth:`~nimare.meta.cbmr.distributions.Distribution.check_design` explains why.
+        Default is ``"poisson"``.
+    mask, incidence_threshold, spline_spacing, n_iter, lr, tol, device, random_state
+        As for :class:`CBMREstimator`.
+
+    Notes
+    -----
+    The per-term parameter budget is logged at fit time. Each ``s()`` term costs one basis width
+    of coefficients per column -- 457 at the default spacing on the 2 mm mask, as much as
+    another group's entire baseline map -- which the older single switch hid by promoting every
+    moderator at once.
+    """
+
+    def __init__(
+        self,
+        formula,
+        distribution="poisson",
+        mask=None,
+        incidence_threshold=DEFAULT_INCIDENCE_THRESHOLD,
+        spline_spacing=10,
+        n_iter=1000,
+        lr=1.0,
+        tol=1e-8,
+        device="cpu",
+        random_state=None,
+        **kwargs,
+    ):
+        from nimare.meta.cbmr.distributions import resolve_distribution
+        from nimare.meta.cbmr.terms import formula_to_design
+
+        self.design = formula_to_design(formula)
+        self.distribution = resolve_distribution(distribution)
+
+        # The inherited preprocessing builds the analysis mask, the spline basis and the foci
+        # matrices. Asking it for a single undifferentiated group is what yields one
+        # (experiments x voxels) matrix, which is what a term-based design consumes; grouping is
+        # expressed by the formula instead.
+        super().__init__(
+            group_categories=None,
+            moderators=None,
+            moderator_effect="global",
+            mask=mask,
+            incidence_threshold=incidence_threshold,
+            spline_spacing=spline_spacing,
+            n_iter=n_iter,
+            lr=lr,
+            tol=tol,
+            device=device,
+            random_state=random_state,
+            **kwargs,
+        )
+        self.bound_design = None
+        self.predictor = None
+        self.cbmr_model = None
+
+    def _experiment_annotations(self, dataset):
+        """Return experiment annotations ordered to match the foci matrix rows."""
+        annotations = self._collect_experiment_annotations(dataset)
+        ids = list(self.inputs_["ids_by_group"][DEFAULT_GROUP_NAME])
+        ordered = annotations.set_index("id").reindex(ids)
+        missing = ordered.index[ordered.isna().all(axis=1)]
+        if len(missing):
+            raise ValueError(
+                f"No annotations found for experiments {list(missing)[:5]}; a formula needs an "
+                "annotation row per experiment."
+            )
+        return ordered.reset_index()
+
+    def _fit(self, dataset):
+        """Fit the formula-specified model and summarize it into maps and tables."""
+        from nimare.meta.cbmr.model import CBMRModel
+        from nimare.meta.cbmr.predictor import CBMRPredictor
+        from nimare.meta.cbmr.terms import bind
+
+        seed_torch(self.random_state, self.device)
+
+        annotations = self._experiment_annotations(dataset)
+        self.bound_design = bind(self.design, annotations)
+        self.predictor = CBMRPredictor(self.bound_design, self.inputs_["coef_spline_bases"])
+
+        n_bases = self.predictor.n_bases
+        LGR.info(
+            f"CBMR design {self.bound_design.design} over {self.predictor.n_voxels} voxels "
+            f"and {self.predictor.patterns.n_experiments} experiments, "
+            f"{self.predictor.patterns.n_patterns} distinct spatial map(s):\n"
+            + self.bound_design.describe(n_bases)
+        )
+
+        foci = self.inputs_["foci_by_experiment"][DEFAULT_GROUP_NAME]
+        self.cbmr_model = CBMRModel(self.predictor, self.distribution, device=self.device)
+        self.cbmr_model.fit(foci, n_iter=self.n_iter, lr=self.lr, tol=self.tol)
+
+        maps, tables = self._summarize(foci)
+        return maps, tables, self._description_text()
+
+    def _summarize(self, foci):
+        """Turn the fitted model into result maps and tables.
+
+        Reported per *term*, not per spatial pattern. A design with a continuously varying
+        spatial term has as many patterns as experiments, and forty fitted intensity maps are
+        not a useful answer; the informative object is the term's coefficient map. So a baseline
+        term yields one intensity map per level, and any other spatial term yields its
+        coefficient map -- a derivative of log intensity with respect to that column, which is
+        what ``voxelwiseModeratorEffect_`` has always meant.
+        """
+        maps, tables = {}, {}
+        bases = self.predictor.bases
+        coefficients = self.cbmr_model.fitted_coefficients()
+        errors = self.cbmr_model.standard_errors(foci)
+
+        for block in self.bound_design.blocks:
+            name = str(block.term)
+            values = np.atleast_2d(coefficients[name])
+            error_values = np.atleast_2d(errors[name])
+
+            if not block.term.spatial:
+                tables[f"moderatorEffect_{_table_safe(name)}"] = pd.DataFrame(
+                    {
+                        "column": list(block.column_names),
+                        "coefficient": values.reshape(-1),
+                        "standard_error": error_values.reshape(-1),
+                    }
+                )
+                continue
+
+            log_intensity = values @ bases.T
+            for index, column in enumerate(block.column_names):
+                label = _label_from_column(column)
+                if block.is_baseline:
+                    maps[f"spatialIntensity_group-{label}"] = np.exp(log_intensity[index])
+                    maps[f"logSpatialIntensity_group-{label}"] = log_intensity[index]
+                else:
+                    maps[f"voxelwiseModeratorEffect_{label}"] = log_intensity[index]
+
+            tables[f"spatialCoefficient_{_table_safe(name)}"] = pd.DataFrame(
+                values, index=list(block.column_names)
+            )
+            tables[f"spatialCoefficientSE_{_table_safe(name)}"] = pd.DataFrame(
+                error_values, index=list(block.column_names)
+            )
+
+        overdispersion = self.cbmr_model.overdispersion()
+        if overdispersion is not None:
+            tables["overdispersion"] = pd.DataFrame({"overdispersion": overdispersion})
+        return maps, tables
+
+    def _generate_description(self):
+        """Describe the fitted model."""
+        return (
+            f"A coordinate-based meta-regression with design {self.bound_design.design} and a "
+            f"{self.distribution.name} observation model was fitted with NiMARE "
+            f"{__version__}, using cubic B-spline bases at spacing {self.spline_spacing}."
+        )
+
+
+def _table_safe(name):
+    """Make a rendered term usable as a result-table key."""
+    return name.replace(" ", "").replace("(", "-").replace(")", "").replace(":", "-")
+
+
+def _label_from_column(column):
+    """Turn a patsy column name into a map label.
+
+    ``diagnosis[schiz]:drug[yes]`` becomes ``schiz-yes``, so a formula design produces the same
+    readable group labels the older ``group_categories`` interface did. Names without a level --
+    a continuous covariate, or the intercept -- pass through unchanged.
+    """
+    parts = []
+    for piece in column.split(":"):
+        match = re.search(r"\[(?:T\.)?([^\]]+)\]", piece)
+        parts.append(match.group(1) if match else piece)
+    label = "-".join(parts)
+    return DEFAULT_GROUP_NAME if label == "1" else label

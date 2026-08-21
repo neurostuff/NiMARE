@@ -25,7 +25,7 @@ from nimare.meta.cbmr.distributions import (
     Poisson,
     resolve_distribution,
 )
-from nimare.meta.cbmr.estimator import CBMREstimator
+from nimare.meta.cbmr.estimator import CBMR, CBMREstimator
 from nimare.meta.cbmr.inference import CBMRInference
 from nimare.meta.cbmr.model import CBMRModel
 from nimare.meta.cbmr.optimizers import fit_voxelwise_cbmr_approximate
@@ -34,6 +34,7 @@ from nimare.meta.cbmr.results import CBMRResult
 from nimare.meta.cbmr.terms import Design, FormulaError, Term
 
 __all__ = [
+    "CBMR",
     "CBMREstimator",
     "CBMRModel",
     "CBMRPredictor",

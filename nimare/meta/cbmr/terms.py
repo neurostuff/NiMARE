@@ -290,6 +290,14 @@ class TermBlock:
     term: Term
     block: np.ndarray
     column_names: tuple
+    is_baseline: bool = False
+    """Whether this term supplies the spatial baseline.
+
+    True for the intercept term, and for a cell-means spatial factor whose per-level columns
+    span the constant. Recorded at bind time rather than recomputed, because it decides how the
+    term is reported -- a baseline's coefficients exponentiate to an intensity map, while
+    another spatial term's are a derivative of log intensity.
+    """
 
     @property
     def n_columns(self):
@@ -320,6 +328,11 @@ class BoundDesign:
     def terms(self):
         """The bound terms, in formula order."""
         return tuple(block.term for block in self.blocks)
+
+    @property
+    def baseline_blocks(self):
+        """Bound terms supplying the spatial baseline."""
+        return tuple(block for block in self.blocks if block.is_baseline)
 
     @property
     def spatial_blocks(self):
@@ -376,6 +389,25 @@ def bind(design, annotations):
         for b in blocks
         if b.term.spatial and not b.term.is_intercept and _spans_intercept(b.block)
     ]
+    blocks = [
+        replace(b, is_baseline=True) if b in absorbing or b.term.is_intercept else b
+        for b in blocks
+    ]
+    absorbing = [b for b in blocks if b.is_baseline and not b.term.is_intercept]
+
+    if len(absorbing) > 1:
+        names = ", ".join(str(b.term) for b in absorbing)
+        interaction = ":".join(b.term.expr for b in absorbing)
+        raise FormulaError(
+            f"The spatial factor terms {names} are not jointly identifiable. Each gives every "
+            "level its own map, so each one's columns sum to the constant, and their difference "
+            "is exactly zero -- the design is rank deficient by one basis width, whatever the "
+            "data. Additive spatial main effects need sum-to-zero constraints across levels to "
+            "be identified, which mgcv provides through its 'sz' basis but NiMARE does not yet "
+            f"implement. Write s({interaction}) for the full interaction, which is identified "
+            "and gives one map per combination of levels, or make all but one of the factors "
+            "non-spatial."
+        )
 
     if design.explicit_intercept and absorbing:
         raise FormulaError(
@@ -391,7 +423,9 @@ def bind(design, annotations):
         # intercept. CBMR always estimates a spatial intensity; there is no model without one.
         intercept = Term(expr=INTERCEPT_TERM, spatial=True)
         block, names = _experiment_block(INTERCEPT_TERM, annotations)
-        blocks.insert(0, TermBlock(term=intercept, block=block, column_names=names))
+        blocks.insert(
+            0, TermBlock(term=intercept, block=block, column_names=names, is_baseline=True)
+        )
         design = Design(terms=(intercept,) + design.terms, explicit_intercept=False)
 
     return BoundDesign(blocks=tuple(blocks), design=design)
