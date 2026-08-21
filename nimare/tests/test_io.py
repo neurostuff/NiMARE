@@ -827,16 +827,89 @@ def test_convert_neurosynth_to_json_smoke():
         ),
     ],
 )
-def test_convert_neurovault_to_dataset(kwargs):
+def test_convert_neurovault_to_dataset(kwargs, monkeypatch, tmp_path):
     """Test conversion of neurovault collection to a dataset."""
+
+    class _MockResponse:
+        def __init__(self, *, payload=None, status_code=200, content=b""):
+            self._payload = payload
+            self.status_code = status_code
+            self.content = content
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise io.requests.HTTPError(f"HTTP {self.status_code}")
+
+        def json(self):
+            return self._payload
+
+    image_url_base = "https://example.org/neurovault"
+    collection_images = {
+        "8836": [
+            {
+                "id": 1,
+                "name": "as-Animal",
+                "map_type": "T map",
+                "analysis_level": "group",
+                "file": f"{image_url_base}/collection-8836-animal.nii.gz",
+                "number_of_subjects": 20,
+            },
+        ],
+        "6348": [
+            {
+                "id": 2,
+                "name": "action",
+                "map_type": "univariate-beta map",
+                "analysis_level": "group",
+                "file": f"{image_url_base}/collection-6348-action.nii.gz",
+                "number_of_subjects": 18,
+            },
+        ],
+        "6419": [
+            {
+                "id": 3,
+                "name": "action",
+                "map_type": "univariate-beta map",
+                "analysis_level": "group",
+                "file": f"{image_url_base}/collection-6419-action.nii.gz",
+                "number_of_subjects": 22,
+            },
+        ],
+        "11303": [
+            {
+                "id": 4,
+                "name": "rms",
+                "map_type": "univariate-beta map",
+                "analysis_level": "group",
+                "file": f"{image_url_base}/collection-11303-rms.nii.gz",
+                "number_of_subjects": 25,
+            },
+        ],
+    }
+
+    def _mock_get(url, timeout=30):
+        if url.startswith("https://neurovault.org/api/collections/"):
+            collection_id = url.split("/api/collections/")[1].split("/")[0]
+            if collection_id == "778":
+                return _MockResponse(payload={"detail": "Not found"}, status_code=404)
+            return _MockResponse(payload={"results": collection_images[collection_id]})
+
+        if url.startswith(image_url_base):
+            return _MockResponse(content=b"mock neurovault image")
+
+        raise AssertionError(f"Unexpected URL requested: {url}")
+
+    monkeypatch.setattr(io.requests, "get", _mock_get)
+    kwargs = {**kwargs, "img_dir": tmp_path}
+
     if 778 in kwargs["collection_ids"]:
         with pytest.raises(ValueError) as excinfo:
-            dset = io.convert_neurovault_to_dataset(**kwargs)
+            io.convert_neurovault_to_dataset(**kwargs)
         assert "Collection 778 not found." in str(excinfo.value)
         return
     elif "crab_people" in kwargs["contrasts"].keys():
         with pytest.raises(ValueError) as excinfo:
-            dset = io.convert_neurovault_to_dataset(**kwargs)
+            io.convert_neurovault_to_dataset(**kwargs)
         assert "No images were found for contrast crab_people" in str(excinfo.value)
         return
     else:

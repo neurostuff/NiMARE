@@ -40,6 +40,116 @@ class _CBMRTensorInputs:
         )
 
 
+class SpatialCBMRModel(torch.nn.Module):
+    """Torch log-Poisson model for spatially varying CBMR.
+
+    This model is used by :class:`~nimare.meta.cbmr.CBMREstimator` when
+    ``moderator_effect="voxelwise"``.
+    For experiment ``m`` and voxel ``v`` in group ``g``, the linear predictor is
+    ``B(v) @ alpha_g + Z_m @ beta_g @ B(v).T``.
+
+    Parameters
+    ----------
+    groups : :obj:`list` of :obj:`str`
+        Ordered group names.
+    spatial_coef_dim : :obj:`int`
+        Number of spatial B-spline bases.
+    moderators_coef_dim : :obj:`int`, optional
+        Number of experiment-level moderators. Default is None.
+    device : :obj:`str`, optional
+        Device to use for computations. Default is "cpu".
+    """
+
+    def __init__(
+        self,
+        groups,
+        spatial_coef_dim,
+        moderators_coef_dim=None,
+        global_moderators_coef_dim=None,
+        device="cpu",
+    ):
+        """Initialize the spatially varying CBMR torch module."""
+        super().__init__()
+        self.groups = groups
+        self.spatial_coef_dim = spatial_coef_dim
+        self.moderators_coef_dim = moderators_coef_dim
+        self.global_moderators_coef_dim = global_moderators_coef_dim
+        self.device = device
+        self.spatial_coef_linears = torch.nn.ModuleDict(
+            {group: torch.nn.Linear(spatial_coef_dim, 1, bias=False).double() for group in groups}
+        )
+        if moderators_coef_dim:
+            self.moderator_coef_linears = torch.nn.ModuleDict(
+                {
+                    group: torch.nn.Linear(
+                        spatial_coef_dim,
+                        moderators_coef_dim,
+                        bias=False,
+                    ).double()
+                    for group in groups
+                }
+            )
+        else:
+            self.moderator_coef_linears = None
+        if global_moderators_coef_dim:
+            self.global_moderators_linear = torch.nn.Linear(
+                global_moderators_coef_dim,
+                1,
+                bias=False,
+            ).double()
+        else:
+            self.global_moderators_linear = None
+        self.to(device)
+
+    def _linear_predictor(
+        self,
+        coef_spline_bases,
+        moderators,
+        group,
+        global_moderators=None,
+    ):
+        """Return experiment-by-voxel linear predictors for one group."""
+        group_log_intensity = self.spatial_coef_linears[group](coef_spline_bases).T
+        linear_predictor = group_log_intensity
+        if self.moderator_coef_linears is not None and moderators is not None:
+            moderator_coef = self.moderator_coef_linears[group](coef_spline_bases).T
+            linear_predictor = linear_predictor + moderators @ moderator_coef
+        if self.global_moderators_linear is not None and global_moderators is not None:
+            linear_predictor = linear_predictor + self.global_moderators_linear(global_moderators)
+        return linear_predictor
+
+    @staticmethod
+    def _poisson_nll(linear_predictor, foci):
+        """Return the log-Poisson negative log-likelihood."""
+        mean = torch.exp(linear_predictor)
+        return -(foci * linear_predictor - mean).mean()
+
+    def forward(
+        self,
+        coef_spline_bases,
+        moderators_by_group,
+        foci_by_experiment_voxel,
+        global_moderators_by_group=None,
+    ):
+        """Compute the total negative log-likelihood across groups."""
+        loss = torch.tensor(0.0, dtype=torch.float64, device=self.device)
+        for group in self.groups:
+            moderators = moderators_by_group[group] if moderators_by_group is not None else None
+            global_moderators = (
+                global_moderators_by_group[group]
+                if global_moderators_by_group is not None
+                else None
+            )
+            linear_predictor = self._linear_predictor(
+                coef_spline_bases,
+                moderators,
+                group,
+                global_moderators=global_moderators,
+            )
+            loss = loss + self._poisson_nll(linear_predictor, foci_by_experiment_voxel[group])
+        return loss
+
+
 class GeneralLinearModelEstimator(torch.nn.Module):
     """Base class for GLM estimators.
 

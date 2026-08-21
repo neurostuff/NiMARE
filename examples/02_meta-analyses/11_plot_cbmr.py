@@ -1,427 +1,479 @@
-"""
+r"""
 .. _metas_cbmr:
+.. _metas_voxelwise_cbmr:
 
-===========================================
-Coordinate-based meta-regression algorithms
-===========================================
+====================================================================
+Coordinate-based meta-regression with global and voxelwise moderators
+====================================================================
 
-A tour of Coordinate-based meta-regression (CBMR) algorithms in NiMARE.
+A tour of coordinate-based meta-regression (CBMR) in NiMARE.
 
-CBMR is a generative framework to approximate smooth activation intensity function
-and investigate the effect of study-level moderators (e.g., year of pubilication,
-sample size, subtype of stimuli). CBMR considers three stochastic models (Poisson,
-Negative Binomial (NB) and Clustered NB) for modeling the random variation in foci,
-and allows flexible statistical inference for either spatial homogeneity tests or
-group comparison tests. It is a computationally efficient approach with
-good statistical interpretability to model the locations of activation foci.
+CBMR is a generative framework for estimating smooth activation intensity
+functions from coordinate-based meta-analytic data. The current
+:class:`~nimare.meta.cbmr.CBMREstimator` implementation exposes one public API
+for three moderator-effect parameterizations:
 
-This tutorial is intended to provide a brief description and example of the CBMR
-algorithm implemented in NiMARE.
+* ``moderator_effect="global"`` estimates one scalar coefficient per moderator.
+    This assumes the moderator changes activation intensity by the same amount
+    across the brain.
+* ``moderator_effect="voxelwise"`` estimates a smooth spatial coefficient map
+  for each moderator and group. This allows the moderator effect to vary across
+  the brain, but requires more data for stable estimation.
+* ``moderator_effect="mixed"`` estimates scalar coefficients for selected
+  ``global_moderators`` and spatially varying coefficients for selected
+  ``voxelwise_moderators`` in one model.
 
-For a more detailed introduction to the elements of a coordinate-based meta-regression,
-see the
-`online course <https://www.coursera.org/lecture/functional-mri-2/module-3-meta-analysis-Vd4zz>`_
-or a `brief overview <https://libguides.princeton.edu/neuroimaging_meta>`_.
+This tutorial fits all three versions to the same simulated Studyset, shows how
+to inspect fitted CBMR results, and demonstrates both the result-centered
+inference methods on :class:`~nimare.meta.cbmr.CBMRResult` and the lower-level
+:class:`~nimare.meta.cbmr.CBMRInference` interface.
 """
 
 import numpy as np
 import scipy
 from nilearn.plotting import plot_stat_map
 
+from nimare.correct import FDRCorrector
 from nimare.generate import create_coordinate_studyset
-from nimare.meta import models
+from nimare.meta import CBMREstimator, models
 from nimare.transforms import StandardizeField
 
 ###############################################################################
 # Load Studyset-compatible data
 # -----------------------------------------------------------------------------
-# Here, we're going to simulate a dataset
-# (using `nimare.generate.create_coordinate_dataset
-# <https://nimare.readthedocs.io/en/latest/generated/nimare.generate.create_coordinate_dataset.html>`_
-# that includes 100 studies, each with 10 reported foci and sample size varying between
-# 20 and 40. We separate them into four groups according to diagnosis (schizophrenia or depression)
-# and drug status (Yes or No). We also add two continuous study-level moderators (sample size and
-# average age) and a categorical study-level moderator (schizophrenia subtype).
+# We simulate a coordinate-based Studyset with reported foci, sample sizes,
+# diagnosis labels, drug-status labels, and continuous moderators. The example
+# uses a moderate number of studies and coarse B-spline spacing to keep the
+# runtime manageable while still exercising global, voxelwise, and mixed CBMR.
 
-# data simulation
-ground_truth_foci, studyset = create_coordinate_studyset(
+_, studyset = create_coordinate_studyset(
     foci=10,
     sample_size=(20, 40),
-    n_studies=1000,
+    n_studies=200,
+    seed=100,
 )
-# set up group columns: diagnosis & drug_status
+
 annotations_df = studyset.annotations_df.copy()
 n_rows = annotations_df.shape[0]
-annotations_df["diagnosis"] = [
-    "schizophrenia" if i % 2 == 0 else "depression" for i in range(n_rows)
+group_pattern = [
+    ("schizophrenia", "Yes"),
+    ("schizophrenia", "No"),
+    ("depression", "Yes"),
+    ("depression", "No"),
 ]
-annotations_df["drug_status"] = ["Yes" if i % 2 == 0 else "No" for i in range(n_rows)]
-annotations_df["drug_status"] = (
-    annotations_df["drug_status"].sample(frac=1).reset_index(drop=True)
-)  # random shuffle drug_status column
-# set up continuous moderators: sample sizes & avg_age
+annotations_df[["diagnosis", "drug_status"]] = [
+    group_pattern[i % len(group_pattern)] for i in range(n_rows)
+]
 annotations_df["sample_sizes"] = [studyset.metadata.sample_sizes[i][0] for i in range(n_rows)]
 annotations_df["avg_age"] = np.arange(n_rows)
-# set up categorical moderators: schizophrenia_subtype (as not enough data to be interpreted
-# as groups)
-annotations_df["schizophrenia_subtype"] = ["type1", "type2", "type3", "type4", "type5"] * int(
-    n_rows / 5
-)
-annotations_df["schizophrenia_subtype"] = (
-    annotations_df["schizophrenia_subtype"].sample(frac=1).reset_index(drop=True)
-)  # random shuffle drug_status column
 studyset.annotations_df = annotations_df
-
-###############################################################################
-# Estimation of group-specific spatial intensity functions
-# -----------------------------------------------------------------------------
-# CBMR can generate estimates of group-specific spatial intensity
-# functions for multiple groups simultaneously, with different group-specific
-# spatial regression coefficients.
-#
-# CBMR can also consider the effects of study-level moderators
-# (e.g. sample size, year of publication) by estimating regression coefficients
-# of moderators (shared by all groups).
-#
-# Note that study-level moderators can only have global effects instead of localized
-# effects within CBMR framework. In the scenario that there are multiple subgroups
-# within a group (e.g., indexed as subgroup-1 to subgroup-n, but one or more of them
-# don't have enough number of studies to be inferred as a separate group). Using
-# categorical encoding, CBMR can interpret the subgroups as categorical moderators
-# for each study (either 0 or 1), and estimate the global activation intensity
-# associated with each subgroup (comparing to the average).
-
-from nimare.meta import CBMREstimator
 
 studyset = StandardizeField(fields=["sample_sizes", "avg_age"]).transform(studyset)
 
-cbmr = CBMREstimator(
-    group_categories=["diagnosis", "drug_status"],
-    moderators=[
-        "standardized_sample_sizes",
-        "standardized_avg_age",
-        "schizophrenia_subtype:reference=type1",
-    ],
-    spline_spacing=100,  # a reasonable choice is 10 or 5, 100 is for speed
+# CBMR combines the categorical fields in ``group_categories`` into group names
+# such as ``SchizophreniaYes``. Continuous moderators are standardized above so
+# that a one-unit moderator change corresponds to a one-standard-deviation
+# change.
+group_categories = ["diagnosis", "drug_status"]
+moderators = ["standardized_sample_sizes", "standardized_avg_age"]
+mixed_global_moderators = ["standardized_sample_sizes"]
+mixed_voxelwise_moderators = ["standardized_avg_age"]
+
+###############################################################################
+# Option 1: global moderator effects
+# -----------------------------------------------------------------------------
+# With ``moderator_effect="global"``, CBMR estimates group-specific baseline
+# spatial intensity functions plus one scalar effect for each moderator.
+# Here, ``standardized_sample_sizes`` and ``standardized_avg_age`` each receive
+# one coefficient shared across all voxels and groups.
+
+global_cbmr = CBMREstimator(
+    moderator_effect="global",
+    group_categories=group_categories,
+    moderators=moderators,
+    spline_spacing=100,  # a reasonable analysis choice is 10 or 5; 100 is for speed
     model=models.PoissonEstimator,
     penalty=False,
     lr=1e-1,
-    tol=1e3,  # a reasonable choice is 1e-2, 1e3 is for speed
-    device="cpu",  # "cuda" if you have GPU
+    tol=1e3,  # a reasonable analysis choice is 1e-2; 1e3 is for speed
+    device="cpu",  # use "cuda" if you have a GPU
+    random_state=100,
 )
-results = cbmr.fit(dataset=studyset)
+global_results = global_cbmr.fit(dataset=studyset)
+
+print(global_results.describe_inference_inputs())
 
 ###############################################################################
-# Now that we have fitted the model, we can plot the spatial intensity maps.
-
-plot_stat_map(
-    results.get_map("spatialIntensity_group-SchizophreniaYes"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    symmetric_cbar=True,
-    title="Schizophrenia with drug treatment",
-    threshold=1e-4,
-    vmax=1e-3,
-)
-plot_stat_map(
-    results.get_map("spatialIntensity_group-SchizophreniaNo"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    symmetric_cbar=True,
-    title="Schizophrenia without drug treatment",
-    threshold=1e-4,
-    vmax=1e-3,
-)
-plot_stat_map(
-    results.get_map("spatialIntensity_group-DepressionYes"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    symmetric_cbar=True,
-    title="Depression with drug treatment",
-    threshold=1e-4,
-    vmax=1e-3,
-)
-plot_stat_map(
-    results.get_map("spatialIntensity_group-DepressionNo"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    symmetric_cbar=True,
-    title="Depression without drug treatment",
-    threshold=1e-4,
-    vmax=1e-3,
-)
-
-###############################################################################
-# Four figures correspond to group-specific spatial intensity map of four groups
-# ("schizophreniaYes", "schizophreniaNo", "depressionYes", "depressionNo").
-# Areas with stronger spatial intensity are highlighted.
-
-###############################################################################
-# Generalized Linear Hypothesis (GLH) testing for spatial homogeneity
+# Plot baseline group-specific spatial intensity
 # -----------------------------------------------------------------------------
-# In the most basic scenario of spatial homogeneity testing, the fitted CBMR result can run
-# inference directly. The available groups and moderators are discoverable from the result.
-print(results.describe_inference_inputs())
-contrast_result = results.test_groups()
+# Both global and voxelwise CBMR estimate baseline spatial intensity maps. The
+# map names are shared across the two moderator-effect parameterizations.
 
-###############################################################################
-# Now that we have done spatial homogeneity tests, we can plot the z-score maps.
-
-# generate z-score maps for group-wise spatial homogeneity test
 plot_stat_map(
-    contrast_result.get_map("z_group-SchizophreniaYes"),
+    global_results.get_map("spatialIntensity_group-SchizophreniaYes"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
     symmetric_cbar=True,
-    title="SchizophreniaYes",
-    threshold=scipy.stats.norm.isf(0.05),
-    vmax=30,
+    title="Global CBMR: Schizophrenia with drug treatment",
+    threshold=1e-4,
+    vmax=1e-3,
 )
-
 plot_stat_map(
-    contrast_result.get_map("z_group-SchizophreniaNo"),
+    global_results.get_map("spatialIntensity_group-DepressionNo"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
     symmetric_cbar=True,
-    title="SchizophreniaNo",
-    threshold=scipy.stats.norm.isf(0.05),
-    vmax=30,
-)
-
-plot_stat_map(
-    contrast_result.get_map("z_group-DepressionYes"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    symmetric_cbar=True,
-    title="DepressionYes",
-    threshold=scipy.stats.norm.isf(0.05),
-    vmax=30,
-)
-
-plot_stat_map(
-    contrast_result.get_map("z_group-DepressionNo"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    symmetric_cbar=True,
-    title="DepressionNo",
-    threshold=scipy.stats.norm.isf(0.05),
-    vmax=30,
+    title="Global CBMR: Depression without drug treatment",
+    threshold=1e-4,
+    vmax=1e-3,
 )
 
 ###############################################################################
-# Four figures (displayed as z-statistics map) correspond to homogeneity test of
-# group-specific spatial intensity for four groups. The null hypothesis assumes
-# homogeneous spatial intensity over the whole brain,
-# :math:`H_0: \mu_j = \mu_0 = sum(n_{\text{foci}})/N`, :math:`j=1, \cdots, N`, where
-# :math:`N` is the number of voxels within brain mask, :math:`j` is the index of voxel.
-# Areas with significant p-values are highlighted (under significance level :math:`0.05`).
-
-###############################################################################
-# Perform false discovery rate (FDR) correction on spatial homogeneity test
+# Inference on global moderator effects
 # -----------------------------------------------------------------------------
-# The default FDR correction method is "indep", using Benjamini-Hochberg(BH) procedure.
-from nimare.correct import FDRCorrector
+# Result-centered methods run inference directly from a fitted ``CBMRResult``.
+# For global moderator effects, ``test_moderators`` returns scalar tables rather
+# than maps because each moderator has one coefficient.
+
+global_moderator_result = global_results.test_moderators()
+print(global_moderator_result.tables["moderators_regression_coef"])
+print(global_moderator_result.tables["p_standardized_sample_sizes"])
+print(global_moderator_result.tables["p_standardized_avg_age"])
+
+global_moderator_comparison = global_results.compare_moderators(
+    [("standardized_sample_sizes", "standardized_avg_age")]
+)
+print(global_moderator_comparison.tables["p_standardized_sample_sizes-standardized_avg_age"])
+
+###############################################################################
+# Group inference and correction for global CBMR
+# -----------------------------------------------------------------------------
+# Group homogeneity tests and pairwise group comparisons use the same
+# result-centered methods for all moderator-effect modes. Here we request a
+# sandwich covariance estimate and pass its robust-covariance options through the
+# ``test_groups`` call.
+
+global_group_result = global_results.test_groups(
+    method="sandwich",
+    sandwich_meat="iid",
+    sandwich_correction="hc0",
+    ridge=1e-4,
+)
+print(global_group_result.metadata["global_cbmr_inference_method"])
+print(global_group_result.metadata["global_cbmr_sandwich_meat"])
+print(global_group_result.metadata["global_cbmr_sandwich_correction"])
+
+plot_stat_map(
+    global_group_result.get_map("z_group-SchizophreniaYes"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+    title="Global CBMR homogeneity test: SchizophreniaYes",
+    threshold=scipy.stats.norm.isf(0.05),
+    vmax=30,
+)
 
 corr = FDRCorrector(method="indep", alpha=0.05)
-cres = corr.transform(contrast_result)
+corrected_global_group_result = corr.transform(global_group_result)
 
-###############################################################################
-# Now that we have applied the FDR correction methods,
-# we can plot the FDR corrected z-score maps.
-
-# generate FDR corrected z-score maps for group-wise spatial homogeneity test
 plot_stat_map(
-    cres.get_map("z_group-SchizophreniaYes_corr-FDR_method-indep"),
+    corrected_global_group_result.get_map("z_group-SchizophreniaYes_corr-FDR_method-indep"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
     symmetric_cbar=True,
-    title="Schizophrenia with drug treatment (FDR corrected)",
+    title="Global CBMR homogeneity test: SchizophreniaYes (FDR corrected)",
     threshold=scipy.stats.norm.isf(0.05),
     vmax=30,
 )
 
-plot_stat_map(
-    cres.get_map("z_group-SchizophreniaNo_corr-FDR_method-indep"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    symmetric_cbar=True,
-    title="Schizophrenia without drug treatment (FDR corrected)",
-    threshold=scipy.stats.norm.isf(0.05),
-    vmax=30,
-)
-
-plot_stat_map(
-    cres.get_map("z_group-DepressionYes_corr-FDR_method-indep"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    symmetric_cbar=True,
-    title="Depression with drug treatment (FDR corrected)",
-    threshold=scipy.stats.norm.isf(0.05),
-    vmax=30,
-)
-
-plot_stat_map(
-    cres.get_map("z_group-DepressionNo_corr-FDR_method-indep"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    symmetric_cbar=True,
-    title="Depression without drug treatment (FDR corrected)",
-    threshold=scipy.stats.norm.isf(0.05),
-    vmax=30,
-)
-
-###############################################################################
-# After FDR correction (via BH procedure), areas with stronger spatial intensity
-# are more stringent, (the number of voxels with significant p-values is reduced).
-
-###############################################################################
-# GLH testing for group comparisons among any two groups
-# -----------------------------------------------------------------------------
-# Pairwise group comparisons can also be expressed more directly with tuples.
-contrast_result = results.compare_groups(
+global_group_comparison = global_results.compare_groups(
     [
         ("SchizophreniaYes", "SchizophreniaNo"),
-        ("SchizophreniaNo", "DepressionNo"),
         ("DepressionYes", "DepressionNo"),
     ]
 )
 
-###############################################################################
-# Now that we have done group comparison tests,
-# we can plot the z-score maps indicating difference in spatial intensity between two groups.
-
-# generate z-statistics maps for each group
 plot_stat_map(
-    contrast_result.get_map("z_group-SchizophreniaYes-SchizophreniaNo"),
+    global_group_comparison.get_map("z_group-SchizophreniaYes-SchizophreniaNo"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
     symmetric_cbar=True,
-    title="Drug Treatment Effect for Schizophrenia",
+    title="Global CBMR group comparison: Schizophrenia drug effect",
     threshold=scipy.stats.norm.isf(0.4),
     vmax=2,
 )
-
-plot_stat_map(
-    contrast_result.get_map("z_group-SchizophreniaNo-DepressionNo"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    symmetric_cbar=True,
-    title="Untreated Schizophrenia vs. Untreated Depression",
-    threshold=scipy.stats.norm.isf(0.4),
-    vmax=2,
-)
-
-plot_stat_map(
-    contrast_result.get_map("z_group-DepressionYes-DepressionNo"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    symmetric_cbar=True,
-    title="Drug Treatment Effect for Depression",
-    threshold=scipy.stats.norm.isf(0.4),
-    vmax=2,
-)
-###############################################################################
-# Four figures (displayed as z-statistics map) correspond to group comparison
-# test of spatial intensity for any two groups. The null hypothesis assumes
-# spatial intensity estimations of two groups are equal at voxel level,
-# :math:`H_0: \mu_{1j}=\mu_{2j}`, :math:`j=1, \cdots, N`, where :math:`N` is number
-# of voxels within brain mask, :math:`j` is the index of voxel. Areas with significant p-values
-# (significant difference in spatial intensity estimation between two groups)
-# are highlighted (under significance level :math:`0.05`).
-
 
 ###############################################################################
-# GLH testing with contrast matrix specified
+# Flexible GLH tests with contrast matrices
 # -----------------------------------------------------------------------------
-# CBMR supports more flexible GLH tests by specifying contrast vectors or matrices
-# directly through the result-level `infer` API. For example, the group comparison
-# `2xgroup_0-1xgroup_1-1xgroup_2` can be represented as
-# `group_contrasts=[[2, -1, -1, 0]]`. Multiple independent GLH tests can be
-# conducted simultaneously by including multiple contrast vectors or matrices in
-# `group_contrasts`.
-#
-# CBMR also allows simultaneous GLH tests consisting of multiple contrast vectors,
-# represented as one element of `group_contrasts`.
-# Only if all of null hypotheses are rejected at voxel level, p-values are significant.
-# For example, `[[1, -1, 0, 0], [1, 0, -1, 0], [0, 0, 1, -1]]` tests the equality
-# of spatial intensity estimates across all four groups (finding consistent activation
-# regions). Note that only :math:`n-1` contrast vectors are necessary for testing the
-# equality of :math:`n` groups.
+# CBMR also supports generalized linear hypothesis (GLH) tests by passing raw
+# contrast vectors or matrices to ``infer``. The example below passes one GLH
+# matrix with three rows. Together, those rows test whether all four
+# group-specific spatial intensity estimates are equal.
 
-contrast_result = results.infer(
+global_glh_result = global_results.infer(
     group_contrasts=[[[1, -1, 0, 0], [1, 0, -1, 0], [0, 0, 1, -1]]],
     moderator_contrasts=False,
 )
-
-###############################################################################
-# Now that we have done group comparison tests with the specified contrast matrix,
-# we can plot the z-score maps indicating uniformity in activation regions among
-# all four groups.
+print("The contrast matrix of GLH_0 is {}".format(global_glh_result.metadata["GLH_groups_0"]))
 
 plot_stat_map(
-    contrast_result.get_map("z_GLH_groups_0"),
+    global_glh_result.get_map("z_GLH_groups_0"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
     symmetric_cbar=True,
-    title="GLH_groups_0",
+    title="Global CBMR GLH_groups_0",
     threshold=scipy.stats.norm.isf(0.4),
 )
-print("The contrast matrix of GLH_0 is {}".format(contrast_result.metadata["GLH_groups_0"]))
 
 ###############################################################################
-# GLH testing for study-level moderators
+# Option 2: voxelwise moderator effects
 # -----------------------------------------------------------------------------
-# The CBMR framework can estimate global study-level moderator effects and allows
-# inference on whether those moderator effects differ from zero.
-contrast_result = results.test_moderators()
-print(contrast_result.tables["moderators_regression_coef"])
-print(
-    "P-values of moderator effects `sample_sizes` is {}".format(
-        contrast_result.tables["p_standardized_sample_sizes"]
-    )
+# The same estimator exposes voxelwise moderator-effect maps through
+# ``moderator_effect="voxelwise"``. This option uses the same groups and the same
+# standardized moderators as above, but estimates a smooth effect map for each
+# moderator within each group. The approximate backend is used here for speed.
+
+voxelwise_cbmr = CBMREstimator(
+    moderator_effect="voxelwise",
+    group_categories=group_categories,
+    moderators=moderators,
+    spline_spacing=100,  # a reasonable analysis choice is 10 or 5; 100 is for speed
+    backend="approximate",
+    n_iter=10,
+    tol=1e3,  # a reasonable analysis choice is 1e-4; 1e3 is for speed
+    alpha=1e-3,
+    damping=1.0,
+    compute_nll=False,
+    device="cpu",  # the full backend also accepts "cuda" if a GPU is available
+    random_state=100,
 )
-print(
-    "P-value of moderator effects `avg_age` is {}".format(
-        contrast_result.tables["p_standardized_avg_age"]
-    )
+voxelwise_results = voxelwise_cbmr.fit(dataset=studyset)
+
+print(voxelwise_results.describe_inference_inputs())
+print(voxelwise_results.voxelwise_moderator_effect_map_names)
+print(voxelwise_results.describe_voxelwise_moderator_effect_maps())
+
+###############################################################################
+# Plot voxelwise moderator-effect maps
+# -----------------------------------------------------------------------------
+# In the voxelwise model, each moderator has a fitted map in each group. This is
+# the key difference from global CBMR, where moderator inference is summarized in
+# scalar tables.
+
+plot_stat_map(
+    voxelwise_results.get_map(
+        "voxelwiseModeratorEffect_standardized_sample_sizes_group-SchizophreniaYes"
+    ),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+    title="Voxelwise sample-size effect: SchizophreniaYes",
+)
+plot_stat_map(
+    voxelwise_results.get_map(
+        "voxelwiseModeratorEffect_standardized_avg_age_group-SchizophreniaYes"
+    ),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+    title="Voxelwise age effect: SchizophreniaYes",
 )
 
 ###############################################################################
-# This table shows the regression coefficients of study-level moderators, here,
-# `sample_sizes` and `avg_age` are standardized in the preprocessing steps.
-# Moderator effects of both `sample_size` and `avg_age` are not significant under
-# significance level :math:`0.05`. With reference to spatial intensity estimation of
-# a chosen subtype, spatial intensity estimations of the other :math:`4` subtypes of
-# schizophrenia are moderatored globally.
+# Diagnostic maps for per-unit voxelwise moderator changes
+# -----------------------------------------------------------------------------
+# A fitted :class:`~nimare.meta.cbmr.CBMRInference` object can generate Relative
+# Intensity (RI) and Intensity Difference (ID) diagnostic maps showing how a
+# user-defined moderator-unit change affects spatial intensity. The helper
+# accepts the same moderator/group selectors as the inference methods and returns
+# a CBMRResult copy with named RI and ID maps.
+#
+# The result-centered methods above are the shortest path for statistical tests.
+# Here we construct the inference object explicitly because the diagnostic-map
+# plotting helpers live on :class:`~nimare.meta.cbmr.CBMRInference`.
 
-contrast_result = results.compare_moderators(
+voxelwise_inference = voxelwise_results.get_inference(
+    method="FI",
+    incidence_threshold=None,
+)
+voxelwise_diagnostic_result = voxelwise_inference.generate_voxelwise_moderator_effect_maps(
+    moderators=["standardized_sample_sizes", "standardized_avg_age"],
+    groups="SchizophreniaYes",
+    unit_change=1.0,
+)
+print(voxelwise_diagnostic_result.metadata["voxelwise_moderator_effect_diagnostic_maps"])
+
+plot_stat_map(
+    voxelwise_diagnostic_result.get_map(
+        "relativeIntensity_voxelwiseModeratorEffect_standardized_sample_sizes_unit-1_group-"
+        "SchizophreniaYes"
+    ),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    title="RI for one-SD sample-size increase: SchizophreniaYes",
+)
+plot_stat_map(
+    voxelwise_diagnostic_result.get_map(
+        "intensityDifference_voxelwiseModeratorEffect_standardized_sample_sizes_unit-1_group-"
+        "SchizophreniaYes"
+    ),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    title="ID for one-SD sample-size increase: SchizophreniaYes",
+)
+
+voxelwise_inference.plot_voxelwise_moderator_effects(
+    moderators=["standardized_sample_sizes", "standardized_avg_age"],
+    groups="SchizophreniaYes",
+    unit_change=1.0,
+    id_threshold=None,
+    cut_coords=[0, 0, -8],
+    plot_kwargs={"draw_cross": False},
+)
+
+###############################################################################
+# Inference on voxelwise moderator effects
+# -----------------------------------------------------------------------------
+# Voxelwise CBMR supports the same result-centered helpers. Because moderator
+# effects vary over space, moderator inference returns maps instead of scalar
+# tables. Passing ``method="sandwich"`` requests robust standard errors for this
+# spatially varying moderator test.
+
+voxelwise_moderator_result = voxelwise_results.test_moderators(method="sandwich")
+print(voxelwise_moderator_result.metadata["voxelwise_cbmr_inference_method"])
+
+plot_stat_map(
+    voxelwise_moderator_result.get_map(
+        "z_voxelwiseModeratorEffect_standardized_sample_sizes_group-SchizophreniaYes"
+    ),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+    title="Voxelwise test of sample-size effect: SchizophreniaYes",
+    threshold=None,
+    vmax=5,
+)
+
+voxelwise_moderator_comparison = voxelwise_results.compare_moderators(
     [("standardized_sample_sizes", "standardized_avg_age")]
 )
-print(
-    "P-values of the difference between two moderator effects (`sample_size-avg_age`) is {}".format(
-        contrast_result.tables["p_standardized_sample_sizes-standardized_avg_age"]
-    )
+
+plot_stat_map(
+    voxelwise_moderator_comparison.get_map(
+        "z_voxelwiseModeratorEffect_standardized_sample_sizes-standardized_avg_age_group-"
+        "SchizophreniaYes"
+    ),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+    title="Voxelwise sample-size vs. age effect: SchizophreniaYes",
+    threshold=None,
+    vmax=2,
 )
 
 ###############################################################################
-# CBMR also allows flexible contrasts between study-level covariates.
-# For example, we can express the comparison
-# `standardized_sample_sizes-standardized_avg_age` directly through
-# `results.compare_moderators(...)` when exploring whether the moderator effects
-# of `sample_sizes` and `avg_age` are equivalent.
+# Optional inverse-Fisher standard errors for voxelwise CBMR
+# -----------------------------------------------------------------------------
+# Voxelwise inference can also use inverse Fisher information. These standard
+# errors are model-based: they are efficient when the likelihood,
+# mean-variance relationship, and independence assumptions are correctly
+# specified, but can be too optimistic when those assumptions are only
+# approximate. Coordinate-based meta-analytic data often have study-level
+# clustering and heterogeneous reporting practices. Sandwich standard errors use
+# the fitted model for the mean structure while estimating covariance from
+# empirical residual variation.
+#
+# For that reason, we recommend keeping ``method="sandwich"`` as the default for
+# primary voxelwise CBMR inference. ``method="FI"`` can still be useful for
+# sensitivity analyses, simulations where the model is known to be correct, or
+# comparisons with fully model-based standard errors.
+
+voxelwise_fi_result = voxelwise_results.test_groups(method="FI")
+print(voxelwise_fi_result.metadata["voxelwise_cbmr_inference_method"])
+
+###############################################################################
+# Option 3: mixed moderator effects
+# -----------------------------------------------------------------------------
+# With ``moderator_effect="mixed"``, CBMR estimates group-specific baseline
+# spatial intensity functions, scalar coefficients for moderators listed in
+# ``global_moderators``, and smooth spatial coefficient maps for moderators
+# listed in ``voxelwise_moderators``. Use this option when different moderators
+# call for different effect parameterizations. The model below estimates sample
+# size as a global effect and age as a voxelwise, spatially varying effect in the
+# same fit. Mixed CBMR currently uses the full Poisson backend.
+
+mixed_cbmr = CBMREstimator(
+    moderator_effect="mixed",
+    group_categories=group_categories,
+    global_moderators=mixed_global_moderators,
+    voxelwise_moderators=mixed_voxelwise_moderators,
+    backend="full",
+    spline_spacing=100,  # a reasonable analysis choice is 10 or 5; 100 is for speed
+    n_iter=10,
+    lr=1e-1,
+    tol=1e3,  # a reasonable analysis choice is 1e-4; 1e3 is for speed
+    device="cpu",  # use "cuda" if you have a GPU
+    random_state=100,
+)
+mixed_results = mixed_cbmr.fit(dataset=studyset)
+
+print(mixed_results.describe_inference_inputs())
+print(mixed_results.tables["global_moderators_regression_coef"])
+print(mixed_results.voxelwise_moderator_effect_map_names)
+
+plot_stat_map(
+    mixed_results.get_map("voxelwiseModeratorEffect_standardized_avg_age_group-SchizophreniaYes"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+    title="Mixed CBMR voxelwise age effect: SchizophreniaYes",
+)
+
+###############################################################################
+# Inference for mixed CBMR
+# -----------------------------------------------------------------------------
+# The same result-centered methods dispatch each mixed-model moderator to the
+# right output type: global moderators return scalar tables, while voxelwise
+# moderators return spatial maps. Although the mixed model estimates both types
+# jointly, contrast vectors should test global and voxelwise moderators
+# separately because they occupy different parameter spaces.
+
+mixed_moderator_result = mixed_results.test_moderators(method="FI")
+print(mixed_moderator_result.tables["z_standardized_sample_sizes"])
+print(mixed_moderator_result.metadata["global_cbmr_inference_method"])
+print(mixed_moderator_result.metadata["voxelwise_cbmr_inference_method"])
+
+plot_stat_map(
+    mixed_moderator_result.get_map(
+        "z_voxelwiseModeratorEffect_standardized_avg_age_group-SchizophreniaYes"
+    ),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+    title="Mixed CBMR test of voxelwise age effect: SchizophreniaYes",
+    threshold=None,
+    vmax=5,
+)
+
+###############################################################################
+# Summary
+# -----------------------------------------------------------------------------
+# Use ``moderator_effect="global"`` when the scientific question is whether a
+# moderator has an overall effect on activation intensity. Use
+# ``moderator_effect="voxelwise"`` when the scientific question is where that
+# moderator effect varies across the brain. Use ``moderator_effect="mixed"``
+# when both assumptions are needed in one model. All options share the same
+# preprocessing, grouping, and result-centered inference interface.

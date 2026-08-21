@@ -1,5 +1,7 @@
 """Benchmark the CBMR estimators."""
 
+import inspect
+
 import numpy as np
 
 from nimare.generate import create_coordinate_dataset
@@ -38,8 +40,28 @@ def _make_cbmr_dataset():
     return StandardizeField(fields=["sample_sizes", "avg_age"]).transform(dataset)
 
 
-def _fit_cbmr(dataset, group_categories, moderators, model=models.PoissonEstimator):
+def _supports_moderator_effect():
+    """Return whether the installed CBMR estimator exposes the moderator_effect selector."""
+    return "moderator_effect" in inspect.signature(CBMREstimator).parameters
+
+
+def _supports_inference_moderator_effect():
+    """Return whether CBMRInference exposes the moderator_effect selector."""
+    return "moderator_effect" in inspect.signature(CBMRInference).parameters
+
+
+def _fit_cbmr(
+    dataset,
+    group_categories,
+    moderators,
+    model=models.PoissonEstimator,
+    moderator_effect="global",
+):
     """Fit a CBMR estimator with common benchmark options."""
+    kwargs = {}
+    if moderator_effect is not None and _supports_moderator_effect():
+        kwargs["moderator_effect"] = moderator_effect
+
     meta = CBMREstimator(
         group_categories=list(group_categories),
         moderators=list(moderators),
@@ -50,13 +72,18 @@ def _fit_cbmr(dataset, group_categories, moderators, model=models.PoissonEstimat
         lr=1,
         tol=1e4,
         device="cpu",
+        **kwargs,
     )
     return meta.fit(dataset)
 
 
 def _fit_cbmr_inference(result):
     """Fit a CBMRInference object with common benchmark options."""
-    inference = CBMRInference(device="cpu")
+    kwargs = {}
+    if _supports_inference_moderator_effect():
+        kwargs["moderator_effect"] = getattr(result, "moderator_effect", "global")
+
+    inference = CBMRInference(device="cpu", **kwargs)
     inference.fit(result)
     return inference
 
@@ -78,9 +105,15 @@ class _CBMRBenchmarkMixin:
 class TimeCBMR(_CBMRBenchmarkMixin):
     """Time CBMR estimators."""
 
-    def _fit_cbmr(self, model):
+    def _fit_cbmr(self, model, moderator_effect=None):
         """Fit a CBMR estimator with common benchmark options."""
-        _fit_cbmr(self.dataset, self.group_categories, self.moderators, model=model)
+        _fit_cbmr(
+            self.dataset,
+            self.group_categories,
+            self.moderators,
+            model=model,
+            moderator_effect=moderator_effect,
+        )
 
     def time_poisson(self):
         """
@@ -96,7 +129,7 @@ class TimeCBMR(_CBMRBenchmarkMixin):
 
         Fits the Negative Binomial CBMR estimator to the dataset and measures the time taken.
         """
-        self._fit_cbmr(models.NegativeBinomialEstimator)
+        self._fit_cbmr(models.NegativeBinomialEstimator, moderator_effect="global")
 
     def time_clustered_negative_binomial(self):
         """
@@ -105,7 +138,10 @@ class TimeCBMR(_CBMRBenchmarkMixin):
         Fits the Clustered Negative Binomial CBMR estimator to the dataset and measures the time
         taken.
         """
-        self._fit_cbmr(models.ClusteredNegativeBinomialEstimator)
+        self._fit_cbmr(
+            models.ClusteredNegativeBinomialEstimator,
+            moderator_effect="global",
+        )
 
 
 class TimeCBMRInference(_CBMRBenchmarkMixin):
