@@ -652,8 +652,7 @@ class CBMREstimator(Estimator):
 
         if global_moderators:
             raise ValueError(
-                "global_moderators can only be used when "
-                "moderator_effect='global' or 'mixed'."
+                "global_moderators can only be used when " "moderator_effect='global' or 'mixed'."
             )
         if voxelwise_moderators:
             if moderators is not None:
