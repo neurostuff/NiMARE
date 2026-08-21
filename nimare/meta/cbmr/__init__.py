@@ -21,9 +21,13 @@ from nimare.meta.cbmr.estimator import CBMREstimator
 from nimare.meta.cbmr.inference import CBMRInference
 from nimare.meta.cbmr.optimizers import fit_voxelwise_cbmr_approximate
 from nimare.meta.cbmr.results import CBMRResult
+from nimare.meta.cbmr.terms import Design, FormulaError, Term
 
 __all__ = [
     "CBMREstimator",
+    "Design",
+    "FormulaError",
+    "Term",
     "CBMRInference",
     "CBMRResult",
     "DEFAULT_GROUP_NAME",
