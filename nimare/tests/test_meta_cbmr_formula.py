@@ -308,3 +308,81 @@ def test_robust_scalar_contrast_differs_from_model_based(studyset):
         plain.tables["contrast_p"]["standard_error"].iloc[0]
         != robust.tables["contrast_q"]["standard_error"].iloc[0]
     )
+
+
+def test_moderator_effect_maps_are_added(studyset):
+    """RI and ID express a spatial moderator's coefficient on interpretable scales."""
+    result = _fit("~ s(diagnosis) + s(standardized_avg_age)", studyset)
+    diagnosed = result.moderator_effect_maps()
+
+    relative = [n for n in diagnosed.maps if n.startswith("relativeIntensity_")]
+    difference = [n for n in diagnosed.maps if n.startswith("intensityDifference_")]
+    assert len(relative) == 1
+    # One intensity-difference map per baseline group, since ID is against a baseline.
+    assert len(difference) == 2
+
+    assert np.all(diagnosed.maps[relative[0]] > 0), "a ratio of intensities is positive"
+    assert "relativeIntensity_standardized_avg_age_unit-1" in diagnosed.maps
+
+
+def test_intensity_difference_is_the_baseline_times_the_ratio_less_one(studyset):
+    """ID must equal baseline * (RI - 1), which is what makes it foci rather than a ratio."""
+    result = _fit("~ s(diagnosis) + s(standardized_avg_age)", studyset)
+    diagnosed = result.moderator_effect_maps()
+
+    relative = diagnosed.maps["relativeIntensity_standardized_avg_age_unit-1"]
+    baseline = diagnosed.maps["spatialIntensity_group-schizophrenia"]
+    difference = diagnosed.maps[
+        "intensityDifference_standardized_avg_age_unit-1_group-schizophrenia"
+    ]
+
+    np.testing.assert_allclose(difference, baseline * (relative - 1.0), rtol=1e-10)
+
+
+def test_unit_change_scales_the_ratio_exponentially(studyset):
+    """RI is exp(unit * coefficient), so doubling the unit squares the ratio."""
+    result = _fit("~ s(diagnosis) + s(standardized_avg_age)", studyset)
+
+    one = result.moderator_effect_maps(unit_change=1.0)
+    two = result.moderator_effect_maps(unit_change=2.0)
+
+    np.testing.assert_allclose(
+        two.maps["relativeIntensity_standardized_avg_age_unit-2"],
+        one.maps["relativeIntensity_standardized_avg_age_unit-1"] ** 2,
+        rtol=1e-8,
+    )
+
+
+def test_a_design_without_a_spatial_moderator_cannot_be_diagnosed(studyset):
+    """There is no coefficient map to express, so say what would give one."""
+    result = _fit("~ s(diagnosis) + standardized_sample_sizes", studyset)
+    with pytest.raises(ValueError, match="no spatial moderator"):
+        result.moderator_effect_maps()
+
+
+def test_unmatched_moderator_lists_the_options(studyset):
+    """A typo should name the spatial terms that exist."""
+    result = _fit("~ s(diagnosis) + s(standardized_avg_age)", studyset)
+    with pytest.raises(ValueError, match="No spatial moderator matched"):
+        result.moderator_effect_maps(moderators="standardized_sample_sizes")
+
+
+def test_moderator_effects_can_be_plotted(studyset):
+    """The plotting helper should pair the two scales, since apart they mislead."""
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+
+    result = _fit("~ s(diagnosis) + s(standardized_avg_age)", studyset)
+    figure = result.plot_moderator_effects(group="schizophrenia")
+
+    assert len(figure.axes) >= 2
+    matplotlib.pyplot.close(figure)
+
+
+def test_plotting_asks_which_group_when_there_are_several(studyset):
+    """Ambiguity should be reported with the available groups, not resolved arbitrarily."""
+    pytest.importorskip("matplotlib")
+    result = _fit("~ s(diagnosis) + s(standardized_avg_age)", studyset)
+
+    with pytest.raises(ValueError, match="one baseline group"):
+        result.plot_moderator_effects()
