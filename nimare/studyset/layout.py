@@ -45,6 +45,18 @@ def ranges_to_indices(starts, stops):
     return out, offsets
 
 
+def inverse_permutation(order):
+    """Return ``inv`` such that ``inv[order] == arange(len(order))``.
+
+    Where a permutation moved each row to, given where each row came from. Five
+    sites spelled this out.
+    """
+    order = np.asarray(order, dtype=np.int64)
+    inv = np.empty(len(order), dtype=np.int64)
+    inv[order] = np.arange(len(order), dtype=np.int64)
+    return inv
+
+
 def offsets_from_parents(parents, n_parents):
     """CSR offsets compiled from a parent-index column sorted ascending (I2)."""
     parents = np.asarray(parents, dtype=np.int64)
@@ -68,8 +80,7 @@ def canonicalize(store):
     depend on the storage layout.
     """
     s_order = np.argsort(store.study_key, kind="stable")
-    s_inv = np.empty(len(s_order), dtype=np.int64)
-    s_inv[s_order] = np.arange(len(s_order))
+    s_inv = inverse_permutation(s_order)
     store.study_key = store.study_key[s_order]
     for cs in store.study_level_stores():
         cs.reorder(s_order, s_inv)
@@ -92,8 +103,7 @@ def reorder_analyses(store, order):
     """Permute the analysis level, carrying every child with it (I2, I3)."""
     order = np.asarray(order, dtype=np.int64)
     n_a = len(order)
-    inv = np.empty(n_a, dtype=np.int64)
-    inv[order] = np.arange(n_a)
+    inv = inverse_permutation(order)
 
     # points: remap parents, sort by parent, recompile the offsets
     if store.n_points:
@@ -104,8 +114,7 @@ def reorder_analyses(store, order):
         store.point_key = store.point_key[p_order]
         store.point_space = store.point_space[p_order]
         store.point_kind = store.point_kind[p_order]
-        p_inv = np.empty(len(p_order), dtype=np.int64)
-        p_inv[p_order] = np.arange(len(p_order))
+        p_inv = inverse_permutation(p_order)
         for cs in store.point_level_stores():
             cs.reorder(p_order, p_inv)
         store.point_offsets = offsets_from_parents(store.point_analysis, n_a)
@@ -129,16 +138,10 @@ def reorder_analyses(store, order):
     if ia is not None and ia.n_rows:
         new_parent = inv[ia.dense["analysis_idx"].astype(np.int64)]
         i_order = np.argsort(new_parent, kind="stable")
-        for name, col in list(ia.dense.items()):
-            ia.dense[name] = col[i_order]
+        ia.reorder(i_order, inverse_permutation(i_order))
+        # Overwritten after the gather: reorder moved the old parents into their
+        # new positions, but the values themselves are the old analysis rows.
         ia.dense["analysis_idx"] = new_parent[i_order].astype(np.int32)
-        i_inv = np.empty(len(i_order), dtype=np.int64)
-        i_inv[i_order] = np.arange(len(i_order))
-        for name, (idx, values) in list(ia.sparse.items()):
-            ni = i_inv[np.asarray(idx, dtype=np.int64)]
-            perm = np.argsort(ni, kind="stable")
-            values = list(values)
-            ia.sparse[name] = (ni[perm], [values[i] for i in perm])
         store.image_offsets = offsets_from_parents(ia.dense["analysis_idx"], n_a)
     else:
         store.image_offsets = np.zeros(n_a + 1, dtype=np.int64)

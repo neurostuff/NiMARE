@@ -10,7 +10,11 @@ from __future__ import annotations
 import numpy as np
 
 from nimare.studyset.columns import AnnotationSet, ColumnStore
-from nimare.studyset.layout import offsets_from_parents, point_parents
+from nimare.studyset.layout import (
+    inverse_permutation,
+    offsets_from_parents,
+    point_parents,
+)
 from nimare.studyset.store import replace
 
 __all__ = [
@@ -92,8 +96,7 @@ def with_points(store, analysis_positions, xyz, *, space=None, kind=None, values
     )
 
     point_values = ColumnStore(len(all_xyz))
-    inverse = np.empty(len(order), dtype=np.int64)
-    inverse[order] = np.arange(len(order))
+    inverse = inverse_permutation(order)
     for name, (idx, vals) in store.point_values.sparse.items():
         new_idx = inverse[np.asarray(idx, dtype=np.int64)]
         perm = np.argsort(new_idx, kind="stable")
@@ -184,14 +187,15 @@ def with_texts(store, rows, field, values):
     texts = store.texts.copy() if store.texts is not None else ColumnStore(store.n_analyses)
     rows = np.asarray(rows, dtype=np.int64)
     values = list(values)
-    if field in texts.sparse:
-        existing_idx, existing_values = texts.sparse[field]
-        merged = dict(
-            zip(np.asarray(existing_idx, dtype=np.int64).tolist(), list(existing_values))
-        )
-    elif field in texts.dense:
-        column = texts.dense.pop(field)
-        merged = {i: v for i, v in enumerate(column) if v is not None}
+    if field in texts:
+        existing_rows, existing_values = texts.entries(field)
+        merged = {
+            int(row): value
+            for row, value in zip(existing_rows, existing_values)
+            if value is not None
+        }
+        # The merged column is written back sparse, so a dense one has to go.
+        texts.dense.pop(field, None)
     else:
         merged = {}
     for row, value in zip(rows, values):

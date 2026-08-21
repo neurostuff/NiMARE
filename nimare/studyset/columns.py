@@ -70,6 +70,24 @@ class Dict8:
         self._lookup = {v: i for i, v in enumerate(self.categories)}
 
 
+def sorted_lookup(sorted_keys, wanted):
+    """Return ``(pos, found)`` for ``wanted`` against ``sorted_keys``.
+
+    ``pos`` is where each wanted value sits in ``sorted_keys``; ``found`` says
+    whether it is actually there. The guard against running off the end and
+    matching the wrong neighbour is fiddly enough that three sites had their own
+    copy of it.
+    """
+    sorted_keys = np.asarray(sorted_keys)
+    wanted = np.asarray(wanted)
+    n = len(sorted_keys)
+    pos = np.searchsorted(sorted_keys, wanted)
+    if not n:
+        return pos, np.zeros(len(wanted), dtype=bool)
+    found = (pos < n) & (sorted_keys[np.minimum(pos, n - 1)] == wanted)
+    return pos, found
+
+
 @dataclass
 class ColumnStore:
     """Columns aligned to one level's row index, dense or sparse."""
@@ -122,12 +140,24 @@ class ColumnStore:
             return out
         # Assign element-wise so that list-valued entries (sample_sizes, for
         # one) stay single objects rather than being broadcast into a 2-D array.
-        pos = np.searchsorted(sel, idx)
-        ok = (pos < len(sel)) & (sel[np.minimum(pos, len(sel) - 1)] == idx)
+        pos, ok = sorted_lookup(sel, idx)
         for p, keep, value in zip(pos, ok, values):
             if keep:
                 out[int(p)] = value
         return out
+
+    def entries(self, name):
+        """Return ``(rows, values)`` for a column, whatever its density.
+
+        A dense column is every row; a sparse one is the rows it was recorded
+        for. Callers that only want "which rows have a value, and what is it"
+        should not have to care which, and six of them used to.
+        """
+        if name in self.dense:
+            col = self.dense[name]
+            return np.arange(len(col), dtype=np.int64), list(col)
+        idx, values = self.sparse[name]
+        return np.asarray(idx, dtype=np.int64), list(values)
 
     def get_numeric(self, name, sel=None, fill=np.nan, reduce=np.mean):
         """Values for ``sel`` as float64, reducing list-valued entries.

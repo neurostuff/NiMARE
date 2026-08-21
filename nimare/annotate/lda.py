@@ -151,7 +151,7 @@ class LDAModel(NiMAREBase):
         # Add the topics as their own annotation rather than merging them into a
         # shared frame: analyses without text keep their other annotations
         # instead of being dropped by an inner join.
-        row_of = {str(key): i for i, key in enumerate(tabular_source.ids)}
+        row_of = tabular_source.row_of_id()
         rows = [row_of[str(key)] for key in study_ids if str(key) in row_of]
         keep = [i for i, key in enumerate(study_ids) if str(key) in row_of]
         return tabular_source.with_annotation(

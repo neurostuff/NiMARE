@@ -257,8 +257,7 @@ def image_block(view, imtype, *, policy="all"):
             np.empty(0, dtype=object),
         )
 
-    pos_of_analysis = np.full(store.n_analyses, -1, dtype=np.int64)
-    pos_of_analysis[view.index] = np.arange(len(view.index))
+    pos_of_analysis = view.position_of_row()
 
     match = (ia.dense["value_type"] == imtype) & (pos_of_analysis[ia.dense["analysis_idx"]] >= 0)
     rows = np.flatnonzero(match)
@@ -355,14 +354,7 @@ def label_block(view, annotation=None):
         labels = sorted(cs.keys())
         rows_acc, cols_acc, vals_acc = [], [], []
         for j, label in enumerate(labels):
-            if label in cs.dense:
-                col = cs.dense[label]
-                idx = np.arange(len(col))
-                values = list(col)
-            else:
-                idx, values = cs.sparse[label]
-                idx = np.asarray(idx, dtype=np.int64)
-                values = list(values)
+            idx, values = cs.entries(label)
             keep_rows, keep_vals = [], []
             for row, value in zip(idx, values):
                 if not isinstance(value, (bool, int, float, np.number)):
@@ -434,17 +426,10 @@ def text_block(view, field="abstract"):
     cs = view.store.texts
     if cs is None or field not in cs:
         raise ValueError(f"studyset has no text field {field!r}")
-    if field in cs.dense:
-        col = cs.dense[field]
-        idx = np.flatnonzero(np.asarray([bool(v) for v in col]))
-        values = [col[i] for i in idx]
-    else:
-        idx, values = cs.sparse[field]
-        idx = np.asarray(idx, dtype=np.int64)
-        keep = [i for i, v in enumerate(values) if v]
-        idx, values = idx[keep], [values[i] for i in keep]
-    pos_of = np.full(view.store.n_analyses, -1, dtype=np.int64)
-    pos_of[view.index] = np.arange(len(view.index))
+    idx, values = cs.entries(field)
+    with_text = [i for i, value in enumerate(values) if value]
+    idx, values = idx[with_text], [values[i] for i in with_text]
+    pos_of = view.position_of_row()
     selected = pos_of[idx] >= 0
     return TextBlock(
         [v for v, keep in zip(values, selected) if keep],

@@ -43,6 +43,38 @@ def _denull(value):
     return None if value == "None" else value
 
 
+def _buckets_from_payloads(rows, payloads, *, coerce=None, keep=None, skips=None):
+    """Accumulate ``{key: (rows, values)}`` in one pass over ``payloads``.
+
+    The keys are on the inside deliberately. Looping keys on the outside probes
+    every payload once per key -- 794 labels over 22k notes is 17.5M lookups,
+    which made loading superlinear.
+
+    A key is registered as soon as it is seen, even when no value survives
+    ``keep``: a field the document declares everywhere and populates nowhere is
+    still a declared field, and dropping it would lose it on export.
+    """
+    if keep is None:
+
+        def keep(value):
+            return value is not None
+
+    buckets = {}
+    for i, (row, payload) in enumerate(zip(rows, payloads)):
+        omit = skips[i] if skips is not None else ()
+        for key, value in payload.items():
+            if key in omit:
+                continue
+            bucket = buckets.setdefault(str(key), ([], []))
+            if coerce is not None:
+                value = coerce(value)
+            if not keep(value):
+                continue
+            bucket[0].append(row)
+            bucket[1].append(value)
+    return buckets
+
+
 def from_nimads(source, *, canonical_order=True, annotations=None):
     """Build a store from a NIMADS studyset document.
 
@@ -315,10 +347,11 @@ def from_nimads(source, *, canonical_order=True, annotations=None):
     # arrays NIMADS smuggles through `coordinate_*` keys
     coordinate_columns = set()
     if md_rows:
-        md_cols, coord_extra = {}, {}
+        coord_extra, coord_skips = {}, []
         for row, payload in zip(md_rows, md_payload):
             n_pts = int(store.point_offsets[row + 1] - store.point_offsets[row])
             coord_rows, coord_keys = _extract_coordinate_row_metadata(payload, n_pts)
+            coord_skips.append(coord_keys)
             lo = int(store.point_offsets[row])
             for column, values in coord_rows.items():
                 bucket = coord_extra.setdefault(column, ([], []))
@@ -326,15 +359,7 @@ def from_nimads(source, *, canonical_order=True, annotations=None):
                     if value is not None:
                         bucket[0].append(lo + i)
                         bucket[1].append(value)
-            for key, value in payload.items():
-                if key in coord_keys:
-                    continue
-                bucket = md_cols.setdefault(str(key), ([], []))
-                value = _denull(value)
-                if value is None:
-                    continue
-                bucket[0].append(row)
-                bucket[1].append(value)
+        md_cols = _buckets_from_payloads(md_rows, md_payload, coerce=_denull, skips=coord_skips)
         for key, (rows, values) in md_cols.items():
             store.metadata.add_sparse(key, rows, values)
         for column, (rows, values) in coord_extra.items():
@@ -343,39 +368,17 @@ def from_nimads(source, *, canonical_order=True, annotations=None):
     store.coordinate_metadata_columns = frozenset(coordinate_columns)
 
     if study_md_rows:
-        study_cols = {}
-        for row, payload in zip(study_md_rows, study_md_payload):
-            for key, value in payload.items():
-                bucket = study_cols.setdefault(str(key), ([], []))
-                value = _denull(value)
-                if value is None:
-                    continue
-                bucket[0].append(row)
-                bucket[1].append(value)
+        study_cols = _buckets_from_payloads(study_md_rows, study_md_payload, coerce=_denull)
         for key, (rows, values) in study_cols.items():
             store.study_metadata.add_sparse(key, rows, values)
 
     if text_rows:
-        fields = set()
-        for payload in text_payload:
-            fields.update(payload)
-        for field_name in fields:
-            rows = [r for r, p in zip(text_rows, text_payload) if p.get(field_name)]
-            values = [p[field_name] for p in text_payload if p.get(field_name)]
+        text_cols = _buckets_from_payloads(text_rows, text_payload, keep=bool)
+        for field_name, (rows, values) in text_cols.items():
             store.texts.add_sparse(field_name, rows, values)
 
     for ann_id, (rows, notes) in inline_notes.items():
-        # One pass over the notes into per-label buckets. Looping labels on the
-        # outside probes every note once per label: 794 labels x 22k notes is
-        # 17.5M dict lookups, which made loading superlinear.
-        buckets = {}
-        for row, note in zip(rows, notes):
-            for key, value in note.items():
-                bucket = buckets.setdefault(key, ([], []))
-                if value is None:
-                    continue
-                bucket[0].append(row)
-                bucket[1].append(value)
+        buckets = _buckets_from_payloads(rows, notes)
         columns = ColumnStore(n_a)
         for key, (krows, kvalues) in buckets.items():
             columns.add_sparse(key, krows, kvalues)
@@ -488,14 +491,7 @@ def annotations_to_nimads(store, analysis_rows):
         cs = annotation.columns
         per_row = {}
         for label in cs.keys():
-            if label in cs.dense:
-                col = cs.dense[label]
-                rows, values = np.arange(len(col)), list(col)
-            else:
-                rows, values = cs.sparse[label]
-                rows = np.asarray(rows, dtype=np.int64)
-                values = np.asarray(values)
-                values = values.tolist() if values.dtype != object else list(values)
+            rows, values = cs.entries(label)
             for row, value in zip(rows, values):
                 if value is None or (isinstance(value, float) and value != value):
                     continue

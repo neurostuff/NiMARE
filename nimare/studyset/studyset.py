@@ -253,6 +253,16 @@ class Studyset:
         narrowed, resolved = self._view.resolve(requirements_, drop_invalid=drop_invalid)
         return Studyset._wrap(narrowed), resolved
 
+    def _with_store(self, store):
+        """Return this same selection over an edited store. Copy-on-write."""
+        return Studyset._wrap(
+            View(store, self._view.index, self._view.point_mask, self._view.context)
+        )
+
+    def row_of_id(self):
+        """Return ``{analysis id: row in this studyset}``, memoised."""
+        return self._view.row_of_key()
+
     def coordinate_block(self):
         """Return the foci for the selection, grouped by analysis."""
         return self._view.coordinate_block()
@@ -337,9 +347,7 @@ class Studyset:
 
     def copy(self):
         """Return a new handle on the same immutable store."""
-        return Studyset._wrap(
-            View(self.store, self._view.index, self._view.point_mask, self._view.context)
-        )
+        return self._with_store(self.store)
 
     # ---------------------------------------------------------------- queries
     def _label_block_for(self, labels, annotation=None):
@@ -592,9 +600,7 @@ class Studyset:
         if rows is None:
             rows = self._view.index
         store = edit.with_annotation(self.store, name, labels, matrix, rows, note_key_types)
-        return Studyset._wrap(
-            View(store, self._view.index, self._view.point_mask, self._view.context)
-        )
+        return self._with_store(store)
 
     def with_points(self, analysis_positions, xyz, **kwargs):
         """Return a studyset with extra foci. Copy-on-write.
@@ -611,9 +617,7 @@ class Studyset:
     def with_images(self, analysis_positions, refs, imtype, **kwargs):
         """Return a studyset with extra images. Copy-on-write."""
         store = edit.with_images(self.store, analysis_positions, refs, imtype, **kwargs)
-        return Studyset._wrap(
-            View(store, self._view.index, self._view.point_mask, self._view.context)
-        )
+        return self._with_store(store)
 
     def keep_images(self, image_mask):
         """Return a studyset holding only the flagged images. Copy-on-write.
@@ -630,9 +634,7 @@ class Studyset:
         if isinstance(image_mask, pd.Series):
             image_mask = image_mask.to_numpy(dtype=bool)
         store = edit.keep_images(self.store, image_mask)
-        return Studyset._wrap(
-            View(store, self._view.index, self._view.point_mask, self._view.context)
-        )
+        return self._with_store(store)
 
     def materialize_points(self):
         """Return a studyset whose store holds only the currently selected foci."""
@@ -644,23 +646,17 @@ class Studyset:
     def with_metadata(self, name, values, *, level="analysis"):
         """Return a studyset with one extra metadata column. Copy-on-write."""
         store = edit.with_metadata(self.store, name, values, level=level)
-        return Studyset._wrap(
-            View(store, self._view.index, self._view.point_mask, self._view.context)
-        )
+        return self._with_store(store)
 
     def with_texts(self, rows, field, values):
         """Return a studyset with text added. Copy-on-write."""
         store = edit.with_texts(self.store, rows, field, values)
-        return Studyset._wrap(
-            View(store, self._view.index, self._view.point_mask, self._view.context)
-        )
+        return self._with_store(store)
 
     def with_annotation_payload(self, payload):
         """Return a studyset carrying a NIMADS annotation payload. Copy-on-write."""
         store = edit.with_annotation_payload(self.store, payload)
-        return Studyset._wrap(
-            View(store, self._view.index, self._view.point_mask, self._view.context)
-        )
+        return self._with_store(store)
 
     def harmonized(self, target):
         """Return a studyset whose stored coordinates are in ``target``."""

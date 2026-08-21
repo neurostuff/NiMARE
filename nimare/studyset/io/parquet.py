@@ -13,7 +13,7 @@ import os
 
 import numpy as np
 
-from nimare.studyset.columns import AnnotationSet, ColumnStore, Dict8
+from nimare.studyset.columns import AnnotationSet, ColumnStore, Dict8, sorted_lookup
 from nimare.studyset.layout import canonicalize, offsets_from_parents
 from nimare.studyset.store import StudysetStore, freeze
 
@@ -35,9 +35,7 @@ def _require_pyarrow():
 def _resolve_rows(keys, wanted):
     """Row of each ``wanted`` value in ``keys``, or -1. Vectorized."""
     order = np.argsort(keys, kind="stable")
-    sorted_keys = keys[order]
-    pos = np.searchsorted(sorted_keys, wanted)
-    ok = (pos < len(keys)) & (sorted_keys[np.minimum(pos, max(len(keys) - 1, 0))] == wanted)
+    pos, ok = sorted_lookup(keys[order], wanted)
     rows = np.full(len(wanted), -1, dtype=np.int64)
     rows[ok] = order[pos[ok]]
     return rows

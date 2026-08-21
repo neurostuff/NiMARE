@@ -156,11 +156,8 @@ class Labels:
         )
         for annotation in sets:
             for label in annotation.columns.keys():
-                if label in annotation.columns.dense:
-                    covered[:] = True
-                    break
-                idx, _ = annotation.columns.sparse[label]
-                covered[np.asarray(idx, dtype=np.int64)] = True
+                rows, _ = annotation.columns.entries(label)
+                covered[rows] = True
         return covered[view.index]
 
     def resolve(self, view):
@@ -193,13 +190,8 @@ class Texts:
         if cs is None or self.field not in cs:
             return np.zeros(len(view.index), dtype=bool)
         present = np.zeros(store.n_analyses, dtype=bool)
-        if self.field in cs.dense:
-            col = cs.dense[self.field]
-            present[np.flatnonzero(np.asarray([bool(v) for v in col]))] = True
-        else:
-            idx, values = cs.sparse[self.field]
-            rows = [int(i) for i, v in zip(idx, values) if v]
-            present[rows] = True
+        rows, values = cs.entries(self.field)
+        present[[int(r) for r, value in zip(rows, values) if value]] = True
         return present[view.index]
 
     def resolve(self, view):

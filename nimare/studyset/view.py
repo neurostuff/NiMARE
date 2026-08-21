@@ -22,6 +22,7 @@ from typing import Optional
 import numpy as np
 
 from nimare.studyset import layout
+from nimare.studyset.columns import sorted_lookup
 from nimare.studyset.store import derived
 
 __all__ = ["Context", "View"]
@@ -107,6 +108,27 @@ class View:
             store = self.store
             got = np.unique(store.study_key[store.study_idx[self.index]])
             self._cache["study_keys"] = got
+        return got
+
+    def position_of_row(self):
+        """Store analysis row -> position in this selection, ``-1`` where absent.
+
+        Memoised against the view, because every block build wants it.
+        """
+        got = self._cache.get("position_of_row")
+        if got is None:
+            got = np.full(self.store.n_analyses, -1, dtype=np.int64)
+            got[self.index] = np.arange(len(self.index))
+            got.flags.writeable = False
+            self._cache["position_of_row"] = got
+        return got
+
+    def row_of_key(self):
+        """``{full analysis id: position in this selection}``, memoised."""
+        got = self._cache.get("row_of_key")
+        if got is None:
+            got = {str(key): i for i, key in enumerate(self.keys)}
+            self._cache["row_of_key"] = got
         return got
 
     # ------------------------------------------------------------ narrowing
@@ -308,8 +330,7 @@ def _resolve_key_rows(store, wanted, *, allow_short=True):
         keys, order = got
         if not len(keys):
             continue
-        pos = np.searchsorted(keys, wanted)
-        ok = (pos < len(keys)) & (keys[np.minimum(pos, len(keys) - 1)] == wanted)
+        pos, ok = sorted_lookup(keys, wanted)
         rows.append(order[pos[ok]])
     if not rows:
         return np.empty(0, dtype=np.int64)

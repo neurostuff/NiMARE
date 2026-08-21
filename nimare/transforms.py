@@ -170,8 +170,11 @@ class ImageTransformer(NiMAREBase):
         # studyset holds every image an analysis has, so a generated map sits
         # alongside the one it came from instead of overwriting a type slot.
         existing = dataset.images
-        positions, refs, imtypes = [], [], []
-        row_of = {str(key): i for i, key in enumerate(dataset.ids)}
+        # Grouped by type as it is gathered. Three parallel lists that had to
+        # stay in step, then be regrouped by scanning them once per type, is
+        # precisely the bookkeeping a block-shaped input is supposed to remove.
+        added = {}
+        row_of = dataset.row_of_id()
         for imtype in self.target:
             if imtype not in temp_images.columns:
                 continue
@@ -184,15 +187,13 @@ class ImageTransformer(NiMAREBase):
                 row = row_of.get(str(analysis_id))
                 if row is None:
                     continue
+                positions, refs = added.setdefault(imtype, ([], []))
                 positions.append(row)
                 refs.append(path)
-                imtypes.append(imtype)
         new_dataset = dataset
-        for imtype in sorted(set(imtypes)):
-            keep = [i for i, t in enumerate(imtypes) if t == imtype]
-            new_dataset = new_dataset.with_images(
-                [positions[i] for i in keep], [refs[i] for i in keep], imtype
-            )
+        for imtype in sorted(added):
+            positions, refs = added[imtype]
+            new_dataset = new_dataset.with_images(positions, refs, imtype)
         return new_dataset
 
 
@@ -647,7 +648,7 @@ class ImagesToCoordinates(NiMAREBase):
 
         # Append the generated foci to the analyses they belong to, and record
         # where they came from as a metadata column.
-        row_of = {str(key): i for i, key in enumerate(dataset.ids)}
+        row_of = dataset.row_of_id()
         extra_cols = [
             c
             for c in coordinates_df.columns
