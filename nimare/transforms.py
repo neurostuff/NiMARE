@@ -10,7 +10,8 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 from nilearn.reporting import get_clusters_table
-from scipy import stats
+from pymare.stats import log_chi2_sf
+from scipy import special, stats
 
 from nimare.base import NiMAREBase
 from nimare.studyset import normalize_collection
@@ -20,7 +21,6 @@ from nimare.utils import (
     _dict_to_coordinates,
     _dict_to_df,
     _listify,
-    _minimum_positive_float,
     get_masker,
 )
 
@@ -120,8 +120,11 @@ class ImageTransformer(NiMAREBase):
 
     Parameters
     ----------
-    target : {'z', 'p', 'beta', 'varcope'} or list
+    target : {'z', 'p', 't', 'beta', 'varcope', 'd', 'g', 'g_var'} or list
         Target image type. Multiple target types may be specified as a list.
+        ``'g'`` and ``'g_var'`` give a standardized effect size and its variance, which
+        unlike :term:`beta` and :term:`varcope` are comparable across studies whose
+        pipelines used different units.
     overwrite : :obj:`bool`, optional
         Whether to overwrite existing files or not. Default is False.
 
@@ -191,7 +194,7 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
     ----------
     images_df : :class:`pandas.DataFrame`
         DataFrame with paths to images for studies in Dataset.
-    target : {'z', 'p', 'beta', 'varcope'}
+    target : {'z', 'p', 't', 'beta', 'varcope', 'd', 'g', 'g_var'}
         Target data type.
     masker : :class:`~nilearn.maskers.NiftiMasker` or similar
         Masker used to define orientation and resolution of images.
@@ -213,7 +216,7 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
     """
     new_images_df = images_df.copy()  # Work on a copy of the images_df
 
-    valid_targets = {"t", "z", "p", "beta", "varcope"}
+    valid_targets = {"t", "z", "p", "beta", "varcope", "d", "g", "g_var"}
     if target not in valid_targets:
         raise ValueError(
             f"Target type {target} not supported. Must be one of: {', '.join(valid_targets)}"
@@ -284,8 +287,10 @@ def resolve_transforms(target, available_data, masker):
 
     Parameters
     ----------
-    target : {'z', 'p', 't', 'beta', 'varcope'}
-        Target image type.
+    target : {'z', 'p', 't', 'beta', 'varcope', 'd', 'g', 'g_var'}
+        Target image type. ``'d'`` is Cohen's d, ``'g'`` is Hedges' g and ``'g_var'`` is the
+        sampling variance of g; the latter two are the effect estimate and variance a
+        meta-regression takes.
     available_data : dict
         Dictionary mapping data types to their values. Images in the dictionary
         are paths to files.
@@ -330,6 +335,36 @@ def resolve_transforms(target, available_data, masker):
             return t
         else:
             return None
+    elif target in ("d", "g", "g_var"):
+        # All three start from t and the sample size. t itself resolves from z, so a
+        # studyset holding only z maps can still reach a standardized effect size.
+        if "t" not in available_data.keys():
+            temp = resolve_transforms("t", available_data, masker)
+            if temp is not None:
+                available_data["t"] = temp
+
+        if ("t" not in available_data.keys()) or ("sample_sizes" not in available_data.keys()):
+            return None
+
+        sample_sizes = available_data["sample_sizes"]
+        if np.size(sample_sizes) > 1:
+            LGR.warning(
+                "Converting to '%s' from %d group sample sizes. The conversion is the "
+                "one-sample d = t / sqrt(N), so a between-group contrast will come out "
+                "wrong; that needs both group sizes separately.",
+                target,
+                np.size(sample_sizes),
+            )
+        sample_size = sample_sizes_to_sample_size(sample_sizes)
+
+        d = t_to_d(masker.transform(available_data["t"]), sample_size)
+        if target == "d":
+            values = d
+        else:
+            g, g_var = d_to_g(d, sample_size, return_variance=True)
+            values = g if target == "g" else g_var
+
+        return masker.inverse_transform(values.squeeze())
     elif target == "beta":
         if "t" not in available_data.keys():
             # will return none given no transform/target exists
@@ -809,6 +844,76 @@ def t_and_beta_to_varcope(t, beta):
     return varcope
 
 
+#: ``sqrt(2)`` and ``log(2)``, which every tail below is expressed in terms of.
+_SQRT2 = np.sqrt(2.0)
+_LOG2 = np.log(2.0)
+
+
+def _log_erfc(y):
+    """Return ``log(erfc(y))``, staying finite where ``erfc`` itself underflows.
+
+    Every normal and chi-squared tail NiMARE reports reduces to one of these.
+    :func:`scipy.special.erfc` is accurate to a relative 1e-16 wherever it is
+    representable, so its logarithm is accurate to about that absolutely, and it costs a
+    third of what :func:`scipy.special.log_ndtr` does -- which matters, because these run
+    once per voxel. Past ``y = 25.4`` the value is denormal or zero, and there only
+    ``log_ndtr`` still carries it; the two agree to 2e-14 relative across the join.
+    """
+    shape = np.shape(y)
+    y = np.atleast_1d(np.asarray(y, dtype=float))
+    tail = special.erfc(y)
+    with np.errstate(divide="ignore"):
+        out = np.log(tail)
+
+    underflowed = tail < np.finfo(float).tiny
+    if underflowed.any():
+        out[underflowed] = _LOG2 + special.log_ndtr(-y[underflowed] * _SQRT2)
+
+    return out.reshape(shape)
+
+
+def z_to_nlogp(z, tail="two"):
+    """Convert z-values to ``nlogp``, the natural logarithm of the p-value.
+
+    .. versionadded:: 0.21.0
+
+    The log-space counterpart of :func:`z_to_p`.
+
+    Parameters
+    ----------
+    z : array_like
+        Z-statistics.
+    tail : {'one', 'two'}, optional
+        Whether p-values come from a one-tailed or two-tailed test. Default is 'two'.
+
+    Returns
+    -------
+    nlogp : array_like
+        Natural logarithms of the p-values, matching SciPy's ``logsf``. Natural and not
+        negated, unlike the ``logp`` NiMARE's *maps* hold, which is ``-log10(p)``.
+
+    See Also
+    --------
+    z_to_p : The same conversion, returning the p-value itself.
+    nlogp_to_z : The inverse.
+    """
+    z = np.asarray(z, dtype=float)
+    if tail == "two":
+        # Twice the upper tail is exactly erfc(|z| / sqrt(2)), so doubling costs nothing.
+        nlogp = _log_erfc(np.abs(z) / _SQRT2)
+    elif tail == "one":
+        nlogp = _log_erfc(z / _SQRT2) - _LOG2
+    else:
+        raise ValueError('Argument "tail" must be one of ["one", "two"]')
+
+    # The cap is against log(1), which the doubled tail can exceed only by rounding at a z
+    # of essentially zero. It is not a floor on the tail.
+    nlogp = np.minimum(nlogp, 0.0)
+    if nlogp.shape == ():
+        nlogp = nlogp[()]
+    return nlogp
+
+
 def z_to_p(z, tail="two"):
     """Convert z-values to p-values.
 
@@ -825,24 +930,65 @@ def z_to_p(z, tail="two"):
     Returns
     -------
     p : array_like
-        P-values
+        P-values, floored at the smallest positive double. Use :func:`z_to_nlogp` where the
+        tail runs past that.
     """
-    z = np.array(z)
-    if tail == "two":
-        p = stats.norm.sf(abs(z)) * 2
-    elif tail == "one":
-        p = stats.norm.sf(z)
-    else:
-        raise ValueError('Argument "tail" must be one of ["one", "two"]')
-
+    p = np.exp(z_to_nlogp(z, tail=tail))
     p = _clip_p_values(p, dtype=np.asarray(p).dtype, copy=False)
     if p.shape == ():
         p = p[()]
     return p
 
 
+def nlogp_to_z(nlogp, tail="two"):
+    """Convert ``nlogp``, the natural logarithm of a p-value, to (unsigned) z-values.
+
+    .. versionadded:: 0.21.0
+
+    The log-space counterpart of :func:`p_to_z`.
+
+    Parameters
+    ----------
+    nlogp : array_like
+        Natural logarithms of the p-values, as :func:`z_to_nlogp` returns them.
+    tail : {'one', 'two'}, optional
+        Whether the p-values come from a one-tailed or two-tailed test. Default is 'two'.
+
+    Returns
+    -------
+    z : array_like
+        Z-statistics (unsigned).
+
+    See Also
+    --------
+    p_to_z : The same conversion for a p-value that is already a number.
+    z_to_nlogp : The inverse.
+    """
+    nlogp = np.asarray(nlogp, dtype=float)
+    if tail == "two":
+        # p_to_z halves a two-tailed p before inverting; in log space that is a subtraction,
+        # which cannot underflow. The trailing addition turns the -0.0 that p == 1 produces
+        # back into 0.0.
+        z = -special.ndtri_exp(nlogp - np.log(2.0)) + 0.0
+    elif tail == "one":
+        z = np.maximum(-special.ndtri_exp(nlogp), 0.0)
+    else:
+        raise ValueError('Argument "tail" must be one of ["one", "two"]')
+
+    z = np.asarray(z)
+    if z.shape == ():
+        z = z[()]
+    return z
+
+
 def p_to_z(p, tail="two"):
     """Convert p-values to (unsigned) z-values.
+
+    .. versionchanged:: 0.21.0
+
+        Evaluated in log space, and the input is no longer routed through a float32
+        p-value, which bounded ``z`` at 14.12. The bound is now the float64 one, 38.5;
+        :func:`nlogp_to_z` has no bound.
 
     .. versionadded:: 0.0.3
 
@@ -859,29 +1005,56 @@ def p_to_z(p, tail="two"):
     z : array_like
         Z-statistics (unsigned)
     """
-    p = _clip_p_values(p, dtype=DEFAULT_FLOAT_DTYPE)
+    p = _clip_p_values(p, dtype=np.float64)
+    return nlogp_to_z(np.log(p), tail=tail)
+
+
+def t_to_nlogp(t_values, dof, tail="two"):
+    """Convert t-statistics to ``nlogp``, the natural logarithm of the p-value.
+
+    .. versionadded:: 0.21.0
+
+    The only place NiMARE evaluates the t tail, and unbounded where the p-value itself
+    underflows to zero.
+
+    Parameters
+    ----------
+    t_values : array_like
+        T-statistics.
+    dof : int
+        Degrees of freedom.
+    tail : {'one', 'two'}, optional
+        Whether p-values come from a one-tailed or two-tailed test. Default is 'two'.
+
+    Returns
+    -------
+    nlogp : array_like
+        Natural logarithms of the p-values, as :func:`z_to_nlogp` returns them.
+    """
+    t_values = np.asarray(t_values, dtype=float)
     if tail == "two":
-        np.maximum(p, 2 * _minimum_positive_float(DEFAULT_FLOAT_DTYPE), out=p)
-        z = stats.norm.isf(p / 2)
+        nlogp = _LOG2 + _log_t_sf(np.abs(t_values), dof)
     elif tail == "one":
-        z = stats.norm.isf(p)
-        z = np.array(z)
-        z[z < 0] = 0
+        nlogp = _log_t_sf(t_values, dof)
     else:
         raise ValueError('Argument "tail" must be one of ["one", "two"]')
 
-    if z.shape == ():
-        z = z[()]
-    return z
+    nlogp = np.minimum(nlogp, 0.0)
+    if nlogp.shape == ():
+        nlogp = nlogp[()]
+    return nlogp
 
 
 def t_to_z(t_values, dof):
     """Convert t-statistics to z-statistics.
 
-    .. versionadded:: 0.0.3
+    .. versionchanged:: 0.21.0
 
-    An implementation of :footcite:t:`hughett2008accurate` from Vanessa Sochat's TtoZ package
-    :footcite:p:`sochat2015ttoz`.
+        The tail is evaluated in log space, so ``|z|`` is no longer bounded at 8.13 by an
+        epsilon floor on the internal p-value, nor by ``scipy.stats.t.logsf`` underflowing at
+        high ``dof``. Values below those bounds are unchanged.
+
+    .. versionadded:: 0.0.3
 
     Parameters
     ----------
@@ -893,72 +1066,84 @@ def t_to_z(t_values, dof):
     Returns
     -------
     z_values : array_like
-        Z-statistics
+        Z-statistics, carrying the sign of ``t_values``.
 
-    License
-    -------
-    The MIT License (MIT)
-    Copyright (c) 2015 Vanessa Sochat
-
-    Permission is hereby granted, free of charge, to any person obtaining a copy of this software
-    and associated documentation files (the "Software"), to deal in the Software without
-    restriction, including without limitation the rights to use, copy, modify, merge, publish,
-    distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the
-    Software is furnished to do so, subject to the following conditions:
-
-    The above copyright notice and this permission notice shall be included in all copies or
-    substantial portions of the Software.
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-    INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-    PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
-    FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-    ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-    SOFTWARE.
+    Notes
+    -----
+    The t and normal tail probabilities are matched, which is the transform of
+    :footcite:t:`hughett2008accurate`. Non-finite input propagates.
 
     References
     ----------
     .. footbibliography::
     """
-    # Select just the nonzero voxels
-    nonzero = t_values[t_values != 0]
+    t_values = np.asarray(t_values, dtype=float)
 
-    # We will store our results here
-    z_values_nonzero = np.zeros(len(nonzero))
+    nlogp = t_to_nlogp(np.abs(t_values), dof, tail="one")
+    z_values = np.sign(t_values) * nlogp_to_z(nlogp, tail="one") + 0.0
 
-    # Select values less than or == 0, and greater than zero
-    c = np.zeros(len(nonzero))
-    k1 = nonzero <= c
-    k2 = nonzero > c
-
-    # Subset the data into two sets
-    t1 = nonzero[k1]
-    t2 = nonzero[k2]
-
-    # Calculate p values for <=0
-    p_values_t1 = stats.t.cdf(t1, df=dof)
-    p_values_t1[p_values_t1 < np.finfo(p_values_t1.dtype).eps] = np.finfo(p_values_t1.dtype).eps
-    z_values_t1 = stats.norm.ppf(p_values_t1)
-
-    # Calculate p values for > 0
-    p_values_t2 = stats.t.cdf(-t2, df=dof)
-    p_values_t2[p_values_t2 < np.finfo(p_values_t2.dtype).eps] = np.finfo(p_values_t2.dtype).eps
-    z_values_t2 = -stats.norm.ppf(p_values_t2)
-    z_values_nonzero[k1] = z_values_t1
-    z_values_nonzero[k2] = z_values_t2
-
-    z_values = np.zeros(t_values.shape)
-    z_values[t_values != 0] = z_values_nonzero
+    if z_values.shape == ():
+        z_values = z_values[()]
     return z_values
+
+
+def _log_t_power_law(dof):
+    """Return ``log C`` in the far t tail, where ``sf(t) -> C * t ** -dof``.
+
+    Both t conversions bottom out in this expansion. The neglected term is of relative order
+    ``dof / t**2``, so it is exact to machine precision by the time a p-value has stopped
+    being representable, and useless for a shallow tail.
+    """
+    return (
+        special.gammaln((dof + 1) / 2.0)
+        - special.gammaln(dof / 2.0)
+        - 0.5 * np.log(np.pi)
+        + ((dof - 2) / 2.0) * np.log(dof)
+    )
+
+
+def _log_t_sf(t, dof):
+    """Return ``log(sf(t))`` for the t distribution, finite where SciPy's underflows.
+
+    :meth:`scipy.stats.rv_continuous.logsf` computes the survival function and takes its
+    logarithm afterwards, so it returns ``-inf`` as soon as that underflows -- at ``t = 96``
+    for ``dof = 500``, and ``t = 591`` for ``dof = 200``, which would put an infinity in a
+    z map. Past those points :func:`_log_t_power_law` carries the tail.
+    """
+    shape = np.shape(t)
+    t = np.atleast_1d(np.asarray(t, dtype=float))
+    with np.errstate(divide="ignore"):
+        out = np.asarray(stats.t.logsf(t, dof), dtype=float).copy()
+
+    underflowed = ~np.isfinite(out) & np.isfinite(t) & (t > 0)
+    if underflowed.any():
+        out[underflowed] = _log_t_power_law(dof) - dof * np.log(t[underflowed])
+
+    return out.reshape(shape)
+
+
+def _asymptotic_t_isf(nlogp, dof):
+    """Invert the far t tail from an ``nlogp``, where a p-value cannot reach.
+
+    Inverts :func:`_log_t_power_law`: ``log t = (log C - nlogp) / dof``. Accurate to 1e-15
+    in ``log t`` at the smallest representable p-value for ``dof`` up to 20, and to 1e-7 at
+    ``dof = 100``; correspondingly poor for a shallow tail, which is the region
+    :meth:`scipy.stats.rv_continuous.isf` handles.
+    """
+    # An overflow here is the honest answer: at dof = 1 and |z| = 50 the matched t is 1e544.
+    with np.errstate(over="ignore"):
+        return np.exp((_log_t_power_law(dof) - nlogp) / dof)
 
 
 def z_to_t(z_values, dof):
     """Convert z-statistics to t-statistics.
 
-    .. versionadded:: 0.0.3
+    .. versionchanged:: 0.21.0
 
-    An inversion of the t_to_z implementation of :footcite:t:`hughett2008accurate` from
-    Vanessa Sochat's TtoZ package :footcite:p:`sochat2015ttoz`.
+        Evaluated from an ``nlogp`` rather than from a p-value floored at machine epsilon,
+        which had saturated ``t`` from ``|z| = 8.13`` on.
+
+    .. versionadded:: 0.0.3
 
     Parameters
     ----------
@@ -970,44 +1155,86 @@ def z_to_t(z_values, dof):
     Returns
     -------
     t_values : array_like
-        T-statistics
+        T-statistics, carrying the sign of ``z_values``.
+
+    Notes
+    -----
+    The t and normal tail probabilities are matched, as in :func:`t_to_z`. SciPy has no
+    log-space inverse t, so two routes are tried and the one that reproduces the tail it was
+    inverted from is kept: :meth:`scipy.stats.rv_continuous.isf`, which needs a representable
+    p-value, and :func:`_asymptotic_t_isf`, which does not. Round-tripping ``t_to_z`` is exact
+    to 1e-11 for the degrees of freedom a meta-analysis produces, and to 1% in the narrow
+    band where the p-value has underflowed but the expansion is not yet tight.
+
+    An infinity therefore means the matched ``t`` exceeds a double -- 1e544 at ``dof = 1``,
+    ``|z| = 50`` -- rather than that the conversion gave up.
 
     References
     ----------
     .. footbibliography::
     """
-    # Select just the nonzero voxels
-    nonzero = z_values[z_values != 0]
+    z_values = np.asarray(z_values, dtype=float)
 
-    # We will store our results here
-    t_values_nonzero = np.zeros(len(nonzero))
+    # As in t_to_z: invert the one-tailed tail of |z| and reapply the sign.
+    nlogp = z_to_nlogp(np.abs(z_values), tail="one")
+    magnitude = _asymptotic_t_isf(nlogp, dof)
 
-    # Select values less than or == 0, and greater than zero
-    c = np.zeros(len(nonzero))
-    k1 = nonzero <= c
-    k2 = nonzero > c
+    # Keep whichever candidate actually reproduces the tail it was inverted from. The
+    # expansion is exact deep in the tail and loose in the shallow part; SciPy's inverse t is
+    # the reverse, needs a representable p-value besides, and degrades before it runs out of
+    # one -- 142% off at dof = 100, p = 4e-202. Scoring both against the forward tail picks
+    # the right one at every dof without a tuned crossover.
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        from_p = stats.t.isf(np.exp(nlogp), dof)
+        magnitude = np.where(
+            np.abs(_log_t_sf(from_p, dof) - nlogp) <= np.abs(_log_t_sf(magnitude, dof) - nlogp),
+            from_p,
+            magnitude,
+        )
 
-    # Subset the data into two sets
-    z1 = nonzero[k1]
-    z2 = nonzero[k2]
+    t_values = np.sign(z_values) * magnitude + 0.0
 
-    # Calculate p values for <=0
-    p_values_z1 = stats.norm.cdf(z1)
-    eps = np.finfo(p_values_z1.dtype).eps
-    np.clip(p_values_z1, eps, 1.0 - eps, out=p_values_z1)
-    t_values_z1 = stats.t.ppf(p_values_z1, df=dof)
-
-    # Calculate p values for > 0
-    p_values_z2 = stats.norm.cdf(-z2)
-    eps = np.finfo(p_values_z2.dtype).eps
-    np.clip(p_values_z2, eps, 1.0 - eps, out=p_values_z2)
-    t_values_z2 = -stats.t.ppf(p_values_z2, df=dof)
-    t_values_nonzero[k1] = t_values_z1
-    t_values_nonzero[k2] = t_values_z2
-
-    t_values = np.zeros(z_values.shape)
-    t_values[z_values != 0] = t_values_nonzero
+    t_values = np.asarray(t_values)
+    if t_values.shape == ():
+        t_values = t_values[()]
     return t_values
+
+
+def chi2_to_nlogp(chi2_values, dof):
+    """Convert chi-squared statistics to ``nlogp``, the natural logarithm of the p-value.
+
+    .. versionadded:: 0.21.0
+
+    The upper tail, which is the only one a chi-squared test uses.
+
+    Parameters
+    ----------
+    chi2_values : array_like
+        Chi-squared statistics.
+    dof : :obj:`int`
+        Degrees of freedom.
+
+    Returns
+    -------
+    nlogp : array_like
+        Natural logarithms of the p-values, as :func:`z_to_nlogp` returns them.
+
+    Notes
+    -----
+    One degree of freedom, the common case here, is evaluated through :func:`_log_erfc`.
+    The general case defers to :func:`pymare.stats.log_chi2_sf`, which is equally accurate
+    but reaches the non-underflowing majority of values through
+    :meth:`scipy.stats.rv_continuous.logsf` and so costs about a microsecond each -- two
+    orders of magnitude more, which voxelwise use cannot afford.
+    """
+    chi2_values = np.asarray(chi2_values, dtype=float)
+    if np.ndim(dof) == 0 and dof == 1:
+        # A chi-squared on one degree of freedom is a squared standard normal, so its upper
+        # tail is the two-tailed normal tail at sqrt(x), i.e. erfc(sqrt(x / 2)). The cap is
+        # against log(1), which rounding can reach at a statistic of essentially zero.
+        return np.minimum(_log_erfc(np.sqrt(chi2_values / 2.0)), 0.0)
+
+    return log_chi2_sf(chi2_values, dof)
 
 
 def t_to_d(t_values, sample_sizes):

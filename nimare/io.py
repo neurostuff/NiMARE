@@ -5,6 +5,7 @@ import logging
 import os
 import re
 from collections import Counter, defaultdict
+from functools import lru_cache
 from itertools import groupby
 from operator import itemgetter
 from pathlib import Path
@@ -26,9 +27,114 @@ DEFAULT_MAP_TYPE_CONVERSION = {
     "T map": "t",
     "variance": "varcope",
     "univariate-beta map": "beta",
+    "multivariate-beta map": "beta",
     "Z map": "z",
     "p map": "p",
+    # The label NeuroVault (and therefore neurostore) actually emits for p maps.
+    "P map (given null hypothesis)": "p",
 }
+
+#: Image types NiMARE can read from a Dataset. Anything else is not a statistic NiMARE knows
+#: how to transform or meta-analyze, so it is dropped rather than guessed at.
+SUPPORTED_IMAGE_TYPES = frozenset(
+    {"beta", "varcope", "se", "sd", "samplevar_dataset", "t", "z", "p"}
+)
+
+#: Extensions of the image formats nibabel can load from a path or URL.
+_IMAGE_SUFFIXES = (".nii", ".nii.gz", ".img", ".hdr", ".mgz", ".mgh", ".gii", ".gii.gz")
+
+
+@lru_cache(maxsize=None)
+def _warn_unsupported_image_type(value_type):
+    """Report an unsupported image value type once, however many images carry it.
+
+    A neurostore studyset can hold thousands of images of a type NiMARE cannot use. What the
+    reader needs is the name of the type, which is the same every time, so repeating the line
+    per image would bury the rest of the log without adding anything. Cached rather than
+    counted per conversion because the fact is about NiMARE, not about one studyset.
+    """
+    LGR.warning(
+        f"Skipping image(s) with unsupported value type {value_type!r}. "
+        f"Supported types are: {', '.join(sorted(SUPPORTED_IMAGE_TYPES))}."
+    )
+
+
+def _normalize_image_type(value_type):
+    """Convert a NIMADS image value type into a NiMARE Dataset image column name.
+
+    Returns None when the value type is not one NiMARE can use, so that callers drop the
+    image instead of inventing a column (e.g. "f" from NeuroVault's "F map") that no
+    Estimator or transform knows what to do with.
+    """
+    if value_type in DEFAULT_MAP_TYPE_CONVERSION:
+        return DEFAULT_MAP_TYPE_CONVERSION[value_type]
+
+    if not isinstance(value_type, str):
+        return None
+
+    image_type = value_type.strip().lower()
+    if image_type.endswith(" map"):
+        image_type = image_type[: -len(" map")]
+    if image_type == "variance":
+        image_type = "varcope"
+
+    if image_type not in SUPPORTED_IMAGE_TYPES:
+        _warn_unsupported_image_type(value_type)
+        return None
+
+    return image_type
+
+
+def _looks_like_image_path(path):
+    """Determine whether a path or URL points at an image file rather than a landing page."""
+    if not isinstance(path, str) or not path:
+        return False
+
+    # Drop any query string/fragment before checking the extension.
+    candidate = path.split("?", 1)[0].split("#", 1)[0].rstrip("/").lower()
+    return candidate.endswith(_IMAGE_SUFFIXES)
+
+
+def _select_image_path(url, filename):
+    """Choose the NIMADS image location that actually points at an image.
+
+    ``url`` is preferred, but for images uploaded through Neurosynth Compose it is the
+    NeuroVault landing page (HTML), while ``filename`` holds the image itself. So pick by
+    content, and only fall back to declaration order when neither candidate looks like an
+    image.
+    """
+    candidates = [candidate for candidate in (url, filename) if isinstance(candidate, str)]
+    candidates = [candidate for candidate in candidates if candidate]
+    if not candidates:
+        return None
+
+    for candidate in candidates:
+        if _looks_like_image_path(candidate):
+            return candidate
+
+    return candidates[0]
+
+
+def _add_image_path(images, image_type, image_path, analysis_id=None, key=None):
+    """Record one image path, keeping the first of any duplicate types.
+
+    Two images of the same type on one analysis are ambiguous, and silently keeping the last
+    one makes the choice invisible. Keep the first and say what was dropped.
+
+    ``key`` names the destination entry when it differs from ``image_type``, as it does for
+    the studyset store's ``<type>__source`` columns.
+    """
+    key = image_type if key is None else key
+    if images.get(key) is not None:
+        location = f" on analysis {analysis_id}" if analysis_id else ""
+        LGR.warning(
+            f"Multiple '{image_type}' images found{location}. Keeping "
+            f"'{images[key]}' and ignoring '{image_path}'."
+        )
+        return
+
+    images[key] = image_path
+
 
 COORDINATE_METADATA_PREFIX = "coordinate_"
 POINT_RELATIONSHIP_COLUMNS = ("kind", "label_id", "image")
@@ -327,18 +433,13 @@ def convert_nimads_to_dataset(studyset, annotation=None):
         # Carry image paths through conversion when available.
         images = {}
         for image in analysis.images:
-            image_type = image.value_type
-            if image_type in DEFAULT_MAP_TYPE_CONVERSION:
-                image_type = DEFAULT_MAP_TYPE_CONVERSION[image_type]
-            elif isinstance(image_type, str):
-                image_type = image_type.lower().strip()
-                if image_type.endswith(" map"):
-                    image_type = image_type[: -len(" map")]
-            if image_type == "variance":
-                image_type = "varcope"
-            image_path = image.url or image.filename
+            image_type = _normalize_image_type(image.value_type)
+            if image_type is None:
+                continue
+
+            image_path = _select_image_path(image.url, image.filename)
             if image_path:
-                images[image_type] = image_path
+                _add_image_path(images, image_type, image_path, analysis_id=analysis.id)
         if images:
             if analysis.images and getattr(analysis.images[0], "space", None):
                 images["space"] = analysis.images[0].space
@@ -2024,11 +2125,12 @@ def convert_neurovault_to_dataset(
                     with open(filename, "wb") as f:
                         f.write(r.content)
 
-                (
-                    dataset_dict[f"study-{coll_name}"]["contrasts"][contrast_name]["images"][
-                        map_type_conversion[img_dict["map_type"]]
-                    ]
-                ) = filename.as_posix()
+                _add_image_path(
+                    dataset_dict[f"study-{coll_name}"]["contrasts"][contrast_name]["images"],
+                    map_type_conversion[img_dict["map_type"]],
+                    filename.as_posix(),
+                    analysis_id=f"{coll_name}/{contrast_name}",
+                )
 
                 # aggregate sample sizes (should all be the same)
                 sample_sizes.append(img_dict["number_of_subjects"])

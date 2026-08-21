@@ -2,6 +2,7 @@
 
 import copy
 import logging
+import warnings
 from abc import abstractmethod
 
 import nibabel as nib
@@ -10,7 +11,6 @@ import pandas as pd
 from joblib import Parallel, delayed
 from nilearn.maskers import NiftiLabelsMasker
 from nilearn.reporting import get_clusters_table
-from scipy.spatial.distance import cdist
 from tqdm.auto import tqdm
 
 from nimare.base import NiMAREBase
@@ -69,6 +69,227 @@ def _get_target_value_map(result):
     )
 
 
+def _resolve_target_threshold(target_threshold, voxel_thresh):
+    """Resolve diagnostics threshold aliases."""
+    if target_threshold is not None and voxel_thresh is not None:
+        raise ValueError(
+            "Only one of 'target_threshold' and deprecated 'voxel_thresh' may be provided."
+        )
+
+    if voxel_thresh is not None:
+        warnings.warn(
+            "'voxel_thresh' is deprecated for diagnostics and will be removed in a future "
+            "release. Use 'target_threshold' to threshold the selected target image before "
+            "diagnostics table/support generation.",
+            FutureWarning,
+            stacklevel=3,
+        )
+        return voxel_thresh
+
+    return target_threshold
+
+
+def _is_cluster_corrected_target(target_image):
+    """Determine whether a target image is a corrected cluster-level map."""
+    return "_level-cluster" in target_image and "_corr-" in target_image
+
+
+def _strip_cluster_stat_description(map_name):
+    """Remove cluster-size/mass description components from a map name."""
+    if "_desc-" not in map_name:
+        return map_name
+
+    prefix, remainder = map_name.split("_desc-", 1)
+    description, separator, suffix = remainder.partition("_")
+
+    if description in {"size", "mass"}:
+        return prefix + (f"_{suffix}" if separator else "")
+
+    for cluster_stat in ("Size", "Mass", "size", "mass"):
+        if description.endswith(cluster_stat):
+            description = description[: -len(cluster_stat)]
+            break
+
+    if not description:
+        return prefix + (f"_{suffix}" if separator else "")
+
+    return f"{prefix}_desc-{description}" + (f"_{suffix}" if separator else "")
+
+
+def _peak_value_map_from_cluster_target(target_image):
+    """Derive the original statistic map from a corrected cluster target name."""
+    uncorrected_target = target_image.split("_corr-", 1)[0]
+    uncorrected_target = uncorrected_target.replace("_level-cluster", "")
+    return _strip_cluster_stat_description(uncorrected_target)
+
+
+def _get_peak_value_map_for_cluster_table(result, target_image):
+    """Select the original map used for peak statistics in corrected-cluster tables."""
+    peak_value_map = _peak_value_map_from_cluster_target(target_image)
+    if "_level-cluster" not in peak_value_map and peak_value_map in result.maps:
+        return peak_value_map
+
+    available_maps = ", ".join(sorted(result.maps.keys()))
+    raise ValueError(
+        "No supported original z/statistic map found for corrected-cluster table peaks. "
+        f"Expected '{peak_value_map}' derived from target image '{target_image}'. "
+        f"Available maps are: {available_maps}."
+    )
+
+
+def _pad_background_border(img):
+    """Add a one-voxel zero border so cluster labeling always has a background label.
+
+    :func:`nilearn.reporting.get_clusters_table` derives cluster ids with
+    ``np.unique(label_map)[1:]``, which assumes a background (0) label is present. When
+    every voxel of a map survives thresholding, that assumption fails: the only label is
+    dropped, and building the label maps raises an IndexError. A zero border restores the
+    assumption, and shifting the affine to match keeps every voxel's world coordinates.
+    """
+    data = np.asanyarray(img.dataobj)
+    padded_data = np.pad(data, 1, mode="constant", constant_values=0)
+
+    affine = img.affine.copy()
+    affine[:3, 3] -= img.affine[:3, :3] @ np.ones(3)
+    return nib.Nifti1Image(padded_data, affine)
+
+
+def _crop_background_border(img, reference_img):
+    """Undo :func:`_pad_background_border` for an image derived from a padded one."""
+    data = np.asanyarray(img.dataobj)[1:-1, 1:-1, 1:-1]
+    return nib.Nifti1Image(data, reference_img.affine, reference_img.header)
+
+
+def _needs_background_border(img, threshold):
+    """Determine whether thresholding ``img`` would leave no background voxels."""
+    data = np.asanyarray(img.dataobj)
+    threshold = 0 if threshold is None else abs(threshold)
+    return bool((data > threshold).all() or (data < -threshold).all())
+
+
+def _get_clusters_table(img, threshold, cluster_threshold, two_sided, return_label_maps=False):
+    """Call nilearn's ``get_clusters_table``, guarding the no-background-voxel case."""
+    padded = _needs_background_border(img, threshold)
+    result = get_clusters_table(
+        _pad_background_border(img) if padded else img,
+        threshold,
+        cluster_threshold,
+        two_sided=two_sided,
+        return_label_maps=return_label_maps,
+    )
+
+    if not (padded and return_label_maps):
+        return result
+
+    clusters_table, label_maps = result
+    return clusters_table, [_crop_background_border(lm, img) for lm in label_maps]
+
+
+def _get_cluster_support_data(label_maps, shape):
+    """Convert one or more cluster label maps to a binary support array."""
+    support = np.zeros(shape, dtype=bool)
+    for label_map in label_maps:
+        support |= np.asanyarray(label_map.dataobj) > 0
+    return support
+
+
+def _get_clusters_table_and_label_maps(
+    result,
+    target_img,
+    target_image,
+    threshold,
+    cluster_threshold,
+):
+    """Create diagnostics clusters from target image and peaks from original statistics."""
+    target_data = target_img.get_fdata(dtype=DEFAULT_FLOAT_DTYPE)
+    if hasattr(result.estimator, "two_sided"):
+        # Only present in Fisher's and Stouffer's estimators
+        two_sided = getattr(result.estimator, "two_sided")
+    else:
+        two_sided = (target_data < 0).any()
+
+    clusters_table, label_maps = _get_clusters_table(
+        target_img,
+        0 if threshold is None else threshold,
+        cluster_threshold,
+        two_sided,
+        return_label_maps=True,
+    )
+
+    if clusters_table.empty or not label_maps or not _is_cluster_corrected_target(target_image):
+        return clusters_table, label_maps
+
+    peak_value_map = _get_peak_value_map_for_cluster_table(result, target_image)
+    peak_img = result.get_map(peak_value_map, return_type="image")
+    peak_data = peak_img.get_fdata(dtype=DEFAULT_FLOAT_DTYPE)
+    support_data = _get_cluster_support_data(label_maps, peak_data.shape)
+    masked_peak_data = np.where(support_data, peak_data, 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+    masked_peak_img = nib.Nifti1Image(masked_peak_data, peak_img.affine, peak_img.header)
+
+    peak_clusters_table = _get_clusters_table(
+        masked_peak_img,
+        0,
+        0,
+        two_sided or (masked_peak_data < 0).any(),
+    )
+    return peak_clusters_table, label_maps
+
+
+def _count_foci_per_cluster(label_arr, clust_ids, ijk):
+    """Count how many of ``ijk`` fall within one voxel of each cluster in ``label_arr``.
+
+    A focus counts towards a cluster when some voxel of that cluster lies less than one
+    voxel away from it, which is the same rule as measuring every cluster voxel's distance
+    to every focus and keeping the foci with a hit. Doing it that way costs one pass over the
+    whole volume per cluster, so a map with a few hundred clusters spends minutes on
+    distances that a focus's own neighbourhood already settles: only integer voxels strictly
+    inside a unit ball around the focus can qualify, and there are at most 27 of those.
+
+    Parameters
+    ----------
+    label_arr : 3D :obj:`numpy.ndarray`
+        Cluster label map. Zero is background.
+    clust_ids : :obj:`list`
+        Cluster labels to count for, in the order the counts are returned in.
+    ijk : (N, 3) array_like
+        Matrix subscripts of the foci, which need not be integers.
+
+    Returns
+    -------
+    :obj:`numpy.ndarray`
+        One count per entry of ``clust_ids``.
+    """
+    counts = dict.fromkeys(clust_ids, 0)
+    ijk = np.atleast_2d(np.asarray(ijk, dtype=float))
+    if ijk.size == 0:
+        return np.array([counts[c_val] for c_val in clust_ids])
+
+    shape = np.asarray(label_arr.shape)
+    # The 27 integer offsets around a focus's containing voxel. Every voxel within a unit
+    # distance of any point in that voxel is among them.
+    offsets = np.stack(np.meshgrid(*([np.arange(-1, 2)] * 3), indexing="ij"), axis=-1)
+    offsets = offsets.reshape(-1, 3)
+
+    for focus in ijk:
+        candidates = np.floor(focus).astype(np.int64) + offsets
+        in_bounds = np.all((candidates >= 0) & (candidates < shape), axis=1)
+        candidates = candidates[in_bounds]
+        if not candidates.size:
+            continue
+
+        near = np.sum(np.square(candidates - focus), axis=1) < 1.0
+        candidates = candidates[near]
+        if not candidates.size:
+            continue
+
+        labels = label_arr[candidates[:, 0], candidates[:, 1], candidates[:, 2]]
+        for c_val in np.unique(labels):
+            if c_val in counts:
+                counts[c_val] += 1
+
+    return np.array([counts[c_val] for c_val in clust_ids])
+
+
 def _cluster_masker_kwargs():
     """Return standardized kwargs for label-based cluster summaries."""
     return _filter_kwargs(
@@ -117,8 +338,21 @@ def _is_voxelwise_masker(masker, n_features):
     return round_trip_values.ndim == 1 and round_trip_values.shape[0] == n_features
 
 
+def _cluster_ids(label_arr):
+    """Return the cluster labels in a label map, in ascending order.
+
+    Selects the positive labels rather than dropping the first unique value, which would
+    discard a real cluster in a map that has no background label left.
+    """
+    label_arr = np.asanyarray(label_arr)
+    return np.unique(label_arr[label_arr > 0]).tolist()
+
+
 def _build_cluster_summary_context(masker, label_map, label_vector, cluster_ids):
-    """Precompute cluster summaries in array space when possible."""
+    """Precompute cluster summaries in array space when possible.
+
+    The returned context carries ``cluster_ids`` so every consumer reads the same list.
+    """
     label_vector = np.squeeze(np.asarray(label_vector))
     if _is_voxelwise_masker(masker, label_vector.shape[0]):
         rounded_labels = np.rint(label_vector).astype(np.int32, copy=False)
@@ -141,6 +375,7 @@ def _build_cluster_summary_context(masker, label_map, label_vector, cluster_ids)
         if all(cluster_idx.size > 0 for cluster_idx in cluster_indices):
             return {
                 "mode": "masked_array",
+                "cluster_ids": list(cluster_ids),
                 "cluster_indices": cluster_indices,
             }
 
@@ -148,6 +383,7 @@ def _build_cluster_summary_context(masker, label_map, label_vector, cluster_ids)
     cluster_masker.fit(label_map)
     return {
         "mode": "image",
+        "cluster_ids": list(cluster_ids),
         "cluster_masker": cluster_masker,
     }
 
@@ -210,10 +446,7 @@ class Diagnostics(NiMAREBase):
         The meta-analytic map for which clusters will be characterized.
         The default is z because log-p will not always have value of zero for non-cluster voxels.
     voxel_thresh : :obj:`float` or None, optional
-        An optional voxel-level threshold that may be applied to the ``target_image`` to define
-        clusters. This can be None if the ``target_image`` is already thresholded
-        (e.g., a cluster-level corrected map).
-        Default is None.
+        Deprecated alias for ``target_threshold``. Prefer ``target_threshold`` for new code.
     cluster_threshold : :obj:`int` or None, optional
         Cluster size threshold, in :term:`voxels<voxel>`.
         If None, then no cluster size threshold will be applied. Default=None.
@@ -221,6 +454,12 @@ class Diagnostics(NiMAREBase):
         Number of cores to use for parallelization.
         If <=0, defaults to using all available cores.
         Default is 1.
+    target_threshold : :obj:`float` or None, optional
+        Threshold applied to ``target_image`` before defining diagnostics clusters and tables.
+        For unthresholded Monte Carlo cluster-corrected maps, this should generally be the
+        corrected significance threshold in the target map's units. This is distinct from
+        :class:`~nimare.correct.FWECorrector` ``voxel_thresh``, which is the cluster-forming
+        threshold used during correction. Default=None.
 
     """
 
@@ -231,9 +470,11 @@ class Diagnostics(NiMAREBase):
         cluster_threshold=None,
         display_second_group=False,
         n_cores=1,
+        target_threshold=None,
     ):
         self.target_image = target_image
         self.voxel_thresh = voxel_thresh
+        self.target_threshold = _resolve_target_threshold(target_threshold, voxel_thresh)
         self.cluster_threshold = cluster_threshold
         self.display_second_group = display_second_group
         self.n_cores = _check_ncores(n_cores)
@@ -252,6 +493,48 @@ class Diagnostics(NiMAREBase):
 
         Must return a 1D array with the contribution of `expid` in each cluster of `label_map`.
         """
+
+    def _batch_tail_contexts(self, tail_contexts):
+        """Group tails whose per-experiment computation is interchangeable.
+
+        Returns a list of batches, each a list of indices into ``tail_contexts``. Tails land
+        in the same batch when they are fit over the same experiments and, for pairwise
+        estimators, over the same group. Batching lets ``_transform_batch`` do a diagnostic's
+        expensive per-experiment work once for every tail it applies to.
+        """
+        batches = {}
+        for i_context, context in enumerate(tail_contexts):
+            # Pairwise estimators refit a different group per tail, so their tails can never
+            # share work. Non-pairwise estimators refit the same experiments for both tails.
+            sign = context["sign"] if self._is_pairwaise_estimator else None
+            batches.setdefault((sign, tuple(context["meta_ids"])), []).append(i_context)
+
+        return list(batches.values())
+
+    def _transform_batch(
+        self, expid, tail_contexts, result, target_value_map=None, image_cache=None
+    ):
+        """Apply transform to one study ID for each tail in a batch.
+
+        Returns one 1D array per entry in ``tail_contexts``, in the same order. Subclasses
+        whose per-experiment work does not vary across a batch should override this to do
+        that work once and derive every tail's contributions from it.
+
+        ``image_cache`` is a store the caller shares across every experiment of one
+        :meth:`transform`, for subclasses that would otherwise redo work per experiment that
+        does not depend on the experiment. Diagnostics that read no images ignore it.
+        """
+        return [
+            self._transform(
+                expid,
+                context["label_map"],
+                context["sign"],
+                result,
+                target_value_map,
+                context["cluster_summary_context"],
+            )
+            for context in tail_contexts
+        ]
 
     def transform(self, result):
         """Apply the analysis to a MetaResult.
@@ -301,6 +584,12 @@ class Diagnostics(NiMAREBase):
         masker = result.estimator.masker
         diag_name = self.__class__.__name__
 
+        # One store per call, shared by every per-experiment job below. Keeping it local means
+        # it is released with this call, rather than living on through the diagnostic that
+        # ``result`` keeps a reference to. Its entries are only valid while the input files
+        # are unchanged, which is another reason not to let it outlive the call.
+        image_cache = {}
+
         # Collect the thresholded cluster map
         if self.target_image in result.maps:
             target_img = result.get_map(self.target_image, return_type="image")
@@ -312,21 +601,14 @@ class Diagnostics(NiMAREBase):
             )
 
         # Get clusters table and label maps
-        stat_threshold = self.voxel_thresh or 0
         cluster_threshold = 0 if self.cluster_threshold is None else self.cluster_threshold
 
-        if hasattr(result.estimator, "two_sided"):
-            # Only present in Fisher's and Stouffer's estimators
-            two_sided = getattr(result.estimator, "two_sided")
-        else:
-            two_sided = (target_img.get_fdata(dtype=DEFAULT_FLOAT_DTYPE) < 0).any()
-
-        clusters_table, label_maps = get_clusters_table(
+        clusters_table, label_maps = _get_clusters_table_and_label_maps(
+            result,
             target_img,
-            stat_threshold,
+            self.target_image,
+            self.target_threshold,
             cluster_threshold,
-            two_sided=two_sided,
-            return_label_maps=True,
         )
 
         n_clusters = clusters_table.shape[0]
@@ -418,36 +700,46 @@ class Diagnostics(NiMAREBase):
 
         target_value_map = _get_target_value_map(result)
 
-        contribution_tables = []
+        # Build one context per tail up front, so that tails which share the same
+        # per-experiment computation can be batched together below.
+        tail_contexts = []
         for sign, label_map, label_map_name, meta_ids in zip(
             signs, label_maps, label_map_names, meta_ids_lst
         ):
-            label_arr = np.asanyarray(label_map.dataobj)
-            cluster_ids = sorted(list(np.unique(label_arr)[1:]))
-            rows = list(meta_ids)
-            cluster_summary_context = _build_cluster_summary_context(
-                masker,
-                label_map,
-                maps_dict[label_map_name],
-                cluster_ids,
+            cluster_ids = _cluster_ids(label_map.dataobj)
+            tail_contexts.append(
+                {
+                    "sign": sign,
+                    "label_map": label_map,
+                    "meta_ids": list(meta_ids),
+                    "cluster_ids": cluster_ids,
+                    "cluster_summary_context": _build_cluster_summary_context(
+                        masker,
+                        label_map,
+                        maps_dict[label_map_name],
+                        cluster_ids,
+                    ),
+                }
             )
 
-            # Create contribution table
-            cols = [f"{sign} {int(c_id)}" for c_id in cluster_ids]
-            contribution_table = pd.DataFrame(index=rows, columns=cols)
-            contribution_table.index.name = "id"
+        contribution_tables = [None] * len(tail_contexts)
+        for batch in self._batch_tail_contexts(tail_contexts):
+            batch_contexts = [tail_contexts[i_context] for i_context in batch]
+            meta_ids = batch_contexts[0]["meta_ids"]
 
+            # One job per experiment, covering every tail in the batch. Diagnostics whose
+            # per-experiment work does not depend on the tail (Jackknife's leave-one-out
+            # refit) therefore do that work once instead of once per tail.
             contributions = [
                 r
                 for r in tqdm(
                     Parallel(return_as="generator", n_jobs=self.n_cores)(
-                        delayed(self._transform)(
+                        delayed(self._transform_batch)(
                             expid,
-                            label_map,
-                            sign,
+                            batch_contexts,
                             result,
                             target_value_map,
-                            cluster_summary_context,
+                            image_cache,
                         )
                         for expid in meta_ids
                     ),
@@ -455,11 +747,17 @@ class Diagnostics(NiMAREBase):
                 )
             ]
 
-            # Add results to table
-            for expid, stat_prop_values in zip(meta_ids, contributions):
-                contribution_table.loc[expid] = stat_prop_values
+            for i_batch, i_context in enumerate(batch):
+                context = tail_contexts[i_context]
+                cols = [f"{context['sign']} {int(c_id)}" for c_id in context["cluster_ids"]]
+                contribution_table = pd.DataFrame(index=list(meta_ids), columns=cols)
+                contribution_table.index.name = "id"
 
-            contribution_tables.append(contribution_table.reset_index())
+                # Add results to table
+                for expid, batch_values in zip(meta_ids, contributions):
+                    contribution_table.loc[expid] = batch_values[i_batch]
+
+                contribution_tables[i_context] = contribution_table.reset_index()
 
         tails = [sign_to_tail[sign] for sign in signs]
         if not self._is_pairwaise_estimator and len(contribution_tables) == 2:
@@ -509,6 +807,102 @@ class Jackknife(Diagnostics):
     averaging the resulting proportion values across all voxels in each cluster.
     """
 
+    def _leave_one_out_values(self, expid, sign, result, target_value_map, image_cache=None):
+        """Refit the Estimator without ``expid`` and return voxelwise proportional reductions.
+
+        Parameters
+        ----------
+        expid : :obj:`str`
+            Study ID to leave out.
+        sign : :obj:`str`
+            The sign of the label map. Only pairwise Estimators use this, to decide which
+            group ``expid`` is dropped from; the refit is otherwise tail-independent.
+        result : :obj:`~nimare.results.MetaResult`
+            A MetaResult produced by a coordinate- or image-based meta-analysis.
+        target_value_map : :obj:`str`
+            Name of the map used for per-cluster contribution calculations.
+        image_cache : :obj:`dict` or None
+            Store shared with the other refits of the same :meth:`transform`, so that the
+            input images are masked once rather than once per left-out study. None masks them
+            afresh, which is what a single refit outside ``transform`` wants.
+
+        Returns
+        -------
+        voxelwise_stat_prop_values : 1D :obj:`numpy.ndarray`
+            Voxelwise proportional reduction of the statistic after removing ``expid``.
+        masker
+            The masker the values are expressed in.
+        """
+        # We need to copy the estimator because it will otherwise overwrite the original version
+        # with one missing a study in its inputs.
+        estimator = copy.deepcopy(result.estimator)
+
+        # Every refit here masks the same files, so hand each copy the one store shared by
+        # this call. It is attached after the copy so that ``deepcopy`` does not duplicate it,
+        # and so that the caller's own estimator is left as it was.
+        share_cache = getattr(estimator, "share_masked_image_cache", None)
+        if share_cache is not None and image_cache is not None:
+            share_cache(image_cache)
+
+        if self._is_pairwaise_estimator:
+            all_ids = estimator.inputs_["id1"] if sign == POSTAIL_LBL else estimator.inputs_["id2"]
+        else:
+            all_ids = estimator.inputs_["id"]
+
+        stat_values = result.get_map(target_value_map, return_type="array")
+
+        # Fit Estimator to all studies except the target study
+        other_ids = [id_ for id_ in all_ids if id_ != expid]
+        if self._is_pairwaise_estimator:
+            if sign == POSTAIL_LBL:
+                temp_dset = estimator.dataset1.slice(other_ids)
+                temp_result = estimator.fit(temp_dset, estimator.dataset2)
+            else:
+                temp_dset = estimator.dataset2.slice(other_ids)
+                temp_result = estimator.fit(estimator.dataset1, temp_dset)
+        else:
+            temp_dset = estimator.dataset.slice(other_ids)
+            temp_result = estimator.fit(temp_dset)
+
+        # Collect the target values (e.g., ALE values) from the N-1 meta-analysis
+        temp_stat_vals = temp_result.get_map(target_value_map, return_type="array")
+
+        # Voxelwise proportional reduction of each statistic after removal of the experiment
+        with np.errstate(divide="ignore", invalid="ignore"):
+            prop_values = np.true_divide(temp_stat_vals, stat_values)
+            prop_values = np.nan_to_num(prop_values)
+
+        return 1 - prop_values, estimator.masker
+
+    def _transform_batch(
+        self, expid, tail_contexts, result, target_value_map=None, image_cache=None
+    ):
+        """Apply transform to one study ID for each tail in a batch.
+
+        The leave-one-out refit is the expensive part and does not vary within a batch, so it
+        is run once and summarized against every tail's clusters. For a two-tailed IBMA this
+        halves the number of refits.
+        """
+        if any(context["cluster_summary_context"] is None for context in tail_contexts):
+            raise ValueError("Jackknife requires a precomputed cluster_summary_context.")
+
+        target_value_map = target_value_map or _get_target_value_map(result)
+        voxelwise_stat_prop_values, masker = self._leave_one_out_values(
+            expid,
+            tail_contexts[0]["sign"],
+            result,
+            target_value_map,
+            image_cache,
+        )
+        return [
+            _summarize_cluster_values(
+                voxelwise_stat_prop_values,
+                masker,
+                context["cluster_summary_context"],
+            )
+            for context in tail_contexts
+        ]
+
     def _transform(
         self,
         expid,
@@ -536,47 +930,12 @@ class Jackknife(Diagnostics):
         stat_prop_values : 1D :obj:`numpy.ndarray`
             1D array with the contribution of `expid` in each cluster of `label_map`.
         """
-        # We need to copy the estimator because it will otherwise overwrite the original version
-        # with one missing a study in its inputs.
-        estimator = copy.deepcopy(result.estimator)
-
-        if self._is_pairwaise_estimator:
-            all_ids = estimator.inputs_["id1"] if sign == POSTAIL_LBL else estimator.inputs_["id2"]
-        else:
-            all_ids = estimator.inputs_["id"]
-
-        target_value_map = target_value_map or _get_target_value_map(result)
-        stat_values = result.get_map(target_value_map, return_type="array")
-        if cluster_summary_context is None:
-            raise ValueError("Jackknife requires a precomputed cluster_summary_context.")
-
-        # Fit Estimator to all studies except the target study
-        other_ids = [id_ for id_ in all_ids if id_ != expid]
-        if self._is_pairwaise_estimator:
-            if sign == POSTAIL_LBL:
-                temp_dset = estimator.dataset1.slice(other_ids)
-                temp_result = estimator.fit(temp_dset, estimator.dataset2)
-            else:
-                temp_dset = estimator.dataset2.slice(other_ids)
-                temp_result = estimator.fit(estimator.dataset1, temp_dset)
-        else:
-            temp_dset = estimator.dataset.slice(other_ids)
-            temp_result = estimator.fit(temp_dset)
-
-        # Collect the target values (e.g., ALE values) from the N-1 meta-analysis
-        temp_stat_vals = temp_result.get_map(target_value_map, return_type="array")
-
-        # Voxelwise proportional reduction of each statistic after removal of the experiment
-        with np.errstate(divide="ignore", invalid="ignore"):
-            prop_values = np.true_divide(temp_stat_vals, stat_values)
-            prop_values = np.nan_to_num(prop_values)
-
-        voxelwise_stat_prop_values = 1 - prop_values
-        return _summarize_cluster_values(
-            voxelwise_stat_prop_values,
-            estimator.masker,
-            cluster_summary_context,
-        )
+        context = {
+            "sign": sign,
+            "label_map": label_map,
+            "cluster_summary_context": cluster_summary_context,
+        }
+        return self._transform_batch(expid, [context], result, target_value_map)[0]
 
 
 class FocusCounter(Diagnostics):
@@ -640,7 +999,11 @@ class FocusCounter(Diagnostics):
 
         affine = label_map.affine
         label_arr = np.asanyarray(label_map.dataobj)
-        clust_ids = sorted(list(np.unique(label_arr)[1:]))
+        clust_ids = (
+            _cluster_ids(label_arr)
+            if cluster_summary_context is None
+            else cluster_summary_context["cluster_ids"]
+        )
 
         if self._is_pairwaise_estimator:
             coordinates_df = (
@@ -654,17 +1017,7 @@ class FocusCounter(Diagnostics):
         coords = coordinates_df.loc[coordinates_df["id"] == expid]
         ijk = mm2vox(coords[["x", "y", "z"]], affine)
 
-        focus_counts = []
-        for c_val in clust_ids:
-            cluster_mask = label_arr == c_val
-            cluster_idx = np.vstack(np.where(cluster_mask))
-            distances = cdist(cluster_idx.T, ijk)
-            distances = distances < 1
-            distances = np.any(distances, axis=0)
-            n_included_voxels = np.sum(distances)
-            focus_counts.append(n_included_voxels)
-
-        return np.array(focus_counts)
+        return _count_foci_per_cluster(label_arr, clust_ids, ijk)
 
 
 class ResampledStability(NiMAREBase):
@@ -701,6 +1054,13 @@ class ResampledStability(NiMAREBase):
         to define clusters.
         This can be None if the ``target_image`` is already thresholded
         (e.g., a cluster-level corrected map). Default is None.
+
+        .. note::
+            Unlike :class:`Diagnostics`, this class has not been renamed to
+            ``target_threshold``, because the value is also reused as the cluster-forming
+            threshold when the ``"subsample"`` policy re-runs Monte Carlo FWE correction,
+            where it is read as a p-value. The two uses want different units and should be
+            split before either is renamed.
     cluster_threshold : int or None, optional
         Cluster size threshold, in voxels.
         If None, then no cluster size threshold will be applied.

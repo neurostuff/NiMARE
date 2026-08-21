@@ -5,10 +5,8 @@ import logging
 import nibabel as nib
 import numpy as np
 from joblib import Memory, Parallel, delayed
-from pymare.stats import fdr
 from scipy import ndimage
 from scipy import sparse as sp_sparse
-from scipy import special
 from scipy.stats import chi2
 from tqdm.auto import tqdm
 
@@ -17,23 +15,21 @@ from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.cbma.utils import collect_csr_ma_maps, require_masked_csr
 from nimare.meta.kernel import KDAKernel, MKDAKernel
 from nimare.meta.utils import _calculate_cluster_measures
-from nimare.stats import null_to_p, one_way, two_way_counts
-from nimare.transforms import p_to_z
+from nimare.stats import nlogp_fdr, null_to_p, one_way, two_way_counts
+from nimare.transforms import chi2_to_nlogp, nlogp_to_z, p_to_z
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
+    _clip_p_values,
     _mask_coverage_to_null_ijk,
+    _minimum_positive_float,
+    _nlogp_to_logp_values,
     _p_to_logp_values,
     vox2mm,
 )
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
-
-
-def _chi2_sf_1dof(stat_values):
-    """Survival function for chi-square statistics with one degree of freedom."""
-    return special.erfc(np.sqrt(stat_values / 2.0))
 
 
 class MKDADensity(CBMAEstimator):
@@ -516,18 +512,16 @@ class MKDAChi2(PairwiseCBMAEstimator):
             pAgF_prior = self.prior * pAgF + (1 - self.prior) * pAgU
             pFgA_prior = pAgF * self.prior / pAgF_prior
 
-        eps = np.spacing(1)
-
         # One-way chi-square test for uniformity of activation in each group
         pAgF_chi2_vals = one_way(np.squeeze(n_selected_active_voxels), n_selected)
-        pAgF_p_vals = _chi2_sf_1dof(pAgF_chi2_vals)
-        pAgF_p_vals[pAgF_p_vals < eps] = eps
+        pAgF_nlogp_vals = chi2_to_nlogp(pAgF_chi2_vals, 1)
+        pAgF_p_vals = np.exp(pAgF_nlogp_vals)
         pAgF_sign = np.sign(n_selected_active_voxels - np.mean(n_selected_active_voxels))
         pAgF_z = np.sqrt(pAgF_chi2_vals) * pAgF_sign
 
         pAgU_chi2_vals = one_way(np.squeeze(n_unselected_active_voxels), n_unselected)
-        pAgU_p_vals = _chi2_sf_1dof(pAgU_chi2_vals)
-        pAgU_p_vals[pAgU_p_vals < eps] = eps
+        pAgU_nlogp_vals = chi2_to_nlogp(pAgU_chi2_vals, 1)
+        pAgU_p_vals = np.exp(pAgU_nlogp_vals)
         pAgU_sign = np.sign(n_unselected_active_voxels - np.mean(n_unselected_active_voxels))
         pAgU_z = np.sqrt(pAgU_chi2_vals) * pAgU_sign
 
@@ -542,8 +536,8 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
         del n_selected_active_voxels, n_unselected_active_voxels
 
-        pFgA_p_vals = _chi2_sf_1dof(pFgA_chi2_vals)
-        pFgA_p_vals[pFgA_p_vals < eps] = eps
+        pFgA_nlogp_vals = chi2_to_nlogp(pFgA_chi2_vals, 1)
+        pFgA_p_vals = np.exp(pFgA_nlogp_vals)
         pFgA_sign = np.sign(pAgF - pAgU).ravel()
         pFgA_z = np.sqrt(pFgA_chi2_vals) * pFgA_sign
 
@@ -561,11 +555,12 @@ class MKDAChi2(PairwiseCBMAEstimator):
             pFgA_z = pFgA_z.astype(DEFAULT_FLOAT_DTYPE, copy=False)
             pFgA_chi2_vals[~association_mask] = 0
             pFgA_p_vals[~association_mask] = 1
+            pFgA_nlogp_vals[~association_mask] = 0
             pFgA_z[~association_mask] = 0
 
-        pAgF_logp = _p_to_logp_values(pAgF_p_vals, dtype=DEFAULT_FLOAT_DTYPE)
-        pAgU_logp = _p_to_logp_values(pAgU_p_vals, dtype=DEFAULT_FLOAT_DTYPE)
-        pFgA_logp = _p_to_logp_values(pFgA_p_vals, dtype=DEFAULT_FLOAT_DTYPE)
+        pAgF_logp = _nlogp_to_logp_values(pAgF_nlogp_vals, dtype=DEFAULT_FLOAT_DTYPE)
+        pAgU_logp = _nlogp_to_logp_values(pAgU_nlogp_vals, dtype=DEFAULT_FLOAT_DTYPE)
+        pFgA_logp = _nlogp_to_logp_values(pFgA_nlogp_vals, dtype=DEFAULT_FLOAT_DTYPE)
 
         del pAgF_sign, pAgU_sign, pFgA_sign
 
@@ -836,18 +831,11 @@ class MKDAChi2(PairwiseCBMAEstimator):
         p_vfwe_values, p_csfwe_values, p_cmfwe_values : :obj:`numpy.ndarray`
             1D arrays of FWE-corrected p-values.
         """
-        eps = np.spacing(1)
-
         # Define connectivity matrix for cluster labeling
         conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
 
         # Voxel-level FWE
         p_vfwe_values = null_to_p(np.abs(stat_values), vfwe_null, tail="upper")
-
-        # Crop p-values of 0 or 1 to nearest values that won't evaluate to 0 or 1.
-        # Prevents inf z-values.
-        p_vfwe_values[p_vfwe_values < eps] = eps
-        p_vfwe_values[p_vfwe_values > (1.0 - eps)] = 1.0 - eps
 
         # Cluster-level FWE
         # Extract the summary statistics in voxel-wise (3D) form, threshold, and cluster-label
@@ -1276,26 +1264,27 @@ class MKDAChi2(PairwiseCBMAEstimator):
         >>> corrector = FDRCorrector(method='indep', alpha=0.05)
         >>> cresult = corrector.transform(result)
         """
-        pAgF_p_vals = result.get_map("p_desc-uniformity", return_type="array")
-        pAgU_p_vals = result.get_map("p_desc-group2", return_type="array")
-        pFgA_p_vals = result.get_map("p_desc-association", return_type="array")
-        pAgF_z_vals = result.get_map("z_desc-uniformity", return_type="array")
-        pAgU_z_vals = result.get_map("z_desc-group2", return_type="array")
-        pFgA_z_vals = result.get_map("z_desc-association", return_type="array")
-        pAgF_sign = np.sign(pAgF_z_vals)
-        pAgU_sign = np.sign(pAgU_z_vals)
-        pFgA_sign = np.sign(pFgA_z_vals)
-        pAgF_p_FDR = fdr(pAgF_p_vals, q=alpha, method="bh")
-        pAgF_z_FDR = p_to_z(pAgF_p_FDR, tail="two") * pAgF_sign
-        pAgU_p_FDR = fdr(pAgU_p_vals, q=alpha, method="bh")
-        pAgU_z_FDR = p_to_z(pAgU_p_FDR, tail="two") * pAgU_sign
+        corrected = {}
+        for label in ("uniformity", "group2", "association"):
+            # The p map while it holds a value, the logp map past its float32 floor.
+            p_vals = result.get_map(f"p_desc-{label}", return_type="array")
+            nlogp = np.log(_clip_p_values(p_vals, dtype=np.float64))
+            floored = p_vals <= _minimum_positive_float(p_vals.dtype)
+            if floored.any():
+                logp_vals = result.get_map(f"logp_desc-{label}", return_type="array")
+                nlogp = np.where(floored, -np.log(10.0) * logp_vals, nlogp)
+            nlogp_FDR = nlogp_fdr(nlogp, method="bh")
+            sign = np.sign(result.get_map(f"z_desc-{label}", return_type="array"))
+            corrected[label] = (
+                # Floored the way MetaResult floors every other p map.
+                _clip_p_values(np.exp(nlogp_FDR), dtype=DEFAULT_FLOAT_DTYPE),
+                nlogp_to_z(nlogp_FDR, tail="two") * sign,
+                _nlogp_to_logp_values(nlogp_FDR, dtype=DEFAULT_FLOAT_DTYPE),
+            )
 
-        pFgA_p_FDR = fdr(pFgA_p_vals, q=alpha, method="bh")
-        pFgA_z_FDR = p_to_z(pFgA_p_FDR, tail="two") * pFgA_sign
-
-        pAgF_logp_FDR = _p_to_logp_values(pAgF_p_FDR, dtype=DEFAULT_FLOAT_DTYPE)
-        pAgU_logp_FDR = _p_to_logp_values(pAgU_p_FDR, dtype=DEFAULT_FLOAT_DTYPE)
-        pFgA_logp_FDR = _p_to_logp_values(pFgA_p_FDR, dtype=DEFAULT_FLOAT_DTYPE)
+        pAgF_p_FDR, pAgF_z_FDR, pAgF_logp_FDR = corrected["uniformity"]
+        pAgU_p_FDR, pAgU_z_FDR, pAgU_logp_FDR = corrected["group2"]
+        pFgA_p_FDR, pFgA_z_FDR, pFgA_logp_FDR = corrected["association"]
 
         maps = {
             "p_desc-uniformity_level-voxel": pAgF_p_FDR,

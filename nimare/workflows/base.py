@@ -1,10 +1,13 @@
 """Base class for workflow."""
 
 import copy
+import inspect
 import itertools
 import logging
 import os.path as op
 from abc import abstractmethod
+
+import numpy as np
 
 from nimare.base import NiMAREBase
 from nimare.correct import Corrector, FDRCorrector, FWECorrector
@@ -49,6 +52,88 @@ STR_TO_CLASS = {
 }
 
 
+def _init_defaults(clss):
+    """Collect the keyword arguments a class names anywhere in its constructor chain.
+
+    Subclasses commonly forward ``**kwargs`` to a parent, so the most-derived ``__init__``
+    signature alone does not say what the class accepts. Walk the MRO from base to derived
+    so that an override wins, and skip ``*args``/``**kwargs`` since they name nothing.
+    """
+    defaults = {}
+    for klass in reversed(inspect.getmro(clss)):
+        init = klass.__dict__.get("__init__")
+        if init is None:
+            continue
+
+        for name, param in inspect.signature(init).parameters.items():
+            if name == "self" or param.kind in (
+                inspect.Parameter.VAR_KEYWORD,
+                inspect.Parameter.VAR_POSITIONAL,
+            ):
+                continue
+            defaults[name] = param.default
+
+    return defaults
+
+
+def _supported_kwargs(clss, kwargs):
+    """Drop the workflow settings a class has no constructor argument for.
+
+    The workflow fans one ``n_cores`` out to its estimator, corrector, and diagnostics, but
+    not every component has that knob. Passing it anyway is at best ignored and at worst an
+    error, so filter instead.
+    """
+    accepted = _init_defaults(clss)
+    supported = {key: value for key, value in kwargs.items() if key in accepted}
+
+    dropped = sorted(set(kwargs) - set(supported))
+    if dropped:
+        LGR.debug(f"{clss.__name__} does not accept {', '.join(dropped)}; not passing it on.")
+
+    return supported
+
+
+def _holds_default(current, default):
+    """Whether an attribute still holds the value its ``__init__`` signature named.
+
+    ``==`` is not enough on its own: an array-valued parameter returns an array of
+    comparisons, whose truth value is ambiguous, and a type that refuses the comparison
+    altogether raises. Treat both as "the caller set this" rather than guessing.
+    """
+    if current is default:
+        return True
+
+    try:
+        return bool(np.array_equal(current, default))
+    except (TypeError, ValueError):
+        return False
+
+
+def _unset_params(obj, kwargs):
+    """Select the ``kwargs`` an already-initialized object left at its own defaults.
+
+    A parameter counts as unset when the instance still holds the default from its
+    ``__init__`` signature, so an explicitly configured object keeps its own settings. A
+    caller who passed the default value explicitly is indistinguishable from one who left it
+    alone, and is treated as the latter.
+    """
+    defaults = _init_defaults(type(obj))
+    # set_params only accepts what the most-derived __init__ names, while _init_defaults
+    # walks the whole MRO. Intersect the two: a parameter that a base class names but a
+    # subclass only forwards through **kwargs has to be skipped, or set_params rejects it.
+    settable = set(obj.get_params(deep=False))
+
+    unset = {}
+    for key, value in kwargs.items():
+        if key not in defaults or key not in settable or not hasattr(obj, key):
+            continue
+
+        if _holds_default(getattr(obj, key), defaults[key]):
+            unset[key] = value
+
+    return unset
+
+
 def _check_input(obj, clss, options, **kwargs):
     """Check input for workflow functions."""
     if isinstance(obj, str):
@@ -63,12 +148,25 @@ def _check_input(obj, clss, options, **kwargs):
         if obj == FWECorrector:
             kwargs["method"] = obj_str
 
-    # Apply kwargs (including n_cores) when obj is a class or string
-    if isinstance(obj, (str, type)):
-        return _check_type(obj, clss, **kwargs)
+    # Apply kwargs (including n_cores) when the caller named a class rather than an instance
+    if isinstance(obj, type):
+        return _check_type(obj, clss, **_supported_kwargs(obj, kwargs))
 
-    # If object is already instantiated, return it as-is
-    return _check_type(obj, clss)
+    # The object is already instantiated. Fill in the workflow's settings for any parameter
+    # the caller left at its default, so that e.g. `diagnostics=Jackknife()` and
+    # `diagnostics="jackknife"` define clusters the same way. Parameters the caller set
+    # explicitly are left alone.
+    obj = _check_type(obj, clss)
+    unset = _unset_params(obj, kwargs)
+    if unset:
+        LGR.info(
+            f"Applying workflow settings to the already-initialized {type(obj).__name__}: "
+            f"{', '.join(f'{k}={v}' for k, v in unset.items())}."
+        )
+        # Copy first, so the caller's object is not modified behind their back.
+        obj = copy.deepcopy(obj).set_params(**unset)
+
+    return obj
 
 
 class Workflow(NiMAREBase):
@@ -99,26 +197,36 @@ class Workflow(NiMAREBase):
 
         # Check inputs and set defaults if input is None
         if estimator is None:
-            estimator = self._estm_default(n_cores=self.n_cores)
+            estimator = self._estm_default(
+                **_supported_kwargs(self._estm_default, {"n_cores": self.n_cores})
+            )
         else:
             estimator = _check_input(
                 estimator, self._estm_base, self._estm_options, n_cores=self.n_cores
             )
 
         if corrector is None:
-            corrector = self._corr_default(method=self._mcc_method, n_cores=self.n_cores)
+            corrector = self._corr_default(
+                method=self._mcc_method,
+                **_supported_kwargs(self._corr_default, {"n_cores": self.n_cores}),
+            )
         else:
             corrector = _check_input(
                 corrector, Corrector, self._corr_options, n_cores=self.n_cores
             )
 
         diag_kwargs = {
-            "voxel_thresh": self.voxel_thresh,
+            # The workflow's voxel_thresh thresholds the diagnostics' target image, which
+            # diagnostics call target_threshold. Passing it as voxel_thresh would hit the
+            # deprecated alias and warn about a parameter the caller never set.
+            "target_threshold": self.voxel_thresh,
             "cluster_threshold": self.cluster_threshold,
         }
         diag_kwargs["n_cores"] = self.n_cores
         if diagnostics is None:
-            diagnostics = [self._diag_default(**diag_kwargs)]
+            diagnostics = [
+                self._diag_default(**_supported_kwargs(self._diag_default, diag_kwargs))
+            ]
         else:
             diagnostics = [
                 _check_input(diagnostic, Diagnostics, self._diag_options, **diag_kwargs)

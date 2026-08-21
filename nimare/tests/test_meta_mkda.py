@@ -5,6 +5,7 @@ import logging
 import numpy as np
 import pytest
 from scipy import sparse as sp_sparse
+from scipy import special
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
@@ -378,3 +379,44 @@ def test_KDA_approximate_montecarlo_convergence(testdata_cbma_full):
     # Correlation must be near unity and mean difference should be tiny
     assert np.corrcoef(p_approximate, p_montecarlo)[0, 1] > 0.98
     assert (p_approximate - p_montecarlo).mean() < 1e-3
+
+
+def test_MKDAChi2_logp_maps_follow_the_chi_squared_tail(testdata_cbma_full):
+    """The reported -log10(p) must track the chi-squared statistic, not a floor.
+
+    The old code floored the p-value at machine epsilon, capping every -log10(p) at 15.65
+    from a chi-squared of 71 on, and then stored it through a float32 p-value, capping it
+    again at 44.85.
+    """
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:])
+
+    results = MKDAChi2(generate_description=False).fit(dset1, dset2)
+
+    for name in ("uniformity", "association", "group2"):
+        chi2_values = results.get_map(f"chi2_desc-{name}", return_type="array")
+        logp_values = results.get_map(f"logp_desc-{name}", return_type="array")
+        # The exact one-dof upper tail, computed independently of the implementation.
+        expected = -(np.log(2.0) + special.log_ndtr(-np.sqrt(chi2_values))) / np.log(10.0)
+        assert np.allclose(logp_values, expected, rtol=1e-5), name
+
+    deepest = results.get_map("logp_desc-group2", return_type="array").max()
+    assert deepest > 44.85, "used to be capped, first at 15.65 and then at 44.85"
+    # The p map cannot follow it there, which is why the logp map exists.
+    assert results.get_map("p_desc-group2", return_type="array").min() == np.float32(1e-45)
+
+
+def test_MKDAChi2_z_maps_are_unchanged_by_the_log_space_tail(testdata_cbma_full):
+    """z is sqrt(chi2) with a sign and never went through a p-value, so it must not move."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:])
+
+    results = MKDAChi2(generate_description=False).fit(dset1, dset2)
+
+    for name in ("uniformity", "association", "group2"):
+        z_values = results.get_map(f"z_desc-{name}", return_type="array")
+        chi2_values = results.get_map(f"chi2_desc-{name}", return_type="array")
+        # Voxels with no directional evidence get a sign of zero, so compare where there is one.
+        signed = z_values != 0
+        assert signed.any(), name
+        assert np.allclose(np.abs(z_values[signed]), np.sqrt(chi2_values[signed]), rtol=1e-6), name

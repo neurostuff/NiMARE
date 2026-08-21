@@ -146,6 +146,52 @@ def test_studyset_copy_preserves_projected_image_columns(tmp_path):
     assert copied.images.loc[0, "varcope__relative"] == "contrast_varcope.nii.gz"
 
 
+def test_studyset_slice_preserves_projected_image_columns(tmp_path):
+    """Derived image columns must survive projection rebuilds.
+
+    Losing them silently turns a leave-one-out refit into a drop-every-derived-map
+    refit (see :meth:`~nimare.diagnostics.Jackknife`).
+    """
+    image_dir = tmp_path / "images"
+    image_dir.mkdir()
+    z_file = image_dir / "contrast_z.nii.gz"
+    z_file.write_text("placeholder")
+    varcope_file = image_dir / "contrast_varcope.nii.gz"
+    varcope_file.write_text("placeholder")
+
+    source = {
+        f"study{i}": {
+            "contrasts": {
+                "contrast1": {
+                    "images": {"z": str(z_file)},
+                    "metadata": {"sample_sizes": [20]},
+                }
+            }
+        }
+        for i in (1, 2, 3)
+    }
+
+    studyset = nimads.Studyset.from_dataset(Dataset(source))
+    images = studyset.images.copy()
+    images["varcope"] = str(varcope_file)
+    studyset.images = images
+
+    kept_ids = sorted(studyset.ids)[:-1]
+    sliced = studyset.slice(kept_ids)
+
+    assert sorted(sliced.images["id"]) == kept_ids
+    assert sliced.images["varcope"].tolist() == [str(varcope_file)] * len(kept_ids)
+    relative = os.path.relpath(str(varcope_file), studyset.basepath)
+    assert sliced.images["varcope__relative"].tolist() == [relative] * len(kept_ids)
+    # The override must keep surviving as the derived Studyset is sliced again,
+    # and as its execution context changes.
+    assert sliced.slice(kept_ids[:1]).images["varcope"].tolist() == [str(varcope_file)]
+    assert studyset.filter_study_ids(["study1"]).images["varcope"].tolist() == [str(varcope_file)]
+    assert (
+        studyset.update_path(str(image_dir)).images["varcope"].tolist() == [str(varcope_file)] * 3
+    )
+
+
 def test_studyset_from_dataset_materialized_preserves_point_values_and_coordinate_metadata():
     """Materialized Studysets should preserve coordinate-side data through NIMADS points."""
     source = {
