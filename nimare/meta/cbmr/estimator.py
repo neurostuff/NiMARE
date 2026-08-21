@@ -1,4 +1,46 @@
-"""Coordinate-based meta-regression estimator."""
+"""Coordinate-based meta-regression.
+
+CBMR estimates a smooth activation-intensity function from reported coordinates. The model is
+specified by a formula in which each term states its own spatial resolution; see
+:mod:`nimare.meta.cbmr.terms` for the syntax and :mod:`nimare.meta.cbmr.predictor` for how the
+linear predictor is assembled.
+
+What CBMR consumes from a Studyset
+----------------------------------
+Exactly two things, both produced by ``_collect_inputs`` from a single narrowed selection:
+
+``blocks_["coordinates"]``
+    A :class:`~nimare.studyset.blocks.CoordinateBlock`. Used for ``group_of_point()``, which
+    gives each focus's analysis position, ``ijk(affine)``, which is memoised and truncates
+    exactly as :func:`nimare.utils.mm2vox` does, and ``space``/``space_categories`` for the
+    mixed-space check.
+``studyset_``
+    The narrowed selection itself, for ``ids`` and ``annotations_df``. The formula's terms are
+    built against that frame.
+
+The point of taking both from one selection is that the block's rows *are* the studyset's
+analyses, in order, so the foci matrix and the annotation frame index the same experiments
+without a lookup. The alternative -- fetching coordinates and annotations separately and
+aligning them afterwards -- is how one experiment's moderator values come to be attributed to
+another's foci, which nothing downstream could detect.
+
+Deliberately not used:
+
+* ``inputs_["coordinates"]``, the per-focus frame the ``Coordinates`` requirement also renders.
+  Nothing here reads it. It costs about 19 ms on a 20,000-focus studyset and is memoised, so it
+  is not worth an opt-out.
+* ``Studyset.sample_sizes()``. Sample size reaches CBMR as an ordinary annotation column named
+  in a formula, like any other moderator, rather than through a dedicated accessor.
+* ``Studyset.harmonized(target)``. CBMR *rejects* mixed coordinate spaces rather than projecting
+  them, matching what it has always done; harmonizing is the caller's decision because it is
+  lossy. :meth:`_CBMRInputs._validate_block_space` names the method to call.
+
+``_focus_positions`` -- mapping a coordinate block onto masked-voxel indices -- is the one piece
+here that is not CBMR-specific. :mod:`nimare.meta.cbma.base` needs the same projection and
+currently does the ``mm2vox`` half itself, on the frame and uncached. It is left local for now
+because CBMR is its only block-based consumer; if CBMA moves onto blocks, this is the primitive
+to promote rather than duplicate.
+"""
 
 import logging
 import re
@@ -19,14 +61,7 @@ from nimare.meta.cbmr._helpers import (
 from nimare.meta.cbmr._torch import torch
 from nimare.meta.cbmr.basis import b_spline_bases
 from nimare.meta.cbmr.results import CBMRResult
-from nimare.utils import (
-    get_masker,
-    get_masker_mask_image,
-    get_template,
-    mm2vox,
-    seed_torch,
-    validate_coordinate_spaces,
-)
+from nimare.utils import get_masker, get_masker_mask_image, get_template, seed_torch
 
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
@@ -83,40 +118,85 @@ class _CBMRInputs(Estimator):
         )
         return mask_data, mask_lookup, n_mask_voxels
 
-    def _compute_empirical_incidence(self, coordinates, ids_by_group, n_mask_voxels):
-        """Return the empirical voxel incidence rate across experiments."""
-        n_experiments = sum(len(group_ids) for group_ids in ids_by_group.values())
+    @staticmethod
+    def _validate_block_space(block):
+        """Reject a coordinate block that mixes declared spaces.
+
+        Checked on the block rather than on the coordinate frame, so no frame has to exist. The
+        store harmonizes only when a target space is set, and neither the view context nor the
+        Coordinates requirement sets one by default, so mixed spaces would otherwise reach the
+        mask projection unconverted and land in the wrong voxels.
+        """
+        codes = np.unique(np.asarray(block.space))
+        if codes.size == 0:
+            raise ValueError(
+                "Coordinate space information is missing. Ensure the studyset's coordinates "
+                "declare a space."
+            )
+        if codes.size > 1:
+            categories = list(block.space_categories)
+            named = [str(categories[c]) if c < len(categories) else str(c) for c in codes]
+            raise ValueError(
+                "Mixed coordinate spaces detected in the studyset (space contains more than one "
+                f"value: {', '.join(named[:10])}{'...' if len(named) > 10 else ''}). Call "
+                "Studyset.harmonized(target) to project them into one space before running a "
+                "meta-analysis."
+            )
+
+    def _focus_positions(self, block, mask_img, mask_data, mask_lookup):
+        """Map every focus onto ``(experiment row, masked-voxel column)``.
+
+        Both come straight off the coordinate block. ``ijk`` is memoised there and documented to
+        truncate exactly as :func:`nimare.utils.mm2vox` does, and ``group_of_point`` gives each
+        focus's analysis position directly -- which *is* the experiment row, because the block is
+        aligned to ``studyset_`` by construction. Foci outside the mask are dropped.
+        """
+        ijk = block.ijk(mask_img.affine)
+        rows = block.group_of_point()
+        shape = np.asarray(mask_data.shape, dtype=np.int64)
+
+        in_bounds = np.all((ijk >= 0) & (ijk < shape), axis=1)
+        flat = np.ravel_multi_index(ijk[in_bounds].T, mask_data.shape)
+        in_mask = mask_data.ravel()[flat]
+
+        kept_rows = rows[in_bounds][in_mask]
+        kept_columns = mask_lookup[flat[in_mask]]
+        n_dropped = int(len(ijk) - kept_rows.size)
+        if n_dropped:
+            LGR.info(
+                "%d/%d coordinates fall outside of the mask. Removing them.", n_dropped, len(ijk)
+            )
+        return kept_rows, kept_columns
+
+    @staticmethod
+    def _foci_matrix(rows, columns, n_experiments, n_mask_voxels, dtype=np.float64):
+        """Return the experiment-by-voxel focus-count matrix.
+
+        Repeated ``(row, column)`` pairs accumulate, so an experiment reporting two foci in one
+        voxel gives that cell a count of two. Experiments with no surviving foci keep an all-zero
+        row rather than disappearing, which is what keeps the rows aligned to the annotations.
+        """
+        return scipy.sparse.csr_matrix(
+            (np.ones(rows.size, dtype=dtype), (rows, columns)),
+            shape=(n_experiments, n_mask_voxels),
+            dtype=dtype,
+        )
+
+    def _threshold_mask_by_incidence(self, mask_img, mask_data, foci, n_experiments):
+        """Narrow an ROI mask to voxels whose empirical focus incidence clears the threshold.
+
+        Incidence is the fraction of experiments reporting at least one focus in a voxel. Voxels
+        below the threshold carry no information about the intensity there and would only widen
+        the spline basis, so they are dropped before it is built.
+        """
         if n_experiments == 0:
             raise ValueError("CBMR requires at least one experiment.")
 
-        foci_by_experiment = self._build_group_foci_matrices(
-            coordinates,
-            ids_by_group,
-            n_mask_voxels,
-        )
-        incidence_count = np.zeros(n_mask_voxels, dtype=np.float64)
-        for group_matrix in foci_by_experiment.values():
-            incidence_count += np.asarray((group_matrix > 0).sum(axis=0)).ravel()
-        return incidence_count / float(n_experiments)
-
-    def _threshold_mask_by_incidence(
-        self,
-        mask_img,
-        mask_data,
-        filtered_coordinates,
-        ids_by_group,
-        n_mask_voxels,
-    ):
-        """Apply empirical-incidence filtering to an ROI mask."""
-        incidence_rate = self._compute_empirical_incidence(
-            filtered_coordinates,
-            ids_by_group,
-            n_mask_voxels,
-        )
+        incidence_rate = np.asarray((foci > 0).sum(axis=0)).ravel() / float(n_experiments)
         self.inputs_["empirical_incidence_rate_roi"] = incidence_rate
 
         if self.incidence_threshold is None:
-            keep_voxels = np.ones(n_mask_voxels, dtype=bool)
+            keep_voxels = np.ones(incidence_rate.size, dtype=bool)
         else:
             keep_voxels = incidence_rate > self.incidence_threshold
 
@@ -126,266 +206,49 @@ class _CBMRInputs(Estimator):
                 "provide a less restrictive mask."
             )
 
-        thresholded_mask_data = np.zeros(mask_data.size, dtype=bool)
-        roi_flat_indices = np.flatnonzero(mask_data.ravel())
-        thresholded_mask_data[roi_flat_indices[keep_voxels]] = True
-        thresholded_mask_data = thresholded_mask_data.reshape(mask_data.shape)
+        thresholded = np.zeros(mask_data.size, dtype=bool)
+        thresholded[np.flatnonzero(mask_data.ravel())[keep_voxels]] = True
         self.inputs_["empirical_incidence_rate"] = incidence_rate[keep_voxels]
         self.inputs_["incidence_threshold"] = self.incidence_threshold
-        return self._mask_image_from_data(thresholded_mask_data, mask_img)
-
-    def _filter_coordinates_to_mask(self, coordinates, mask_img, mask_data, mask_lookup):
-        """Filter coordinates to the mask and attach masked-space voxel indices."""
-        if coordinates.empty:
-            filtered_coordinates = coordinates.copy()
-            filtered_coordinates["_cbmr_mask_index"] = pd.Series(dtype=np.int32)
-            return filtered_coordinates
-
-        ijk = mm2vox(coordinates[["x", "y", "z"]].to_numpy(), mask_img.affine)
-        shape = np.asarray(mask_data.shape, dtype=np.int64)
-        in_bounds = np.all((ijk >= 0) & (ijk < shape), axis=1)
-
-        keep_mask = np.zeros(coordinates.shape[0], dtype=bool)
-        mask_indices = np.empty(0, dtype=np.int32)
-        if np.any(in_bounds):
-            bounded_idx = np.where(in_bounds)[0]
-            bounded_ijk = ijk[bounded_idx]
-            flat_voxel_index = np.ravel_multi_index(bounded_ijk.T, mask_data.shape)
-            in_mask = mask_data.ravel()[flat_voxel_index]
-            kept_idx = bounded_idx[in_mask]
-            keep_mask[kept_idx] = True
-            mask_indices = mask_lookup[flat_voxel_index[in_mask]]
-
-        n_dropped = int(coordinates.shape[0] - keep_mask.sum())
-        LGR.info(
-            "%d/%d coordinates fall outside of the mask. Removing them.",
-            n_dropped,
-            coordinates.shape[0],
-        )
-
-        filtered_coordinates = coordinates.loc[keep_mask].copy()
-        filtered_coordinates["_cbmr_mask_index"] = mask_indices
-        return filtered_coordinates
-
-    @staticmethod
-    def _format_group_name(group_value):
-        """Normalize a group label into the public map/table naming format."""
-        if isinstance(group_value, (list, tuple, np.ndarray, pd.Series)):
-            return "".join(str(value).capitalize() for value in group_value)
-        return str(group_value).capitalize()
-
-    def _collect_experiment_annotations(self, dataset):
-        """Return one annotation row per experiment in the collected input order."""
-        experiment_annotations = (
-            dataset.annotations_df[dataset.annotations_df["id"].isin(self.inputs_["id"])]
-            .drop_duplicates(subset=["id"])
-            .set_index("id", drop=False)
-            .reindex(self.inputs_["id"])
-            .reset_index(drop=True)
-        )
-        experiment_annotations = experiment_annotations.copy()
-        experiment_annotations["id"] = self.inputs_["id"]
-        return experiment_annotations
-
-    def _assign_group_labels(self, experiment_annotations):
-        """Attach normalized group labels to the aligned experiment table."""
-        if self.group_categories is None:
-            experiment_annotations[self._group_column] = DEFAULT_GROUP_NAME
-        elif isinstance(self.group_categories, str):
-            if self.group_categories not in experiment_annotations.columns:
-                raise ValueError(
-                    f"Category_names: {self.group_categories} does not exist in the dataset"
-                )
-            experiment_annotations[self._group_column] = experiment_annotations[
-                self.group_categories
-            ].map(self._format_group_name)
-        elif isinstance(self.group_categories, list):
-            missing_categories = set(self.group_categories) - set(experiment_annotations.columns)
-            if missing_categories:
-                raise ValueError(
-                    f"Category_names: {missing_categories} do/does not exist in the dataset."
-                )
-            experiment_annotations[self._group_column] = experiment_annotations[
-                self.group_categories
-            ].apply(lambda row: self._format_group_name(row.tolist()), axis=1)
-        else:
-            raise ValueError("group_categories must be None, a string, or a list of strings.")
-
-        return experiment_annotations
-
-    def _index_experiments_by_group(self, experiment_annotations):
-        """Return experiment IDs grouped in the order used by downstream summaries."""
-        ids_by_group = (
-            experiment_annotations.groupby(self._group_column, sort=False)["id"]
-            .agg(list)
-            .to_dict()
-        )
-        return ids_by_group
-
-    def _build_experiment_group_inputs(self, dataset, filtered_coordinates, n_mask_voxels):
-        """Assemble experiment IDs and the foci matrix.
-
-        A single group, because a term-based design expresses grouping through the formula. That
-        is what makes ``foci_by_experiment`` one (experiments x voxels) matrix rather than a dict
-        of per-group ones, which is the shape the predictor consumes.
-        """
-        experiment_annotations = self._collect_experiment_annotations(dataset)
-        experiment_annotations = self._assign_group_labels(experiment_annotations)
-        ids_by_group = self._index_experiments_by_group(experiment_annotations)
-        self.groups = list(ids_by_group.keys())
-
-        return {
-            "ids_by_group": ids_by_group,
-            "foci_by_experiment": self._build_group_foci_matrices(
-                filtered_coordinates,
-                ids_by_group,
-                n_mask_voxels,
-            ),
-        }
-
-    @staticmethod
-    def _build_group_foci_matrices(coordinates, ids_by_group, n_mask_voxels):
-        """Return experiment-by-voxel foci count matrices for each group."""
-        return _CBMRInputs._build_group_sparse_foci_matrices(
-            coordinates,
-            ids_by_group,
-            n_mask_voxels,
-            dtype=np.float64,
-        )
-
-    @staticmethod
-    def _build_group_sparse_foci_matrices(coordinates, ids_by_group, n_mask_voxels, dtype):
-        """Return grouped experiment-by-voxel sparse focus-count matrices."""
-        foci_by_experiment = {}
-        if coordinates.empty:
-            for group, group_ids in ids_by_group.items():
-                foci_by_experiment[group] = scipy.sparse.csr_matrix(
-                    (len(group_ids), n_mask_voxels),
-                    dtype=dtype,
-                )
-            return foci_by_experiment
-
-        coordinates = coordinates.loc[:, ["id", "_cbmr_mask_index"]].copy()
-        for group, group_ids in ids_by_group.items():
-            id_to_row = {exp_id: i for i, exp_id in enumerate(group_ids)}
-            group_coordinates = coordinates.loc[coordinates["id"].isin(group_ids)]
-            rows = group_coordinates["id"].map(id_to_row).to_numpy(dtype=np.int64, copy=False)
-            cols = group_coordinates["_cbmr_mask_index"].to_numpy(dtype=np.int64, copy=False)
-            data = np.ones(group_coordinates.shape[0], dtype=dtype)
-            foci_by_experiment[group] = scipy.sparse.csr_matrix(
-                (data, (rows, cols)),
-                shape=(len(group_ids), n_mask_voxels),
-                dtype=dtype,
-            )
-        return foci_by_experiment
-
-    def _build_group_foci(self, coordinates, ids_by_group, n_mask_voxels):
-        """Summarize voxelwise and experiment-wise focus counts for each group."""
-        foci_by_experiment = self._build_group_sparse_foci_matrices(
-            coordinates,
-            ids_by_group,
-            n_mask_voxels,
-            dtype=np.int32,
-        )
-
-        foci_per_voxel = {}
-        foci_per_experiment = {}
-        for group, group_foci_by_experiment in foci_by_experiment.items():
-            group_foci_per_voxel = np.asarray(
-                group_foci_by_experiment.sum(axis=0), dtype=np.int32
-            ).reshape((-1, 1))
-            group_foci_per_experiment = np.asarray(
-                group_foci_by_experiment.sum(axis=1), dtype=np.int32
-            ).reshape((-1, 1))
-
-            foci_per_voxel[group] = group_foci_per_voxel
-            foci_per_experiment[group] = group_foci_per_experiment
-
-        return foci_by_experiment, foci_per_voxel, foci_per_experiment
+        return self._mask_image_from_data(thresholded.reshape(mask_data.shape), mask_img)
 
     def _preprocess_input(self, dataset):
-        """Mask required input images using either the Dataset's mask or the Estimator's.
+        """Build the analysis mask, the spline basis, and the foci matrix.
 
-        Also, categorize experiment id, voxelwise sum of foci counts across experiments,
-        experiment-wise sum of foci counts across space into multiple groups. And summarize
-        moderators into
-        multiple groups (if exist).
+        Everything is derived from ``blocks_["coordinates"]`` and ``studyset_``, which
+        ``_collect_inputs`` produced together from one narrowed selection. That is what makes the
+        foci rows and the annotation rows the same rows -- the alternative, fetching coordinates
+        and annotations separately and reindexing one onto the other, is where a silent
+        misattribution of moderator values would come from.
 
-        Parameters
-        ----------
-        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
-            In this method, the collection is used to (1) select the appropriate mask image,
-            (2) categorize experiments into multiple groups according to group categories in
-            annotations,
-            (3) summarize group-wise experiment id, moderators (if exist), foci per voxel, foci
-            per experiment,
-            (4) extract sample size metadata and use it as one of the moderators.
-
-        Attributes
-        ----------
-        inputs_ : :obj:`dict`
-            Specifically, (1) a "mask_img" key will be added (brain mask image),
-            (2) an 'id' key will be added (id of all experiments in the dataset),
-            (3) a 'coef_spline_bases' key will be added (spatial matrix of coefficient of cubic
-            B-spline bases in x,y,z dimension),
-            (4) an 'ids_by_group' key will be added (experiment id categorized by groups),
-            (5) a 'moderators_by_group' key will be added (moderators categorized
-            by groups) if moderators are considered,
-            (6) a 'foci_by_experiment' key will be added (experiment-by-voxel sparse focus-count
-            matrices, categorized by groups),
-            (7) an 'foci_per_voxel' key will be added (voxelwise sum of foci count across
-            experiments, categorized by groups),
-            (8) an 'foci_per_experiment' key will be added (experiment-wise sum of
-            foci count across space, categorized by groups).
-
-        .. warning::
-            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        The mask is built twice on purpose: once as the ROI, to measure focus incidence, and once
+        narrowed to the voxels that clear the threshold, which is what the basis is evaluated at.
         """
-        validate_coordinate_spaces(self.inputs_["coordinates"])
+        block = self.blocks_["coordinates"]
+        self._validate_block_space(block)
+        n_experiments = len(self.studyset_.ids)
 
         roi_masker = self._resolve_roi_masker(dataset)
         _, roi_mask_img = get_masker_mask_image(roi_masker)
         roi_mask_data = np.asanyarray(roi_mask_img.dataobj).astype(bool, copy=False)
-        roi_mask_lookup, n_roi_voxels = self._build_mask_lookup(roi_mask_data)
-        roi_filtered_coordinates = self._filter_coordinates_to_mask(
-            self.inputs_["coordinates"],
-            roi_mask_img,
-            roi_mask_data,
-            roi_mask_lookup,
-        )
+        roi_lookup, n_roi_voxels = self._build_mask_lookup(roi_mask_data)
 
-        experiment_annotations = self._collect_experiment_annotations(dataset)
-        experiment_annotations = self._assign_group_labels(experiment_annotations)
-        ids_by_group = self._index_experiments_by_group(experiment_annotations)
+        roi_rows, roi_columns = self._focus_positions(
+            block, roi_mask_img, roi_mask_data, roi_lookup
+        )
+        roi_foci = self._foci_matrix(roi_rows, roi_columns, n_experiments, n_roi_voxels)
 
         analysis_mask_img = self._threshold_mask_by_incidence(
-            roi_mask_img,
-            roi_mask_data,
-            roi_filtered_coordinates,
-            ids_by_group,
-            n_roi_voxels,
+            roi_mask_img, roi_mask_data, roi_foci, n_experiments
         )
         self.masker = get_masker(analysis_mask_img)
         _, mask_img = get_masker_mask_image(self.masker)
         mask_data, mask_lookup, n_mask_voxels = self._initialize_spatial_inputs(
-            self.masker,
-            mask_img,
+            self.masker, mask_img
         )
-        filtered_coordinates = self._filter_coordinates_to_mask(
-            self.inputs_["coordinates"],
-            mask_img,
-            mask_data,
-            mask_lookup,
-        )
-        self.inputs_["coordinates"] = filtered_coordinates.drop(columns=["_cbmr_mask_index"])
-        self.inputs_.update(
-            self._build_experiment_group_inputs(
-                dataset,
-                filtered_coordinates,
-                n_mask_voxels,
-            )
-        )
+
+        rows, columns = self._focus_positions(block, mask_img, mask_data, mask_lookup)
+        self.inputs_["foci"] = self._foci_matrix(rows, columns, n_experiments, n_mask_voxels)
 
 
 class CBMR(_CBMRInputs):
@@ -477,18 +340,24 @@ class CBMR(_CBMRInputs):
         masker = self.masker or dataset.masker
         return CBMRResult(self, mask=masker, maps=maps, tables=tables, description=description)
 
-    def _experiment_annotations(self, dataset):
-        """Return experiment annotations ordered to match the foci matrix rows."""
-        annotations = self._collect_experiment_annotations(dataset)
-        ids = list(self.inputs_["ids_by_group"][DEFAULT_GROUP_NAME])
-        ordered = annotations.set_index("id").reindex(ids)
-        missing = ordered.index[ordered.isna().all(axis=1)]
-        if len(missing):
+    def _experiment_annotations(self):
+        """Return the annotations of the analyses CBMR is fitting, in foci-matrix row order.
+
+        No reindexing. ``studyset_`` is the selection ``_collect_inputs`` narrowed to analyses
+        with usable coordinates, and the coordinate block was resolved from that same selection,
+        so its rows and this frame's rows are the same analyses in the same order. Fetching the
+        two separately and aligning them afterwards is what would let one experiment's moderator
+        values be attributed to another's foci -- a mistake nothing downstream could detect.
+        """
+        annotations = self.studyset_.annotations_df
+        expected = list(self.studyset_.ids)
+        if list(annotations["id"]) != expected:
             raise ValueError(
-                f"No annotations found for experiments {list(missing)[:5]}; a formula needs an "
-                "annotation row per experiment."
+                "The annotations frame is not in studyset order, so its rows cannot be trusted "
+                "to line up with the foci matrix. This is a bug in the studyset layer rather "
+                "than in the formula."
             )
-        return ordered.reset_index()
+        return annotations
 
     def _fit(self, dataset):
         """Fit the formula-specified model and summarize it into maps and tables."""
@@ -498,7 +367,7 @@ class CBMR(_CBMRInputs):
 
         seed_torch(self.random_state, self.device)
 
-        annotations = self._experiment_annotations(dataset)
+        annotations = self._experiment_annotations()
         self.bound_design = bind(self.design, annotations)
         self.predictor = CBMRPredictor(self.bound_design, self.inputs_["coef_spline_bases"])
 
@@ -510,7 +379,7 @@ class CBMR(_CBMRInputs):
             + self.bound_design.describe(n_bases)
         )
 
-        foci = self.inputs_["foci_by_experiment"][DEFAULT_GROUP_NAME]
+        foci = self.inputs_["foci"]
         self.cbmr_model = CBMRModel(self.predictor, self.distribution, device=self.device)
         self.cbmr_model.fit(foci, n_iter=self.n_iter, lr=self.lr, tol=self.tol)
 
