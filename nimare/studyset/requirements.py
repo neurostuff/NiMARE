@@ -174,12 +174,25 @@ def _normalized_sample_sizes(store, reducer):
         s_vals = {
             key: s_md.get(key) for key in ("sample_sizes", "sample_size") if key in s_md
         }
+    def listify(value):
+        # A parquet list column reads back as an ndarray, which the coercion
+        # helper rejects outright.
+        if isinstance(value, np.ndarray):
+            return value.tolist()
+        return value
+
     for row in range(n_a):
         s_row = int(store.study_idx[row])
         candidates = [
-            ("sample_sizes", a_vals["sample_sizes"][row] if "sample_sizes" in a_vals else None),
+            (
+                "sample_sizes",
+                listify(a_vals["sample_sizes"][row]) if "sample_sizes" in a_vals else None,
+            ),
             ("sample_size", a_vals["sample_size"][row] if "sample_size" in a_vals else None),
-            ("sample_sizes", s_vals["sample_sizes"][s_row] if "sample_sizes" in s_vals else None),
+            (
+                "sample_sizes",
+                listify(s_vals["sample_sizes"][s_row]) if "sample_sizes" in s_vals else None,
+            ),
             ("sample_size", s_vals["sample_size"][s_row] if "sample_size" in s_vals else None),
         ]
         sizes = _extract_coerced_sample_sizes(candidates)

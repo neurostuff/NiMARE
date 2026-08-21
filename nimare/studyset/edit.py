@@ -13,7 +13,15 @@ from nimare.studyset.columns import AnnotationSet, ColumnStore
 from nimare.studyset.layout import offsets_from_parents, point_parents
 from nimare.studyset.store import replace
 
-__all__ = ["with_annotation", "with_images", "with_metadata", "with_points"]
+__all__ = [
+    "keep_points",
+    "with_annotation",
+    "with_annotation_payload",
+    "with_images",
+    "with_metadata",
+    "with_points",
+    "with_texts",
+]
 
 
 def with_metadata(store, name, values, *, level="analysis"):
@@ -155,4 +163,106 @@ def with_images(store, analysis_positions, refs, imtype, *, space=None, metadata
         store,
         image_attrs=ColumnStore(len(dense["url"]), dense=dense),
         image_offsets=offsets_from_parents(dense["analysis_idx"], store.n_analyses),
+    )
+
+
+def with_texts(store, rows, field, values):
+    """A new store with text added to ``field`` for ``rows``."""
+    texts = store.texts.copy() if store.texts is not None else ColumnStore(store.n_analyses)
+    rows = np.asarray(rows, dtype=np.int64)
+    values = list(values)
+    if field in texts.sparse:
+        existing_idx, existing_values = texts.sparse[field]
+        merged = dict(zip(np.asarray(existing_idx, dtype=np.int64).tolist(), list(existing_values)))
+    elif field in texts.dense:
+        column = texts.dense.pop(field)
+        merged = {i: v for i, v in enumerate(column) if v is not None}
+    else:
+        merged = {}
+    for row, value in zip(rows, values):
+        if value is not None:
+            merged[int(row)] = value
+    order = sorted(merged)
+    texts.add_sparse(field, order, [merged[row] for row in order])
+    return replace(store, texts=texts)
+
+
+def with_annotation_payload(store, payload):
+    """A new store carrying a NIMADS annotation payload.
+
+    Notes are matched to analyses by id; notes naming analyses the studyset does
+    not hold are ignored rather than fatal.
+    """
+    payload = dict(payload)
+    ann_id = payload.get("id") or f"annotation{len(store.annotations)}"
+    row_of = {str(key): i for i, key in enumerate(store.analysis_key)}
+    buckets = {}
+    for note in payload.get("notes") or []:
+        row = row_of.get(str(note.get("analysis")))
+        if row is None:
+            continue
+        for key, value in (note.get("note") or {}).items():
+            bucket = buckets.setdefault(key, ([], []))
+            if value is None:
+                continue
+            bucket[0].append(row)
+            bucket[1].append(value)
+    declared = {
+        key: (value.get("type") if isinstance(value, dict) else value)
+        for key, value in (payload.get("note_keys") or {}).items()
+    }
+    for key in declared:
+        buckets.setdefault(key, ([], []))
+    columns = ColumnStore(store.n_analyses)
+    for key, (rows, values) in buckets.items():
+        columns.add_sparse(str(key), rows, values)
+    annotations = dict(store.annotations)
+    annotations[ann_id] = AnnotationSet(
+        id=ann_id,
+        name=payload.get("name") or "",
+        columns=columns,
+        note_key_types=declared,
+        metadata=payload.get("metadata") or {},
+        description=payload.get("description"),
+    )
+    return replace(store, annotations=annotations)
+
+
+def keep_points(store, mask):
+    """A new store holding only the flagged foci.
+
+    A point mask belongs to the store it was computed against, so any edit that
+    changes the point set invalidates it. Materialising the mask first keeps that
+    from happening silently.
+    """
+    mask = np.asarray(mask, dtype=bool)
+    if len(mask) != store.n_points:
+        raise ValueError(
+            f"mask has {len(mask)} entries, expected {store.n_points}"
+        )
+    keep = np.flatnonzero(mask)
+    parents = point_parents(store)[keep].astype(np.int32)
+    point_values = ColumnStore(len(keep))
+    if store.point_values.sparse:
+        remap = np.full(store.n_points, -1, dtype=np.int64)
+        remap[keep] = np.arange(len(keep))
+        for name, (idx, values) in store.point_values.sparse.items():
+            idx = np.asarray(idx, dtype=np.int64)
+            values = list(values)
+            new_idx, new_values = [], []
+            for i, value in zip(idx, values):
+                target = remap[int(i)]
+                if target >= 0:
+                    new_idx.append(int(target))
+                    new_values.append(value)
+            point_values.add_sparse(name, new_idx, new_values)
+    return replace(
+        store,
+        xyz=np.ascontiguousarray(store.xyz[keep]),
+        point_key=store.point_key[keep],
+        point_space=store.point_space[keep],
+        point_kind=store.point_kind[keep],
+        point_analysis=parents,
+        point_offsets=offsets_from_parents(parents, store.n_analyses),
+        point_values=point_values,
     )

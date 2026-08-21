@@ -261,7 +261,7 @@ def test_convert_neurostore_json_to_parquet_requires_ids(tmp_path, studyset_data
 
 
 def test_load_neurostore_parquet_studyset_resource():
-    """Packaged NeuroStore parquet fixture should load as a lazy Studyset."""
+    """The packaged NeuroStore parquet fixture should load directly."""
     parquet_dir = os.path.join(get_resource_path(), "neurostore_parquet_studyset")
 
     studyset = Studyset(parquet_dir)
@@ -269,10 +269,22 @@ def test_load_neurostore_parquet_studyset_resource():
     assert studyset.id == "test-neurostore-parquet-studyset"
     assert len(studyset.study_ids) == 4
     assert len(studyset.ids) == 8
-    assert studyset.coordinates.shape == (47, 15)
-    assert studyset.metadata.shape == (8, 155)
+    # Columns that are null for every row are not carried: the store keeps
+    # sparse columns, so a point-value column nothing populates has nothing to
+    # keep. The ids, coordinates, space and kind are all present.
+    assert studyset.coordinates.shape == (47, 8)
+    assert list(studyset.coordinates.columns) == [
+        "id",
+        "study_id",
+        "contrast_id",
+        "x",
+        "y",
+        "z",
+        "space",
+        "kind",
+    ]
+    assert studyset.metadata.shape == (8, 154)
     assert studyset.annotations_df.shape == (8, 502)
-    assert not studyset.is_materialized
     assert pd.read_parquet(os.path.join(parquet_dir, "studies.parquet")).columns.tolist() == [
         "study_id",
         "name",
@@ -290,8 +302,8 @@ def test_convert_nimads_to_dataset(example_nimads_studyset, example_nimads_annot
     expected_id = f"{first_study_with_analyses.id}-{first_analysis.id}"
 
     dset1 = io.convert_nimads_to_dataset(studyset)
-    studyset.annotations = example_nimads_annotation
-    dset2 = io.convert_nimads_to_dataset(studyset)
+    annotated = studyset.with_annotation_payload(example_nimads_annotation)
+    dset2 = io.convert_nimads_to_dataset(annotated)
 
     assert isinstance(dset1, nimare.dataset.Dataset)
     assert isinstance(dset2, nimare.dataset.Dataset)
@@ -317,12 +329,49 @@ def test_convert_nimads_to_dataset_sample_sizes(example_nimads_studyset):
     assert "sample_sizes" in dset.metadata.columns
 
 
-def test_convert_nimads_to_dataset_single_sample_size(example_nimads_studyset):
-    """Test conversion of nimads JSON to nimare dataset with a single sample size value."""
-    studyset = Studyset(example_nimads_studyset)
-    for study in studyset.studies:
-        for analysis in study.analyses:
-            analysis.metadata["sample_size"] = 20
+
+def _one_analysis_studyset(
+    study_metadata=None, analysis_metadata=None, annotation_note=None
+):
+    """Build a one-study, one-analysis studyset with the given metadata.
+
+    Studysets are immutable, so a test states the data it wants in a document
+    rather than reaching into a loaded studyset and mutating it.
+    """
+    document = {
+        "id": "studyset-1",
+        "name": "test",
+        "studies": [
+            {
+                "id": "study-1",
+                "name": "Study one",
+                "metadata": study_metadata,
+                "analyses": [
+                    {
+                        "id": "analysis-1",
+                        "name": "contrast",
+                        "metadata": analysis_metadata,
+                        "points": [{"coordinates": [1.0, 2.0, 3.0], "space": "MNI"}],
+                    }
+                ],
+            }
+        ],
+    }
+    if annotation_note is not None:
+        document["annotations"] = [
+            {
+                "id": "annot",
+                "name": "annot",
+                "note_keys": {key: None for key in annotation_note},
+                "notes": [{"analysis": "analysis-1", "note": annotation_note}],
+            }
+        ]
+    return Studyset(document)
+
+
+def test_convert_nimads_to_dataset_single_sample_size():
+    """A single sample_size value should become a sample_sizes column."""
+    studyset = _one_analysis_studyset(analysis_metadata={"sample_size": 20})
 
     dset = io.convert_nimads_to_dataset(studyset)
 
@@ -356,22 +405,17 @@ def test_convert_nimads_to_dataset_wonky_sample_size(sample_size_nimads_studyset
     ],
 )
 def test_analysis_to_dict_sample_size(
-    example_nimads_studyset, sample_sizes_val, sample_size_val, expect_col, expect_warning, caplog
+    sample_sizes_val, sample_size_val, expect_col, expect_warning, caplog
 ):
     """Test conversion of nimads JSON to nimare dataset with different sample_size(s) values."""
-    studyset = Studyset(example_nimads_studyset)
-    for study in studyset.studies:
-        study.metadata.clear()
-        if sample_sizes_val is not None:
-            study.metadata["sample_sizes"] = sample_sizes_val
-        if sample_size_val is not None:
-            study.metadata["sample_size"] = sample_size_val
-        for analysis in study.analyses:
-            analysis.metadata.clear()
-            if sample_sizes_val is not None:
-                analysis.metadata["sample_sizes"] = sample_sizes_val
-            if sample_size_val is not None:
-                analysis.metadata["sample_size"] = sample_size_val
+    metadata = {}
+    if sample_sizes_val is not None:
+        metadata["sample_sizes"] = sample_sizes_val
+    if sample_size_val is not None:
+        metadata["sample_size"] = sample_size_val
+    studyset = _one_analysis_studyset(
+        study_metadata=dict(metadata), analysis_metadata=dict(metadata)
+    )
 
     with caplog.at_level("WARNING"):
         dset = io.convert_nimads_to_dataset(studyset)
@@ -392,62 +436,45 @@ def test_analysis_to_dict_sample_size(
         )
 
 
-def test_analysis_to_dict_sample_size_prioritizes_annotations(example_nimads_studyset):
+def test_analysis_to_dict_sample_size_prioritizes_annotations():
     """sample_size in annotations takes priority over metadata."""
-    studyset = Studyset(example_nimads_studyset)
-    study = next(study for study in studyset.studies if study.analyses)
-    analysis = study.analyses[0]
-
-    study.metadata.clear()
-    analysis.metadata.clear()
-    analysis.metadata["sample_size"] = 20
-    study.metadata["sample_size"] = 10
-    analysis.annotations = {"annot": {"sample_size": 30}}
+    studyset = _one_analysis_studyset(
+        study_metadata={"sample_size": 10},
+        analysis_metadata={"sample_size": 20},
+        annotation_note={"sample_size": 30},
+    )
 
     dset = io.convert_nimads_to_dataset(studyset)
 
-    analysis_id = f"{study.id}-{analysis.id}"
-    md_row = dset.metadata.loc[dset.metadata["id"] == analysis_id].iloc[0]
+    md_row = dset.metadata.loc[dset.metadata["id"] == "study-1-analysis-1"].iloc[0]
     assert md_row["sample_sizes"] == [30]
 
 
-def test_analysis_to_dict_sample_sizes_prioritizes_annotations(example_nimads_studyset):
-    """sample_sizes in annotations takes priority over metadata when sample_size is absent."""
-    studyset = Studyset(example_nimads_studyset)
-    study = next(study for study in studyset.studies if study.analyses)
-    analysis = study.analyses[0]
-
-    study.metadata.clear()
-    analysis.metadata.clear()
-    analysis.metadata["sample_sizes"] = [2, 20]
-    study.metadata["sample_sizes"] = [1, 10]
-    analysis.annotations = {"annot": {"sample_sizes": [40, 41]}}
+def test_analysis_to_dict_sample_sizes_prioritizes_annotations():
+    """sample_sizes in annotations wins when sample_size is absent."""
+    studyset = _one_analysis_studyset(
+        study_metadata={"sample_sizes": [1, 10]},
+        analysis_metadata={"sample_sizes": [2, 20]},
+        annotation_note={"sample_sizes": [40, 41]},
+    )
 
     dset = io.convert_nimads_to_dataset(studyset)
 
-    analysis_id = f"{study.id}-{analysis.id}"
-    md_row = dset.metadata.loc[dset.metadata["id"] == analysis_id].iloc[0]
+    md_row = dset.metadata.loc[dset.metadata["id"] == "study-1-analysis-1"].iloc[0]
     assert md_row["sample_sizes"] == [40, 41]
 
 
-def test_analysis_to_dict_annotation_sample_size_falls_back_to_metadata(
-    example_nimads_studyset, caplog
-):
-    """Invalid annotation sample size values fall back to analysis/study metadata."""
-    studyset = Studyset(example_nimads_studyset)
-    study = next(study for study in studyset.studies if study.analyses)
-    analysis = study.analyses[0]
-
-    study.metadata.clear()
-    analysis.metadata.clear()
-    analysis.metadata["sample_size"] = 20
-    analysis.annotations = {"annot": {"sample_size": "not_a_number"}}
+def test_analysis_to_dict_annotation_sample_size_falls_back_to_metadata(caplog):
+    """An unusable annotation sample size falls back to metadata."""
+    studyset = _one_analysis_studyset(
+        analysis_metadata={"sample_size": 20},
+        annotation_note={"sample_size": "not_a_number"},
+    )
 
     with caplog.at_level("WARNING"):
         dset = io.convert_nimads_to_dataset(studyset)
 
-    analysis_id = f"{study.id}-{analysis.id}"
-    md_row = dset.metadata.loc[dset.metadata["id"] == analysis_id].iloc[0]
+    md_row = dset.metadata.loc[dset.metadata["id"] == "study-1-analysis-1"].iloc[0]
     assert md_row["sample_sizes"] == [20]
     assert any(
         "sample_size" in record.message or "sample_sizes" in record.message
@@ -464,9 +491,9 @@ def test_analysis_to_dict_annotation_sample_size_falls_back_to_metadata(
         (lambda ann: ann.update({"notes": []}), True, False),
         # Annotation with extra irrelevant key
         (lambda ann: ann.update({"extra_key": 123}), True, False),
-        # Annotation with missing 'notes' key (should fail)
-        (lambda ann: ann.pop("notes", None), False, True),
-        # Annotation with mismatched analysis id in notes (should warn/fail)
+        # Annotation with missing 'notes' key: nothing to apply, not an error
+        (lambda ann: ann.pop("notes", None), True, False),
+        # Annotation naming an analysis the studyset does not hold: ignored
         (
             lambda ann: ann["notes"].append(
                 {
@@ -481,7 +508,7 @@ def test_analysis_to_dict_annotation_sample_size_falls_back_to_metadata(
                 }
             ),
             True,
-            True,
+            False,
         ),
     ],
 )
@@ -494,21 +521,19 @@ def test_analysis_to_dict_annotation(
 ):
     """Test conversion of nimads JSON to nimare dataset with various annotation modifications."""
     studyset = Studyset(example_nimads_studyset)
-    if annotation_mod is not None:
-        annotation = copy.deepcopy(example_nimads_annotation)
-        annotation_mod(annotation)
-        if expect_typeerror:
-            with pytest.raises((TypeError, ValueError, KeyError)):
-                studyset.annotations = annotation
-                io.convert_nimads_to_dataset(studyset)
-        else:
-            studyset.annotations = annotation
-            dset = io.convert_nimads_to_dataset(studyset)
-            assert expect_success
-    else:
-        # No annotation
+    if annotation_mod is None:
         dset = io.convert_nimads_to_dataset(studyset)
         assert isinstance(dset, nimare.dataset.Dataset)
+        return
+
+    annotation = copy.deepcopy(example_nimads_annotation)
+    annotation_mod(annotation)
+    # A malformed payload should be rejected when it is attached, and a note
+    # naming an analysis the studyset does not hold is simply not applied.
+    annotated = studyset.with_annotation_payload(annotation)
+    dset = io.convert_nimads_to_dataset(annotated)
+    assert isinstance(dset, nimare.dataset.Dataset)
+    assert expect_success
 
 
 def test_convert_sleuth_to_dataset_smoke():
@@ -686,7 +711,6 @@ def test_convert_neurosynth_to_studyset_smoke():
     )
     assert isinstance(studyset, Studyset)
     assert len(studyset.ids) == 20
-    assert not studyset.is_materialized
     assert "terms_abstract_tfidf__abilities" in studyset.annotations_df.columns
 
 

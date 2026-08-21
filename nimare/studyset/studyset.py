@@ -599,15 +599,48 @@ class Studyset:
         )
 
     def with_points(self, analysis_positions, xyz, **kwargs):
-        """A studyset with extra foci. Copy-on-write."""
-        store = edit.with_points(self.store, analysis_positions, xyz, **kwargs)
-        return Studyset._wrap(
-            View(store, self._view.index, self._view.point_mask, self._view.context)
-        )
+        """A studyset with extra foci. Copy-on-write.
+
+        An active point mask is materialised first: a mask is indexed against
+        the store it was computed for, so appending foci would leave it stale.
+        """
+        store = self.store
+        if self._view.point_mask is not None:
+            store = edit.keep_points(store, self._view.point_mask)
+        store = edit.with_points(store, analysis_positions, xyz, **kwargs)
+        return Studyset._wrap(View(store, self._view.index, None, self._view.context))
 
     def with_images(self, analysis_positions, refs, imtype, **kwargs):
         """A studyset with extra images. Copy-on-write."""
         store = edit.with_images(self.store, analysis_positions, refs, imtype, **kwargs)
+        return Studyset._wrap(
+            View(store, self._view.index, self._view.point_mask, self._view.context)
+        )
+
+    def materialize_points(self):
+        """A studyset whose store holds only the currently selected foci."""
+        if self._view.point_mask is None:
+            return self
+        store = edit.keep_points(self.store, self._view.point_mask)
+        return Studyset._wrap(View(store, self._view.index, None, self._view.context))
+
+    def with_metadata(self, name, values, *, level="analysis"):
+        """A studyset with one extra metadata column. Copy-on-write."""
+        store = edit.with_metadata(self.store, name, values, level=level)
+        return Studyset._wrap(
+            View(store, self._view.index, self._view.point_mask, self._view.context)
+        )
+
+    def with_texts(self, rows, field, values):
+        """A studyset with text added. Copy-on-write."""
+        store = edit.with_texts(self.store, rows, field, values)
+        return Studyset._wrap(
+            View(store, self._view.index, self._view.point_mask, self._view.context)
+        )
+
+    def with_annotation_payload(self, payload):
+        """A studyset carrying a NIMADS annotation payload. Copy-on-write."""
+        store = edit.with_annotation_payload(self.store, payload)
         return Studyset._wrap(
             View(store, self._view.index, self._view.point_mask, self._view.context)
         )

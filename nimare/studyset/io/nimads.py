@@ -102,7 +102,9 @@ def from_nimads(source, *, canonical_order=True, annotations=None):
 
     a_row = 0
     for s_row, study in enumerate(studies):
-        sid = str(study["id"])
+        # NIMADS does not require ids; generate stable positional ones so that
+        # a document without them still round-trips and can be selected from.
+        sid = str(study["id"]) if study.get("id") is not None else f"study-{s_row}"
         study_key.append(sid)
         for name in _STUDY_ATTRS:
             study_attrs[name].append(_denull(study.get(name)))
@@ -113,7 +115,11 @@ def from_nimads(source, *, canonical_order=True, annotations=None):
             study_md_payload.append(smd)
 
         for analysis in study.get("analyses") or []:
-            aid = str(analysis["id"])
+            aid = (
+                str(analysis["id"])
+                if analysis.get("id") is not None
+                else f"analysis-{a_row}"
+            )
             analysis_key.append(aid)
             analysis_full_key.append(f"{sid}-{aid}")
             study_idx.append(s_row)

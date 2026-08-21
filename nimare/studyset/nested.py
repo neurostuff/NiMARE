@@ -112,6 +112,14 @@ class Analysis(_Row):
     def metadata(self):
         return self._store.metadata.rows([self._row]).get(self._row, {})
 
+    def get_metadata(self, field=None):
+        """This analysis' metadata, or one field of it."""
+        merged = dict(self.study.metadata)
+        merged.update(self.metadata)
+        if field is None:
+            return merged
+        return merged.get(field)
+
     @property
     def texts(self):
         cs = self._store.texts

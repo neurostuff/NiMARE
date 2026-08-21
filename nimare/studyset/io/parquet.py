@@ -259,7 +259,10 @@ def write_parquet(store, directory, *, annotation=None):
         "analyses": _analyses_table(store),
         "coordinates": view.frame("coordinates"),
         "images": view.frame("images"),
-        "metadata": view.frame("metadata"),
+        # The raw metadata columns, at the level they were declared. The
+        # compatibility frame merges the levels and derives a normalised
+        # `sample_sizes`, which would lose the raw keys on a round trip.
+        "metadata": _metadata_table(store, view),
         "texts": view.frame("texts"),
     }
     if store.annotations:
@@ -280,6 +283,25 @@ def write_parquet(store, directory, *, annotation=None):
     with open(os.path.join(directory, "studyset.json"), "w") as fh:
         json.dump(manifest, fh, indent=2)
     return directory
+
+
+def _metadata_table(store, view):
+    import pandas as pd
+
+    cols = {
+        "id": store.analysis_full_key.astype(str),
+        "study_id": store.study_key[store.study_idx].astype(str),
+        "contrast_id": store.analysis_key.astype(str),
+    }
+    for name in sorted(store.metadata.keys()):
+        cols[name] = store.metadata.get(name)
+    if store.study_metadata is not None:
+        for name in sorted(store.study_metadata.keys()):
+            if name in cols:
+                continue
+            per_study = store.study_metadata.get(name)
+            cols[name] = per_study[store.study_idx]
+    return pd.DataFrame(cols, copy=False)
 
 
 def _studies_table(store):
@@ -378,6 +400,17 @@ def convert_neurostore_json_to_parquet(
             or manifest_field("annotation", "id")
             or "annotation"
         )
+
+    # Ids are the join keys of the parquet tables, so unlike a general NIMADS
+    # read this path insists on them rather than generating positional ones.
+    for i, study in enumerate(studyset.get("studies") or []):
+        if study.get("id") is None:
+            raise ValueError(f"Could not infer an id for study at position {i}.")
+        for analysis in study.get("analyses") or []:
+            if analysis.get("id") is None:
+                raise ValueError(
+                    f"An analysis of study {study['id']!r} has no id."
+                )
 
     store = from_nimads(studyset, annotations=[annotation] if annotation else None)
     store = replace(store, id=resolved_id, name=resolved_name)

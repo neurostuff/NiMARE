@@ -5,8 +5,6 @@ from abc import abstractmethod
 from joblib import Memory
 
 from nimare.base import NiMAREBase
-from nimare.dataset import Dataset
-from nimare.nimads import Studyset
 from nimare.results import MetaResult
 from nimare.studyset import normalize_collection
 
@@ -69,32 +67,21 @@ class Estimator(NiMAREBase):
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
             in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
-        if not isinstance(dataset, (Dataset, Studyset)):
-            dataset = normalize_collection(dataset)
-
-        if not hasattr(dataset, "slice"):
-            raise ValueError(
-                f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}."
-            )
+        dataset = normalize_collection(dataset)
 
         if self._required_inputs:
-            data = dataset.get(self._required_inputs, drop_invalid=drop_invalid)
-            # Do not overwrite existing inputs_ attribute.
-            # This is necessary for PairwiseCBMAEstimator, which validates two sets of coordinates
-            # in the same object.
-            # It makes the *strong* assumption that required inputs will not changes within an
-            # Estimator across fit calls, so all fields of inputs_ will be overwritten instead of
-            # retaining outdated fields from previous fit calls.
+            from nimare.studyset.inputs import collect_inputs
+
+            # Resolved in one pass, so the returned values cannot disagree about
+            # which analyses they describe. `data` keeps the view they came from.
+            self.data, data = collect_inputs(
+                dataset, self._required_inputs, drop_invalid=drop_invalid
+            )
+            # Not overwritten wholesale: PairwiseCBMAEstimator collects twice and
+            # renames between calls.
             if not hasattr(self, "inputs_"):
                 self.inputs_ = {}
-
-            for k, v in data.items():
-                if v is None:
-                    raise ValueError(
-                        f"Estimator {self.__class__.__name__} requires input dataset to contain "
-                        f"{k}, but no matching data were found."
-                    )
-                self.inputs_[k] = v
+            self.inputs_.update(data)
 
     @abstractmethod
     def _generate_description(self):
