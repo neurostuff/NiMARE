@@ -285,7 +285,7 @@ class CBMRFormulaResult(CBMRResult):
     and the same matrix tests a different hypothesis.
     """
 
-    def test(self, hypotheses, name=None, inplace=False):
+    def test(self, hypotheses, name=None, inplace=False, **covariance_kwargs):
         """Test one or more hypotheses about the fitted coefficients.
 
         Parameters
@@ -300,6 +300,10 @@ class CBMRFormulaResult(CBMRResult):
             ``";"``.
         inplace : :obj:`bool`, optional
             Whether to add the results to this object rather than to a copy. Default is False.
+        **covariance_kwargs
+            Passed to :meth:`~nimare.meta.cbmr.model.CBMRModel.covariance`. Pass
+            ``method="sandwich"`` for standard errors robust to overdispersion and to correlation
+            among an experiment's own foci.
 
         Returns
         -------
@@ -316,7 +320,7 @@ class CBMRFormulaResult(CBMRResult):
             )
 
         foci = estimator.inputs_["foci_by_experiment"][DEFAULT_GROUP_NAME]
-        computed = evaluate_hypotheses(model, hypotheses, foci, name=name)
+        computed = evaluate_hypotheses(model, hypotheses, foci, name=name, **covariance_kwargs)
 
         target = self if inplace else self.copy()
         target.maps.update(computed["maps"])

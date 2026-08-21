@@ -273,3 +273,38 @@ def test_result_reports_the_term_budget(studyset):
     described = result.describe_terms()
 
     assert "s(diagnosis)" in described and "total" in described
+
+
+def test_robust_statistics_are_available_from_the_result(studyset):
+    """``result.test(method="sandwich")`` should give robust statistics end to end.
+
+    Model-based standard errors assume the Poisson mean-variance relationship. Foci are
+    overdispersed and correlated within an experiment, so the clustered sandwich is the safer
+    default for real data, and it must be reachable without dropping to the model object.
+    """
+    result = _fit("~ s(diagnosis) + standardized_sample_sizes", studyset)
+
+    model_based = result.test("diagnosis[schizophrenia] = 0", name="m")
+    robust = result.test(
+        "diagnosis[schizophrenia] = 0", name="r", method="sandwich", meat="cluster"
+    )
+
+    assert np.all(np.isfinite(robust.maps["z_r"]))
+    # Different variance estimates, so different statistics for the same contrast.
+    assert not np.allclose(model_based.maps["z_m"], robust.maps["z_r"])
+
+
+def test_robust_scalar_contrast_differs_from_model_based(studyset):
+    """The scalar path should honour the covariance option too."""
+    result = _fit("~ s(diagnosis) + standardized_sample_sizes", studyset)
+
+    plain = result.test("standardized_sample_sizes = 0", name="p")
+    robust = result.test(
+        "standardized_sample_sizes = 0", name="q", method="sandwich", meat="cluster"
+    )
+
+    assert np.isfinite(robust.tables["contrast_q"]["z"].iloc[0])
+    assert (
+        plain.tables["contrast_p"]["standard_error"].iloc[0]
+        != robust.tables["contrast_q"]["standard_error"].iloc[0]
+    )

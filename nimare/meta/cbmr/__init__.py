@@ -18,6 +18,7 @@ from nimare.meta.cbmr._helpers import (  # noqa: F401
     _validate_incidence_threshold,
 )
 from nimare.meta.cbmr.contrasts import ContrastError, evaluate_hypotheses
+from nimare.meta.cbmr.covariance import CovarianceError, sandwich_covariance
 from nimare.meta.cbmr.distributions import (
     ClusteredNegativeBinomial,
     Distribution,
@@ -43,6 +44,7 @@ __all__ = [
     "ClusteredNegativeBinomial",
     "Design",
     "ContrastError",
+    "CovarianceError",
     "Distribution",
     "DistributionError",
     "NegativeBinomial",
@@ -52,6 +54,7 @@ __all__ = [
     "evaluate_hypotheses",
     "poisson_log_likelihood",
     "resolve_distribution",
+    "sandwich_covariance",
     "CBMRInference",
     "CBMRResult",
     "DEFAULT_GROUP_NAME",

@@ -155,8 +155,30 @@ class CBMRModel(torch.nn.Module):
         hessian = torch.func.hessian(negative_log_likelihood)(flat)
         return hessian.reshape(self.n_parameters, self.n_parameters).detach().cpu().numpy()
 
-    def covariance(self, foci):
-        """Return the coefficient covariance, the inverse of the joint information."""
+    def covariance(self, foci, method="fisher", meat="cluster", correction="hc1", ridge=0.0):
+        """Return the coefficient covariance.
+
+        Parameters
+        ----------
+        foci : array_like
+            Foci counts the model was fitted to.
+        method : {"fisher", "sandwich"}, optional
+            ``"fisher"`` inverts the observed information, which is correct only if the Poisson
+            mean-variance relationship holds. ``"sandwich"`` replaces the model-based variance
+            with an empirical one, which is the safer default for foci that are overdispersed and
+            clustered within experiments. Default is ``"fisher"``, matching what CBMR has always
+            reported for regression coefficients.
+        meat, correction, ridge
+            Passed to :func:`~nimare.meta.cbmr.covariance.sandwich_covariance` when
+            ``method="sandwich"``.
+        """
+        if method == "sandwich":
+            from nimare.meta.cbmr.covariance import sandwich_covariance
+
+            return sandwich_covariance(self, foci, meat=meat, correction=correction, ridge=ridge)
+        if method != "fisher":
+            raise ValueError(f"method must be 'fisher' or 'sandwich', got {method!r}.")
+
         information = self.information_matrix(foci)
         condition = np.linalg.cond(information)
         if condition > 1.0 / np.finfo(float).eps:
@@ -169,8 +191,15 @@ class CBMRModel(torch.nn.Module):
             )
         return np.linalg.inv(information)
 
-    def standard_errors(self, foci):
+    def standard_errors(self, foci, **covariance_kwargs):
         """Return coefficient standard errors, keyed by term.
+
+        Parameters
+        ----------
+        foci : array_like
+            Foci counts the model was fitted to.
+        **covariance_kwargs
+            Passed to :meth:`covariance`, so ``method="sandwich"`` gives robust errors.
 
         Returns
         -------
@@ -178,7 +207,7 @@ class CBMRModel(torch.nn.Module):
             Maps the rendered term to an array of standard errors, shaped
             ``(n_columns, n_bases)`` for a spatial term and ``(n_columns,)`` otherwise.
         """
-        covariance = self.covariance(foci)
+        covariance = self.covariance(foci, **covariance_kwargs)
         errors = np.sqrt(np.diag(covariance))
         result = {}
         for name, term_slice in self.predictor.design.parameter_slices(

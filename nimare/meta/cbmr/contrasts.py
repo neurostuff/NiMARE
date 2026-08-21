@@ -110,9 +110,9 @@ def _parse_statement(statement, bound_design):
     return term_name, contrast
 
 
-def _term_covariance(model, term_name, foci):
+def _term_covariance(model, term_name, foci, **covariance_kwargs):
     """Return the covariance block belonging to one term."""
-    covariance = model.covariance(foci)
+    covariance = model.covariance(foci, **covariance_kwargs)
     term_slice = model.predictor.design.parameter_slices(model.predictor.n_bases)[term_name]
     return covariance[term_slice, term_slice]
 
@@ -153,7 +153,7 @@ def _joint_statistics(model, block, contrast_matrix, covariance_block):
     return chi_square, nlogp_to_z(nlogp, tail="two"), nlogp
 
 
-def evaluate_hypotheses(model, hypotheses, foci, name=None):
+def evaluate_hypotheses(model, hypotheses, foci, name=None, **covariance_kwargs):
     """Test one or more hypotheses against a fitted model.
 
     Named ``evaluate_`` rather than ``test_`` deliberately: pytest collects any module-level
@@ -172,6 +172,9 @@ def evaluate_hypotheses(model, hypotheses, foci, name=None):
         The foci the model was fitted to, needed to re-evaluate the information matrix.
     name : :obj:`str`, optional
         Label for the emitted keys. Defaults to the hypotheses joined by ``";"``.
+    **covariance_kwargs
+        Passed to :meth:`~nimare.meta.cbmr.model.CBMRModel.covariance`, so
+        ``method="sandwich"`` gives robust statistics.
 
     Returns
     -------
@@ -195,7 +198,7 @@ def evaluate_hypotheses(model, hypotheses, foci, name=None):
     term_name = parsed[0][0]
     block = next(b for b in bound_design.blocks if str(b.term) == term_name)
     contrast_matrix = np.vstack([contrast for _, contrast in parsed])
-    covariance_block = _term_covariance(model, term_name, foci)
+    covariance_block = _term_covariance(model, term_name, foci, **covariance_kwargs)
 
     label = name or ";".join(statements)
     maps, tables = {}, {}
