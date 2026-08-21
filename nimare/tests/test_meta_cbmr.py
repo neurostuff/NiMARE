@@ -26,7 +26,11 @@ else:
         CBMRResult,
         DEFAULT_GROUP_NAME,
     )
-    from nimare.meta.utils import fit_voxelwise_cbmr_approximate
+    from nimare.meta.utils import (
+        _apply_spatial_cbmr_preconditioner,
+        _compute_spatial_cbmr_preconditioner,
+        fit_voxelwise_cbmr_approximate,
+    )
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
@@ -1156,7 +1160,7 @@ def test_mixed_cbmr_inference_uses_joint_covariance_blocks():
     assert sandwich_joint_covariance.shape == joint_covariance.shape
     sandwich_result = sandwich_inference.transform(t_con_moderators=["sample_size", "age"])
     assert "p_sample_size" in sandwich_result.tables
-    assert "p_voxelwiseModeratorEffect_age_group-Default" in sandwich_result.maps
+    assert "p_moderator-voxelwise_age_group-Default" in sandwich_result.maps
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
@@ -1466,13 +1470,73 @@ def test_voxelwise_cbmr_prepare_torch_inputs_densifies_sparse_matrices():
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_voxelwise_cbmr_prepare_torch_inputs_can_keep_sparse_foci():
+    """Sparse foci should stay sparse when densify_foci is disabled."""
+    estimator = CBMREstimator(
+        moderator_effect="voxelwise",
+        moderators=["age"],
+        densify_foci=False,
+        device="cpu",
+    )
+    estimator.groups = ["Default"]
+    estimator.inputs_ = {
+        "coef_spline_bases": np.array([[1.0, 0.0], [0.5, 0.5]]),
+        "moderators_by_group": {"Default": np.array([[0.2], [1.0]])},
+        "foci_by_experiment_voxel": {
+            "Default": scipy.sparse.csc_matrix(np.array([[1.0, 0.0], [0.0, 2.0]]))
+        },
+    }
+
+    bases, moderators_by_group, foci_by_experiment_voxel = estimator._prepare_torch_inputs()
+
+    assert bases.dtype == torch.float64
+    assert moderators_by_group["Default"].dtype == torch.float64
+    assert foci_by_experiment_voxel["Default"].is_sparse
+    assert foci_by_experiment_voxel["Default"].device.type == "cpu"
+    np.testing.assert_array_equal(
+        foci_by_experiment_voxel["Default"].to_dense().cpu().numpy(),
+        np.array([[1.0, 0.0], [0.0, 2.0]]),
+    )
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_spatial_cbmr_sparse_foci_loss_matches_dense_loss():
+    """The sparse foci path should compute the same objective as the dense path."""
+    model = models.SpatialCBMRModel(
+        groups=["Default"],
+        spatial_coef_dim=2,
+        moderators_coef_dim=1,
+        densify_foci=False,
+        device="cpu",
+    )
+    with torch.no_grad():
+        model.spatial_coef_linears["Default"].weight[:] = torch.tensor(
+            [[0.3, -0.2]],
+            dtype=torch.float64,
+        )
+        model.moderator_coef_linears["Default"].weight[:] = torch.tensor(
+            [[0.1, 0.4]],
+            dtype=torch.float64,
+        )
+    bases = torch.tensor([[1.0, 0.0], [0.5, 0.5]], dtype=torch.float64)
+    moderators = {"Default": torch.tensor([[0.2], [1.0]], dtype=torch.float64)}
+    dense_foci = {"Default": torch.tensor([[1.0, 0.0], [0.0, 2.0]], dtype=torch.float64)}
+    sparse_foci = {"Default": dense_foci["Default"].to_sparse().coalesce()}
+
+    dense_loss = model(bases, moderators, dense_foci)
+    sparse_loss = model(bases, moderators, sparse_foci)
+
+    torch.testing.assert_close(sparse_loss, dense_loss)
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 def test_voxelwise_cbmr_result_helpers_preserve_result_type_and_summarize_maps():
     """The result should retain CBMRResult behavior plus voxelwise helper methods."""
     result = CBMRResult(
         estimator=object(),
         mask=_mask_img(),
         maps={
-            "voxelwiseModeratorEffect_age_group-Default": np.array([1.0, 2.0, 3.0]),
+            "moderator-voxelwise_age_group-Default": np.array([1.0, 2.0, 3.0]),
             "spatialIntensity_group-Default": np.array([4.0, 5.0, 6.0]),
         },
         tables={"spatial_regression_coef": pd.DataFrame([[1.0, 2.0]], index=["Default"])},
@@ -1486,10 +1550,10 @@ def test_voxelwise_cbmr_result_helpers_preserve_result_type_and_summarize_maps()
     assert copied is not result
     assert isinstance(copied, CBMRResult)
     assert result.voxelwise_moderator_effect_map_names == (
-        "voxelwiseModeratorEffect_age_group-Default",
+        "moderator-voxelwise_age_group-Default",
     )
     assert result.describe_voxelwise_moderator_effect_maps()[
-        "voxelwiseModeratorEffect_age_group-Default"
+        "moderator-voxelwise_age_group-Default"
     ] == (1.0, 2.0, 3.0)
 
 
@@ -1540,12 +1604,12 @@ def test_voxelwise_cbmr_add_approximate_results_creates_expected_maps_and_tables
 
     assert set(maps) == {
         "spatialIntensity_group-Default",
-        "voxelwiseModeratorEffect_age_group-Default",
-        "voxelwiseModeratorEffectTotal_group-Default",
+        "moderator-voxelwise_age_group-Default",
+        "moderator-voxelwiseTotal_group-Default",
     }
     assert np.all(np.isfinite(maps["spatialIntensity_group-Default"]))
     np.testing.assert_allclose(maps["spatialIntensity_group-Default"], np.exp([0.3, 0.4]))
-    np.testing.assert_allclose(maps["voxelwiseModeratorEffect_age_group-Default"], [0.3, 0.6])
+    np.testing.assert_allclose(maps["moderator-voxelwise_age_group-Default"], [0.3, 0.6])
     pd.testing.assert_frame_equal(
         tables["spatial_regression_coef"],
         pd.DataFrame([[0.3, 0.4]], index=["Default"], columns=["basis_0", "basis_1"]),
@@ -1582,7 +1646,7 @@ def test_voxelwise_cbmr_torch_result_extraction_uses_model_weights():
     maps, tables = estimator._extract_torch_results(moderators_by_group)
 
     np.testing.assert_allclose(maps["spatialIntensity_group-Default"], np.exp([0.3, 0.4]))
-    np.testing.assert_allclose(maps["voxelwiseModeratorEffect_age_group-Default"], [0.3, 0.6])
+    np.testing.assert_allclose(maps["moderator-voxelwise_age_group-Default"], [0.3, 0.6])
     pd.testing.assert_frame_equal(
         tables["spatial_regression_coef"],
         pd.DataFrame([[0.3, 0.4]], index=["Default"], columns=["basis_0", "basis_1"]),
@@ -1693,6 +1757,36 @@ def test_voxelwise_cbmr_fit_dispatches_to_full_backend(monkeypatch):
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_spatial_cbmr_preconditioner_matches_dense_kron_product():
+    """Implicit preconditioner application should match the previous dense Kronecker product."""
+    moderators = np.array([[1.0, 0.2], [0.5, 1.0], [1.5, -0.5]])
+    bases = np.array([[1.0, 0.0], [0.5, 0.5], [0.0, 1.0]])
+    mean_moderator = np.array([[1.2], [0.8], [1.5]])
+    mean_basis = np.array([[0.7], [1.3], [1.1]])
+    damping = 0.25
+    gradient = np.arange(moderators.shape[1] * bases.shape[1], dtype=float).reshape((-1, 1))
+
+    preconditioner = _compute_spatial_cbmr_preconditioner(
+        moderators,
+        bases,
+        mean_moderator,
+        mean_basis,
+        damping,
+    )
+    moderator_info = moderators.T @ (moderators * mean_moderator)
+    basis_info = bases.T @ (bases * mean_basis)
+    moderator_info_inv = np.linalg.pinv(moderator_info + damping * np.eye(moderators.shape[1]))
+    basis_info_inv = np.linalg.pinv(basis_info + damping * np.eye(bases.shape[1]))
+    dense_preconditioner = np.kron(moderator_info_inv, basis_info_inv)
+
+    actual = _apply_spatial_cbmr_preconditioner(preconditioner, gradient)
+
+    assert preconditioner[0].shape == moderator_info_inv.shape
+    assert preconditioner[1].shape == basis_info_inv.shape
+    np.testing.assert_allclose(actual, dense_preconditioner @ gradient)
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 def test_voxelwise_cbmr_approximate_solver_returns_finite_coefficients():
     """The approximate solver should return finite coefficient vectors."""
     moderators = np.array([[0.0, 1.0], [0.5, 1.0], [1.0, 1.0]])
@@ -1754,7 +1848,7 @@ def test_voxelwise_cbmr_result_helpers_allow_sandwich_method_options():
     assert transformed.metadata["voxelwise_cbmr_inference_method"] == "sandwich"
     assert transformed.metadata["voxelwise_cbmr_sandwich_meat"] == "iid"
     assert transformed.metadata["voxelwise_cbmr_sandwich_correction"] == "hc0"
-    assert "z_voxelwiseModeratorEffect_age_group-Default" in transformed.maps
+    assert "z_moderator-voxelwise_age_group-Default" in transformed.maps
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
@@ -1806,7 +1900,7 @@ def test_voxelwise_cbmr_result_helpers_run_inference():
     assert isinstance(group_result, CBMRResult)
     assert isinstance(moderator_result, CBMRResult)
     assert "z_group-Default" in group_result.maps
-    assert "p_voxelwiseModeratorEffect_age_group-Default" in moderator_result.maps
+    assert "p_moderator-voxelwise_age_group-Default" in moderator_result.maps
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
@@ -1822,14 +1916,14 @@ def test_mixed_cbmr_inference_routes_moderator_types_separately():
 
     assert "z_sample_size" in transformed.tables
     assert "p_sample_size" in transformed.tables
-    assert "z_voxelwiseModeratorEffect_age_group-Default" in transformed.maps
-    assert "p_voxelwiseModeratorEffect_age_group-Default" in transformed.maps
+    assert "z_moderator-voxelwise_age_group-Default" in transformed.maps
+    assert "p_moderator-voxelwise_age_group-Default" in transformed.maps
     assert transformed.metadata["global_cbmr_inference_method"] == "FI"
     assert transformed.metadata["voxelwise_cbmr_inference_method"] == "FI"
 
     helper_result = result.test_moderators(method="FI", ridge=1e-3)
     assert "p_sample_size" in helper_result.tables
-    assert "p_voxelwiseModeratorEffect_age_group-Default" in helper_result.maps
+    assert "p_moderator-voxelwise_age_group-Default" in helper_result.maps
 
     with pytest.raises(ValueError, match="cannot combine global and voxelwise"):
         inference.transform(t_con_moderators=[np.array([1.0, 1.0])])
@@ -1909,8 +2003,8 @@ def test_voxelwise_cbmr_inference_generates_moderator_effect_diagnostic_maps():
         unit_change=2.0,
     )
 
-    relative_key = "relativeIntensity_voxelwiseModeratorEffect_age_unit-2_group-Default"
-    difference_key = "intensityDifference_voxelwiseModeratorEffect_age_unit-2_group-Default"
+    relative_key = "relativeIntensity_moderator-voxelwise_age_unit-2_group-Default"
+    difference_key = "intensityDifference_moderator-voxelwise_age_unit-2_group-Default"
     expected_relative = np.exp([0.2, 0.4])
     expected_difference = np.exp([0.3, 0.4]) * (expected_relative - 1.0)
 
@@ -1934,10 +2028,10 @@ def test_voxelwise_cbmr_result_exposes_moderator_effect_diagnostic_workflow():
     )
 
     assert inference.method == "FI"
-    assert "relativeIntensity_voxelwiseModeratorEffect_age_unit-1_group-Default" in (
+    assert "relativeIntensity_moderator-voxelwise_age_unit-1_group-Default" in (
         diagnostic_result.metadata["voxelwise_moderator_effect_diagnostic_maps"]
     )
-    assert "intensityDifference_voxelwiseModeratorEffect_age_unit-1_group-Default" in (
+    assert "intensityDifference_moderator-voxelwise_age_unit-1_group-Default" in (
         diagnostic_result.metadata["voxelwise_moderator_effect_diagnostic_maps"]
     )
 
@@ -2024,8 +2118,8 @@ def test_voxelwise_cbmr_inference_transform_adds_maps_without_mutating_input():
     assert set(result.maps) == original_map_keys
     assert "p_group-Default" in transformed.maps
     assert "z_group-Default" in transformed.maps
-    assert "p_voxelwiseModeratorEffect_age_group-Default" in transformed.maps
-    assert "z_voxelwiseModeratorEffect_age_group-Default" in transformed.maps
+    assert "p_moderator-voxelwise_age_group-Default" in transformed.maps
+    assert "z_moderator-voxelwise_age_group-Default" in transformed.maps
     assert transformed.metadata["voxelwise_cbmr_inference_method"] == "sandwich"
     assert transformed.metadata["voxelwise_cbmr_sandwich_meat"] == "cluster"
     transformed_fi = inference.transform(t_con_groups="Default", method="FI")
@@ -2034,8 +2128,8 @@ def test_voxelwise_cbmr_inference_transform_adds_maps_without_mutating_input():
     for map_name in [
         "p_group-Default",
         "z_group-Default",
-        "p_voxelwiseModeratorEffect_age_group-Default",
-        "z_voxelwiseModeratorEffect_age_group-Default",
+        "p_moderator-voxelwise_age_group-Default",
+        "z_moderator-voxelwise_age_group-Default",
     ]:
         assert np.all(np.isfinite(transformed.maps[map_name])), map_name
 

@@ -4,6 +4,7 @@ import copy
 import logging
 import re
 import time
+import warnings
 from functools import wraps
 
 import nibabel as nib
@@ -134,7 +135,7 @@ class CBMRResult(MetaResult):
     @property
     def voxelwise_moderator_effect_map_names(self):
         """Return voxelwise moderator-effect map names."""
-        return tuple(name for name in self.maps if name.startswith("voxelwiseModeratorEffect_"))
+        return tuple(name for name in self.maps if name.startswith("moderator-voxelwise_"))
 
     def copy(self):
         """Return a copy of the CBMR result object."""
@@ -165,7 +166,7 @@ class CBMRResult(MetaResult):
         return {
             name: (float(values.min()), float(values.mean()), float(values.max()))
             for name, values in self.maps.items()
-            if name.startswith("voxelwiseModeratorEffect_")
+            if name.startswith("moderator-voxelwise_")
         }
 
     def get_inference(self, device=None, method=None, **kwargs):
@@ -173,7 +174,7 @@ class CBMRResult(MetaResult):
 
         Parameters
         ----------
-        device : str, optional
+        device : :obj:`str`, optional
             Compute device to use for inference. Defaults to the device recorded on the fitted
             estimator.
         method : {"sandwich", "FI"}, optional
@@ -207,12 +208,12 @@ class CBMRResult(MetaResult):
 
         Parameters
         ----------
-        group_contrasts : bool, dict, list, tuple, str, or None, optional
+        group_contrasts : :obj:`bool`, :obj:`dict`, sequence of :obj:`str`, or None, optional
             Group homogeneity or comparison specification. Use ``False`` to skip group inference.
-        moderator_contrasts : bool, dict, list, tuple, str, or None, optional
+        moderator_contrasts : :obj:`bool`, :obj:`dict`, sequence of :obj:`str`, or None, optional
             Moderator effect or comparison specification. Use ``False`` to skip moderator
             inference.
-        device : str, optional
+        device : :obj:`str`, optional
             Compute device to use for inference. Defaults to the device recorded on the fitted
             estimator.
         method : {"sandwich", "FI"}, optional
@@ -268,9 +269,9 @@ class CBMRResult(MetaResult):
 
         Parameters
         ----------
-        groups : list, tuple, str, or None, optional
+        groups : :obj:`list`, :obj:`tuple`, :obj:`str`, or None, optional
             Group name or names to test. Defaults to all fitted groups.
-        device : str, optional
+        device : :obj:`str`, optional
             Compute device to use for inference. Defaults to the device recorded on the fitted
             estimator.
         method : {"sandwich", "FI"}, optional
@@ -291,9 +292,9 @@ class CBMRResult(MetaResult):
 
         Parameters
         ----------
-        contrasts : list, tuple, or str
+        contrasts : :obj:`list`, :obj:`tuple`, or :obj:`str`
             Group comparison specification or specifications.
-        device : str, optional
+        device : :obj:`str`, optional
             Compute device to use for inference. Defaults to the device recorded on the fitted
             estimator.
         method : {"sandwich", "FI"}, optional
@@ -315,9 +316,9 @@ class CBMRResult(MetaResult):
 
         Parameters
         ----------
-        moderators : list, tuple, str, or None, optional
+        moderators : :obj:`list`, :obj:`tuple`, :obj:`str`, or None, optional
             Moderator name or names to test. Defaults to all fitted moderators.
-        device : str, optional
+        device : :obj:`str`, optional
             Compute device to use for inference. Defaults to the device recorded on the fitted
             estimator.
         method : {"sandwich", "FI"}, optional
@@ -338,9 +339,9 @@ class CBMRResult(MetaResult):
 
         Parameters
         ----------
-        contrasts : list, tuple, or str
+        contrasts : :obj:`list`, :obj:`tuple`, or :obj:`str`
             Moderator comparison specification or specifications.
-        device : str, optional
+        device : :obj:`str`, optional
             Compute device to use for inference. Defaults to the device recorded on the fitted
             estimator.
         method : {"sandwich", "FI"}, optional
@@ -410,6 +411,14 @@ class CBMREstimator(Estimator):
     penalty : :obj:`~bool`, optional
         Currently, the only available option is Firth-type penalty, which penalizes the
         likelihood function by Jeffreys' invariant prior and encourages convergence.
+    backend : {"full", "approximate"}, optional
+        Voxelwise CBMR fitting backend. ``"full"`` optimizes the voxelwise model with torch
+        L-BFGS and supports mixed global/voxelwise moderators. ``"approximate"`` uses a faster
+        approximate solver for voxelwise-only CBMR. Default is ``"full"``.
+    densify_foci : :obj:`bool`, optional
+        Whether the full voxelwise backend should convert sparse experiment-by-voxel foci
+        matrices to dense torch tensors. Set to False to keep foci sparse and use the
+        sparse-aware torch loss. Default is True, preserving the historical full-backend path.
     spline_spacing : :obj:`~int`, optional
         Spatial structure of foci counts is parameterized by the coefficients of cubic
         B-spline bases in CBMR. Spatial smoothness in CBMR is determined by spline spacing,
@@ -499,6 +508,7 @@ class CBMREstimator(Estimator):
         alpha=1.0,
         damping=1e-4,
         compute_nll=False,
+        densify_foci=True,
         **kwargs,
     ):
         self._init_pipeline_state(
@@ -523,6 +533,7 @@ class CBMREstimator(Estimator):
             alpha=alpha,
             damping=damping,
             compute_nll=compute_nll,
+            densify_foci=densify_foci,
             **kwargs,
         )
 
@@ -549,6 +560,7 @@ class CBMREstimator(Estimator):
         alpha=1.0,
         damping=1e-4,
         compute_nll=False,
+        densify_foci=True,
         **kwargs,
     ):
         """Initialize shared estimator state for the selected concrete CBMR pipeline."""
@@ -598,6 +610,7 @@ class CBMREstimator(Estimator):
         self.alpha = alpha
         self.damping = damping
         self.compute_nll = compute_nll
+        self.densify_foci = bool(densify_foci)
         self.voxelwise_model = None
         self.voxelwise_coef = None
         if _uses_cuda(self.device) and not torch.cuda.is_available():
@@ -1051,6 +1064,42 @@ class CBMREstimator(Estimator):
             value = _as_csr_matrix(value).toarray()
         return torch.as_tensor(value, dtype=torch.float64, device=self.device)
 
+    def _as_torch_sparse_tensor(self, value):
+        """Convert a sparse or dense foci matrix to a sparse COO tensor."""
+        if scipy.sparse.issparse(value):
+            value = _as_csr_matrix(value).tocoo()
+            indices = np.vstack([value.row, value.col])
+            values = value.data
+            shape = value.shape
+        else:
+            value = np.asarray(value)
+            indices = np.vstack(np.nonzero(value))
+            values = value[tuple(indices)] if indices.size else np.empty(0, dtype=value.dtype)
+            shape = value.shape
+
+        return torch.sparse_coo_tensor(
+            torch.as_tensor(indices, dtype=torch.int64, device=self.device),
+            torch.as_tensor(values, dtype=torch.float64, device=self.device),
+            size=shape,
+            dtype=torch.float64,
+            device=self.device,
+        ).coalesce()
+
+    @staticmethod
+    def _warn_if_densifying_large_foci(foci, group):
+        """Warn before converting a large sparse foci matrix to a dense tensor."""
+        if scipy.sparse.issparse(foci):
+            n_elements = foci.shape[0] * foci.shape[1]
+            threshold = models.SpatialCBMRModel._dense_foci_size_warning_threshold
+            if n_elements > threshold:
+                warnings.warn(
+                    "Densifying voxelwise CBMR foci for group "
+                    f"{group!r} creates a tensor with {n_elements} elements. "
+                    "Set densify_foci=False to use the sparse-aware loss.",
+                    UserWarning,
+                    stacklevel=3,
+                )
+
     def _prepare_torch_inputs(self):
         """Return tensorized voxelwise moderator-effect CBMR inputs."""
         bases = self._as_torch_tensor(self.inputs_["coef_spline_bases"])
@@ -1072,10 +1121,14 @@ class CBMREstimator(Estimator):
                 group: self._as_torch_tensor(self.inputs_["global_moderators_by_group"][group])
                 for group in self.groups
             }
-        foci_by_experiment_voxel = {
-            group: self._as_torch_tensor(self.inputs_["foci_by_experiment_voxel"][group])
-            for group in self.groups
-        }
+        foci_by_experiment_voxel = {}
+        for group in self.groups:
+            group_foci = self.inputs_["foci_by_experiment_voxel"][group]
+            if self.densify_foci:
+                self._warn_if_densifying_large_foci(group_foci, group)
+                foci_by_experiment_voxel[group] = self._as_torch_tensor(group_foci)
+            else:
+                foci_by_experiment_voxel[group] = self._as_torch_sparse_tensor(group_foci)
         if self.moderator_effect == "mixed":
             return bases, moderators_by_group, foci_by_experiment_voxel, global_moderators_by_group
         return bases, moderators_by_group, foci_by_experiment_voxel
@@ -1294,6 +1347,7 @@ class CBMREstimator(Estimator):
             spatial_coef_dim=self.inputs_["coef_spline_bases"].shape[1],
             moderators_coef_dim=moderators_coef_dim,
             global_moderators_coef_dim=global_moderators_coef_dim,
+            densify_foci=self.densify_foci,
             device=self.device,
         )
         optimizer = torch.optim.LBFGS(
@@ -1461,10 +1515,10 @@ class CBMREstimator(Estimator):
         )
         for index, moderator_name in enumerate(moderator_names):
             moderator_effect = moderators[:, index : index + 1] @ moderator_coef[index : index + 1]
-            maps[f"voxelwiseModeratorEffect_{moderator_name}_group-{group}"] = (
+            maps[f"moderator-voxelwise_{moderator_name}_group-{group}"] = (
                 moderator_effect @ bases.T
             ).mean(axis=0)
-        maps[f"voxelwiseModeratorEffectTotal_group-{group}"] = (
+        maps[f"moderator-voxelwiseTotal_group-{group}"] = (
             moderators @ moderator_coef @ bases.T
         ).mean(axis=0)
         self._add_moderator_table(tables, group, moderator_names, moderator_coef)
@@ -1991,7 +2045,7 @@ class CBMRInference:
 
         Parameters
         ----------
-        contrast_name : :obj:`~string` or sequence of :obj:`~string`
+        contrast_name : :obj:`str` or sequence of :obj:`str`
             Name or names of the contrasts to construct.
         source : {"groups", "moderators"}, optional
             Whether to build group or moderator contrasts.
@@ -2010,9 +2064,9 @@ class CBMRInference:
 
         Parameters
         ----------
-        t_con_groups : bool, dict, list, tuple, str, or None, optional
+        t_con_groups : :obj:`bool`, :obj:`dict`, sequence of :obj:`str`, or None, optional
             Group homogeneity or comparison specification. Use ``False`` to skip group inference.
-        t_con_moderators : bool, dict, list, tuple, str, or None, optional
+        t_con_moderators : :obj:`bool`, :obj:`dict`, sequence of :obj:`str`, or None, optional
             Moderator effect or comparison specification. Use ``False`` to skip moderator
             inference.
         method : {"sandwich", "FI"}, optional
@@ -2067,9 +2121,9 @@ class CBMRInference:
         result : :obj:`~nimare.meta.cbmr.CBMRResult`
             Fitted CBMR result containing regression coefficient tables and spatial intensity
             maps.
-        t_con_groups : bool, dict, list, tuple, str, or None, optional
+        t_con_groups : :obj:`bool`, :obj:`dict`, sequence of :obj:`str`, or None, optional
             Group homogeneity or comparison specification. Use ``False`` to skip group inference.
-        t_con_moderators : bool, dict, list, tuple, str, or None, optional
+        t_con_moderators : :obj:`bool`, :obj:`dict`, sequence of :obj:`str`, or None, optional
             Moderator effect or comparison specification. Use ``False`` to skip moderator
             inference.
         method : {"sandwich", "FI"}, optional
@@ -2641,12 +2695,12 @@ class CBMRInference:
             )
             if contrast_name:
                 key_builder = (
-                    lambda stat_name: f"{stat_name}_voxelwiseModeratorEffect_"
+                    lambda stat_name: f"{stat_name}_moderator-voxelwise_"
                     f"{contrast_name}_group-{group}"
                 )
             else:
                 key_builder = (
-                    lambda stat_name: f"{stat_name}_GLH_voxelwiseModeratorEffects_"
+                    lambda stat_name: f"{stat_name}_GLH_moderator-voxelwise_"
                     f"{con_moderator_count}_group-{group}"
                 )
             self._store_stat_outputs(
@@ -3587,11 +3641,11 @@ class CBMRInference:
                     )
                 )
                 relative_key = (
-                    f"relativeIntensity_voxelwiseModeratorEffect_{moderator}_"
+                    f"relativeIntensity_moderator-voxelwise_{moderator}_"
                     f"unit-{unit_label}_group-{group}"
                 )
                 difference_key = (
-                    f"intensityDifference_voxelwiseModeratorEffect_{moderator}_"
+                    f"intensityDifference_moderator-voxelwise_{moderator}_"
                     f"unit-{unit_label}_group-{group}"
                 )
                 self.result.maps[relative_key] = relative_intensity
@@ -3621,6 +3675,36 @@ class CBMRInference:
         (ID) values define the region of interest: voxels are retained when ``abs(ID)`` is greater
         than or equal to ``id_threshold``. If ``id_threshold`` is None, the 50% quantile of
         ``abs(ID)`` is used. Relative Intensity (RI) values are displayed only within that ROI.
+
+        Parameters
+        ----------
+        moderators : :obj:`str`, sequence of :obj:`str`, or None, optional
+            Spatially varying moderators to plot. If None, all fitted voxelwise moderators are
+            used.
+        groups : :obj:`str`, sequence of :obj:`str`, or None, optional
+            Groups for which to plot diagnostic maps. If None, all fitted groups are used.
+        unit_change : :obj:`float`, optional
+            Moderator-unit increase to visualize. Default is 1.
+        cut_coords : :obj:`list`, :obj:`tuple`, or None, optional
+            Cut coordinates passed to :func:`nilearn.plotting.plot_stat_map`.
+        display_mode : :obj:`str`, optional
+            Display mode passed to :func:`nilearn.plotting.plot_stat_map`. Default is
+            ``"ortho"``.
+        id_threshold : :obj:`float` or None, optional
+            Absolute ID threshold used to define the RI plotting ROI. If None, the median
+            absolute ID value is used separately for each moderator/group map.
+        threshold : :obj:`float` or None, optional
+            Display threshold passed to :func:`nilearn.plotting.plot_stat_map`. If None, a small
+            positive threshold is used to hide zero-valued voxels outside the ID-defined ROI.
+        figure : :class:`matplotlib.figure.Figure` or None, optional
+            Existing figure to draw into. If None, a new figure is created.
+        plot_kwargs : :obj:`dict` or None, optional
+            Additional keyword arguments passed to :func:`nilearn.plotting.plot_stat_map`.
+
+        Returns
+        -------
+        :class:`matplotlib.figure.Figure`
+            Figure containing one RI diagnostic plot per requested moderator/group combination.
         """
         id_threshold = self._validate_id_threshold(id_threshold)
         result = self.generate_voxelwise_moderator_effect_maps(
@@ -3649,11 +3733,11 @@ class CBMRInference:
             (group, moderator) for group in groups for moderator in moderators
         ):
             relative_key = (
-                f"relativeIntensity_voxelwiseModeratorEffect_{moderator}_"
+                f"relativeIntensity_moderator-voxelwise_{moderator}_"
                 f"unit-{unit_label}_group-{group}"
             )
             difference_key = (
-                f"intensityDifference_voxelwiseModeratorEffect_{moderator}_"
+                f"intensityDifference_moderator-voxelwise_{moderator}_"
                 f"unit-{unit_label}_group-{group}"
             )
             masked_relative_intensity, resolved_id_threshold = (

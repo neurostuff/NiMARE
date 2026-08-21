@@ -56,9 +56,15 @@ class SpatialCBMRModel(torch.nn.Module):
         Number of spatial B-spline bases.
     moderators_coef_dim : :obj:`int`, optional
         Number of experiment-level moderators. Default is None.
+    densify_foci : :obj:`bool`, optional
+        If True, group-wise foci are expected as dense experiment-by-voxel tensors. If False,
+        foci may remain sparse and the model uses a sparse-aware loss that combines nonzero foci
+        contributions with the dense model-mean background term. Default is True.
     device : :obj:`str`, optional
         Device to use for computations. Default is "cpu".
     """
+
+    _dense_foci_size_warning_threshold = 10_000_000
 
     def __init__(
         self,
@@ -66,6 +72,7 @@ class SpatialCBMRModel(torch.nn.Module):
         spatial_coef_dim,
         moderators_coef_dim=None,
         global_moderators_coef_dim=None,
+        densify_foci=True,
         device="cpu",
     ):
         """Initialize the spatially varying CBMR torch module."""
@@ -74,6 +81,7 @@ class SpatialCBMRModel(torch.nn.Module):
         self.spatial_coef_dim = spatial_coef_dim
         self.moderators_coef_dim = moderators_coef_dim
         self.global_moderators_coef_dim = global_moderators_coef_dim
+        self.densify_foci = densify_foci
         self.device = device
         self.spatial_coef_linears = torch.nn.ModuleDict(
             {group: torch.nn.Linear(spatial_coef_dim, 1, bias=False).double() for group in groups}
@@ -124,6 +132,16 @@ class SpatialCBMRModel(torch.nn.Module):
         mean = torch.exp(linear_predictor)
         return -(foci * linear_predictor - mean).mean()
 
+    @staticmethod
+    def _sparse_poisson_nll(linear_predictor, foci):
+        """Return the dense-equivalent log-Poisson NLL for sparse foci."""
+        foci = foci.coalesce()
+        indices = foci.indices()
+        values = foci.values()
+        nonzero_log_likelihood = torch.sum(values * linear_predictor[indices[0], indices[1]])
+        log_likelihood = nonzero_log_likelihood - torch.exp(linear_predictor).sum()
+        return -log_likelihood / foci.numel()
+
     def forward(
         self,
         coef_spline_bases,
@@ -146,7 +164,11 @@ class SpatialCBMRModel(torch.nn.Module):
                 group,
                 global_moderators=global_moderators,
             )
-            loss = loss + self._poisson_nll(linear_predictor, foci_by_experiment_voxel[group])
+            group_foci = foci_by_experiment_voxel[group]
+            if group_foci.is_sparse:
+                loss = loss + self._sparse_poisson_nll(linear_predictor, group_foci)
+            else:
+                loss = loss + self._poisson_nll(linear_predictor, group_foci)
         return loss
 
 

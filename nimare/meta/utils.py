@@ -127,12 +127,22 @@ def _fit_spatial_cbmr_additive_log_glm(moderators, bases, foci):
 
 
 def _compute_spatial_cbmr_preconditioner(moderators, bases, mean_moderator, mean_basis, damping):
-    """Build an approximate Kronecker preconditioner for the gradient step."""
+    """Build approximate Kronecker preconditioner factors for the gradient step."""
     moderator_info = moderators.T @ (moderators * mean_moderator)
     basis_info = bases.T @ (bases * mean_basis)
     moderator_info_inv = np.linalg.pinv(moderator_info + damping * np.eye(moderators.shape[1]))
     basis_info_inv = np.linalg.pinv(basis_info + damping * np.eye(bases.shape[1]))
-    return np.kron(moderator_info_inv, basis_info_inv)
+    return moderator_info_inv, basis_info_inv
+
+
+def _apply_spatial_cbmr_preconditioner(preconditioner, gradient):
+    """Apply Kronecker preconditioner factors without materializing the dense product."""
+    moderator_info_inv, basis_info_inv = preconditioner
+    n_moderators = moderator_info_inv.shape[0]
+    n_bases = basis_info_inv.shape[0]
+    gradient_matrix = np.asarray(gradient).reshape((n_moderators, n_bases))
+    preconditioned_gradient = moderator_info_inv @ gradient_matrix @ basis_info_inv.T
+    return preconditioned_gradient.reshape((n_moderators * n_bases, 1))
 
 
 def fit_voxelwise_cbmr_approximate(
@@ -171,7 +181,8 @@ def fit_voxelwise_cbmr_approximate(
     coefficient = coefficient.reshape((n_moderators * n_bases, 1))
     for iteration in range(max_iter):
         gradient = _spatial_cbmr_gradient(moderators, bases, coefficient, foci)
-        new_coefficient = coefficient - alpha * (preconditioner @ gradient)
+        preconditioned_gradient = _apply_spatial_cbmr_preconditioner(preconditioner, gradient)
+        new_coefficient = coefficient - alpha * preconditioned_gradient
         if not np.isfinite(new_coefficient).all():
             raise FloatingPointError(
                 "SpatialCBMR approximate regression produced non-finite coefficients. "

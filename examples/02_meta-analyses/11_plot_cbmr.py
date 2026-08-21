@@ -238,7 +238,9 @@ plot_stat_map(
 # The same estimator exposes voxelwise moderator-effect maps through
 # ``moderator_effect="voxelwise"``. This option uses the same groups and the same
 # standardized moderators as above, but estimates a smooth effect map for each
-# moderator within each group. The approximate backend is used here for speed.
+# moderator within each group. The ``full`` backend optimizes the voxelwise model
+# with torch L-BFGS; the ``approximate`` backend uses a faster approximate solver
+# that is useful for examples and quick exploratory analyses.
 
 voxelwise_cbmr = CBMREstimator(
     moderator_effect="voxelwise",
@@ -257,19 +259,19 @@ voxelwise_cbmr = CBMREstimator(
 voxelwise_results = voxelwise_cbmr.fit(dataset=studyset)
 
 print(voxelwise_results.describe_inference_inputs())
-print(voxelwise_results.voxelwise_moderator_effect_map_names)
-print(voxelwise_results.describe_voxelwise_moderator_effect_maps())
 
 ###############################################################################
 # Plot voxelwise moderator-effect maps
 # -----------------------------------------------------------------------------
-# In the voxelwise model, each moderator has a fitted map in each group. This is
-# the key difference from global CBMR, where moderator inference is summarized in
-# scalar tables.
+# Global and voxelwise CBMR both return ``CBMRResult`` objects with the same
+# result-centered interface. The difference is in the fitted outputs: global
+# moderator effects are scalar coefficients, while voxelwise moderator effects
+# are stored as maps. Mixed CBMR is the case where moderators are explicitly
+# split into separate global and voxelwise sets.
 
 plot_stat_map(
     voxelwise_results.get_map(
-        "voxelwiseModeratorEffect_standardized_sample_sizes_group-SchizophreniaYes"
+        "moderator-voxelwise_standardized_sample_sizes_group-SchizophreniaYes"
     ),
     cut_coords=[0, 0, -8],
     draw_cross=False,
@@ -279,7 +281,7 @@ plot_stat_map(
 )
 plot_stat_map(
     voxelwise_results.get_map(
-        "voxelwiseModeratorEffect_standardized_avg_age_group-SchizophreniaYes"
+        "moderator-voxelwise_standardized_avg_age_group-SchizophreniaYes"
     ),
     cut_coords=[0, 0, -8],
     draw_cross=False,
@@ -314,7 +316,7 @@ print(voxelwise_diagnostic_result.metadata["voxelwise_moderator_effect_diagnosti
 
 plot_stat_map(
     voxelwise_diagnostic_result.get_map(
-        "relativeIntensity_voxelwiseModeratorEffect_standardized_sample_sizes_unit-1_group-"
+        "relativeIntensity_moderator-voxelwise_standardized_sample_sizes_unit-1_group-"
         "SchizophreniaYes"
     ),
     cut_coords=[0, 0, -8],
@@ -323,7 +325,7 @@ plot_stat_map(
 )
 plot_stat_map(
     voxelwise_diagnostic_result.get_map(
-        "intensityDifference_voxelwiseModeratorEffect_standardized_sample_sizes_unit-1_group-"
+        "intensityDifference_moderator-voxelwise_standardized_sample_sizes_unit-1_group-"
         "SchizophreniaYes"
     ),
     cut_coords=[0, 0, -8],
@@ -353,7 +355,7 @@ print(voxelwise_moderator_result.metadata["voxelwise_cbmr_inference_method"])
 
 plot_stat_map(
     voxelwise_moderator_result.get_map(
-        "z_voxelwiseModeratorEffect_standardized_sample_sizes_group-SchizophreniaYes"
+        "z_moderator-voxelwise_standardized_sample_sizes_group-SchizophreniaYes"
     ),
     cut_coords=[0, 0, -8],
     draw_cross=False,
@@ -370,7 +372,7 @@ voxelwise_moderator_comparison = voxelwise_results.compare_moderators(
 
 plot_stat_map(
     voxelwise_moderator_comparison.get_map(
-        "z_voxelwiseModeratorEffect_standardized_sample_sizes-standardized_avg_age_group-"
+        "z_moderator-voxelwise_standardized_sample_sizes-standardized_avg_age_group-"
         "SchizophreniaYes"
     ),
     cut_coords=[0, 0, -8],
@@ -433,7 +435,7 @@ print(mixed_results.tables["global_moderators_regression_coef"])
 print(mixed_results.voxelwise_moderator_effect_map_names)
 
 plot_stat_map(
-    mixed_results.get_map("voxelwiseModeratorEffect_standardized_avg_age_group-SchizophreniaYes"),
+    mixed_results.get_map("moderator-voxelwise_standardized_avg_age_group-SchizophreniaYes"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
@@ -457,7 +459,7 @@ print(mixed_moderator_result.metadata["voxelwise_cbmr_inference_method"])
 
 plot_stat_map(
     mixed_moderator_result.get_map(
-        "z_voxelwiseModeratorEffect_standardized_avg_age_group-SchizophreniaYes"
+        "z_moderator-voxelwise_standardized_avg_age_group-SchizophreniaYes"
     ),
     cut_coords=[0, 0, -8],
     draw_cross=False,
