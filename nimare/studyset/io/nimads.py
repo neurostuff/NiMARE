@@ -18,7 +18,7 @@ import os
 import numpy as np
 
 from nimare.studyset.columns import AnnotationSet, ColumnStore, Dict8, is_missing
-from nimare.studyset.layout import canonicalize, offsets_from_parents
+from nimare.studyset.layout import canonicalize, note_row_resolver, offsets_from_parents
 from nimare.studyset.store import StudysetStore, freeze
 
 __all__ = ["from_nimads", "to_nimads_dict", "write_nimads"]
@@ -42,31 +42,6 @@ def _denull(value):
     downstream.
     """
     return None if value == "None" else value
-
-
-def _note_row_resolver(study_key, analysis_key, analysis_full_key, study_idx):
-    """Return ``resolve(study, analysis) -> row`` for the ids a NIMADS note uses.
-
-    A note names its analysis by that analysis' own id, which NIMADS does not
-    require to be unique across studies -- two studies each having an analysis
-    ``"1"`` is common, and keying on the analysis id alone attached every such
-    note to whichever came last. The ``(study, analysis)`` pair is unique, so
-    that is what is matched, with the full ``study-analysis`` id accepted too.
-    """
-    by_full = {str(key): i for i, key in enumerate(analysis_full_key)}
-    by_pair = {
-        (str(study_key[s_row]), str(analysis_key[i])): i for i, s_row in enumerate(study_idx)
-    }
-
-    def resolve(study, analysis):
-        analysis = str(analysis)
-        if study is not None:
-            row = by_pair.get((str(study), analysis))
-            if row is not None:
-                return row
-        return by_full.get(analysis)
-
-    return resolve
 
 
 def _buckets_from_payloads(rows, payloads, *, coerce=None, keep=None, skips=None):
@@ -286,9 +261,7 @@ def from_nimads(source, *, canonical_order=True, annotations=None):
             inline_notes.setdefault(ann_id, ([], []))
             continue
         if resolve_note is None:
-            resolve_note = _note_row_resolver(
-                study_key, analysis_key, analysis_full_key, study_idx
-            )
+            resolve_note = note_row_resolver(study_key, analysis_key, analysis_full_key, study_idx)
         rows, collected = inline_notes.setdefault(ann_id, ([], []))
         for note in notes:
             row = resolve_note(note.get("study"), note.get("analysis"))

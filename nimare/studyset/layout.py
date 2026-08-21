@@ -47,6 +47,46 @@ def ranges_to_indices(starts, stops):
     return out, offsets
 
 
+def note_row_resolver(study_key, analysis_key, analysis_full_key, study_idx):
+    """Return ``resolve(study, analysis) -> row`` for the ids a NIMADS note uses.
+
+    A note names its analysis by that analysis' own id, which NIMADS does not
+    require to be unique across studies -- in the bundled pain studyset every
+    analysis is ``"1"``. Keying on the analysis id alone attached every colliding
+    note to whichever study came last, silently dropping the rest. The
+    ``(study, analysis)`` pair is unique, so that is what is matched, with the
+    full ``study-analysis`` id accepted too because that is what
+    :attr:`~nimare.studyset.Studyset.ids` hands a caller.
+
+    Takes the arrays rather than a store, because the loader needs it before
+    there is a store to take them from.
+    """
+    by_full = {str(key): i for i, key in enumerate(analysis_full_key)}
+    by_pair = {
+        (str(study_key[s_row]), str(analysis_key[i])): i for i, s_row in enumerate(study_idx)
+    }
+    # A note that names no study is still resolvable when its analysis id happens
+    # to be unique, which is the common case and what the one-study documents in
+    # the test suite rely on. Ambiguous ids are simply absent here, so they fall
+    # through to being ignored rather than being attached to an arbitrary study.
+    by_short = {}
+    for i, key in enumerate(analysis_key):
+        by_short[str(key)] = None if str(key) in by_short else i
+
+    def resolve(study, analysis):
+        analysis = str(analysis)
+        if study is not None:
+            row = by_pair.get((str(study), analysis))
+            if row is not None:
+                return row
+        row = by_full.get(analysis)
+        if row is not None:
+            return row
+        return by_short.get(analysis)
+
+    return resolve
+
+
 def inverse_permutation(order):
     """Return ``inv`` such that ``inv[order] == arange(len(order))``.
 

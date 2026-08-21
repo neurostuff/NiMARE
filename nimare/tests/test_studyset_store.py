@@ -452,3 +452,37 @@ def test_annotation_payload_matches_on_the_study_analysis_pair():
     frame = by_full.annotations_df
     assert frame.loc[frame["id"] == "study-1-1", "group"].tolist() == ["second"]
     assert frame.loc[frame["id"] == "study-0-1", "group"].isna().all()
+
+    # A note naming no study is still resolvable when the analysis id is unique,
+    # which most documents are. An ambiguous one is ignored rather than attached
+    # to whichever study happens to come last.
+    ambiguous = studyset.with_annotation_payload(
+        {"id": "ann", "notes": [{"analysis": "1", "note": {"group": "guess"}}]}
+    )
+    # Every note was ignored, so the label was never recorded at all.
+    assert "group" not in ambiguous.annotations_df.columns
+
+
+def test_annotation_payload_resolves_a_unique_analysis_id_without_a_study():
+    """Check that the common one-analysis-per-id document still resolves."""
+    document = {
+        "id": "ss",
+        "name": "ss",
+        "studies": [
+            {
+                "id": "study-1",
+                "name": "study one",
+                "analyses": [
+                    {
+                        "id": "analysis-1",
+                        "name": "c",
+                        "points": [{"id": "p", "coordinates": [1.0, 2.0, 3.0], "space": "MNI"}],
+                    }
+                ],
+            }
+        ],
+    }
+    annotated = Studyset(document).with_annotation_payload(
+        {"id": "ann", "notes": [{"analysis": "analysis-1", "note": {"group": "only"}}]}
+    )
+    assert annotated.annotations_df["group"].tolist() == ["only"]
