@@ -209,7 +209,9 @@ def test_cbmr_result_get_inference_inherits_incidence_threshold(cbmr_result, mon
         def fit(self, result):
             self.fit_result = result
 
-    monkeypatch.setattr(cbmr_module, "CBMRInference", DummyInference)
+    # CBMRResult.get_inference imports this at call time to avoid an import cycle, so the
+    # patch has to land on the defining module.
+    monkeypatch.setattr("nimare.meta.cbmr.inference.CBMRInference", DummyInference)
 
     result = cbmr_result.copy()
     result.estimator.incidence_threshold = None
@@ -901,16 +903,34 @@ def test_meta_package_defers_cbmr_import():
     import importlib
     import sys
 
-    nimare.__dict__.pop("meta", None)
-    sys.modules.pop("nimare.meta", None)
-    sys.modules.pop("nimare.meta.cbmr", None)
-    sys.modules.pop("nimare.meta.models", None)
+    # Clear by prefix, not by name. cbmr is a package, so leaving its submodules behind
+    # would let a later import bind a fresh parent to stale children -- which breaks any
+    # monkeypatch that addresses those submodules by dotted path.
+    stale = [
+        name
+        for name in sys.modules
+        if name == "nimare.meta" or name.startswith(("nimare.meta.cbmr", "nimare.meta.models"))
+    ]
+    saved = {name: sys.modules[name] for name in stale}
+    saved_attr = nimare.__dict__.pop("meta", None)
+    for name in stale:
+        del sys.modules[name]
 
-    meta = importlib.import_module("nimare.meta")
+    try:
+        meta = importlib.import_module("nimare.meta")
 
-    assert "nimare.meta.cbmr" not in sys.modules
-    assert "nimare.meta.models" not in sys.modules
-    assert hasattr(meta, "ALE")
+        assert not [n for n in sys.modules if n.startswith("nimare.meta.cbmr")]
+        assert "nimare.meta.models" not in sys.modules
+        assert hasattr(meta, "ALE")
+    finally:
+        # Put the original module objects back, so tests that already hold references to
+        # classes from them keep patching and comparing against the same objects.
+        for name in [n for n in sys.modules if n.startswith("nimare.meta")]:
+            if name not in saved:
+                del sys.modules[name]
+        sys.modules.update(saved)
+        if saved_attr is not None:
+            nimare.__dict__["meta"] = saved_attr
 
 
 @pytest.mark.cbmr_importerror
@@ -1644,9 +1664,9 @@ def test_voxelwise_cbmr_fit_dispatches_to_approximate_backend(monkeypatch):
         )
         return np.array([[0.1], [0.2], [0.3], [0.4]])
 
+    # Patch where the estimator looks the solver up, not the package that re-exports it.
     monkeypatch.setattr(
-        cbmr_module,
-        "fit_voxelwise_cbmr_approximate",
+        "nimare.meta.cbmr.estimator.fit_voxelwise_cbmr_approximate",
         fake_fit_voxelwise_cbmr_approximate,
     )
 

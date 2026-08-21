@@ -1,0 +1,32 @@
+"""Coordinate-based meta-regression methods.
+
+Split from a single 3,400-line module. The names re-exported here are the module's public
+surface plus the handful of private helpers that tests and downstream code reach for through
+``nimare.meta.cbmr``, so that the split stays invisible to importers.
+"""
+
+# Re-exported, not used here: these were module-level names of the old single-file module, and
+# tests and downstream code still reach for them through ``nimare.meta.cbmr``.
+from nimare.meta.cbmr._helpers import (  # noqa: F401
+    DEFAULT_GROUP_NAME,
+    DEFAULT_INCIDENCE_THRESHOLD,
+    _as_csr_matrix,
+    _csr_row_indices,
+    _is_named_pairwise_contrast,
+    _normalize_named_pairwise_contrasts,
+    _uses_cuda,
+    _validate_incidence_threshold,
+)
+from nimare.meta.cbmr.estimator import CBMREstimator
+from nimare.meta.cbmr.inference import CBMRInference
+from nimare.meta.cbmr.results import CBMRResult
+from nimare.meta.utils import fit_voxelwise_cbmr_approximate
+
+__all__ = [
+    "CBMREstimator",
+    "CBMRInference",
+    "CBMRResult",
+    "DEFAULT_GROUP_NAME",
+    "DEFAULT_INCIDENCE_THRESHOLD",
+    "fit_voxelwise_cbmr_approximate",
+]
