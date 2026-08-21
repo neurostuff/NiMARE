@@ -136,7 +136,7 @@ class TimeCBMRInference(_CBMRBenchmarkMixin):
         self.result.test(
             "schizophrenia-Yes = schizophrenia-No",
             name="bench",
-            method="sandwich",
+            cov_type="sandwich",
             meat="cluster",
         )
 

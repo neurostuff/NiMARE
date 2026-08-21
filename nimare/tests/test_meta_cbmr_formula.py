@@ -87,7 +87,7 @@ def test_scalar_moderator_lands_in_a_table(studyset):
     result = _fit("~ s(diagnosis) + standardized_sample_sizes", studyset)
 
     table = result.tables["moderatorEffect_standardized_sample_sizes"]
-    assert list(table.columns) == ["column", "coefficient", "standard_error"]
+    assert list(table.columns) == ["column", "est", "se"]
     assert len(table) == 1
     assert not any("standardized_sample_sizes" in name for name in result.maps)
 
@@ -130,7 +130,7 @@ def test_group_specific_scalar_slope(studyset):
 
     table = result.tables["moderatorEffect_diagnosis-standardized_sample_sizes"]
     assert len(table) == 2, "expected one slope per diagnosis"
-    assert np.all(np.isfinite(table["coefficient"]))
+    assert np.all(np.isfinite(table["est"]))
 
 
 def test_pooled_spatial_moderator(studyset):
@@ -307,7 +307,7 @@ def test_result_reports_the_term_budget(studyset):
 
 
 def test_robust_statistics_are_available_from_the_result(studyset):
-    """``result.test(method="sandwich")`` should give robust statistics end to end.
+    """``result.test(cov_type="sandwich")`` should give robust statistics end to end.
 
     Model-based standard errors assume the Poisson mean-variance relationship. Foci are
     overdispersed and correlated within an experiment, so the clustered sandwich is the safer
@@ -317,7 +317,7 @@ def test_robust_statistics_are_available_from_the_result(studyset):
 
     model_based = result.test("diagnosis[schizophrenia] = 0", name="m")
     robust = result.test(
-        "diagnosis[schizophrenia] = 0", name="r", method="sandwich", meat="cluster"
+        "diagnosis[schizophrenia] = 0", name="r", cov_type="sandwich", meat="cluster"
     )
 
     assert np.all(np.isfinite(robust.maps["z_r"]))
@@ -331,14 +331,11 @@ def test_robust_scalar_contrast_differs_from_model_based(studyset):
 
     plain = result.test("standardized_sample_sizes = 0", name="p")
     robust = result.test(
-        "standardized_sample_sizes = 0", name="q", method="sandwich", meat="cluster"
+        "standardized_sample_sizes = 0", name="q", cov_type="sandwich", meat="cluster"
     )
 
     assert np.isfinite(robust.tables["contrast_q"]["z"].iloc[0])
-    assert (
-        plain.tables["contrast_p"]["standard_error"].iloc[0]
-        != robust.tables["contrast_q"]["standard_error"].iloc[0]
-    )
+    assert plain.tables["contrast_p"]["se"].iloc[0] != robust.tables["contrast_q"]["se"].iloc[0]
 
 
 def test_moderator_effect_maps_are_added(studyset):

@@ -155,14 +155,14 @@ class CBMRModel(torch.nn.Module):
         hessian = torch.func.hessian(negative_log_likelihood)(flat)
         return hessian.reshape(self.n_parameters, self.n_parameters).detach().cpu().numpy()
 
-    def covariance(self, foci, method="fisher", meat="cluster", correction="hc1", ridge=0.0):
+    def covariance(self, foci, cov_type="fisher", meat="cluster", correction="hc1", ridge=0.0):
         """Return the coefficient covariance.
 
         Parameters
         ----------
         foci : array_like
             Foci counts the model was fitted to.
-        method : {"fisher", "sandwich"}, optional
+        cov_type : {"fisher", "sandwich"}, optional
             ``"fisher"`` inverts the observed information, which is correct only if the Poisson
             mean-variance relationship holds. ``"sandwich"`` replaces the model-based variance
             with an empirical one, which is the safer default for foci that are overdispersed and
@@ -170,14 +170,14 @@ class CBMRModel(torch.nn.Module):
             reported for regression coefficients.
         meat, correction, ridge
             Passed to :func:`~nimare.meta.cbmr.covariance.sandwich_covariance` when
-            ``method="sandwich"``.
+            ``cov_type="sandwich"``.
         """
-        if method == "sandwich":
+        if cov_type == "sandwich":
             from nimare.meta.cbmr.covariance import sandwich_covariance
 
             return sandwich_covariance(self, foci, meat=meat, correction=correction, ridge=ridge)
-        if method != "fisher":
-            raise ValueError(f"method must be 'fisher' or 'sandwich', got {method!r}.")
+        if cov_type != "fisher":
+            raise ValueError(f"cov_type must be 'fisher' or 'sandwich', got {cov_type!r}.")
 
         information = self.information_matrix(foci)
         condition = np.linalg.cond(information)
@@ -209,7 +209,7 @@ class CBMRModel(torch.nn.Module):
         foci : array_like
             Foci counts the model was fitted to.
         **covariance_kwargs
-            Passed to :meth:`covariance`, so ``method="sandwich"`` gives robust errors.
+            Passed to :meth:`covariance`, so ``cov_type="sandwich"`` gives robust errors.
 
         Returns
         -------

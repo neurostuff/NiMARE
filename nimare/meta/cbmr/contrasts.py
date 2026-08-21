@@ -1,250 +1,324 @@
-"""Named hypothesis tests on a fitted term-based CBMR model.
+"""Hypothesis tests on a fitted term-based CBMR model.
 
-The older interface took contrasts positionally::
+A hypothesis is written over the *levels* of a term, in the notation the result maps already
+use::
 
-    infer(group_contrasts=[[[1, -1, 0, 0], [1, 0, -1, 0], [0, 0, 1, -1]]])
+    result.test("schizophrenia = depression")            # one contrast
+    result.test(["a = b", "b = c"])                      # tested jointly, as a GLH
+    result.test("s(avg_age) = 0")
+    result.test("2 * a = b + c")                          # arithmetic
+    result.test(term="diagnosis", method="pairwise")     # every pair at once
 
-which is unreadable and silently depends on group ordering: reorder the levels and the same
-matrix tests a different hypothesis. With named terms the same tests are written out::
+Two ideas from the R ecosystem shape this.
 
-    "diagnosis[schizophrenia] = diagnosis[depression]"
-    "s(avg_age) = 0"
-    ["diagnosis[a] = diagnosis[b]", "diagnosis[b] = diagnosis[c]"]   # joint
+Levels, not coefficients
+    A term's coefficients are not always its levels. An ``sz()`` factor is reparameterized, so its
+    coefficients are contrasts *among* levels and a hypothesis stated over them would be
+    uninterpretable. The R package ``hypr`` exists to make this distinction explicit: a hypothesis
+    matrix and a contrast matrix are different objects, related by a matrix operation rather than
+    a relabelling. So hypotheses are parsed over ``TermBlock.level_names`` and pushed through
+    ``TermBlock.level_map``, which is the identity whenever the two coincide.
 
-Statistics come from the joint coefficient covariance, so a contrast spanning a spatial term and
-a scalar one is handled without special-casing.
+Enumerate, don't ask
+    "Which groups differ?" is a request for *all* pairwise comparisons, not an invitation to write
+    six of them. ``method=`` generates them, after ``emmeans``' named contrast families and
+    ``gratia::difference_smooths``.
 
-For a spatial term a contrast is evaluated per voxel. Writing ``c`` for the contrast over the
-term's columns and ``B(v)`` for the basis row at voxel ``v``, the contrast vector in the flat
-parameter space is ``c kron B(v)``, so::
-
-    estimate(v) = c' beta B(v)
-    variance(v) = B(v)' M B(v),   M[p, q] = sum_ab c_a c_b V[a, p, b, q]
-
-with ``V`` the term's covariance block reshaped to ``(columns, bases, columns, bases)``. That
-collapses the per-voxel quadratic form into one basis-sized matrix, so cost is
-O(n_voxels x n_bases^2) rather than a per-voxel inversion.
+Parsing is :meth:`patsy.DesignInfo.linear_constraint` -- the same parser ``statsmodels`` uses for
+``t_test`` and ``wald_test``. It handles arithmetic, bare difference expressions, non-zero
+right-hand sides and multiple comma-separated constraints, and returns the contrast matrix
+directly. Writing that grammar again by hand would be strictly worse.
 """
 
 import re
 
 import numpy as np
 import pandas as pd
+import patsy
 
 from nimare.transforms import chi2_to_nlogp, nlogp_to_z, z_to_nlogp
 from nimare.utils import DEFAULT_FLOAT_DTYPE, _clip_p_values, _nlogp_to_logp_values
+
+CONTRAST_METHODS = ("pairwise", "reference", "consecutive", "zero")
+
+#: Separator between the two sides of a contrast label. Not "-": a level label for an interaction
+#: term is itself hyphenated, so "depression-No-depression-Yes" would not say where one side ends.
+VERSUS = "_vs_"
+
+# Matches a coefficient reference: "n", "dx[a]", "dx[a]:drug[y]", or a bare label like
+# "schizophrenia-Yes". Deliberately greedy over hyphens so composite labels resolve as one
+# token, which is why binary operators need surrounding spaces -- see the module docstring.
+_REFERENCE = re.compile(r"[A-Za-z_][\w.\-]*(?:\[[^\]]*\])?(?::[A-Za-z_][\w.\-]*(?:\[[^\]]*\])?)*")
 
 
 class ContrastError(ValueError):
     """Raised when a hypothesis cannot be interpreted against a design."""
 
 
-def _column_index(bound_design, reference):
-    """Locate a coefficient column named ``reference``, returning (term name, column index).
+def _bare_label(name):
+    """Return the readable form of a coefficient name, as the result maps use."""
+    parts = []
+    for piece in str(name).split(":"):
+        match = re.search(r"\[(?:T\.)?([^\]]+)\]", piece)
+        parts.append(match.group(1) if match else piece)
+    return "-".join(parts)
 
-    Accepts either the patsy column name (``diagnosis[schiz]``) or a bare level (``schiz``),
-    since the map labels users see are the bare form.
+
+def _level_index(bound_design):
+    """Return the level vocabulary a hypothesis may be written over.
+
+    Returns ``(names, term_of, aliases)``: every term's level names, which term each belongs to,
+    and the bare-label aliases users see in map keys. Ambiguous aliases are dropped rather than
+    guessed at, so a collision surfaces as "unknown coefficient" with the full names listed.
     """
-    matches = []
+    names, term_of, seen = [], {}, {}
     for block in bound_design.blocks:
-        for index, column in enumerate(block.column_names):
-            if reference == column:
-                matches.append((str(block.term), index, True))
-                continue
-            levels = re.findall(r"\[(?:T\.)?([^\]]+)\]", column)
-            if reference == column.split("[")[0] and block.n_columns == 1:
-                matches.append((str(block.term), index, False))
-            elif reference in levels or reference == "-".join(levels):
-                matches.append((str(block.term), index, False))
+        for level in block.level_names:
+            if level in term_of:
+                raise ContrastError(
+                    f"Two terms both contribute a coefficient named {level!r}; the design is "
+                    "ambiguous."
+                )
+            names.append(level)
+            term_of[level] = str(block.term)
+            alias = _bare_label(level)
+            if alias != level:
+                seen.setdefault(alias, []).append(level)
 
-    exact = [m for m in matches if m[2]]
-    candidates = exact or matches
-    if not candidates:
-        available = sorted(
-            column for block in bound_design.blocks for column in block.column_names
-        )
-        raise ContrastError(
-            f"No coefficient named {reference!r}. Available columns: {', '.join(available)}."
-        )
-    if len({(name, index) for name, index, _ in candidates}) > 1:
-        where = ", ".join(sorted({f"{name}[{index}]" for name, index, _ in candidates}))
-        raise ContrastError(
-            f"{reference!r} is ambiguous; it matches {where}. Use the full column name."
-        )
-    name, index, _ = candidates[0]
-    return name, index
+    aliases = {alias: levels[0] for alias, levels in seen.items() if len(levels) == 1}
+    return names, term_of, aliases
 
 
-def _parse_statement(statement, bound_design):
-    """Parse one ``left = right`` hypothesis into (term name, contrast over that term's columns).
+def _canonicalize(statement, names, aliases):
+    """Rewrite bare labels in ``statement`` into full coefficient names."""
+    known = set(names)
 
-    Both sides must belong to the same term. Cross-term contrasts are a coherent idea but their
-    estimate has no single natural scale -- one side is a map and the other a scalar -- so they
-    are refused rather than guessed at.
+    def replace(match):
+        token = match.group(0)
+        if token in known:
+            return token
+        return aliases.get(token, token)
+
+    return _REFERENCE.sub(replace, statement)
+
+
+def _derive_label(statements):
+    """Name a contrast after the hypothesis it tests.
+
+    A single equality becomes ``left_vs_right``, so a hand-written ``"a = b"`` is labelled exactly
+    as ``method="pairwise"`` would label it. Anything else -- arithmetic, a bare difference
+    expression, several statements -- keeps its own text with whitespace collapsed. That is not
+    always pretty, but it is what the user wrote, so it cannot mislead about which contrast a map
+    holds. Pass ``name=`` to override.
     """
-    if statement.count("=") != 1:
-        raise ContrastError(
-            f"Hypothesis {statement!r} must contain exactly one '=', as in "
-            "'diagnosis[a] = diagnosis[b]' or 's(age) = 0'."
-        )
-    left, right = (side.strip() for side in statement.split("="))
-    if not left:
-        raise ContrastError(f"Hypothesis {statement!r} has an empty left-hand side.")
-
-    term_name, index = _column_index(bound_design, left)
-    block = next(b for b in bound_design.blocks if str(b.term) == term_name)
-    contrast = np.zeros(block.n_columns, dtype=float)
-    contrast[index] = 1.0
-
-    if right in ("0", "0.0", ""):
-        return term_name, contrast
-
-    other_term, other_index = _column_index(bound_design, right)
-    if other_term != term_name:
-        raise ContrastError(
-            f"Hypothesis {statement!r} compares {left!r} in term {term_name} with {right!r} in "
-            f"term {other_term}. Contrasts must stay within one term, since a spatial term's "
-            "estimate is a map and a scalar term's is a number."
-        )
-    contrast[other_index] -= 1.0
-    return term_name, contrast
+    if len(statements) == 1 and statements[0].count("=") == 1:
+        left, right = (side.strip() for side in statements[0].split("="))
+        if right in ("0", "0.0", ""):
+            return left.replace(" ", "")
+        return f"{left}{VERSUS}{right}".replace(" ", "")
+    return ";".join(s.replace(" ", "") for s in statements)
 
 
-def _term_covariance(model, term_name, foci, **covariance_kwargs):
-    """Return the covariance block belonging to one term."""
-    covariance = model.covariance(foci, **covariance_kwargs)
-    term_slice = model.predictor.design.parameter_slices(model.predictor.n_bases)[term_name]
-    return covariance[term_slice, term_slice]
+def build_contrast(bound_design, hypotheses):
+    """Translate hypotheses into a contrast over one term's coefficients.
 
-
-def _spatial_statistics(model, block, contrast, covariance_block):
-    """Return z-statistics and log p-values per voxel for a spatial contrast."""
-    bases = model.predictor.bases
-    n_columns, n_bases = block.n_columns, model.predictor.n_bases
-    coefficients = np.atleast_2d(model.fitted_coefficients()[str(block.term)])
-
-    estimate = (contrast @ coefficients) @ bases.T
-
-    blocks = covariance_block.reshape(n_columns, n_bases, n_columns, n_bases)
-    collapsed = np.einsum("a,apbq,b->pq", contrast, blocks, contrast, optimize=True)
-    variance = np.einsum("vp,pq,vq->v", bases, collapsed, bases, optimize=True)
-
-    standard_error = np.sqrt(np.maximum(variance, 0.0))
-    z_values = estimate / np.where(standard_error > 0, standard_error, np.inf)
-    return z_values, z_to_nlogp(z_values, tail="two")
-
-
-def _joint_statistics(model, block, contrast_matrix, covariance_block):
-    """Return chi-square, z and log p-values per voxel for a multi-row spatial contrast."""
-    bases = model.predictor.bases
-    n_columns, n_bases = block.n_columns, model.predictor.n_bases
-    coefficients = np.atleast_2d(model.fitted_coefficients()[str(block.term)])
-
-    estimate = (contrast_matrix @ coefficients) @ bases.T  # (n_rows, n_voxels)
-    blocks = covariance_block.reshape(n_columns, n_bases, n_columns, n_bases)
-    collapsed = np.einsum(
-        "sa,apbq,tb->sptq", contrast_matrix, blocks, contrast_matrix, optimize=True
-    )
-    per_voxel = np.einsum("vp,sptq,vq->vst", bases, collapsed, bases, optimize=True)
-
-    solved = np.linalg.solve(per_voxel, estimate.T[..., np.newaxis])
-    chi_square = np.einsum("vs,vs->v", estimate.T, solved[..., 0], optimize=True)
-    nlogp = chi2_to_nlogp(chi_square, contrast_matrix.shape[0])
-    return chi_square, nlogp_to_z(nlogp, tail="two"), nlogp
-
-
-def evaluate_hypotheses(model, hypotheses, foci, name=None, **covariance_kwargs):
-    """Test one or more hypotheses against a fitted model.
-
-    Named ``evaluate_`` rather than ``test_`` deliberately: pytest collects any module-level
-    callable whose name begins with ``test``, so a public function called ``test_hypotheses``
-    would be picked up as a broken test case in this repository and in any downstream suite that
-    imports it.
-
-    Parameters
-    ----------
-    model : :class:`~nimare.meta.cbmr.model.CBMRModel`
-        Fitted model.
-    hypotheses : :obj:`str` or :obj:`list` of :obj:`str`
-        Hypotheses such as ``"diagnosis[a] = diagnosis[b]"`` or ``"s(age) = 0"``. A list is
-        tested jointly, as a generalized linear hypothesis.
-    foci : array_like
-        The foci the model was fitted to, needed to re-evaluate the information matrix.
-    name : :obj:`str`, optional
-        Label for the emitted keys. Defaults to the hypotheses joined by ``";"``.
-    **covariance_kwargs
-        Passed to :meth:`~nimare.meta.cbmr.model.CBMRModel.covariance`, so
-        ``method="sandwich"`` gives robust statistics.
-
-    Returns
-    -------
-    :obj:`dict`
-        Maps and tables keyed as ``{"maps": ..., "tables": ...}``, using the same ``z_``,
-        ``p_``, ``logp_`` and ``chiSquare_`` vocabulary as the rest of CBMR.
+    Returns ``(term name, contrast matrix, constants, label)``. The matrix is over the term's
+    *coefficients*, having been pushed through ``level_map`` from the levels the hypothesis was
+    written in.
     """
     statements = [hypotheses] if isinstance(hypotheses, str) else list(hypotheses)
     if not statements:
         raise ContrastError("No hypotheses given.")
 
-    bound_design = model.predictor.design
+    names, term_of, aliases = _level_index(bound_design)
+    canonical = [_canonicalize(str(s), names, aliases) for s in statements]
 
-    parsed = [_parse_statement(statement, bound_design) for statement in statements]
-    term_names = {term_name for term_name, _ in parsed}
-    if len(term_names) > 1:
+    try:
+        constraint = patsy.DesignInfo(names).linear_constraint(canonical)
+    except patsy.PatsyError as error:
         raise ContrastError(
-            "A joint hypothesis must stay within one term, but these span "
-            f"{sorted(term_names)}."
+            f"Could not interpret {statements if len(statements) > 1 else statements[0]!r}: "
+            f"{error}. Hypotheses are written over coefficient names, of which this design has: "
+            f"{', '.join(names)}."
+        ) from error
+
+    coefficients = np.atleast_2d(np.asarray(constraint.coefs, dtype=float))
+    constants = np.asarray(constraint.constants, dtype=float).reshape(-1)
+
+    touched = {term_of[name] for name, column in zip(names, coefficients.any(axis=0)) if column}
+    if len(touched) > 1:
+        raise ContrastError(
+            f"This hypothesis spans the terms {sorted(touched)}. A contrast must stay within one "
+            "term, since a spatial term's estimate is a map and a scalar term's is a number, and "
+            "the two have no common scale."
         )
-    term_name = parsed[0][0]
+
+    term_name = touched.pop()
     block = next(b for b in bound_design.blocks if str(b.term) == term_name)
-    contrast_matrix = np.vstack([contrast for _, contrast in parsed])
-    covariance_block = _term_covariance(model, term_name, foci, **covariance_kwargs)
+    positions = [index for index, name in enumerate(names) if term_of[name] == term_name]
+    over_levels = coefficients[:, positions]
 
-    label = name or ";".join(statements)
-    maps, tables = {}, {}
+    # hypr's point: a hypothesis over levels is not a contrast over coefficients unless the two
+    # coincide. level_map carries it across, and is the identity when they do.
+    return term_name, over_levels @ block.level_map, constants, _derive_label(statements)
 
-    if not block.term.spatial:
-        estimate = contrast_matrix @ np.atleast_1d(model.fitted_coefficients()[term_name])
-        variance = contrast_matrix @ covariance_block @ contrast_matrix.T
-        if contrast_matrix.shape[0] == 1:
-            standard_error = float(np.sqrt(max(variance[0, 0], 0.0)))
-            z_value = float(estimate[0] / standard_error) if standard_error > 0 else 0.0
-            nlogp = float(z_to_nlogp(np.array([z_value]), tail="two")[0])
-            tables[f"contrast_{label}"] = _scalar_table(
-                estimate[0], standard_error, z_value, nlogp
-            )
-        else:
-            chi_square = float(estimate @ np.linalg.solve(variance, estimate))
-            nlogp = float(chi2_to_nlogp(np.array([chi_square]), contrast_matrix.shape[0])[0])
-            z_value = float(nlogp_to_z(np.array([nlogp]), tail="two")[0])
-            tables[f"contrast_{label}"] = _scalar_table(
-                np.nan, np.nan, z_value, nlogp, chi_square=chi_square
-            )
-        return {"maps": maps, "tables": tables}
 
-    if contrast_matrix.shape[0] == 1:
-        z_values, nlogp = _spatial_statistics(model, block, contrast_matrix[0], covariance_block)
-    else:
-        chi_square, z_values, nlogp = _joint_statistics(
-            model, block, contrast_matrix, covariance_block
+def generate_hypotheses(bound_design, term, method):
+    """Generate the hypotheses a named contrast family stands for.
+
+    Returns ``[(label, statement), ...]``. After ``emmeans``' contrast families: enumerating the
+    comparisons is almost always what "which levels differ?" means, and writing them out by hand
+    is both tedious and a place to make a mistake.
+    """
+    if method not in CONTRAST_METHODS:
+        raise ContrastError(f"method must be one of {CONTRAST_METHODS}, got {method!r}.")
+
+    candidates = [b for b in bound_design.blocks if str(b.term) == term or b.term.expr == term]
+    if not candidates:
+        available = sorted(str(b.term) for b in bound_design.blocks)
+        raise ContrastError(f"No term named {term!r}. This design has: {', '.join(available)}.")
+    block = candidates[0]
+    levels = list(block.level_names)
+
+    if method == "zero":
+        return [(_bare_label(level), f"{level} = 0") for level in levels]
+
+    if len(levels) < 2:
+        raise ContrastError(
+            f"method={method!r} compares levels, but {str(block.term)!r} has only one "
+            f"coefficient. Use method='zero' to test it against zero."
         )
-        maps[f"chiSquare_{label}"] = chi_square
 
-    maps[f"z_{label}"] = z_values
-    maps[f"p_{label}"] = _clip_p_values(np.exp(nlogp), dtype=DEFAULT_FLOAT_DTYPE)
-    maps[f"logp_{label}"] = _nlogp_to_logp_values(nlogp)
+    if method == "pairwise":
+        pairs = [(a, b) for i, a in enumerate(levels) for b in levels[i + 1 :]]
+    elif method == "reference":
+        pairs = [(level, levels[0]) for level in levels[1:]]
+    else:  # consecutive
+        pairs = list(zip(levels[1:], levels[:-1]))
+
+    return [(f"{_bare_label(a)}{VERSUS}{_bare_label(b)}", f"{a} = {b}") for a, b in pairs]
+
+
+def _statistics(model, block, contrast, constants, covariance_block, bases):
+    """Return the statistics for one contrast, spatial or scalar.
+
+    Returns ``(estimate, standard_error, chi_square, z, nlogp)``. ``estimate`` and
+    ``standard_error`` are None for a multi-row contrast, which has no single effect size --
+    a joint hypothesis is a statement about a subspace, not about one number.
+    """
+    coefficients = np.atleast_2d(model.fitted_coefficients()[str(block.term)])
+    n_rows = contrast.shape[0]
+
+    if block.term.spatial:
+        n_columns, n_bases = block.n_columns, bases.shape[1]
+        blocks = covariance_block.reshape(n_columns, n_bases, n_columns, n_bases)
+        estimate = (contrast @ coefficients) @ bases.T - constants[:, None]
+
+        if n_rows == 1:
+            collapsed = np.einsum("a,apbq,b->pq", contrast[0], blocks, contrast[0], optimize=True)
+            variance = np.einsum("vp,pq,vq->v", bases, collapsed, bases, optimize=True)
+            standard_error = np.sqrt(np.maximum(variance, 0.0))
+            z = estimate[0] / np.where(standard_error > 0, standard_error, np.inf)
+            return estimate[0], standard_error, None, z, z_to_nlogp(z, tail="two")
+
+        collapsed = np.einsum("sa,apbq,tb->sptq", contrast, blocks, contrast, optimize=True)
+        per_voxel = np.einsum("vp,sptq,vq->vst", bases, collapsed, bases, optimize=True)
+        solved = np.linalg.solve(per_voxel, estimate.T[..., np.newaxis])
+        chi_square = np.einsum("vs,vs->v", estimate.T, solved[..., 0], optimize=True)
+        nlogp = chi2_to_nlogp(chi_square, n_rows)
+        return None, None, chi_square, nlogp_to_z(nlogp, tail="two"), nlogp
+
+    estimate = contrast @ np.atleast_1d(coefficients).reshape(-1) - constants
+    variance = contrast @ covariance_block @ contrast.T
+    if n_rows == 1:
+        standard_error = float(np.sqrt(max(variance[0, 0], 0.0)))
+        z = float(estimate[0] / standard_error) if standard_error > 0 else 0.0
+        return (
+            float(estimate[0]),
+            standard_error,
+            None,
+            z,
+            float(z_to_nlogp(np.array([z]), tail="two")[0]),
+        )
+
+    chi_square = float(estimate @ np.linalg.solve(variance, estimate))
+    nlogp = float(chi2_to_nlogp(np.array([chi_square]), n_rows)[0])
+    return None, None, chi_square, float(nlogp_to_z(np.array([nlogp]), tail="two")[0]), nlogp
+
+
+def evaluate_hypotheses(
+    model, hypotheses=None, foci=None, name=None, term=None, method=None, **covariance_kwargs
+):
+    """Test hypotheses about the fitted coefficients.
+
+    Parameters
+    ----------
+    model : :class:`~nimare.meta.cbmr.model.CBMRModel`
+        Fitted model.
+    hypotheses : :obj:`str` or :obj:`list` of :obj:`str`, optional
+        Hypotheses over level names. A list is tested jointly, as a generalized linear
+        hypothesis, rather than one at a time.
+    foci : array_like
+        The foci the model was fitted to.
+    name : :obj:`str`, optional
+        Overrides the label derived from the hypothesis. Rarely needed.
+    term, method : :obj:`str`, optional
+        Generate a family of contrasts over one term instead of naming them: ``"pairwise"``,
+        ``"reference"``, ``"consecutive"`` or ``"zero"``. Each is emitted under its own label.
+    **covariance_kwargs
+        Passed to :meth:`~nimare.meta.cbmr.model.CBMRModel.covariance`, so
+        ``cov_type="sandwich"`` gives robust statistics. Named ``cov_type`` after statsmodels
+        precisely so it cannot be confused with ``method``, which names a contrast family.
+
+    Returns
+    -------
+    :obj:`dict`
+        ``{"maps": ..., "tables": ...}``, using the ``est``, ``se``, ``z``, ``p``, ``logp`` and
+        ``chiSquare`` vocabulary the rest of NiMARE uses.
+    """
+    if (term is None) != (method is None):
+        raise ContrastError("term and method must be given together.")
+    if term is None and hypotheses is None:
+        raise ContrastError("Give either hypotheses, or term and method.")
+    if term is not None and hypotheses is not None:
+        raise ContrastError("Give either hypotheses, or term and method, not both.")
+
+    bound_design = model.predictor.design
+    if term is not None:
+        requested = generate_hypotheses(bound_design, term, method)
+    else:
+        requested = [(name, hypotheses)]
+
+    bases = model.predictor.bases
+    slices = bound_design.parameter_slices(model.predictor.n_bases)
+    covariance = model.covariance(foci, **covariance_kwargs)
+
+    maps, tables = {}, {}
+    for label, statement in requested:
+        term_name, contrast, constants, derived = build_contrast(bound_design, statement)
+        block = next(b for b in bound_design.blocks if str(b.term) == term_name)
+        term_slice = slices[term_name]
+        estimate, standard_error, chi_square, z, nlogp = _statistics(
+            model, block, contrast, constants, covariance[term_slice, term_slice], bases
+        )
+
+        key = label or derived
+        if block.term.spatial:
+            if chi_square is not None:
+                maps[f"chiSquare_{key}"] = chi_square
+            else:
+                maps[f"est_{key}"] = estimate
+                maps[f"se_{key}"] = standard_error
+            maps[f"z_{key}"] = z
+            maps[f"p_{key}"] = _clip_p_values(np.exp(nlogp), dtype=DEFAULT_FLOAT_DTYPE)
+            maps[f"logp_{key}"] = _nlogp_to_logp_values(nlogp)
+        else:
+            row = {"z": [z], "p": [float(np.exp(nlogp))]}
+            row["logp"] = [float(_nlogp_to_logp_values(np.array([nlogp]), dtype=np.float64)[0])]
+            if chi_square is None:
+                row["est"], row["se"] = [estimate], [standard_error]
+            else:
+                row["chiSquare"] = [chi_square]
+            tables[f"contrast_{key}"] = pd.DataFrame(row)
+
     return {"maps": maps, "tables": tables}
-
-
-def _scalar_table(estimate, standard_error, z_value, nlogp, chi_square=None):
-    """Build the one-row table a scalar contrast reports."""
-    row = {
-        "estimate": [estimate],
-        "standard_error": [standard_error],
-        "z": [z_value],
-        "p": [float(np.exp(nlogp))],
-        "logp": [float(_nlogp_to_logp_values(np.array([nlogp]), dtype=np.float64)[0])],
-    }
-    if chi_square is not None:
-        row["chi_square"] = [chi_square]
-    return pd.DataFrame(row)

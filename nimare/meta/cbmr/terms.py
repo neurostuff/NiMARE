@@ -72,6 +72,13 @@ SPATIAL_MARKERS = ("s", "spatial")
 SUM_TO_ZERO_MARKERS = ("sz",)
 SUM_TO_ZERO = "sum_to_zero"
 INTERCEPT_TERM = "1"
+INTERCEPT_COLUMN = "Intercept"
+"""Name of the baseline coefficient.
+
+Not ``"1"``: that would shadow the numeric literal in a hypothesis such as
+``"a = 1"``, silently turning a test against a constant into a cross-term contrast.
+patsy names its own intercept column the same way.
+"""
 
 
 class FormulaError(ValueError):
@@ -340,7 +347,7 @@ def sum_to_zero_basis(n_levels):
 
 
 def _experiment_block(expr, annotations, constraint=None):
-    """Build one term's experiment-level design block.
+    """Build one term's experiment-level block, with its column and level names and map.
 
     Uses patsy for everything except the intercept. Note the ``0 +``: patsy would otherwise add
     an intercept column and treatment-code a factor against a reference level, whereas CBMR
@@ -348,7 +355,12 @@ def _experiment_block(expr, annotations, constraint=None):
     and why cell-means coding is the right default for a spatial factor.
     """
     if expr == INTERCEPT_TERM:
-        return np.ones((len(annotations), 1), dtype=float), (INTERCEPT_TERM,)
+        return (
+            np.ones((len(annotations), 1), dtype=float),
+            (INTERCEPT_COLUMN,),
+            (INTERCEPT_COLUMN,),
+            np.eye(1),
+        )
 
     try:
         matrix = patsy.dmatrix(f"0 + {expr}", annotations, return_type="matrix")
@@ -363,12 +375,15 @@ def _experiment_block(expr, annotations, constraint=None):
     block = np.asarray(matrix, dtype=float)
 
     if constraint == SUM_TO_ZERO:
+        levels = names
         basis = sum_to_zero_basis(block.shape[1])
         block = block @ basis
         # The columns are no longer levels, so naming them after levels would misread. They are
-        # contrasts among levels, which is what the coefficients now mean.
+        # contrasts among levels, which is what the coefficients now mean. The levels are kept
+        # alongside so a hypothesis can still be written over them.
         names = tuple(f"{expr}[sz{index + 1}]" for index in range(block.shape[1]))
-    return block, names
+        return block, names, levels, basis
+    return block, names, names, np.eye(len(names))
 
 
 def _spans_intercept(block):
@@ -391,6 +406,25 @@ class TermBlock:
     term: Term
     block: np.ndarray
     column_names: tuple
+    level_names: tuple = ()
+    """Interpretable names a hypothesis may be written over.
+
+    Usually the same as :attr:`column_names`. They differ when the term is reparameterized: an
+    ``sz()`` factor's *columns* are contrasts among levels, while its *levels* are what a user
+    means. Keeping both is what lets a hypothesis be stated over levels and translated, rather
+    than forcing the user to reason in the reparameterized space.
+    """
+
+    level_map: np.ndarray = None
+    """Maps a hypothesis over :attr:`level_names` onto one over :attr:`column_names`.
+
+    Shape ``(n_levels, n_columns)``. The distinction between a *hypothesis* matrix and a
+    *contrast* matrix, which the R package ``hypr`` exists to make explicit: they are different
+    objects, and going from one to the other is a matrix operation, not a relabelling. Here the
+    fitted level effects are ``level_map @ coefficients``, so a hypothesis row ``h`` over levels
+    becomes ``h @ level_map`` over coefficients. Identity when the two coincide.
+    """
+
     is_baseline: bool = False
     """Whether this term supplies the spatial baseline.
 
@@ -399,6 +433,13 @@ class TermBlock:
     term is reported -- a baseline's coefficients exponentiate to an intensity map, while
     another spatial term's are a derivative of log intensity.
     """
+
+    def __post_init__(self):
+        """Fill in the level view, defaulting it to the columns themselves."""
+        if not self.level_names:
+            object.__setattr__(self, "level_names", tuple(self.column_names))
+        if self.level_map is None:
+            object.__setattr__(self, "level_map", np.eye(len(self.level_names)))
 
     @property
     def n_columns(self):
@@ -482,8 +523,18 @@ def bind(design, annotations):
 
     blocks = []
     for term in design.terms:
-        block, names = _experiment_block(term.expr, annotations, term.constraint)
-        blocks.append(TermBlock(term=term, block=block, column_names=names))
+        block, names, levels, level_map = _experiment_block(
+            term.expr, annotations, term.constraint
+        )
+        blocks.append(
+            TermBlock(
+                term=term,
+                block=block,
+                column_names=names,
+                level_names=levels,
+                level_map=level_map,
+            )
+        )
 
     absorbing = [
         b
@@ -526,9 +577,17 @@ def bind(design, annotations):
         # Nothing spans the constant, so add the spatial baseline the same way R adds an
         # intercept. CBMR always estimates a spatial intensity; there is no model without one.
         intercept = Term(expr=INTERCEPT_TERM, spatial=True)
-        block, names = _experiment_block(INTERCEPT_TERM, annotations)
+        block, names, levels, level_map = _experiment_block(INTERCEPT_TERM, annotations)
         blocks.insert(
-            0, TermBlock(term=intercept, block=block, column_names=names, is_baseline=True)
+            0,
+            TermBlock(
+                term=intercept,
+                block=block,
+                column_names=names,
+                level_names=levels,
+                level_map=level_map,
+                is_baseline=True,
+            ),
         )
         design = Design(terms=(intercept,) + design.terms, explicit_intercept=False)
 

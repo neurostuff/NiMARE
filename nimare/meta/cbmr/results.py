@@ -46,25 +46,48 @@ class CBMRResult(MetaResult):
         """Return the fitted terms, in formula order."""
         return self.estimator.bound_design.terms
 
-    def test(self, hypotheses, name=None, inplace=False, **covariance_kwargs):
+    def test(
+        self,
+        hypotheses=None,
+        name=None,
+        inplace=False,
+        *,
+        term=None,
+        method=None,
+        **covariance_kwargs,
+    ):
         """Test one or more hypotheses about the fitted coefficients.
 
         Parameters
         ----------
-        hypotheses : :obj:`str` or :obj:`list` of :obj:`str`
-            Hypotheses written over term and level names, such as
-            ``"diagnosis[schizophrenia] = diagnosis[depression]"`` or ``"s(avg_age) = 0"``.
-            A list is tested jointly, as a generalized linear hypothesis, rather than one at a
-            time.
+        hypotheses : :obj:`str` or :obj:`list` of :obj:`str`, optional
+            Hypotheses written over level names, in the notation the result maps use::
+
+                result.test("schizophrenia = depression")
+                result.test(["a = b", "b = c"])       # tested jointly, as a GLH
+                result.test("s(avg_age) = 0")
+                result.test("2 * a = b + c")          # arithmetic
+
+            Parsed by :meth:`patsy.DesignInfo.linear_constraint`, the same parser statsmodels
+            uses, so arithmetic, bare difference expressions and non-zero right-hand sides all
+            work. Give this or ``term`` and ``method``, not both.
         name : :obj:`str`, optional
-            Label for the emitted map and table keys. Defaults to the hypotheses joined by
-            ``";"``.
+            Overrides the label derived from the hypothesis. Rarely needed.
+        term, method : :obj:`str`, optional
+            Generate a family of contrasts over one term rather than naming them one at a time::
+
+                result.test(term="diagnosis", method="pairwise")
+
+            ``"pairwise"`` compares every pair, ``"reference"`` every level against the first,
+            ``"consecutive"`` each level against the previous, and ``"zero"`` each against zero.
+            Each contrast is emitted under its own label.
         inplace : :obj:`bool`, optional
             Whether to add the results to this object rather than to a copy. Default is False.
         **covariance_kwargs
             Passed to :meth:`~nimare.meta.cbmr.model.CBMRModel.covariance`. Pass
-            ``method="sandwich"`` for standard errors robust to overdispersion and to correlation
-            among an experiment's own foci.
+            ``cov_type="sandwich"`` for standard errors robust to overdispersion and to
+            correlation among an experiment's own foci. Distinct from ``method`` above, which
+            names a contrast family.
 
         Returns
         -------
@@ -81,7 +104,15 @@ class CBMRResult(MetaResult):
             )
 
         foci = estimator.inputs_["foci"]
-        computed = evaluate_hypotheses(model, hypotheses, foci, name=name, **covariance_kwargs)
+        computed = evaluate_hypotheses(
+            model,
+            hypotheses,
+            foci,
+            name=name,
+            term=term,
+            method=method,
+            **covariance_kwargs,
+        )
 
         target = self if inplace else self.copy()
         target.maps.update(computed["maps"])
@@ -264,4 +295,4 @@ def _column_label(column):
         match = re.search(r"\[(?:T\.)?([^\]]+)\]", piece)
         parts.append(match.group(1) if match else piece)
     label = "-".join(parts)
-    return DEFAULT_GROUP_NAME if label == "1" else label
+    return DEFAULT_GROUP_NAME if label in ("1", "Intercept") else label

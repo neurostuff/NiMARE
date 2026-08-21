@@ -407,11 +407,13 @@ class CBMR(_CBMRInputs):
             error_values = np.atleast_2d(errors[name])
 
             if not block.term.spatial:
+                # est/se, not coefficient/standard_error: NiMARE's canonical map and table
+                # vocabulary is ["z", "p", "logp", "est", "se", "dof"], and contrasts use it too.
                 tables[f"moderatorEffect_{_table_safe(name)}"] = pd.DataFrame(
                     {
                         "column": list(block.column_names),
-                        "coefficient": values.reshape(-1),
-                        "standard_error": error_values.reshape(-1),
+                        "est": values.reshape(-1),
+                        "se": error_values.reshape(-1),
                     }
                 )
                 continue
@@ -490,4 +492,4 @@ def _label_from_column(column):
         match = re.search(r"\[(?:T\.)?([^\]]+)\]", piece)
         parts.append(match.group(1) if match else piece)
     label = "-".join(parts)
-    return DEFAULT_GROUP_NAME if label == "1" else label
+    return DEFAULT_GROUP_NAME if label in ("1", "Intercept") else label

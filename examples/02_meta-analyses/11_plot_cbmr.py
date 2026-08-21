@@ -110,9 +110,17 @@ plot_stat_map(
 ###############################################################################
 # Testing hypotheses by name
 # -----------------------------------------------------------------------------
-# Hypotheses are written over the terms and levels of the design. This replaces passing contrast
-# matrices positionally, which was unreadable and silently depended on level ordering -- reorder
-# the levels and the same matrix tested a different hypothesis.
+# Hypotheses are written over the *levels* of a term, in the same notation the map keys use. This
+# replaces passing contrast matrices positionally, which was unreadable and silently depended on
+# level ordering -- reorder the levels and the same matrix tested a different hypothesis.
+#
+# Parsing is :meth:`patsy.DesignInfo.linear_constraint`, the same parser ``statsmodels`` uses for
+# ``t_test``, so arithmetic (``"2 * a = b + c"``), bare difference expressions (``"a - b"``) and
+# non-zero right-hand sides (``"a = 1"``) all work.
+#
+# Each contrast reports its effect size and standard error, not only its significance -- ``est_``
+# and ``se_`` alongside ``z_``, ``p_`` and ``logp_``, which is the vocabulary the rest of NiMARE
+# uses.
 
 drug_effect = group_results.test(
     "schizophrenia-Yes = schizophrenia-No",
@@ -129,6 +137,28 @@ plot_stat_map(
     threshold=scipy.stats.norm.isf(0.4),
     vmax=2,
 )
+
+###############################################################################
+# The effect size is a map in its own right, and worth looking at before the statistics: a
+# significant contrast whose estimate is negligible is a large sample, not a large effect.
+
+plot_stat_map(
+    drug_effect.get_map("est_schizophrenia-drug"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+    title="Drug effect: estimate on log intensity",
+)
+
+###############################################################################
+# Asking which levels differ is a request for *every* comparison, so there is no need to write
+# them out one at a time. ``method=`` generates a named family, after ``emmeans``' contrast
+# families and ``gratia::difference_smooths``: ``"pairwise"`` for all pairs, ``"reference"``
+# against the first level, ``"consecutive"`` against the previous one, ``"zero"`` against zero.
+
+all_pairs = group_results.test(term="diagnosis:drug_status", method="pairwise")
+print(sorted(name for name in all_pairs.maps if name.startswith("z_")))
 
 ###############################################################################
 # A list of statements is tested jointly, as a generalized linear hypothesis, rather than one at
@@ -152,13 +182,13 @@ plot_stat_map(
 # -----------------------------------------------------------------------------
 # The default standard errors come from the Fisher information, which is correct only if the
 # Poisson mean-variance relationship holds. Foci are overdispersed and correlated within an
-# experiment, so ``method="sandwich"`` is usually the safer choice; ``meat="cluster"`` allows
+# experiment, so ``cov_type="sandwich"`` is usually the safer choice; ``meat="cluster"`` allows
 # arbitrary correlation among one experiment's own foci.
 
 robust = group_results.test(
     "schizophrenia-Yes = schizophrenia-No",
     name="drug-robust",
-    method="sandwich",
+    cov_type="sandwich",
     meat="cluster",
     correction="hc1",
 )
@@ -308,7 +338,7 @@ print(overdispersed.tables["overdispersion"])
 #    * - ``model=models.NegativeBinomialEstimator``
 #      - ``distribution="negativebinomial"``
 #    * - ``infer(group_contrasts=[[[1, -1, 0, 0]]])``
-#      - ``result.test("a1-b1 = a1-b2")``
+#      - ``result.test("a1-b1 = a1-b2")``, or ``result.test(term=..., method="pairwise")``
 #
 # Note the fourth row. The old voxelwise mode keyed moderator coefficients by group, so it was
 # always the group-crossed form ``s(a:b:n)``. A moderator map *pooled* across groups, ``s(n)``,
