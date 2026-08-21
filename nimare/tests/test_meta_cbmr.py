@@ -828,16 +828,15 @@ def test_cbmr_groups_full_experiment_ids_instead_of_collapsing_study_ids():
 
 def test_StandardizeField(testdata_cbmr_simulated):
     """Unit test for StandardizeField."""
-    dset = StandardizeField(fields=["sample_sizes", "avg_age"]).transform(testdata_cbmr_simulated)
-    assert isinstance(dset, nimare.dataset.Dataset)
-    assert "standardized_sample_sizes" in dset.annotations
-    assert "standardized_avg_age" in dset.annotations
-    assert dset.annotations["standardized_sample_sizes"].mean() == pytest.approx(0.0, abs=1e-3)
-    assert dset.annotations["standardized_sample_sizes"].std(ddof=0) == pytest.approx(
-        1.0, abs=1e-3
+    studyset = StandardizeField(fields=["sample_sizes", "avg_age"]).transform(
+        testdata_cbmr_simulated
     )
-    assert dset.annotations["standardized_avg_age"].mean() == pytest.approx(0.0, abs=1e-3)
-    assert dset.annotations["standardized_avg_age"].std(ddof=0) == pytest.approx(1.0, abs=1e-3)
+    assert isinstance(studyset, nimare.nimads.Studyset)
+    annotations = studyset.annotations_df
+    for field in ("standardized_sample_sizes", "standardized_avg_age"):
+        assert field in annotations
+        assert annotations[field].mean() == pytest.approx(0.0, abs=1e-3)
+        assert annotations[field].std(ddof=0) == pytest.approx(1.0, abs=1e-3)
 
 
 def test_meta_package_defers_cbmr_import():

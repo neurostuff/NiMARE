@@ -28,10 +28,13 @@ from numba import njit
 
 from nimare.meta.utils import _get_mask_flat_to_masked, _kernel_to_sparse_support
 
-__all__ = ["PermutationPlan", "ale_plan_for"]
+__all__ = ["CoveragePlan", "PermutationPlan", "ale_plan_for", "kda_plan_for"]
 
 
-@njit(cache=True)
+# nogil matters here: ALE runs permutations on joblib's threading backend, and a
+# compiled function that holds the GIL serialises them. The body touches only
+# numeric arrays, so there is nothing to protect.
+@njit(cache=True, nogil=True)
 def _ale_stat_from_offsets(
     kernel_offsets,
     kernel_values,
@@ -108,10 +111,11 @@ class PermutationPlan:
 
     @property
     def n_foci(self):
+        """Total number of foci the plan was compiled for."""
         return int(self.offsets[-1])
 
     def summary_stat(self, ijk):
-        """The ALE statistic map for one permutation."""
+        """Compute the ALE statistic map for one permutation."""
         return _ale_stat_from_offsets(
             self.kernel_offsets,
             self.kernel_values,
@@ -145,13 +149,10 @@ def ale_plan_for(estimator, coordinates):
     # Group boundaries: the coordinates of one analysis are contiguous, which the
     # studyset guarantees. Verify rather than assume -- a caller may hand over a
     # frame it assembled itself.
-    ids = np.asarray(coordinates["id"].values, dtype=str)
-    if not len(ids):
+    offsets = _group_offsets(coordinates)
+    if offsets is None:
         return None
-    starts = np.flatnonzero(np.r_[True, ids[1:] != ids[:-1]])
-    if len(np.unique(ids)) != len(starts):
-        return None  # an analysis appears in more than one run of rows
-    offsets = np.r_[starts, len(ids)].astype(np.int64)
+    starts = offsets[:-1]
 
     # One kernel per distinct width, and an index per group.
     if kernel.sample_size is not None:
@@ -179,15 +180,13 @@ def ale_plan_for(estimator, coordinates):
             supports.append(_kernel_to_sparse_support(dense))
         group_kernel = np.asarray([index_of[int(v)] for v in rounded], dtype=np.int64)
 
-    kernel_offsets = np.ascontiguousarray(
-        np.concatenate([s[0] for s in supports]), dtype=np.int32
-    )
+    kernel_offsets = np.ascontiguousarray(np.concatenate([s[0] for s in supports]), dtype=np.int32)
     kernel_values = np.ascontiguousarray(
         np.concatenate([s[1] for s in supports]), dtype=np.float32
     )
-    kernel_starts = np.concatenate(
-        ([0], np.cumsum([len(s[0]) for s in supports]))
-    ).astype(np.int64)
+    kernel_starts = np.concatenate(([0], np.cumsum([len(s[0]) for s in supports]))).astype(
+        np.int64
+    )
 
     flat_to_masked = _get_mask_flat_to_masked(mask)
     return PermutationPlan(
@@ -199,4 +198,145 @@ def ale_plan_for(estimator, coordinates):
         shape=np.ascontiguousarray(mask.shape, dtype=np.int32),
         flat_to_masked=np.ascontiguousarray(flat_to_masked, dtype=np.int32),
         n_voxels=int(flat_to_masked.max()) + 1 if flat_to_masked.size else 0,
+    )
+
+
+@njit(cache=True, nogil=True)
+def _weighted_coverage_from_offsets(
+    kernel_offsets,
+    ijk,
+    offsets,
+    weights,
+    value,
+    shape,
+    flat_to_masked,
+    n_voxels,
+    sum_overlap,
+):
+    """One permutation's (M)KDA statistic map, in a single pass.
+
+    Both statistics are a weighted sum across studies of the study's coverage:
+    KDA weights every study equally, MKDA by its weight vector. With
+    ``sum_overlap`` false a study contributes its value to a voxel once however
+    many of its foci reach it, so ``stamp`` is all the bookkeeping needed. With
+    it true -- KDA's semantics -- overlapping foci within a study each count, so
+    there is nothing to track at all.
+    """
+    out = np.zeros(n_voxels, dtype=np.float64)
+    stamp = np.zeros(n_voxels, dtype=np.int64)
+    stride_y = shape[2]
+    stride_x = shape[1] * shape[2]
+
+    for g in range(offsets.shape[0] - 1):
+        tag = g + 1
+        contribution = weights[g] * value
+        for p in range(offsets[g], offsets[g + 1]):
+            pi = ijk[p, 0]
+            pj = ijk[p, 1]
+            pk = ijk[p, 2]
+            for m in range(kernel_offsets.shape[0]):
+                i = pi + kernel_offsets[m, 0]
+                j = pj + kernel_offsets[m, 1]
+                kk = pk + kernel_offsets[m, 2]
+                if i < 0 or j < 0 or kk < 0:
+                    continue
+                if i >= shape[0] or j >= shape[1] or kk >= shape[2]:
+                    continue
+                col = flat_to_masked[i * stride_x + j * stride_y + kk]
+                if col < 0:
+                    continue
+                if sum_overlap:
+                    out[col] += contribution
+                elif stamp[col] != tag:
+                    stamp[col] = tag
+                    out[col] += contribution
+    return out
+
+
+@dataclass(frozen=True)
+class CoveragePlan:
+    """Loop invariants for an (M)KDA permutation run."""
+
+    offsets: np.ndarray
+    kernel_offsets: np.ndarray
+    value: float
+    shape: np.ndarray
+    flat_to_masked: np.ndarray
+    n_voxels: int
+    sum_overlap: bool = False
+
+    @property
+    def n_foci(self):
+        """Total number of foci the plan was compiled for."""
+        return int(self.offsets[-1])
+
+    @property
+    def n_groups(self):
+        """Number of studies the foci are grouped into."""
+        return len(self.offsets) - 1
+
+    def summary_stat(self, ijk, weights):
+        """Compute the statistic map for one permutation, given per-study weights."""
+        return _weighted_coverage_from_offsets(
+            self.kernel_offsets,
+            np.ascontiguousarray(ijk, dtype=np.int32),
+            self.offsets,
+            np.ascontiguousarray(weights, dtype=np.float64),
+            float(self.value),
+            self.shape,
+            self.flat_to_masked,
+            self.n_voxels,
+            bool(self.sum_overlap),
+        )
+
+
+def _group_offsets(coordinates):
+    """CSR group boundaries from a coordinates frame, or ``None`` if not contiguous."""
+    ids = np.asarray(coordinates["id"].values, dtype=str)
+    if not len(ids):
+        return None
+    starts = np.flatnonzero(np.r_[True, ids[1:] != ids[:-1]])
+    if len(np.unique(ids)) != len(starts):
+        return None
+    return np.r_[starts, len(ids)].astype(np.int64)
+
+
+def kda_plan_for(estimator, coordinates):
+    """Build a plan for an (M)KDA-family estimator, or ``None`` if it does not apply."""
+    from nimare.meta.kernel import KDAKernel, MKDAKernel
+
+    kernel = getattr(estimator, "kernel_transformer", None)
+    if not isinstance(kernel, (KDAKernel, MKDAKernel)):
+        return None
+    masker = getattr(estimator, "masker", None)
+    if masker is None:
+        return None
+
+    offsets = _group_offsets(coordinates)
+    if offsets is None:
+        return None
+
+    mask = masker.mask_img
+    zooms = mask.header.get_zooms()
+    radius = kernel.r
+    grid = np.vstack(
+        [
+            row.ravel()
+            for row in np.mgrid[
+                tuple(slice(-radius // zooms[i], radius // zooms[i] + 0.01, 1) for i in range(3))
+            ].astype(np.int32)
+        ]
+    )
+    inside = np.sum(np.dot(np.diag(zooms), grid) ** 2, axis=0) ** 0.5 <= radius
+    kernel_offsets = np.ascontiguousarray(grid[:, inside].T, dtype=np.int32)
+
+    flat_to_masked = _get_mask_flat_to_masked(mask)
+    return CoveragePlan(
+        offsets=offsets,
+        kernel_offsets=kernel_offsets,
+        value=float(kernel.value),
+        shape=np.ascontiguousarray(mask.shape, dtype=np.int32),
+        flat_to_masked=np.ascontiguousarray(flat_to_masked, dtype=np.int32),
+        n_voxels=int(flat_to_masked.max()) + 1 if flat_to_masked.size else 0,
+        sum_overlap=bool(getattr(kernel, "_sum_overlap", False)),
     )

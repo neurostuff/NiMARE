@@ -680,19 +680,23 @@ class CBMAEstimator(Estimator):
         self.null_distributions_["values_corr-none_method-reducedMontecarlo"] = null_dist
 
     def _permutation_plan(self, iter_df):
-        """The loop invariants for a permutation run, built once and cached.
+        """Build the loop invariants for a permutation run once, then cache them.
 
         ``None`` when this estimator's kernel is not one the fused pass
         reproduces exactly, in which case the frame-based path below is used.
         """
         cached = getattr(self, "_perm_plan_", "unset")
         if cached == "unset":
-            from nimare.meta.permutation import ale_plan_for
+            from nimare.meta.permutation import ale_plan_for, kda_plan_for
 
-            try:
-                cached = ale_plan_for(self, iter_df)
-            except Exception:  # pragma: no cover - never worth failing a fit over
-                cached = None
+            cached = None
+            for build in (ale_plan_for, kda_plan_for):
+                try:
+                    cached = build(self, iter_df)
+                except Exception:  # pragma: no cover - never fail a fit over this
+                    cached = None
+                if cached is not None:
+                    break
             self._perm_plan_ = cached
         return cached
 
@@ -704,7 +708,19 @@ class CBMAEstimator(Estimator):
         if plan is not None and len(iter_ijk) == plan.n_foci:
             # Only the coordinates changed, so hand over the indices and let the
             # group boundaries do the rest.
-            return plan.summary_stat(iter_ijk).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+            weights = getattr(self, "weight_vec_", None)
+            if hasattr(plan, "n_groups"):
+                if weights is None:
+                    weights = np.ones(plan.n_groups)
+                weights = np.asarray(weights, dtype=np.float64).ravel()
+                if len(weights) != plan.n_groups:
+                    weights = None
+                if weights is not None:
+                    return plan.summary_stat(iter_ijk, weights).astype(
+                        DEFAULT_FLOAT_DTYPE, copy=False
+                    )
+            else:
+                return plan.summary_stat(iter_ijk).astype(DEFAULT_FLOAT_DTYPE, copy=False)
 
         # Not sure if joblib will automatically use a copy of the object, but I'll make a copy to
         # be safe.
