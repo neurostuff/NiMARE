@@ -32,6 +32,19 @@ def _id_columns(view):
     }
 
 
+def _is_numeric(values):
+    """True when every value present is a number (or a bool)."""
+    seen = False
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, (bool, np.bool_, int, float, np.integer, np.floating)):
+            seen = True
+            continue
+        return False
+    return seen
+
+
 def _build(cols):
     """Build a frame from a column dict in one shot.
 
@@ -221,7 +234,13 @@ def annotations(view, annotation=None):
     for name in names:
         cs = store.annotations[name].columns
         for label in sorted(cs.keys()):
+            # Numeric labels come back as float64 with NaN for absent rows.
+            # Annotation values are weights, and consumers do arithmetic on
+            # them -- an object column reaches numpy as dtype=object and
+            # `np.sqrt` has nothing to call.
             values = cs.get(label, sel=view.index)
+            if _is_numeric(values):
+                values = cs.get_numeric(label, sel=view.index)
             if label in seen:
                 collisions.append((label, seen[label], name))
                 cols[f"{name}.{label}"] = values

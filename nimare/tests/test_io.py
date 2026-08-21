@@ -183,8 +183,11 @@ def test_convert_neurostore_json_to_parquet_and_load_all_annotations(tmp_path):
     ]
     assert len(studyset.studies) == 1
     assert studyset.studies[0].description == "A study-level description."
-    assert studyset.studies[0].analyses[0].annotations["diagnosis"] == "control"
-    studyset.studies[0].metadata["reviewed"] = True
+    analysis = studyset.studies[0].analyses[0]
+    # `annotations` is keyed by annotation, since a studyset may carry several;
+    # `labels` is the merged view of them.
+    assert analysis.annotations["annotation-1"]["diagnosis"] == "control"
+    assert analysis.labels["diagnosis"] == "control"
     assert studyset.to_dict()["studies"][0]["description"] == "A study-level description."
 
 

@@ -113,10 +113,12 @@ class ColumnStore:
             for i, value in zip(idx, values):
                 out[int(i)] = value
             return out
+        if n == 0:
+            return out
         # Assign element-wise so that list-valued entries (sample_sizes, for
         # one) stay single objects rather than being broadcast into a 2-D array.
         pos = np.searchsorted(sel, idx)
-        ok = (pos < len(sel)) & (sel[np.minimum(pos, max(len(sel) - 1, 0))] == idx)
+        ok = (pos < len(sel)) & (sel[np.minimum(pos, len(sel) - 1)] == idx)
         for p, keep, value in zip(pos, ok, values):
             if keep:
                 out[int(p)] = value

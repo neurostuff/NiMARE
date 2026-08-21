@@ -69,6 +69,11 @@ def from_nimads(source, *, canonical_order=True, annotations=None):
             source = json.load(fh)
     if not isinstance(source, dict):
         raise TypeError(f"NIMADS source must be a dict or a path, not {type(source)}")
+    if "studies" not in source:
+        raise ValueError(
+            "A NIMADS studyset must have a 'studies' key. An empty studyset is "
+            "'studies': [], which is different from the key being absent."
+        )
 
     payloads = list(source.get("annotations") or [])
     if annotations is not None:
@@ -148,7 +153,13 @@ def from_nimads(source, *, canonical_order=True, annotations=None):
             images = analysis.get("images") or []
             kept_images = 0
             for image in images:
-                imtype = _normalize_image_type(image.get("value_type"))
+                raw_type = image.get("value_type")
+                # Normalise the types NiMARE knows, but keep the rest under their
+                # own name: a kernel writes MA maps with a generated type, and
+                # dropping them would make them unreachable.
+                imtype = _normalize_image_type(raw_type)
+                if imtype is None:
+                    imtype = raw_type if isinstance(raw_type, str) and raw_type else None
                 if imtype is None:
                     continue
                 img_parent.append(a_row)

@@ -1077,8 +1077,9 @@ def _process_with_annotations(
     """Process studyset with annotations, creating multiple files."""
     annotation = studyset.annotations[0]  # Use first annotation
 
-    # Validate annotation
-    if not hasattr(annotation, "notes"):
+    # An annotation is a set of labelled columns over the analyses. An annotation
+    # with no labels has nothing to split on.
+    if not annotation.keys():
         raise InvalidStudysetError("Annotation is missing notes")
 
     # Group analyses by annotation values
@@ -1839,9 +1840,12 @@ def convert_dataset_to_studyset(
     # Local import to avoid circular import at module import time.
     from nimare.nimads import Studyset as _Studyset
 
-    studyset = _Studyset(nimads_dict)
-    studyset._attach_dataset_context(dataset)
-    return studyset
+    return _Studyset(
+        nimads_dict,
+        target=dataset.space,
+        mask=dataset.masker,
+        basepath=getattr(dataset, "basepath", None),
+    )
 
 
 def convert_sleuth_to_nimads_dict(

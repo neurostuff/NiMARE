@@ -130,7 +130,21 @@ class Analysis(_Row):
 
     @property
     def annotations(self):
-        """``{label: value}`` across every annotation on the studyset."""
+        """``{annotation id: {label: value}}`` for this analysis.
+
+        Keyed by annotation because a studyset may carry several, and two of them
+        may use the same label name.
+        """
+        out = {}
+        for ann_id, annotation in self._store.annotations.items():
+            note = annotation.columns.rows([self._row]).get(self._row, {})
+            if note:
+                out[ann_id] = note
+        return out
+
+    @property
+    def labels(self):
+        """``{label: value}`` merged across every annotation."""
         out = {}
         for annotation in self._store.annotations.values():
             out.update(annotation.columns.rows([self._row]).get(self._row, {}))

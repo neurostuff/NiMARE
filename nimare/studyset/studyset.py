@@ -509,7 +509,7 @@ class Studyset:
         return out
 
     def get_annotations(self, analyses=None):
-        """``{analysis id: {label: value}}`` across every annotation."""
+        """``{analysis id: {label: value}}``, merged across every annotation."""
         store = self.store
         rows = self._rows_for(analyses)
         cache = _notes_by_row(store)

@@ -254,8 +254,20 @@ class View:
         """
         requirements = tuple(requirements)
         valid = np.ones(len(self.index), dtype=bool)
+        unsatisfied = []
         for requirement in requirements:
-            valid &= requirement.validity(self)
+            ok = requirement.validity(self)
+            if len(self.index) and not ok.any():
+                unsatisfied.append(requirement)
+            valid &= ok
+        if unsatisfied:
+            # Nothing satisfies these at all, which is a different problem from
+            # some analyses lacking data: the request cannot be served.
+            names = ", ".join(repr(r.name) for r in unsatisfied)
+            raise ValueError(
+                f"The collection has no data for {names}. Check the requested "
+                "image type, metadata field or annotation."
+            )
         if not valid.all():
             if not drop_invalid:
                 missing = int((~valid).sum())
