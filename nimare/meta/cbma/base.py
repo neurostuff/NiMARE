@@ -679,13 +679,36 @@ class CBMAEstimator(Estimator):
         null_dist = self._compute_summarystat(iter_ma_values)
         self.null_distributions_["values_corr-none_method-reducedMontecarlo"] = null_dist
 
+    def _permutation_plan(self, iter_df):
+        """The loop invariants for a permutation run, built once and cached.
+
+        ``None`` when this estimator's kernel is not one the fused pass
+        reproduces exactly, in which case the frame-based path below is used.
+        """
+        cached = getattr(self, "_perm_plan_", "unset")
+        if cached == "unset":
+            from nimare.meta.permutation import ale_plan_for
+
+            try:
+                cached = ale_plan_for(self, iter_df)
+            except Exception:  # pragma: no cover - never worth failing a fit over
+                cached = None
+            self._perm_plan_ = cached
+        return cached
+
     def _compute_permutation_summarystat(self, iter_ijk, iter_df):
         """Compute one permuted summary-statistic map from matrix indices."""
+        iter_ijk = np.squeeze(iter_ijk)
+
+        plan = self._permutation_plan(iter_df)
+        if plan is not None and len(iter_ijk) == plan.n_foci:
+            # Only the coordinates changed, so hand over the indices and let the
+            # group boundaries do the rest.
+            return plan.summary_stat(iter_ijk).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+
         # Not sure if joblib will automatically use a copy of the object, but I'll make a copy to
         # be safe.
         iter_df = iter_df.copy()
-
-        iter_ijk = np.squeeze(iter_ijk)
         iter_df[["i", "j", "k"]] = iter_ijk
 
         iter_ma_maps = self.kernel_transformer.transform(
