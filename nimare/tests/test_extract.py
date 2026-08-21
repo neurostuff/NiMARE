@@ -7,8 +7,12 @@ from glob import glob
 from io import BytesIO
 from unittest.mock import patch
 
+import pytest
+
 import nimare
+import nimare.extract
 from nimare.dataset import Dataset
+from nimare.extract.extract import _fetch_database, _get_available_entities
 from nimare.generate import create_coordinate_studyset
 from nimare.nimads import Studyset
 from nimare.tests.utils import get_test_data_path
@@ -170,6 +174,107 @@ def test_fetch_neuroquery_returns_studyset_by_default(monkeypatch, tmp_path_fact
     assert isinstance(outputs, list)
     assert len(outputs) == 1
     assert isinstance(outputs[0], Studyset)
+
+
+def test_get_available_entities_lists_distinct_values():
+    """_get_available_entities returns sorted, source-scoped distinct entity values."""
+    manifest = [
+        {
+            "coordinates": "data-neurosynth_version-7_coordinates.tsv.gz",
+            "metadata": "data-neurosynth_version-7_metadata.tsv.gz",
+            "features": [
+                {
+                    "features": (
+                        "data-neurosynth_version-7_vocab-terms_"
+                        "source-abstract_type-tfidf_features.npz"
+                    )
+                },
+                {
+                    "features": (
+                        "data-neurosynth_version-7_vocab-LDA200_"
+                        "source-abstract_type-weight_features.npz"
+                    )
+                },
+            ],
+        },
+        {
+            "coordinates": "data-neuroquery_version-1_coordinates.tsv.gz",
+            "metadata": "data-neuroquery_version-1_metadata.tsv.gz",
+            "features": [
+                {
+                    "features": (
+                        "data-neuroquery_version-1_vocab-neuroquery6308_"
+                        "source-combined_type-tfidf_features.npz"
+                    )
+                },
+            ],
+        },
+    ]
+    ns = _get_available_entities(manifest, data="neurosynth")
+    assert ns["version"] == ["7"]
+    assert ns["vocab"] == ["LDA200", "terms"]
+    assert ns["source"] == ["abstract"]
+    assert ns["type"] == ["tfidf", "weight"]
+    assert "neuroquery6308" not in ns["vocab"]  # other source must not leak in
+
+    allsrc = _get_available_entities(manifest)
+    assert allsrc["version"] == ["1", "7"]
+    assert "neuroquery6308" in allsrc["vocab"]
+
+
+def test_fetch_neurosynth_raises_on_unmatched_query(tmp_path):
+    """An unmatched query raises an informative ValueError before any download."""
+    with pytest.raises(ValueError) as excinfo:
+        nimare.extract.fetch_neurosynth(data_dir=str(tmp_path), vocab="not_a_real_vocab")
+    msg = str(excinfo.value)
+    assert "No files matched the query" in msg
+    assert "terms" in msg  # an available neurosynth vocab is surfaced
+
+
+def test_fetch_neuroquery_raises_on_unmatched_query(tmp_path):
+    """fetch_neuroquery raises the same informative error on an unmatched query."""
+    with pytest.raises(ValueError) as excinfo:
+        nimare.extract.fetch_neuroquery(data_dir=str(tmp_path), vocab="not_a_real_vocab")
+    assert "No files matched the query" in str(excinfo.value)
+
+
+def test_get_available_entities_ignores_unknown_segments():
+    """Unknown key-value segments are ignored, and known entities still parse correctly."""
+    manifest = [
+        {
+            "features": [
+                {
+                    "features": (
+                        "data-neurosynth_version-7_vocab-terms_source-abstract_"
+                        "type-tfidf_garbage-xyz_features.npz"
+                    )
+                },
+            ],
+        },
+    ]
+    out = _get_available_entities(manifest, data="neurosynth")
+    assert out["vocab"] == ["terms"]
+    assert out["version"] == ["7"]
+    assert "garbage" not in out  # unrecognized key is never surfaced
+
+
+def test_fetch_database_message_omits_data_none(tmp_path):
+    """When the query has no 'data' key, the message uses a generic scope (no 'data-None')."""
+    with pytest.raises(ValueError) as excinfo:
+        _fetch_database({"version": "999"}, "http://example.com/", str(tmp_path))
+    msg = str(excinfo.value)
+    assert "No files matched the query" in msg
+    assert "data-None" not in msg
+    assert "the requested database" in msg
+
+
+def test_fetch_database_message_falls_back_when_no_entities(tmp_path):
+    """An unknown data source (no available entities) yields a generic fallback message."""
+    with pytest.raises(ValueError) as excinfo:
+        _fetch_database({"data": "not_a_database"}, "http://example.com/", str(tmp_path))
+    msg = str(excinfo.value)
+    assert "No matching entries were found" in msg
+    assert "see the database file manifest" in msg
 
 
 def test_download_abstracts_accepts_studyset(monkeypatch):
