@@ -127,9 +127,19 @@ class GeneralLinearModelEstimator(torch.nn.Module):
         return tensor.reshape(-1)
 
     def _as_float_tensor(self, array_like):
-        """Convert array-like inputs to float64 tensors on the estimator device."""
+        """Convert array-like inputs to float64 tensors on the estimator device.
+
+        Copies anything that is not already a tensor. A pandas column selection
+        is a view over the frame's blocks, and depending on how the requested
+        columns sit relative to the frame's own order that view can be
+        non-contiguous, read-only, or negatively strided -- torch rejects the
+        last outright and warns about the second. One copy here beats guessing
+        the layout at every call site.
+        """
         if array_like is None:
             return None
+        if not torch.is_tensor(array_like):
+            array_like = np.ascontiguousarray(array_like, dtype=np.float64)
         return torch.as_tensor(array_like, dtype=torch.float64, device=self.device)
 
     def _prepare_tensor_inputs(
