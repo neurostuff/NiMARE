@@ -15,7 +15,6 @@ from nimare.transforms import threshold_image
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
-    _p_to_logp_values,
 )
 from nimare.workflows.base import Workflow, _check_input
 
@@ -51,12 +50,14 @@ class CBMAWorkflow(Workflow):
         An optional voxel-level threshold that may be applied to the ``target_image`` in the
         :class:`~nimare.diagnostics.Diagnostics` class to define clusters. This can be None or 0
         if the ``target_image`` is already thresholded (e.g., a cluster-level corrected map).
-        If diagnostics are passed as initialized objects, this parameter will be ignored.
+        If diagnostics are passed as initialized objects, this parameter is applied only
+        to those that left the corresponding parameter at its default.
         Default is 1.65, which corresponds to p-value = .05, one-tailed.
     cluster_threshold : :obj:`int` or None, optional
         Cluster size threshold, in :term:`voxels<voxel>`.
         If None, then no cluster size threshold will be applied.
-        If diagnostics are passed as initialized objects, this parameter will be ignored.
+        If diagnostics are passed as initialized objects, this parameter is applied only
+        to those that left the corresponding parameter at its default.
         Default is 10.
     output_dir : :obj:`str`, optional
         Output directory in which to save results. If the directory doesn't
@@ -65,7 +66,7 @@ class CBMAWorkflow(Workflow):
         Number of cores to use for parallelization.
         If <=0, defaults to using all available cores.
         If estimator, corrector, or diagnostics are passed as initialized objects, this parameter
-        will be ignored.
+        is applied only to those that left ``n_cores`` at its default.
         Default is 1.
     """
 
@@ -124,12 +125,14 @@ class PairwiseCBMAWorkflow(Workflow):
         An optional voxel-level threshold that may be applied to the ``target_image`` in the
         :class:`~nimare.diagnostics.Diagnostics` class to define clusters. This can be None or 0
         if the ``target_image`` is already thresholded (e.g., a cluster-level corrected map).
-        If diagnostics are passed as initialized objects, this parameter will be ignored.
+        If diagnostics are passed as initialized objects, this parameter is applied only
+        to those that left the corresponding parameter at its default.
         Default is 1.65, which corresponds to p-value = .05, one-tailed.
     cluster_threshold : :obj:`int` or None, optional
         Cluster size threshold, in :term:`voxels<voxel>`.
         If None, then no cluster size threshold will be applied.
-        If diagnostics are passed as initialized objects, this parameter will be ignored.
+        If diagnostics are passed as initialized objects, this parameter is applied only
+        to those that left the corresponding parameter at its default.
         Default is 10.
     output_dir : :obj:`str`, optional
         Output directory in which to save results. If the directory doesn't
@@ -138,7 +141,7 @@ class PairwiseCBMAWorkflow(Workflow):
         Number of cores to use for parallelization.
         If <=0, defaults to using all available cores.
         If estimator, corrector, or diagnostics are passed as initialized objects, this parameter
-        will be ignored.
+        is applied only to those that left ``n_cores`` at its default.
         Default is 1.
     """
 
@@ -300,7 +303,8 @@ class ContrastWorkflow(NiMAREBase):
     n_cores : :obj:`int`, optional
         Number of cores to use for parallelization.
         If ``main_estimator``, ``pairwise_estimator``, or ``corrector`` are passed as
-        already-initialized instances this parameter will be ignored for those objects.
+        already-initialized instances this parameter is applied only to those that left
+        ``n_cores`` at its default.
         Default is 1.
     """
 
@@ -435,14 +439,16 @@ class ContrastWorkflow(NiMAREBase):
 
     def _contrast_keys(self):
         if isinstance(self.pairwise_estimator, ALESubtraction):
-            return "p_desc-group1MinusGroup2", "z_desc-group1MinusGroup2"
+            label = "group1MinusGroup2"
         elif isinstance(self.pairwise_estimator, MKDAChi2):
-            return "p_desc-association", "z_desc-association"
+            label = "association"
         else:
             raise ValueError(
                 f"Unable to determine contrast map keys for pairwise estimator of type "
                 f"{type(self.pairwise_estimator).__name__}."
             )
+
+        return f"p_desc-{label}", f"z_desc-{label}", f"logp_desc-{label}"
 
     def _save_result(self, result):
         if self.output_dir is None:
@@ -516,14 +522,21 @@ class ContrastWorkflow(NiMAREBase):
             inference_map2=group2_map,
         )
 
-        contrast_p_key, contrast_z_key = self._contrast_keys()
+        contrast_p_key, contrast_z_key, contrast_logp_key = self._contrast_keys()
         contrast_p = pairwise_result.get_map(contrast_p_key, return_type="array")
         contrast_z = pairwise_result.get_map(contrast_z_key, return_type="array")
+        contrast_logp = pairwise_result.get_map(contrast_logp_key, return_type="array")
         thresholded_z = np.where(contrast_p <= self.alpha, contrast_z, 0).astype(
             DEFAULT_FLOAT_DTYPE,
             copy=False,
         )
         thresholded_p = np.where(thresholded_z != 0, contrast_p, 1).astype(
+            DEFAULT_FLOAT_DTYPE,
+            copy=False,
+        )
+        # Carried over from the estimator rather than recomputed from thresholded_p, which
+        # floors at 1e-45. -log10(1) is 0, so the same mask blanks the unselected voxels.
+        thresholded_logp = np.where(thresholded_z != 0, contrast_logp, 0).astype(
             DEFAULT_FLOAT_DTYPE,
             copy=False,
         )
@@ -537,11 +550,7 @@ class ContrastWorkflow(NiMAREBase):
         )
         result.maps["p_desc-contrast"] = thresholded_p
         result.maps["z_desc-contrast"] = thresholded_z
-        result.maps["logp_desc-contrast"] = _p_to_logp_values(
-            thresholded_p,
-            dtype=DEFAULT_FLOAT_DTYPE,
-            copy=False,
-        )
+        result.maps["logp_desc-contrast"] = thresholded_logp
         result.tables["contrast_tab-metadata"] = pd.DataFrame(
             [
                 {

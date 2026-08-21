@@ -12,7 +12,7 @@ from nimare.meta.cbma.null_utils import (
     _is_chunked_group,
 )
 from nimare.meta.cbma.utils import require_masked_csr
-from nimare.utils import DEFAULT_FLOAT_DTYPE, _p_to_logp_values
+from nimare.utils import DEFAULT_FLOAT_DTYPE, _nlogp_to_logp_values
 
 
 def _accumulate_csr_log_sums(ma_values, log_sums):
@@ -114,7 +114,7 @@ def _ale_uncorrected_group_maps(pairwise_estimator, ma_maps, group_label, stat_v
         "stat": stat_values.astype(np.float64, copy=False),
         "p": p_values.astype(np.float64, copy=False),
         "z": z_values.astype(np.float64, copy=False),
-        "logp": _p_to_logp_values(p_values, dtype=DEFAULT_FLOAT_DTYPE),
+        "logp": _nlogp_to_logp_values(np.log(p_values), dtype=DEFAULT_FLOAT_DTYPE),
     }
     return _prefix_ale_group_maps(maps, group_label)
 

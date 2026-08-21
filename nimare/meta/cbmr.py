@@ -9,7 +9,6 @@ from functools import wraps
 import nibabel as nib
 import numpy as np
 import pandas as pd
-import scipy
 import scipy.sparse
 from nilearn.image import resample_to_img
 
@@ -25,10 +24,11 @@ from nimare.estimator import Estimator
 from nimare.meta import models
 from nimare.meta.utils import fit_voxelwise_cbmr_approximate
 from nimare.results import MetaResult
+from nimare.transforms import chi2_to_nlogp, nlogp_to_z, z_to_nlogp
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _clip_p_values,
-    _minimum_positive_float,
+    _nlogp_to_logp_values,
     b_spline_bases,
     dummy_encoding_moderators,
     get_masker,
@@ -96,34 +96,6 @@ def _normalize_named_pairwise_contrasts(contrasts):
         else:
             normalized.append(contrast)
     return normalized
-
-
-def _clipped_stat_p_values(p_values, dtype=None):
-    """Clip statistic p-values using a consistent dtype."""
-    if dtype is None:
-        dtype = np.asarray(p_values).dtype
-    return _clip_p_values(p_values, dtype=dtype, copy=False)
-
-
-def _normal_p_values(z_stats, two_sided=True, dtype=None):
-    """Return clipped normal p-values for Wald statistics."""
-    if two_sided:
-        p_values = scipy.stats.norm.sf(np.abs(z_stats)) * 2
-    else:
-        p_values = scipy.stats.norm.sf(z_stats)
-    return _clipped_stat_p_values(p_values, dtype=dtype)
-
-
-def _chi_square_p_values(chi_square, df, dtype=None):
-    """Return clipped chi-square p-values."""
-    return _clipped_stat_p_values(scipy.stats.chi2.sf(chi_square, df=df), dtype=dtype)
-
-
-def _two_sided_z_from_p_values(p_values):
-    """Convert two-sided p-values to z-statistics with stable tail handling."""
-    p_values = np.asarray(p_values)
-    z_p_values = np.maximum(p_values, 2 * _minimum_positive_float(p_values.dtype))
-    return scipy.stats.norm.isf(z_p_values / 2)
 
 
 class CBMRResult(MetaResult):
@@ -2279,7 +2251,7 @@ class CBMRInference:
             cov_spatial_coef = self._get_group_spatial_covariance(involved_groups)
 
         if con_group.shape[0] == 1:
-            z_stats_spatial, p_vals_spatial = self._compute_group_wald_statistics(
+            z_stats_spatial, nlogp_vals_spatial = self._compute_group_wald_statistics(
                 simp_con_group,
                 involved_groups,
                 cov_spatial_coef,
@@ -2289,7 +2261,11 @@ class CBMRInference:
             )
             chi_sq_spatial = None
         else:
-            chi_sq_spatial, z_stats_spatial, p_vals_spatial = self._compute_group_glh_statistics(
+            (
+                chi_sq_spatial,
+                z_stats_spatial,
+                nlogp_vals_spatial,
+            ) = self._compute_group_glh_statistics(
                 simp_con_group,
                 involved_groups,
                 cov_spatial_coef,
@@ -2303,7 +2279,8 @@ class CBMRInference:
         return {
             "contrast_count": con_group.shape[0],
             "chi_square": chi_sq_spatial,
-            "p": p_vals_spatial,
+            "p": _clip_p_values(np.exp(nlogp_vals_spatial), dtype=DEFAULT_FLOAT_DTYPE),
+            "logp": _nlogp_to_logp_values(nlogp_vals_spatial),
             "z": z_stats_spatial,
         }
 
@@ -2365,14 +2342,10 @@ class CBMRInference:
             np.inf,
         )
         if n_con_group_involved == 1:
-            p_vals_spatial = _normal_p_values(
-                z_stats_spatial,
-                two_sided=False,
-                dtype=DEFAULT_FLOAT_DTYPE,
-            )
+            nlogp_vals_spatial = z_to_nlogp(z_stats_spatial, tail="one")
         else:
-            p_vals_spatial = _normal_p_values(z_stats_spatial, dtype=DEFAULT_FLOAT_DTYPE)
-        return z_stats_spatial, p_vals_spatial
+            nlogp_vals_spatial = z_to_nlogp(z_stats_spatial, tail="two")
+        return z_stats_spatial, nlogp_vals_spatial
 
     def _compute_group_glh_statistics(
         self,
@@ -2413,16 +2386,14 @@ class CBMRInference:
             cov_log_intensity,
             contrast_log_intensity,
         )
-        p_vals_spatial = _chi_square_p_values(chi_sq_spatial, df=m, dtype=DEFAULT_FLOAT_DTYPE)
+        nlogp_vals_spatial = chi2_to_nlogp(chi_sq_spatial, m)
         if is_homogeneity_test:
-            z_stats_spatial = scipy.stats.norm.isf(p_vals_spatial)
-            z_stats_spatial[z_stats_spatial < 0] = 0
+            z_stats_spatial = nlogp_to_z(nlogp_vals_spatial, tail="one")
         else:
-            z_stats_spatial = _two_sided_z_from_p_values(p_vals_spatial)
+            z_stats_spatial = nlogp_to_z(nlogp_vals_spatial, tail="two")
             if simp_con_group.shape[0] == 1:
-                z_stats_spatial *= np.sign(contrast_log_intensity.flatten())
-        z_stats_spatial = np.clip(z_stats_spatial, a_min=-10, a_max=10)
-        return chi_sq_spatial, z_stats_spatial, p_vals_spatial
+                z_stats_spatial = z_stats_spatial * np.sign(contrast_log_intensity.flatten())
+        return chi_sq_spatial, z_stats_spatial, nlogp_vals_spatial
 
     def _store_group_inference_result(self, con_group_count, group_stats):
         """Write one computed group-inference result into result maps."""
@@ -2452,11 +2423,11 @@ class CBMRInference:
         chi_square_key="chi_square",
         as_table=False,
     ):
-        """Store chi-square, p, and z statistic outputs with shared naming logic."""
+        """Store chi-square, p, log-p, and z statistic outputs with shared naming logic."""
         stat_keys = []
         if stats["contrast_count"] > 1:
             stat_keys.append(("chi_square", chi_square_key))
-        stat_keys.extend([("p", "p"), ("z", "z")])
+        stat_keys.extend([("p", "p"), ("logp", "logp"), ("z", "z")])
         for stat_name, key_name in stat_keys:
             values = stats[stat_name]
             if as_table:
@@ -2638,19 +2609,20 @@ class CBMRInference:
             involved_var_moderator_coef = con_moderator**2 @ var_moderator_coef
             involved_std_moderator_coef = np.sqrt(involved_var_moderator_coef)
             z_stats_moderator = contrast_moderator_coef / involved_std_moderator_coef
-            p_vals_moderator = _normal_p_values(z_stats_moderator)
+            nlogp_vals_moderator = z_to_nlogp(z_stats_moderator, tail="two")
             chi_sq_moderator = None
         else:
             contrast_covariance = con_moderator @ cov_moderator_coef @ con_moderator.T
             solved = np.linalg.solve(contrast_covariance, contrast_moderator_coef)
             chi_sq_moderator = contrast_moderator_coef.T @ solved
-            p_vals_moderator = _chi_square_p_values(chi_sq_moderator, df=m_con_moderator)
-            z_stats_moderator = _two_sided_z_from_p_values(p_vals_moderator)
+            nlogp_vals_moderator = chi2_to_nlogp(chi_sq_moderator, m_con_moderator)
+            z_stats_moderator = nlogp_to_z(nlogp_vals_moderator, tail="two")
 
         return {
             "contrast_count": m_con_moderator,
             "chi_square": chi_sq_moderator,
-            "p": p_vals_moderator,
+            "p": _clip_p_values(np.exp(nlogp_vals_moderator), dtype=np.float64),
+            "logp": _nlogp_to_logp_values(nlogp_vals_moderator, dtype=np.float64),
             "z": z_stats_moderator,
         }
 
@@ -3737,17 +3709,18 @@ class CBMRInference:
             contrast_var = contrast_cov[:, 0, 0]
             contrast_std = np.sqrt(np.maximum(contrast_var, 0.0))
             z_stats = contrast_eta[0] / np.where(contrast_std > 0, contrast_std, np.inf)
-            p_vals = _normal_p_values(z_stats)
+            nlogp_vals = z_to_nlogp(z_stats, tail="two")
             chi_square = None
         else:
             solved = np.linalg.solve(contrast_cov, contrast_eta.T[..., np.newaxis])
             chi_square = np.einsum("ns,ns->n", contrast_eta.T, solved[..., 0], optimize=True)
-            p_vals = _chi_square_p_values(chi_square, df=contrast.shape[0])
-            z_stats = _two_sided_z_from_p_values(p_vals)
+            nlogp_vals = chi2_to_nlogp(chi_square, contrast.shape[0])
+            z_stats = nlogp_to_z(nlogp_vals, tail="two")
 
         return {
             "contrast_count": contrast.shape[0],
             "chi_square": chi_square,
-            "p": p_vals,
+            "p": _clip_p_values(np.exp(nlogp_vals), dtype=np.float64),
+            "logp": _nlogp_to_logp_values(nlogp_vals, dtype=np.float64),
             "z": z_stats,
         }

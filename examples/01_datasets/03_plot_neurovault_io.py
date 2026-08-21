@@ -94,9 +94,9 @@ studyset.images[["z"]]
 from nimare.meta.ibma import Fishers
 
 # The default template has a slightly different, but completely compatible,
-# affine than the NeuroVault images, so we allow the Estimator to resample
-# images during the fitting process.
-meta = Fishers(resample=True)
+# affine than the NeuroVault images. The Estimator resamples any image whose
+# field of view differs from the mask's, so nothing needs to be requested here.
+meta = Fishers()
 
 # Drop studies that have no Z map (e.g. collections with no downloadable images).
 has_z = studyset.images["z"].notnull()

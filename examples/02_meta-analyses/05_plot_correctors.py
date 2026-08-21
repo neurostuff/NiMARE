@@ -132,7 +132,7 @@ for i_ax, map_name in enumerate(MAPS_TO_PLOT):
 from nimare.correct import FDRCorrector
 from nimare.meta.ibma import Stouffers
 
-meta = Stouffers(resample=True)
+meta = Stouffers()
 results = meta.fit(studyset)
 print(f"FWECorrector options: {FWECorrector.inspect(results)}")
 print(f"FDRCorrector options: {FDRCorrector.inspect(results)}")

@@ -10,7 +10,7 @@ import ntpath
 import os
 import os.path as op
 import re
-from functools import wraps
+from functools import lru_cache, wraps
 from tempfile import mkstemp
 
 import joblib
@@ -47,15 +47,24 @@ def _clip_p_values(p_values, dtype=DEFAULT_FLOAT_DTYPE, copy=True):
 
 
 def _clip_logp_values(logp_values, dtype=DEFAULT_FLOAT_DTYPE, copy=True):
-    """Clip -log10(p) values to the range implied by a floating p-value dtype."""
+    """Clip -log10(p) values to the finite range of a floating dtype.
+
+    Only the non-finite ends are clipped: below at zero, since a p-value of at most one
+    cannot give a negative ``-log10(p)``, and above at the largest value the dtype holds,
+    which a p-value of exactly zero would otherwise map to positive infinity.
+
+    Deliberately *not* clipped at ``-log10(smallest positive p)``, which for float32 is
+    44.85, or a z of 14.1. Clipping a logarithm to the range of the unlogged quantity throws
+    away the headroom that taking the logarithm bought; a ``-log10(p)`` of 5000 is an
+    ordinary float32 and describes a z of about 152.
+    """
     dtype = np.dtype(dtype)
     logp_values = (
         np.array(logp_values, dtype=dtype, copy=True)
         if copy
         else np.asarray(logp_values, dtype=dtype)
     )
-    max_value = -np.log10(_minimum_positive_float(dtype))
-    return np.clip(logp_values, dtype.type(0), max_value, out=logp_values)
+    return np.clip(logp_values, dtype.type(0), np.finfo(dtype).max, out=logp_values)
 
 
 def _p_to_logp_values(p_values, dtype=DEFAULT_FLOAT_DTYPE, copy=True):
@@ -64,6 +73,18 @@ def _p_to_logp_values(p_values, dtype=DEFAULT_FLOAT_DTYPE, copy=True):
     np.log10(p_values, out=p_values)
     np.negative(p_values, out=p_values)
     return p_values
+
+
+def _nlogp_to_logp_values(nlogp_values, dtype=DEFAULT_FLOAT_DTYPE):
+    """Convert ``nlogp`` values to the ``logp`` that NiMARE's maps hold.
+
+    The one bridge between the two: ``nlogp`` is the natural logarithm, as SciPy and PyMARE
+    return it, while ``logp`` is base ten and negated. Unlike :func:`_p_to_logp_values` this
+    never materializes the p-value, so it carries tails a float cannot represent.
+    """
+    # The trailing addition turns the -0.0 that a p-value of one produces back into 0.0.
+    logp_values = np.asarray(nlogp_values, dtype=np.float64) / -np.log(10.0) + 0.0
+    return _clip_logp_values(logp_values, dtype=dtype, copy=False)
 
 
 def _mask_img_to_bool(mask_img):
@@ -1342,22 +1363,28 @@ def reduce_idx(idx_list):
     -------
     reduced_idx_list : :obj:`list` of :obj:`tuple` of :obj:`int`
         A list of two-element tuples of indices of matched braces corresponding to BibTeX entries.
+
+    Notes
+    -----
+    Brace pairs are properly nested, so once they are sorted by opening index a pair is
+    contained in an earlier one exactly when some earlier pair closes after it. That makes
+    the running maximum of the closing indices enough to decide, rather than comparing every
+    pair against every other.
+
     """
-    idx_list2 = [idx_item[0] for idx_item in idx_list]
-    idx = np.argsort(idx_list2)
-    idx_list = [idx_list[i] for i in idx]
+    if not idx_list:
+        return []
 
-    df = pd.DataFrame(data=idx_list, columns=["start", "end"])
+    starts, ends = np.transpose(idx_list)
+    order = np.argsort(starts, kind="stable")
+    ends = ends[order]
 
-    good_idx = []
-    df["within"] = False
-    for i, row in df.iterrows():
-        df["within"] = df["within"] | ((df["start"] > row["start"]) & (df["end"] < row["end"]))
-        if not df.iloc[i]["within"]:
-            good_idx.append(i)
+    # Largest closing index among the pairs that open earlier; -1 for the first pair, which
+    # nothing can contain.
+    enclosing_end = np.maximum.accumulate(np.concatenate(([-1], ends[:-1])))
+    outermost = enclosing_end <= ends
 
-    idx_list = [idx_list[i] for i in good_idx]
-    return idx_list
+    return [idx_list[i] for i in order[outermost]]
 
 
 def index_bibtex_identifiers(string, idx_list):
@@ -1443,6 +1470,25 @@ def reduce_references(citations, reference_list):
     return reduced_reference_list
 
 
+@lru_cache(maxsize=1)
+def _bibtex_reference_list():
+    """Return every entry in the packaged BibTeX file, as a tuple of strings.
+
+    The file ships with NiMARE and does not change within a session, but every
+    :class:`~nimare.results.MetaResult` asks for its references, so parsing it once and
+    reusing the result keeps that off the cost of each ``fit``.
+    """
+    bibtex_file = op.join(get_resource_path(), "references.bib")
+    with open(bibtex_file, "r") as fo:
+        bibtex_string = fo.read()
+
+    braces_idx = find_braces(bibtex_string)
+    red_braces_idx = reduce_idx(braces_idx)
+    bibtex_idx = index_bibtex_identifiers(bibtex_string, red_braces_idx)
+
+    return tuple(bibtex_string[start : end + 1] for start, end in bibtex_idx)
+
+
 def get_description_references(description):
     """Find BibTeX references for citations in a methods description.
 
@@ -1456,16 +1502,8 @@ def get_description_references(description):
     bibtex_string : :obj:`str`
         A string containing BibTeX entries, limited only to the citations in the description.
     """
-    bibtex_file = op.join(get_resource_path(), "references.bib")
-    with open(bibtex_file, "r") as fo:
-        bibtex_string = fo.read()
-
-    braces_idx = find_braces(bibtex_string)
-    red_braces_idx = reduce_idx(braces_idx)
-    bibtex_idx = index_bibtex_identifiers(bibtex_string, red_braces_idx)
     citations = find_citations(description)
-    reference_list = [bibtex_string[start : end + 1] for start, end in bibtex_idx]
-    reduced_reference_list = reduce_references(citations, reference_list)
+    reduced_reference_list = reduce_references(citations, _bibtex_reference_list())
 
     bibtex_string = "\n".join(reduced_reference_list)
     return bibtex_string

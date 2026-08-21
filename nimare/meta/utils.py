@@ -776,14 +776,79 @@ def _calculate_cluster_measures(arr3d, threshold, conn, tail="upper"):
     return max_size, max_mass
 
 
-@jit(nopython=True, cache=True)
-def _apply_liberal_mask(data):
+def _liberal_mask_bags(mask):
+    """Group voxels by which studies cover them.
+
+    Parameters
+    ----------
+    mask : (S x V) :class:`numpy.ndarray` of :obj:`bool`
+        Which entries of the image data are usable.
+
+    Returns
+    -------
+    :obj:`list` of :obj:`tuple`
+        One ``(voxel_mask, study_mask)`` pair per bag, in order of first appearance. Bags
+        covered by fewer than two studies are dropped, since they cannot be fitted.
+
+    Notes
+    -----
+    Split out from :func:`_apply_liberal_mask` because an estimator with several image
+    inputs cuts them all along one shared coverage pattern, so the grouping is worked out
+    once and every input is then sliced with it.
+
+    Each voxel's pattern is packed into bytes and handed to :func:`numpy.unique`, so the
+    grouping costs one sort rather than a quadratic pairwise comparison.
+    """
+    MIN_STUDY_THRESH = 2
+
+    # Pack each voxel's column of S booleans into ceil(S / 8) bytes, so that a whole pattern
+    # is a single row np.unique can sort on. Padding bits are zero for every voxel alike, so
+    # they cannot merge two distinct patterns.
+    keys = np.ascontiguousarray(np.packbits(mask, axis=0).T)
+    _, first_idx, inverse = np.unique(keys, axis=0, return_index=True, return_inverse=True)
+    # Older numpy returned a column vector here; newer versions return 1D.
+    inverse = np.reshape(inverse, -1)
+
+    # np.unique orders groups lexicographically by packed pattern. Reorder to first
+    # appearance so the bags come back in the same order the voxels do.
+    by_appearance = np.argsort(first_idx, kind="stable")
+    appearance_rank = np.empty(first_idx.size, dtype=np.intp)
+    appearance_rank[by_appearance] = np.arange(first_idx.size)
+
+    # Sorting voxels by group puts each bag's voxel indices in one contiguous, ascending run.
+    voxels_by_group = np.argsort(appearance_rank[inverse], kind="stable")
+    group_sizes = np.bincount(inverse, minlength=first_idx.size)[by_appearance]
+    group_bounds = np.concatenate(([0], np.cumsum(group_sizes)))
+
+    bags = []
+    for group in range(first_idx.size):
+        voxel_mask = voxels_by_group[group_bounds[group] : group_bounds[group + 1]]
+        # Identical by construction for every voxel in the group.
+        study_mask = np.flatnonzero(mask[:, voxel_mask[0]])
+
+        if study_mask.size >= MIN_STUDY_THRESH:
+            bags.append((voxel_mask, study_mask))
+
+    return bags
+
+
+def _liberal_mask_values(data, bags):
+    """Slice one image input into the bags of :func:`_liberal_mask_bags`."""
+    return [
+        data[np.ix_(study_mask, voxel_mask)].astype(np.float64, copy=False)
+        for voxel_mask, study_mask in bags
+    ]
+
+
+def _apply_liberal_mask(data, validity=None):
     """Separate input image data in bags of voxels that have a valid value across the same studies.
 
     Parameters
     ----------
     data : (S x V) :class:`numpy.ndarray`
         2D numpy array (S x V) of images, where S is study and V is voxel.
+    validity : None or (S x V) :class:`numpy.ndarray` of :obj:`bool`, optional
+        Which entries of ``data`` are usable. Default is those that are neither NaN nor zero.
 
     Returns
     -------
@@ -797,53 +862,19 @@ def _apply_liberal_mask(data):
 
     Notes
     -----
-    Parts of the function are implemented with nested for loops to
-    improve the speed with the numba compiler.
+    Bags are returned in order of first appearance, i.e. sorted by their lowest voxel index.
+
+    An estimator with several image inputs should call :func:`_liberal_mask_bags` and
+    :func:`_liberal_mask_values` instead, so that the grouping is worked out once for all of
+    them rather than repeated per input.
 
     """
-    MIN_STUDY_THRESH = 2
+    # isfinite, not ~isnan: an infinite value is not a usable statistic either.
+    mask = np.isfinite(data) & (data != 0) if validity is None else np.asarray(validity)
+    bags = _liberal_mask_bags(mask)
 
-    n_voxels = data.shape[1]
-    # Get indices of non-nan and zero value of studies for each voxel
-    mask = ~np.isnan(data) & (data != 0)
-    study_by_voxels_idxs = [np.where(mask[:, i])[0] for i in range(n_voxels)]
-
-    # Group studies by the same number of non-nan voxels
-    matches = []
-    all_indices = []
-    for col_i in range(n_voxels):
-        if col_i in all_indices:
-            continue
-
-        vox_match = [col_i]
-        all_indices.append(col_i)
-        for col_j in range(col_i + 1, n_voxels):
-            if (
-                len(study_by_voxels_idxs[col_i]) == len(study_by_voxels_idxs[col_j])
-                and np.array_equal(study_by_voxels_idxs[col_i], study_by_voxels_idxs[col_j])
-                and col_j not in all_indices
-            ):
-                vox_match.append(col_j)
-                all_indices.append(col_j)
-
-        matches.append(np.array(vox_match))
-
-    values_lst, voxel_mask_lst, study_mask_lst = [], [], []
-    for voxel_mask in matches:
-        n_masked_voxels = len(voxel_mask)
-        # This is the same for all voxels in the match
-        study_mask = study_by_voxels_idxs[voxel_mask[0]]
-
-        if len(study_mask) < MIN_STUDY_THRESH:
-            continue
-
-        values = np.zeros((len(study_mask), n_masked_voxels))
-        for vox_i, vox in enumerate(voxel_mask):
-            for std_i, study in enumerate(study_mask):
-                values[std_i, vox_i] = data[study, vox]
-
-        values_lst.append(values)
-        voxel_mask_lst.append(voxel_mask)
-        study_mask_lst.append(study_mask)
-
-    return values_lst, voxel_mask_lst, study_mask_lst
+    return (
+        _liberal_mask_values(data, bags),
+        [voxel_mask for voxel_mask, _ in bags],
+        [study_mask for _, study_mask in bags],
+    )

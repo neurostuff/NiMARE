@@ -668,7 +668,12 @@ class Dataset(NiMAREBase):
             the labels above the threshold, it will be returned.
             Default is None.
         label_threshold : :obj:`float`, optional
-            Default is 0.5.
+            Minimum value a study must reach for *every* requested label to be included.
+            For Neurosynth-style annotations these are tf-idf (term frequency-inverse
+            document frequency) weights: a higher value means the label/term is more
+            important to that study's text relative to the rest of the corpus. Because
+            tf-idf is corpus-relative, the threshold is only meaningful within the corpus
+            the annotations were derived from. Default is 0.001.
 
         Returns
         -------
