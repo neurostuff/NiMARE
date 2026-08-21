@@ -1,22 +1,14 @@
-"""Fused Monte Carlo permutations for ALE-family estimators.
+"""Loop invariants for a CBMA Monte Carlo run, and the fused pass over them.
 
-Across Monte Carlo iterations **only the coordinates move**. The group structure,
-the per-study kernels and the mask geometry are loop invariants, so an iteration
-should be a new ``(n_foci, 3)`` array of matrix indices and nothing else.
+Lives beside :mod:`nimare.meta.cbma.null_utils` and
+:mod:`nimare.meta.cbma.pairwise_utils` because it is CBMA-only, and is named for
+what it holds rather than one underscore away from
+:mod:`nimare.meta._permutation`, which is the unrelated IBMA sign-flip OLS.
 
-The path this replaces did rather more per iteration: copy the coordinates frame,
-write the indices into it, copy it again inside the kernel transformer, rederive
-the group boundaries with ``np.unique`` over a string id column, build a
-full-length boolean mask per study, assemble a study-by-voxel sparse matrix, and
-then reduce that matrix to one summary map.
-
-Profiling showed the surprise: the kernel convolution is about a quarter of the
-per-iteration cost and the per-group ``argsort`` is about three quarters. The sort
-is only there to take a within-study maximum over overlapping kernels, which is
-an O(k log k) way to do an O(k) job. Given the group boundaries as data a
-compiled function can loop over, the whole permutation -- groups, foci, kernel
-offsets, the within-study max, and the accumulation across studies -- fits in one
-pass with no sorting and no intermediate matrix.
+A permutation changes only where the foci are. Everything else -- the group
+boundaries, the kernel per group, the mask geometry -- is fixed for the run, so
+it is compiled once into a plan and the inner loop becomes a single pass over
+groups, foci and kernel offsets with no intermediate MA maps.
 """
 
 from __future__ import annotations
@@ -138,6 +130,34 @@ class PermutationPlan:
         )
 
 
+def _plan_preamble(estimator, kernel_types, coordinates, block):
+    """Return ``(kernel, mask, offsets)``, or ``None`` when no plan applies.
+
+    Both builders need the same three things and decline for the same three
+    reasons, so they ask once.
+    """
+    kernel = getattr(estimator, "kernel_transformer", None)
+    if not isinstance(kernel, kernel_types):
+        return None
+    masker = getattr(estimator, "masker", None)
+    if masker is None:
+        return None
+    offsets = _group_offsets(coordinates, block)
+    if offsets is None:
+        return None
+    return kernel, masker.mask_img, offsets
+
+
+def _mask_geometry(mask):
+    """Return the flat-to-masked map, the shape, and the masked voxel count."""
+    flat_to_masked = _get_mask_flat_to_masked(mask)
+    return (
+        np.ascontiguousarray(mask.shape, dtype=np.int32),
+        np.ascontiguousarray(flat_to_masked, dtype=np.int32),
+        int(flat_to_masked.max()) + 1 if flat_to_masked.size else 0,
+    )
+
+
 def ale_plan_for(estimator, coordinates, block=None):
     """Build a plan for an ALE-family estimator, or ``None`` if it does not apply.
 
@@ -147,20 +167,10 @@ def ale_plan_for(estimator, coordinates, block=None):
     from nimare.meta.kernel import ALEKernel
     from nimare.meta.utils import get_ale_kernel
 
-    kernel = getattr(estimator, "kernel_transformer", None)
-    if not isinstance(kernel, ALEKernel):
+    got = _plan_preamble(estimator, ALEKernel, coordinates, block)
+    if got is None:
         return None
-    masker = getattr(estimator, "masker", None)
-    if masker is None:
-        return None
-    mask = masker.mask_img
-
-    # Group boundaries: the coordinates of one analysis are contiguous, which the
-    # studyset guarantees. Verify rather than assume -- a caller may hand over a
-    # frame it assembled itself.
-    offsets = _group_offsets(coordinates, block)
-    if offsets is None:
-        return None
+    kernel, mask, offsets = got
     starts = offsets[:-1]
 
     # One kernel per distinct width, and an index per group.
@@ -330,29 +340,21 @@ def kda_plan_for(estimator, coordinates, block=None):
     from nimare.meta.kernel import KDAKernel, MKDAKernel
     from nimare.meta.utils import sphere_kernel_offsets
 
-    kernel = getattr(estimator, "kernel_transformer", None)
-    if not isinstance(kernel, (KDAKernel, MKDAKernel)):
+    got = _plan_preamble(estimator, (KDAKernel, MKDAKernel), coordinates, block)
+    if got is None:
         return None
-    masker = getattr(estimator, "masker", None)
-    if masker is None:
-        return None
-
-    offsets = _group_offsets(coordinates, block)
-    if offsets is None:
-        return None
-
-    mask = masker.mask_img
+    kernel, mask, offsets = got
     # The same builder compute_kda_ma uses, so the fused pass and the observed
     # statistic cannot disagree about which voxels a focus reaches.
     kernel_offsets = sphere_kernel_offsets(kernel.r, mask.header.get_zooms())
 
-    flat_to_masked = _get_mask_flat_to_masked(mask)
+    shape, flat_to_masked, n_voxels = _mask_geometry(mask)
     return CoveragePlan(
         offsets=offsets,
         kernel_offsets=kernel_offsets,
         value=float(kernel.value),
-        shape=np.ascontiguousarray(mask.shape, dtype=np.int32),
-        flat_to_masked=np.ascontiguousarray(flat_to_masked, dtype=np.int32),
-        n_voxels=int(flat_to_masked.max()) + 1 if flat_to_masked.size else 0,
+        shape=shape,
+        flat_to_masked=flat_to_masked,
+        n_voxels=n_voxels,
         sum_overlap=bool(getattr(kernel, "_sum_overlap", False)),
     )

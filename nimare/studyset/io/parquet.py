@@ -12,14 +12,20 @@ import json
 import os
 
 import numpy as np
+import pandas as pd
 
-from nimare.studyset.columns import AnnotationSet, ColumnStore, Dict8, sorted_lookup
+from nimare.studyset.columns import (
+    ID_COLS,
+    AnnotationSet,
+    ColumnStore,
+    Dict8,
+    is_missing,
+    sorted_lookup,
+)
 from nimare.studyset.layout import canonicalize, offsets_from_parents
 from nimare.studyset.store import StudysetStore, freeze
 
 __all__ = ["from_parquet", "write_parquet"]
-
-_TABLES = ("studies", "analyses", "coordinates", "images", "metadata", "texts", "annotations")
 
 
 def _require_pyarrow():
@@ -41,7 +47,7 @@ def _resolve_rows(keys, wanted):
     return rows
 
 
-def _column_store_from(table, n_rows, keys, *, skip=("id", "study_id", "contrast_id")):
+def _column_store_from(table, n_rows, keys, *, skip=ID_COLS):
     """Sparse columns filtered with Arrow validity bitmaps, no per-cell Python."""
     import pyarrow as pa
 
@@ -133,7 +139,7 @@ def from_parquet(directory, *, load_annotations=True, canonical_order=True):
         kind_dict, kind_codes = encode("kind")
         point_analysis = c_analysis.astype(np.int32)
         point_values = ColumnStore(len(xyz))
-        skip = {"id", "study_id", "contrast_id", "x", "y", "z", "space", "kind"}
+        skip = set(ID_COLS) | {"x", "y", "z", "space", "kind"}
         for name in coords_t.schema.names:
             if name in skip:
                 continue
@@ -141,9 +147,7 @@ def from_parquet(directory, *, load_annotations=True, canonical_order=True):
             if col.null_count == len(col):
                 continue
             values = np.asarray(col.to_numpy(zero_copy_only=False), dtype=object)[keep][order]
-            present = np.flatnonzero(
-                np.asarray([v is not None and v == v for v in values], dtype=bool)
-            )
+            present = np.flatnonzero(np.asarray([not is_missing(v) for v in values], dtype=bool))
             if present.size:
                 point_values.add_sparse(name, present, values[present])
     else:
@@ -244,7 +248,7 @@ def from_parquet(directory, *, load_annotations=True, canonical_order=True):
     return freeze(store)
 
 
-def write_parquet(store, directory, *, annotation=None):
+def write_parquet(store, directory):
     """Write the studyset as a parquet release directory."""
     _require_pyarrow()
     import pyarrow as pa
@@ -286,7 +290,6 @@ def write_parquet(store, directory, *, annotation=None):
 
 
 def _metadata_table(store, view):
-    import pandas as pd
 
     cols = {
         "id": store.analysis_full_key.astype(str),
@@ -305,7 +308,6 @@ def _metadata_table(store, view):
 
 
 def _studies_table(store):
-    import pandas as pd
 
     cols = {"study_id": store.study_key.astype(str)}
     for name in ("name", "description", "authors", "publication"):
@@ -315,7 +317,6 @@ def _studies_table(store):
 
 
 def _analyses_table(store):
-    import pandas as pd
 
     return pd.DataFrame(
         {

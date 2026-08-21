@@ -14,11 +14,13 @@ because something needed it.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
 
+from nimare.studyset.columns import LabelNamer
 from nimare.studyset.store import derived
 
 __all__ = [
@@ -237,6 +239,18 @@ class Comparison:
 # ------------------------------------------------------------------ builders
 
 
+def _empty_image_block(imtype):
+    """Return an image block with no rows, built the same way as a populated one."""
+    return ImageBlock(
+        refs=np.empty(0, dtype=object),
+        analysis_pos=np.empty(0, dtype=np.int64),
+        study_pos=np.empty(0, dtype=np.int64),
+        imtype=imtype,
+        space=np.empty(0, dtype=object),
+        metadata=np.empty(0, dtype=object),
+    )
+
+
 def image_block(view, imtype, *, policy="all"):
     """Collect every image of ``imtype`` for the view.
 
@@ -246,30 +260,15 @@ def image_block(view, imtype, *, policy="all"):
     """
     store = view.store
     ia = store.image_attrs
-    empty_o = np.empty(0, dtype=np.int64)
     if ia is None or not ia.n_rows:
-        return ImageBlock(
-            np.empty(0, dtype=object),
-            empty_o,
-            empty_o,
-            imtype,
-            np.empty(0, dtype=object),
-            np.empty(0, dtype=object),
-        )
+        return _empty_image_block(imtype)
 
     pos_of_analysis = view.position_of_row()
 
     match = (ia.dense["value_type"] == imtype) & (pos_of_analysis[ia.dense["analysis_idx"]] >= 0)
     rows = np.flatnonzero(match)
     if rows.size == 0:
-        return ImageBlock(
-            np.empty(0, dtype=object),
-            empty_o,
-            empty_o,
-            imtype,
-            np.empty(0, dtype=object),
-            np.empty(0, dtype=object),
-        )
+        return _empty_image_block(imtype)
 
     parents = ia.dense["analysis_idx"][rows]
     if policy != "all":
@@ -302,8 +301,6 @@ def _resolve_refs(ia, rows, basepath):
     Both are kept: consumers want a path they can open, while a frame reports the
     relative form the studyset actually stores.
     """
-    import os
-
     from nimare.io import _select_image_path
     from nimare.utils import _try_prepend
 
@@ -397,23 +394,14 @@ def label_block_union(view, annotations=None, *, on_collision="prefix"):
 
     store = view.store
     names = sorted(store.annotations) if annotations is None else list(annotations)
-    seen, collisions, parts, labels_out = {}, [], [], []
+    namer = LabelNamer(on_collision)
+    parts, labels_out = [], []
     for name in names:
         block = label_block(view, name)
         for j, label in enumerate(block.labels):
-            out_label = label
-            if label in seen:
-                collisions.append((label, seen[label], name))
-                if on_collision == "error":
-                    raise ValueError(
-                        f"label {label!r} appears in annotations {seen[label]!r} and "
-                        f"{name!r}; pass on_collision='prefix' to keep both"
-                    )
-                out_label = f"{name}.{label}"
-            else:
-                seen[label] = name
+            labels_out.append(namer.name(label, name))
             parts.append(block.values[:, [j]])
-            labels_out.append(out_label)
+    collisions = namer.collisions
     if parts:
         matrix = sp.hstack(parts, format="csc")
     else:

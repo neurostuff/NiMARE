@@ -10,10 +10,12 @@ with the wrong studies.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 
-from nimare.studyset.columns import ColumnStore
-from nimare.studyset.store import derived, freeze
+from nimare.studyset.columns import ColumnStore, Dict8
+from nimare.studyset.store import derived, freeze, replace
 
 __all__ = [
     "canonicalize",
@@ -259,10 +261,6 @@ def harmonize_space(store, target):
     the space column is dictionary-encoded. Unrecognized spaces are relabelled
     without being transformed, matching the legacy behaviour.
     """
-    import logging
-
-    from nimare.studyset.store import replace
-
     if target is None:
         return store
     transform = _space_transforms(target)
@@ -283,8 +281,6 @@ def harmonize_space(store, target):
             "Not applying transforms to coordinates in unrecognized space(s): %s",
             ", ".join(repr(u) for u in unknown),
         )
-    from nimare.studyset.columns import Dict8
-
     space_dict = Dict8()
     code = space_dict.code(target)
     return replace(

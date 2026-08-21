@@ -111,9 +111,7 @@ class StudysetStore:
     @property
     def n_images(self):
         """Return the number of images."""
-        if self.image_attrs is None:
-            return 0
-        return self.image_attrs.n_rows
+        return 0 if self.image_attrs is None else self.image_attrs.n_rows
 
     # ------------------------------------------------- declared level stores
     def study_level_stores(self):
@@ -151,7 +149,7 @@ class StudysetStore:
         freeze(self)
 
     def __getstate__(self):
-        """Restore the columns and re-freeze them, which pickle does not preserve."""
+        """Return the picklable state, without the memo table of derived values."""
         state = dict(self.__dict__)
         state.pop("_derived", None)
         return state

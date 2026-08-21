@@ -59,8 +59,8 @@ class PerAnalysis:
     reduce: str = "mean"
     name: str = "per_analysis"
 
-    def dense(self, store):
-        """Return the requested per-analysis fields as a dense array."""
+    def values(self, store):
+        """Return one number per analysis, memoised against the store."""
         key = ("per_analysis", self.field, self.reduce)
         cache = derived(store)
         got = cache.get(key)
@@ -81,11 +81,11 @@ class PerAnalysis:
 
     def validity(self, view):
         """Return a boolean over the view's analyses, True where satisfiable."""
-        return np.isfinite(self.dense(view.store)[view.index])
+        return np.isfinite(self.values(view.store)[view.index])
 
     def resolve(self, view):
         """Return the block this requirement asked for."""
-        return self.dense(view.store)[view.index]
+        return self.values(view.store)[view.index]
 
     def as_input(self, view, block):
         """Render the legacy ``inputs_`` shape: the raw metadata values.

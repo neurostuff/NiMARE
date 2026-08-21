@@ -693,7 +693,7 @@ class CBMAEstimator(Estimator):
         """
         cached = getattr(self, "_permutation_plan_", _UNSET)
         if cached is _UNSET:
-            from nimare.meta.permutation import ale_plan_for, kda_plan_for
+            from nimare.meta.cbma.permutation import ale_plan_for, kda_plan_for
 
             # The coordinate block the inputs were built from, when this fit
             # collected its own inputs. It carries the group boundaries the plan

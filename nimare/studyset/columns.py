@@ -24,7 +24,15 @@ from typing import Optional
 
 import numpy as np
 
-__all__ = ["Dict8", "ColumnStore", "AnnotationSet"]
+__all__ = [
+    "AnnotationSet",
+    "ColumnStore",
+    "Dict8",
+    "ID_COLS",
+    "LabelNamer",
+    "is_missing",
+    "sorted_lookup",
+]
 
 
 class Dict8:
@@ -68,6 +76,51 @@ class Dict8:
         """Restore the categories and rebuild the reverse lookup."""
         self.categories = list(state["categories"])
         self._lookup = {v: i for i, v in enumerate(self.categories)}
+
+
+class LabelNamer:
+    """Applies the annotation-collision rule, once, for everything that merges.
+
+    Two annotations on one studyset may use the same label name -- compose's
+    default note key is ``included``, so any two compose annotations collide. The
+    rule is that the second one is qualified with its annotation id, and that the
+    caller is told rather than left to notice. Both the label block union and the
+    annotations frame apply it, so it lives here rather than in each.
+    """
+
+    def __init__(self, on_collision="prefix"):
+        if on_collision not in ("prefix", "error"):
+            raise ValueError("on_collision must be 'prefix' or 'error'")
+        self.on_collision = on_collision
+        self.collisions = []
+        self._seen = {}
+
+    def name(self, label, annotation):
+        """Return the output name for ``label`` as it appears in ``annotation``."""
+        first = self._seen.get(label)
+        if first is None:
+            self._seen[label] = annotation
+            return label
+        self.collisions.append((label, first, annotation))
+        if self.on_collision == "error":
+            raise ValueError(
+                f"label {label!r} appears in annotations {first!r} and "
+                f"{annotation!r}; pass on_collision='prefix' to keep both"
+            )
+        return f"{annotation}.{label}"
+
+
+#: The three identifier columns every compatibility frame carries.
+ID_COLS = ("id", "study_id", "contrast_id")
+
+
+def is_missing(value):
+    """Report whether ``value`` is absent -- ``None`` or a NaN.
+
+    A float NaN is not equal to itself, which is the check four sites spelled
+    four different ways.
+    """
+    return value is None or (isinstance(value, float) and value != value)
 
 
 def sorted_lookup(sorted_keys, wanted):

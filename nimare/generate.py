@@ -8,6 +8,7 @@ import sparse
 from nimare.dataset import Dataset
 from nimare.io import convert_neurovault_to_dataset
 from nimare.meta.utils import compute_ale_ma, get_ale_kernel
+from nimare.studyset import normalize_collection
 from nimare.transforms import ImageTransformer
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
@@ -20,13 +21,6 @@ from nimare.utils import (
 # defaults for creating a neurovault dataset
 NEUROVAULT_IDS = (8836, 8838, 8893, 8895, 8892, 8891, 8962, 8894, 8956, 8854, 9000)
 CONTRAST_OF_INTEREST = {"animal": "as-Animal"}
-
-
-def _studyset_from_dataset(collection):
-    """Return a Studyset for a Dataset or a Studyset."""
-    from nimare.studyset import normalize_collection
-
-    return normalize_collection(collection)
 
 
 def create_coordinate_dataset(
@@ -162,7 +156,7 @@ def create_coordinate_studyset(
         seed=seed,
         space=space,
     )
-    return ground_truth_foci, _studyset_from_dataset(dataset)
+    return ground_truth_foci, normalize_collection(dataset)
 
 
 def create_neurovault_dataset(

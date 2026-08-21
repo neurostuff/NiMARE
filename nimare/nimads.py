@@ -1,41 +1,11 @@
 """NIMADS-related classes for NiMARE.
 
-The studyset implementation lives in :mod:`nimare.studyset`. This module keeps
-the historical import path.
+The historical import path. Everything here is re-exported from
+:mod:`nimare.studyset`, which is the canonical surface -- this module adds
+nothing of its own, so the two cannot drift apart.
 """
 
-from nimare.studyset.blocks import (
-    Comparison,
-    CoordinateBlock,
-    ImageBlock,
-    LabelBlock,
-    TextBlock,
-)
-from nimare.studyset.columns import AnnotationSet
-from nimare.studyset.io import convert_neurostore_json_to_parquet
-from nimare.studyset.nested import Analysis, Image, Point, Study
-from nimare.studyset.requirements import Coordinates, Images, Labels, PerAnalysis, Texts
-from nimare.studyset.studyset import Studyset
-from nimare.studyset.view import Context, View
+from nimare.studyset import *  # noqa: F401,F403
+from nimare.studyset import __all__ as _STUDYSET_ALL
 
-__all__ = [
-    "Analysis",
-    "AnnotationSet",
-    "Comparison",
-    "Context",
-    "CoordinateBlock",
-    "Coordinates",
-    "Image",
-    "ImageBlock",
-    "Images",
-    "LabelBlock",
-    "Labels",
-    "PerAnalysis",
-    "Point",
-    "Study",
-    "Studyset",
-    "convert_neurostore_json_to_parquet",
-    "TextBlock",
-    "Texts",
-    "View",
-]
+__all__ = list(_STUDYSET_ALL)

@@ -13,10 +13,11 @@ in a loop.
 from __future__ import annotations
 
 import json
+import os
 
 import numpy as np
 
-from nimare.studyset.columns import AnnotationSet, ColumnStore, Dict8
+from nimare.studyset.columns import AnnotationSet, ColumnStore, Dict8, is_missing
 from nimare.studyset.layout import canonicalize, offsets_from_parents
 from nimare.studyset.store import StudysetStore, freeze
 
@@ -402,8 +403,6 @@ def from_nimads(source, *, canonical_order=True, annotations=None):
 
 def _resolve(value, basepath):
     """Make a relative image reference absolute, when a base path is given."""
-    import os
-
     value = _jsonable(value)
     if not basepath or not isinstance(value, str) or not value:
         return value
@@ -474,7 +473,7 @@ def _rows_with_declared(cs, rows, declared_for=None):
         return {}
     out = cs.rows(rows)
     if declared_for is not None and len(declared_for):
-        declared = [name for name in cs.keys()]
+        declared = cs.keys()
         for row in rows:
             row = int(row)
             if row < len(declared_for) and declared_for[row]:
@@ -484,7 +483,7 @@ def _rows_with_declared(cs, rows, declared_for=None):
     return {row: {k: _jsonable(v) for k, v in entry.items()} for row, entry in out.items()}
 
 
-def annotations_to_nimads(store, analysis_rows):
+def _annotations_to_nimads(store, analysis_rows):
     """Every annotation, as NIMADS annotation objects, restricted to ``analysis_rows``."""
     out = []
     for ann_id, annotation in store.annotations.items():
@@ -493,7 +492,7 @@ def annotations_to_nimads(store, analysis_rows):
         for label in cs.keys():
             rows, values = cs.entries(label)
             for row, value in zip(rows, values):
-                if value is None or (isinstance(value, float) and value != value):
+                if is_missing(value):
                     continue
                 per_row.setdefault(int(row), {})[label] = value
 
@@ -652,7 +651,7 @@ def to_nimads_dict(
 
     doc = {"id": store.id, "name": store.name, "studies": studies_out}
     if include_annotations:
-        doc["annotations"] = annotations_to_nimads(store, analysis_rows)
+        doc["annotations"] = _annotations_to_nimads(store, analysis_rows)
     return doc
 
 

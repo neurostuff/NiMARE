@@ -19,6 +19,7 @@ import pandas as pd
 
 from nimare.studyset import blocks as _blocks
 from nimare.studyset import edit, requirements
+from nimare.studyset.columns import ID_COLS
 from nimare.studyset.io import from_nimads, from_parquet, to_nimads_dict, write_nimads
 from nimare.studyset.io.parquet import write_parquet
 from nimare.studyset.layout import harmonize_space
@@ -63,7 +64,7 @@ class Studyset:
         Directory that relative image paths are resolved against.
     """
 
-    _id_cols = ["id", "study_id", "contrast_id"]
+    _id_cols = list(ID_COLS)
 
     def __init__(
         self,
@@ -310,14 +311,9 @@ class Studyset:
 
     def filter_annotations(self, labels, threshold=0.001, match="all", annotation=None):
         """Keep analyses whose annotation labels reach ``threshold``."""
-        if isinstance(labels, str):
-            labels = [labels]
-        elif not isinstance(labels, list):
-            raise ValueError(f"Argument 'labels' cannot be {type(labels)}")
         if match not in ("all", "any"):
             raise ValueError("match must be 'all' or 'any'")
-        block = self._label_block_for(labels, annotation)
-        masks = np.vstack([block.above(label, threshold) for label in labels])
+        masks = self._label_masks(labels, threshold, annotation)
         keep = masks.all(axis=0) if match == "all" else masks.any(axis=0)
         return Studyset._wrap(self._view.select(keep))
 
@@ -350,6 +346,15 @@ class Studyset:
         return self._with_store(self.store)
 
     # ---------------------------------------------------------------- queries
+    def _label_masks(self, labels, threshold, annotation=None):
+        """One boolean row per requested label, at or above ``threshold``."""
+        if isinstance(labels, str):
+            labels = [labels]
+        elif not isinstance(labels, list):
+            raise ValueError(f"Argument 'labels' cannot be {type(labels)}")
+        block = self._label_block_for(labels, annotation)
+        return np.vstack([block.above(label, threshold) for label in labels])
+
     def _label_block_for(self, labels, annotation=None):
         block = _blocks.label_block_for(self._view, annotation)
         known = set(block.labels.tolist())
@@ -371,12 +376,7 @@ class Studyset:
 
     def get_studies_by_label(self, labels=None, label_threshold=0.001, annotation=None):
         """Full analysis ids whose labels reach the threshold."""
-        if isinstance(labels, str):
-            labels = [labels]
-        elif not isinstance(labels, list):
-            raise ValueError(f"Argument 'labels' cannot be {type(labels)}")
-        block = self._label_block_for(labels, annotation)
-        masks = np.vstack([block.above(label, label_threshold) for label in labels])
+        masks = self._label_masks(labels, label_threshold, annotation)
         return list(self.ids[masks.all(axis=0)])
 
     def get_analyses_by_label(self, labels=None, label_threshold=0.001, annotation=None):
@@ -427,15 +427,19 @@ class Studyset:
             hit = np.unique(groups[np.argsort(distances)[:n]])
         return [str(k).rsplit("-", 1)[-1] for k in block.group_keys[hit]]
 
-    def get_metadata(self, field=None, ids=None):
-        """Metadata field names, or one field's values."""
-        frame = self.metadata if ids is None else self.slice(ids).metadata
+    def _frame_field(self, frame, field, what):
+        """Field names in ``frame``, or one field's values."""
         available = [c for c in frame.columns if c not in self._id_cols]
         if field is None:
             return available
         if field not in available:
-            raise ValueError(f"{field} not found in metadata.\nAvailable: {', '.join(available)}")
+            raise ValueError(f"{field} not found in {what}.\nAvailable: {', '.join(available)}")
         return frame[field].tolist()
+
+    def get_metadata(self, field=None, ids=None):
+        """Metadata field names, or one field's values."""
+        frame = self.metadata if ids is None else self.slice(ids).metadata
+        return self._frame_field(frame, field, "metadata")
 
     def get_images(self, imtype=None, ids=None, policy="first"):
         """Image types present, or one type's paths."""
@@ -455,12 +459,7 @@ class Studyset:
     def get_texts(self, text_type=None, ids=None):
         """Text field names, or one field's values."""
         frame = self.texts if ids is None else self.slice(ids).texts
-        available = [c for c in frame.columns if c not in self._id_cols]
-        if text_type is None:
-            return available
-        if text_type not in available:
-            raise ValueError(f"{text_type} not found in texts.")
-        return frame[text_type].tolist()
+        return self._frame_field(frame, text_type, "texts")
 
     def get_points(self, analyses=None):
         """``{analysis id: [point dicts]}``."""

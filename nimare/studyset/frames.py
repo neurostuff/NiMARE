@@ -15,9 +15,9 @@ import os
 import numpy as np
 import pandas as pd
 
-__all__ = ["annotations", "coordinates", "image_rows", "images", "metadata", "texts"]
+from nimare.studyset.columns import ID_COLS, LabelNamer
 
-ID_COLS = ["id", "study_id", "contrast_id"]
+__all__ = ["annotations", "coordinates", "image_rows", "images", "metadata", "texts"]
 
 
 def _id_columns(view):
@@ -171,22 +171,20 @@ def metadata(view):
 
     study_rows = store.study_idx[sel]
     present = np.sort(np.unique(study_rows))
-    study_name = store.study_attrs.dense.get("name")
-    analysis_name = store.analysis_attrs.dense.get("name")
-    sname = (
-        np.asarray(study_name, dtype=object)[study_rows]
-        if study_name is not None
-        else cols["study_id"]
-    )
-    aname = (
-        np.asarray(analysis_name, dtype=object)[sel]
-        if analysis_name is not None
-        else cols["contrast_id"]
-    )
-    sname = np.array([n if n else sid for n, sid in zip(sname, cols["study_id"])], dtype=object)
-    aname = np.array([n if n else cid for n, cid in zip(aname, cols["contrast_id"])], dtype=object)
-    cols["study_name"] = sname
-    cols["analysis_name"] = aname
+
+    def named(column, rows, fallback):
+        """Return the name at each row, falling back to the id where there is none."""
+        if column is None:
+            return fallback
+        names = np.asarray(column, dtype=object)[rows]
+        return np.array(
+            [name if name else fid for name, fid in zip(names, fallback)], dtype=object
+        )
+
+    study_names = named(store.study_attrs.dense.get("name"), study_rows, cols["study_id"])
+    analysis_names = named(store.analysis_attrs.dense.get("name"), sel, cols["contrast_id"])
+    cols["study_name"] = study_names
+    cols["analysis_name"] = analysis_names
     for src, dst in (("authors", "authors"), ("publication", "journal")):
         col = store.study_attrs.dense.get(src)
         cols[dst] = (
@@ -194,7 +192,9 @@ def metadata(view):
             if col is not None
             else np.full(len(sel), None, dtype=object)
         )
-    cols["name"] = np.array([f"{a}-{b}" for a, b in zip(sname, aname)], dtype=object)
+    cols["name"] = np.array(
+        [f"{a}-{b}" for a, b in zip(study_names, analysis_names)], dtype=object
+    )
 
     # A study-level field counts as present only if a study with selected
     # analyses declares it, matching a table built from analysis rows.
@@ -256,7 +256,7 @@ def annotations(view, annotation=None):
     if not store.annotations:
         return _build(cols)
     names = [annotation] if annotation is not None else sorted(store.annotations)
-    seen, collisions = {}, []
+    namer = LabelNamer()
     for name in names:
         cs = store.annotations[name].columns
         for label in sorted(cs.keys()):
@@ -267,12 +267,7 @@ def annotations(view, annotation=None):
             values = cs.get(label, sel=view.index)
             if _is_numeric(values):
                 values = cs.get_numeric(label, sel=view.index)
-            if label in seen:
-                collisions.append((label, seen[label], name))
-                cols[f"{name}.{label}"] = values
-            else:
-                seen[label] = name
-                cols[label] = values
+            cols[namer.name(label, name)] = values
     out = _build(cols)
-    out.attrs["annotation_collisions"] = collisions
+    out.attrs["annotation_collisions"] = namer.collisions
     return out

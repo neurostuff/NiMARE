@@ -24,14 +24,31 @@ class _Row:
         # needs to know which space it is being read in.
         self._context = context
 
+    #: The ColumnStore on the store that this accessor's attributes live in.
+    _attrs = None
+
     @property
     def row(self):
         """The store row this accessor points at."""
         return self._row
 
+    def _attr(self, name):
+        """Return one dense attribute at this row, or ``None`` when absent.
+
+        Reading a column at a row was spelled three ways -- a helper that
+        tolerated absence, a direct index that raised, and five inlined
+        subscripts. Absence is a property of the document, not a bug, so it is
+        ``None``.
+        """
+        cs = getattr(self._store, self._attrs)
+        col = None if cs is None else cs.dense.get(name)
+        return None if col is None else col[self._row]
+
 
 class Study(_Row):
     """One study."""
+
+    _attrs = "study_attrs"
 
     @property
     def id(self):
@@ -86,10 +103,6 @@ class Study(_Row):
         lo, hi = store.analysis_offsets[self._row], store.analysis_offsets[self._row + 1]
         return [Analysis(store, r, self._context) for r in range(int(lo), int(hi))]
 
-    def _attr(self, name):
-        col = self._store.study_attrs.dense.get(name)
-        return None if col is None else col[self._row]
-
     def __repr__(self):
         """Return a debugging representation naming the study."""
         return f"<Study: {self.id}>"
@@ -101,6 +114,8 @@ class Study(_Row):
 
 class Analysis(_Row):
     """One analysis (a contrast)."""
+
+    _attrs = "analysis_attrs"
 
     @property
     def id(self):
@@ -115,12 +130,12 @@ class Analysis(_Row):
     @property
     def name(self):
         """Return this analysis' name."""
-        return self._store.analysis_attrs.dense["name"][self._row]
+        return self._attr("name")
 
     @property
     def description(self):
         """Return this analysis' description."""
-        return self._store.analysis_attrs.dense["description"][self._row]
+        return self._attr("description")
 
     @property
     def study(self):
@@ -275,39 +290,37 @@ class Point(_Row):
 class Image(_Row):
     """One statistic map."""
 
+    _attrs = "image_attrs"
+
     @property
     def value_type(self):
         """Return what this image holds, such as ``z`` or ``varcope``."""
-        return self._store.image_attrs.dense["value_type"][self._row]
+        return self._attr("value_type")
 
     @property
     def url(self):
         """Return the URL this image was fetched from."""
-        return self._store.image_attrs.dense["url"][self._row]
+        return self._attr("url")
 
     @property
     def filename(self):
         """Return the path this image is stored at."""
-        return self._store.image_attrs.dense["filename"][self._row]
+        return self._attr("filename")
 
     @property
     def space(self):
         """Return the space this image is in."""
-        return self._store.image_attrs.dense["space"][self._row]
+        return self._attr("space")
 
     @property
     def metadata(self):
         """Return this image's metadata."""
-        return self._store.image_attrs.dense["metadata"][self._row]
+        return self._attr("metadata")
 
     @property
     def analysis(self):
         """Return the analysis this image belongs to."""
-        return Analysis(
-            self._store,
-            int(self._store.image_attrs.dense["analysis_idx"][self._row]),
-            self._context,
-        )
+        return Analysis(self._store, int(self._attr("analysis_idx")), self._context)
 
     def __repr__(self):
         """Return a debugging representation naming the image."""

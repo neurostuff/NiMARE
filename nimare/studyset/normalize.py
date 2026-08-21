@@ -1,4 +1,10 @@
-"""Coerce assorted inputs into a :class:`~nimare.studyset.studyset.Studyset`."""
+"""Coerce assorted inputs into a :class:`~nimare.studyset.studyset.Studyset`.
+
+This is the boundary every algorithm entry point goes through, which is why
+the module is not underscore-prefixed: :func:`normalize_collection` is part
+of the public surface even though what it mostly exists to absorb -- the
+deprecated :class:`~nimare.dataset.Dataset` -- is not.
+"""
 
 from __future__ import annotations
 
