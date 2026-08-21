@@ -256,9 +256,9 @@ class CBMR(_CBMRInputs):
 
     .. versionadded:: 0.21.0
 
-    Where :class:`CBMREstimator` takes ``group_categories``, ``moderators`` and a
-    ``moderator_effect`` switch, this takes one formula in which each term states its own
-    spatial resolution::
+    Where the previous interface took ``group_categories``, ``moderators``,
+    ``global_moderators``, ``voxelwise_moderators`` and a three-valued ``moderator_effect``
+    switch, this takes one formula in which each term states its own spatial resolution::
 
         CBMR("~ s(diagnosis:drug_status)")                 # a map per cell
         CBMR("~ s(diagnosis) + sample_size")               # plus a scalar moderator
@@ -282,8 +282,20 @@ class CBMR(_CBMRInputs):
         sharing each spatial map, so they cannot be combined with a continuously varying spatial
         term; :meth:`~nimare.meta.cbmr.distributions.Distribution.check_design` explains why.
         Default is ``"poisson"``.
-    mask, incidence_threshold, spline_spacing, n_iter, lr, tol, device, random_state
-        As for :class:`CBMREstimator`.
+    mask : :obj:`str`, :class:`~nibabel.nifti1.Nifti1Image`, or Nilearn masker, optional
+        Region-of-interest mask. If None, the whole 2 mm MNI152 brain mask is used.
+    incidence_threshold : :obj:`float` or None, optional
+        Drop voxels whose empirical focus incidence is at or below this, after applying ``mask``.
+        Use None to keep every voxel in ``mask``. Default is 0.001.
+    spline_spacing : :obj:`int`, optional
+        Knot spacing of the cubic B-spline bases, shared across x, y and z. Smaller means a wider
+        basis and so more coefficients per ``s()`` term. Default is 10.
+    n_iter, lr, tol : optional
+        L-BFGS iteration cap, learning rate and stopping tolerance.
+    device : :obj:`str`, optional
+        ``"cpu"`` or ``"cuda"``. Default is ``"cpu"``.
+    random_state : :obj:`int`, optional
+        Seed for weight initialization. Default is None.
 
     Notes
     -----

@@ -196,14 +196,10 @@ def test_poisson_matches_the_reference_likelihood(setup):
     torch.testing.assert_close(actual, expected, rtol=1e-10, atol=1e-8)
 
 
-@pytest.mark.parametrize(
-    "distribution,reference",
-    [
-        (NegativeBinomial, _reference_negative_binomial),
-        (ClusteredNegativeBinomial, _reference_clustered_negative_binomial),
-    ],
-)
-def test_overdispersed_likelihoods_match_their_references(setup, distribution, reference):
+# Parametrized by name, not by class: the classes are imported inside a torch guard, so
+# referencing them in a decorator would be evaluated at collection time and fail without torch.
+@pytest.mark.parametrize("name", ["NegativeBinomial", "ClusteredNegativeBinomial"])
+def test_overdispersed_likelihoods_match_their_references(setup, name):
     """Both overdispersion ports must equal the marginal likelihoods they came from.
 
     These are the models that cannot be written for a non-separable predictor at all, so the
@@ -211,6 +207,15 @@ def test_overdispersed_likelihoods_match_their_references(setup, distribution, r
     different model, and there is no external implementation of this moment-matched form to
     catch it.
     """
+    distribution = {
+        "NegativeBinomial": NegativeBinomial,
+        "ClusteredNegativeBinomial": ClusteredNegativeBinomial,
+    }[name]
+    reference = {
+        "NegativeBinomial": _reference_negative_binomial,
+        "ClusteredNegativeBinomial": _reference_clustered_negative_binomial,
+    }[name]
+
     predictor, spatial, global_coef, foci, _ = setup
     per_voxel, per_experiment, members = _legacy_pieces(predictor, foci)
     overdispersion = torch.tensor([0.03, 0.07], dtype=torch.float64)
