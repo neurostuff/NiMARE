@@ -22,7 +22,7 @@ from nimare.meta.cbmr._helpers import (
 from nimare.meta.cbmr._torch import torch
 from nimare.meta.cbmr.basis import b_spline_bases
 from nimare.meta.cbmr.optimizers import fit_voxelwise_cbmr_approximate
-from nimare.meta.cbmr.results import CBMRResult
+from nimare.meta.cbmr.results import CBMRFormulaResult, CBMRResult
 from nimare.utils import (
     dummy_encoding_moderators,
     get_masker,
@@ -1250,6 +1250,13 @@ class CBMR(CBMREstimator):
         self.bound_design = None
         self.predictor = None
         self.cbmr_model = None
+
+    def _make_result(self, dataset, maps=None, tables=None, description=""):
+        """Return a result that can test hypotheses over the fitted design."""
+        masker = self.masker or dataset.masker
+        return CBMRFormulaResult(
+            self, mask=masker, maps=maps, tables=tables, description=description
+        )
 
     def _experiment_annotations(self, dataset):
         """Return experiment annotations ordered to match the foci matrix rows."""

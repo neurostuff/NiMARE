@@ -189,3 +189,60 @@ def test_description_names_the_design(studyset):
 
     assert "s(diagnosis)" in result.description_
     assert "Poisson" in result.description_
+
+
+def test_result_tests_hypotheses_by_name(studyset):
+    """``result.test()`` replaces the positional, order-dependent contrast matrices.
+
+    The old interface needed group_contrasts=[[[1, -1, 0, 0], ...]], where reordering the levels
+    silently changed the hypothesis.
+    """
+    result = _fit("~ s(diagnosis)", studyset)
+    tested = result.test("diagnosis[schizophrenia] = diagnosis[depression]", name="dx")
+
+    for prefix in ("z", "p", "logp"):
+        assert f"{prefix}_dx" in tested.maps
+    assert np.all(np.isfinite(tested.maps["z_dx"]))
+    # Default is a copy, so the original is untouched.
+    assert "z_dx" not in result.maps
+
+
+def test_result_tests_hypotheses_jointly(studyset):
+    """A list of statements is one generalized linear hypothesis, not several tests."""
+    result = _fit("~ s(diagnosis:drug_status)", studyset)
+    tested = result.test(
+        [
+            "schizophrenia-Yes = schizophrenia-No",
+            "depression-Yes = depression-No",
+        ],
+        name="drug",
+    )
+
+    assert "chiSquare_drug" in tested.maps
+    assert np.all(tested.maps["chiSquare_drug"] >= 0)
+
+
+def test_result_tests_a_scalar_moderator(studyset):
+    """A non-spatial term's test is a table row, matching where its coefficient lives."""
+    result = _fit("~ s(diagnosis) + standardized_sample_sizes", studyset)
+    tested = result.test("standardized_sample_sizes = 0", name="n")
+
+    table = tested.tables["contrast_n"]
+    assert np.isfinite(table["z"].iloc[0])
+
+
+def test_result_can_test_in_place(studyset):
+    """inplace=True should mutate the result rather than copy it."""
+    result = _fit("~ s(diagnosis)", studyset)
+    returned = result.test("diagnosis[schizophrenia] = 0", name="s", inplace=True)
+
+    assert returned is result
+    assert "z_s" in result.maps
+
+
+def test_result_reports_the_term_budget(studyset):
+    """The parameter budget should be reachable from the result, not just the fit log."""
+    result = _fit("~ s(diagnosis) + standardized_sample_sizes", studyset)
+    described = result.describe_terms()
+
+    assert "s(diagnosis)" in described and "total" in described

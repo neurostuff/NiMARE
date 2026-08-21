@@ -3,7 +3,10 @@
 import copy
 import logging
 
-from nimare.meta.cbmr._helpers import _normalize_named_pairwise_contrasts
+from nimare.meta.cbmr._helpers import (
+    DEFAULT_GROUP_NAME,
+    _normalize_named_pairwise_contrasts,
+)
 from nimare.meta.cbmr._torch import torch  # noqa: F401
 from nimare.results import MetaResult
 
@@ -272,3 +275,55 @@ class CBMRResult(MetaResult):
             method=method,
             **kwargs,
         )
+
+
+class CBMRFormulaResult(CBMRResult):
+    """Result of a formula-specified CBMR fit.
+
+    Adds :meth:`test`, which replaces the positional contrast matrices the older interface
+    required. Those were unreadable and silently order-dependent -- reorder the factor levels
+    and the same matrix tests a different hypothesis.
+    """
+
+    def test(self, hypotheses, name=None, inplace=False):
+        """Test one or more hypotheses about the fitted coefficients.
+
+        Parameters
+        ----------
+        hypotheses : :obj:`str` or :obj:`list` of :obj:`str`
+            Hypotheses written over term and level names, such as
+            ``"diagnosis[schizophrenia] = diagnosis[depression]"`` or ``"s(avg_age) = 0"``.
+            A list is tested jointly, as a generalized linear hypothesis, rather than one at a
+            time.
+        name : :obj:`str`, optional
+            Label for the emitted map and table keys. Defaults to the hypotheses joined by
+            ``";"``.
+        inplace : :obj:`bool`, optional
+            Whether to add the results to this object rather than to a copy. Default is False.
+
+        Returns
+        -------
+        :class:`CBMRFormulaResult`
+            The result carrying the new ``z_``, ``p_``, ``logp_`` and ``chiSquare_`` entries.
+        """
+        from nimare.meta.cbmr.contrasts import evaluate_hypotheses
+
+        estimator = self.estimator
+        model = getattr(estimator, "cbmr_model", None)
+        if model is None:
+            raise ValueError(
+                "This result has no fitted model to test; it was not produced by CBMR.fit."
+            )
+
+        foci = estimator.inputs_["foci_by_experiment"][DEFAULT_GROUP_NAME]
+        computed = evaluate_hypotheses(model, hypotheses, foci, name=name)
+
+        target = self if inplace else self.copy()
+        target.maps.update(computed["maps"])
+        target.tables.update(computed["tables"])
+        return target
+
+    def describe_terms(self):
+        """Return the per-term parameter budget of the fitted design."""
+        estimator = self.estimator
+        return estimator.bound_design.describe(estimator.predictor.n_bases)
