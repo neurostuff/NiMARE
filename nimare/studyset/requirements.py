@@ -27,11 +27,13 @@ class Coordinates:
     name: str = "coordinates"
 
     def validity(self, view):
+        """Return a boolean over the view's analyses, True where satisfiable."""
         store = view.store
         sizes = store.point_offsets[view.index + 1] - store.point_offsets[view.index]
         return sizes > 0
 
     def resolve(self, view):
+        """Return the narrowed view and the block this requirement asked for."""
         if self.space is not None and view.context.space != self.space:
             view = view.with_context(space=self.space)
         return view.coordinate_block()
@@ -46,6 +48,7 @@ class PerAnalysis:
     name: str = "per_analysis"
 
     def dense(self, store):
+        """Return the requested per-analysis fields as a dense array."""
         key = ("per_analysis", self.field, self.reduce)
         cache = derived(store)
         got = cache.get(key)
@@ -56,9 +59,7 @@ class PerAnalysis:
             else:
                 out = store.metadata.get_numeric(self.field, reduce=reducer)
                 if not np.isfinite(out).any() and store.study_metadata is not None:
-                    per_study = store.study_metadata.get_numeric(
-                        self.field, reduce=reducer
-                    )
+                    per_study = store.study_metadata.get_numeric(self.field, reduce=reducer)
                     out = per_study[store.study_idx]
             out = np.asarray(out, dtype=np.float64)
             out.flags.writeable = False
@@ -67,9 +68,11 @@ class PerAnalysis:
         return got
 
     def validity(self, view):
+        """Return a boolean over the view's analyses, True where satisfiable."""
         return np.isfinite(self.dense(view.store)[view.index])
 
     def resolve(self, view):
+        """Return the narrowed view and the block this requirement asked for."""
         return self.dense(view.store)[view.index]
 
 
@@ -82,6 +85,7 @@ class Images:
     name: str = "images"
 
     def validity(self, view):
+        """Return a boolean over the view's analyses, True where satisfiable."""
         store = view.store
         ia = store.image_attrs
         if ia is None or not ia.n_rows:
@@ -92,6 +96,7 @@ class Images:
         return present[view.index]
 
     def resolve(self, view):
+        """Return the narrowed view and the block this requirement asked for."""
         return view.image_block(self.imtype, policy=self.policy)
 
 
@@ -103,6 +108,7 @@ class Labels:
     name: str = "labels"
 
     def validity(self, view):
+        """Return a boolean over the view's analyses, True where satisfiable."""
         store = view.store
         if not store.annotations:
             return np.zeros(len(view.index), dtype=bool)
@@ -122,6 +128,7 @@ class Labels:
         return covered[view.index]
 
     def resolve(self, view):
+        """Return the narrowed view and the block this requirement asked for."""
         from nimare.studyset.blocks import label_block, label_block_union
 
         if self.annotation is not None or len(view.store.annotations) == 1:
@@ -137,6 +144,7 @@ class Texts:
     name: str = "texts"
 
     def validity(self, view):
+        """Return a boolean over the view's analyses, True where satisfiable."""
         store = view.store
         cs = store.texts
         if cs is None or self.field not in cs:
@@ -152,6 +160,7 @@ class Texts:
         return present[view.index]
 
     def resolve(self, view):
+        """Return the narrowed view and the block this requirement asked for."""
         return view.text_block(self.field)
 
 
@@ -165,7 +174,7 @@ def _normalized_sample_sizes(store, reducer):
 
 
 def coerced_sample_sizes(store):
-    """The sample sizes each analysis declares, as lists, from either level.
+    """Return the sample sizes each analysis declares, as lists, from either level.
 
     The raw ``sample_size`` / ``sample_sizes`` keys stay where NIMADS put them so
     that export is lossless; this is the normalised view of them, and it keeps
@@ -177,14 +186,11 @@ def coerced_sample_sizes(store):
     n_a = store.n_analyses
     out = [None] * n_a
     a_md, s_md = store.metadata, store.study_metadata
-    a_vals = {
-        key: a_md.get(key) for key in ("sample_sizes", "sample_size") if key in a_md
-    }
+    a_vals = {key: a_md.get(key) for key in ("sample_sizes", "sample_size") if key in a_md}
     s_vals = {}
     if s_md is not None:
-        s_vals = {
-            key: s_md.get(key) for key in ("sample_sizes", "sample_size") if key in s_md
-        }
+        s_vals = {key: s_md.get(key) for key in ("sample_sizes", "sample_size") if key in s_md}
+
     def listify(value):
         # A parquet list column reads back as an ndarray, which the coercion
         # helper rejects outright.

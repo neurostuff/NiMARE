@@ -43,7 +43,7 @@ class Context:
     basepath: Optional[str] = None
 
     def resolved_masker(self):
-        """The caller's masker, or the cached default for ``space``.
+        """Return the caller's masker, or the cached default for ``space``.
 
         Accepts whatever ``get_masker`` accepts -- an image, a path, or a masker
         -- so a caller passing ``mask=get_template(...)`` gets a masker back.
@@ -57,7 +57,7 @@ class Context:
         return _default_masker(self.space)
 
     def with_(self, **changes):
-        """A context with the named fields replaced.
+        """Return a context with the named fields replaced.
 
         Explicit ``None`` clears a field: reading a studyset with ``space=None``
         is how you ask for its raw coordinates.
@@ -83,9 +83,11 @@ class View:
 
     # ------------------------------------------------------------- identity
     def __len__(self):
+        """Return the number of selected analyses."""
         return len(self.index)
 
     def __repr__(self):  # pragma: no cover - debugging aid
+        """Return a debugging representation naming the selection size."""
         return f"<View {len(self)}/{self.store.n_analyses} analyses>"
 
     @property
@@ -143,7 +145,7 @@ class View:
         return View(self.store, self.index, combined, self.context)
 
     def with_context(self, **changes):
-        """A view with different execution context. No data is touched."""
+        """Return a view with different execution context. No data is touched."""
         return View(self.store, self.index, self.point_mask, self.context.with_(**changes))
 
     # --------------------------------------------------------------- blocks
@@ -178,16 +180,19 @@ class View:
         return got
 
     def image_block(self, imtype, *, policy="all"):
+        """Return the images of one type for the selection."""
         from nimare.studyset.blocks import image_block
 
         return image_block(self, imtype, policy=policy)
 
     def label_block(self, annotation=None):
+        """Return the annotation matrix for the selection."""
         from nimare.studyset.blocks import label_block
 
         return label_block(self, annotation)
 
     def text_block(self, field="abstract"):
+        """Return one text field for the selection."""
         from nimare.studyset.blocks import text_block
 
         return text_block(self, field)
@@ -234,7 +239,7 @@ class View:
 
     # ---------------------------------------------------- pandas conversion
     def frame(self, name):
-        """A memoised pandas frame. Compatibility surface, not a hot path."""
+        """Return a memoised pandas frame. Compatibility surface, not a hot path."""
         got = self._cache.get(("frame", name))
         if got is None:
             from nimare.studyset import frames as _frames

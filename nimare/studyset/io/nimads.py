@@ -58,7 +58,6 @@ def from_nimads(source, *, canonical_order=True, annotations=None):
         carries.
     """
     from nimare.io import (
-        _extract_coerced_sample_sizes,
         _extract_coordinate_row_metadata,
         _normalize_image_type,
         _point_value_kind_to_coordinate_column,
@@ -77,9 +76,7 @@ def from_nimads(source, *, canonical_order=True, annotations=None):
 
     payloads = list(source.get("annotations") or [])
     if annotations is not None:
-        payloads.extend(
-            annotations if isinstance(annotations, (list, tuple)) else [annotations]
-        )
+        payloads.extend(annotations if isinstance(annotations, (list, tuple)) else [annotations])
 
     studies = source.get("studies") or []
 
@@ -120,11 +117,7 @@ def from_nimads(source, *, canonical_order=True, annotations=None):
             study_md_payload.append(smd)
 
         for analysis in study.get("analyses") or []:
-            aid = (
-                str(analysis["id"])
-                if analysis.get("id") is not None
-                else f"analysis-{a_row}"
-            )
+            aid = str(analysis["id"]) if analysis.get("id") is not None else f"analysis-{a_row}"
             analysis_key.append(aid)
             analysis_full_key.append(f"{sid}-{aid}")
             study_idx.append(s_row)
@@ -242,9 +235,7 @@ def from_nimads(source, *, canonical_order=True, annotations=None):
             if row is None:
                 continue
             rows.append(row)
-            collected.append(
-                {k: _denull(v) for k, v in (note.get("note") or {}).items()}
-            )
+            collected.append({k: _denull(v) for k, v in (note.get("note") or {}).items()})
 
     xyz = np.asarray(coord_flat, dtype=np.float64).reshape(n_p, 3) if n_p else np.zeros((0, 3))
     point_analysis = np.asarray(point_parent, dtype=np.int32)
@@ -276,12 +267,16 @@ def from_nimads(source, *, canonical_order=True, annotations=None):
         analysis_source_order=np.arange(n_a, dtype=np.int32),
         texts=ColumnStore(n_a),
         point_offsets=offsets_from_parents(point_analysis, n_a),
-        image_offsets=np.concatenate(([0], np.cumsum(image_counts, dtype=np.int64)))
-        if n_a
-        else np.zeros(1, dtype=np.int64),
-        condition_offsets=np.concatenate(([0], np.cumsum(condition_counts, dtype=np.int64)))
-        if n_a
-        else np.zeros(1, dtype=np.int64),
+        image_offsets=(
+            np.concatenate(([0], np.cumsum(image_counts, dtype=np.int64)))
+            if n_a
+            else np.zeros(1, dtype=np.int64)
+        ),
+        condition_offsets=(
+            np.concatenate(([0], np.cumsum(condition_counts, dtype=np.int64)))
+            if n_a
+            else np.zeros(1, dtype=np.int64)
+        ),
         point_analysis=point_analysis,
         xyz=xyz,
         point_key=np.asarray(point_key, dtype=object),
@@ -436,7 +431,7 @@ def _point_values(store):
             continue  # these belong to analysis metadata, not to the point
         kind = _coordinate_column_to_point_value_kind(column)
         if kind is None:
-            kind = column[len("value_"):] if column.startswith("value_") else column
+            kind = column[len("value_") :] if column.startswith("value_") else column
         idx, values = store.point_values.sparse.get(column, (np.array([]), []))
         for row, value in zip(np.asarray(idx, dtype=np.int64), list(values)):
             if value is None:

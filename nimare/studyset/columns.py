@@ -53,15 +53,19 @@ class Dict8:
         return cats[np.asarray(codes, dtype=np.int64)]
 
     def __len__(self):
+        """Return the number of categories."""
         return len(self.categories)
 
     def __repr__(self):  # pragma: no cover - debugging aid
+        """Return a debugging representation naming the categories."""
         return f"Dict8({len(self.categories)} categories)"
 
     def __getstate__(self):
+        """Return the picklable state, which is the category list."""
         return {"categories": list(self.categories)}
 
     def __setstate__(self, state):
+        """Restore the categories and rebuild the reverse lookup."""
         self.categories = list(state["categories"])
         self._lookup = {v: i for i, v in enumerate(self.categories)}
 
@@ -79,14 +83,14 @@ class ColumnStore:
         return list(self.dense) + list(self.sparse)
 
     def __contains__(self, name):
+        """Report whether ``name`` is present, dense or sparse."""
         return name in self.dense or name in self.sparse
 
     def add_dense(self, name, values):
+        """Record a column present on every row."""
         values = np.asarray(values)
         if len(values) != self.n_rows:
-            raise ValueError(
-                f"column {name!r} has {len(values)} values, expected {self.n_rows}"
-            )
+            raise ValueError(f"column {name!r} has {len(values)} values, expected {self.n_rows}")
         self.dense[name] = values
 
     def add_sparse(self, name, idx, values):
@@ -99,6 +103,7 @@ class ColumnStore:
         self.sparse[name] = (np.asarray(idx, dtype=np.int64), list(values))
 
     def copy(self):
+        """Return a shallow copy sharing the underlying arrays."""
         return ColumnStore(self.n_rows, dict(self.dense), dict(self.sparse))
 
     def get(self, name, sel=None, fill=None):
@@ -167,6 +172,38 @@ class ColumnStore:
                 out.setdefault(row, {})[name] = value
         return out
 
+    def subset(self, keep):
+        """Return a new store holding only ``keep``, in the order given.
+
+        Unlike :meth:`reorder` this changes the row count, so a sparse entry
+        whose row is dropped has to go rather than be remapped. Declared-but-
+        empty columns are preserved for the same reason :meth:`add_sparse`
+        records them.
+        """
+        keep = np.asarray(keep, dtype=np.int64)
+        out = ColumnStore(len(keep))
+        for name, col in self.dense.items():
+            out.dense[name] = col[keep]
+        if self.sparse:
+            remap = np.full(self.n_rows, -1, dtype=np.int64)
+            remap[keep] = np.arange(len(keep))
+            for name, (idx, values) in self.sparse.items():
+                idx = np.asarray(idx, dtype=np.int64)
+                values = list(values)
+                targets = remap[idx] if len(idx) else idx
+                new_idx, new_values = [], []
+                for target, value in zip(targets, values):
+                    if target >= 0:
+                        new_idx.append(int(target))
+                        new_values.append(value)
+                order = np.argsort(np.asarray(new_idx, dtype=np.int64), kind="stable")
+                out.add_sparse(
+                    name,
+                    [new_idx[i] for i in order],
+                    [new_values[i] for i in order],
+                )
+        return out
+
     def reorder(self, order, inverse):
         """Permute in place: dense columns gather, sparse indices remap."""
         for name, col in list(self.dense.items()):
@@ -178,6 +215,7 @@ class ColumnStore:
             self.sparse[name] = (new_idx[perm], [values[i] for i in perm])
 
     def freeze(self):
+        """Mark every dense column read-only and return self."""
         for col in self.dense.values():
             if isinstance(col, np.ndarray):
                 col.flags.writeable = False
@@ -203,13 +241,15 @@ class AnnotationSet:
     description: Optional[str] = None
 
     def keys(self):
+        """Return every label in the annotation."""
         return self.columns.keys()
 
     def dtype(self, label):
-        """The type NIMADS declared for ``label``, if any."""
+        """Return the type NIMADS declared for ``label``, if any."""
         return self.note_key_types.get(label)
 
     def copy(self):
+        """Return a shallow copy of the annotation."""
         return AnnotationSet(
             id=self.id,
             name=self.name,

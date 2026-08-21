@@ -14,6 +14,7 @@ from nimare.studyset.layout import offsets_from_parents, point_parents
 from nimare.studyset.store import replace
 
 __all__ = [
+    "keep_images",
     "keep_points",
     "with_annotation",
     "with_annotation_payload",
@@ -25,7 +26,7 @@ __all__ = [
 
 
 def with_metadata(store, name, values, *, level="analysis"):
-    """A new store with one extra dense metadata column."""
+    """Return a new store with one extra dense metadata column."""
     values = np.asarray(values)
     target = store.metadata if level == "analysis" else store.study_metadata
     expected = store.n_analyses if level == "analysis" else store.n_studies
@@ -37,7 +38,7 @@ def with_metadata(store, name, values, *, level="analysis"):
 
 
 def with_annotation(store, name, labels, matrix, rows, note_key_types=None):
-    """A new store carrying an extra annotation.
+    """Return a new store carrying an extra annotation.
 
     Replaces the ``dset.copy()`` plus inner-merge idiom the annotators use: no
     deep copy, and analyses without a value are simply absent rather than dropped
@@ -68,7 +69,7 @@ def with_annotation(store, name, labels, matrix, rows, note_key_types=None):
 
 
 def with_points(store, analysis_positions, xyz, *, space=None, kind=None, values=None):
-    """A new store with extra foci, maintaining both traversal directions."""
+    """Return a new store with extra foci, maintaining both traversal directions."""
     from nimare.studyset.columns import Dict8
 
     analysis_positions = np.asarray(analysis_positions, dtype=np.int32)
@@ -76,17 +77,13 @@ def with_points(store, analysis_positions, xyz, *, space=None, kind=None, values
     if len(analysis_positions) != len(new_xyz):
         raise ValueError("analysis_positions and xyz must have the same length")
 
-    parents = np.concatenate(
-        [point_parents(store).astype(np.int32), analysis_positions]
-    )
+    parents = np.concatenate([point_parents(store).astype(np.int32), analysis_positions])
     order = np.argsort(parents, kind="stable")
 
     space_dict = Dict8(store.space_dict.categories)
     kind_dict = Dict8(store.kind_dict.categories)
     all_xyz = np.concatenate([store.xyz, new_xyz])
-    all_key = np.concatenate(
-        [store.point_key, np.full(len(new_xyz), None, dtype=object)]
-    )
+    all_key = np.concatenate([store.point_key, np.full(len(new_xyz), None, dtype=object)])
     all_space = np.concatenate(
         [store.point_space, np.full(len(new_xyz), space_dict.code(space), dtype=np.int16)]
     )
@@ -126,7 +123,7 @@ def with_points(store, analysis_positions, xyz, *, space=None, kind=None, values
 
 
 def with_images(store, analysis_positions, refs, imtype, *, space=None, metadata=None):
-    """A new store with extra images.
+    """Return a new store with extra images.
 
     A derived map sits alongside its source rather than overwriting it, which the
     one-column-per-type table could not express.
@@ -143,15 +140,11 @@ def with_images(store, analysis_positions, refs, imtype, *, space=None, metadata
     dense = {
         "analysis_idx": parents[order].astype(np.int32),
         "url": np.concatenate([ia.dense["url"], np.full(n_add, None, dtype=object)])[order],
-        "filename": np.concatenate(
-            [ia.dense["filename"], np.asarray(refs, dtype=object)]
-        )[order],
+        "filename": np.concatenate([ia.dense["filename"], np.asarray(refs, dtype=object)])[order],
         "value_type": np.concatenate(
             [ia.dense["value_type"], np.full(n_add, imtype, dtype=object)]
         )[order],
-        "space": np.concatenate(
-            [ia.dense["space"], np.full(n_add, space, dtype=object)]
-        )[order],
+        "space": np.concatenate([ia.dense["space"], np.full(n_add, space, dtype=object)])[order],
         "metadata": np.concatenate(
             [
                 ia.dense["metadata"],
@@ -166,14 +159,36 @@ def with_images(store, analysis_positions, refs, imtype, *, space=None, metadata
     )
 
 
+def keep_images(store, mask):
+    """Return a new store holding only the flagged images.
+
+    The image counterpart of :func:`keep_points`. Images are level-2 children of
+    an analysis just as foci are, so dropping them is the same operation: subset
+    the columns, then recompile the offsets from the surviving parents.
+    """
+    mask = np.asarray(mask, dtype=bool)
+    if len(mask) != store.n_images:
+        raise ValueError(f"mask has {len(mask)} entries, expected {store.n_images}")
+    keep = np.flatnonzero(mask)
+    attrs = store.image_attrs.subset(keep)
+    parents = np.asarray(attrs.dense["analysis_idx"], dtype=np.int32)
+    return replace(
+        store,
+        image_attrs=attrs,
+        image_offsets=offsets_from_parents(parents, store.n_analyses),
+    )
+
+
 def with_texts(store, rows, field, values):
-    """A new store with text added to ``field`` for ``rows``."""
+    """Return a new store with text added to ``field`` for ``rows``."""
     texts = store.texts.copy() if store.texts is not None else ColumnStore(store.n_analyses)
     rows = np.asarray(rows, dtype=np.int64)
     values = list(values)
     if field in texts.sparse:
         existing_idx, existing_values = texts.sparse[field]
-        merged = dict(zip(np.asarray(existing_idx, dtype=np.int64).tolist(), list(existing_values)))
+        merged = dict(
+            zip(np.asarray(existing_idx, dtype=np.int64).tolist(), list(existing_values))
+        )
     elif field in texts.dense:
         column = texts.dense.pop(field)
         merged = {i: v for i, v in enumerate(column) if v is not None}
@@ -188,7 +203,7 @@ def with_texts(store, rows, field, values):
 
 
 def with_annotation_payload(store, payload):
-    """A new store carrying a NIMADS annotation payload.
+    """Return a new store carrying a NIMADS annotation payload.
 
     Notes are matched to analyses by id; notes naming analyses the studyset does
     not hold are ignored rather than fatal.
@@ -229,7 +244,7 @@ def with_annotation_payload(store, payload):
 
 
 def keep_points(store, mask):
-    """A new store holding only the flagged foci.
+    """Return a new store holding only the flagged foci.
 
     A point mask belongs to the store it was computed against, so any edit that
     changes the point set invalidates it. Materialising the mask first keeps that
@@ -237,25 +252,10 @@ def keep_points(store, mask):
     """
     mask = np.asarray(mask, dtype=bool)
     if len(mask) != store.n_points:
-        raise ValueError(
-            f"mask has {len(mask)} entries, expected {store.n_points}"
-        )
+        raise ValueError(f"mask has {len(mask)} entries, expected {store.n_points}")
     keep = np.flatnonzero(mask)
     parents = point_parents(store)[keep].astype(np.int32)
-    point_values = ColumnStore(len(keep))
-    if store.point_values.sparse:
-        remap = np.full(store.n_points, -1, dtype=np.int64)
-        remap[keep] = np.arange(len(keep))
-        for name, (idx, values) in store.point_values.sparse.items():
-            idx = np.asarray(idx, dtype=np.int64)
-            values = list(values)
-            new_idx, new_values = [], []
-            for i, value in zip(idx, values):
-                target = remap[int(i)]
-                if target >= 0:
-                    new_idx.append(int(target))
-                    new_values.append(value)
-            point_values.add_sparse(name, new_idx, new_values)
+    point_values = store.point_values.subset(keep)
     return replace(
         store,
         xyz=np.ascontiguousarray(store.xyz[keep]),

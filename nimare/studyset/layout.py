@@ -52,7 +52,7 @@ def offsets_from_parents(parents, n_parents):
 
 
 def point_parents(store):
-    """The point -> analysis column, stored rather than re-derived."""
+    """Return the point -> analysis column, stored rather than re-derived."""
     if store.point_analysis is not None:
         return store.point_analysis
     counts = np.diff(store.point_offsets)
@@ -180,11 +180,18 @@ def check_invariants(store):
             "image_offsets",
             store.image_offsets,
             store.n_images,
-            None if store.image_attrs is None or not store.n_images
-            else store.image_attrs.dense["analysis_idx"],
+            (
+                None
+                if store.image_attrs is None or not store.n_images
+                else store.image_attrs.dense["analysis_idx"]
+            ),
         ),
-        ("condition_offsets", store.condition_offsets,
-         0 if store.condition_code is None else len(store.condition_code), None),
+        (
+            "condition_offsets",
+            store.condition_offsets,
+            0 if store.condition_code is None else len(store.condition_code),
+            None,
+        ),
     ):
         if offsets is None:
             problems.append(f"I4: {label} missing")
@@ -243,7 +250,7 @@ def _space_transforms(target):
 
 
 def harmonize_space(store, target):
-    """A store whose foci are all in ``target``.
+    """Return a store whose foci are all in ``target``.
 
     One vectorized transform per *space category* rather than per row, because
     the space column is dictionary-encoded. Unrecognized spaces are relabelled

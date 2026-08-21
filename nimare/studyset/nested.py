@@ -35,43 +35,53 @@ class Study(_Row):
 
     @property
     def id(self):
+        """Return this study's id."""
         return str(self._store.study_key[self._row])
 
     @property
     def name(self):
+        """Return this study's title."""
         return self._attr("name")
 
     @property
     def authors(self):
+        """Return this study's authors."""
         return self._attr("authors")
 
     @property
     def publication(self):
+        """Return the publication this study appeared in."""
         return self._attr("publication")
 
     @property
     def description(self):
+        """Return this study's description."""
         return self._attr("description")
 
     @property
     def doi(self):
+        """Return this study's DOI."""
         return self._attr("doi")
 
     @property
     def pmid(self):
+        """Return this study's PubMed id."""
         return self._attr("pmid")
 
     @property
     def year(self):
+        """Return this study's publication year."""
         return self._attr("year")
 
     @property
     def metadata(self):
+        """Return this study's study-level metadata."""
         cs = self._store.study_metadata
         return {} if cs is None else cs.rows([self._row]).get(self._row, {})
 
     @property
     def analyses(self):
+        """Return this study's analyses."""
         store = self._store
         lo, hi = store.analysis_offsets[self._row], store.analysis_offsets[self._row + 1]
         return [Analysis(store, r, self._context) for r in range(int(lo), int(hi))]
@@ -81,9 +91,11 @@ class Study(_Row):
         return None if col is None else col[self._row]
 
     def __repr__(self):
+        """Return a debugging representation naming the study."""
         return f"<Study: {self.id}>"
 
     def __str__(self):
+        """Return this study's title."""
         return f"{self.name}"
 
 
@@ -92,6 +104,7 @@ class Analysis(_Row):
 
     @property
     def id(self):
+        """Return this analysis' id."""
         return str(self._store.analysis_key[self._row])
 
     @property
@@ -101,22 +114,26 @@ class Analysis(_Row):
 
     @property
     def name(self):
+        """Return this analysis' name."""
         return self._store.analysis_attrs.dense["name"][self._row]
 
     @property
     def description(self):
+        """Return this analysis' description."""
         return self._store.analysis_attrs.dense["description"][self._row]
 
     @property
     def study(self):
+        """Return the study this analysis belongs to."""
         return Study(self._store, int(self._store.study_idx[self._row]), self._context)
 
     @property
     def metadata(self):
+        """Return this analysis' metadata."""
         return self._store.metadata.rows([self._row]).get(self._row, {})
 
     def get_metadata(self, field=None):
-        """This analysis' metadata, or one field of it."""
+        """Return this analysis' metadata, or one field of it."""
         merged = dict(self.study.metadata)
         merged.update(self.metadata)
         if field is None:
@@ -125,6 +142,7 @@ class Analysis(_Row):
 
     @property
     def texts(self):
+        """Return the texts attached to this analysis."""
         cs = self._store.texts
         return {} if cs is None else cs.rows([self._row]).get(self._row, {})
 
@@ -152,12 +170,14 @@ class Analysis(_Row):
 
     @property
     def points(self):
+        """Return this analysis' foci."""
         store = self._store
         lo, hi = store.point_offsets[self._row], store.point_offsets[self._row + 1]
         return [Point(store, r, self._context) for r in range(int(lo), int(hi))]
 
     @property
     def images(self):
+        """Return this analysis' images."""
         store = self._store
         ia = store.image_attrs
         if ia is None or not ia.n_rows:
@@ -167,6 +187,7 @@ class Analysis(_Row):
 
     @property
     def conditions(self):
+        """Return the conditions this analysis declares."""
         store = self._store
         lo = int(store.condition_offsets[self._row])
         hi = int(store.condition_offsets[self._row + 1])
@@ -180,15 +201,18 @@ class Analysis(_Row):
 
     @property
     def weights(self):
+        """Return the weight of each condition."""
         store = self._store
         lo = int(store.condition_offsets[self._row])
         hi = int(store.condition_offsets[self._row + 1])
         return store.condition_weight[lo:hi].tolist()
 
     def __repr__(self):
+        """Return a debugging representation naming the analysis."""
         return f"<Analysis: {self.id}>"
 
     def __str__(self):
+        """Return this analysis' name."""
         return f"{self.name}: {len(self.points)} points"
 
 
@@ -203,39 +227,48 @@ class Point(_Row):
 
     @property
     def coordinates(self):
+        """Return this focus as an ``(x, y, z)`` tuple."""
         xyz, _, _ = self._projected()
         return xyz[self._row].tolist()
 
     @property
     def x(self):
+        """Return this focus' x coordinate."""
         return float(self._projected()[0][self._row, 0])
 
     @property
     def y(self):
+        """Return this focus' y coordinate."""
         return float(self._projected()[0][self._row, 1])
 
     @property
     def z(self):
+        """Return this focus' z coordinate."""
         return float(self._projected()[0][self._row, 2])
 
     @property
     def space(self):
+        """Return the space this focus is stored in."""
         _, codes, space_dict = self._projected()
         return space_dict.categories[int(codes[self._row])]
 
     @property
     def kind(self):
+        """Return what this focus measures, when the document says."""
         return self._store.kind_dict.categories[int(self._store.point_kind[self._row])]
 
     @property
     def id(self):
+        """Return this focus' id."""
         return self._store.point_key[self._row]
 
     @property
     def values(self):
+        """Return the point-level values attached to this focus."""
         return self._store.point_values.rows([self._row]).get(self._row, {})
 
     def __repr__(self):
+        """Return a debugging representation naming the focus."""
         return f"<Point: {self.coordinates}>"
 
 
@@ -244,26 +277,32 @@ class Image(_Row):
 
     @property
     def value_type(self):
+        """Return what this image holds, such as ``z`` or ``varcope``."""
         return self._store.image_attrs.dense["value_type"][self._row]
 
     @property
     def url(self):
+        """Return the URL this image was fetched from."""
         return self._store.image_attrs.dense["url"][self._row]
 
     @property
     def filename(self):
+        """Return the path this image is stored at."""
         return self._store.image_attrs.dense["filename"][self._row]
 
     @property
     def space(self):
+        """Return the space this image is in."""
         return self._store.image_attrs.dense["space"][self._row]
 
     @property
     def metadata(self):
+        """Return this image's metadata."""
         return self._store.image_attrs.dense["metadata"][self._row]
 
     @property
     def analysis(self):
+        """Return the analysis this image belongs to."""
         return Analysis(
             self._store,
             int(self._store.image_attrs.dense["analysis_idx"][self._row]),
@@ -271,6 +310,7 @@ class Image(_Row):
         )
 
     def __repr__(self):
+        """Return a debugging representation naming the image."""
         return f"<Image: {self.value_type}>"
 
 

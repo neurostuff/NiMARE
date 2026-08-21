@@ -332,10 +332,7 @@ def test_convert_nimads_to_dataset_sample_sizes(example_nimads_studyset):
     assert "sample_sizes" in dset.metadata.columns
 
 
-
-def _one_analysis_studyset(
-    study_metadata=None, analysis_metadata=None, annotation_note=None
-):
+def _one_analysis_studyset(study_metadata=None, analysis_metadata=None, annotation_note=None):
     """Build a one-study, one-analysis studyset with the given metadata.
 
     Studysets are immutable, so a test states the data it wants in a document

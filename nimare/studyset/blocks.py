@@ -14,7 +14,6 @@ from typing import Optional
 
 import numpy as np
 
-from nimare.studyset import layout
 from nimare.studyset.store import derived
 
 __all__ = [
@@ -50,21 +49,24 @@ class CoordinateBlock:
     _ijk_cache: dict = field(default_factory=dict, compare=False, repr=False)
 
     def __len__(self):
+        """Return the number of foci in the block."""
         return len(self.xyz)
 
     @property
     def n_groups(self):
+        """Return the number of analyses the foci are grouped into."""
         return len(self.offsets) - 1
 
     def group(self, g):
-        """The foci of group ``g``, as a view into ``xyz``."""
+        """Return the foci of group ``g``, as a view into ``xyz``."""
         return self.xyz[self.offsets[g] : self.offsets[g + 1]]
 
     def group_sizes(self):
+        """Return the number of foci in each group."""
         return np.diff(self.offsets)
 
     def group_of_point(self):
-        """The group index of every focus."""
+        """Return the group index of every focus."""
         return np.repeat(np.arange(self.n_groups, dtype=np.int32), self.group_sizes())
 
     def ijk(self, affine):
@@ -102,6 +104,7 @@ class ImageBlock:
     raw_refs: Optional[np.ndarray] = None
 
     def __len__(self):
+        """Return the number of images in the block."""
         return len(self.refs)
 
     def dependence_groups(self):
@@ -117,6 +120,7 @@ class ImageBlock:
         return self.values[positions]
 
     def with_values(self, values):
+        """Return a copy of the block carrying masked image data."""
         return ImageBlock(
             refs=self.refs,
             analysis_pos=self.analysis_pos,
@@ -144,6 +148,7 @@ class LabelBlock:
     _col_of: dict = field(default_factory=dict, compare=False, repr=False)
 
     def col(self, label):
+        """Return the column index of ``label``."""
         if not self._col_of:
             self._col_of.update({lab: i for i, lab in enumerate(self.labels)})
         try:
@@ -174,7 +179,7 @@ class LabelBlock:
         return out
 
     def dense(self, labels=None):
-        """A dense matrix for the requested labels."""
+        """Build a dense matrix for the requested labels."""
         if labels is None:
             return self.values.toarray()
         cols = [self.col(label) for label in labels]
@@ -194,14 +199,13 @@ class TextBlock:
     field: str
 
     def __len__(self):
+        """Return the number of documents in the block."""
         return len(self.text)
 
     def counts(self, vectorizer):
         """``(documents x terms)`` sparse counts and the vocabulary."""
         weights = vectorizer.fit_transform(self.text)
-        names = np.asarray(
-            [str(n) for n in vectorizer.get_feature_names_out()], dtype=object
-        )
+        names = np.asarray([str(n) for n in vectorizer.get_feature_names_out()], dtype=object)
         return weights.tocsr(), names
 
     @staticmethod
@@ -240,20 +244,20 @@ class Comparison:
     group2: object
 
     def __post_init__(self):
+        """Reject a pair drawn from two stores, or one that overlaps."""
         if self.group1.store is not self.group2.store:
-            raise ValueError(
-                "a Comparison must be between two views of the same studyset"
-            )
+            raise ValueError("a Comparison must be between two views of the same studyset")
         overlap = np.intersect1d(self.group1.index, self.group2.index)
         if overlap.size:
             raise ValueError(f"groups overlap in {overlap.size} analyses")
 
     @property
     def n1(self):
+        """Return the number of analyses on the first side."""
         return len(self.group1)
 
     def pooled(self):
-        """The union, as a view. Only indices are concatenated."""
+        """Return the union as a view. Only indices are concatenated."""
         from nimare.studyset.view import View
 
         return View(
@@ -264,7 +268,7 @@ class Comparison:
         )
 
     def permute(self, seed):
-        """A permuted pair, in index space. No data is moved."""
+        """Permute the pair in index space. No data is moved."""
         from nimare.studyset.view import View
 
         pool = np.concatenate([self.group1.index, self.group2.index])
@@ -292,21 +296,27 @@ def image_block(view, imtype, *, policy="all"):
     empty_o = np.empty(0, dtype=np.int64)
     if ia is None or not ia.n_rows:
         return ImageBlock(
-            np.empty(0, dtype=object), empty_o, empty_o, imtype,
-            np.empty(0, dtype=object), np.empty(0, dtype=object),
+            np.empty(0, dtype=object),
+            empty_o,
+            empty_o,
+            imtype,
+            np.empty(0, dtype=object),
+            np.empty(0, dtype=object),
         )
 
     pos_of_analysis = np.full(store.n_analyses, -1, dtype=np.int64)
     pos_of_analysis[view.index] = np.arange(len(view.index))
 
-    match = (ia.dense["value_type"] == imtype) & (
-        pos_of_analysis[ia.dense["analysis_idx"]] >= 0
-    )
+    match = (ia.dense["value_type"] == imtype) & (pos_of_analysis[ia.dense["analysis_idx"]] >= 0)
     rows = np.flatnonzero(match)
     if rows.size == 0:
         return ImageBlock(
-            np.empty(0, dtype=object), empty_o, empty_o, imtype,
-            np.empty(0, dtype=object), np.empty(0, dtype=object),
+            np.empty(0, dtype=object),
+            empty_o,
+            empty_o,
+            imtype,
+            np.empty(0, dtype=object),
+            np.empty(0, dtype=object),
         )
 
     parents = ia.dense["analysis_idx"][rows]
@@ -335,7 +345,7 @@ def image_block(view, imtype, *, policy="all"):
 
 
 def _resolve_refs(ia, rows, basepath):
-    """``(stored reference, resolved reference)`` for each image row.
+    """Return ``(stored reference, resolved reference)`` for each image row.
 
     Both are kept: consumers want a path they can open, while a frame reports the
     relative form the studyset actually stores.
@@ -360,7 +370,7 @@ def _resolve_refs(ia, rows, basepath):
 
 
 def label_block(view, annotation=None):
-    """The annotation matrix for one annotation set.
+    """Build the annotation matrix for one annotation set.
 
     Refuses to guess when the studyset carries several. The legacy behaviour --
     merging every annotation into one frame -- let two sets that share a label
@@ -491,10 +501,13 @@ def text_block(view, field="abstract"):
 
 
 def design_block(view, moderators, annotation=None):
-    """A moderator design matrix from annotation labels."""
+    """Build a moderator design matrix from annotation labels."""
     block = label_block(view, annotation)
-    matrix = np.column_stack([block.column(m) for m in moderators]) if moderators else \
-        np.zeros((len(view), 0))
+    matrix = (
+        np.column_stack([block.column(m) for m in moderators])
+        if moderators
+        else np.zeros((len(view), 0))
+    )
     return DesignBlock(matrix.astype(np.float64), np.asarray(moderators, dtype=object))
 
 
@@ -503,6 +516,4 @@ def group_by(view, labels, annotation=None):
     block = label_block(view, annotation)
     columns = np.column_stack([block.column(label) for label in labels])
     keys, codes = np.unique(columns, axis=0, return_inverse=True)
-    return {
-        tuple(keys[c]): view.select(np.flatnonzero(codes == c)) for c in range(len(keys))
-    }
+    return {tuple(keys[c]): view.select(np.flatnonzero(codes == c)) for c in range(len(keys))}

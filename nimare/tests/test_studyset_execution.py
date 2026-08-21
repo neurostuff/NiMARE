@@ -83,6 +83,7 @@ def test_ale_accepts_singular_sample_size_metadata(testdata_cbma):
 
 def test_studyset_metadata_coerces_sample_size_fields():
     """Sample sizes are normalised from whichever level and shape declares them."""
+
     def one(study_metadata, analysis_metadata):
         return Studyset(
             {
@@ -301,9 +302,7 @@ def test_studyset_filter_annotations_returns_executable_subset(testdata_cbma):
     studyset = Studyset.from_dataset(testdata_cbma.slice(testdata_cbma.ids[:5]))
     with_points = [bool(analysis.points) for analysis in studyset.analyses]
     keep_rows = [i for i, has in enumerate(with_points) if has][:3]
-    include = np.array(
-        [[1.0] if i in keep_rows else [0.0] for i in range(len(studyset.ids))]
-    )
+    include = np.array([[1.0] if i in keep_rows else [0.0] for i in range(len(studyset.ids))])
     annotated = studyset.with_annotation("curation", ["include"], include)
 
     filtered = annotated.filter_annotations("include", threshold=0.5)
@@ -346,7 +345,7 @@ def test_decoder_accepts_studyset(testdata_laird):
 
 
 def test_correlation_decoder_accepts_studyset(testdata_laird):
-    """CorrelationDecoder should run on a studyset converted from a Dataset."""
+    """Run CorrelationDecoder on a studyset converted from a Dataset."""
     dset = testdata_laird.slice(testdata_laird.ids[:5])
     studyset = Studyset.from_dataset(dset)
     features = next(

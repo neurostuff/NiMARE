@@ -1,6 +1,5 @@
 """Miscellaneous spatial and statistical transforms."""
 
-import copy
 import logging
 import os
 import os.path as op
@@ -177,9 +176,7 @@ class ImageTransformer(NiMAREBase):
             if imtype not in temp_images.columns:
                 continue
             before = existing[imtype] if imtype in existing.columns else None
-            for i, (analysis_id, path) in enumerate(
-                zip(temp_images["id"], temp_images[imtype])
-            ):
+            for i, (analysis_id, path) in enumerate(zip(temp_images["id"], temp_images[imtype])):
                 if not isinstance(path, str) or not path:
                     continue
                 if before is not None and before.iloc[i] == path:

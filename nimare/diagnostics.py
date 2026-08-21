@@ -14,7 +14,6 @@ from nilearn.reporting import get_clusters_table
 from tqdm.auto import tqdm
 
 from nimare.base import NiMAREBase
-from nimare.dataset import Dataset
 from nimare.meta.cbma.base import (
     CBMAEstimator,
     PairwiseCBMAEstimator,
@@ -26,7 +25,6 @@ from nimare.meta.cbma.utils import (
     resolve_subset_size,
 )
 from nimare.meta.ibma import IBMAEstimator
-from nimare.nimads import Studyset
 from nimare.results import MetaResult
 from nimare.studyset import normalize_collection
 from nimare.studyset.layout import harmonized_coordinates

@@ -6,8 +6,6 @@ from sklearn.decomposition import LatentDirichletAllocation
 
 from nimare.annotate.text import _generate_weights
 from nimare.base import NiMAREBase
-from nimare.dataset import Dataset
-from nimare.nimads import Studyset
 from nimare.studyset import normalize_collection
 from nimare.utils import DEFAULT_FLOAT_DTYPE, _check_ncores
 
@@ -140,11 +138,6 @@ class LDAModel(NiMAREBase):
             f"LDA{self.n_topics}__{i + 1}_{top_tokens[i]}" for i in range(self.n_topics)
         ]
 
-        doc_topic_weights_df = pd.DataFrame(
-            index=study_ids,
-            columns=topic_names,
-            data=doc_topic_weights,
-        )
         topic_word_weights_df = pd.DataFrame(
             index=topic_names,
             columns=vocabulary,

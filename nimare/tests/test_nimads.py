@@ -355,9 +355,7 @@ def test_get_analyses_by_mask(example_nimads_studyset, mni_mask):
 def test_get_analyses_by_label(example_nimads_studyset):
     """Test retrieving analyses by label threshold."""
     studyset = nimads.Studyset(example_nimads_studyset)
-    values = np.array(
-        [[1.0] if i < 2 else [0.0] for i in range(len(studyset.ids))]
-    )
+    values = np.array([[1.0] if i < 2 else [0.0] for i in range(len(studyset.ids))])
     labelled = studyset.with_annotation("custom", ["custom_label"], values)
     expected = [str(i).rsplit("-", 1)[-1] for i in labelled.ids[:2]]
 
@@ -418,11 +416,7 @@ def test_data_retrieval_methods(example_nimads_studyset):
     assert isinstance(studyset.get_texts(), list)
 
     # And the accessors agree with the frames
-    accessor_counts = {
-        analysis.id: len(analysis.points) for analysis in studyset.analyses
-    }
+    accessor_counts = {analysis.id: len(analysis.points) for analysis in studyset.analyses}
     frame_counts = studyset.coordinates.groupby("contrast_id").size().to_dict()
     for contrast_id, count in frame_counts.items():
         assert accessor_counts[contrast_id] == count
-
-

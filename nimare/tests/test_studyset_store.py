@@ -10,7 +10,6 @@ import scipy.sparse as sp
 
 from nimare.studyset import (
     Coordinates,
-    PerAnalysis,
     Studyset,
     View,
     check_invariants,
@@ -36,11 +35,13 @@ FIXTURES = (
 
 
 def fixture_path(name):
+    """Return the path to a bundled test document."""
     return os.path.join(get_test_data_path(), name)
 
 
 @pytest.fixture(params=FIXTURES)
 def store(request):
+    """Build a store from each bundled test document."""
     return from_nimads(fixture_path(request.param))
 
 
@@ -103,9 +104,7 @@ def test_nimads_round_trip_is_lossless(store):
     assert sorted(back.annotations) == sorted(store.annotations)
     order_a = np.argsort(store.analysis_full_key)
     order_b = np.argsort(back.analysis_full_key)
-    assert np.array_equal(
-        store.analysis_full_key[order_a], back.analysis_full_key[order_b]
-    )
+    assert np.array_equal(store.analysis_full_key[order_a], back.analysis_full_key[order_b])
 
 
 def test_conditions_and_weights_stay_paired(store):
@@ -137,7 +136,7 @@ def test_slice_then_read_equals_export_then_reload(store):
 
 
 def test_point_mask_keeps_every_analysis(store):
-    """FocusFilter selects foci, not analyses."""
+    """Select foci rather than analyses, as FocusFilter does."""
     view = View(store)
     if store.n_points < 4:
         pytest.skip("needs foci")
@@ -162,6 +161,7 @@ def test_analyses_with_points_ignores_empty_analyses(store):
 
 
 def test_coordinate_block_groups_match_offsets(store):
+    """Check that every coordinate group matches the stored offsets."""
     view = View(store)
     block = view.coordinate_block()
     assert block.n_groups == len(view)
@@ -180,6 +180,7 @@ def test_requirements_narrow_and_align(store):
 
 
 def test_resolve_can_refuse_to_drop(store):
+    """Check that resolve raises rather than silently dropping analyses."""
     view = View(store)
     sizes = store.point_offsets[view.index + 1] - store.point_offsets[view.index]
     if (sizes > 0).all():
@@ -200,12 +201,14 @@ def test_with_points_maintains_both_directions(store):
 
 
 def test_with_images_keeps_the_source_image(store):
+    """Check that adding an image leaves the source image in place."""
     added = edit.with_images(store, [0], ["derived.nii.gz"], "z")
     assert added.n_images == store.n_images + 1
     assert check_invariants(added) == []
 
 
 def test_with_annotation_shares_untouched_columns(store):
+    """Check that adding an annotation shares the columns it did not touch."""
     matrix = sp.csc_matrix(np.ones((store.n_analyses, 2)))
     added = edit.with_annotation(
         store, "topics", ["t1", "t2"], matrix, np.arange(store.n_analyses)
@@ -260,6 +263,7 @@ def test_retargeting_is_exact(store):
     ids=["empty", "no-analyses", "no-foci", "one-focus"],
 )
 def test_degenerate_documents(document):
+    """Check that degenerate documents load without error."""
     store = from_nimads(document)
     assert check_invariants(store) == []
     studyset = Studyset(store)
@@ -274,11 +278,106 @@ def test_degenerate_documents(document):
 
 
 def test_ranges_to_indices_handles_empty_ranges():
+    """Check that empty ranges produce empty index arrays."""
     idx, offsets = ranges_to_indices([0, 3, 3], [3, 3, 7])
     assert idx.tolist() == [0, 1, 2, 3, 4, 5, 6]
     assert offsets.tolist() == [0, 3, 3, 7]
 
 
 def test_studyset_copy_shares_the_store(store):
+    """Check that copying a studyset shares the immutable store."""
     studyset = Studyset(store)
     assert studyset.copy().store is studyset.store
+
+
+# --------------------------------------------------------------- image edits
+
+
+def test_image_rows_is_one_row_per_stored_image(store):
+    """Check that image_rows is long where images is wide."""
+    studyset = Studyset(store)
+    rows = studyset.image_rows
+    assert len(rows) == store.n_images
+    assert list(rows.columns) == [
+        "id",
+        "study_id",
+        "contrast_id",
+        "value_type",
+        "url",
+        "filename",
+        "space",
+    ]
+    # images keeps one column per type and one row per analysis, so it is a
+    # different length whenever any analysis carries more than one image.
+    assert len(studyset.images) == len(studyset)
+
+
+def test_keep_images_drops_one_analysis_worth(store):
+    """Check that masking out an analysis' images leaves everything else alone."""
+    studyset = Studyset(store)
+    rows = studyset.image_rows
+    if not len(rows):
+        pytest.skip("document has no images")
+    target = rows["id"].iloc[0]
+    kept = studyset.keep_images(rows["id"] != target)
+
+    check_invariants(kept.store)
+    assert kept.store.n_images == store.n_images - int((rows["id"] == target).sum())
+    assert target not in set(kept.image_rows["id"])
+    assert set(kept.image_rows["id"]) == set(rows["id"]) - {target}
+    assert int(kept.store.image_offsets[-1]) == kept.store.n_images
+    # foci are a separate level, so they are untouched
+    assert len(kept.coordinates) == len(studyset.coordinates)
+    assert kept.store.xyz is store.xyz
+
+
+def test_keep_images_can_drop_one_type(store):
+    """Check that an image mask addresses images, not analyses."""
+    studyset = Studyset(store)
+    rows = studyset.image_rows
+    if not len(rows):
+        pytest.skip("document has no images")
+    target = rows["value_type"].iloc[0]
+    kept = studyset.keep_images(rows["value_type"] != target)
+    check_invariants(kept.store)
+    assert target not in set(kept.image_rows["value_type"])
+    # every analysis survives; only its images were thinned
+    assert len(kept) == len(studyset)
+
+
+def test_keep_images_rejects_a_misaligned_mask(store):
+    """Check that a mask of the wrong length is refused rather than misapplied."""
+    studyset = Studyset(store)
+    with pytest.raises(ValueError, match="expected"):
+        studyset.keep_images(np.ones(store.n_images + 1, dtype=bool))
+
+
+def test_keep_images_round_trips(store):
+    """Check that a studyset with images removed still exports."""
+    studyset = Studyset(store)
+    rows = studyset.image_rows
+    if not len(rows):
+        pytest.skip("document has no images")
+    kept = studyset.keep_images(rows["id"] != rows["id"].iloc[0])
+    assert Studyset(kept.to_dict()).store.n_images == kept.store.n_images
+
+
+def test_column_store_subset_drops_sparse_rows():
+    """Check that subsetting drops sparse entries rather than remapping them."""
+    from nimare.studyset.columns import ColumnStore
+
+    cs = ColumnStore(4)
+    cs.add_dense("dense", np.array(["a", "b", "c", "d"], dtype=object))
+    cs.add_sparse("sparse", [0, 2, 3], ["zero", "two", "three"])
+    cs.add_sparse("declared_only", [], [])
+
+    out = cs.subset([3, 0])
+    assert out.n_rows == 2
+    assert out.dense["dense"].tolist() == ["d", "a"]
+    # the surviving sparse entries follow their new row numbers, sorted
+    idx, values = out.sparse["sparse"]
+    assert idx.tolist() == [0, 1]
+    assert values == ["three", "zero"]
+    # a declared-but-empty column stays declared
+    assert "declared_only" in out
+    assert out.sparse["declared_only"][0].tolist() == []

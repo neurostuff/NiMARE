@@ -22,7 +22,6 @@ from nimare.studyset import edit, requirements
 from nimare.studyset.io import from_nimads, from_parquet, to_nimads_dict, write_nimads
 from nimare.studyset.io.parquet import write_parquet
 from nimare.studyset.layout import harmonize_space
-from nimare.studyset.store import replace
 from nimare.studyset.view import Context, View
 
 __all__ = ["Studyset"]
@@ -144,10 +143,12 @@ class Studyset:
 
     @property
     def id(self):
+        """Return the studyset id."""
         return self.store.id
 
     @property
     def name(self):
+        """Return the studyset name."""
         return self.store.name
 
     @property
@@ -162,14 +163,17 @@ class Studyset:
 
     @property
     def space(self):
+        """Return the space coordinates are reported in."""
         return self._view.context.space
 
     @property
     def masker(self):
+        """Return the masker images are sampled onto."""
         return self._view.context.resolved_masker()
 
     @property
     def basepath(self):
+        """Return the directory relative image paths resolve against."""
         return self._view.context.basepath
 
     @property
@@ -196,12 +200,15 @@ class Studyset:
         return [Analysis(self.store, r, self._view.context) for r in self._view.index]
 
     def __len__(self):
+        """Return the number of selected analyses."""
         return len(self._view)
 
     def __repr__(self):
+        """Return a debugging representation naming the selection size."""
         return f"<Studyset: {self.id}>"
 
     def __str__(self):
+        """Return the studyset name."""
         return f"Studyset: {self.name} :: studies: {len(self.study_ids)}"
 
     # ----------------------------------------------------------------- frames
@@ -216,12 +223,18 @@ class Studyset:
         return self._view.frame("images")
 
     @property
+    def image_rows(self):
+        """One row per stored image. The shape an image mask is aligned to."""
+        return self._view.frame("image_rows")
+
+    @property
     def metadata(self):
         """One row per analysis, study metadata merged in."""
         return self._view.frame("metadata")
 
     @property
     def texts(self):
+        """Return one row per analysis of the text fields."""
         return self._view.frame("texts")
 
     @property
@@ -241,15 +254,19 @@ class Studyset:
         return Studyset._wrap(narrowed), resolved
 
     def coordinate_block(self):
+        """Return the foci for the selection, grouped by analysis."""
         return self._view.coordinate_block()
 
     def image_block(self, imtype, *, policy="all"):
+        """Return the images of one type for the selection."""
         return self._view.image_block(imtype, policy=policy)
 
     def label_block(self, annotation=None):
+        """Return the annotation matrix for the selection."""
         return self._view.label_block(annotation)
 
     def text_block(self, field="abstract"):
+        """Return one text field for the selection."""
         return self._view.text_block(field)
 
     def sample_sizes(self, reduce="mean"):
@@ -258,7 +275,7 @@ class Studyset:
 
     # -------------------------------------------------------------- selection
     def slice(self, ids=None, *, analyses=None, filter_level="analysis"):
-        """A studyset with only the requested ids."""
+        """Return a studyset with only the requested ids."""
         if ids is None and analyses is not None:
             ids = analyses
         elif ids is None:
@@ -266,9 +283,7 @@ class Studyset:
         if filter_level == "study":
             return self.filter_study_ids(ids)
         if filter_level != "analysis":
-            raise ValueError(
-                f"filter_level must be 'analysis' or 'study', got {filter_level!r}"
-            )
+            raise ValueError(f"filter_level must be 'analysis' or 'study', got {filter_level!r}")
         return self.filter_ids(ids)
 
     def filter_ids(self, ids):
@@ -276,9 +291,11 @@ class Studyset:
         return Studyset._wrap(self._view.select_keys(ids))
 
     def filter_study_ids(self, study_ids):
+        """Return a studyset with only the requested studies."""
         return Studyset._wrap(self._view.select_studies(study_ids))
 
     def exclude_study_ids(self, study_ids):
+        """Return a studyset without the requested studies."""
         return Studyset._wrap(self._view.select_studies(study_ids, exclude=True))
 
     def filter_annotations(self, labels, threshold=0.001, match="all", annotation=None):
@@ -304,16 +321,14 @@ class Studyset:
         keep = _OPS[op](frame[field], value)
         if not isinstance(keep, pd.Series):
             keep = pd.Series(keep, index=frame.index)
-        return Studyset._wrap(
-            self._view.select(keep.fillna(False).to_numpy(dtype=bool))
-        )
+        return Studyset._wrap(self._view.select(keep.fillna(False).to_numpy(dtype=bool)))
 
     def select_points(self, point_mask):
         """Keep a subset of foci and every analysis."""
         return Studyset._wrap(self._view.select_points(point_mask))
 
     def with_context(self, **changes):
-        """A studyset with different space, masker or basepath."""
+        """Return a studyset with different space, masker or basepath."""
         return Studyset._wrap(self._view.with_context(**changes))
 
     def update_path(self, new_path):
@@ -321,7 +336,7 @@ class Studyset:
         return self.with_context(basepath=os.path.abspath(new_path))
 
     def copy(self):
-        """A new handle on the same immutable store."""
+        """Return a new handle on the same immutable store."""
         return Studyset._wrap(
             View(self.store, self._view.index, self._view.point_mask, self._view.context)
         )
@@ -352,7 +367,6 @@ class Studyset:
             block = _blocks.label_block_union(view)[0]
         if ids is None:
             return block.labels.tolist()
-        counts = block.counts_above(-np.inf) if len(view) else np.zeros(len(block.labels))
         present = np.asarray((block.values != 0).sum(axis=0)).ravel() > 0
         return [label for label, keep in zip(block.labels.tolist(), present) if keep]
 
@@ -386,6 +400,7 @@ class Studyset:
         return list(self._view.analyses_with_points(flagged).keys.astype(str))
 
     def get_analyses_by_mask(self, mask):
+        """Return the full ids of analyses with at least one focus in ``mask``."""
         return [str(i).rsplit("-", 1)[-1] for i in self.get_studies_by_mask(mask)]
 
     def get_studies_by_coordinate(self, xyz, r=20):
@@ -420,9 +435,7 @@ class Studyset:
         if field is None:
             return available
         if field not in available:
-            raise ValueError(
-                f"{field} not found in metadata.\nAvailable: {', '.join(available)}"
-            )
+            raise ValueError(f"{field} not found in metadata.\nAvailable: {', '.join(available)}")
         return frame[field].tolist()
 
     def get_images(self, imtype=None, ids=None, policy="first"):
@@ -465,9 +478,7 @@ class Studyset:
             if level is None or key not in level:
                 continue
             rows = (
-                self._view.index
-                if level is store.metadata
-                else store.study_idx[self._view.index]
+                self._view.index if level is store.metadata else store.study_idx[self._view.index]
             )
             values = level.get(key, sel=None)
             for pos, row in enumerate(rows):
@@ -572,9 +583,7 @@ class Studyset:
                     left[field] = study.get(field)
             left["metadata"] = _merge_dicts([study.get("metadata"), left.get("metadata")])
             have = {str(a["id"]) for a in left["analyses"]}
-            left["analyses"].extend(
-                a for a in study["analyses"] if str(a["id"]) not in have
-            )
+            left["analyses"].extend(a for a in study["analyses"] if str(a["id"]) not in have)
         existing = {a["id"] for a in (left_doc.get("annotations") or [])}
         left_doc.setdefault("annotations", []).extend(
             a for a in (right_doc.get("annotations") or []) if a["id"] not in existing
@@ -588,18 +597,16 @@ class Studyset:
 
     # ------------------------------------------------------------------ edits
     def with_annotation(self, name, labels, matrix, rows=None, note_key_types=None):
-        """A studyset carrying an extra annotation. Copy-on-write."""
+        """Return a studyset carrying an extra annotation. Copy-on-write."""
         if rows is None:
             rows = self._view.index
-        store = edit.with_annotation(
-            self.store, name, labels, matrix, rows, note_key_types
-        )
+        store = edit.with_annotation(self.store, name, labels, matrix, rows, note_key_types)
         return Studyset._wrap(
             View(store, self._view.index, self._view.point_mask, self._view.context)
         )
 
     def with_points(self, analysis_positions, xyz, **kwargs):
-        """A studyset with extra foci. Copy-on-write.
+        """Return a studyset with extra foci. Copy-on-write.
 
         An active point mask is materialised first: a mask is indexed against
         the store it was computed for, so appending foci would leave it stale.
@@ -611,42 +618,61 @@ class Studyset:
         return Studyset._wrap(View(store, self._view.index, None, self._view.context))
 
     def with_images(self, analysis_positions, refs, imtype, **kwargs):
-        """A studyset with extra images. Copy-on-write."""
+        """Return a studyset with extra images. Copy-on-write."""
         store = edit.with_images(self.store, analysis_positions, refs, imtype, **kwargs)
         return Studyset._wrap(
             View(store, self._view.index, self._view.point_mask, self._view.context)
         )
 
+    def keep_images(self, image_mask):
+        """Return a studyset holding only the flagged images. Copy-on-write.
+
+        ``image_mask`` is a boolean aligned to the rows of :attr:`image_rows`,
+        so a predicate over that frame selects directly::
+
+            studyset.keep_images(studyset.image_rows["id"] != "study-1")
+
+        Note that :attr:`images` is the *wide* frame -- one row per analysis,
+        one column per type -- so it is not the right thing to mask against.
+        Foci are untouched, so a point selection made earlier stays valid.
+        """
+        if isinstance(image_mask, pd.Series):
+            image_mask = image_mask.to_numpy(dtype=bool)
+        store = edit.keep_images(self.store, image_mask)
+        return Studyset._wrap(
+            View(store, self._view.index, self._view.point_mask, self._view.context)
+        )
+
     def materialize_points(self):
-        """A studyset whose store holds only the currently selected foci."""
+        """Return a studyset whose store holds only the currently selected foci."""
         if self._view.point_mask is None:
             return self
         store = edit.keep_points(self.store, self._view.point_mask)
         return Studyset._wrap(View(store, self._view.index, None, self._view.context))
 
     def with_metadata(self, name, values, *, level="analysis"):
-        """A studyset with one extra metadata column. Copy-on-write."""
+        """Return a studyset with one extra metadata column. Copy-on-write."""
         store = edit.with_metadata(self.store, name, values, level=level)
         return Studyset._wrap(
             View(store, self._view.index, self._view.point_mask, self._view.context)
         )
 
     def with_texts(self, rows, field, values):
-        """A studyset with text added. Copy-on-write."""
+        """Return a studyset with text added. Copy-on-write."""
         store = edit.with_texts(self.store, rows, field, values)
         return Studyset._wrap(
             View(store, self._view.index, self._view.point_mask, self._view.context)
         )
 
     def with_annotation_payload(self, payload):
-        """A studyset carrying a NIMADS annotation payload. Copy-on-write."""
+        """Return a studyset carrying a NIMADS annotation payload. Copy-on-write."""
         store = edit.with_annotation_payload(self.store, payload)
         return Studyset._wrap(
             View(store, self._view.index, self._view.point_mask, self._view.context)
         )
 
     def harmonized(self, target):
-        """A studyset whose stored coordinates are in ``target``."""
+        """Return a studyset whose stored coordinates are in ``target``."""
         return Studyset._wrap(
             View(
                 harmonize_space(self.store, target),
@@ -658,7 +684,7 @@ class Studyset:
 
     # ------------------------------------------------------------------- io
     def to_dict(self):
-        """The nested NIMADS document for the selected analyses."""
+        """Build the nested NIMADS document for the selected analyses."""
         return to_nimads_dict(self.store, self._view.index)
 
     def to_nimads(self, filename):
@@ -723,7 +749,7 @@ def _infer_basepath(dataset):
 
 
 def _materialize(studyset):
-    """A store containing only the selected analyses."""
+    """Return a store containing only the selected analyses."""
     return from_nimads(studyset.to_dict())
 
 

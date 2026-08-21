@@ -117,9 +117,9 @@ def from_parquet(directory, *, load_annotations=True, canonical_order=True):
         c_analysis = c_analysis[order]
         xyz = np.column_stack(
             [
-                np.asarray(
-                    coords_t.column(axis).to_numpy(zero_copy_only=False), dtype=np.float64
-                )[keep][order]
+                np.asarray(coords_t.column(axis).to_numpy(zero_copy_only=False), dtype=np.float64)[
+                    keep
+                ][order]
                 for axis in ("x", "y", "z")
             ]
         )
@@ -211,9 +211,11 @@ def from_parquet(directory, *, load_annotations=True, canonical_order=True):
         analysis_source_order=np.arange(n_a, dtype=np.int32),
         texts=_column_store_from(read("texts"), n_a, a_full),
         point_offsets=offsets_from_parents(point_analysis, n_a),
-        image_offsets=offsets_from_parents(np.asarray(img_parent, dtype=np.int64), n_a)
-        if img_parent
-        else np.zeros(n_a + 1, dtype=np.int64),
+        image_offsets=(
+            offsets_from_parents(np.asarray(img_parent, dtype=np.int64), n_a)
+            if img_parent
+            else np.zeros(n_a + 1, dtype=np.int64)
+        ),
         condition_offsets=np.zeros(n_a + 1, dtype=np.int64),
         point_analysis=point_analysis,
         xyz=xyz,
@@ -408,9 +410,7 @@ def convert_neurostore_json_to_parquet(
             raise ValueError(f"Could not infer an id for study at position {i}.")
         for analysis in study.get("analyses") or []:
             if analysis.get("id") is None:
-                raise ValueError(
-                    f"An analysis of study {study['id']!r} has no id."
-                )
+                raise ValueError(f"An analysis of study {study['id']!r} has no id.")
 
     store = from_nimads(studyset, annotations=[annotation] if annotation else None)
     store = replace(store, id=resolved_id, name=resolved_name)

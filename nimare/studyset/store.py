@@ -38,7 +38,7 @@ from typing import Optional
 
 import numpy as np
 
-from nimare.studyset.columns import AnnotationSet, ColumnStore, Dict8
+from nimare.studyset.columns import ColumnStore, Dict8
 
 __all__ = ["StudysetStore", "derived", "freeze", "replace"]
 
@@ -51,62 +51,66 @@ class StudysetStore:
     name: str = ""
 
     # ---- level 0: studies
-    study_key: np.ndarray = None                # object[n_s] NIMADS ids
-    study_attrs: ColumnStore = None              # name, doi, pmid, authors, ...
-    study_metadata: ColumnStore = None           # study-level metadata (I7)
-    study_has_metadata: np.ndarray = None        # bool[n_s]: source had a dict
-    study_source_order: np.ndarray = None        # int32[n_s] (I6)
-    analysis_offsets: np.ndarray = None          # int64[n_s + 1]
+    study_key: np.ndarray = None  # object[n_s] NIMADS ids
+    study_attrs: ColumnStore = None  # name, doi, pmid, authors, ...
+    study_metadata: ColumnStore = None  # study-level metadata (I7)
+    study_has_metadata: np.ndarray = None  # bool[n_s]: source had a dict
+    study_source_order: np.ndarray = None  # int32[n_s] (I6)
+    analysis_offsets: np.ndarray = None  # int64[n_s + 1]
 
     # ---- level 1: analyses
-    analysis_key: np.ndarray = None              # object[n_a] NIMADS ids
-    analysis_full_key: np.ndarray = None         # object[n_a] "study-analysis"
-    study_idx: np.ndarray = None                 # int32[n_a] parent study row
-    analysis_attrs: ColumnStore = None           # name, description
-    metadata: ColumnStore = None                 # analysis-level metadata (I7)
-    analysis_has_metadata: np.ndarray = None     # bool[n_a]
-    analysis_source_order: np.ndarray = None     # int32[n_a] (I6)
+    analysis_key: np.ndarray = None  # object[n_a] NIMADS ids
+    analysis_full_key: np.ndarray = None  # object[n_a] "study-analysis"
+    study_idx: np.ndarray = None  # int32[n_a] parent study row
+    analysis_attrs: ColumnStore = None  # name, description
+    metadata: ColumnStore = None  # analysis-level metadata (I7)
+    analysis_has_metadata: np.ndarray = None  # bool[n_a]
+    analysis_source_order: np.ndarray = None  # int32[n_a] (I6)
     texts: ColumnStore = None
-    point_offsets: np.ndarray = None             # int64[n_a + 1]
-    image_offsets: np.ndarray = None             # int64[n_a + 1]
-    condition_offsets: np.ndarray = None         # int64[n_a + 1]
+    point_offsets: np.ndarray = None  # int64[n_a + 1]
+    image_offsets: np.ndarray = None  # int64[n_a + 1]
+    condition_offsets: np.ndarray = None  # int64[n_a + 1]
 
     # ---- level 2: points
-    point_analysis: np.ndarray = None            # int32[n_p] parent analysis row
-    xyz: np.ndarray = None                       # float64[n_p, 3] contiguous
-    point_key: np.ndarray = None                 # object[n_p], may be all None
-    point_space: np.ndarray = None               # int16[n_p] -> space_dict
-    point_kind: np.ndarray = None                # int16[n_p] -> kind_dict
-    point_values: ColumnStore = None             # sparse z_stat, t_stat, ...
+    point_analysis: np.ndarray = None  # int32[n_p] parent analysis row
+    xyz: np.ndarray = None  # float64[n_p, 3] contiguous
+    point_key: np.ndarray = None  # object[n_p], may be all None
+    point_space: np.ndarray = None  # int16[n_p] -> space_dict
+    point_kind: np.ndarray = None  # int16[n_p] -> kind_dict
+    point_values: ColumnStore = None  # sparse z_stat, t_stat, ...
     space_dict: Dict8 = None
     kind_dict: Dict8 = None
     coordinate_metadata_columns: frozenset = frozenset()
 
     # ---- level 2: images and conditions
-    image_attrs: ColumnStore = None              # analysis_idx, url, filename, ...
-    condition_code: np.ndarray = None            # int32[n_c] -> condition_dict
-    condition_weight: np.ndarray = None          # float64[n_c]
+    image_attrs: ColumnStore = None  # analysis_idx, url, filename, ...
+    condition_code: np.ndarray = None  # int32[n_c] -> condition_dict
+    condition_weight: np.ndarray = None  # float64[n_c]
     condition_dict: Dict8 = None
     condition_descriptions: dict = field(default_factory=dict)
 
     # ---- annotations
-    annotations: dict = field(default_factory=dict)   # id -> AnnotationSet
+    annotations: dict = field(default_factory=dict)  # id -> AnnotationSet
 
     # ------------------------------------------------------------------ sizes
     @property
     def n_studies(self):
+        """Return the number of studies."""
         return 0 if self.study_key is None else len(self.study_key)
 
     @property
     def n_analyses(self):
+        """Return the number of analyses."""
         return 0 if self.analysis_key is None else len(self.analysis_key)
 
     @property
     def n_points(self):
+        """Return the number of foci."""
         return 0 if self.xyz is None else len(self.xyz)
 
     @property
     def n_images(self):
+        """Return the number of images."""
         if self.image_attrs is None:
             return 0
         return self.image_attrs.n_rows
@@ -118,11 +122,7 @@ class StudysetStore:
 
     def analysis_level_stores(self):
         """Every ColumnStore indexed by analysis row (I3)."""
-        out = [
-            cs
-            for cs in (self.analysis_attrs, self.metadata, self.texts)
-            if cs is not None
-        ]
+        out = [cs for cs in (self.analysis_attrs, self.metadata, self.texts) if cs is not None]
         out.extend(a.columns for a in self.annotations.values())
         return out
 
@@ -132,6 +132,7 @@ class StudysetStore:
 
     # -------------------------------------------------------------- identity
     def __repr__(self):  # pragma: no cover - debugging aid
+        """Return a debugging representation naming the level sizes."""
         return (
             f"<StudysetStore {self.id!r}: {self.n_studies} studies, "
             f"{self.n_analyses} analyses, {self.n_points} foci>"
@@ -150,13 +151,14 @@ class StudysetStore:
         freeze(self)
 
     def __getstate__(self):
+        """Restore the columns and re-freeze them, which pickle does not preserve."""
         state = dict(self.__dict__)
         state.pop("_derived", None)
         return state
 
 
 def derived(store):
-    """The store's memo table for values that are pure functions of it (I5).
+    """Return the store's memo table for values that are pure functions of it (I5).
 
     Sound without invalidation because the store is immutable: a memo cannot go
     stale if nothing can change underneath it.
@@ -184,7 +186,7 @@ def freeze(store):
 
 
 def replace(store, **changes):
-    """A new store sharing every column not being replaced (copy-on-write).
+    """Return a new store sharing every column not being replaced (copy-on-write).
 
     What makes "views cannot go stale" structural rather than policed: there is
     no mutation to observe, so there is no revision counter, no dirty flag and no

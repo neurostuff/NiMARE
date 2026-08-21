@@ -226,9 +226,7 @@ def create_neurovault_dataset(
     ).to_dataset()
 
 
-def _neurovault_studyset(
-    collection_ids, contrasts, img_dir, map_type_conversion, **dset_kwargs
-):
+def _neurovault_studyset(collection_ids, contrasts, img_dir, map_type_conversion, **dset_kwargs):
     """Download NeuroVault images and return them as a studyset with z maps."""
     dataset = convert_neurovault_to_dataset(
         collection_ids, contrasts, img_dir, map_type_conversion, **dset_kwargs

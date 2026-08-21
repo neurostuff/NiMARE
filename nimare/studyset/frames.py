@@ -15,9 +15,7 @@ import os
 import numpy as np
 import pandas as pd
 
-from nimare.studyset import layout
-
-__all__ = ["annotations", "coordinates", "images", "metadata", "texts"]
+__all__ = ["annotations", "coordinates", "image_rows", "images", "metadata", "texts"]
 
 ID_COLS = ["id", "study_id", "contrast_id"]
 
@@ -33,7 +31,7 @@ def _id_columns(view):
 
 
 def _is_numeric(values):
-    """True when every value present is a number (or a bool)."""
+    """Report whether every value present is a number (or a bool)."""
     seen = False
     for value in values:
         if value is None:
@@ -60,7 +58,6 @@ def coordinates(view):
     store = view.store
     block = view.coordinate_block()
     counts = block.group_sizes()
-    codes = np.repeat(np.arange(len(counts), dtype=np.int32), counts)
     sel = view.index
     cats = list(block.space_categories) or list(store.space_dict.categories)
     # Plain repeats rather than pandas Categoricals: ids are not guaranteed
@@ -112,9 +109,7 @@ def images(view, *, policy="first"):
         absolute = np.full(n, None, dtype=object)
         relative = np.full(n, None, dtype=object)
         raw = block.raw_refs if block.raw_refs is not None else block.refs
-        for pos, ref, stored, sp in zip(
-            block.analysis_pos, block.refs, raw, block.space
-        ):
+        for pos, ref, stored, sp in zip(block.analysis_pos, block.refs, raw, block.space):
             if isinstance(ref, str) and ref:
                 absolute[pos] = ref
             if (
@@ -129,6 +124,40 @@ def images(view, *, policy="first"):
         cols[imtype] = absolute
         cols[f"{imtype}__relative"] = relative
     cols["space"] = space_col
+    return _build(cols)
+
+
+def image_rows(view):
+    """Return one row per stored image: ids, type, references and space.
+
+    The long counterpart of :func:`images`, which is wide and lossy -- it keeps
+    one image per type per analysis. This is the shape an image mask is aligned
+    to, so a predicate over it selects images the way a predicate over
+    :func:`coordinates` selects foci.
+    """
+    store = view.store
+    ia = store.image_attrs
+    sel = np.asarray(view.index, dtype=np.int64)
+    if ia is None or not ia.n_rows:
+        empty = {name: np.empty(0, dtype=object) for name in ID_COLS}
+        empty.update(
+            {
+                name: np.empty(0, dtype=object)
+                for name in ("value_type", "url", "filename", "space")
+            }
+        )
+        return _build(empty)
+
+    parents = np.asarray(ia.dense["analysis_idx"], dtype=np.int64)
+    keep = np.flatnonzero(np.isin(parents, sel))
+    parents = parents[keep]
+    cols = {
+        "id": store.analysis_full_key[parents].astype(str),
+        "study_id": store.study_key[store.study_idx[parents]].astype(str),
+        "contrast_id": store.analysis_key[parents].astype(str),
+    }
+    for name in ("value_type", "url", "filename", "space"):
+        cols[name] = ia.get(name, keep)
     return _build(cols)
 
 
@@ -154,12 +183,8 @@ def metadata(view):
         if analysis_name is not None
         else cols["contrast_id"]
     )
-    sname = np.array(
-        [n if n else sid for n, sid in zip(sname, cols["study_id"])], dtype=object
-    )
-    aname = np.array(
-        [n if n else cid for n, cid in zip(aname, cols["contrast_id"])], dtype=object
-    )
+    sname = np.array([n if n else sid for n, sid in zip(sname, cols["study_id"])], dtype=object)
+    aname = np.array([n if n else cid for n, cid in zip(aname, cols["contrast_id"])], dtype=object)
     cols["study_name"] = sname
     cols["analysis_name"] = aname
     for src, dst in (("authors", "authors"), ("publication", "journal")):
@@ -215,6 +240,7 @@ def metadata(view):
 
 
 def texts(view):
+    """Return one row per analysis of the text fields."""
     store = view.store
     cols = _id_columns(view)
     if store.texts is not None:
@@ -224,7 +250,7 @@ def texts(view):
 
 
 def annotations(view, annotation=None):
-    """The merged annotation frame, with collisions reported rather than silent."""
+    """Merge the annotation frames, reporting collisions rather than hiding them."""
     store = view.store
     cols = _id_columns(view)
     if not store.annotations:

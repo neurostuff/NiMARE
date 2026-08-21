@@ -19,7 +19,7 @@ from scipy import sparse
 from nimare.dataset import Dataset
 from nimare.exceptions import InvalidStudysetError
 from nimare.extract.utils import _get_dataset_dir
-from nimare.utils import _transform_coordinates_to_space, load_nimads, mni2tal, tal2mni
+from nimare.utils import load_nimads, mni2tal, tal2mni
 
 LGR = logging.getLogger(__name__)
 
