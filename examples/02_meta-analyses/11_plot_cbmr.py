@@ -14,7 +14,8 @@ functions from coordinate-based meta-analytic data. The current
 for three moderator-effect parameterizations:
 
 * ``moderator_effect="global"`` estimates one scalar coefficient per moderator.
-  This assumes the effect of the moderator has a global effect across the entire brain.
+    This assumes the moderator changes activation intensity by the same amount
+    across the brain.
 * ``moderator_effect="voxelwise"`` estimates a smooth spatial coefficient map
   for each moderator and group. This allows the moderator effect to vary across
   the brain, but requires more data for stable estimation.
@@ -23,8 +24,9 @@ for three moderator-effect parameterizations:
   ``voxelwise_moderators`` in one model.
 
 This tutorial fits all three versions to the same simulated Studyset, shows how
-to inspect fitted CBMR results, and demonstrates the result-centered inference
-helpers added around :class:`~nimare.meta.cbmr.CBMRInference`.
+to inspect fitted CBMR results, and demonstrates both the result-centered
+inference methods on :class:`~nimare.meta.cbmr.CBMRResult` and the lower-level
+:class:`~nimare.meta.cbmr.CBMRInference` interface.
 """
 
 import numpy as np
@@ -41,8 +43,8 @@ from nimare.transforms import StandardizeField
 # -----------------------------------------------------------------------------
 # We simulate a coordinate-based Studyset with reported foci, sample sizes,
 # diagnosis labels, drug-status labels, and continuous moderators. The example
-# uses a moderate number of studies and coarse B-spline spacing so that global,
-# voxelwise, and mixed CBMR fits run quickly.
+# uses a moderate number of studies and coarse B-spline spacing to keep the
+# runtime manageable while still exercising global, voxelwise, and mixed CBMR.
 
 _, studyset = create_coordinate_studyset(
     foci=10,
@@ -68,6 +70,10 @@ studyset.annotations_df = annotations_df
 
 studyset = StandardizeField(fields=["sample_sizes", "avg_age"]).transform(studyset)
 
+# CBMR combines the categorical fields in ``group_categories`` into group names
+# such as ``SchizophreniaYes``. Continuous moderators are standardized above so
+# that a one-unit moderator change corresponds to a one-standard-deviation
+# change.
 group_categories = ["diagnosis", "drug_status"]
 moderators = ["standardized_sample_sizes", "standardized_avg_age"]
 mixed_global_moderators = ["standardized_sample_sizes"]
@@ -79,7 +85,7 @@ mixed_voxelwise_moderators = ["standardized_avg_age"]
 # With ``moderator_effect="global"``, CBMR estimates group-specific baseline
 # spatial intensity functions plus one scalar effect for each moderator.
 # Here, ``standardized_sample_sizes`` and ``standardized_avg_age`` each receive
-# one global coefficient shared over voxels.
+# one coefficient shared across all voxels and groups.
 
 global_cbmr = CBMREstimator(
     moderator_effect="global",
@@ -127,9 +133,9 @@ plot_stat_map(
 ###############################################################################
 # Inference on global moderator effects
 # -----------------------------------------------------------------------------
-# Result-centered helpers run inference without constructing a separate
-# inference object explicitly. For global moderator effects, moderator inference
-# returns scalar tables.
+# Result-centered methods run inference directly from a fitted ``CBMRResult``.
+# For global moderator effects, ``test_moderators`` returns scalar tables rather
+# than maps because each moderator has one coefficient.
 
 global_moderator_result = global_results.test_moderators()
 print(global_moderator_result.tables["moderators_regression_coef"])
@@ -145,8 +151,9 @@ print(global_moderator_comparison.tables["p_standardized_sample_sizes-standardiz
 # Group inference and correction for global CBMR
 # -----------------------------------------------------------------------------
 # Group homogeneity tests and pairwise group comparisons use the same
-# result-centered helpers for all moderator-effect modes. The helpers now also
-# expose the robust covariance options implemented in :class:`~nimare.meta.cbmr.CBMRInference`.
+# result-centered methods for all moderator-effect modes. Here we request a
+# sandwich covariance estimate and pass its robust-covariance options through the
+# ``test_groups`` call.
 
 global_group_result = global_results.test_groups(
     method="sandwich",
@@ -205,8 +212,9 @@ plot_stat_map(
 # Flexible GLH tests with contrast matrices
 # -----------------------------------------------------------------------------
 # CBMR also supports generalized linear hypothesis (GLH) tests by passing raw
-# contrast vectors or matrices to ``infer``. The example below tests whether all
-# four group-specific spatial intensity estimates are equal.
+# contrast vectors or matrices to ``infer``. The example below passes one GLH
+# matrix with three rows. Together, those rows test whether all four
+# group-specific spatial intensity estimates are equal.
 
 global_glh_result = global_results.infer(
     group_contrasts=[[[1, -1, 0, 0], [1, 0, -1, 0], [0, 0, 1, -1]]],
@@ -287,9 +295,11 @@ plot_stat_map(
 # Intensity (RI) and Intensity Difference (ID) diagnostic maps showing how a
 # user-defined moderator-unit change affects spatial intensity. The helper
 # accepts the same moderator/group selectors as the inference methods and returns
-# a CBMRResult copy with named RI and ID maps. Users can keep those maps for
-# downstream diagnosis or plot RI inside an ID-defined region of interest. If no
-# ID threshold is provided, the median absolute ID value is used.
+# a CBMRResult copy with named RI and ID maps.
+#
+# The result-centered methods above are the shortest path for statistical tests.
+# Here we construct the inference object explicitly because the diagnostic-map
+# plotting helpers live on :class:`~nimare.meta.cbmr.CBMRInference`.
 
 voxelwise_inference = voxelwise_results.get_inference(
     method="FI",
@@ -335,8 +345,8 @@ voxelwise_inference.plot_voxelwise_moderator_effects(
 # -----------------------------------------------------------------------------
 # Voxelwise CBMR supports the same result-centered helpers. Because moderator
 # effects vary over space, moderator inference returns maps instead of scalar
-# tables. The default method is a robust sandwich covariance estimator; inverse
-# Fisher information standard errors can be requested with ``method="FI"``.
+# tables. Passing ``method="sandwich"`` requests robust standard errors for this
+# spatially varying moderator test.
 
 voxelwise_moderator_result = voxelwise_results.test_moderators(method="sandwich")
 print(voxelwise_moderator_result.metadata["voxelwise_cbmr_inference_method"])
@@ -375,16 +385,14 @@ plot_stat_map(
 ###############################################################################
 # Optional inverse-Fisher standard errors for voxelwise CBMR
 # -----------------------------------------------------------------------------
-# The same voxelwise inference helpers can use inverse Fisher information, but
-# the sandwich estimator is usually the safer default for applied CBMR analyses.
-# Inverse-Fisher standard errors are model-based: they are efficient when the
-# likelihood, mean-variance relationship, and independence assumptions are
-# correctly specified, but can be too optimistic when those assumptions are only
+# Voxelwise inference can also use inverse Fisher information. These standard
+# errors are model-based: they are efficient when the likelihood,
+# mean-variance relationship, and independence assumptions are correctly
+# specified, but can be too optimistic when those assumptions are only
 # approximate. Coordinate-based meta-analytic data often have study-level
-# clustering, heterogeneous reporting practices, and other departures from the
-# idealized Poisson model. Sandwich standard errors use the fitted model for the
-# mean structure while estimating covariance from empirical residual variation,
-# making inference more robust to this kind of model misspecification.
+# clustering and heterogeneous reporting practices. Sandwich standard errors use
+# the fitted model for the mean structure while estimating covariance from
+# empirical residual variation.
 #
 # For that reason, we recommend keeping ``method="sandwich"`` as the default for
 # primary voxelwise CBMR inference. ``method="FI"`` can still be useful for
@@ -400,11 +408,10 @@ print(voxelwise_fi_result.metadata["voxelwise_cbmr_inference_method"])
 # With ``moderator_effect="mixed"``, CBMR estimates group-specific baseline
 # spatial intensity functions, scalar coefficients for moderators listed in
 # ``global_moderators``, and smooth spatial coefficient maps for moderators
-# listed in ``voxelwise_moderators``. This is useful when some moderators are
-# expected to have whole-brain effects and others are expected to vary spatially.
-# The model below estimates sample size as a global effect and age as a
-# voxelwise, spatially varying effect in the same fit. Mixed CBMR currently uses
-# the full Poisson backend.
+# listed in ``voxelwise_moderators``. Use this option when different moderators
+# call for different effect parameterizations. The model below estimates sample
+# size as a global effect and age as a voxelwise, spatially varying effect in the
+# same fit. Mixed CBMR currently uses the full Poisson backend.
 
 mixed_cbmr = CBMREstimator(
     moderator_effect="mixed",
@@ -437,11 +444,11 @@ plot_stat_map(
 ###############################################################################
 # Inference for mixed CBMR
 # -----------------------------------------------------------------------------
-# The same result-centered helpers dispatch each mixed-model moderator to the
-# right inference path: global moderators return scalar tables, while voxelwise
-# moderators return spatial maps. In mixed CBMR, contrast vectors should test
-# global and voxelwise moderators separately because they live in different
-# parameter spaces.
+# The same result-centered methods dispatch each mixed-model moderator to the
+# right output type: global moderators return scalar tables, while voxelwise
+# moderators return spatial maps. Although the mixed model estimates both types
+# jointly, contrast vectors should test global and voxelwise moderators
+# separately because they occupy different parameter spaces.
 
 mixed_moderator_result = mixed_results.test_moderators(method="FI")
 print(mixed_moderator_result.tables["z_standardized_sample_sizes"])
@@ -465,7 +472,8 @@ plot_stat_map(
 # Summary
 # -----------------------------------------------------------------------------
 # Use ``moderator_effect="global"`` when the scientific question is whether a
-# moderator has an overall effect on activation intensity. Use ``moderator_effect="voxelwise"``
-# when the scientific question is where that moderator effect varies across the brain.
-# Use ``moderator_effect="mixed"`` when both assumptions are needed in one model.
-# All options share the same preprocessing, grouping, and result-centered inference interface.
+# moderator has an overall effect on activation intensity. Use
+# ``moderator_effect="voxelwise"`` when the scientific question is where that
+# moderator effect varies across the brain. Use ``moderator_effect="mixed"``
+# when both assumptions are needed in one model. All options share the same
+# preprocessing, grouping, and result-centered inference interface.

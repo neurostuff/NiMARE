@@ -198,6 +198,47 @@ def test_cbmr_result_helpers_run_inference(cbmr_result):
     assert "p_standardized_sample_sizes-standardized_avg_age" in moderator_comparison_result.tables
 
 
+def test_cbmr_result_get_inference_inherits_incidence_threshold(cbmr_result, monkeypatch):
+    """Result-centered inference should inherit the fitted estimator's incidence threshold."""
+
+    class DummyInference:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.incidence_threshold = kwargs["incidence_threshold"]
+
+        def fit(self, result):
+            self.fit_result = result
+
+    monkeypatch.setattr(cbmr_module, "CBMRInference", DummyInference)
+
+    result = cbmr_result.copy()
+    result.estimator.incidence_threshold = None
+
+    inherited = result.get_inference()
+    overridden = result.get_inference(incidence_threshold=0.0)
+
+    assert inherited.incidence_threshold is None
+    assert inherited.fit_result is result
+    assert overridden.incidence_threshold == 0.0
+
+
+def test_cbmr_inference_fit_inherits_incidence_threshold(cbmr_result):
+    """Direct CBMRInference.fit should inherit the fitted estimator's incidence threshold."""
+    result = cbmr_result.copy()
+    result.estimator.incidence_threshold = None
+
+    inherited = CBMRInference(device="cpu", moderator_effect="global")
+    inherited.fit(result)
+    overridden = CBMRInference(
+        device="cpu",
+        moderator_effect="global",
+        incidence_threshold=0.0,
+    )
+
+    assert inherited.incidence_threshold is None
+    assert overridden.incidence_threshold == 0.0
+
+
 def test_cbmr_fit_is_repeatable(testdata_cbmr_simulated):
     """Repeated CBMR fits on the same dataset should return identical results."""
     dset = testdata_cbmr_simulated.slice(testdata_cbmr_simulated.ids[:60])
@@ -916,7 +957,11 @@ def _mask_img():
 
 def _voxelwise_result_for_inference():
     """Return a small fitted voxelwise CBMR result suitable for inference tests."""
-    estimator = CBMREstimator(moderators=["age"], backend="approximate")
+    estimator = CBMREstimator(
+        moderator_effect="voxelwise",
+        moderators=["age"],
+        backend="approximate",
+    )
     estimator.groups = ["Default"]
     estimator.inputs_ = {
         "coef_spline_bases": np.array([[1.0, 0.0], [0.0, 1.0]]),
@@ -1019,7 +1064,7 @@ def _global_result_for_sandwich_inference():
 @pytest.mark.parametrize(
     ("estimator_kwargs", "inference_kwargs", "expected_moderator_effect"),
     [
-        ({}, {}, "voxelwise"),
+        ({}, {}, "global"),
         ({"moderator_effect": "global"}, {"moderator_effect": "global"}, "global"),
         (
             {
@@ -1071,6 +1116,71 @@ def test_mixed_cbmr_api_separates_global_and_voxelwise_moderators():
         CBMREstimator(
             moderator_effect="mixed",
             global_moderators=["age"],
+            voxelwise_moderators=["age"],
+        )
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_mixed_cbmr_inference_uses_joint_covariance_blocks():
+    """Mixed inference should slice global and voxelwise blocks from one joint covariance."""
+    result = _mixed_result_for_inference()
+    inference = CBMRInference(moderator_effect="mixed", method="FI")
+    inference.fit(result)
+
+    joint_covariance = inference._get_mixed_joint_covariance()
+    global_covariance, _ = inference._get_moderator_covariance()
+    group_covariance = inference._get_group_covariance("Default")
+    global_slice, group_slices, _, _, _ = inference._mixed_joint_parameter_layout()
+    group_slice = group_slices["Default"]
+
+    np.testing.assert_allclose(global_covariance, joint_covariance[global_slice, global_slice])
+    np.testing.assert_allclose(group_covariance, joint_covariance[group_slice, group_slice])
+    assert np.any(np.abs(joint_covariance[global_slice, group_slice]) > 0)
+
+    bases = result.estimator.inputs_["coef_spline_bases"]
+    local_moderators = inference._get_group_augmented_moderators("Default")
+    mean = inference._get_group_mean("Default")
+    independent_covariance = inference._sandwich_bread_inverse(
+        inference._compute_fisher_information(local_moderators, bases, mean),
+        inference.ridge,
+    )
+    assert not np.allclose(group_covariance, independent_covariance)
+
+    sandwich_inference = CBMRInference(
+        moderator_effect="mixed",
+        method="sandwich",
+        sandwich_correction="hc0",
+    )
+    sandwich_inference.fit(result)
+    sandwich_joint_covariance = sandwich_inference._get_mixed_joint_covariance()
+    assert sandwich_joint_covariance.shape == joint_covariance.shape
+    sandwich_result = sandwich_inference.transform(t_con_moderators=["sample_size", "age"])
+    assert "p_sample_size" in sandwich_result.tables
+    assert "p_voxelwiseModeratorEffect_age_group-Default" in sandwich_result.maps
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_cbmr_mode_specific_moderators_are_not_silently_ignored():
+    """Mode-specific moderator arguments should be honored or rejected explicitly."""
+    global_estimator = CBMREstimator(global_moderators=["sample_size"])
+    voxelwise_estimator = CBMREstimator(
+        moderator_effect="voxelwise",
+        voxelwise_moderators=["age"],
+    )
+
+    assert global_estimator.moderators == ["sample_size"]
+    assert voxelwise_estimator.moderators == ["age"]
+
+    with pytest.raises(ValueError, match="voxelwise_moderators"):
+        CBMREstimator(voxelwise_moderators=["age"])
+    with pytest.raises(ValueError, match="global_moderators"):
+        CBMREstimator(moderator_effect="voxelwise", global_moderators=["sample_size"])
+    with pytest.raises(ValueError, match="moderators or global_moderators"):
+        CBMREstimator(moderators=["age"], global_moderators=["sample_size"])
+    with pytest.raises(ValueError, match="moderators or voxelwise_moderators"):
+        CBMREstimator(
+            moderator_effect="voxelwise",
+            moderators=["sample_size"],
             voxelwise_moderators=["age"],
         )
 
@@ -1156,7 +1266,11 @@ def test_cbmr_incidence_threshold_drops_low_incidence_voxels():
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 def test_cbmr_inference_can_restrict_fitted_result_by_incidence():
     """Inference-level incidence filtering should subset maps, masks, and voxel inputs."""
-    estimator = CBMREstimator(moderators=["age"], backend="approximate")
+    estimator = CBMREstimator(
+        moderator_effect="voxelwise",
+        moderators=["age"],
+        backend="approximate",
+    )
     estimator.groups = ["Default"]
     estimator.inputs_ = {
         "coef_spline_bases": np.array([[1.0, 0.0], [0.0, 1.0]]),
@@ -1174,7 +1288,7 @@ def test_cbmr_inference_can_restrict_fitted_result_by_incidence():
         description="incidence inference test",
     )
 
-    inference = CBMRInference(incidence_threshold=0.001)
+    inference = CBMRInference(moderator_effect="voxelwise", incidence_threshold=0.001)
     inference.fit(result)
 
     np.testing.assert_array_equal(inference.result.maps["spatialIntensity_group-Default"], [1.0])
@@ -1216,6 +1330,7 @@ def test_cbmr_group_label_validation_and_multicolumn_formatting():
 def test_cbmr_inference_forwards_voxelwise_options_to_voxelwise_pipeline():
     """Voxelwise-only inference options should be preserved by public dispatch."""
     inference = CBMRInference(
+        moderator_effect="voxelwise",
         method="FI",
         sandwich_meat="iid",
         sandwich_correction="hc0",
@@ -1246,6 +1361,22 @@ def test_cbmr_inference_accepts_sandwich_options_for_global_pipeline():
     assert inference.sandwich_meat == "iid"
     assert inference.sandwich_correction == "hc0"
     assert inference.ridge == pytest.approx(1e-3)
+
+
+@pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+def test_cbmr_transform_method_switch_preserves_fitted_coefficients():
+    """Changing covariance methods should not erase fitted coefficient tables."""
+    result = _global_result_for_sandwich_inference()
+    inference = CBMRInference(moderator_effect="global", method="FI")
+    inference.fit(result)
+
+    np.testing.assert_allclose(inference._moderator_coef_table, [[0.1]])
+
+    inference.transform(t_con_groups=False, t_con_moderators=True, method="sandwich")
+
+    assert inference.method == "sandwich"
+    np.testing.assert_allclose(inference._moderator_coef_table, [[0.1]])
+    assert "z_age" in inference.result.tables
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
@@ -1312,7 +1443,7 @@ def test_voxelwise_cbmr_build_group_foci_matrices_handles_empty_coordinates():
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 def test_voxelwise_cbmr_prepare_torch_inputs_densifies_sparse_matrices():
     """Torch backend inputs should be float64 tensors on the estimator device."""
-    estimator = CBMREstimator(moderators=["age"], device="cpu")
+    estimator = CBMREstimator(moderator_effect="voxelwise", moderators=["age"], device="cpu")
     estimator.groups = ["Default"]
     estimator.inputs_ = {
         "coef_spline_bases": np.array([[1.0, 0.0], [0.5, 0.5]]),
@@ -1394,7 +1525,11 @@ def test_voxelwise_cbmr_output_tables_match_cbmr_group_table_convention():
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 def test_voxelwise_cbmr_add_approximate_results_creates_expected_maps_and_tables():
     """Approximate backend result extraction should create finite maps and CBMR-style tables."""
-    estimator = CBMREstimator(moderators=["age"], backend="approximate")
+    estimator = CBMREstimator(
+        moderator_effect="voxelwise",
+        moderators=["age"],
+        backend="approximate",
+    )
     estimator.inputs_ = {"coef_spline_bases": np.array([[1.0, 0.0], [0.0, 1.0]])}
     maps = {}
     tables = {}
@@ -1421,7 +1556,12 @@ def test_voxelwise_cbmr_add_approximate_results_creates_expected_maps_and_tables
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 def test_voxelwise_cbmr_torch_result_extraction_uses_model_weights():
     """Full backend result extraction should project fitted torch weights into maps and tables."""
-    estimator = CBMREstimator(moderators=["age"], backend="full", device="cpu")
+    estimator = CBMREstimator(
+        moderator_effect="voxelwise",
+        moderators=["age"],
+        backend="full",
+        device="cpu",
+    )
     estimator.groups = ["Default"]
     estimator.inputs_ = {"coef_spline_bases": np.array([[1.0, 0.0], [0.0, 1.0]])}
     estimator.voxelwise_model = models.SpatialCBMRModel(
@@ -1453,7 +1593,11 @@ def test_voxelwise_cbmr_torch_result_extraction_uses_model_weights():
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 def test_voxelwise_cbmr_exposes_approximate_solver_as_property():
     """The approximate solver accessor should behave like an attribute, not a method."""
-    estimator = CBMREstimator(moderators=["age"], backend="approximate")
+    estimator = CBMREstimator(
+        moderator_effect="voxelwise",
+        moderators=["age"],
+        backend="approximate",
+    )
 
     assert (
         estimator._voxelwise_cbmr_approximate_solver is cbmr_module.fit_voxelwise_cbmr_approximate
@@ -1464,6 +1608,7 @@ def test_voxelwise_cbmr_exposes_approximate_solver_as_property():
 def test_voxelwise_cbmr_fit_dispatches_to_approximate_backend(monkeypatch):
     """The backend option should route CBMREstimator through the approximate solver."""
     estimator = CBMREstimator(
+        moderator_effect="voxelwise",
         moderators=["age"],
         backend="approximate",
         n_iter=3,
@@ -1522,7 +1667,7 @@ def test_voxelwise_cbmr_fit_dispatches_to_approximate_backend(monkeypatch):
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 def test_voxelwise_cbmr_fit_dispatches_to_full_backend(monkeypatch):
     """The full backend should route through the torch fitting implementation."""
-    estimator = CBMREstimator(moderators=["age"], backend="full")
+    estimator = CBMREstimator(moderator_effect="voxelwise", moderators=["age"], backend="full")
     estimator.groups = ["Default"]
     estimator.inputs_ = {
         "coef_spline_bases": np.array([[1.0, 0.0], [0.0, 1.0]]),
@@ -1693,7 +1838,7 @@ def test_mixed_cbmr_inference_routes_moderator_types_separately():
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 def test_voxelwise_cbmr_inference_requires_fit_and_cbmr_result():
     """The inference object should validate fit state and result type like CBMRInference."""
-    inference = CBMRInference(device="cpu")
+    inference = CBMRInference(device="cpu", moderator_effect="voxelwise")
 
     with pytest.raises(ValueError, match="has not been fit"):
         inference.create_contrast("Default", source="groups")
@@ -1717,7 +1862,7 @@ def test_voxelwise_cbmr_inference_validates_standard_error_options():
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 def test_voxelwise_cbmr_inference_create_contrast():
     """The inference object should parse named group and moderator contrasts like CBMR."""
-    inference = CBMRInference(device="cpu")
+    inference = CBMRInference(device="cpu", moderator_effect="voxelwise")
     inference.fit(_voxelwise_result_for_inference())
 
     group_contrast = inference.create_contrast("Default", source="groups")
@@ -1730,7 +1875,7 @@ def test_voxelwise_cbmr_inference_create_contrast():
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 def test_voxelwise_cbmr_inference_preprocesses_raw_contrasts_like_cbmr():
     """Raw contrast arrays should be two-dimensional, standardized, and deduplicated."""
-    inference = CBMRInference(device="cpu")
+    inference = CBMRInference(device="cpu", moderator_effect="voxelwise")
     inference.fit(_voxelwise_result_for_inference())
     inference.t_con_moderators = [np.array([2.0]), np.array([2.0])]
 
@@ -1744,7 +1889,7 @@ def test_voxelwise_cbmr_inference_preprocesses_raw_contrasts_like_cbmr():
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 def test_voxelwise_cbmr_inference_rejects_wrong_contrast_shape():
     """The inference object should reject contrasts with incorrect regressor width."""
-    inference = CBMRInference(device="cpu")
+    inference = CBMRInference(device="cpu", moderator_effect="voxelwise")
     inference.fit(_voxelwise_result_for_inference())
     inference.t_con_moderators = [np.array([1.0, 0.0])]
 
@@ -1755,7 +1900,7 @@ def test_voxelwise_cbmr_inference_rejects_wrong_contrast_shape():
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 def test_voxelwise_cbmr_inference_generates_moderator_effect_diagnostic_maps():
     """Voxelwise moderator-effect diagnostics should generate per-unit RI and ID maps."""
-    inference = CBMRInference(device="cpu")
+    inference = CBMRInference(device="cpu", moderator_effect="voxelwise")
     inference.fit(_voxelwise_result_for_inference())
 
     diagnostic_result = inference.generate_voxelwise_moderator_effect_maps(
@@ -1802,7 +1947,7 @@ def test_voxelwise_cbmr_inference_plots_moderator_effect_diagnostics():
     """Voxelwise moderator-effect diagnostics should plot RI within an ID-thresholded ROI."""
     import matplotlib.pyplot as plt
 
-    inference = CBMRInference(device="cpu")
+    inference = CBMRInference(device="cpu", moderator_effect="voxelwise")
     inference.fit(_voxelwise_result_for_inference())
 
     figure = inference.plot_voxelwise_moderator_effects(
@@ -1851,7 +1996,7 @@ def test_voxelwise_cbmr_inference_masks_ri_to_custom_id_roi():
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 def test_voxelwise_cbmr_inference_validates_moderator_effect_diagnostics():
     """Voxelwise moderator-effect diagnostics should reject unavailable inputs."""
-    inference = CBMRInference(device="cpu")
+    inference = CBMRInference(device="cpu", moderator_effect="voxelwise")
     inference.fit(_voxelwise_result_for_inference())
 
     with pytest.raises(ValueError, match="Unknown moderators"):
@@ -1867,7 +2012,7 @@ def test_voxelwise_cbmr_inference_transform_adds_maps_without_mutating_input():
     """The inference object should append maps to a copy."""
     result = _voxelwise_result_for_inference()
     original_map_keys = set(result.maps)
-    inference = CBMRInference(device="cpu", ridge=1e-3)
+    inference = CBMRInference(device="cpu", moderator_effect="voxelwise", ridge=1e-3)
 
     transformed = inference.fit_transform(
         result,
