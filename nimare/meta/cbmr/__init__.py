@@ -17,6 +17,14 @@ from nimare.meta.cbmr._helpers import (  # noqa: F401
     _uses_cuda,
     _validate_incidence_threshold,
 )
+from nimare.meta.cbmr.distributions import (
+    ClusteredNegativeBinomial,
+    Distribution,
+    DistributionError,
+    NegativeBinomial,
+    Poisson,
+    resolve_distribution,
+)
 from nimare.meta.cbmr.estimator import CBMREstimator
 from nimare.meta.cbmr.inference import CBMRInference
 from nimare.meta.cbmr.optimizers import fit_voxelwise_cbmr_approximate
@@ -27,10 +35,16 @@ from nimare.meta.cbmr.terms import Design, FormulaError, Term
 __all__ = [
     "CBMREstimator",
     "CBMRPredictor",
+    "ClusteredNegativeBinomial",
     "Design",
+    "Distribution",
+    "DistributionError",
+    "NegativeBinomial",
+    "Poisson",
     "FormulaError",
     "Term",
     "poisson_log_likelihood",
+    "resolve_distribution",
     "CBMRInference",
     "CBMRResult",
     "DEFAULT_GROUP_NAME",
