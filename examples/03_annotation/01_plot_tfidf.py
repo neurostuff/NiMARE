@@ -58,12 +58,12 @@ tfidf_df.head(5)
 # -----------------------------------------------------------------------------
 # Now we can add the generated annotations back into the Studyset object.
 # The annotation functions return DataFrames with 'id' as the index, so we need
-# to reset the index to make 'id' a column before assigning to the Studyset.
+# to reset the index to make 'id' a column.
 #
-# This will replace any existing annotations. If you want to add to existing
-# annotations instead of replacing them, you can merge the DataFrames:
-# ``studyset.annotations_df = studyset.annotations_df.merge(tfidf_df.reset_index(), on='id', how='left')``
-studyset.annotations_df = tfidf_df.reset_index()
+# A Studyset is immutable, so ``with_annotations_df`` returns a new one.
+# ``replace=True`` discards any existing annotations; leave it out to add these
+# labels alongside them, which ``annotations_df`` will then merge.
+studyset = studyset.with_annotations_df(tfidf_df.reset_index(), name="tfidf", replace=True)
 
 # Now the Studyset has the new annotations
 print(f"Studyset now has {len(studyset.annotations_df.columns)} annotation columns")

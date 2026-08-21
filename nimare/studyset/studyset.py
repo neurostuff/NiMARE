@@ -652,6 +652,17 @@ class Studyset:
         store = edit.with_texts(self.store, rows, field, values)
         return self._with_store(store)
 
+    def with_annotations_df(self, frame, name=None, replace=False):
+        """Return a studyset carrying ``frame`` as an annotation. Copy-on-write.
+
+        The write counterpart of :attr:`annotations_df`: a frame with an id
+        column and one column per label. ``replace=True`` discards the existing
+        annotations, which is what a caller who round-tripped
+        :attr:`annotations_df` means.
+        """
+        store = edit.with_annotations_frame(self.store, frame, name=name, replace=replace)
+        return self._with_store(store)
+
     def with_annotation_payload(self, payload):
         """Return a studyset carrying a NIMADS annotation payload. Copy-on-write."""
         store = edit.with_annotation_payload(self.store, payload)

@@ -40,6 +40,7 @@ from nimare.studyset.blocks import (
 from nimare.studyset.columns import AnnotationSet, ColumnStore, Dict8
 from nimare.studyset.edit import (
     with_annotation,
+    with_annotations_frame,
     with_images,
     with_metadata,
     with_points,
@@ -95,6 +96,7 @@ __all__ = [
     "normalize_collection",
     "to_nimads_dict",
     "with_annotation",
+    "with_annotations_frame",
     "with_images",
     "with_metadata",
     "with_points",

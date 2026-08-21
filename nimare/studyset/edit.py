@@ -8,21 +8,23 @@ children by it, then compile the offsets from it.
 from __future__ import annotations
 
 import numpy as np
+from pandas.api.types import is_numeric_dtype
 
-from nimare.studyset.columns import AnnotationSet, ColumnStore
+from nimare.studyset.columns import ID_COLS, AnnotationSet, ColumnStore, is_missing
 from nimare.studyset.layout import (
     inverse_permutation,
     note_row_resolver,
     offsets_from_parents,
     point_parents,
 )
-from nimare.studyset.store import replace
+from nimare.studyset.store import replace as replace_store
 
 __all__ = [
     "keep_images",
     "keep_points",
     "with_annotation",
     "with_annotation_payload",
+    "with_annotations_frame",
     "with_images",
     "with_metadata",
     "with_points",
@@ -39,7 +41,9 @@ def with_metadata(store, name, values, *, level="analysis"):
         raise ValueError(f"expected {expected} values, got {len(values)}")
     updated = target.copy()
     updated.add_dense(name, values)
-    return replace(store, **{"metadata" if level == "analysis" else "study_metadata": updated})
+    return replace_store(
+        store, **{"metadata" if level == "analysis" else "study_metadata": updated}
+    )
 
 
 def with_annotation(store, name, labels, matrix, rows, note_key_types=None):
@@ -70,7 +74,7 @@ def with_annotation(store, name, labels, matrix, rows, note_key_types=None):
         columns=columns,
         note_key_types=note_key_types or {str(label): "number" for label in labels},
     )
-    return replace(store, annotations=annotations)
+    return replace_store(store, annotations=annotations)
 
 
 def with_points(store, analysis_positions, xyz, *, space=None, kind=None, values=None):
@@ -112,7 +116,7 @@ def with_points(store, analysis_positions, xyz, *, space=None, kind=None, values
                 point_values.add_sparse(name, rows[keep], [column[i] for i in keep])
 
     parents = parents[order]
-    return replace(
+    return replace_store(
         store,
         xyz=np.ascontiguousarray(all_xyz[order]),
         point_key=all_key[order],
@@ -156,7 +160,7 @@ def with_images(store, analysis_positions, refs, imtype, *, space=None, metadata
             ]
         )[order],
     }
-    return replace(
+    return replace_store(
         store,
         image_attrs=ColumnStore(len(dense["url"]), dense=dense),
         image_offsets=offsets_from_parents(dense["analysis_idx"], store.n_analyses),
@@ -176,7 +180,7 @@ def keep_images(store, mask):
     keep = np.flatnonzero(mask)
     attrs = store.image_attrs.subset(keep)
     parents = np.asarray(attrs.dense["analysis_idx"], dtype=np.int32)
-    return replace(
+    return replace_store(
         store,
         image_attrs=attrs,
         image_offsets=offsets_from_parents(parents, store.n_analyses),
@@ -204,7 +208,53 @@ def with_texts(store, rows, field, values):
             merged[int(row)] = value
     order = sorted(merged)
     texts.add_sparse(field, order, [merged[row] for row in order])
-    return replace(store, texts=texts)
+    return replace_store(store, texts=texts)
+
+
+def with_annotations_frame(store, frame, name=None, id_column="id", replace=False):
+    """Return a new store carrying one annotation built from a frame of labels.
+
+    The write counterpart of the ``annotations_df`` read: a frame with an id
+    column and one column per label, which is the shape the annotators and the
+    text tools produce. Rows naming analyses the studyset does not hold are
+    ignored, as they are for a NIMADS payload.
+
+    ``replace`` discards the existing annotations rather than adding alongside
+    them, which is what a caller who round-tripped ``annotations_df`` means.
+    """
+    resolve = note_row_resolver(
+        store.study_key, store.analysis_key, store.analysis_full_key, store.study_idx
+    )
+    ids = frame[id_column].tolist()
+    targets = np.fromiter(
+        (-1 if (row := resolve(None, key)) is None else row for key in ids),
+        dtype=np.int64,
+        count=len(ids),
+    )
+    matched = targets >= 0
+
+    columns = ColumnStore(store.n_analyses)
+    note_key_types = {}
+    for label in frame.columns:
+        if label == id_column or label in ID_COLS:
+            continue
+        values = frame[label].to_numpy()
+        keep = matched & np.asarray([not is_missing(v) for v in values], dtype=bool)
+        rows = targets[keep]
+        order = np.argsort(rows, kind="stable")
+        columns.add_sparse(
+            str(label), rows[order], [values[i] for i in np.flatnonzero(keep)[order]]
+        )
+        # pandas extension dtypes (StringDtype, for one) are not numpy dtypes,
+        # so ask pandas rather than np.issubdtype.
+        note_key_types[str(label)] = "number" if is_numeric_dtype(frame[label]) else "string"
+
+    ann_id = name or "annotations"
+    annotations = {} if replace else dict(store.annotations)
+    annotations[ann_id] = AnnotationSet(
+        id=ann_id, name=ann_id, columns=columns, note_key_types=note_key_types
+    )
+    return replace_store(store, annotations=annotations)
 
 
 def with_annotation_payload(store, payload):
@@ -247,7 +297,7 @@ def with_annotation_payload(store, payload):
         metadata=payload.get("metadata") or {},
         description=payload.get("description"),
     )
-    return replace(store, annotations=annotations)
+    return replace_store(store, annotations=annotations)
 
 
 def keep_points(store, mask):
@@ -263,7 +313,7 @@ def keep_points(store, mask):
     keep = np.flatnonzero(mask)
     parents = point_parents(store)[keep].astype(np.int32)
     point_values = store.point_values.subset(keep)
-    return replace(
+    return replace_store(
         store,
         xyz=np.ascontiguousarray(store.xyz[keep]),
         point_key=store.point_key[keep],

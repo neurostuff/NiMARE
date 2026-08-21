@@ -486,3 +486,41 @@ def test_annotation_payload_resolves_a_unique_analysis_id_without_a_study():
         {"id": "ann", "notes": [{"analysis": "analysis-1", "note": {"group": "only"}}]}
     )
     assert annotated.annotations_df["group"].tolist() == ["only"]
+
+
+def test_with_annotations_df_round_trips_the_read(store):
+    """Check that the annotations frame can be written back as it is read."""
+    import pandas as pd
+
+    studyset = Studyset(store)
+    frame = studyset.annotations_df.copy()
+    frame["numeric"] = np.arange(len(frame), dtype=float)
+    frame["categorical"] = ["a" if i % 2 else "b" for i in range(len(frame))]
+    # A row for an analysis this studyset does not hold is ignored, not fatal.
+    frame = pd.concat([frame, frame.iloc[[0]].assign(id="not-a-real-analysis")], ignore_index=True)
+
+    out = studyset.with_annotations_df(frame, name="written", replace=True)
+    got = out.annotations_df
+
+    assert list(got["id"]) == list(studyset.ids)
+    assert got["numeric"].tolist() == np.arange(len(studyset), dtype=float).tolist()
+    assert got["categorical"].tolist() == ["a" if i % 2 else "b" for i in range(len(studyset))]
+    # replace=True means these are the only annotations now
+    assert [annotation.id for annotation in out.annotations] == ["written"]
+    # and the declared types survive, so export keeps them
+    written = out.to_dict()["annotations"][0]
+    assert written["note_keys"]["numeric"] == "number"
+    assert written["note_keys"]["categorical"] == "string"
+
+
+def test_with_annotations_df_adds_alongside_by_default(store):
+    """Check that writing a frame does not silently discard existing annotations."""
+    studyset = Studyset(store)
+    before = {annotation.id for annotation in studyset.annotations}
+    frame = studyset.annotations_df.loc[:, ["id"]].copy()
+    frame["extra"] = 1.0
+
+    out = studyset.with_annotations_df(frame, name="extra_set")
+
+    assert {annotation.id for annotation in out.annotations} == before | {"extra_set"}
+    assert out.annotations_df["extra"].tolist() == [1.0] * len(studyset)
