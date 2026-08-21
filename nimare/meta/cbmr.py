@@ -43,6 +43,7 @@ LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
 DEFAULT_GROUP_NAME = "Default"
 DEFAULT_INCIDENCE_THRESHOLD = 0.001
+_INHERIT_INCIDENCE_THRESHOLD = object()
 
 
 def _uses_cuda(device):
@@ -209,6 +210,10 @@ class CBMRResult(MetaResult):
             Additional keyword arguments passed to :class:`~nimare.meta.cbmr.CBMRInference`.
         """
         inference_device = device or getattr(self.estimator, "device", "cpu")
+        kwargs.setdefault(
+            "incidence_threshold",
+            getattr(self.estimator, "incidence_threshold", None),
+        )
         inference = CBMRInference(
             device=inference_device,
             moderator_effect=self.moderator_effect,
@@ -398,12 +403,18 @@ class CBMREstimator(Estimator):
     moderators : :obj:`~str` or obj:`~list` or obj:`~None`, optional
         CBMR can accommodate moderators (e.g. sample size, year of publication).
         Default is CBMR without moderators.
+    global_moderators : :obj:`~str` or obj:`~list` or obj:`~None`, optional
+        Moderators with scalar, whole-brain effects. In global CBMR, this is an alias for
+        ``moderators``. In mixed CBMR, these are modeled separately from voxelwise moderators.
+    voxelwise_moderators : :obj:`~str` or obj:`~list` or obj:`~None`, optional
+        Moderators with spatially varying effects. In voxelwise CBMR, this is an alias for
+        ``moderators``. In mixed CBMR, these are modeled separately from global moderators.
     moderator_effect : {"voxelwise", "global"}, optional
         How experiment-level moderator effects are parameterized. ``"global"`` fits the
         standard CBMR model with one coefficient per moderator and group. ``"voxelwise"`` fits
         the voxelwise moderator-effect CBMR backend, in which moderator effects vary smoothly over
         voxels.
-        Default is ``"voxelwise"``.
+        Default is ``"global"``.
     mask : :obj:`str`, :class:`~nibabel.nifti1.Nifti1Image`, or Nilearn masker, optional
         Region-of-interest mask. If None, CBMR uses the whole 2 mm MNI152 brain mask.
     incidence_threshold : :obj:`float` or None, optional
@@ -500,7 +511,7 @@ class CBMREstimator(Estimator):
         global_moderators=None,
         voxelwise_moderators=None,
         global_moderator=None,
-        moderator_effect="voxelwise",
+        moderator_effect="global",
         mask=None,
         incidence_threshold=DEFAULT_INCIDENCE_THRESHOLD,
         spline_spacing=10,
@@ -550,7 +561,7 @@ class CBMREstimator(Estimator):
         global_moderators=None,
         voxelwise_moderators=None,
         global_moderator=None,
-        moderator_effect="voxelwise",
+        moderator_effect="global",
         mask=None,
         incidence_threshold=DEFAULT_INCIDENCE_THRESHOLD,
         spline_spacing=10,
@@ -591,21 +602,11 @@ class CBMREstimator(Estimator):
         self.group_categories = group_categories
         self.global_moderators = self._as_moderator_list(global_moderators)
         self.voxelwise_moderators = self._as_moderator_list(voxelwise_moderators)
-        if self.moderator_effect == "mixed":
-            if moderators is not None:
-                raise ValueError(
-                    "Use global_moderators and/or voxelwise_moderators when "
-                    "moderator_effect='mixed'."
-                )
-            duplicated = set(self.global_moderators) & set(self.voxelwise_moderators)
-            if duplicated:
-                raise ValueError(
-                    "The same moderator cannot be both global and voxelwise in a mixed CBMR "
-                    f"model: {sorted(duplicated)}."
-                )
-            self.moderators = self.global_moderators + self.voxelwise_moderators
-        else:
-            self.moderators = moderators
+        self.moderators = self._resolve_moderators_for_effect(
+            moderators,
+            self.global_moderators,
+            self.voxelwise_moderators,
+        )
 
         self.spline_spacing = spline_spacing
         model_class = (
@@ -640,6 +641,56 @@ class CBMREstimator(Estimator):
         if isinstance(moderators, str):
             return [moderators]
         return list(moderators)
+
+    def _resolve_moderators_for_effect(
+        self,
+        moderators,
+        global_moderators,
+        voxelwise_moderators,
+    ):
+        """Resolve public moderator arguments into the estimator's active moderators."""
+        if self.moderator_effect == "mixed":
+            if moderators is not None:
+                raise ValueError(
+                    "Use global_moderators and/or voxelwise_moderators when "
+                    "moderator_effect='mixed'."
+                )
+            duplicated = set(global_moderators) & set(voxelwise_moderators)
+            if duplicated:
+                raise ValueError(
+                    "The same moderator cannot be both global and voxelwise in a mixed CBMR "
+                    f"model: {sorted(duplicated)}."
+                )
+            return global_moderators + voxelwise_moderators
+
+        if self.moderator_effect == "global":
+            if voxelwise_moderators:
+                raise ValueError(
+                    "voxelwise_moderators can only be used when "
+                    "moderator_effect='voxelwise' or 'mixed'."
+                )
+            if global_moderators:
+                if moderators is not None:
+                    raise ValueError(
+                        "Use only one of moderators or global_moderators when "
+                        "moderator_effect='global'."
+                    )
+                return global_moderators
+            return moderators
+
+        if global_moderators:
+            raise ValueError(
+                "global_moderators can only be used when "
+                "moderator_effect='global' or 'mixed'."
+            )
+        if voxelwise_moderators:
+            if moderators is not None:
+                raise ValueError(
+                    "Use only one of moderators or voxelwise_moderators when "
+                    "moderator_effect='voxelwise'."
+                )
+            return voxelwise_moderators
+        return moderators
 
     def _generate_description(self):
         """Generate a description of the Estimator instance.
@@ -1483,7 +1534,7 @@ class CBMRInference:
     moderator_effect : {"voxelwise", "global"}, optional
         Inference parameterization to use. ``"voxelwise"`` uses the integrated voxelwise CBMR
         inference backend with sandwich or inverse-Fisher covariance estimates. ``"global"`` uses
-        the standard CBMR inference backend. Default is ``"voxelwise"``.
+        the standard CBMR inference backend. Default is ``"global"``.
     method : {"sandwich", "FI"}, optional
         Covariance estimator for CBMR inference. The voxelwise default is ``"sandwich"`` because
         it uses empirical residual variation to provide standard errors that are more robust to
@@ -1507,7 +1558,7 @@ class CBMRInference:
     incidence_threshold : :obj:`float` or None, optional
         Drop voxels with empirical focus incidence less than or equal to this threshold when
         incidence information is available on the fitted result. Use None to keep all fitted
-        voxels. Default is 0.001.
+        voxels. By default, inherit the fitted estimator's incidence threshold.
     """
 
     _valid_methods = ("sandwich", "FI")
@@ -1519,19 +1570,24 @@ class CBMRInference:
     def __init__(
         self,
         device="cpu",
-        moderator_effect="voxelwise",
+        moderator_effect="global",
         method=None,
         sandwich_meat="cluster",
         sandwich_correction="hc3",
         ridge=1e-6,
         mask=None,
-        incidence_threshold=DEFAULT_INCIDENCE_THRESHOLD,
+        incidence_threshold=_INHERIT_INCIDENCE_THRESHOLD,
     ):
         self.moderator_effect = self._normalize_moderator_effect(moderator_effect)
         self.device = device
         self.mask = mask
         self.masker = get_masker(mask) if mask is not None else None
-        self.incidence_threshold = _validate_incidence_threshold(incidence_threshold)
+        self._inherit_incidence_threshold = incidence_threshold is _INHERIT_INCIDENCE_THRESHOLD
+        self.incidence_threshold = (
+            incidence_threshold
+            if self._inherit_incidence_threshold
+            else _validate_incidence_threshold(incidence_threshold)
+        )
         # device check
         if _uses_cuda(self.device) and not torch.cuda.is_available():
             LGR.debug("CUDA not found; using device 'cpu'.")
@@ -1553,6 +1609,7 @@ class CBMRInference:
             raise ValueError("ridge must be nonnegative.")
         self.ridge = ridge
 
+        self._reset_fitted_coefficient_caches()
         self._reset_inference_caches()
 
     @classmethod
@@ -1641,9 +1698,15 @@ class CBMRInference:
             self._group_spatial_covariance_cache = {}
             self._moderator_covariance = None
             self._moderator_variance = None
-            self._moderator_coef_table = None
+            self._mixed_joint_covariance_cache = {}
         if self.moderator_effect in ("voxelwise", "mixed"):
             self._group_covariance_cache = {}
+
+    def _reset_fitted_coefficient_caches(self):
+        """Reset coefficient-derived state that belongs to one fitted result."""
+        if self.moderator_effect in ("global", "mixed"):
+            self._moderator_coef_table = None
+        if self.moderator_effect in ("voxelwise", "mixed"):
             self._group_coefficient_cache = {}
 
     def _get_group_log_intensity(self, group):
@@ -1710,7 +1773,7 @@ class CBMRInference:
         """Return cached moderator covariance and marginal variances."""
         if self._moderator_covariance is None:
             if self.moderator_effect == "mixed":
-                self._moderator_covariance = self._compute_mixed_global_moderator_covariance()
+                self._moderator_covariance = self._get_mixed_global_moderator_covariance()
             elif self.method == "FI":
                 moderators_by_group = (
                     self.estimator.inputs_["moderators_by_group"] if self.moderators else None
@@ -1841,8 +1904,12 @@ class CBMRInference:
                 f"CBMRResult with moderator_effect={self.moderator_effect!r}."
             )
 
+        if self._inherit_incidence_threshold:
+            self.incidence_threshold = getattr(result.estimator, "incidence_threshold", None)
+
         self.result = self._copy_result_for_inference(result)
         self.result = self._restrict_result_voxels(self.result)
+        self._reset_fitted_coefficient_caches()
         self._reset_inference_caches()
         self.estimator = self.result.estimator
         self.groups = list(self.result.groups)
@@ -2824,67 +2891,251 @@ class CBMRInference:
             correction=self.sandwich_correction,
         )
 
-    def _compute_mixed_global_moderator_covariance(self):
-        """Compute covariance for scalar global coefficients in a mixed CBMR fit.
-
-        Global moderators are evaluated with experiment-level score rows, while voxelwise
-        moderators retain their spatial covariance path.
-        """
-        if not self.estimator.global_moderators:
-            return np.zeros((0, 0), dtype=np.float64)
-
-        designs = []
-        foci_by_experiment = []
-        mean_by_experiment = []
-        cluster_scores = []
-        fisher_info = np.zeros(
-            (len(self.estimator.global_moderators), len(self.estimator.global_moderators)),
-            dtype=float,
-        )
+    def _mixed_joint_parameter_layout(self):
+        """Return parameter slices for mixed global and group-specific coefficient blocks."""
+        n_global = len(self.estimator.global_moderators)
+        n_bases = self.estimator.inputs_["coef_spline_bases"].shape[1]
+        n_local_regressors = len(self.estimator.voxelwise_moderators) + 1
+        local_size = n_local_regressors * n_bases
+        group_slices = {}
+        offset = n_global
         for group in self.groups:
-            design = np.asarray(
+            group_slices[group] = slice(offset, offset + local_size)
+            offset += local_size
+        return slice(0, n_global), group_slices, n_local_regressors, n_bases, offset
+
+    def _mixed_joint_fisher_information(self):
+        """Return Fisher information for the full mixed-model parameter vector."""
+        global_slice, group_slices, _, _, total_size = self._mixed_joint_parameter_layout()
+        fisher_info = np.zeros((total_size, total_size), dtype=float)
+        bases = np.asarray(self.estimator.inputs_["coef_spline_bases"], dtype=float)
+
+        for group in self.groups:
+            global_moderators = np.asarray(
                 self.estimator.inputs_["global_moderators_by_group"][group],
                 dtype=float,
             )
-            foci = np.asarray(
-                self.estimator.inputs_["foci_by_experiment"][group].sum(axis=1),
+            local_moderators = self._get_group_augmented_moderators(group)
+            mean = self._get_group_mean(group)
+            group_slice = group_slices[group]
+
+            mean_by_experiment = mean.sum(axis=1)
+            fisher_info[global_slice, global_slice] += global_moderators.T @ (
+                global_moderators * mean_by_experiment[:, None]
+            )
+            fisher_info[group_slice, group_slice] = self._compute_fisher_information(
+                local_moderators,
+                bases,
+                mean,
+            )
+            cross_info = np.einsum(
+                "mg,mr,mv,vb->grb",
+                global_moderators,
+                local_moderators,
+                mean,
+                bases,
+                optimize=True,
+            ).reshape(global_slice.stop, -1)
+            fisher_info[global_slice, group_slice] = cross_info
+            fisher_info[group_slice, global_slice] = cross_info.T
+
+        return fisher_info
+
+    @staticmethod
+    def _dense_residuals(foci, mean):
+        """Return dense residuals from sparse or dense foci and fitted means."""
+        residuals = -np.asarray(mean, dtype=float)
+        if scipy.sparse.issparse(foci):
+            residuals = residuals + _as_csr_matrix(foci).toarray()
+        else:
+            residuals = residuals + np.asarray(foci, dtype=float)
+        return np.nan_to_num(residuals, nan=0.0, posinf=0.0, neginf=0.0)
+
+    def _mixed_joint_leverage_scale(
+        self,
+        bread_inverse,
+        global_moderators,
+        local_moderators,
+        bases,
+        mean,
+        group_slice,
+    ):
+        """Return HC3 residual scaling for one mixed-model group."""
+        if self.sandwich_correction != "hc3":
+            return None
+
+        global_slice, _, n_local_regressors, n_bases, _ = self._mixed_joint_parameter_layout()
+        global_covariance = bread_inverse[global_slice, global_slice]
+        local_covariance = bread_inverse[group_slice, group_slice]
+        cross_covariance = bread_inverse[global_slice, group_slice].reshape(
+            global_slice.stop,
+            n_local_regressors,
+            n_bases,
+        )
+
+        global_leverage = np.einsum(
+            "mg,gh,mh->m",
+            global_moderators,
+            global_covariance,
+            global_moderators,
+            optimize=True,
+        )[:, None]
+        local_covariance_blocks = local_covariance.reshape(
+            n_local_regressors,
+            n_bases,
+            n_local_regressors,
+            n_bases,
+        ).transpose(0, 2, 1, 3)
+        local_leverage_basis = np.einsum(
+            "vp,rspq,vq->rsv",
+            bases,
+            local_covariance_blocks,
+            bases,
+            optimize=True,
+        )
+        local_leverage = np.einsum(
+            "mr,ms,rsv->mv",
+            local_moderators,
+            local_moderators,
+            local_leverage_basis,
+            optimize=True,
+        )
+        cross_leverage = 2 * np.einsum(
+            "mg,grb,mr,vb->mv",
+            global_moderators,
+            cross_covariance,
+            local_moderators,
+            bases,
+            optimize=True,
+        )
+        leverage = mean * (global_leverage + local_leverage + cross_leverage)
+        leverage = np.nan_to_num(leverage, nan=0.0, posinf=1.0, neginf=0.0)
+        leverage = np.clip(leverage, 0.0, 0.999)
+        return np.maximum(1.0 - leverage, 1e-6)
+
+    def _mixed_joint_sandwich_meat(self, bread_inverse):
+        """Return sandwich meat for the full mixed-model parameter vector."""
+        global_slice, group_slices, _, _, total_size = self._mixed_joint_parameter_layout()
+        bases = np.asarray(self.estimator.inputs_["coef_spline_bases"], dtype=float)
+        meat = np.zeros((total_size, total_size), dtype=float)
+        n_observations = 0
+
+        for group in self.groups:
+            global_moderators = np.asarray(
+                self.estimator.inputs_["global_moderators_by_group"][group],
                 dtype=float,
-            ).reshape(-1)
-            mean = self._get_group_mean(group).sum(axis=1)
-            designs.append(design)
-            foci_by_experiment.append(foci)
-            mean_by_experiment.append(mean)
-            fisher_info += design.T @ (design * mean[:, None])
-            cluster_scores.append(design * (foci - mean)[:, None])
+            )
+            local_moderators = self._get_group_augmented_moderators(group)
+            mean = self._get_group_mean(group)
+            residuals = self._dense_residuals(
+                self.estimator.inputs_["foci_by_experiment_voxel"][group],
+                mean,
+            )
+            group_slice = group_slices[group]
+            residual_scale = self._mixed_joint_leverage_scale(
+                bread_inverse,
+                global_moderators,
+                local_moderators,
+                bases,
+                mean,
+                group_slice,
+            )
+            if residual_scale is not None:
+                residuals = residuals / residual_scale
 
-        bread_inverse = self._sandwich_bread_inverse(fisher_info, self.ridge)
-        if self.method == "FI":
-            return bread_inverse
+            if self.sandwich_meat == "cluster":
+                n_observations += residuals.shape[0]
+                group_scores = np.zeros((residuals.shape[0], total_size), dtype=float)
+                group_scores[:, global_slice] = global_moderators * residuals.sum(axis=1)[:, None]
+                basis_residuals = residuals @ bases
+                local_scores = [
+                    basis_residuals * local_moderators[:, index : index + 1]
+                    for index in range(local_moderators.shape[1])
+                ]
+                group_scores[:, group_slice] = np.hstack(local_scores)
+                meat += group_scores.T @ group_scores
+            else:
+                n_observations += residuals.size
+                residual_square = residuals**2
+                residual_square_by_experiment = residual_square.sum(axis=1)
+                meat[global_slice, global_slice] += global_moderators.T @ (
+                    global_moderators * residual_square_by_experiment[:, None]
+                )
+                meat[group_slice, group_slice] += self._sandwich_meat_matrix(
+                    local_moderators,
+                    bases,
+                    residuals,
+                    meat="iid",
+                )
+                cross_meat = np.einsum(
+                    "mg,mr,mv,vb->grb",
+                    global_moderators,
+                    local_moderators,
+                    residual_square,
+                    bases,
+                    optimize=True,
+                ).reshape(global_slice.stop, -1)
+                meat[global_slice, group_slice] += cross_meat
+                meat[group_slice, global_slice] += cross_meat.T
 
-        scores = np.vstack(cluster_scores)
-        meat = scores.T @ scores
         if self.sandwich_correction == "hc1":
-            design = np.vstack(designs)
-            n_observations, n_parameters = design.shape
+            n_parameters = total_size
             if n_observations <= n_parameters:
                 raise ValueError(
-                    "HC1 sandwich correction requires more experiments than model columns. "
+                    "HC1 sandwich correction requires more observations than model parameters. "
                     "Use sandwich_correction='hc0' or 'hc3' for this setting."
                 )
             meat *= n_observations / float(n_observations - n_parameters)
-        elif self.sandwich_correction == "hc3":
-            design = np.vstack(designs)
-            mean = np.concatenate(mean_by_experiment)
-            leverage = mean * np.einsum("ij,jk,ik->i", design, bread_inverse, design)
-            leverage = np.clip(np.nan_to_num(leverage, nan=0.0, posinf=1.0), 0.0, 0.999)
-            residuals = (np.concatenate(foci_by_experiment) - mean) / np.maximum(
-                1.0 - leverage, 1e-6
-            )
-            scores = design * residuals[:, None]
-            meat = scores.T @ scores
 
-        covariance = bread_inverse @ meat @ bread_inverse
-        return 0.5 * (covariance + covariance.T)
+        return meat
+
+    def _get_mixed_joint_covariance(self):
+        """Return cached joint covariance for all mixed-model coefficients."""
+        cache_key = (self.method, self.sandwich_meat, self.sandwich_correction, self.ridge)
+        covariance = self._mixed_joint_covariance_cache.get(cache_key)
+        if covariance is not None:
+            return covariance
+
+        fisher_info = self._mixed_joint_fisher_information()
+        bread_inverse = self._sandwich_bread_inverse(fisher_info, self.ridge)
+        if self.method == "FI":
+            covariance = bread_inverse
+        else:
+            meat = self._mixed_joint_sandwich_meat(bread_inverse)
+            covariance = bread_inverse @ meat @ bread_inverse
+            covariance = 0.5 * (covariance + covariance.T)
+        self._mixed_joint_covariance_cache[cache_key] = covariance
+        return covariance
+
+    def _get_mixed_global_moderator_covariance(self):
+        """Return the global-moderator block from the mixed joint covariance."""
+        global_slice, _, _, _, _ = self._mixed_joint_parameter_layout()
+        covariance = self._get_mixed_joint_covariance()
+        return covariance[global_slice, global_slice]
+
+    def _get_mixed_group_covariance(self, group):
+        """Return one group-specific voxelwise/spatial block from mixed joint covariance."""
+        _, group_slices, _, _, _ = self._mixed_joint_parameter_layout()
+        group_slice = group_slices[group]
+        covariance = self._get_mixed_joint_covariance()
+        return covariance[group_slice, group_slice]
+
+    def _get_mixed_intercept_covariance_for_groups(self, involved_groups):
+        """Return joint spatial-intercept covariance for selected mixed-model groups."""
+        _, group_slices, n_local_regressors, n_bases, _ = self._mixed_joint_parameter_layout()
+        covariance = self._get_mixed_joint_covariance()
+        intercept_covariance = np.zeros((len(involved_groups) * n_bases,) * 2)
+        intercept_offset = (n_local_regressors - 1) * n_bases
+        for row_index, row_group in enumerate(involved_groups):
+            row_start = group_slices[row_group].start + intercept_offset
+            row_slice = slice(row_start, row_start + n_bases)
+            output_row = slice(row_index * n_bases, (row_index + 1) * n_bases)
+            for col_index, col_group in enumerate(involved_groups):
+                col_start = group_slices[col_group].start + intercept_offset
+                col_slice = slice(col_start, col_start + n_bases)
+                output_col = slice(col_index * n_bases, (col_index + 1) * n_bases)
+                intercept_covariance[output_row, output_col] = covariance[row_slice, col_slice]
+        return intercept_covariance
 
     def _get_group_mean(self, group):
         """Return fitted Poisson mean for one group as experiments by voxels."""
@@ -3162,6 +3413,9 @@ class CBMRInference:
 
     def _get_group_covariance(self, group):
         """Return cached covariance of augmented coefficients for one group."""
+        if self.moderator_effect == "mixed" and self.estimator.global_moderators:
+            return self._get_mixed_group_covariance(group)
+
         cache_key = (group, self.method, self.sandwich_meat, self.sandwich_correction, self.ridge)
         covariance = self._group_covariance_cache.get(cache_key)
         if covariance is not None:
@@ -3188,6 +3442,9 @@ class CBMRInference:
 
     def _get_intercept_covariance_for_groups(self, involved_groups):
         """Return block-diagonal covariance for group spatial-intercept coefficients."""
+        if self.moderator_effect == "mixed" and self.estimator.global_moderators:
+            return self._get_mixed_intercept_covariance_for_groups(involved_groups)
+
         n_bases = self.estimator.inputs_["coef_spline_bases"].shape[1]
         covariance = np.zeros((len(involved_groups) * n_bases, len(involved_groups) * n_bases))
         for group_index, group in enumerate(involved_groups):
