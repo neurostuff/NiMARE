@@ -7,6 +7,8 @@ import warnings
 import numpy as np
 import pytest
 
+statsmodels_api = pytest.importorskip("statsmodels.api")
+
 try:
     import torch  # noqa: F401
 except ImportError:
@@ -414,3 +416,83 @@ def test_plotting_asks_which_group_when_there_are_several(studyset):
 
     with pytest.raises(ValueError, match="one baseline group"):
         result.plot_moderator_effects()
+
+
+def _materialize_public_design(estimator):
+    """Return the GLM design the fitted estimator implies, in flat-parameter order."""
+    predictor = estimator.predictor
+    n_experiments = predictor.patterns.n_experiments
+    spatial = np.einsum("ic,vb->ivcb", predictor.spatial_block, predictor.bases).reshape(
+        n_experiments * predictor.n_voxels, -1
+    )
+    if predictor.global_block is None:
+        return spatial
+    return np.hstack([spatial, np.repeat(predictor.global_block, predictor.n_voxels, axis=0)])
+
+
+@pytest.mark.parametrize(
+    "formula",
+    [
+        "~ s(diagnosis)",
+        "~ s(diagnosis:drug_status) + standardized_sample_sizes",
+        "~ s(diagnosis) + s(standardized_avg_age)",
+        "~ sz(diagnosis) + sz(drug_status)",
+    ],
+)
+def test_the_public_fit_optimizes_the_statsmodels_likelihood(studyset, formula):
+    """The objective CBMR optimizes must be the Poisson likelihood, checked end to end.
+
+    Every other statsmodels comparison in the suite builds a predictor directly; this one goes
+    through ``CBMR.fit`` on a Studyset, so it covers the whole path -- masking, incidence
+    filtering, the basis, the foci matrix, the term layout and the flat parameter vector.
+
+    It compares the likelihood *at CBMR's own fitted coefficients* rather than comparing optima.
+    That is deliberate. Coordinate foci give 0/1 per experiment-voxel cell, so the Poisson maximum
+    sits at infinity and two optimizers would stop at different points while both being correct;
+    the objective, on the other hand, is exactly comparable wherever you evaluate it. CBMR drops
+    the parameter-free ``-sum(log(y!))`` term, which is added back here.
+    """
+    from scipy.special import gammaln
+
+    estimator = CBMR(formula, **FIT_KWARGS)
+    estimator.fit(dataset=studyset)
+
+    foci = np.asarray(estimator.inputs_["foci"].todense(), dtype=float)
+    design = _materialize_public_design(estimator)
+    coefficients = estimator.cbmr_model.coefficients.detach().numpy()
+    assert design.shape[1] == coefficients.size, "design and parameter vector must agree"
+
+    expected = statsmodels_api.GLM(
+        foci.reshape(-1), design, family=statsmodels_api.families.Poisson()
+    ).loglike(coefficients)
+    actual = float(estimator.cbmr_model.log_likelihood(foci).detach()) - float(
+        gammaln(foci + 1).sum()
+    )
+
+    np.testing.assert_allclose(actual, expected, rtol=1e-9)
+
+
+def test_the_public_fit_reports_the_design_derived_standard_errors(studyset):
+    """Standard errors from the public path must match the design's own Fisher information.
+
+    Evaluated at CBMR's fitted coefficients, not at statsmodels' optimum. Letting statsmodels
+    converge would put it at a different parameter point -- coordinate foci have no interior
+    maximum, so the two optimizers stop in different places -- and comparing standard errors
+    across different points compares nothing. Here the bread is built from the same design and
+    the same coefficients, so any disagreement is in the covariance code::
+
+        A = X' diag(mu) X,   Cov = A^-1
+    """
+    estimator = CBMR("~ 1 + diagnosis", **FIT_KWARGS)
+    estimator.fit(dataset=studyset)
+
+    foci = np.asarray(estimator.inputs_["foci"].todense(), dtype=float)
+    design = _materialize_public_design(estimator)
+    coefficients = estimator.cbmr_model.coefficients.detach().numpy()
+
+    mean = np.exp(design @ coefficients)
+    information = design.T @ (design * mean[:, None])
+    expected = np.sqrt(np.diag(np.linalg.inv(information)))
+
+    actual = np.sqrt(np.diag(estimator.cbmr_model.covariance(foci)))
+    np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-10)

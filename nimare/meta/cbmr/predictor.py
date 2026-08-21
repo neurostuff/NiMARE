@@ -43,6 +43,21 @@ def _as_dense_array(value):
     return np.asarray(value, dtype=float)
 
 
+def _as_tensor(array, dtype=torch.float64):
+    """Convert an array to a torch tensor, copying anything that is not already contiguous.
+
+    Everything reaching this function today is contiguous by construction -- ``np.hstack`` output,
+    patsy design matrices, freshly allocated accumulators -- but that is a property of the current
+    call sites rather than a guarantee. A pandas column selection is a view over the frame's
+    blocks and can be non-contiguous, read-only or negatively strided depending on how the
+    requested columns sit relative to the frame's own order; torch rejects the last outright and
+    warns about the second. One guard at the boundary beats auditing the layout at each caller.
+    """
+    if torch.is_tensor(array):
+        return array.to(dtype)
+    return torch.as_tensor(np.ascontiguousarray(array), dtype=dtype)
+
+
 class SpatialPatterns:
     """Experiments grouped by which spatial coefficients they load on.
 
@@ -173,8 +188,8 @@ class CBMRPredictor:
         :obj:`torch.Tensor`
             Shape ``(n_patterns, n_voxels)``.
         """
-        loadings = torch.as_tensor(self.patterns.loadings, dtype=spatial_coef.dtype)
-        bases = torch.as_tensor(self.bases, dtype=spatial_coef.dtype)
+        loadings = _as_tensor(self.patterns.loadings, spatial_coef.dtype)
+        bases = _as_tensor(self.bases, spatial_coef.dtype)
         return (loadings @ spatial_coef) @ bases.T
 
     def moderator_effect(self, global_coef):
@@ -192,7 +207,7 @@ class CBMRPredictor:
         """
         if self.global_block is None or global_coef is None:
             return torch.zeros(self.patterns.n_experiments, dtype=torch.float64)
-        block = torch.as_tensor(self.global_block, dtype=global_coef.dtype)
+        block = _as_tensor(self.global_block, global_coef.dtype)
         return block @ global_coef
 
     def linear_predictor(self, spatial_coef, global_coef=None):
@@ -232,11 +247,11 @@ def poisson_log_likelihood(predictor, spatial_coef, global_coef, foci):
     :obj:`torch.Tensor`
         Scalar log-likelihood.
     """
-    marginal_by_pattern = torch.as_tensor(
-        predictor.patterns.marginal_by_pattern(foci), dtype=spatial_coef.dtype
+    marginal_by_pattern = _as_tensor(
+        predictor.patterns.marginal_by_pattern(foci), spatial_coef.dtype
     )
-    foci_per_experiment = torch.as_tensor(
-        np.asarray(_as_dense_array(foci).sum(axis=1)).reshape(-1), dtype=spatial_coef.dtype
+    foci_per_experiment = _as_tensor(
+        np.asarray(_as_dense_array(foci).sum(axis=1)).reshape(-1), spatial_coef.dtype
     )
 
     log_intensity = predictor.log_intensity_by_pattern(spatial_coef)

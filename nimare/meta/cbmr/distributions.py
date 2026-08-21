@@ -29,7 +29,11 @@ import math
 import numpy as np
 
 from nimare.meta.cbmr._torch import torch
-from nimare.meta.cbmr.predictor import _as_dense_array, poisson_log_likelihood
+from nimare.meta.cbmr.predictor import (
+    _as_dense_array,
+    _as_tensor,
+    poisson_log_likelihood,
+)
 
 
 class DistributionError(ValueError):
@@ -96,11 +100,9 @@ def _pattern_quantities(predictor, spatial_coef, global_coef, foci):
     """Return the per-pattern pieces the marginal likelihoods are written in terms of."""
     log_intensity = predictor.log_intensity_by_pattern(spatial_coef)
     moderator = predictor.moderator_effect(global_coef).to(spatial_coef.dtype)
-    foci_per_voxel = torch.as_tensor(
-        predictor.patterns.marginal_by_pattern(foci), dtype=spatial_coef.dtype
-    )
-    foci_per_experiment = torch.as_tensor(
-        np.asarray(_as_dense_array(foci).sum(axis=1)).reshape(-1), dtype=spatial_coef.dtype
+    foci_per_voxel = _as_tensor(predictor.patterns.marginal_by_pattern(foci), spatial_coef.dtype)
+    foci_per_experiment = _as_tensor(
+        np.asarray(_as_dense_array(foci).sum(axis=1)).reshape(-1), spatial_coef.dtype
     )
     return log_intensity, moderator, foci_per_voxel, foci_per_experiment
 
