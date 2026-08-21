@@ -114,8 +114,17 @@ class PermutationPlan:
         """Total number of foci the plan was compiled for."""
         return int(self.offsets[-1])
 
-    def summary_stat(self, ijk):
-        """Compute the ALE statistic map for one permutation."""
+    @property
+    def n_groups(self):
+        """Number of studies the foci are grouped into."""
+        return len(self.offsets) - 1
+
+    def summary_stat(self, ijk, weights=None):
+        """Compute the ALE statistic map for one permutation.
+
+        ``weights`` is accepted so that both plan kinds share one signature; the
+        ALE statistic is a union over studies and does not weight them.
+        """
         return _ale_stat_from_offsets(
             self.kernel_offsets,
             self.kernel_values,
@@ -129,7 +138,7 @@ class PermutationPlan:
         )
 
 
-def ale_plan_for(estimator, coordinates):
+def ale_plan_for(estimator, coordinates, block=None):
     """Build a plan for an ALE-family estimator, or ``None`` if it does not apply.
 
     Returns ``None`` rather than raising when the estimator's kernel is not one
@@ -149,7 +158,7 @@ def ale_plan_for(estimator, coordinates):
     # Group boundaries: the coordinates of one analysis are contiguous, which the
     # studyset guarantees. Verify rather than assume -- a caller may hand over a
     # frame it assembled itself.
-    offsets = _group_offsets(coordinates)
+    offsets = _group_offsets(coordinates, block)
     if offsets is None:
         return None
     starts = offsets[:-1]
@@ -275,8 +284,14 @@ class CoveragePlan:
         """Number of studies the foci are grouped into."""
         return len(self.offsets) - 1
 
-    def summary_stat(self, ijk, weights):
-        """Compute the statistic map for one permutation, given per-study weights."""
+    def summary_stat(self, ijk, weights=None):
+        """Compute the statistic map for one permutation, given per-study weights.
+
+        ``weights`` of ``None`` means weight every study equally, which is the
+        KDA statistic; MKDA passes its weight vector.
+        """
+        if weights is None:
+            weights = np.ones(self.n_groups, dtype=np.float64)
         return _weighted_coverage_from_offsets(
             self.kernel_offsets,
             np.ascontiguousarray(ijk, dtype=np.int32),
@@ -290,8 +305,17 @@ class CoveragePlan:
         )
 
 
-def _group_offsets(coordinates):
-    """CSR group boundaries from a coordinates frame, or ``None`` if not contiguous."""
+def _group_offsets(coordinates, block=None):
+    """CSR group boundaries for the foci, or ``None`` if they cannot be trusted.
+
+    A :class:`~nimare.studyset.blocks.CoordinateBlock` already carries them --
+    that is what the block is -- so when the estimator kept the one its inputs
+    were built from, they are read rather than recovered. Falling back to the
+    frame means proving contiguity from the analysis ids, which a caller that
+    assembled its own frame may not have.
+    """
+    if block is not None and len(block) == len(coordinates):
+        return np.asarray(block.offsets, dtype=np.int64)
     ids = np.asarray(coordinates["id"].values, dtype=str)
     if not len(ids):
         return None
@@ -301,9 +325,10 @@ def _group_offsets(coordinates):
     return np.r_[starts, len(ids)].astype(np.int64)
 
 
-def kda_plan_for(estimator, coordinates):
+def kda_plan_for(estimator, coordinates, block=None):
     """Build a plan for an (M)KDA-family estimator, or ``None`` if it does not apply."""
     from nimare.meta.kernel import KDAKernel, MKDAKernel
+    from nimare.meta.utils import sphere_kernel_offsets
 
     kernel = getattr(estimator, "kernel_transformer", None)
     if not isinstance(kernel, (KDAKernel, MKDAKernel)):
@@ -312,23 +337,14 @@ def kda_plan_for(estimator, coordinates):
     if masker is None:
         return None
 
-    offsets = _group_offsets(coordinates)
+    offsets = _group_offsets(coordinates, block)
     if offsets is None:
         return None
 
     mask = masker.mask_img
-    zooms = mask.header.get_zooms()
-    radius = kernel.r
-    grid = np.vstack(
-        [
-            row.ravel()
-            for row in np.mgrid[
-                tuple(slice(-radius // zooms[i], radius // zooms[i] + 0.01, 1) for i in range(3))
-            ].astype(np.int32)
-        ]
-    )
-    inside = np.sum(np.dot(np.diag(zooms), grid) ** 2, axis=0) ** 0.5 <= radius
-    kernel_offsets = np.ascontiguousarray(grid[:, inside].T, dtype=np.int32)
+    # The same builder compute_kda_ma uses, so the fused pass and the observed
+    # statistic cannot disagree about which voxels a focus reaches.
+    kernel_offsets = sphere_kernel_offsets(kernel.r, mask.header.get_zooms())
 
     flat_to_masked = _get_mask_flat_to_masked(mask)
     return CoveragePlan(

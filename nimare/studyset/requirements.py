@@ -33,10 +33,22 @@ class Coordinates:
         return sizes > 0
 
     def resolve(self, view):
-        """Return the narrowed view and the block this requirement asked for."""
+        """Return the block this requirement asked for."""
+        return self._view_for(view).coordinate_block()
+
+    def as_input(self, view, block):
+        """Render the legacy ``inputs_`` shape: a frame with one row per focus.
+
+        The frame is a different projection of the same foci, and it is built
+        from ``block`` -- ``View.frame`` reaches the memoised coordinate block --
+        so naming it here costs nothing beyond the reshape estimators want.
+        """
+        return self._view_for(view).frame("coordinates")
+
+    def _view_for(self, view):
         if self.space is not None and view.context.space != self.space:
-            view = view.with_context(space=self.space)
-        return view.coordinate_block()
+            return view.with_context(space=self.space)
+        return view
 
 
 @dataclass(frozen=True)
@@ -72,8 +84,20 @@ class PerAnalysis:
         return np.isfinite(self.dense(view.store)[view.index])
 
     def resolve(self, view):
-        """Return the narrowed view and the block this requirement asked for."""
+        """Return the block this requirement asked for."""
         return self.dense(view.store)[view.index]
+
+    def as_input(self, view, block):
+        """Render the legacy ``inputs_`` shape: the raw metadata values.
+
+        Deliberately not ``block``. The block is the reduced numeric array, and
+        callers of ``inputs_`` expect what the document declared -- a list of
+        per-group sample sizes stays a list rather than becoming its mean.
+        """
+        frame = view.frame("metadata")
+        if self.field not in frame.columns:
+            return None
+        return frame[self.field].tolist()
 
 
 @dataclass(frozen=True)
@@ -96,8 +120,20 @@ class Images:
         return present[view.index]
 
     def resolve(self, view):
-        """Return the narrowed view and the block this requirement asked for."""
+        """Return the block this requirement asked for."""
         return view.image_block(self.imtype, policy=self.policy)
+
+    def as_input(self, view, block):
+        """Render the legacy ``inputs_`` shape: one path per analysis.
+
+        Read straight off ``block``: the parent analysis of each image is already
+        a column there, so first-wins needs no second lookup.
+        """
+        out = [None] * len(view)
+        for pos, ref in zip(block.analysis_pos, block.refs):
+            if out[pos] is None:
+                out[pos] = ref
+        return out
 
 
 @dataclass(frozen=True)
@@ -128,12 +164,19 @@ class Labels:
         return covered[view.index]
 
     def resolve(self, view):
-        """Return the narrowed view and the block this requirement asked for."""
-        from nimare.studyset.blocks import label_block, label_block_union
+        """Return the block this requirement asked for."""
+        from nimare.studyset.blocks import label_block_for
 
-        if self.annotation is not None or len(view.store.annotations) == 1:
-            return label_block(view, self.annotation)
-        return label_block_union(view)[0]
+        return label_block_for(view, self.annotation)
+
+    def as_input(self, view, block):
+        """Render the legacy ``inputs_`` shape: the annotations frame.
+
+        A different projection of the same labels -- decoders index it by column
+        name and carry the id columns alongside -- so it is built rather than
+        read off ``block``.
+        """
+        return view.frame("annotations")
 
 
 @dataclass(frozen=True)
@@ -160,8 +203,20 @@ class Texts:
         return present[view.index]
 
     def resolve(self, view):
-        """Return the narrowed view and the block this requirement asked for."""
+        """Return the block this requirement asked for."""
         return view.text_block(self.field)
+
+    def as_input(self, view, block):
+        """Render the legacy ``inputs_`` shape: one document per analysis.
+
+        Deliberately not ``block``. A text block omits rows without text, which
+        is right for a topic model but wrong here: with ``drop_invalid=False``
+        those rows survive and have to appear as empty documents.
+        """
+        frame = view.frame("texts")
+        if self.field not in frame.columns:
+            return None
+        return frame[self.field].tolist()
 
 
 def _normalized_sample_sizes(store, reducer):

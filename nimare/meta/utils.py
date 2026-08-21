@@ -116,6 +116,20 @@ def _sum_across_studies_last_seen(kernel, ijks, exp_idx, n_studies, max_shape, v
     return all_values
 
 
+def sphere_kernel_offsets(r, vox_dims, n_dim=3):
+    """Voxel offsets of a sphere of radius ``r`` mm, one row per voxel.
+
+    The observed-statistic path and the fused permutation path must agree
+    exactly on which voxels a focus reaches, so both take the sphere from here
+    rather than each rebuilding it. Returns ``(n_voxels, n_dim)`` int32 offsets.
+    """
+    vox_dims = np.asarray(vox_dims, dtype=np.float64)
+    slices = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(n_dim)]
+    cube = np.vstack([row.ravel() for row in np.mgrid[tuple(slices)].astype(np.int32)])
+    inside = np.sum(np.dot(np.diag(vox_dims), cube) ** 2, axis=0) ** 0.5 <= r
+    return np.ascontiguousarray(cube[:, inside].T, dtype=np.int32)
+
+
 def compute_kda_ma(
     mask,
     ijks,
@@ -189,10 +203,7 @@ def compute_kda_ma(
     exp_idx_uniq, exp_idx = np.unique(exp_idx, return_inverse=True)
     n_studies = len(exp_idx_uniq)
 
-    n_dim = ijks.shape[1]
-    xx, yy, zz = [slice(-r // vox_dims[i], r // vox_dims[i] + 0.01, 1) for i in range(n_dim)]
-    cube = np.vstack([row.ravel() for row in (np.mgrid[xx, yy, zz]).astype(np.int32)])
-    kernel = cube[:, np.sum(np.dot(np.diag(vox_dims), cube) ** 2, 0) ** 0.5 <= r]
+    kernel = sphere_kernel_offsets(r, vox_dims, n_dim=ijks.shape[1]).T
 
     if sum_across_studies:
         # The JIT helper preserves the previous semantics while avoiding per-study temporary

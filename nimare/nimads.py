@@ -7,7 +7,6 @@ the historical import path.
 from nimare.studyset.blocks import (
     Comparison,
     CoordinateBlock,
-    DesignBlock,
     ImageBlock,
     LabelBlock,
     TextBlock,
@@ -26,7 +25,6 @@ __all__ = [
     "Context",
     "CoordinateBlock",
     "Coordinates",
-    "DesignBlock",
     "Image",
     "ImageBlock",
     "Images",

@@ -24,20 +24,6 @@ class Decoder(NiMAREBase):
 
     __id_cols = ["id", "study_id", "contrast_id"]
 
-    def _collect_inputs(self, dataset, drop_invalid=True):
-        """Search for, and validate, required inputs as necessary."""
-        dataset = normalize_collection(dataset)
-
-        if self._required_inputs:
-            from nimare.studyset.inputs import collect_inputs
-
-            self.data, data = collect_inputs(
-                dataset, self._required_inputs, drop_invalid=drop_invalid
-            )
-            if not hasattr(self, "inputs_"):
-                self.inputs_ = {}
-            self.inputs_.update(data)
-
     def _preprocess_input(self, dataset):
         """Select features for model based on requested features and feature_group.
 

@@ -343,13 +343,7 @@ class Studyset:
 
     # ---------------------------------------------------------------- queries
     def _label_block_for(self, labels, annotation=None):
-        store = self.store
-        if annotation is not None:
-            block = self._view.label_block(annotation)
-        elif len(store.annotations) <= 1:
-            block = self._view.label_block()
-        else:
-            block = _blocks.label_block_union(self._view)[0]
+        block = _blocks.label_block_for(self._view, annotation)
         known = set(block.labels.tolist())
         missing = [label for label in labels if label not in known]
         if missing:
@@ -361,10 +355,7 @@ class Studyset:
         if not self.store.annotations:
             return []
         view = self._view if ids is None else self._view.select_keys(ids)
-        if len(self.store.annotations) == 1:
-            block = view.label_block()
-        else:
-            block = _blocks.label_block_union(view)[0]
+        block = _blocks.label_block_for(view)
         if ids is None:
             return block.labels.tolist()
         present = np.asarray((block.values != 0).sum(axis=0)).ravel() > 0

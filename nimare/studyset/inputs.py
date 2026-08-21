@@ -38,36 +38,26 @@ def requirement_for(name, spec):
 
 
 def collect_inputs(studyset, required_inputs, drop_invalid=True):
-    """Return ``(narrowed studyset, inputs dict)`` for ``required_inputs``.
+    """Return ``(narrowed studyset, inputs dict, blocks dict)``.
 
-    The dict holds the shapes estimators already expect: a coordinates frame, a
-    list of image paths, a list of metadata values, an annotations frame, and the
-    retained ids under ``"id"``.
+    One pass: the ``_required_inputs`` vocabulary is translated to requirements
+    once, resolved once, and each requirement renders its own ``inputs_`` shape
+    from the block it produced. There is no second switch over the same strings,
+    and nothing that was built is discarded -- ``blocks`` is returned so an inner
+    loop can take the aligned form instead of re-deriving it from the frame.
     """
     if not required_inputs:
-        return studyset, {}
+        return studyset, {}, {}
 
-    specs = dict(required_inputs)
-    reqs = tuple(requirement_for(name, spec) for name, spec in specs.items())
-    narrowed, _blocks = studyset.resolve(reqs, drop_invalid=drop_invalid)
+    reqs = tuple(requirement_for(name, spec) for name, spec in dict(required_inputs).items())
+    narrowed, blocks = studyset.resolve(reqs, drop_invalid=drop_invalid)
 
     out = {"id": list(narrowed.ids)}
-    for name, (kind, field) in specs.items():
-        if kind == "coordinates":
-            value = narrowed.coordinates
-        elif kind == "metadata":
-            value = narrowed.get_metadata(field=field)
-        elif kind == "image":
-            value = narrowed.get_images(imtype=field)
-        elif kind == "annotations":
-            value = narrowed.annotations_df
-        elif kind == "text":
-            value = narrowed.get_texts(text_type=field)
-        else:  # pragma: no cover - requirement_for already rejected it
-            raise ValueError(f"Input {kind!r} not understood.")
+    for req in reqs:
+        value = req.as_input(narrowed.view, blocks[req.name])
         if value is None:
             raise ValueError(
-                f"The collection must contain {name}, but no matching data were found."
+                f"The collection must contain {req.name}, but no matching data were found."
             )
-        out[name] = value
-    return narrowed, out
+        out[req.name] = value
+    return narrowed, out, blocks

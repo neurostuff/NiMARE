@@ -194,7 +194,6 @@ all NiMARE workflows.
    nimads.ImageBlock
    nimads.LabelBlock
    nimads.TextBlock
-   nimads.DesignBlock
    nimads.Comparison
 
 

@@ -1,10 +1,15 @@
 """Blocks: the shape each algorithm family actually wants.
 
 A block is derived from a view, read-only, and knows nothing about the model that
-consumes it. The point of naming them is that consumers stop rebuilding the same
-structures by hand -- ``CorrelationDecoder`` kept its own ``{id: row}`` map,
-``GCLDAModel`` built its own document index and CSR-style token arrays, and
-``IBMAEstimator`` cached masked images against a fit rather than a studyset.
+consumes it. Each is what one :mod:`~nimare.studyset.requirements` requirement
+resolves to, so :meth:`~nimare.studyset.view.View.resolve` hands every algorithm
+its inputs aligned to the same analyses by construction.
+
+Blocks are on the path of every fit: ``collect_inputs`` renders ``inputs_`` from
+them, and the CBMA permutation loop takes its group boundaries straight off a
+:class:`CoordinateBlock` rather than recovering them from analysis ids. Nothing
+is exported here that no caller reaches -- when this layer grows a method it is
+because something needed it.
 """
 
 from __future__ import annotations
@@ -19,14 +24,12 @@ from nimare.studyset.store import derived
 __all__ = [
     "Comparison",
     "CoordinateBlock",
-    "DesignBlock",
     "ImageBlock",
     "LabelBlock",
     "TextBlock",
-    "design_block",
-    "group_by",
     "image_block",
     "label_block",
+    "label_block_for",
     "label_block_union",
     "text_block",
 ]
@@ -89,9 +92,10 @@ class CoordinateBlock:
 class ImageBlock:
     """One row per *image*, with its parent analysis and study alongside.
 
-    An analysis carrying two z maps yields two rows. ``study_pos`` is the
-    dependence group an image-based meta-analysis needs, so the grouping falls
-    out of the same array rather than being rebuilt from a dict.
+    An analysis carrying two z maps yields two rows, which is what lets
+    ``policy`` be a decision at read time rather than a ceiling baked into
+    storage. ``analysis_pos`` is the parent of each row, so first-wins selection
+    needs no second lookup.
     """
 
     refs: np.ndarray
@@ -106,31 +110,6 @@ class ImageBlock:
     def __len__(self):
         """Return the number of images in the block."""
         return len(self.refs)
-
-    def dependence_groups(self):
-        """Integer group codes, densely recoded, one per image."""
-        if not len(self.study_pos):
-            return np.zeros(0, dtype=np.int64)
-        return np.unique(self.study_pos, return_inverse=True)[1]
-
-    def rows(self, positions):
-        """Row-select an already-masked matrix. A refit reads no NIfTIs."""
-        if self.values is None:
-            raise ValueError("images have not been masked yet")
-        return self.values[positions]
-
-    def with_values(self, values):
-        """Return a copy of the block carrying masked image data."""
-        return ImageBlock(
-            refs=self.refs,
-            analysis_pos=self.analysis_pos,
-            study_pos=self.study_pos,
-            imtype=self.imtype,
-            space=self.space,
-            metadata=self.metadata,
-            values=values,
-            raw_refs=self.raw_refs,
-        )
 
 
 @dataclass(frozen=True)
@@ -185,10 +164,6 @@ class LabelBlock:
         cols = [self.col(label) for label in labels]
         return self.values[:, cols].toarray()
 
-    def counts_above(self, threshold):
-        """Per-label count of analyses at or above ``threshold``, one pass."""
-        return np.asarray((self.values >= threshold).sum(axis=0)).ravel()
-
 
 @dataclass(frozen=True)
 class TextBlock:
@@ -207,28 +182,6 @@ class TextBlock:
         weights = vectorizer.fit_transform(self.text)
         names = np.asarray([str(n) for n in vectorizer.get_feature_names_out()], dtype=object)
         return weights.tocsr(), names
-
-    @staticmethod
-    def token_indices(counts):
-        """Token-level ``(document, term)`` index arrays from sparse counts."""
-        coo = counts.tocoo()
-        repeats = coo.data.astype(np.int64)
-        return np.repeat(coo.row, repeats), np.repeat(coo.col, repeats)
-
-
-@dataclass(frozen=True)
-class DesignBlock:
-    """A moderator design matrix, aligned to a view by construction."""
-
-    matrix: np.ndarray
-    columns: np.ndarray
-
-    def standardized(self):
-        """Centre and scale each column."""
-        out = self.matrix - self.matrix.mean(axis=0)
-        sd = out.std(axis=0)
-        sd[sd == 0] = 1.0
-        return DesignBlock(out / sd, self.columns)
 
 
 @dataclass(frozen=True)
@@ -489,7 +442,7 @@ def text_block(view, field="abstract"):
         idx, values = cs.sparse[field]
         idx = np.asarray(idx, dtype=np.int64)
         keep = [i for i, v in enumerate(values) if v]
-        idx, values = idx[keep], [list(values)[i] for i in keep]
+        idx, values = idx[keep], [values[i] for i in keep]
     pos_of = np.full(view.store.n_analyses, -1, dtype=np.int64)
     pos_of[view.index] = np.arange(len(view.index))
     selected = pos_of[idx] >= 0
@@ -500,20 +453,15 @@ def text_block(view, field="abstract"):
     )
 
 
-def design_block(view, moderators, annotation=None):
-    """Build a moderator design matrix from annotation labels."""
-    block = label_block(view, annotation)
-    matrix = (
-        np.column_stack([block.column(m) for m in moderators])
-        if moderators
-        else np.zeros((len(view), 0))
-    )
-    return DesignBlock(matrix.astype(np.float64), np.asarray(moderators, dtype=object))
+def label_block_for(view, annotation=None):
+    """Return the label block for ``annotation``, or across all of them.
 
-
-def group_by(view, labels, annotation=None):
-    """Partition the view by the values of one or more annotation labels."""
-    block = label_block(view, annotation)
-    columns = np.column_stack([block.column(label) for label in labels])
-    keys, codes = np.unique(columns, axis=0, return_inverse=True)
-    return {tuple(keys[c]): view.select(np.flatnonzero(codes == c)) for c in range(len(keys))}
+    Which annotation a caller means when it names none is a decision that was
+    made in three places with three slightly different conditions. It is made
+    here.
+    """
+    if annotation is not None:
+        return label_block(view, annotation)
+    if len(view.store.annotations) > 1:
+        return label_block_union(view)[0]
+    return label_block(view)

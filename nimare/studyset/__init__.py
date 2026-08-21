@@ -27,7 +27,6 @@ from nimare.studyset._legacy_normalize import normalize_collection
 from nimare.studyset.blocks import (
     Comparison,
     CoordinateBlock,
-    DesignBlock,
     ImageBlock,
     LabelBlock,
     TextBlock,
@@ -66,7 +65,6 @@ __all__ = [
     "Context",
     "CoordinateBlock",
     "Coordinates",
-    "DesignBlock",
     "Dict8",
     "ImageBlock",
     "Images",

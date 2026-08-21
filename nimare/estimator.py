@@ -26,10 +26,6 @@ class Estimator(NiMAREBase):
         a future release. Prefer :class:`~nimare.nimads.Studyset`.
     """
 
-    # Inputs that must be available in input Dataset. Keys are names of
-    # attributes to set; values are strings indicating location in Dataset.
-    _required_inputs = {}
-
     def __init__(
         self,
         memory=Memory(location=None, verbose=0),
@@ -39,49 +35,6 @@ class Estimator(NiMAREBase):
         self.memory = memory
         self.memory_level = memory_level
         self.generate_description = generate_description
-
-    def _collect_inputs(self, dataset, drop_invalid=True):
-        """Search for, and validate, required inputs as necessary.
-
-        This method populates the ``inputs_`` attribute.
-
-        .. versionchanged:: 0.0.12
-
-            Renamed from ``_validate_input``.
-
-        Parameters
-        ----------
-        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
-        drop_invalid : :obj:`bool`, default=True
-            Whether to automatically drop any studies in the Dataset without valid data or not.
-            Default is True.
-
-        Attributes
-        ----------
-        inputs_ : :obj:`dict`
-            A dictionary of required inputs for the Estimator, extracted from the Dataset.
-            The actual inputs collected in this attribute are determined by the
-            ``_required_inputs`` variable that should be specified in each child class.
-
-        .. warning::
-            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
-        """
-        dataset = normalize_collection(dataset)
-
-        if self._required_inputs:
-            from nimare.studyset.inputs import collect_inputs
-
-            # Resolved in one pass, so the returned values cannot disagree about
-            # which analyses they describe. `data` keeps the view they came from.
-            self.data, data = collect_inputs(
-                dataset, self._required_inputs, drop_invalid=drop_invalid
-            )
-            # Not overwritten wholesale: PairwiseCBMAEstimator collects twice and
-            # renames between calls.
-            if not hasattr(self, "inputs_"):
-                self.inputs_ = {}
-            self.inputs_.update(data)
 
     @abstractmethod
     def _generate_description(self):
