@@ -14,7 +14,6 @@ from nilearn.reporting import get_clusters_table
 from tqdm.auto import tqdm
 
 from nimare.base import NiMAREBase
-from nimare.dataset import Dataset
 from nimare.meta.cbma.base import (
     CBMAEstimator,
     PairwiseCBMAEstimator,
@@ -26,9 +25,9 @@ from nimare.meta.cbma.utils import (
     resolve_subset_size,
 )
 from nimare.meta.ibma import IBMAEstimator
-from nimare.nimads import Studyset
 from nimare.results import MetaResult
 from nimare.studyset import normalize_collection
+from nimare.studyset.layout import harmonized_coordinates
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
@@ -1411,38 +1410,26 @@ class FocusFilter(NiMAREBase):
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
             in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
-        if isinstance(dataset, Dataset):
-            filtered = dataset
-        elif isinstance(dataset, Studyset):
-            filtered = dataset.copy()
-        else:
-            filtered = normalize_collection(dataset).copy()
+        filtered = normalize_collection(dataset)
 
         masker = self.masker or filtered.masker
-        # use 0 or 1 to indicate if voxels are in the mask
-        masker_array = masker.mask_img_.dataobj
+        mask_array = np.asarray(masker.mask_img_.dataobj)
+        affine = masker.mask_img.affine
 
-        # Get matrix indices for collection coordinates
-        dset_xyz = filtered.coordinates[["x", "y", "z"]].values
-
-        # mm2vox automatically rounds the coordinates
-        dset_ijk = mm2vox(dset_xyz, masker.mask_img.affine)
-
-        # Only retain coordinates inside the brain mask
-        def check_coord(coord):
-            try:
-                return masker_array[coord[0], coord[1], coord[2]] == 1
-            except IndexError:
-                return False
-
-        keep_idx = [i for i, coord in enumerate(dset_ijk) if check_coord(coord)]
+        # Coordinates in the studyset's own space, at store level: this selects
+        # *foci*, and every analysis is kept, so the selection is a point mask
+        # rather than a rewritten table.
+        xyz, _, _ = harmonized_coordinates(filtered.store, filtered.space)
+        ijk = mm2vox(xyz, affine)
+        shape = np.asarray(mask_array.shape)
+        in_bounds = np.all((ijk >= 0) & (ijk < shape), axis=1)
+        keep = np.zeros(len(ijk), dtype=bool)
+        if in_bounds.any():
+            inside = ijk[in_bounds]
+            keep[in_bounds] = mask_array[inside[:, 0], inside[:, 1], inside[:, 2]] == 1
 
         LGR.info(
-            f"{dset_ijk.shape[0] - len(keep_idx)}/{dset_ijk.shape[0]} coordinates fall outside of "
-            "the mask. Removing them."
+            f"{int((~keep).sum())}/{len(keep)} coordinates fall outside of the mask. "
+            "Removing them."
         )
-
-        # Only retain coordinates inside the brain mask
-        filtered.coordinates = filtered.coordinates.iloc[keep_idx]
-
-        return filtered
+        return filtered.select_points(keep)

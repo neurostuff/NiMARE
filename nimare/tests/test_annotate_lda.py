@@ -15,8 +15,13 @@ def test_lda(testdata_laird):
         text_column="abstract",
     )
     new_dset = model.fit(testdata_laird)
-    topic_columns = [c for c in new_dset.annotations.columns if c.startswith("LDA")]
-    assert len(topic_columns) == N_TOPICS
+
+    # The topics arrive as their own annotation set, so the studyset's existing
+    # annotations are untouched and analyses without text are not dropped.
+    topics = new_dset.store.annotations[f"LDA{N_TOPICS}"]
+    assert len(topics.keys()) == N_TOPICS
+    assert all(label.startswith("LDA") for label in topics.keys())
+    assert len(new_dset.ids) == len(testdata_laird.ids)
 
     assert hasattr(model, "distributions_")
     assert "p_topic_g_word" in model.distributions_.keys()

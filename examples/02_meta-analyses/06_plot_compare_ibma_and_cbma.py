@@ -34,7 +34,7 @@ dset_dir = download_nidm_pain()
 # -----------------------------------------------------------------------------
 studyset_file = os.path.join(get_resource_path(), "nidm_pain_studyset.json")
 studyset = Studyset(studyset_file, target="mni152_2mm")
-studyset.update_path(dset_dir)
+studyset = studyset.update_path(dset_dir)
 
 # Calculate missing statistical images from the available stats.
 xformer = ImageTransformer(target=["varcope"])

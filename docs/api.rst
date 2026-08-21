@@ -160,13 +160,14 @@ For more information about functional characterization analysis, see :doc:`decod
 
 .. _api_nimads_ref:
 
-:mod:`nimare.nimads`: NeuroImaging Meta-Analysis Data Structure
----------------------------------------------------------------
+:mod:`nimare.studyset`: NeuroImaging Meta-Analysis Data Structure
+------------------------------------------------------------------
 
-The NIMADS :class:`~nimare.nimads.Studyset` is the primary collection type for
-all NiMARE workflows.
+The NIMADS :class:`~nimare.studyset.Studyset` is the primary collection type for
+all NiMARE workflows. :mod:`nimare.nimads` re-exports this module under the
+historical import path and adds nothing of its own.
 
-.. automodule:: nimare.nimads
+.. automodule:: nimare.studyset
    :no-members:
    :no-inherited-members:
 
@@ -176,14 +177,33 @@ all NiMARE workflows.
    :toctree: generated/
    :template: class.rst
 
-   nimads.convert_neurostore_json_to_parquet
-   nimads.Studyset
-   nimads.Annotation
-   nimads.Study
-   nimads.Analysis
-   nimads.Condition
-   nimads.Image
-   nimads.Point
+   studyset.Studyset
+   studyset.StudysetStore
+   studyset.View
+   studyset.Context
+   studyset.Study
+   studyset.Analysis
+   studyset.Image
+   studyset.Point
+   studyset.AnnotationSet
+   studyset.ColumnStore
+   studyset.Coordinates
+   studyset.Images
+   studyset.Labels
+   studyset.Texts
+   studyset.PerAnalysis
+   studyset.CoordinateBlock
+   studyset.ImageBlock
+   studyset.LabelBlock
+   studyset.TextBlock
+   studyset.Comparison
+   studyset.normalize_collection
+   studyset.check_invariants
+   studyset.from_nimads
+   studyset.from_parquet
+   studyset.write_nimads
+   studyset.write_parquet
+   studyset.convert_neurostore_json_to_parquet
 
 
 .. _api_dataset_ref:

@@ -560,15 +560,18 @@ def download_abstracts(dataset, email):
     if not isinstance(dataset, Dataset):
         if isinstance(dataset, Studyset):
             abstract_by_study = df.drop_duplicates("study_id").set_index("study_id")["abstract"]
-            for study in dataset.studies:
-                abstract = abstract_by_study.get(str(study.id), None)
+            store = dataset.store
+            rows, abstracts = [], []
+            for row in range(store.n_analyses):
+                study_id = str(store.study_key[store.study_idx[row]])
+                abstract = abstract_by_study.get(study_id, None)
                 if abstract is None:
                     continue
-                for analysis in study.analyses:
-                    analysis.texts = dict(analysis.texts or {})
-                    analysis.texts["abstract"] = abstract
-            dataset.touch()
-            return dataset
+                rows.append(row)
+                abstracts.append(abstract)
+            if not rows:
+                return dataset
+            return dataset.with_texts(rows, "abstract", abstracts)
         return df
 
     dataset.texts = pd.merge(

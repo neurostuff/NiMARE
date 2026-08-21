@@ -60,7 +60,8 @@ annotations_df[["diagnosis", "drug_status"]] = [
 ]
 annotations_df["sample_sizes"] = [studyset.metadata.sample_sizes[i][0] for i in range(n_rows)]
 annotations_df["avg_age"] = np.arange(n_rows)
-studyset.annotations_df = annotations_df
+# A Studyset is immutable, so the edited frame is attached to a new one rather than assigned back.
+studyset = studyset.with_annotations_df(annotations_df, name="moderators", replace=True)
 
 studyset = StandardizeField(fields=["sample_sizes", "avg_age"]).transform(studyset)
 

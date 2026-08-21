@@ -38,6 +38,9 @@ from nimare.utils import (
 
 LGR = logging.getLogger(__name__)
 
+#: Distinguishes "no plan applies" from "a plan has not been built yet".
+_UNSET = object()
+
 
 class CBMAEstimator(Estimator):
     """Base class for coordinate-based meta-analysis methods.
@@ -679,13 +682,51 @@ class CBMAEstimator(Estimator):
         null_dist = self._compute_summarystat(iter_ma_values)
         self.null_distributions_["values_corr-none_method-reducedMontecarlo"] = null_dist
 
+    def _permutation_plan(self, iter_df):
+        """Build the loop invariants for a permutation run once, then cache them.
+
+        ``None`` when this estimator's kernel is not one the fused pass
+        reproduces exactly, in which case the frame-based path below is used.
+        A builder that does not apply says so by returning ``None``; it is not
+        expected to raise, and a genuine failure in one should not be silently
+        turned into a slow path.
+        """
+        cached = getattr(self, "_permutation_plan_", _UNSET)
+        if cached is _UNSET:
+            from nimare.meta.cbma.permutation import ale_plan_for, kda_plan_for
+
+            # The coordinate block the inputs were built from, when this fit
+            # collected its own inputs. It carries the group boundaries the plan
+            # needs, so they do not have to be recovered from the analysis ids.
+            block = getattr(self, "blocks_", {}).get("coordinates")
+            cached = None
+            for build in (ale_plan_for, kda_plan_for):
+                cached = build(self, iter_df, block)
+                if cached is not None:
+                    break
+            self._permutation_plan_ = cached
+        return cached
+
     def _compute_permutation_summarystat(self, iter_ijk, iter_df):
         """Compute one permuted summary-statistic map from matrix indices."""
+        iter_ijk = np.squeeze(iter_ijk)
+
+        plan = self._permutation_plan(iter_df)
+        if plan is not None and len(iter_ijk) == plan.n_foci:
+            # Only the coordinates changed, so hand over the indices and let the
+            # group boundaries do the rest.
+            weights = getattr(self, "weight_vec_", None)
+            if weights is not None:
+                weights = np.asarray(weights, dtype=np.float64).ravel()
+                if len(weights) != plan.n_groups:
+                    weights = None
+            stat = plan.summary_stat(iter_ijk, weights)
+            if stat is not None:
+                return stat.astype(DEFAULT_FLOAT_DTYPE, copy=False)
+
         # Not sure if joblib will automatically use a copy of the object, but I'll make a copy to
         # be safe.
         iter_df = iter_df.copy()
-
-        iter_ijk = np.squeeze(iter_ijk)
         iter_df[["i", "j", "k"]] = iter_ijk
 
         iter_ma_maps = self.kernel_transformer.transform(

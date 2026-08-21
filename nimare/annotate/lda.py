@@ -6,8 +6,6 @@ from sklearn.decomposition import LatentDirichletAllocation
 
 from nimare.annotate.text import _generate_weights
 from nimare.base import NiMAREBase
-from nimare.dataset import Dataset
-from nimare.nimads import Studyset
 from nimare.studyset import normalize_collection
 from nimare.utils import DEFAULT_FLOAT_DTYPE, _check_ncores
 
@@ -109,12 +107,7 @@ class LDAModel(NiMAREBase):
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
             in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
-        source = dset
-        if isinstance(dset, (Dataset, Studyset)):
-            tabular_source = dset
-        else:
-            tabular_source = normalize_collection(dset)
-            source = tabular_source
+        tabular_source = normalize_collection(dset)
 
         counts, vocabulary, study_ids = _generate_weights(
             tabular_source.texts,
@@ -145,11 +138,6 @@ class LDAModel(NiMAREBase):
             f"LDA{self.n_topics}__{i + 1}_{top_tokens[i]}" for i in range(self.n_topics)
         ]
 
-        doc_topic_weights_df = pd.DataFrame(
-            index=study_ids,
-            columns=topic_names,
-            data=doc_topic_weights,
-        )
         topic_word_weights_df = pd.DataFrame(
             index=topic_names,
             columns=vocabulary,
@@ -160,14 +148,16 @@ class LDAModel(NiMAREBase):
             "p_topic_g_word_df": topic_word_weights_df,
         }
 
-        if isinstance(tabular_source, Studyset):
-            annotations = tabular_source.annotations_df.copy()
-        else:
-            annotations = tabular_source.annotations.copy()
-        annotations = pd.merge(annotations, doc_topic_weights_df, left_on="id", right_index=True)
-        new_dset = source.copy()
-        if isinstance(new_dset, Studyset):
-            new_dset.annotations_df = annotations
-        else:
-            new_dset.annotations = annotations
-        return new_dset
+        # Add the topics as their own annotation rather than merging them into a
+        # shared frame: analyses without text keep their other annotations
+        # instead of being dropped by an inner join.
+        row_of = tabular_source.row_of_id()
+        rows = [row_of[str(key)] for key in study_ids if str(key) in row_of]
+        keep = [i for i, key in enumerate(study_ids) if str(key) in row_of]
+        return tabular_source.with_annotation(
+            f"LDA{self.n_topics}",
+            topic_names,
+            doc_topic_weights[keep],
+            rows=rows,
+            note_key_types={name: "number" for name in topic_names},
+        )

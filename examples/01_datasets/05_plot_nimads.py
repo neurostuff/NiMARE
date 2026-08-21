@@ -85,7 +85,12 @@ print("-" * 50)
 for annotation in studyset.annotations:
     print(f"\nAnnotation ID: {annotation.id}")
     print(f"Annotation Name: {annotation.name}")
-    print(f"Number of notes: {len(annotation.notes)}")
+    # An annotation is a set of label columns over the analyses rather than a
+    # list of per-analysis notes, so its size is a label count.
+    print(f"Number of labels: {len(annotation.columns.keys())}")
+
+# Every annotation merged into one frame, one row per analysis.
+print(f"\nMerged annotation frame: {studyset.annotations_df.shape}")
 
 
 ###############################################################################

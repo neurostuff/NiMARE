@@ -1,0 +1,343 @@
+"""Column containers for the studyset store.
+
+Three small value types, none of which know anything about NIMADS, algorithms or
+pandas:
+
+``Dict8``
+    dictionary encoding for low-cardinality strings (coordinate space, image
+    type, condition name).
+``ColumnStore``
+    a set of columns aligned to one level's row index, each either dense (one
+    value per row) or sparse (row indices plus values). Studyset metadata is
+    overwhelmingly sparse: the neurostore release annotation table holds 3.0M
+    values in a shape that would be 92M dense cells.
+``AnnotationSet``
+    one annotation: its identity, its declared ``note_keys`` types, and its
+    columns, kept together so that several annotations on one studyset stay
+    distinct.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Optional
+
+import numpy as np
+
+__all__ = [
+    "AnnotationSet",
+    "ColumnStore",
+    "Dict8",
+    "ID_COLS",
+    "LabelNamer",
+    "is_missing",
+    "sorted_lookup",
+]
+
+
+class Dict8:
+    """Dictionary encoder for a low-cardinality string column."""
+
+    __slots__ = ("categories", "_lookup")
+
+    def __init__(self, categories=None):
+        self.categories = list(categories or [])
+        self._lookup = {value: i for i, value in enumerate(self.categories)}
+
+    def code(self, value):
+        """Return the code for ``value``, assigning a new one if unseen."""
+        got = self._lookup.get(value, -1)
+        if got == -1:
+            got = len(self.categories)
+            self.categories.append(value)
+            self._lookup[value] = got
+        return got
+
+    def decode(self, codes):
+        """Map an array of codes back to values."""
+        if not self.categories:
+            return np.full(len(codes), None, dtype=object)
+        cats = np.asarray(self.categories, dtype=object)
+        return cats[np.asarray(codes, dtype=np.int64)]
+
+    def __len__(self):
+        """Return the number of categories."""
+        return len(self.categories)
+
+    def __repr__(self):  # pragma: no cover - debugging aid
+        """Return a debugging representation naming the categories."""
+        return f"Dict8({len(self.categories)} categories)"
+
+    def __getstate__(self):
+        """Return the picklable state, which is the category list."""
+        return {"categories": list(self.categories)}
+
+    def __setstate__(self, state):
+        """Restore the categories and rebuild the reverse lookup."""
+        self.categories = list(state["categories"])
+        self._lookup = {v: i for i, v in enumerate(self.categories)}
+
+
+class LabelNamer:
+    """Applies the annotation-collision rule, once, for everything that merges.
+
+    Two annotations on one studyset may use the same label name -- compose's
+    default note key is ``included``, so any two compose annotations collide. The
+    rule is that the second one is qualified with its annotation id, and that the
+    caller is told rather than left to notice. Both the label block union and the
+    annotations frame apply it, so it lives here rather than in each.
+    """
+
+    def __init__(self, on_collision="prefix"):
+        if on_collision not in ("prefix", "error"):
+            raise ValueError("on_collision must be 'prefix' or 'error'")
+        self.on_collision = on_collision
+        self.collisions = []
+        self._seen = {}
+
+    def name(self, label, annotation):
+        """Return the output name for ``label`` as it appears in ``annotation``."""
+        first = self._seen.get(label)
+        if first is None:
+            self._seen[label] = annotation
+            return label
+        self.collisions.append((label, first, annotation))
+        if self.on_collision == "error":
+            raise ValueError(
+                f"label {label!r} appears in annotations {first!r} and "
+                f"{annotation!r}; pass on_collision='prefix' to keep both"
+            )
+        return f"{annotation}.{label}"
+
+
+#: The three identifier columns every compatibility frame carries.
+ID_COLS = ("id", "study_id", "contrast_id")
+
+
+def is_missing(value):
+    """Report whether ``value`` is absent -- ``None`` or a NaN.
+
+    A float NaN is not equal to itself, which is the check four sites spelled
+    four different ways.
+    """
+    return value is None or (isinstance(value, float) and value != value)
+
+
+def sorted_lookup(sorted_keys, wanted):
+    """Return ``(pos, found)`` for ``wanted`` against ``sorted_keys``.
+
+    ``pos`` is where each wanted value sits in ``sorted_keys``; ``found`` says
+    whether it is actually there. The guard against running off the end and
+    matching the wrong neighbour is fiddly enough that three sites had their own
+    copy of it.
+    """
+    sorted_keys = np.asarray(sorted_keys)
+    wanted = np.asarray(wanted)
+    n = len(sorted_keys)
+    pos = np.searchsorted(sorted_keys, wanted)
+    if not n:
+        return pos, np.zeros(len(wanted), dtype=bool)
+    found = (pos < n) & (sorted_keys[np.minimum(pos, n - 1)] == wanted)
+    return pos, found
+
+
+@dataclass
+class ColumnStore:
+    """Columns aligned to one level's row index, dense or sparse."""
+
+    n_rows: int
+    dense: dict = field(default_factory=dict)
+    sparse: dict = field(default_factory=dict)
+
+    def keys(self):
+        """Every column name, dense and sparse."""
+        return list(self.dense) + list(self.sparse)
+
+    def __contains__(self, name):
+        """Report whether ``name`` is present, dense or sparse."""
+        return name in self.dense or name in self.sparse
+
+    def add_dense(self, name, values):
+        """Record a column present on every row."""
+        values = np.asarray(values)
+        if len(values) != self.n_rows:
+            raise ValueError(f"column {name!r} has {len(values)} values, expected {self.n_rows}")
+        self.dense[name] = values
+
+    def add_sparse(self, name, idx, values):
+        """Record a column present only on ``idx``.
+
+        An empty ``idx`` still registers the column: a field declared everywhere
+        but populated nowhere is still a declared field, and dropping it would
+        change what ``get_metadata()`` reports and lose it on export.
+        """
+        self.sparse[name] = (np.asarray(idx, dtype=np.int64), list(values))
+
+    def copy(self):
+        """Return a shallow copy sharing the underlying arrays."""
+        return ColumnStore(self.n_rows, dict(self.dense), dict(self.sparse))
+
+    def get(self, name, sel=None, fill=None):
+        """Values for ``sel`` (or every row) as an object array."""
+        if name in self.dense:
+            col = self.dense[name]
+            return col if sel is None else col[sel]
+        idx, values = self.sparse[name]
+        n = self.n_rows if sel is None else len(sel)
+        out = np.full(n, fill, dtype=object)
+        if sel is None:
+            for i, value in zip(idx, values):
+                out[int(i)] = value
+            return out
+        if n == 0:
+            return out
+        # Assign element-wise so that list-valued entries (sample_sizes, for
+        # one) stay single objects rather than being broadcast into a 2-D array.
+        pos, ok = sorted_lookup(sel, idx)
+        for p, keep, value in zip(pos, ok, values):
+            if keep:
+                out[int(p)] = value
+        return out
+
+    def entries(self, name):
+        """Return ``(rows, values)`` for a column, whatever its density.
+
+        A dense column is every row; a sparse one is the rows it was recorded
+        for. Callers that only want "which rows have a value, and what is it"
+        should not have to care which, and six of them used to.
+        """
+        if name in self.dense:
+            col = self.dense[name]
+            return np.arange(len(col), dtype=np.int64), list(col)
+        idx, values = self.sparse[name]
+        return np.asarray(idx, dtype=np.int64), list(values)
+
+    def get_numeric(self, name, sel=None, fill=np.nan, reduce=np.mean):
+        """Values for ``sel`` as float64, reducing list-valued entries.
+
+        This is what blocks want: no ``None``, no object dtype, missing rows as
+        NaN. The object-dtype :meth:`get` stays available for callers that need
+        to tell ``None`` from ``nan``.
+        """
+        n = self.n_rows if sel is None else len(sel)
+        out = np.full(n, fill, dtype=np.float64)
+        if name not in self:
+            return out
+        raw = self.get(name, sel=sel)
+        for i, value in enumerate(raw):
+            if value is None:
+                continue
+            if isinstance(value, (list, tuple, np.ndarray)):
+                if len(value):
+                    out[i] = reduce(np.asarray(value, dtype=np.float64))
+                continue
+            try:
+                out[i] = float(value)
+            except (TypeError, ValueError):
+                continue
+        return out
+
+    def rows(self, wanted):
+        """``{row: {name: value}}`` for the requested rows, skipping nulls."""
+        wanted = {int(r) for r in wanted}
+        out = {}
+        for name in self.keys():
+            if name in self.dense:
+                col = self.dense[name]
+                pairs = ((i, col[i]) for i in wanted)
+            else:
+                idx, values = self.sparse[name]
+                pairs = zip(idx, values)
+            for row, value in pairs:
+                row = int(row)
+                if row not in wanted or value is None:
+                    continue
+                out.setdefault(row, {})[name] = value
+        return out
+
+    def subset(self, keep):
+        """Return a new store holding only ``keep``, in the order given.
+
+        Unlike :meth:`reorder` this changes the row count, so a sparse entry
+        whose row is dropped has to go rather than be remapped. Declared-but-
+        empty columns are preserved for the same reason :meth:`add_sparse`
+        records them.
+        """
+        keep = np.asarray(keep, dtype=np.int64)
+        out = ColumnStore(len(keep))
+        for name, col in self.dense.items():
+            out.dense[name] = col[keep]
+        if self.sparse:
+            remap = np.full(self.n_rows, -1, dtype=np.int64)
+            remap[keep] = np.arange(len(keep))
+            for name, (idx, values) in self.sparse.items():
+                idx = np.asarray(idx, dtype=np.int64)
+                values = list(values)
+                targets = remap[idx] if len(idx) else idx
+                new_idx, new_values = [], []
+                for target, value in zip(targets, values):
+                    if target >= 0:
+                        new_idx.append(int(target))
+                        new_values.append(value)
+                order = np.argsort(np.asarray(new_idx, dtype=np.int64), kind="stable")
+                out.add_sparse(
+                    name,
+                    [new_idx[i] for i in order],
+                    [new_values[i] for i in order],
+                )
+        return out
+
+    def reorder(self, order, inverse):
+        """Permute in place: dense columns gather, sparse indices remap."""
+        for name, col in list(self.dense.items()):
+            self.dense[name] = col[order]
+        for name, (idx, values) in list(self.sparse.items()):
+            new_idx = inverse[np.asarray(idx, dtype=np.int64)]
+            perm = np.argsort(new_idx, kind="stable")
+            values = list(values)
+            self.sparse[name] = (new_idx[perm], [values[i] for i in perm])
+
+    def freeze(self):
+        """Mark every dense column read-only and return self."""
+        for col in self.dense.values():
+            if isinstance(col, np.ndarray):
+                col.flags.writeable = False
+        return self
+
+
+@dataclass
+class AnnotationSet:
+    """One annotation: identity, declared types, and columns over the analyses.
+
+    NIMADS gives an annotation its own id, name and ``note_keys`` types, and a
+    studyset may carry several. Keeping the set intact is what makes that
+    representable -- and prevents two annotations that share a label name from
+    overwriting one another, which matters because compose's default note key is
+    ``included``, so any two compose annotations on one studyset collide.
+    """
+
+    id: str
+    name: str = ""
+    columns: ColumnStore = None
+    note_key_types: dict = field(default_factory=dict)
+    metadata: dict = field(default_factory=dict)
+    description: Optional[str] = None
+
+    def keys(self):
+        """Return every label in the annotation."""
+        return self.columns.keys()
+
+    def dtype(self, label):
+        """Return the type NIMADS declared for ``label``, if any."""
+        return self.note_key_types.get(label)
+
+    def copy(self):
+        """Return a shallow copy of the annotation."""
+        return AnnotationSet(
+            id=self.id,
+            name=self.name,
+            columns=self.columns.copy(),
+            note_key_types=dict(self.note_key_types),
+            metadata=dict(self.metadata),
+            description=self.description,
+        )

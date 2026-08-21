@@ -124,12 +124,23 @@ def test_annotations_stay_aligned_with_the_foci_matrix(threshold):
     _, studyset = create_coordinate_studyset(foci=5, sample_size=(20, 40), n_studies=12, seed=3)
     annotations = studyset.annotations_df.copy()
     annotations["dx"] = ["a", "b"] * 6
-    studyset.annotations_df = annotations
+    # A Studyset is immutable, so the edited frame is attached to a new one.
+    studyset = studyset.with_annotations_df(annotations, name="groups", replace=True)
 
-    # Push one experiment's foci far outside any brain mask.
-    coordinates = studyset.coordinates
-    target = coordinates["id"].iloc[0]
-    coordinates.loc[coordinates["id"] == target, ["x", "y", "z"]] = 10_000
+    # Move one experiment's foci far outside any brain mask. It has to keep *some* foci, or the
+    # coordinates requirement drops it before CBMR ever sees it, and then this test would be
+    # asserting nothing. Points are reselected and replaced rather than assigned to.
+    target = studyset.coordinates["id"].iloc[0]
+    target_position = list(studyset.ids).index(target)
+    studyset = (
+        studyset.select_points((studyset.coordinates["id"] != target).to_numpy())
+        .materialize_points()
+        .with_points(
+            [target_position],
+            np.array([[10_000.0, 10_000.0, 10_000.0]]),
+            space=studyset.space,
+        )
+    )
 
     estimator = CBMR(
         "~ s(dx)",

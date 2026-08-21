@@ -5,8 +5,6 @@ from abc import abstractmethod
 from joblib import Memory
 
 from nimare.base import NiMAREBase
-from nimare.dataset import Dataset
-from nimare.nimads import Studyset
 from nimare.results import MetaResult
 from nimare.studyset import normalize_collection
 
@@ -28,10 +26,6 @@ class Estimator(NiMAREBase):
         a future release. Prefer :class:`~nimare.nimads.Studyset`.
     """
 
-    # Inputs that must be available in input Dataset. Keys are names of
-    # attributes to set; values are strings indicating location in Dataset.
-    _required_inputs = {}
-
     def __init__(
         self,
         memory=Memory(location=None, verbose=0),
@@ -41,60 +35,6 @@ class Estimator(NiMAREBase):
         self.memory = memory
         self.memory_level = memory_level
         self.generate_description = generate_description
-
-    def _collect_inputs(self, dataset, drop_invalid=True):
-        """Search for, and validate, required inputs as necessary.
-
-        This method populates the ``inputs_`` attribute.
-
-        .. versionchanged:: 0.0.12
-
-            Renamed from ``_validate_input``.
-
-        Parameters
-        ----------
-        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
-        drop_invalid : :obj:`bool`, default=True
-            Whether to automatically drop any studies in the Dataset without valid data or not.
-            Default is True.
-
-        Attributes
-        ----------
-        inputs_ : :obj:`dict`
-            A dictionary of required inputs for the Estimator, extracted from the Dataset.
-            The actual inputs collected in this attribute are determined by the
-            ``_required_inputs`` variable that should be specified in each child class.
-
-        .. warning::
-            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
-        """
-        if not isinstance(dataset, (Dataset, Studyset)):
-            dataset = normalize_collection(dataset)
-
-        if not hasattr(dataset, "slice"):
-            raise ValueError(
-                f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}."
-            )
-
-        if self._required_inputs:
-            data = dataset.get(self._required_inputs, drop_invalid=drop_invalid)
-            # Do not overwrite existing inputs_ attribute.
-            # This is necessary for PairwiseCBMAEstimator, which validates two sets of coordinates
-            # in the same object.
-            # It makes the *strong* assumption that required inputs will not changes within an
-            # Estimator across fit calls, so all fields of inputs_ will be overwritten instead of
-            # retaining outdated fields from previous fit calls.
-            if not hasattr(self, "inputs_"):
-                self.inputs_ = {}
-
-            for k, v in data.items():
-                if v is None:
-                    raise ValueError(
-                        f"Estimator {self.__class__.__name__} requires input dataset to contain "
-                        f"{k}, but no matching data were found."
-                    )
-                self.inputs_[k] = v
 
     @abstractmethod
     def _generate_description(self):
