@@ -37,8 +37,29 @@ cell-means factor term when one does.
 Factors and covariates are not the same case here, which mgcv also distinguishes. A spatial
 factor term expands to disjoint per-level blocks -- each level's coefficients see only that
 level's experiments -- so it is identified without further constraint. A spatial covariate term
-is identified by the covariate itself. Neither needs the sum-to-zero centering mgcv applies,
-because neither competes with an intercept we do not emit.
+is identified by the covariate itself.
+
+Additive spatial factors, and ``sz()``
+--------------------------------------
+One spatial factor is fine. *Two* are not: each one's per-level columns sum to the constant, so
+their difference is exactly zero and the design is rank deficient by a whole basis width,
+whatever the data. ``~ s(a) + s(b)`` is therefore refused.
+
+``sz()`` is the identified way to write it, after mgcv's ``bs="sz"`` basis for constrained factor
+smooth interactions. It reparameterizes a factor term so its coefficients sum to zero across
+levels for each basis function -- ``beta = Z gamma`` with ``Z`` an orthonormal basis of
+``{v : 1'v = 0}`` from a QR decomposition, exactly the construction mgcv describes. The term then
+carries ``n_levels - 1`` columns, no longer spans the constant, and composes additively::
+
+    ~ sz(diagnosis) + sz(drug_status)     # additive spatial main effects, identified
+    ~ s(diagnosis:drug_status)            # the full interaction, one map per cell
+
+The two say different things. The interaction gives every combination of levels its own free map;
+the additive form says the two factors shift the same underlying map independently, which is a
+stronger claim and costs far fewer parameters. Note the change in interpretation: an ``s()``
+factor's coefficients *are* each level's log-intensity map, while an ``sz()`` factor's are
+deviations from the baseline that ``1`` supplies, so a baseline term is always present alongside
+one.
 """
 
 import re
@@ -48,6 +69,8 @@ import numpy as np
 import patsy
 
 SPATIAL_MARKERS = ("s", "spatial")
+SUM_TO_ZERO_MARKERS = ("sz",)
+SUM_TO_ZERO = "sum_to_zero"
 INTERCEPT_TERM = "1"
 
 
@@ -70,11 +93,16 @@ class Term:
     spacing : :obj:`int` or None, optional
         Overrides the model's ``spline_spacing`` for this term only. Ignored when
         ``spatial`` is ``False``. Default is None.
+    constraint : :obj:`str` or None, optional
+        ``"sum_to_zero"`` reparameterizes a factor term so its coefficients sum to zero across
+        levels, after mgcv's ``bs="sz"``. Required to combine two spatial factors additively;
+        see the module docstring. Default is None.
     """
 
     expr: str
     spatial: bool
     spacing: int = None
+    constraint: str = None
 
     def __post_init__(self):
         """Validate the term's fields."""
@@ -88,11 +116,27 @@ class Term:
                 )
             if int(self.spacing) <= 0:
                 raise FormulaError(f"spacing must be positive, got {self.spacing!r}.")
+        if self.constraint is not None:
+            if self.constraint != SUM_TO_ZERO:
+                raise FormulaError(
+                    f"Unknown constraint {self.constraint!r}; the only one is {SUM_TO_ZERO!r}."
+                )
+            if not self.spatial:
+                raise FormulaError(
+                    f"A sum-to-zero constraint is meaningless for the non-spatial term "
+                    f"{self.expr!r}: it exists to stop a spatial factor from competing with the "
+                    "spatial baseline, and a non-spatial term never does."
+                )
 
     @property
     def is_intercept(self):
         """Whether this term is the spatial baseline."""
         return self.expr == INTERCEPT_TERM
+
+    @property
+    def is_sum_to_zero(self):
+        """Whether this term is reparameterized to sum to zero across levels."""
+        return self.constraint == SUM_TO_ZERO
 
     def __str__(self):
         """Render the term back into formula syntax."""
@@ -101,7 +145,7 @@ class Term:
         if not self.spatial:
             return self.expr
         inner = self.expr if self.spacing is None else f"{self.expr}, spacing={self.spacing}"
-        return f"s({inner})"
+        return f"sz({inner})" if self.is_sum_to_zero else f"s({inner})"
 
 
 def _split_top_level(text, separator="+"):
@@ -126,9 +170,20 @@ def _split_top_level(text, separator="+"):
 
 
 def _parse_spatial_marker(piece):
-    """Return ``(inner_expression, spacing)`` if ``piece`` is an ``s(...)`` call, else None."""
+    """Return ``(expression, spacing, constraint)`` if ``piece`` marks a spatial term, else None.
+
+    Accepts ``s(x)``, ``spatial(x)`` and ``sz(x)``, plus ``s(x, bs="sz")`` because mgcv users
+    will reach for that spelling.
+    """
     match = re.fullmatch(r"(\w+)\s*\((.*)\)", piece, flags=re.DOTALL)
-    if match is None or match.group(1) not in SPATIAL_MARKERS:
+    if match is None:
+        return None
+    marker = match.group(1)
+    if marker in SUM_TO_ZERO_MARKERS:
+        constraint = SUM_TO_ZERO
+    elif marker in SPATIAL_MARKERS:
+        constraint = None
+    else:
         return None
 
     arguments = _split_top_level(match.group(2), separator=",")
@@ -136,18 +191,28 @@ def _parse_spatial_marker(piece):
     for argument in arguments:
         if not argument:
             continue
-        keyword = re.fullmatch(r"spacing\s*=\s*(\d+)", argument)
-        if keyword is not None:
-            spacing = int(keyword.group(1))
+        spacing_keyword = re.fullmatch(r"spacing\s*=\s*(\d+)", argument)
+        basis_keyword = re.fullmatch(r"bs\s*=\s*[\"\']?(\w+)[\"\']?", argument)
+        if spacing_keyword is not None:
+            spacing = int(spacing_keyword.group(1))
+        elif basis_keyword is not None:
+            basis = basis_keyword.group(1)
+            if basis not in SUM_TO_ZERO_MARKERS:
+                raise FormulaError(
+                    f"{piece!r} asks for basis {basis!r}; the only one is "
+                    f"{SUM_TO_ZERO_MARKERS[0]!r}, which sums coefficients to zero across levels."
+                )
+            constraint = SUM_TO_ZERO
         elif expression is None:
             expression = argument
         else:
             raise FormulaError(
-                f"{piece!r} takes one expression and an optional spacing=, got {arguments!r}."
+                f"{piece!r} takes one expression plus optional spacing= and bs=, got "
+                f"{arguments!r}."
             )
     if expression is None:
         raise FormulaError(f"{piece!r} needs an expression to make spatial, e.g. s(diagnosis).")
-    return expression, spacing
+    return expression, spacing, constraint
 
 
 @dataclass(frozen=True)
@@ -168,7 +233,7 @@ class Design:
         object.__setattr__(self, "terms", tuple(self.terms))
         seen = {}
         for term in self.terms:
-            key = (term.expr, term.spatial)
+            key = (term.expr, term.spatial, term.constraint)
             if key in seen:
                 raise FormulaError(f"Term {term} appears more than once.")
             seen[key] = True
@@ -207,10 +272,17 @@ class Design:
 
             marker = _parse_spatial_marker(piece)
             if marker is not None:
-                expression, spacing = marker
+                expression, spacing, constraint = marker
                 if expression == INTERCEPT_TERM:
                     explicit_intercept = True
-                terms.append(Term(expr=expression, spatial=True, spacing=spacing))
+                terms.append(
+                    Term(
+                        expr=expression,
+                        spatial=True,
+                        spacing=spacing,
+                        constraint=constraint,
+                    )
+                )
             else:
                 terms.append(Term(expr=piece, spatial=False))
 
@@ -246,7 +318,28 @@ def formula_to_design(formula):
     return Design.from_formula(formula)
 
 
-def _experiment_block(expr, annotations):
+def sum_to_zero_basis(n_levels):
+    """Return an orthonormal basis of the sum-to-zero subspace of ``R^n_levels``.
+
+    The columns span ``{v : 1'v = 0}``, obtained from a QR decomposition of the all-ones vector
+    and dropping the first column of Q -- the construction mgcv documents for its identifiability
+    constraints. Reparameterizing ``beta = Z gamma`` then guarantees ``sum_k beta_k = 0`` for every
+    basis function, without the caller having to impose anything.
+    """
+    if n_levels < 2:
+        raise FormulaError(
+            "A sum-to-zero constraint needs at least two levels to sum over; a single-column "
+            "term has nothing to center against."
+        )
+    q, _ = np.linalg.qr(np.ones((n_levels, 1)), mode="complete")
+    basis = q[:, 1:]
+    # QR fixes the subspace but not the sign of each column; pin it so the reparameterization is
+    # reproducible across platforms and LAPACK versions.
+    signs = np.where(basis[0] < 0, -1.0, 1.0)
+    return basis * signs
+
+
+def _experiment_block(expr, annotations, constraint=None):
     """Build one term's experiment-level design block.
 
     Uses patsy for everything except the intercept. Note the ``0 +``: patsy would otherwise add
@@ -267,7 +360,15 @@ def _experiment_block(expr, annotations):
         ) from error
 
     names = tuple(str(name) for name in matrix.design_info.column_names)
-    return np.asarray(matrix, dtype=float), names
+    block = np.asarray(matrix, dtype=float)
+
+    if constraint == SUM_TO_ZERO:
+        basis = sum_to_zero_basis(block.shape[1])
+        block = block @ basis
+        # The columns are no longer levels, so naming them after levels would misread. They are
+        # contrasts among levels, which is what the coefficients now mean.
+        names = tuple(f"{expr}[sz{index + 1}]" for index in range(block.shape[1]))
+    return block, names
 
 
 def _spans_intercept(block):
@@ -381,7 +482,7 @@ def bind(design, annotations):
 
     blocks = []
     for term in design.terms:
-        block, names = _experiment_block(term.expr, annotations)
+        block, names = _experiment_block(term.expr, annotations, term.constraint)
         blocks.append(TermBlock(term=term, block=block, column_names=names))
 
     absorbing = [
@@ -398,15 +499,18 @@ def bind(design, annotations):
     if len(absorbing) > 1:
         names = ", ".join(str(b.term) for b in absorbing)
         interaction = ":".join(b.term.expr for b in absorbing)
+        constrained = " + ".join(f"sz({b.term.expr})" for b in absorbing)
         raise FormulaError(
             f"The spatial factor terms {names} are not jointly identifiable. Each gives every "
             "level its own map, so each one's columns sum to the constant, and their difference "
             "is exactly zero -- the design is rank deficient by one basis width, whatever the "
-            "data. Additive spatial main effects need sum-to-zero constraints across levels to "
-            "be identified, which mgcv provides through its 'sz' basis but NiMARE does not yet "
-            f"implement. Write s({interaction}) for the full interaction, which is identified "
-            "and gives one map per combination of levels, or make all but one of the factors "
-            "non-spatial."
+            "data. Two ways to write what you probably meant:\n"
+            f"  ~ {constrained}\n"
+            "      additive spatial main effects, with each factor's coefficients constrained to "
+            "sum to zero across levels so they measure deviations from a shared baseline;\n"
+            f"  ~ s({interaction})\n"
+            "      the full interaction, giving every combination of levels its own free map.\n"
+            "The first is the stronger claim and costs far fewer parameters."
         )
 
     if design.explicit_intercept and absorbing:

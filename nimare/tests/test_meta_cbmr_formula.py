@@ -149,6 +149,33 @@ def test_unidentifiable_additive_spatial_factors_are_refused(studyset):
         _fit("~ s(diagnosis) + s(drug_status)", studyset)
 
 
+def test_additive_spatial_factors_work_when_constrained(studyset):
+    """``sz()`` is the identified way to write additive spatial main effects.
+
+    Each factor's coefficients are constrained to sum to zero across levels, so they measure
+    deviations from the baseline that ``1`` supplies rather than competing with it.
+    """
+    result = _fit("~ sz(diagnosis) + sz(drug_status)", studyset)
+
+    assert "spatialIntensity_group-Default" in result.maps
+    assert "spatialFactorEffect_diagnosis-sz1" in result.maps
+    assert "spatialFactorEffect_drug_status-sz1" in result.maps
+    assert all(np.all(np.isfinite(values)) for values in result.maps.values())
+
+
+def test_constrained_factor_is_cheaper_than_the_interaction(studyset):
+    """The additive claim costs fewer parameters than one free map per cell."""
+    additive = CBMR("~ sz(diagnosis) + sz(drug_status)", **FIT_KWARGS)
+    interaction = CBMR("~ s(diagnosis:drug_status)", **FIT_KWARGS)
+    additive.fit(dataset=studyset)
+    interaction.fit(dataset=studyset)
+
+    n_bases = additive.predictor.n_bases
+    assert additive.bound_design.n_parameters(n_bases) < interaction.bound_design.n_parameters(
+        n_bases
+    )
+
+
 def test_overdispersion_with_a_grouped_design(studyset):
     """Overdispersion should fit where several experiments share a spatial map."""
     result = _fit("~ s(diagnosis)", studyset, distribution="negativebinomial", lr=1e-2)

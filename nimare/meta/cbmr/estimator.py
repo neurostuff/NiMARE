@@ -1334,6 +1334,11 @@ class CBMR(CBMREstimator):
                 if block.is_baseline:
                     maps[f"spatialIntensity_group-{label}"] = np.exp(log_intensity[index])
                     maps[f"logSpatialIntensity_group-{label}"] = log_intensity[index]
+                elif block.term.is_sum_to_zero:
+                    # A constrained factor is not a moderator: its coefficients are contrasts
+                    # among levels, measuring how a level shifts the baseline map.
+                    factor = block.term.expr.replace(":", "-")
+                    maps[f"spatialFactorEffect_{factor}-{label}"] = log_intensity[index]
                 else:
                     maps[f"voxelwiseModeratorEffect_{label}"] = log_intensity[index]
 

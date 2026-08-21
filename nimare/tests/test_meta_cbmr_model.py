@@ -99,6 +99,8 @@ def _statsmodels_fit(predictor, foci):
         "~ s(diagnosis) + n + age",
         "~ s(n)",  # a spatial covariate: impossible to express in the old API
         "~ s(diagnosis) + s(n)",  # and a mixed design, likewise
+        "~ sz(diagnosis)",  # sum-to-zero reparameterization
+        "~ sz(diagnosis) + n",
     ],
 )
 def test_fitted_coefficients_match_statsmodels(data, formula):
@@ -115,7 +117,9 @@ def test_fitted_coefficients_match_statsmodels(data, formula):
     )
 
 
-@pytest.mark.parametrize("formula", ["~ s(diagnosis) + n", "~ s(diagnosis) + s(n)"])
+@pytest.mark.parametrize(
+    "formula", ["~ s(diagnosis) + n", "~ s(diagnosis) + s(n)", "~ sz(diagnosis) + n"]
+)
 def test_standard_errors_match_statsmodels(data, formula):
     """Covariance must be a block of the joint inverse, not the inverse of a block.
 
@@ -243,3 +247,48 @@ def test_ill_conditioned_information_warns(data, caplog):
         except np.linalg.LinAlgError:
             pass  # exactly singular is also an acceptable outcome
     assert any("condition number" in message for message in caplog.messages)
+
+
+def test_additive_sum_to_zero_factors_are_fittable(data):
+    """``sz(a) + sz(b)`` must fit, where ``s(a) + s(b)`` is rank deficient by a basis width.
+
+    The design is only identified because each factor's coefficients are constrained to sum to
+    zero across levels, so a full-rank check on the materialized design is the thing to assert.
+    """
+    annotations, bases, _ = data
+    annotations = annotations.assign(drug=["yes", "no"] * N_PER_GROUP)
+    predictor = _build("~ sz(diagnosis) + sz(drug)", annotations, bases)
+    foci = _simulate(predictor, np.random.default_rng(67))
+
+    design = _materialize(predictor)
+    assert np.linalg.matrix_rank(design) == design.shape[1], "design should be full rank"
+
+    model = CBMRModel(predictor, Poisson()).fit(foci, n_iter=2000, tol=1e-12)
+    expected = _statsmodels_fit(predictor, foci)
+
+    np.testing.assert_allclose(
+        model.coefficients.detach().numpy(), expected.params, rtol=1e-4, atol=1e-5
+    )
+    np.testing.assert_allclose(
+        np.sqrt(np.diag(model.covariance(foci))), expected.bse, rtol=1e-5, atol=1e-8
+    )
+
+
+def test_sum_to_zero_coefficients_sum_to_zero(data):
+    """The constraint must hold in the fitted coefficients, not just in the parameterization.
+
+    Recovering the per-level effects means undoing the reparameterization: ``Z gamma`` has to sum
+    to zero across levels for every basis function, which is what makes the term a set of
+    deviations from the baseline rather than a competing baseline.
+    """
+    from nimare.meta.cbmr.terms import sum_to_zero_basis
+
+    annotations, bases, _ = data
+    predictor = _build("~ sz(diagnosis) + n", annotations, bases)
+    foci = _simulate(predictor, np.random.default_rng(71))
+    model = CBMRModel(predictor, Poisson()).fit(foci, n_iter=1000, tol=1e-10)
+
+    gamma = model.fitted_coefficients()["sz(diagnosis)"]
+    per_level = sum_to_zero_basis(2) @ gamma
+
+    np.testing.assert_allclose(per_level.sum(axis=0), 0.0, atol=1e-10)

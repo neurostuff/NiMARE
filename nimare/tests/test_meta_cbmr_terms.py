@@ -11,6 +11,7 @@ from nimare.meta.cbmr.terms import (
     _spans_intercept,
     bind,
     formula_to_design,
+    sum_to_zero_basis,
 )
 
 N_BASES = 457  # what spline_spacing=10 yields on the 2 mm brain mask
@@ -170,6 +171,103 @@ def test_spatial_interaction_is_the_identified_alternative(annotations):
     bound = bind(Design.from_formula("~ s(diagnosis:drug)"), annotations)
     assert len(bound.baseline_blocks) == 1
     assert bound.blocks[0].n_columns == 4
+
+
+def test_sum_to_zero_basis_spans_the_centered_subspace():
+    """The reparameterization basis must be orthonormal and sum to zero down each column.
+
+    This is the construction mgcv documents: a QR decomposition of the all-ones vector with its
+    first column dropped. Column signs are pinned because QR fixes the subspace but not the
+    orientation, and an unpinned sign would make coefficients flip between LAPACK versions.
+    """
+    for n_levels in (2, 3, 5):
+        basis = sum_to_zero_basis(n_levels)
+        assert basis.shape == (n_levels, n_levels - 1)
+        np.testing.assert_allclose(basis.sum(axis=0), 0.0, atol=1e-12)
+        np.testing.assert_allclose(basis.T @ basis, np.eye(n_levels - 1), atol=1e-12)
+        assert np.all(basis[0] > 0), "column signs should be pinned, not left to QR"
+
+    np.testing.assert_allclose(sum_to_zero_basis(4), sum_to_zero_basis(4))
+
+
+def test_sum_to_zero_needs_at_least_two_levels():
+    """There is nothing to center a single column against."""
+    with pytest.raises(FormulaError, match="at least two levels"):
+        sum_to_zero_basis(1)
+
+
+@pytest.mark.parametrize("formula", ["~ sz(diagnosis)", '~ s(diagnosis, bs="sz")'])
+def test_sz_is_parsed_and_rendered(formula):
+    """``sz(x)`` and mgcv's ``s(x, bs="sz")`` should mean the same term."""
+    design = Design.from_formula(formula)
+    assert str(design) == "~ sz(diagnosis)"
+    assert design.terms[0].is_sum_to_zero
+
+
+def test_sz_drops_a_column_and_stops_spanning_the_constant(annotations):
+    """A constrained factor has one fewer column and no longer competes with the baseline."""
+    bound = bind(Design.from_formula("~ sz(diagnosis)"), annotations)
+    constrained = next(b for b in bound.blocks if b.term.is_sum_to_zero)
+
+    assert constrained.n_columns == 1, "two levels minus one constraint"
+    assert not _spans_intercept(constrained.block)
+    assert not constrained.is_baseline
+    # A baseline is therefore supplied separately.
+    assert str(bound.design) == "~ 1 + sz(diagnosis)"
+
+
+def test_additive_sz_factors_are_identifiable(annotations):
+    """``sz(a) + sz(b)`` is what ``s(a) + s(b)`` should have been."""
+    bound = bind(Design.from_formula("~ sz(diagnosis) + sz(drug)"), annotations)
+    assert len(bound.baseline_blocks) == 1
+    assert str(bound.design) == "~ 1 + sz(diagnosis) + sz(drug)"
+
+
+def test_additive_sz_is_cheaper_than_the_interaction(annotations):
+    """The additive form is the stronger claim, and its parameter count shows it."""
+    additive = bind(Design.from_formula("~ sz(diagnosis) + sz(drug)"), annotations)
+    interaction = bind(Design.from_formula("~ s(diagnosis:drug)"), annotations)
+    assert additive.n_parameters(N_BASES) < interaction.n_parameters(N_BASES)
+
+
+def test_sz_columns_are_named_as_contrasts_not_levels(annotations):
+    """Constrained columns are contrasts among levels, so naming them as levels would misread."""
+    bound = bind(Design.from_formula("~ sz(diagnosis)"), annotations)
+    constrained = next(b for b in bound.blocks if b.term.is_sum_to_zero)
+    assert constrained.column_names == ("diagnosis[sz1]",)
+
+
+def test_sz_on_a_non_spatial_term_is_rejected():
+    """The constraint exists to stop a factor competing with the spatial baseline."""
+    with pytest.raises(FormulaError, match="meaningless for the non-spatial term"):
+        Term(expr="diagnosis", spatial=False, constraint="sum_to_zero")
+
+
+def test_unknown_constraint_is_rejected():
+    """Only one constraint exists; a typo should say so."""
+    with pytest.raises(FormulaError, match="Unknown constraint"):
+        Term(expr="diagnosis", spatial=True, constraint="centered")
+
+
+def test_unknown_basis_is_rejected():
+    """``bs=`` only accepts the sum-to-zero basis."""
+    with pytest.raises(FormulaError, match="the only one is"):
+        Design.from_formula('~ s(diagnosis, bs="tp")')
+
+
+def test_s_and_sz_of_the_same_factor_are_distinct_terms():
+    """They are different parameterizations, so neither should look like a duplicate."""
+    design = Design.from_formula("~ s(diagnosis) + sz(drug)")
+    assert len(design.terms) == 2
+
+
+def test_the_rejection_message_points_at_both_alternatives(annotations):
+    """A refusal should say what to write instead, in both available forms."""
+    with pytest.raises(FormulaError) as caught:
+        bind(Design.from_formula("~ s(diagnosis) + s(drug)"), annotations)
+    message = str(caught.value)
+    assert "sz(diagnosis) + sz(drug)" in message
+    assert "s(diagnosis:drug)" in message
 
 
 def test_spans_intercept_distinguishes_factors_from_covariates():
