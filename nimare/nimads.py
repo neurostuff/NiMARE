@@ -13,23 +13,28 @@ from nimare.studyset.blocks import (
     TextBlock,
 )
 from nimare.studyset.columns import AnnotationSet
-from nimare.studyset.requirements import Coordinates, Images, Labels, PerAnalysis, Texts
 from nimare.studyset.io import convert_neurostore_json_to_parquet
+from nimare.studyset.nested import Analysis, Image, Point, Study
+from nimare.studyset.requirements import Coordinates, Images, Labels, PerAnalysis, Texts
 from nimare.studyset.studyset import Studyset
 from nimare.studyset.view import Context, View
 
 __all__ = [
+    "Analysis",
     "AnnotationSet",
     "Comparison",
     "Context",
     "CoordinateBlock",
     "Coordinates",
     "DesignBlock",
+    "Image",
     "ImageBlock",
     "Images",
     "LabelBlock",
     "Labels",
     "PerAnalysis",
+    "Point",
+    "Study",
     "Studyset",
     "convert_neurostore_json_to_parquet",
     "TextBlock",

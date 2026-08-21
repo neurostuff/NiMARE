@@ -178,12 +178,24 @@ all NiMARE workflows.
 
    nimads.convert_neurostore_json_to_parquet
    nimads.Studyset
-   nimads.Annotation
+   nimads.AnnotationSet
    nimads.Study
    nimads.Analysis
-   nimads.Condition
    nimads.Image
    nimads.Point
+   nimads.View
+   nimads.Context
+   nimads.Coordinates
+   nimads.Images
+   nimads.Labels
+   nimads.Texts
+   nimads.PerAnalysis
+   nimads.CoordinateBlock
+   nimads.ImageBlock
+   nimads.LabelBlock
+   nimads.TextBlock
+   nimads.DesignBlock
+   nimads.Comparison
 
 
 .. _api_dataset_ref:
