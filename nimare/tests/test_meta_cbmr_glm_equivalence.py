@@ -231,31 +231,21 @@ def test_cbmr_poisson_spatial_standard_errors_match_statsmodels_fisher():
         np.testing.assert_allclose(
             np.asarray(spatial_se.loc[group], dtype=float).ravel(),
             expected.bse[index * N_BASES : (index + 1) * N_BASES],
-            rtol=1e-3,
-            atol=1e-6,
+            rtol=1e-6,
+            atol=1e-9,
             err_msg=f"spatial standard errors disagree for group {group}",
         )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Global moderator standard errors are computed from only the LAST group. In "
-        "GeneralLinearModelEstimator.standard_error_estimation, ll_single_group_kwargs and "
-        "group_spatial_coef leak out of the `for group in self.groups` loop, so the "
-        "moderator Hessian is taken over one group's likelihood even though "
-        "moderators_linear pools one coefficient vector across all groups. Verified: the "
-        "reported SE equals the last group's information exactly. Two errors compound in "
-        "opposite directions -- last-group-only inflates by ~sqrt(n_total/n_last), while "
-        "inverting the moderator block alone (instead of the joint matrix) deflates by ~6% "
-        "-- netting a ~46% overestimate here. Conservative, not anti-conservative, which is "
-        "likely why it went unnoticed. fisher_info_multiple_group_moderator already computes "
-        "the correct multi-group information and matches the design-derived block to 6e-06; "
-        "it simply is not used here. Flip to a plain test once fixed."
-    ),
-)
 def test_cbmr_poisson_moderator_standard_errors_match_statsmodels_fisher():
-    """Pooled moderator standard errors must use every group's information."""
+    """Pooled moderator standard errors must use every group's information.
+
+    Regression test. These were previously computed from only the last group, because
+    ``ll_single_group_kwargs`` and ``group_spatial_coef`` leaked out of the
+    ``for group in self.groups`` loop in ``standard_error_estimation`` -- inflating them by
+    roughly ``sqrt(n_total / n_last_group)`` while inverting the moderator block alone
+    deflated them ~6%, netting a 46% overestimate on this simulation.
+    """
     sim = _simulate_interior_poisson()
     expected = _fit_statsmodels(sim)
     estimator = _fit_cbmr(sim)
@@ -264,6 +254,6 @@ def test_cbmr_poisson_moderator_standard_errors_match_statsmodels_fisher():
     np.testing.assert_allclose(
         np.asarray(tables["moderators_regression_se"], dtype=float).ravel(),
         expected.bse[len(sim["groups"]) * N_BASES :],
-        rtol=1e-3,
-        atol=1e-6,
+        rtol=1e-6,
+        atol=1e-9,
     )

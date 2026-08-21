@@ -578,10 +578,24 @@ class GeneralLinearModelEstimator(torch.nn.Module):
     ):
         """Estimate standard error of estimates.
 
-        For spatial regression coefficients, we estimate its covariance matrix using Fisher
-        Information Matrix and then take the square root of the diagonal elements.
-        For log spatial intensity, we use the delta method to estimate its standard error.
-        For models with over-dispersion parameter, we also estimate its standard error.
+        Covariances come from the inverse of the Fisher information matrix. Spatial
+        coefficients are group-specific, so their information is block diagonal, but
+        moderator coefficients are *pooled* across groups -- ``moderators_linear`` is a single
+        ``Linear``, not a ``ModuleDict``. The information matrix is therefore joint, with
+        cross blocks coupling each group's spatial block to the shared moderator block, and
+        the covariance of a block is the corresponding block of the *inverse* rather than the
+        inverse of that block.
+
+        Because the spatial blocks are conditionally independent given the moderators, that
+        joint inverse has a closed form needing only per-group blocks. Writing ``I_bb[g]``,
+        ``I_bg[g]`` and ``I_gg[g]`` for one group's blocks::
+
+            Cov(gamma)  = inv( sum_g I_gg[g] - sum_g I_bg[g]' inv(I_bb[g]) I_bg[g] )
+            Cov(beta_g) = inv(I_bb[g]) + C_g Cov(gamma) C_g',  C_g = inv(I_bb[g]) I_bg[g]
+
+        -- the Schur complement of the spatial blocks, then its back-substitution. Standard
+        errors are square roots of the diagonals. Log spatial intensity uses the delta method.
+        Models with an over-dispersion parameter also estimate its standard error.
         """
         tensor_inputs = self._prepare_tensor_inputs(
             coef_spline_bases,
@@ -595,41 +609,90 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             dict(),
             dict(),
         )
+
+        has_moderators = bool(self.moderators_coef_dim)
+        moderators_coef = self.moderators_linear.weight if has_moderators else None
+        n_spatial, n_moderators = self.spatial_coef_dim, self.moderators_coef_dim
+
+        # First pass: collect one group's information blocks at a time. Every group
+        # contributes to the pooled moderator information, so no covariance can be formed
+        # until all of them have been visited.
+        group_information = {}
         for group in self.groups:
-            group_foci_per_voxel = tensor_inputs.foci_per_voxel[group]
-            group_foci_per_experiment = tensor_inputs.foci_per_experiment[group]
             group_spatial_coef = self.spatial_coef_linears[group].weight
-            if self.moderators_coef_dim:
-                group_moderators = tensor_inputs.moderators_by_group[group]
-                moderators_coef = self.moderators_linear.weight
-            else:
-                group_moderators, moderators_coef = None, None
 
             ll_single_group_kwargs = {
-                "moderators_coef": moderators_coef if self.moderators_coef_dim else None,
                 "coef_spline_bases": tensor_inputs.coef_spline_bases,
-                "group_moderators": group_moderators if self.moderators_coef_dim else None,
-                "group_foci_per_voxel": group_foci_per_voxel,
-                "group_foci_per_experiment": group_foci_per_experiment,
+                "group_moderators": (
+                    tensor_inputs.moderators_by_group[group] if has_moderators else None
+                ),
+                "group_foci_per_voxel": tensor_inputs.foci_per_voxel[group],
+                "group_foci_per_experiment": tensor_inputs.foci_per_experiment[group],
                 "device": self.device,
             }
-
             if hasattr(self, "overdispersion"):
                 ll_single_group_kwargs["group_overdispersion"] = self.overdispersion[group]
 
-            # create a negative log-likelihood function
-            def nll_spatial_coef(group_spatial_coef):
-                return -self._log_likelihood_single_group(
-                    group_spatial_coef=group_spatial_coef,
-                    **ll_single_group_kwargs,
+            if has_moderators:
+                # Differentiating with respect to the concatenated (beta_g, gamma) yields the
+                # cross block alongside the diagonal ones, for any log-likelihood.
+                def nll_joint_coef(flat_coef):
+                    return -self._log_likelihood_single_group(
+                        group_spatial_coef=flat_coef[:n_spatial].reshape(1, n_spatial),
+                        moderators_coef=flat_coef[n_spatial:].reshape(1, n_moderators),
+                        **ll_single_group_kwargs,
+                    )
+
+                flat_coef = torch.cat(
+                    [group_spatial_coef.reshape(-1), moderators_coef.reshape(-1)]
+                ).detach()
+                joint_information = self._to_numpy_array(
+                    torch.func.hessian(nll_joint_coef)(flat_coef)
+                ).reshape(n_spatial + n_moderators, n_spatial + n_moderators)
+                group_information[group] = (
+                    joint_information[:n_spatial, :n_spatial],
+                    joint_information[:n_spatial, n_spatial:],
+                    joint_information[n_spatial:, n_spatial:],
+                )
+            else:
+
+                def nll_spatial_coef(group_spatial_coef):
+                    return -self._log_likelihood_single_group(
+                        group_spatial_coef=group_spatial_coef,
+                        moderators_coef=None,
+                        **ll_single_group_kwargs,
+                    )
+
+                f_spatial_coef = torch.func.hessian(nll_spatial_coef)(group_spatial_coef)
+                group_information[group] = (
+                    self._to_numpy_array(f_spatial_coef).reshape((n_spatial, n_spatial)),
+                    None,
+                    None,
                 )
 
-            f_spatial_coef = torch.func.hessian(nll_spatial_coef)(group_spatial_coef)
-            f_spatial_coef = f_spatial_coef.reshape((self.spatial_coef_dim, self.spatial_coef_dim))
-            cov_spatial_coef = np.linalg.inv(self._to_numpy_array(f_spatial_coef))
-            var_spatial_coef = np.diag(cov_spatial_coef)
-            se_spatial_coef = np.sqrt(var_spatial_coef)
-            spatial_regression_coef_se[group] = se_spatial_coef
+        # Pooled moderator covariance: the Schur complement of the spatial blocks.
+        spatial_information_inverse, spatial_moderator_cross = {}, {}
+        for group, (info_bb, _, _) in group_information.items():
+            spatial_information_inverse[group] = np.linalg.inv(info_bb)
+
+        if has_moderators:
+            moderator_information = np.zeros((n_moderators, n_moderators), dtype=float)
+            for group, (_, info_bg, info_gg) in group_information.items():
+                spatial_moderator_cross[group] = spatial_information_inverse[group] @ info_bg
+                moderator_information += info_gg - info_bg.T @ spatial_moderator_cross[group]
+            cov_moderators_coef = np.linalg.inv(moderator_information)
+            se_moderators = np.sqrt(np.diag(cov_moderators_coef).reshape((1, n_moderators)))
+        else:
+            cov_moderators_coef, se_moderators = None, None
+
+        # Second pass: spatial covariances, back-substituting the moderator covariance.
+        for group in self.groups:
+            cov_spatial_coef = spatial_information_inverse[group]
+            if has_moderators:
+                cross = spatial_moderator_cross[group]
+                cov_spatial_coef = cov_spatial_coef + cross @ cov_moderators_coef @ cross.T
+
+            spatial_regression_coef_se[group] = np.sqrt(np.diag(cov_spatial_coef))
 
             var_log_spatial_intensity = np.einsum(
                 "ij,ji->i",
@@ -639,34 +702,11 @@ class GeneralLinearModelEstimator(torch.nn.Module):
             se_log_spatial_intensity = np.sqrt(var_log_spatial_intensity)
             log_spatial_intensity_se[group] = se_log_spatial_intensity
 
+            group_spatial_coef = self.spatial_coef_linears[group].weight
             group_spatial_intensity = np.exp(
                 np.matmul(coef_spline_bases_array, self._to_numpy_array(group_spatial_coef).T)
             ).flatten()
-            se_spatial_intensity = group_spatial_intensity * se_log_spatial_intensity
-            spatial_intensity_se[group] = se_spatial_intensity
-
-        # Inference on regression coefficient of moderators
-        if self.moderators_coef_dim:
-            # modify ll_single_group_kwargs so that spatial_coef is fixed
-            # and moderators_coef can vary
-            del ll_single_group_kwargs["moderators_coef"]
-            ll_single_group_kwargs["group_spatial_coef"] = group_spatial_coef
-
-            def nll_moderators_coef(moderators_coef):
-                return -self._log_likelihood_single_group(
-                    moderators_coef=moderators_coef,
-                    **ll_single_group_kwargs,
-                )
-
-            f_moderators_coef = torch.func.hessian(nll_moderators_coef)(moderators_coef)
-            f_moderators_coef = f_moderators_coef.reshape(
-                (self.moderators_coef_dim, self.moderators_coef_dim)
-            )
-            cov_moderators_coef = np.linalg.inv(self._to_numpy_array(f_moderators_coef))
-            var_moderators = np.diag(cov_moderators_coef).reshape((1, self.moderators_coef_dim))
-            se_moderators = np.sqrt(var_moderators)
-        else:
-            se_moderators = None
+            spatial_intensity_se[group] = group_spatial_intensity * se_log_spatial_intensity
 
         self.spatial_regression_coef_se = spatial_regression_coef_se
         self.log_spatial_intensity_se = log_spatial_intensity_se
