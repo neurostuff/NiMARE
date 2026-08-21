@@ -20,14 +20,17 @@ from nimare.meta.cbmr._helpers import (  # noqa: F401
 from nimare.meta.cbmr.estimator import CBMREstimator
 from nimare.meta.cbmr.inference import CBMRInference
 from nimare.meta.cbmr.optimizers import fit_voxelwise_cbmr_approximate
+from nimare.meta.cbmr.predictor import CBMRPredictor, poisson_log_likelihood
 from nimare.meta.cbmr.results import CBMRResult
 from nimare.meta.cbmr.terms import Design, FormulaError, Term
 
 __all__ = [
     "CBMREstimator",
+    "CBMRPredictor",
     "Design",
     "FormulaError",
     "Term",
+    "poisson_log_likelihood",
     "CBMRInference",
     "CBMRResult",
     "DEFAULT_GROUP_NAME",
