@@ -15,11 +15,14 @@ __all__ = ["Analysis", "Image", "Point", "Study", "studies_of"]
 
 
 class _Row:
-    __slots__ = ("_store", "_row")
+    __slots__ = ("_store", "_row", "_context")
 
-    def __init__(self, store, row):
+    def __init__(self, store, row, context=None):
         self._store = store
         self._row = int(row)
+        # Coordinates are stored raw and projected on demand, so an accessor
+        # needs to know which space it is being read in.
+        self._context = context
 
     @property
     def row(self):
@@ -71,7 +74,7 @@ class Study(_Row):
     def analyses(self):
         store = self._store
         lo, hi = store.analysis_offsets[self._row], store.analysis_offsets[self._row + 1]
-        return [Analysis(store, r) for r in range(int(lo), int(hi))]
+        return [Analysis(store, r, self._context) for r in range(int(lo), int(hi))]
 
     def _attr(self, name):
         col = self._store.study_attrs.dense.get(name)
@@ -106,7 +109,7 @@ class Analysis(_Row):
 
     @property
     def study(self):
-        return Study(self._store, int(self._store.study_idx[self._row]))
+        return Study(self._store, int(self._store.study_idx[self._row]), self._context)
 
     @property
     def metadata(self):
@@ -137,7 +140,7 @@ class Analysis(_Row):
     def points(self):
         store = self._store
         lo, hi = store.point_offsets[self._row], store.point_offsets[self._row + 1]
-        return [Point(store, r) for r in range(int(lo), int(hi))]
+        return [Point(store, r, self._context) for r in range(int(lo), int(hi))]
 
     @property
     def images(self):
@@ -146,7 +149,7 @@ class Analysis(_Row):
         if ia is None or not ia.n_rows:
             return []
         rows = np.flatnonzero(ia.dense["analysis_idx"] == self._row)
-        return [Image(store, r) for r in rows]
+        return [Image(store, r, self._context) for r in rows]
 
     @property
     def conditions(self):
@@ -176,27 +179,35 @@ class Analysis(_Row):
 
 
 class Point(_Row):
-    """One focus."""
+    """One focus, reported in the space its studyset is being read in."""
+
+    def _projected(self):
+        from nimare.studyset.layout import harmonized_coordinates
+
+        target = getattr(self._context, "space", None)
+        return harmonized_coordinates(self._store, target)
 
     @property
     def coordinates(self):
-        return self._store.xyz[self._row].tolist()
+        xyz, _, _ = self._projected()
+        return xyz[self._row].tolist()
 
     @property
     def x(self):
-        return float(self._store.xyz[self._row, 0])
+        return float(self._projected()[0][self._row, 0])
 
     @property
     def y(self):
-        return float(self._store.xyz[self._row, 1])
+        return float(self._projected()[0][self._row, 1])
 
     @property
     def z(self):
-        return float(self._store.xyz[self._row, 2])
+        return float(self._projected()[0][self._row, 2])
 
     @property
     def space(self):
-        return self._store.space_dict.categories[int(self._store.point_space[self._row])]
+        _, codes, space_dict = self._projected()
+        return space_dict.categories[int(codes[self._row])]
 
     @property
     def kind(self):
@@ -240,7 +251,9 @@ class Image(_Row):
     @property
     def analysis(self):
         return Analysis(
-            self._store, int(self._store.image_attrs.dense["analysis_idx"][self._row])
+            self._store,
+            int(self._store.image_attrs.dense["analysis_idx"][self._row]),
+            self._context,
         )
 
     def __repr__(self):
@@ -263,4 +276,4 @@ def studies_of(view):
         if counts[r] == 0
         or selected[store.analysis_offsets[r] : store.analysis_offsets[r + 1]].any()
     ]
-    return [Study(store, r) for r in rows]
+    return [Study(store, r, view.context) for r in rows]

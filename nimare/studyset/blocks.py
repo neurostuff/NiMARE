@@ -99,6 +99,7 @@ class ImageBlock:
     space: np.ndarray
     metadata: np.ndarray
     values: Optional[np.ndarray] = None
+    raw_refs: Optional[np.ndarray] = None
 
     def __len__(self):
         return len(self.refs)
@@ -124,6 +125,7 @@ class ImageBlock:
             space=self.space,
             metadata=self.metadata,
             values=values,
+            raw_refs=self.raw_refs,
         )
 
 
@@ -320,7 +322,7 @@ def image_block(view, imtype, *, policy="all"):
             )
         rows, parents = rows[first], parents[first]
 
-    refs = _resolve_refs(ia, rows, view.context.basepath)
+    raw, refs = _resolve_refs(ia, rows, view.context.basepath)
     return ImageBlock(
         refs=refs,
         analysis_pos=pos_of_analysis[parents],
@@ -328,11 +330,16 @@ def image_block(view, imtype, *, policy="all"):
         imtype=imtype,
         space=ia.dense["space"][rows],
         metadata=ia.dense["metadata"][rows],
+        raw_refs=raw,
     )
 
 
 def _resolve_refs(ia, rows, basepath):
-    """Pick the location that points at an image, and apply the base path."""
+    """``(stored reference, resolved reference)`` for each image row.
+
+    Both are kept: consumers want a path they can open, while a frame reports the
+    relative form the studyset actually stores.
+    """
     import os
 
     from nimare.io import _select_image_path
@@ -340,13 +347,16 @@ def _resolve_refs(ia, rows, basepath):
 
     urls = ia.dense["url"][rows]
     files = ia.dense["filename"][rows]
-    out = np.empty(len(rows), dtype=object)
+    raw = np.empty(len(rows), dtype=object)
+    resolved = np.empty(len(rows), dtype=object)
     for i, (url, filename) in enumerate(zip(urls, files)):
         ref = _select_image_path(url, filename)
+        raw[i] = ref
         if isinstance(ref, str) and ref and "://" not in ref and not os.path.isabs(ref):
-            ref = _try_prepend(ref, basepath) if basepath else ref
-        out[i] = ref
-    return out
+            resolved[i] = _try_prepend(ref, basepath) if basepath else ref
+        else:
+            resolved[i] = ref
+    return raw, resolved
 
 
 def label_block(view, annotation=None):

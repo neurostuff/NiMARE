@@ -43,17 +43,26 @@ class Context:
     basepath: Optional[str] = None
 
     def resolved_masker(self):
-        """The caller's masker, or the cached default for ``space``."""
+        """The caller's masker, or the cached default for ``space``.
+
+        Accepts whatever ``get_masker`` accepts -- an image, a path, or a masker
+        -- so a caller passing ``mask=get_template(...)`` gets a masker back.
+        """
         if self.masker is not None:
-            return self.masker
+            from nimare.utils import get_masker
+
+            return get_masker(self.masker)
         if not isinstance(self.space, str):
             return None
         return _default_masker(self.space)
 
     def with_(self, **changes):
-        return dataclasses.replace(
-            self, **{k: v for k, v in changes.items() if v is not None}
-        )
+        """A context with the named fields replaced.
+
+        Explicit ``None`` clears a field: reading a studyset with ``space=None``
+        is how you ask for its raw coordinates.
+        """
+        return dataclasses.replace(self, **changes)
 
 
 class View:

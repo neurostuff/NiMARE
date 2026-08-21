@@ -156,15 +156,26 @@ class Texts:
 
 
 def _normalized_sample_sizes(store, reducer):
-    """Sample sizes from whichever level declares them.
+    """One number per analysis, reduced from the coerced sample sizes."""
+    out = np.full(store.n_analyses, np.nan, dtype=np.float64)
+    for row, sizes in enumerate(coerced_sample_sizes(store)):
+        if sizes:
+            out[row] = reducer(np.asarray(sizes, dtype=np.float64))
+    return out
+
+
+def coerced_sample_sizes(store):
+    """The sample sizes each analysis declares, as lists, from either level.
 
     The raw ``sample_size`` / ``sample_sizes`` keys stay where NIMADS put them so
-    that export is lossless, while consumers see one normalised field.
+    that export is lossless; this is the normalised view of them, and it keeps
+    the list rather than reducing it, because a list of per-group sizes is
+    information a caller may want.
     """
     from nimare.io import _extract_coerced_sample_sizes
 
     n_a = store.n_analyses
-    out = np.full(n_a, np.nan, dtype=np.float64)
+    out = [None] * n_a
     a_md, s_md = store.metadata, store.study_metadata
     a_vals = {
         key: a_md.get(key) for key in ("sample_sizes", "sample_size") if key in a_md
@@ -197,5 +208,5 @@ def _normalized_sample_sizes(store, reducer):
         ]
         sizes = _extract_coerced_sample_sizes(candidates)
         if sizes:
-            out[row] = reducer(np.asarray(sizes, dtype=np.float64))
+            out[row] = list(sizes)
     return out

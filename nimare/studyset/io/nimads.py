@@ -183,7 +183,7 @@ def from_nimads(source, *, canonical_order=True, annotations=None):
             texts = analysis.get("texts")
             if isinstance(texts, dict) and texts:
                 text_rows.append(a_row)
-                text_payload.append(texts)
+                text_payload.append({k: _denull(v) for k, v in texts.items()})
 
             inline = analysis.get("annotations")
             if isinstance(inline, dict) and inline:
@@ -192,9 +192,9 @@ def from_nimads(source, *, canonical_order=True, annotations=None):
                     if isinstance(note, dict):
                         rows, notes = inline_notes.setdefault(ann_id, ([], []))
                         rows.append(a_row)
-                        notes.append(note)
+                        notes.append({k: _denull(v) for k, v in note.items()})
                     else:
-                        flat[ann_id] = note
+                        flat[ann_id] = _denull(note)
                 if flat:
                     rows, notes = inline_notes.setdefault("_inline", ([], []))
                     rows.append(a_row)
@@ -231,7 +231,9 @@ def from_nimads(source, *, canonical_order=True, annotations=None):
             if row is None:
                 continue
             rows.append(row)
-            collected.append(note.get("note") or {})
+            collected.append(
+                {k: _denull(v) for k, v in (note.get("note") or {}).items()}
+            )
 
     xyz = np.asarray(coord_flat, dtype=np.float64).reshape(n_p, 3) if n_p else np.zeros((0, 3))
     point_analysis = np.asarray(point_parent, dtype=np.int32)

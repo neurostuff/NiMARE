@@ -98,12 +98,19 @@ def images(view, *, policy="first"):
         block = image_block(view, imtype, policy=policy)
         absolute = np.full(n, None, dtype=object)
         relative = np.full(n, None, dtype=object)
-        for pos, ref, sp in zip(block.analysis_pos, block.refs, block.space):
+        raw = block.raw_refs if block.raw_refs is not None else block.refs
+        for pos, ref, stored, sp in zip(
+            block.analysis_pos, block.refs, raw, block.space
+        ):
             if isinstance(ref, str) and ref:
-                if "://" in ref or os.path.isabs(ref):
-                    absolute[pos] = ref
-                else:
-                    relative[pos] = ref
+                absolute[pos] = ref
+            if (
+                isinstance(stored, str)
+                and stored
+                and "://" not in stored
+                and not os.path.isabs(stored)
+            ):
+                relative[pos] = stored
             if space_col[pos] is None:
                 space_col[pos] = sp
         cols[imtype] = absolute
@@ -181,15 +188,15 @@ def metadata(view):
         else:
             cols[name] = values
 
-    from nimare.studyset.requirements import _normalized_sample_sizes
+    from nimare.studyset.requirements import coerced_sample_sizes
 
-    sizes = _normalized_sample_sizes(store, np.mean)[sel]
-    if np.isfinite(sizes).any():
-        # Build the object array explicitly: np.array of single-element lists
+    sizes = coerced_sample_sizes(store)
+    if any(sizes[int(row)] is not None for row in sel):
+        # Build the object array explicitly: np.array of equal-length lists
         # collapses into a 2-D array, which pandas rejects.
-        column = np.empty(len(sizes), dtype=object)
-        for i, value in enumerate(sizes):
-            column[i] = None if not np.isfinite(value) else [value]
+        column = np.empty(len(sel), dtype=object)
+        for i, row in enumerate(sel):
+            column[i] = sizes[int(row)]
         cols["sample_sizes"] = column
     return _build(cols)
 

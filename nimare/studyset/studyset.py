@@ -193,7 +193,7 @@ class Studyset:
         """Read-only nested accessors for the selected analyses."""
         from nimare.studyset.nested import Analysis
 
-        return [Analysis(self.store, r) for r in self._view.index]
+        return [Analysis(self.store, r, self._view.context) for r in self._view.index]
 
     def __len__(self):
         return len(self._view)
