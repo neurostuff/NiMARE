@@ -1,32 +1,27 @@
 r"""
 .. _metas_cbmr:
-.. _metas_voxelwise_cbmr:
 
-====================================================================
-Coordinate-based meta-regression with global and voxelwise moderators
-====================================================================
+====================================================
+Coordinate-based meta-regression with a model formula
+====================================================
 
 A tour of coordinate-based meta-regression (CBMR) in NiMARE.
 
-CBMR is a generative framework for estimating smooth activation intensity
-functions from coordinate-based meta-analytic data. The current
-:class:`~nimare.meta.cbmr.CBMREstimator` implementation exposes one public API
-for three moderator-effect parameterizations:
+CBMR estimates a smooth activation-intensity function from reported coordinates. The model is
+written as a formula, in which every term states its own *spatial resolution*::
 
-* ``moderator_effect="global"`` estimates one scalar coefficient per moderator.
-    This assumes the moderator changes activation intensity by the same amount
-    across the brain.
-* ``moderator_effect="voxelwise"`` estimates a smooth spatial coefficient map
-  for each moderator and group. This allows the moderator effect to vary across
-  the brain, but requires more data for stable estimation.
-* ``moderator_effect="mixed"`` estimates scalar coefficients for selected
-  ``global_moderators`` and spatially varying coefficients for selected
-  ``voxelwise_moderators`` in one model.
+    CBMR("~ s(diagnosis) + sample_size")
 
-This tutorial fits all three versions to the same simulated Studyset, shows how
-to inspect fitted CBMR results, and demonstrates both the result-centered
-inference methods on :class:`~nimare.meta.cbmr.CBMRResult` and the lower-level
-:class:`~nimare.meta.cbmr.CBMRInference` interface.
+``s()`` crosses a term with the spatial spline basis, so its coefficient becomes a map. Without
+it, the term gets a single coefficient that applies to the whole brain. That distinction is the
+entire difference between what CBMR used to call global and voxelwise moderator effects, and
+because each term declares it separately, a model can freely mix the two.
+
+The parameter cost follows from the same mark. At ``spline_spacing=10`` on the 2 mm brain mask
+the basis has 457 columns, so every ``s()`` term costs 457 coefficients per column -- as much as
+another group's entire baseline map. That is worth knowing before adding one, which is why the
+budget is logged at fit time and available from
+:meth:`~nimare.meta.cbmr.CBMRResult.describe_terms`.
 """
 
 import numpy as np
@@ -35,16 +30,15 @@ from nilearn.plotting import plot_stat_map
 
 from nimare.correct import FDRCorrector
 from nimare.generate import create_coordinate_studyset
-from nimare.meta import CBMREstimator, models
+from nimare.meta.cbmr import CBMR
 from nimare.transforms import StandardizeField
 
 ###############################################################################
-# Load Studyset-compatible data
+# Simulate a Studyset
 # -----------------------------------------------------------------------------
-# We simulate a coordinate-based Studyset with reported foci, sample sizes,
-# diagnosis labels, drug-status labels, and continuous moderators. The example
-# uses a moderate number of studies and coarse B-spline spacing to keep the
-# runtime manageable while still exercising global, voxelwise, and mixed CBMR.
+# A coordinate-based Studyset with reported foci, sample sizes, diagnosis and drug-status
+# labels, and two continuous moderators. Coarse B-spline spacing keeps the example quick; a real
+# analysis would use ``spline_spacing`` of 10 or 5.
 
 _, studyset = create_coordinate_studyset(
     foci=10,
@@ -70,410 +64,252 @@ studyset.annotations_df = annotations_df
 
 studyset = StandardizeField(fields=["sample_sizes", "avg_age"]).transform(studyset)
 
-# CBMR combines the categorical fields in ``group_categories`` into group names
-# such as ``SchizophreniaYes``. Continuous moderators are standardized above so
-# that a one-unit moderator change corresponds to a one-standard-deviation
-# change.
-group_categories = ["diagnosis", "drug_status"]
-moderators = ["standardized_sample_sizes", "standardized_avg_age"]
-mixed_global_moderators = ["standardized_sample_sizes"]
-mixed_voxelwise_moderators = ["standardized_avg_age"]
-
-###############################################################################
-# Option 1: global moderator effects
-# -----------------------------------------------------------------------------
-# With ``moderator_effect="global"``, CBMR estimates group-specific baseline
-# spatial intensity functions plus one scalar effect for each moderator.
-# Here, ``standardized_sample_sizes`` and ``standardized_avg_age`` each receive
-# one coefficient shared across all voxels and groups.
-
-global_cbmr = CBMREstimator(
-    moderator_effect="global",
-    group_categories=group_categories,
-    moderators=moderators,
+FIT_KWARGS = dict(
     spline_spacing=100,  # a reasonable analysis choice is 10 or 5; 100 is for speed
-    model=models.PoissonEstimator,
-    penalty=False,
+    n_iter=200,
     lr=1e-1,
     tol=1e3,  # a reasonable analysis choice is 1e-2; 1e3 is for speed
     device="cpu",  # use "cuda" if you have a GPU
     random_state=100,
 )
-global_results = global_cbmr.fit(dataset=studyset)
-
-print(global_results.describe_inference_inputs())
 
 ###############################################################################
-# Plot baseline group-specific spatial intensity
+# One spatial map per group
 # -----------------------------------------------------------------------------
-# Both global and voxelwise CBMR estimate baseline spatial intensity maps. The
-# map names are shared across the two moderator-effect parameterizations.
+# ``s(diagnosis:drug_status)`` crosses the two factors and gives every combination of levels its
+# own intensity map. This is the model the old ``group_categories=["diagnosis", "drug_status"]``
+# argument produced -- note that it was always a full interaction, which the formula now says
+# out loud.
+
+group_results = CBMR("~ s(diagnosis:drug_status)", **FIT_KWARGS).fit(dataset=studyset)
+
+print(group_results.describe_terms())
 
 plot_stat_map(
-    global_results.get_map("spatialIntensity_group-SchizophreniaYes"),
+    group_results.get_map("spatialIntensity_group-schizophrenia-Yes"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
     symmetric_cbar=True,
-    title="Global CBMR: Schizophrenia with drug treatment",
+    title="Schizophrenia, on drug treatment",
     threshold=1e-4,
     vmax=1e-3,
 )
 plot_stat_map(
-    global_results.get_map("spatialIntensity_group-DepressionNo"),
+    group_results.get_map("spatialIntensity_group-depression-No"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
     symmetric_cbar=True,
-    title="Global CBMR: Depression without drug treatment",
+    title="Depression, no drug treatment",
     threshold=1e-4,
     vmax=1e-3,
 )
 
 ###############################################################################
-# Inference on global moderator effects
+# Testing hypotheses by name
 # -----------------------------------------------------------------------------
-# Result-centered methods run inference directly from a fitted ``CBMRResult``.
-# For global moderator effects, ``test_moderators`` returns scalar tables rather
-# than maps because each moderator has one coefficient.
+# Hypotheses are written over the terms and levels of the design. This replaces passing contrast
+# matrices positionally, which was unreadable and silently depended on level ordering -- reorder
+# the levels and the same matrix tested a different hypothesis.
 
-global_moderator_result = global_results.test_moderators()
-print(global_moderator_result.tables["moderators_regression_coef"])
-print(global_moderator_result.tables["p_standardized_sample_sizes"])
-print(global_moderator_result.tables["p_standardized_avg_age"])
-
-global_moderator_comparison = global_results.compare_moderators(
-    [("standardized_sample_sizes", "standardized_avg_age")]
+drug_effect = group_results.test(
+    "schizophrenia-Yes = schizophrenia-No",
+    name="schizophrenia-drug",
 )
-print(global_moderator_comparison.tables["p_standardized_sample_sizes-standardized_avg_age"])
+
+plot_stat_map(
+    drug_effect.get_map("z_schizophrenia-drug"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+    title="Drug effect within schizophrenia",
+    threshold=scipy.stats.norm.isf(0.4),
+    vmax=2,
+)
 
 ###############################################################################
-# Group inference and correction for global CBMR
-# -----------------------------------------------------------------------------
-# Group homogeneity tests and pairwise group comparisons use the same
-# result-centered methods for all moderator-effect modes. Here we request a
-# sandwich covariance estimate and pass its robust-covariance options through the
-# ``test_groups`` call.
+# A list of statements is tested jointly, as a generalized linear hypothesis, rather than one at
+# a time. This asks whether the drug effect is zero in *both* diagnoses at once.
 
-global_group_result = global_results.test_groups(
+joint = group_results.test(
+    ["schizophrenia-Yes = schizophrenia-No", "depression-Yes = depression-No"],
+    name="drug-anywhere",
+)
+
+plot_stat_map(
+    joint.get_map("chiSquare_drug-anywhere"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="Reds",
+    title="Joint test: any drug effect",
+)
+
+###############################################################################
+# Robust standard errors and multiple comparisons
+# -----------------------------------------------------------------------------
+# The default standard errors come from the Fisher information, which is correct only if the
+# Poisson mean-variance relationship holds. Foci are overdispersed and correlated within an
+# experiment, so ``method="sandwich"`` is usually the safer choice; ``meat="cluster"`` allows
+# arbitrary correlation among one experiment's own foci.
+
+robust = group_results.test(
+    "schizophrenia-Yes = schizophrenia-No",
+    name="drug-robust",
     method="sandwich",
-    sandwich_meat="iid",
-    sandwich_correction="hc0",
-    ridge=1e-4,
+    meat="cluster",
+    correction="hc1",
 )
-print(global_group_result.metadata["global_cbmr_inference_method"])
-print(global_group_result.metadata["global_cbmr_sandwich_meat"])
-print(global_group_result.metadata["global_cbmr_sandwich_correction"])
+
+corrected = FDRCorrector(method="indep", alpha=0.05).transform(robust)
 
 plot_stat_map(
-    global_group_result.get_map("z_group-SchizophreniaYes"),
+    corrected.get_map("z_drug-robust_corr-FDR_method-indep"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
     symmetric_cbar=True,
-    title="Global CBMR homogeneity test: SchizophreniaYes",
-    threshold=scipy.stats.norm.isf(0.05),
-    vmax=30,
-)
-
-corr = FDRCorrector(method="indep", alpha=0.05)
-corrected_global_group_result = corr.transform(global_group_result)
-
-plot_stat_map(
-    corrected_global_group_result.get_map("z_group-SchizophreniaYes_corr-FDR_method-indep"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    symmetric_cbar=True,
-    title="Global CBMR homogeneity test: SchizophreniaYes (FDR corrected)",
-    threshold=scipy.stats.norm.isf(0.05),
-    vmax=30,
-)
-
-global_group_comparison = global_results.compare_groups(
-    [
-        ("SchizophreniaYes", "SchizophreniaNo"),
-        ("DepressionYes", "DepressionNo"),
-    ]
-)
-
-plot_stat_map(
-    global_group_comparison.get_map("z_group-SchizophreniaYes-SchizophreniaNo"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    symmetric_cbar=True,
-    title="Global CBMR group comparison: Schizophrenia drug effect",
+    title="Drug effect, clustered SEs, FDR corrected",
     threshold=scipy.stats.norm.isf(0.4),
     vmax=2,
 )
 
 ###############################################################################
-# Flexible GLH tests with contrast matrices
+# Moderators, global and spatially varying
 # -----------------------------------------------------------------------------
-# CBMR also supports generalized linear hypothesis (GLH) tests by passing raw
-# contrast vectors or matrices to ``infer``. The example below passes one GLH
-# matrix with three rows. Together, those rows test whether all four
-# group-specific spatial intensity estimates are equal.
-
-global_glh_result = global_results.infer(
-    group_contrasts=[[[1, -1, 0, 0], [1, 0, -1, 0], [0, 0, 1, -1]]],
-    moderator_contrasts=False,
-)
-print("The contrast matrix of GLH_0 is {}".format(global_glh_result.metadata["GLH_groups_0"]))
-
-plot_stat_map(
-    global_glh_result.get_map("z_GLH_groups_0"),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    symmetric_cbar=True,
-    title="Global CBMR GLH_groups_0",
-    threshold=scipy.stats.norm.isf(0.4),
-)
-
-###############################################################################
-# Option 2: voxelwise moderator effects
-# -----------------------------------------------------------------------------
-# The same estimator exposes voxelwise moderator-effect maps through
-# ``moderator_effect="voxelwise"``. This option uses the same groups and the same
-# standardized moderators as above, but estimates a smooth effect map for each
-# moderator within each group. The approximate backend is used here for speed.
-
-voxelwise_cbmr = CBMREstimator(
-    moderator_effect="voxelwise",
-    group_categories=group_categories,
-    moderators=moderators,
-    spline_spacing=100,  # a reasonable analysis choice is 10 or 5; 100 is for speed
-    backend="approximate",
-    n_iter=10,
-    tol=1e3,  # a reasonable analysis choice is 1e-4; 1e3 is for speed
-    alpha=1e-3,
-    damping=1.0,
-    compute_nll=False,
-    device="cpu",  # the full backend also accepts "cuda" if a GPU is available
-    random_state=100,
-)
-voxelwise_results = voxelwise_cbmr.fit(dataset=studyset)
-
-print(voxelwise_results.describe_inference_inputs())
-print(voxelwise_results.voxelwise_moderator_effect_map_names)
-print(voxelwise_results.describe_voxelwise_moderator_effect_maps())
-
-###############################################################################
-# Plot voxelwise moderator-effect maps
-# -----------------------------------------------------------------------------
-# In the voxelwise model, each moderator has a fitted map in each group. This is
-# the key difference from global CBMR, where moderator inference is summarized in
-# scalar tables.
-
-plot_stat_map(
-    voxelwise_results.get_map(
-        "voxelwiseModeratorEffect_standardized_sample_sizes_group-SchizophreniaYes"
-    ),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    symmetric_cbar=True,
-    title="Voxelwise sample-size effect: SchizophreniaYes",
-)
-plot_stat_map(
-    voxelwise_results.get_map(
-        "voxelwiseModeratorEffect_standardized_avg_age_group-SchizophreniaYes"
-    ),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    symmetric_cbar=True,
-    title="Voxelwise age effect: SchizophreniaYes",
-)
-
-###############################################################################
-# Diagnostic maps for per-unit voxelwise moderator changes
-# -----------------------------------------------------------------------------
-# A fitted :class:`~nimare.meta.cbmr.CBMRInference` object can generate Relative
-# Intensity (RI) and Intensity Difference (ID) diagnostic maps showing how a
-# user-defined moderator-unit change affects spatial intensity. The helper
-# accepts the same moderator/group selectors as the inference methods and returns
-# a CBMRResult copy with named RI and ID maps.
+# Whether a moderator gets one coefficient or a map is decided by ``s()``, per term. Here sample
+# size is allowed only to scale the whole map, while age is allowed to reshape it.
 #
-# The result-centered methods above are the shortest path for statistical tests.
-# Here we construct the inference object explicitly because the diagnostic-map
-# plotting helpers live on :class:`~nimare.meta.cbmr.CBMRInference`.
+# Under the log link a global moderator can *only* rescale the intensity -- it multiplies every
+# voxel by the same factor. A spatially varying one can change the pattern. That is the real
+# distinction, and it is why the two answers arrive in different places: a scalar coefficient in
+# a table, a coefficient map among the maps.
 
-voxelwise_inference = voxelwise_results.get_inference(
-    method="FI",
-    incidence_threshold=None,
-)
-voxelwise_diagnostic_result = voxelwise_inference.generate_voxelwise_moderator_effect_maps(
-    moderators=["standardized_sample_sizes", "standardized_avg_age"],
-    groups="SchizophreniaYes",
-    unit_change=1.0,
-)
-print(voxelwise_diagnostic_result.metadata["voxelwise_moderator_effect_diagnostic_maps"])
+mixed_results = CBMR(
+    "~ s(diagnosis:drug_status) + standardized_sample_sizes + s(standardized_avg_age)",
+    **FIT_KWARGS,
+).fit(dataset=studyset)
+
+print(mixed_results.describe_terms())
+print(mixed_results.tables["moderatorEffect_standardized_sample_sizes"])
 
 plot_stat_map(
-    voxelwise_diagnostic_result.get_map(
-        "relativeIntensity_voxelwiseModeratorEffect_standardized_sample_sizes_unit-1_group-"
-        "SchizophreniaYes"
-    ),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    title="RI for one-SD sample-size increase: SchizophreniaYes",
-)
-plot_stat_map(
-    voxelwise_diagnostic_result.get_map(
-        "intensityDifference_voxelwiseModeratorEffect_standardized_sample_sizes_unit-1_group-"
-        "SchizophreniaYes"
-    ),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    title="ID for one-SD sample-size increase: SchizophreniaYes",
-)
-
-voxelwise_inference.plot_voxelwise_moderator_effects(
-    moderators=["standardized_sample_sizes", "standardized_avg_age"],
-    groups="SchizophreniaYes",
-    unit_change=1.0,
-    id_threshold=None,
-    cut_coords=[0, 0, -8],
-    plot_kwargs={"draw_cross": False},
-)
-
-###############################################################################
-# Inference on voxelwise moderator effects
-# -----------------------------------------------------------------------------
-# Voxelwise CBMR supports the same result-centered helpers. Because moderator
-# effects vary over space, moderator inference returns maps instead of scalar
-# tables. Passing ``method="sandwich"`` requests robust standard errors for this
-# spatially varying moderator test.
-
-voxelwise_moderator_result = voxelwise_results.test_moderators(method="sandwich")
-print(voxelwise_moderator_result.metadata["voxelwise_cbmr_inference_method"])
-
-plot_stat_map(
-    voxelwise_moderator_result.get_map(
-        "z_voxelwiseModeratorEffect_standardized_sample_sizes_group-SchizophreniaYes"
-    ),
+    mixed_results.get_map("voxelwiseModeratorEffect_standardized_avg_age"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
     symmetric_cbar=True,
-    title="Voxelwise test of sample-size effect: SchizophreniaYes",
-    threshold=None,
-    vmax=5,
-)
-
-voxelwise_moderator_comparison = voxelwise_results.compare_moderators(
-    [("standardized_sample_sizes", "standardized_avg_age")]
-)
-
-plot_stat_map(
-    voxelwise_moderator_comparison.get_map(
-        "z_voxelwiseModeratorEffect_standardized_sample_sizes-standardized_avg_age_group-"
-        "SchizophreniaYes"
-    ),
-    cut_coords=[0, 0, -8],
-    draw_cross=False,
-    cmap="RdBu_r",
-    symmetric_cbar=True,
-    title="Voxelwise sample-size vs. age effect: SchizophreniaYes",
-    threshold=None,
-    vmax=2,
+    title="Age effect on log intensity (per SD)",
 )
 
 ###############################################################################
-# Optional inverse-Fisher standard errors for voxelwise CBMR
+# Reading a moderator map: relative intensity and intensity difference
 # -----------------------------------------------------------------------------
-# Voxelwise inference can also use inverse Fisher information. These standard
-# errors are model-based: they are efficient when the likelihood,
-# mean-variance relationship, and independence assumptions are correctly
-# specified, but can be too optimistic when those assumptions are only
-# approximate. Coordinate-based meta-analytic data often have study-level
-# clustering and heterogeneous reporting practices. Sandwich standard errors use
-# the fitted model for the mean structure while estimating covariance from
-# empirical residual variation.
+# A moderator's coefficient map is a derivative of *log* intensity, which is hard to interpret
+# directly. Two derived scales help, for a stated change in the moderator:
 #
-# For that reason, we recommend keeping ``method="sandwich"`` as the default for
-# primary voxelwise CBMR inference. ``method="FI"`` can still be useful for
-# sensitivity analyses, simulations where the model is known to be correct, or
-# comparisons with fully model-based standard errors.
+# * **Relative Intensity (RI)** -- ``exp(unit * coefficient)``, the multiplicative factor on the
+#   intensity. An RI of 1.2 means 20% more foci expected at that voxel.
+# * **Intensity Difference (ID)** -- ``baseline * (RI - 1)``, the same effect in foci.
+#
+# ID is the one to threshold. RI is large wherever the baseline is small, so a striking ratio in
+# a region nobody reports is not a finding. Plotting them together is the point.
 
-voxelwise_fi_result = voxelwise_results.test_groups(method="FI")
-print(voxelwise_fi_result.metadata["voxelwise_cbmr_inference_method"])
-
-###############################################################################
-# Option 3: mixed moderator effects
-# -----------------------------------------------------------------------------
-# With ``moderator_effect="mixed"``, CBMR estimates group-specific baseline
-# spatial intensity functions, scalar coefficients for moderators listed in
-# ``global_moderators``, and smooth spatial coefficient maps for moderators
-# listed in ``voxelwise_moderators``. Use this option when different moderators
-# call for different effect parameterizations. The model below estimates sample
-# size as a global effect and age as a voxelwise, spatially varying effect in the
-# same fit. Mixed CBMR currently uses the full Poisson backend.
-
-mixed_cbmr = CBMREstimator(
-    moderator_effect="mixed",
-    group_categories=group_categories,
-    global_moderators=mixed_global_moderators,
-    voxelwise_moderators=mixed_voxelwise_moderators,
-    backend="full",
-    spline_spacing=100,  # a reasonable analysis choice is 10 or 5; 100 is for speed
-    n_iter=10,
-    lr=1e-1,
-    tol=1e3,  # a reasonable analysis choice is 1e-4; 1e3 is for speed
-    device="cpu",  # use "cuda" if you have a GPU
-    random_state=100,
-)
-mixed_results = mixed_cbmr.fit(dataset=studyset)
-
-print(mixed_results.describe_inference_inputs())
-print(mixed_results.tables["global_moderators_regression_coef"])
-print(mixed_results.voxelwise_moderator_effect_map_names)
-
-plot_stat_map(
-    mixed_results.get_map("voxelwiseModeratorEffect_standardized_avg_age_group-SchizophreniaYes"),
+mixed_results.plot_moderator_effects(
+    moderator="standardized_avg_age",
+    unit_change=1.0,
+    group="schizophrenia-Yes",
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
     symmetric_cbar=True,
-    title="Mixed CBMR voxelwise age effect: SchizophreniaYes",
 )
 
 ###############################################################################
-# Inference for mixed CBMR
+# Additive spatial factors
 # -----------------------------------------------------------------------------
-# The same result-centered methods dispatch each mixed-model moderator to the
-# right output type: global moderators return scalar tables, while voxelwise
-# moderators return spatial maps. Although the mixed model estimates both types
-# jointly, contrast vectors should test global and voxelwise moderators
-# separately because they occupy different parameter spaces.
+# ``s(diagnosis:drug_status)`` gives every cell a free map. The additive alternative says the two
+# factors shift one underlying map independently -- a stronger claim, and far cheaper.
+#
+# Writing it as ``s(diagnosis) + s(drug_status)`` does not work, and CBMR refuses it: each
+# cell-means spatial factor's columns sum to the constant, so their difference is exactly zero
+# and the design is rank deficient by a whole basis width whatever the data. ``sz()`` is the
+# identified form, after mgcv's ``bs="sz"`` basis. It constrains each factor's coefficients to
+# sum to zero across levels, so they measure deviations from a shared baseline instead of
+# competing with it.
 
-mixed_moderator_result = mixed_results.test_moderators(method="FI")
-print(mixed_moderator_result.tables["z_standardized_sample_sizes"])
-print(mixed_moderator_result.metadata["global_cbmr_inference_method"])
-print(mixed_moderator_result.metadata["voxelwise_cbmr_inference_method"])
+additive_results = CBMR("~ sz(diagnosis) + sz(drug_status)", **FIT_KWARGS).fit(dataset=studyset)
+
+print(additive_results.describe_terms())
 
 plot_stat_map(
-    mixed_moderator_result.get_map(
-        "z_voxelwiseModeratorEffect_standardized_avg_age_group-SchizophreniaYes"
-    ),
+    additive_results.get_map("spatialIntensity_group-Default"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
     symmetric_cbar=True,
-    title="Mixed CBMR test of voxelwise age effect: SchizophreniaYes",
-    threshold=None,
-    vmax=5,
+    title="Shared baseline intensity",
+    threshold=1e-4,
+    vmax=1e-3,
+)
+plot_stat_map(
+    additive_results.get_map("spatialFactorEffect_diagnosis-sz1"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+    title="Diagnosis deviation from the baseline",
 )
 
 ###############################################################################
-# Summary
+# Overdispersion
 # -----------------------------------------------------------------------------
-# Use ``moderator_effect="global"`` when the scientific question is whether a
-# moderator has an overall effect on activation intensity. Use
-# ``moderator_effect="voxelwise"`` when the scientific question is where that
-# moderator effect varies across the brain. Use ``moderator_effect="mixed"``
-# when both assumptions are needed in one model. All options share the same
-# preprocessing, grouping, and result-centered inference interface.
+# The Poisson model cannot represent excess variance in foci counts. Two alternatives can:
+# ``"negativebinomial"``, whose latent variation is independent at each voxel, and
+# ``"clusterednegativebinomial"``, whose latent effect belongs to an experiment and is shared
+# across the whole brain.
+#
+# Both are defined on marginals of a mean that factorizes into a spatial part and an
+# experiment-level part, so both need *several experiments sharing a spatial map*. A design with
+# a continuously varying spatial term -- ``s(avg_age)`` -- gives every experiment its own map and
+# is refused, with an error saying so. This is a property of those likelihoods rather than a gap
+# in the implementation.
+
+overdispersed = CBMR(
+    "~ s(diagnosis:drug_status)",
+    distribution="negativebinomial",
+    **{**FIT_KWARGS, "lr": 1e-2},
+).fit(dataset=studyset)
+
+print(overdispersed.tables["overdispersion"])
+
+###############################################################################
+# Migrating from the old interface
+# -----------------------------------------------------------------------------
+# The five moderator arguments and the ``moderator_effect`` switch are replaced by the formula:
+#
+# .. list-table::
+#    :header-rows: 1
+#
+#    * - Old
+#      - New
+#    * - ``CBMREstimator()``
+#      - ``CBMR("~ 1")``
+#    * - ``group_categories=["a", "b"]``
+#      - ``CBMR("~ s(a:b)")``
+#    * - ``moderators=["n"], moderator_effect="global"``
+#      - ``CBMR("~ s(a:b) + n")``
+#    * - ``moderators=["n"], moderator_effect="voxelwise"``
+#      - ``CBMR("~ s(a:b) + s(a:b:n)")``
+#    * - ``moderator_effect="mixed", global_moderators=["n"], voxelwise_moderators=["age"]``
+#      - ``CBMR("~ s(a:b) + n + s(age)")``
+#    * - ``model=models.NegativeBinomialEstimator``
+#      - ``distribution="negativebinomial"``
+#    * - ``infer(group_contrasts=[[[1, -1, 0, 0]]])``
+#      - ``result.test("a1-b1 = a1-b2")``
+#
+# Note the fourth row. The old voxelwise mode keyed moderator coefficients by group, so it was
+# always the group-crossed form ``s(a:b:n)``. A moderator map *pooled* across groups, ``s(n)``,
+# had no representation at all; nor did a group-specific scalar slope, ``a:n``, since global
+# moderator coefficients were shared by construction. Both are now writable.

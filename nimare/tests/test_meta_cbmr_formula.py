@@ -1,6 +1,7 @@
 """End-to-end tests for the formula-specified CBMR estimator."""
 
 import logging
+import os
 import warnings
 
 import numpy as np
@@ -214,8 +215,37 @@ def test_description_names_the_design(studyset):
         **{**FIT_KWARGS, "generate_description": True},
     ).fit(dataset=studyset)
 
-    assert "s(diagnosis)" in result.description_
+    assert "s(diagnosis) + standardized_sample_sizes" in result.description_
     assert "Poisson" in result.description_
+    # The parameter budget belongs in the methods paragraph, not only in a log line.
+    assert "coefficients" in result.description_
+
+
+@pytest.mark.parametrize(
+    "distribution,citation",
+    [
+        ("poisson", "eisenberg1966general"),
+        ("negativebinomial", "barndorff1969negative"),
+        ("clusterednegativebinomial", "geoffroy2001poisson"),
+    ],
+)
+def test_description_cites_the_distribution(studyset, distribution, citation):
+    """Each distribution must cite its source, and the key must resolve in the bundled BibTeX.
+
+    An unresolvable key is not merely untidy: NiMARE warns and silently drops it from the
+    reference list, so a generated methods section would cite nothing.
+    """
+    from nimare.utils import get_resource_path
+
+    result = CBMR(
+        "~ s(diagnosis)",
+        distribution=distribution,
+        **{**FIT_KWARGS, "generate_description": True, "lr": 1e-2},
+    ).fit(dataset=studyset)
+
+    assert citation in result.description_
+    with open(os.path.join(get_resource_path(), "references.bib")) as handle:
+        assert f"{{{citation}," in handle.read()
 
 
 def test_result_tests_hypotheses_by_name(studyset):

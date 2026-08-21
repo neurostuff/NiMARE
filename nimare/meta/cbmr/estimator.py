@@ -575,10 +575,32 @@ class CBMR(_CBMRInputs):
 
     def _generate_description(self):
         """Describe the fitted model."""
+        distribution_citations = {
+            "Poisson": (
+                "the Poisson model \\citep{eisenberg1966general}, which treats voxel-wise foci "
+                "counts as independent Poisson variables"
+            ),
+            "NegativeBinomial": (
+                "the negative binomial model \\citep{barndorff1969negative}, which allows "
+                "excess variance relative to Poisson through latent variation at each voxel"
+            ),
+            "ClusteredNegativeBinomial": (
+                "the clustered negative binomial model \\citep{geoffroy2001poisson}, whose "
+                "latent effect belongs to an experiment and is shared across the brain"
+            ),
+        }
+        distribution_text = distribution_citations.get(
+            self.distribution.name, f"the {self.distribution.name} model"
+        )
+        n_bases = self.predictor.n_bases
         return (
-            f"A coordinate-based meta-regression with design {self.bound_design.design} and a "
-            f"{self.distribution.name} observation model was fitted with NiMARE "
-            f"{__version__}, using cubic B-spline bases at spacing {self.spline_spacing}."
+            f"A coordinate-based meta-regression with the design {self.bound_design.design} was "
+            f"fitted with NiMARE {__version__}, using {distribution_text}. Spatial structure was "
+            f"parameterized by cubic B-spline bases at spacing {self.spline_spacing}, giving "
+            f"{n_bases} bases over {self.predictor.n_voxels} analysis-mask voxels, for "
+            f"{self.bound_design.n_parameters(n_bases)} coefficients across "
+            f"{self.predictor.patterns.n_experiments} experiments and "
+            f"{self.predictor.patterns.n_patterns} distinct spatial map(s)."
         )
 
 
