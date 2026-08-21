@@ -2,7 +2,6 @@
 
 import logging
 import re
-import time
 
 import nibabel as nib
 import numpy as np
@@ -11,20 +10,16 @@ import scipy.sparse
 
 from nimare import _version
 from nimare.estimator import Estimator
-from nimare.meta import models
 from nimare.meta.cbmr._helpers import (
     DEFAULT_GROUP_NAME,
     DEFAULT_INCIDENCE_THRESHOLD,
-    _as_csr_matrix,
     _uses_cuda,
     _validate_incidence_threshold,
 )
 from nimare.meta.cbmr._torch import torch
 from nimare.meta.cbmr.basis import b_spline_bases
-from nimare.meta.cbmr.optimizers import fit_voxelwise_cbmr_approximate
-from nimare.meta.cbmr.results import CBMRFormulaResult, CBMRResult
+from nimare.meta.cbmr.results import CBMRResult
 from nimare.utils import (
-    dummy_encoding_moderators,
     get_masker,
     get_masker_mask_image,
     get_template,
@@ -37,400 +32,22 @@ LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
 
 
-class CBMREstimator(Estimator):
-    """Coordinate-based meta-regression with a spatial model.
+class _CBMRInputs(Estimator):
+    """Shared input preparation for CBMR.
 
-    .. warning::
-        Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+    Turns reported coordinates into the three things a model needs: an analysis mask, a spline
+    basis evaluated at its voxels, and an experiment-by-voxel matrix of focus counts. Split from
+    the estimator because it is substantial, independent of how the model is specified, and the
+    place where a silent misalignment would be least detectable -- the formula binds terms
+    against the annotation table, so its row order has to match the foci matrix exactly.
 
-    .. versionadded:: 0.1.0
-
-    Parameters
-    ----------
-    group_categories : :obj:`~str` or obj:`~list` or obj:`~None`, optional
-        CBMR allows a collection to be categorized into multiple groups according to one or more
-        group categories. Default is one-group CBMR.
-    moderators : :obj:`~str` or obj:`~list` or obj:`~None`, optional
-        CBMR can accommodate moderators (e.g. sample size, year of publication).
-        Default is CBMR without moderators.
-    global_moderators : :obj:`~str` or obj:`~list` or obj:`~None`, optional
-        Moderators with scalar, whole-brain effects. In global CBMR, this is an alias for
-        ``moderators``. In mixed CBMR, these are modeled separately from voxelwise moderators.
-    voxelwise_moderators : :obj:`~str` or obj:`~list` or obj:`~None`, optional
-        Moderators with spatially varying effects. In voxelwise CBMR, this is an alias for
-        ``moderators``. In mixed CBMR, these are modeled separately from global moderators.
-    moderator_effect : {"voxelwise", "global"}, optional
-        How experiment-level moderator effects are parameterized. ``"global"`` fits the
-        standard CBMR model with one coefficient per moderator and group. ``"voxelwise"`` fits
-        the voxelwise moderator-effect CBMR backend, in which moderator effects vary smoothly over
-        voxels.
-        Default is ``"global"``.
-    mask : :obj:`str`, :class:`~nibabel.nifti1.Nifti1Image`, or Nilearn masker, optional
-        Region-of-interest mask. If None, CBMR uses the whole 2 mm MNI152 brain mask.
-    incidence_threshold : :obj:`float` or None, optional
-        Drop voxels with empirical focus incidence less than or equal to this threshold after
-        applying ``mask``. Empirical incidence is the fraction of experiments with at least one
-        focus in a voxel. Use None to retain all voxels in ``mask``. Default is 0.001.
-    model : subclass of :class:`~nimare.meta.models.GeneralLinearModelEstimator`, optional
-        Stochastic model class used by CBMR. Available options are:
-
-        - :class:`~nimare.meta.models.PoissonEstimator` (default): the most efficient
-          and widely used option, but slightly less accurate because it approximates
-          low-rate binomial data, cannot account for over-dispersion in foci counts,
-          and may underestimate standard errors.
-        - :class:`~nimare.meta.models.NegativeBinomialEstimator`: slower and
-          sometimes less stable, but slightly more accurate. This model allows
-          anticipated excess variance relative to Poisson via a group-wise
-          overdispersion parameter shared by all experiments and voxels.
-        - :class:`~nimare.meta.models.ClusteredNegativeBinomialEstimator`: a
-          random-effects Poisson variant that models experiment-level latent
-          characteristics shared across the brain for a given experiment.
-    penalty : :obj:`~bool`, optional
-        Currently, the only available option is Firth-type penalty, which penalizes the
-        likelihood function by Jeffreys' invariant prior and encourages convergence.
-    spline_spacing : :obj:`~int`, optional
-        Spatial structure of foci counts is parameterized by the coefficients of cubic
-        B-spline bases in CBMR. Spatial smoothness in CBMR is determined by spline spacing,
-        which is shared across the x, y, and z dimensions. Default is 10.
-    n_iter : :obj:`int`, optional
-        Number of iterations allowed in the log-likelihood optimization.
-        Default is 2000.
-    lr : :obj:`float`, optional
-        Learning rate in optimization of log-likelihood function.
-        Default is 1.
-    lr_decay : :obj:`float`, optional
-        Multiplicative factor of learning rate decay.
-        Default is 0.999.
-    tol : :obj:`float`, optional
-        Stopping criterion based on the change in log-likelihood between two consecutive
-        iterations. Default is 1e-9.
-    device : :obj:`string`, optional
-        Device type ('cpu' or 'cuda') representing where operations will be allocated.
-        Default is 'cpu'.
-    random_state : :obj:`int`, optional
-        Random seed used for torch-based weight initialization. Default is None.
-    **kwargs
-        Keyword arguments. Arguments for the Estimator can be assigned here,
-        Additional masking controls are exposed as ``mask`` and ``incidence_threshold``.
-
-    Attributes
-    ----------
-    masker : :class:`~nilearn.maskers.NiftiMasker` or similar
-        Masker object.
-    inputs_ : :obj:`dict`
-        Inputs to the Estimator. For CBMR estimators, this includes the following keys:
-        coordinates,
-        mask_img (brain mask image),
-        id (experiment ids),
-        ids_by_group (experiment ids categorized by groups),
-        moderators_by_group (moderators categorized by groups, if present),
-        coef_spline_bases (spatial matrix of cubic B-spline coefficients in x, y, and z),
-        foci_by_experiment (experiment-by-voxel sparse focus-count matrices, categorized by
-        groups),
-        foci_per_voxel (voxelwise sum of foci counts across experiments, categorized by groups),
-        foci_per_experiment (experiment-wise sum of foci counts across space, categorized by
-        groups).
-
-    Notes
-    -----
-    Follow-up inference is exposed through :class:`~nimare.meta.cbmr.CBMRResult` and
-    :class:`~nimare.meta.cbmr.CBMRInference`.
+    The analysis mask is narrower than the ROI mask: voxels whose empirical focus incidence is at
+    or below ``incidence_threshold`` are dropped, since they carry no information about the
+    intensity there and would only widen the basis.
     """
 
     _required_inputs = {"coordinates": ("coordinates", None)}
     _group_column = "_cbmr_group"
-    _valid_moderator_effects = ("global", "voxelwise", "mixed")
-    _valid_backends = ("full", "approximate")
-
-    @classmethod
-    def _validate_moderator_effect(cls, moderator_effect):
-        """Validate and normalize the public moderator-effect selector."""
-        if isinstance(moderator_effect, str):
-            moderator_effect = moderator_effect.lower()
-        if moderator_effect not in cls._valid_moderator_effects:
-            raise ValueError(
-                "moderator_effect must be one of "
-                f"{cls._valid_moderator_effects}. Got {moderator_effect!r}."
-            )
-        return moderator_effect
-
-    def __init__(
-        self,
-        group_categories=None,
-        moderators=None,
-        global_moderators=None,
-        voxelwise_moderators=None,
-        global_moderator=None,
-        moderator_effect="global",
-        mask=None,
-        incidence_threshold=DEFAULT_INCIDENCE_THRESHOLD,
-        spline_spacing=10,
-        model=models.PoissonEstimator,
-        penalty=False,
-        backend="full",
-        n_iter=2000,
-        lr=1,
-        lr_decay=0.999,
-        tol=1e-9,
-        device="cpu",
-        random_state=None,
-        alpha=1.0,
-        damping=1e-4,
-        compute_nll=False,
-        **kwargs,
-    ):
-        self._init_pipeline_state(
-            group_categories=group_categories,
-            moderators=moderators,
-            global_moderators=global_moderators,
-            voxelwise_moderators=voxelwise_moderators,
-            global_moderator=global_moderator,
-            moderator_effect=moderator_effect,
-            mask=mask,
-            incidence_threshold=incidence_threshold,
-            spline_spacing=spline_spacing,
-            model=model,
-            penalty=penalty,
-            backend=backend,
-            n_iter=n_iter,
-            lr=lr,
-            lr_decay=lr_decay,
-            tol=tol,
-            device=device,
-            random_state=random_state,
-            alpha=alpha,
-            damping=damping,
-            compute_nll=compute_nll,
-            **kwargs,
-        )
-
-    def _init_pipeline_state(
-        self,
-        group_categories=None,
-        moderators=None,
-        global_moderators=None,
-        voxelwise_moderators=None,
-        global_moderator=None,
-        moderator_effect="global",
-        mask=None,
-        incidence_threshold=DEFAULT_INCIDENCE_THRESHOLD,
-        spline_spacing=10,
-        model=models.PoissonEstimator,
-        penalty=False,
-        backend="full",
-        n_iter=2000,
-        lr=1,
-        lr_decay=0.999,
-        tol=1e-9,
-        device="cpu",
-        random_state=None,
-        alpha=1.0,
-        damping=1e-4,
-        compute_nll=False,
-        **kwargs,
-    ):
-        """Initialize shared estimator state for the selected concrete CBMR pipeline."""
-        super().__init__(**kwargs)
-        self.moderator_effect = self._validate_moderator_effect(moderator_effect)
-        if global_moderator is not None:
-            if global_moderators is not None:
-                raise ValueError("Use only one of global_moderator or global_moderators.")
-            global_moderators = global_moderator
-        self.incidence_threshold = _validate_incidence_threshold(incidence_threshold)
-        if backend not in self._valid_backends:
-            raise ValueError(f"backend must be one of {self._valid_backends}. Got {backend!r}.")
-        if (
-            self.moderator_effect in ("voxelwise", "mixed")
-            and model is not models.PoissonEstimator
-        ):
-            raise ValueError("Voxelwise CBMR currently requires model=models.PoissonEstimator.")
-        if self.moderator_effect == "mixed" and backend != "full":
-            raise ValueError("Mixed CBMR currently requires backend='full'.")
-        self.mask = mask
-        self.masker = get_masker(mask) if mask is not None else None
-
-        self.group_categories = group_categories
-        self.global_moderators = self._as_moderator_list(global_moderators)
-        self.voxelwise_moderators = self._as_moderator_list(voxelwise_moderators)
-        self.moderators = self._resolve_moderators_for_effect(
-            moderators,
-            self.global_moderators,
-            self.voxelwise_moderators,
-        )
-
-        self.spline_spacing = spline_spacing
-        model_class = (
-            models.PoissonEstimator if self.moderator_effect in ("voxelwise", "mixed") else model
-        )
-        self.model = model_class(
-            penalty=penalty, lr=lr, lr_decay=lr_decay, n_iter=n_iter, tol=tol, device=device
-        )
-        self.penalty = penalty
-        self.backend = backend
-        self.n_iter = n_iter
-        self.lr = lr
-        self.lr_decay = lr_decay
-        self.tol = tol
-        self.device = device
-        self.random_state = random_state
-        self.alpha = alpha
-        self.damping = damping
-        self.compute_nll = compute_nll
-        self.voxelwise_model = None
-        self.voxelwise_coef = None
-        if _uses_cuda(self.device) and not torch.cuda.is_available():
-            LGR.debug("CUDA not found; using device 'cpu'.")
-            self.device = "cpu"
-        self.model.device = self.device
-
-    @staticmethod
-    def _as_moderator_list(moderators):
-        """Normalize moderator selectors to a list without expanding categorical variables."""
-        if moderators is None:
-            return []
-        if isinstance(moderators, str):
-            return [moderators]
-        return list(moderators)
-
-    def _resolve_moderators_for_effect(
-        self,
-        moderators,
-        global_moderators,
-        voxelwise_moderators,
-    ):
-        """Resolve public moderator arguments into the estimator's active moderators."""
-        if self.moderator_effect == "mixed":
-            if moderators is not None:
-                raise ValueError(
-                    "Use global_moderators and/or voxelwise_moderators when "
-                    "moderator_effect='mixed'."
-                )
-            duplicated = set(global_moderators) & set(voxelwise_moderators)
-            if duplicated:
-                raise ValueError(
-                    "The same moderator cannot be both global and voxelwise in a mixed CBMR "
-                    f"model: {sorted(duplicated)}."
-                )
-            return global_moderators + voxelwise_moderators
-
-        if self.moderator_effect == "global":
-            if voxelwise_moderators:
-                raise ValueError(
-                    "voxelwise_moderators can only be used when "
-                    "moderator_effect='voxelwise' or 'mixed'."
-                )
-            if global_moderators:
-                if moderators is not None:
-                    raise ValueError(
-                        "Use only one of moderators or global_moderators when "
-                        "moderator_effect='global'."
-                    )
-                return global_moderators
-            return moderators
-
-        if global_moderators:
-            raise ValueError(
-                "global_moderators can only be used when " "moderator_effect='global' or 'mixed'."
-            )
-        if voxelwise_moderators:
-            if moderators is not None:
-                raise ValueError(
-                    "Use only one of moderators or voxelwise_moderators when "
-                    "moderator_effect='voxelwise'."
-                )
-            return voxelwise_moderators
-        return moderators
-
-    def _generate_description(self):
-        """Generate a description of the Estimator instance.
-
-        Returns
-        -------
-        description : :obj:`str`
-            Description of the Estimator instance.
-        """
-        if self.moderator_effect == "mixed":
-            moderator_parts = []
-            if self.global_moderators:
-                moderator_parts.append(f"global moderators: {', '.join(self.global_moderators)}")
-            if self.voxelwise_moderators:
-                moderator_parts.append(
-                    f"voxelwise moderators: {', '.join(self.voxelwise_moderators)}"
-                )
-            moderators_str = (
-                f"and accommodate the following moderators: {'; '.join(moderator_parts)}"
-                if moderator_parts
-                else ""
-            )
-        elif self.moderators:
-            moderators_str = f"""and accommodate the following moderators:
-                            {', '.join(self.moderators)}"""
-        else:
-            moderators_str = ""
-        if self.moderator_effect == "global":
-            moderator_effect_str = " Moderator effects were modeled as global effects."
-        elif self.moderator_effect == "mixed":
-            moderator_effect_str = (
-                " Moderator effects were modeled with a mixture of global and voxelwise effects."
-            )
-        else:
-            moderator_effect_str = " Moderator effects were modeled as voxelwise effects."
-        if self.model.penalty:
-            penalty_str = " Firth-type penalty is applied to ensure convergence."
-        else:
-            penalty_str = ""
-
-        if type(self.model).__name__ == "PoissonEstimator":
-            model_str = (
-                " Here, Poisson model \\citep{eisenberg1966general} is the most basic CBMR model. "
-                "It's based on the assumption that foci arise from a realisation of a continuous "
-                "inhomogeneous Poisson process, so that the (discrete) voxel-wise foci counts will"
-                " be independently distributed as Poisson random variables, with rate equal to the"
-                " integral of the true, unobserved, continuous intensity function over each voxel."
-            )
-        elif type(self.model).__name__ == "NegativeBinomialEstimator":
-            model_str = (
-                " Negative Binomial (NB) model \\citep{barndorff1969negative} is a generalized "
-                "Poisson model with over-dispersion. "
-                "It's a more flexible model, but more difficult to estimate. In practice, foci"
-                "counts often display over-dispersion (the variance of response variable"
-                " substantially exceeds the mean), which is not captured by the Poisson model."
-            )
-        elif type(self.model).__name__ == "ClusteredNegativeBinomialEstimator":
-            model_str = (
-                " Clustered NB model \\citep{geoffroy2001poisson} can also accommodate "
-                "over-dispersion in foci counts. "
-                "In the NB model, the latent random variable introduces independent variation "
-                "at each voxel. While in the Clustered NB model, we assert the random effects "
-                "are not independent voxelwise effects, but rather latent characteristics of "
-                "each experiment, and represent a shared effect over the entire brain for a "
-                "given experiment."
-            )
-
-        model_description = (
-            f"CBMR is a meta-regression framework that was performed with NiMARE {__version__}. "
-            f"{type(self.model).__name__} model was used to model group-wise spatial intensity "
-            f"functions {moderators_str}." + moderator_effect_str + model_str
-        )
-
-        optimization_description = (
-            "CBMR is fitted via maximizing the log-likelihood function with L-BFGS algorithm, with"
-            f" learning rate {self.lr}, learning rate decay {self.lr_decay} and "
-            f"tolerance {self.tol}." + penalty_str + f" The optimization is run on {self.device}."
-            f" The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
-            f"{len(self.inputs_['id'])} experiments. The analysis mask included "
-            f"{self.inputs_['coef_spline_bases'].shape[0]} voxels after ROI and empirical "
-            f"incidence filtering."
-        )
-
-        description = model_description + "\n" + optimization_description
-        return description
-
-    def _make_result(self, dataset, maps=None, tables=None, description=""):
-        """Construct a CBMR-specific result object."""
-        masker = self.masker or dataset.masker
-        return CBMRResult(self, mask=masker, maps=maps, tables=tables, description=description)
 
     def _resolve_roi_masker(self, dataset):
         """Return the user-requested ROI masker or the default 2 mm MNI brain masker."""
@@ -605,93 +222,31 @@ class CBMREstimator(Estimator):
         )
         return ids_by_group
 
-    def _build_group_moderators(self, experiment_annotations):
-        """Collect moderator arrays in the same experiment order used elsewhere in CBMR."""
-        if self.moderator_effect == "mixed":
-            outputs = {}
-            all_moderators = []
-            for attr, input_key in (
-                ("global_moderators", "global_moderators_by_group"),
-                ("voxelwise_moderators", "voxelwise_moderators_by_group"),
-            ):
-                moderator_names = getattr(self, attr)
-                if not moderator_names:
-                    outputs[input_key] = None
-                    setattr(self, attr, [])
-                    continue
-                experiment_annotations, moderator_names = dummy_encoding_moderators(
-                    experiment_annotations,
-                    moderator_names,
-                )
-                moderator_names = self._as_moderator_list(moderator_names)
-                setattr(self, attr, moderator_names)
-                all_moderators.extend(moderator_names)
-                moderators_by_group = {}
-                for group, group_annotations in experiment_annotations.groupby(
-                    self._group_column, sort=False
-                ):
-                    moderators_by_group[group] = group_annotations[moderator_names].to_numpy()
-                outputs[input_key] = moderators_by_group
-
-            self.moderators = all_moderators
-            outputs["moderators_by_group"] = outputs["voxelwise_moderators_by_group"]
-            return experiment_annotations, outputs
-
-        if not self.moderators:
-            self.inputs_.pop("moderators_by_group", None)
-            return experiment_annotations, None
-
-        experiment_annotations, self.moderators = dummy_encoding_moderators(
-            experiment_annotations, self.moderators
-        )
-        if isinstance(self.moderators, str):
-            self.moderators = [self.moderators]
-
-        moderators_by_group = {}
-        for group, group_annotations in experiment_annotations.groupby(
-            self._group_column, sort=False
-        ):
-            moderators_by_group[group] = group_annotations[self.moderators].to_numpy()
-
-        return experiment_annotations, moderators_by_group
-
     def _build_experiment_group_inputs(self, dataset, filtered_coordinates, n_mask_voxels):
-        """Assemble grouped experiment IDs, moderators, and focus summaries."""
+        """Assemble experiment IDs and the foci matrix.
+
+        A single group, because a term-based design expresses grouping through the formula. That
+        is what makes ``foci_by_experiment`` one (experiments x voxels) matrix rather than a dict
+        of per-group ones, which is the shape the predictor consumes.
+        """
         experiment_annotations = self._collect_experiment_annotations(dataset)
         experiment_annotations = self._assign_group_labels(experiment_annotations)
         ids_by_group = self._index_experiments_by_group(experiment_annotations)
         self.groups = list(ids_by_group.keys())
 
-        experiment_annotations, moderators_by_group = self._build_group_moderators(
-            experiment_annotations
-        )
-        foci_by_experiment, foci_per_voxel, foci_per_experiment = self._build_group_foci(
-            filtered_coordinates,
-            ids_by_group,
-            n_mask_voxels,
-        )
-        inputs = {
+        return {
             "ids_by_group": ids_by_group,
-            "foci_by_experiment": foci_by_experiment,
-            "foci_per_voxel": foci_per_voxel,
-            "foci_per_experiment": foci_per_experiment,
-        }
-        if self.moderator_effect == "mixed":
-            inputs.update(moderators_by_group)
-        else:
-            inputs["moderators_by_group"] = moderators_by_group
-        if self.moderator_effect in ("voxelwise", "mixed"):
-            inputs["foci_by_experiment_voxel"] = self._build_group_foci_matrices(
+            "foci_by_experiment": self._build_group_foci_matrices(
                 filtered_coordinates,
                 ids_by_group,
                 n_mask_voxels,
-            )
-        return inputs
+            ),
+        }
 
     @staticmethod
     def _build_group_foci_matrices(coordinates, ids_by_group, n_mask_voxels):
         """Return experiment-by-voxel foci count matrices for each group."""
-        return CBMREstimator._build_group_sparse_foci_matrices(
+        return _CBMRInputs._build_group_sparse_foci_matrices(
             coordinates,
             ids_by_group,
             n_mask_voxels,
@@ -723,72 +278,6 @@ class CBMREstimator(Estimator):
                 dtype=dtype,
             )
         return foci_by_experiment
-
-    def _as_torch_tensor(self, value):
-        """Convert an array-like object to a float64 tensor on the estimator device."""
-        if scipy.sparse.issparse(value):
-            value = _as_csr_matrix(value).toarray()
-        return torch.as_tensor(value, dtype=torch.float64, device=self.device)
-
-    def _prepare_torch_inputs(self):
-        """Return tensorized voxelwise moderator-effect CBMR inputs."""
-        bases = self._as_torch_tensor(self.inputs_["coef_spline_bases"])
-        moderators_by_group = None
-        if self.moderator_effect == "mixed":
-            moderator_names = self.voxelwise_moderators
-            moderator_key = "voxelwise_moderators_by_group"
-        else:
-            moderator_names = self.moderators
-            moderator_key = "moderators_by_group"
-        if moderator_names:
-            moderators_by_group = {
-                group: self._as_torch_tensor(self.inputs_[moderator_key][group])
-                for group in self.groups
-            }
-        global_moderators_by_group = None
-        if self.moderator_effect == "mixed" and self.global_moderators:
-            global_moderators_by_group = {
-                group: self._as_torch_tensor(self.inputs_["global_moderators_by_group"][group])
-                for group in self.groups
-            }
-        foci_by_experiment_voxel = {
-            group: self._as_torch_tensor(self.inputs_["foci_by_experiment_voxel"][group])
-            for group in self.groups
-        }
-        if self.moderator_effect == "mixed":
-            return bases, moderators_by_group, foci_by_experiment_voxel, global_moderators_by_group
-        return bases, moderators_by_group, foci_by_experiment_voxel
-
-    def _voxelwise_cbmr_description(self, backend):
-        """Generate a NiMARE-style description for voxelwise moderator-effect CBMR."""
-        if self.moderator_effect == "mixed":
-            moderator_text = []
-            if self.global_moderators:
-                moderator_text.append(
-                    f"global moderator effects for {', '.join(self.global_moderators)}"
-                )
-            if self.voxelwise_moderators:
-                moderator_text.append(
-                    f"voxelwise moderator effects for {', '.join(self.voxelwise_moderators)}"
-                )
-            moderator_text = (
-                "with " + " and ".join(moderator_text)
-                if moderator_text
-                else "without experiment-level moderators"
-            )
-        elif self.moderators:
-            moderator_text = (
-                "with voxelwise moderator effects for " f"{', '.join(self.moderators)}"
-            )
-        else:
-            moderator_text = "without experiment-level moderators"
-        return (
-            f"Voxelwise moderator-effect CBMR was performed with the {backend} backend "
-            f"{moderator_text}. The model used {len(self.groups)} group(s), "
-            f"spline spacing {self.spline_spacing}, device {self.device}, and "
-            f"{self.inputs_['coef_spline_bases'].shape[0]} analysis-mask voxels after ROI and "
-            f"empirical incidence filtering."
-        )
 
     def _build_group_foci(self, coordinates, ids_by_group, n_mask_voxels):
         """Summarize voxelwise and experiment-wise focus counts for each group."""
@@ -898,276 +387,8 @@ class CBMREstimator(Estimator):
             )
         )
 
-    def _fit(self, dataset):
-        """Perform coordinate-based meta-regression (CBMR) on dataset.
 
-        (1) Estimate group-wise spatial regression coefficients and its standard error via
-        inverse of Fisher Information matrix; Similarly, estimate regression coefficient of
-        moderators (if exist), as well as its standard error via inverse of
-        Fisher Information matrix;
-        (2) Estimate standard error of group-wise log intensity, group-wise intensity via delta
-        method;
-        (3) For NegativeBinomial or ClusteredNegativeBinomial model, estimate regression
-        coefficient of overdispersion.
-
-        Parameters
-        ----------
-        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
-            Collection to analyze.
-
-        .. warning::
-            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
-        """
-        if self.moderator_effect in ("voxelwise", "mixed"):
-            if self.backend == "approximate":
-                return self._fit_approximate(dataset)
-            return self._fit_full(dataset)
-
-        init_weight_kwargs = {
-            "groups": self.groups,
-            "moderators": self.moderators,
-            "spatial_coef_dim": self.inputs_["coef_spline_bases"].shape[1],
-            "moderators_coef_dim": len(self.moderators) if self.moderators else None,
-        }
-        seed_torch(self.random_state, self.device)
-        self.model.init_weights(**init_weight_kwargs)
-
-        moderators_by_group = self.inputs_["moderators_by_group"] if self.moderators else None
-        self.model.fit(
-            self.inputs_["coef_spline_bases"],
-            moderators_by_group,
-            self.inputs_["foci_per_voxel"],
-            self.inputs_["foci_per_experiment"],
-        )
-
-        maps, tables = self.model.summary()
-
-        return maps, tables, self._description_text()
-
-    def _fit_full(self, dataset):
-        """Fit voxelwise moderator-effect CBMR with the full torch L-BFGS backend."""
-        seed_torch(self.random_state, self.device)
-        torch_inputs = self._prepare_torch_inputs()
-        if self.moderator_effect == "mixed":
-            (
-                bases,
-                moderators_by_group,
-                foci_by_experiment_voxel,
-                global_moderators_by_group,
-            ) = torch_inputs
-        else:
-            bases, moderators_by_group, foci_by_experiment_voxel = torch_inputs
-            global_moderators_by_group = None
-        voxelwise_moderators = (
-            self.voxelwise_moderators if self.moderator_effect == "mixed" else self.moderators
-        )
-        moderators_coef_dim = len(voxelwise_moderators) if voxelwise_moderators else None
-        global_moderators_coef_dim = (
-            len(self.global_moderators)
-            if self.moderator_effect == "mixed" and self.global_moderators
-            else None
-        )
-        self.voxelwise_model = models.SpatialCBMRModel(
-            groups=self.groups,
-            spatial_coef_dim=self.inputs_["coef_spline_bases"].shape[1],
-            moderators_coef_dim=moderators_coef_dim,
-            global_moderators_coef_dim=global_moderators_coef_dim,
-            device=self.device,
-        )
-        optimizer = torch.optim.LBFGS(
-            params=self.voxelwise_model.parameters(),
-            lr=self.lr,
-            max_iter=self.n_iter,
-            tolerance_change=self.tol,
-            line_search_fn="strong_wolfe",
-        )
-        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=self.lr_decay)
-        start_time = time.time()
-
-        def closure():
-            """Evaluate the L-BFGS closure required by torch."""
-            optimizer.zero_grad()
-            loss = self.voxelwise_model(
-                bases,
-                moderators_by_group,
-                foci_by_experiment_voxel,
-                global_moderators_by_group=global_moderators_by_group,
-            )
-            loss.backward()
-            return loss
-
-        optimizer.step(closure)
-        scheduler.step()
-        LGR.info(
-            "Voxelwise moderator-effect CBMR optimisation took %.1f s.",
-            time.time() - start_time,
-        )
-        maps, tables = self._extract_torch_results(moderators_by_group)
-        return maps, tables, self._voxelwise_cbmr_description("full L-BFGS")
-
-    def _fit_approximate(self, dataset):
-        """Fit voxelwise moderator-effect CBMR with the approximate backend."""
-        bases = self.inputs_["coef_spline_bases"]
-        maps = {}
-        tables = {}
-        self.voxelwise_coef = {}
-        for group in self.groups:
-            foci = self.inputs_["foci_by_experiment_voxel"][group]
-            if self.moderators:
-                moderators = self.inputs_["moderators_by_group"][group]
-            else:
-                moderators = np.empty((foci.shape[0], 0), dtype=np.float64)
-
-            augmented_moderators = np.column_stack(
-                [moderators, np.ones((foci.shape[0], 1), dtype=np.float64)]
-            )
-            coefficient = self._voxelwise_cbmr_approximate_solver(
-                augmented_moderators,
-                bases,
-                foci,
-                tol=self.tol,
-                max_iter=self.n_iter,
-                alpha=self.alpha,
-                damping=self.damping,
-                compute_nll=self.compute_nll,
-            )
-            self.voxelwise_coef[group] = coefficient
-            self._add_approximate_results(
-                maps,
-                tables,
-                group,
-                moderators,
-                coefficient,
-            )
-        return maps, tables, self._voxelwise_cbmr_description("approximate")
-
-    @property
-    def _voxelwise_cbmr_approximate_solver(self):
-        """Return the approximate solver used by the voxelwise backend."""
-        return fit_voxelwise_cbmr_approximate
-
-    def _extract_torch_results(self, moderators_by_group):
-        """Extract maps and coefficient tables from the fitted torch model."""
-        bases = self.inputs_["coef_spline_bases"]
-        maps = {}
-        tables = {}
-        for group in self.groups:
-            spatial_coef = (
-                self.voxelwise_model.spatial_coef_linears[group]
-                .weight.detach()
-                .cpu()
-                .numpy()
-                .ravel()
-            )
-            maps[f"spatialIntensity_group-{group}"] = np.exp(bases @ spatial_coef)
-            self._add_spatial_coef_table(tables, group, spatial_coef)
-            voxelwise_moderators = (
-                self.voxelwise_moderators if self.moderator_effect == "mixed" else self.moderators
-            )
-            if voxelwise_moderators:
-                moderator_coef = (
-                    self.voxelwise_model.moderator_coef_linears[group]
-                    .weight.detach()
-                    .cpu()
-                    .numpy()
-                )
-                moderators = moderators_by_group[group].detach().cpu().numpy()
-                self._add_moderator_maps_and_tables(
-                    maps,
-                    tables,
-                    group,
-                    moderators,
-                    moderator_coef,
-                )
-        if self.moderator_effect == "mixed" and self.global_moderators:
-            global_coef = (
-                self.voxelwise_model.global_moderators_linear.weight.detach().cpu().numpy()
-            )
-            tables["global_moderators_regression_coef"] = pd.DataFrame(
-                data=global_coef,
-                columns=self.global_moderators,
-            )
-        return maps, tables
-
-    @staticmethod
-    def _add_spatial_coef_table(tables, group, spatial_coef):
-        """Add one group to the CBMR-style spatial coefficient table."""
-        columns = [f"basis_{i}" for i in range(spatial_coef.size)]
-        spatial_coef_table = tables.get(
-            "spatial_regression_coef",
-            pd.DataFrame(columns=columns, dtype=np.float64),
-        )
-        spatial_coef_table = spatial_coef_table.reindex(columns=columns)
-        spatial_coef_table.loc[group] = spatial_coef
-        tables["spatial_regression_coef"] = spatial_coef_table
-
-    @staticmethod
-    def _append_group_moderator_table(tables, group, group_moderator_table):
-        """Append one group to the aggregate voxelwise moderator-effect table."""
-        indexed_table = group_moderator_table.copy()
-        indexed_table.index = pd.MultiIndex.from_product(
-            [[group], indexed_table.index],
-            names=["group", "moderator"],
-        )
-        if "voxelwise_moderator_effects_regression_coef" in tables:
-            tables["voxelwise_moderator_effects_regression_coef"] = pd.concat(
-                [tables["voxelwise_moderator_effects_regression_coef"], indexed_table]
-            )
-        else:
-            tables["voxelwise_moderator_effects_regression_coef"] = indexed_table
-
-    @staticmethod
-    def _add_moderator_table(tables, group, moderator_names, moderator_coef):
-        """Add voxelwise moderator-effect coefficient tables for one group."""
-        group_moderator_table = pd.DataFrame(
-            moderator_coef,
-            index=moderator_names,
-            columns=[f"basis_{i}" for i in range(moderator_coef.shape[1])],
-        )
-        tables[f"voxelwise_moderator_effect_regression_coef_group-{group}"] = group_moderator_table
-        CBMREstimator._append_group_moderator_table(
-            tables,
-            group,
-            group_moderator_table,
-        )
-
-    def _add_moderator_maps_and_tables(self, maps, tables, group, moderators, moderator_coef):
-        """Add voxelwise moderator-effect maps and tables for one group."""
-        bases = self.inputs_["coef_spline_bases"]
-        moderator_names = (
-            self.voxelwise_moderators if self.moderator_effect == "mixed" else self.moderators
-        )
-        for index, moderator_name in enumerate(moderator_names):
-            moderator_effect = moderators[:, index : index + 1] @ moderator_coef[index : index + 1]
-            maps[f"voxelwiseModeratorEffect_{moderator_name}_group-{group}"] = (
-                moderator_effect @ bases.T
-            ).mean(axis=0)
-        maps[f"voxelwiseModeratorEffectTotal_group-{group}"] = (
-            moderators @ moderator_coef @ bases.T
-        ).mean(axis=0)
-        self._add_moderator_table(tables, group, moderator_names, moderator_coef)
-
-    def _add_approximate_results(self, maps, tables, group, moderators, coefficient):
-        """Add maps and coefficient tables for one approximate-backend group."""
-        bases = self.inputs_["coef_spline_bases"]
-        n_bases = bases.shape[1]
-        coefficient = coefficient.reshape((-1, n_bases))
-        moderator_coef = coefficient[:-1]
-        spatial_coef = coefficient[-1]
-        maps[f"spatialIntensity_group-{group}"] = np.exp(bases @ spatial_coef)
-        self._add_spatial_coef_table(tables, group, spatial_coef)
-        if self.moderators:
-            self._add_moderator_maps_and_tables(
-                maps,
-                tables,
-                group,
-                moderators,
-                moderator_coef,
-            )
-
-
-class CBMR(CBMREstimator):
+class CBMR(_CBMRInputs):
     """Coordinate-based meta-regression specified by a formula.
 
     .. versionadded:: 0.21.0
@@ -1229,24 +450,24 @@ class CBMR(CBMREstimator):
         self.design = formula_to_design(formula)
         self.distribution = resolve_distribution(distribution)
 
-        # The inherited preprocessing builds the analysis mask, the spline basis and the foci
-        # matrices. Asking it for a single undifferentiated group is what yields one
-        # (experiments x voxels) matrix, which is what a term-based design consumes; grouping is
-        # expressed by the formula instead.
-        super().__init__(
-            group_categories=None,
-            moderators=None,
-            moderator_effect="global",
-            mask=mask,
-            incidence_threshold=incidence_threshold,
-            spline_spacing=spline_spacing,
-            n_iter=n_iter,
-            lr=lr,
-            tol=tol,
-            device=device,
-            random_state=random_state,
-            **kwargs,
-        )
+        self.mask = mask
+        self.masker = get_masker(mask) if mask is not None else None
+        self.incidence_threshold = _validate_incidence_threshold(incidence_threshold)
+        self.spline_spacing = spline_spacing
+        self.n_iter = n_iter
+        self.lr = lr
+        self.tol = tol
+        self.device = device
+        if _uses_cuda(self.device) and not torch.cuda.is_available():
+            LGR.debug("CUDA not found; using device 'cpu'.")
+            self.device = "cpu"
+        self.random_state = random_state
+        # Grouping is expressed by the formula, so input preparation treats the studyset as one
+        # undifferentiated group.
+        self.group_categories = None
+        self.groups = None
+        super().__init__(**kwargs)
+
         self.bound_design = None
         self.predictor = None
         self.cbmr_model = None
@@ -1254,9 +475,7 @@ class CBMR(CBMREstimator):
     def _make_result(self, dataset, maps=None, tables=None, description=""):
         """Return a result that can test hypotheses over the fitted design."""
         masker = self.masker or dataset.masker
-        return CBMRFormulaResult(
-            self, mask=masker, maps=maps, tables=tables, description=description
-        )
+        return CBMRResult(self, mask=masker, maps=maps, tables=tables, description=description)
 
     def _experiment_annotations(self, dataset):
         """Return experiment annotations ordered to match the foci matrix rows."""

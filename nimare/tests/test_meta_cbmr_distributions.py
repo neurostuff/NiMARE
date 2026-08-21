@@ -1,9 +1,14 @@
 """Tests for the CBMR observation distributions.
 
-The point of these is fidelity. Each distribution here is a port of a likelihood that already
-existed as a method on :mod:`nimare.meta.models`, rewritten to consume the predictor's spatial
-patterns instead of a hard-coded notion of groups. A port is only worth having if it computes
-the same number, so most of what follows compares the two directly.
+The point of these is fidelity. Each distribution is a port of a likelihood that used to be a
+method on the old model hierarchy, rewritten to consume the predictor's spatial patterns instead
+of a hard-coded notion of groups. A port is only worth having if it computes the same number.
+
+The reference formulas are transcribed here rather than imported, because the code they came
+from has been deleted. Transcribing keeps the check independent of the shipped implementation --
+the whole value of the comparison -- without keeping a dead module in the package to compare
+against. The Poisson case is additionally pinned against statsmodels in
+:mod:`nimare.tests.test_meta_cbmr_glm_equivalence`, which no transcription can drift from.
 """
 
 import numpy as np
@@ -16,7 +21,6 @@ except ImportError:
     TORCH_INSTALLED = False
 else:
     TORCH_INSTALLED = True
-    from nimare.meta import models
     from nimare.meta.cbmr.distributions import (
         ClusteredNegativeBinomial,
         DistributionError,
@@ -62,10 +66,10 @@ def setup():
 
 
 def _legacy_pieces(predictor, foci):
-    """Split foci into the per-group lists the legacy models expect.
+    """Split foci into per-group marginals, as the reference formulas are written in terms of.
 
     For a grouped design the predictor's patterns *are* the groups, which is what makes the
-    port a like-for-like comparison at all.
+    comparison like-for-like at all.
     """
     per_voxel, per_experiment, members = [], [], []
     for pattern in range(predictor.patterns.n_patterns):
@@ -76,16 +80,101 @@ def _legacy_pieces(predictor, foci):
     return per_voxel, per_experiment, members
 
 
-def _legacy_spatial_coef(predictor, spatial):
-    """Return per-pattern spatial coefficients in the legacy models' layout.
+def _pattern_spatial_coefficients(predictor, spatial):
+    """Return each pattern's effective spatial coefficients.
 
-    A pattern's effective coefficient is its loading times the term coefficients. Necessary
-    because np.unique sorts the pattern rows, so pattern order is not patsy's column order --
-    comparing them positionally would silently pair the wrong group with the wrong foci.
+    A pattern's coefficient vector is its loading times the term coefficients. Needed because
+    ``np.unique`` sorts the pattern rows, so pattern order is not patsy's column order --
+    pairing them positionally would compare one group's coefficients against another's foci.
     """
     loadings = torch.as_tensor(predictor.patterns.loadings, dtype=spatial.dtype)
-    per_pattern = loadings @ spatial
-    return per_pattern.reshape(per_pattern.shape[0], per_pattern.shape[1], 1)
+    return loadings @ spatial
+
+
+def _reference_poisson(predictor, spatial, global_coef, per_voxel, per_experiment, members):
+    """Poisson log-likelihood, summed group by group, up to a constant.
+
+    The separable form the old implementation used::
+
+        sum_v y_.v s_v + sum_i y_i. m_i - (sum_v exp(s_v))(sum_i exp(m_i))
+    """
+    bases = torch.as_tensor(predictor.bases, dtype=spatial.dtype)
+    moderators = torch.as_tensor(predictor.global_block, dtype=spatial.dtype)
+    per_pattern = _pattern_spatial_coefficients(predictor, spatial)
+
+    total = torch.zeros((), dtype=spatial.dtype)
+    for index, rows in enumerate(members):
+        log_spatial = bases @ per_pattern[index]
+        log_moderator = moderators[rows] @ global_coef
+        total = total + (
+            torch.dot(per_voxel[index], log_spatial)
+            + torch.dot(per_experiment[index], log_moderator)
+            - torch.exp(log_spatial).sum() * torch.exp(log_moderator).sum()
+        )
+    return total
+
+
+def _reference_negative_binomial(
+    predictor, spatial, global_coef, overdispersion, per_voxel, per_experiment, members
+):
+    """Moment-matched negative-binomial log-likelihood, group by group.
+
+    A group's per-voxel total is a sum of negative-binomial variables, which has no closed form,
+    so a single NB matching its first two moments is used instead.
+    """
+    bases = torch.as_tensor(predictor.bases, dtype=spatial.dtype)
+    moderators = torch.as_tensor(predictor.global_block, dtype=spatial.dtype)
+    per_pattern = _pattern_spatial_coefficients(predictor, spatial)
+
+    total = torch.zeros((), dtype=spatial.dtype)
+    for index, rows in enumerate(members):
+        alpha = overdispersion[index]
+        mu_spatial = torch.exp(bases @ per_pattern[index])
+        mu_moderator = torch.exp(moderators[rows] @ global_coef)
+        counts = per_voxel[index]
+
+        r = 1 / alpha * mu_moderator.sum() ** 2 / (mu_moderator**2).sum()
+        p = 1 / (1 + mu_moderator.sum() / (alpha * mu_spatial * (mu_moderator**2).sum()))
+        total = total + torch.sum(
+            torch.lgamma(counts + r)
+            - torch.lgamma(counts + 1)
+            - torch.lgamma(r)
+            + r * torch.log(1 - p)
+            + counts * torch.log(p)
+        )
+    return total
+
+
+def _reference_clustered_negative_binomial(
+    predictor, spatial, global_coef, overdispersion, per_voxel, per_experiment, members
+):
+    """Clustered negative-binomial log-likelihood, group by group.
+
+    One latent effect per experiment, shared over the whole brain -- hence the brain-wide
+    ``sum(mu_spatial)`` rather than a per-voxel term.
+    """
+    bases = torch.as_tensor(predictor.bases, dtype=spatial.dtype)
+    moderators = torch.as_tensor(predictor.global_block, dtype=spatial.dtype)
+    per_pattern = _pattern_spatial_coefficients(predictor, spatial)
+
+    total = torch.zeros((), dtype=spatial.dtype)
+    for index, rows in enumerate(members):
+        precision = 1 / overdispersion[index]
+        log_spatial = bases @ per_pattern[index]
+        log_moderator = moderators[rows] @ global_coef
+        mean_per_experiment = torch.exp(log_spatial).sum() * torch.exp(log_moderator)
+        counts = per_experiment[index]
+        n_experiments = counts.shape[0]
+
+        total = total + (
+            n_experiments * precision * torch.log(precision)
+            - n_experiments * torch.lgamma(precision)
+            + torch.sum(torch.lgamma(counts + precision))
+            - torch.sum((counts + precision) * torch.log(mean_per_experiment + precision))
+            + torch.dot(per_voxel[index], log_spatial)
+            + torch.dot(counts, log_moderator)
+        )
+    return total
 
 
 def test_patterns_recover_the_groups(setup):
@@ -95,61 +184,40 @@ def test_patterns_recover_the_groups(setup):
     assert not predictor.patterns.is_degenerate
 
 
-def test_poisson_matches_the_legacy_multigroup_likelihood(setup):
-    """The ported Poisson likelihood must equal models.PoissonEstimator's."""
+def test_poisson_matches_the_reference_likelihood(setup):
+    """The shipped Poisson likelihood must equal the separable formula it replaced."""
     predictor, spatial, global_coef, foci, _ = setup
     per_voxel, per_experiment, members = _legacy_pieces(predictor, foci)
 
     actual = Poisson().log_likelihood(predictor, spatial, global_coef, None, foci)
-
-    legacy = models.PoissonEstimator(device="cpu")
-    expected = legacy._log_likelihood_mult_group(
-        spatial_coef=_legacy_spatial_coef(predictor, spatial),
-        moderator_coef=global_coef.reshape(1, 1),
-        coef_spline_bases=torch.as_tensor(predictor.bases, dtype=torch.float64),
-        foci_per_voxel=per_voxel,
-        foci_per_experiment=per_experiment,
-        moderators=[
-            torch.as_tensor(predictor.global_block[rows], dtype=torch.float64) for rows in members
-        ],
+    expected = _reference_poisson(
+        predictor, spatial, global_coef, per_voxel, per_experiment, members
     )
     torch.testing.assert_close(actual, expected, rtol=1e-10, atol=1e-8)
 
 
 @pytest.mark.parametrize(
-    "distribution,legacy_class",
+    "distribution,reference",
     [
-        (NegativeBinomial, models.NegativeBinomialEstimator if TORCH_INSTALLED else None),
-        (
-            ClusteredNegativeBinomial,
-            models.ClusteredNegativeBinomialEstimator if TORCH_INSTALLED else None,
-        ),
+        (NegativeBinomial, _reference_negative_binomial),
+        (ClusteredNegativeBinomial, _reference_clustered_negative_binomial),
     ],
 )
-def test_overdispersed_likelihoods_match_their_legacy_versions(setup, distribution, legacy_class):
+def test_overdispersed_likelihoods_match_their_references(setup, distribution, reference):
     """Both overdispersion ports must equal the marginal likelihoods they came from.
 
     These are the models that cannot be written for a non-separable predictor at all, so the
-    port only had to carry them over from "group" to "pattern". Any drift here would be a
-    silently different model.
+    port only had to carry them from "group" to "pattern". Any drift would be a silently
+    different model, and there is no external implementation of this moment-matched form to
+    catch it.
     """
     predictor, spatial, global_coef, foci, _ = setup
     per_voxel, per_experiment, members = _legacy_pieces(predictor, foci)
     overdispersion = torch.tensor([0.03, 0.07], dtype=torch.float64)
 
     actual = distribution().log_likelihood(predictor, spatial, global_coef, overdispersion, foci)
-
-    legacy = legacy_class(device="cpu")
-    expected = legacy._log_likelihood_mult_group(
-        overdispersion_coef=[overdispersion[i] for i in range(len(GROUPS))],
-        spatial_coef=_legacy_spatial_coef(predictor, spatial),
-        coef_spline_bases=torch.as_tensor(predictor.bases, dtype=torch.float64),
-        foci_per_voxel=per_voxel,
-        foci_per_experiment=per_experiment,
-        moderator_coef=global_coef.reshape(1, 1),
-        moderators=[
-            torch.as_tensor(predictor.global_block[rows], dtype=torch.float64) for rows in members
-        ],
+    expected = reference(
+        predictor, spatial, global_coef, overdispersion, per_voxel, per_experiment, members
     )
     torch.testing.assert_close(actual, expected, rtol=1e-9, atol=1e-7)
 

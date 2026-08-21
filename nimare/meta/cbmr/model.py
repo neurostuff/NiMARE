@@ -181,15 +181,25 @@ class CBMRModel(torch.nn.Module):
 
         information = self.information_matrix(foci)
         condition = np.linalg.cond(information)
+        advice = (
+            "The design asks for more spatial detail than these foci can support. Try a coarser "
+            "spline_spacing, a higher incidence_threshold, fewer s() terms, or more experiments; "
+            "CBMRResult.describe_terms() reports the parameter budget per term."
+        )
         if condition > 1.0 / np.finfo(float).eps:
             LGR.warning(
                 f"The Fisher information matrix has condition number {condition:.3g}, past what "
                 "double precision can invert meaningfully, so these standard errors should not "
-                "be trusted. Usually this means the design asks for more spatial detail than "
-                "the foci support: try a coarser spline_spacing, a higher incidence_threshold, "
-                "or fewer s() terms."
+                f"be trusted. {advice}"
             )
-        return np.linalg.inv(information)
+        try:
+            return np.linalg.inv(information)
+        except np.linalg.LinAlgError as error:
+            # numpy's bare "Singular matrix" gives a user no idea which knob to turn.
+            raise np.linalg.LinAlgError(
+                f"The Fisher information matrix over {self.n_parameters} coefficients is "
+                f"singular, so no standard errors exist for this fit. {advice}"
+            ) from error
 
     def standard_errors(self, foci, **covariance_kwargs):
         """Return coefficient standard errors, keyed by term.

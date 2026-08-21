@@ -28,6 +28,7 @@ import os
 import warnings
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from nimare.tests.utils import get_test_data_path
@@ -39,21 +40,16 @@ except ImportError:
     TORCH_INSTALLED = False
 else:
     TORCH_INSTALLED = True
-    from nimare.meta import CBMREstimator, models
+    from nimare.meta.cbmr import CBMR
 
 pytestmark = pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
 
 FIXTURE_DIR = os.path.join(get_test_data_path(), "cbmr_golden")
 
-GROUP_CATEGORIES = ["diagnosis", "drug_status"]
-MODERATORS = ["standardized_sample_sizes", "standardized_avg_age"]
-
-# Pinned so the fit is reproducible. These mirror what the rest of the CBMR suite uses; see the
-# module warning for why the loose tolerance is deliberate rather than an oversight.
+# Pinned so the fit is reproducible; see the module warning for why the loose tolerance is
+# deliberate rather than an oversight.
 FIT_KWARGS = dict(
-    group_categories=GROUP_CATEGORIES,
     spline_spacing=100,
-    penalty=False,
     n_iter=200,
     lr=1,
     tol=1e4,
@@ -64,37 +60,25 @@ FIT_KWARGS = dict(
 
 
 def _configurations():
-    """Return one entry per distinct fit path CBMR can take.
+    """Return one entry per distinct path a fit can take through the new stack.
 
-    Chosen to cover every branch rather than every combination: all three of ``_fit``,
-    ``_fit_full`` and ``_fit_approximate``, each observation distribution, and the mixed
-    global/voxelwise split.
+    Chosen to cover every branch rather than every formula: a single pooled map, a grouped
+    design, a scalar moderator, a spatial moderator, both together, the sum-to-zero
+    reparameterization, the degenerate case where every experiment has its own spatial pattern,
+    and an overdispersed distribution.
     """
     return {
-        "global-poisson": dict(
-            moderator_effect="global", model=models.PoissonEstimator, moderators=MODERATORS
+        "pooled": dict(formula="~ 1"),
+        "grouped": dict(formula="~ s(diagnosis:drug_status)"),
+        "grouped-scalar-moderator": dict(formula="~ s(diagnosis) + standardized_sample_sizes"),
+        "grouped-spatial-moderator": dict(formula="~ s(diagnosis) + s(standardized_avg_age)"),
+        "mixed-moderators": dict(
+            formula=("~ s(diagnosis) + standardized_sample_sizes + s(standardized_avg_age)")
         ),
-        "global-negbin": dict(
-            moderator_effect="global",
-            model=models.NegativeBinomialEstimator,
-            moderators=MODERATORS,
-        ),
-        "global-clusterednegbin": dict(
-            moderator_effect="global",
-            model=models.ClusteredNegativeBinomialEstimator,
-            moderators=MODERATORS,
-        ),
-        "voxelwise-full": dict(
-            moderator_effect="voxelwise", backend="full", moderators=MODERATORS
-        ),
-        "voxelwise-approximate": dict(
-            moderator_effect="voxelwise", backend="approximate", moderators=MODERATORS
-        ),
-        "mixed-full": dict(
-            moderator_effect="mixed",
-            backend="full",
-            global_moderators=[MODERATORS[0]],
-            voxelwise_moderators=[MODERATORS[1]],
+        "sum-to-zero": dict(formula="~ sz(diagnosis) + sz(drug_status)"),
+        "degenerate-patterns": dict(formula="~ s(standardized_sample_sizes)"),
+        "negative-binomial": dict(
+            formula="~ s(diagnosis)", distribution="negativebinomial", lr=1e-2
         ),
     }
 
@@ -123,7 +107,9 @@ def _build_studyset():
 def _fit(name, studyset=None):
     """Fit one configuration and return its maps and tables."""
     studyset = studyset if studyset is not None else _build_studyset()
-    estimator = CBMREstimator(**FIT_KWARGS, **_configurations()[name])
+    configuration = dict(_configurations()[name])
+    formula = configuration.pop("formula")
+    estimator = CBMR(formula, **{**FIT_KWARGS, **configuration})
     result = estimator.fit(dataset=studyset)
     return result.maps, result.tables
 
@@ -134,7 +120,19 @@ def _flatten(maps, tables):
     for map_name, values in maps.items():
         payload[f"map::{map_name}"] = np.asarray(values, dtype=np.float64)
     for table_name, frame in tables.items():
-        payload[f"table::{table_name}::values"] = frame.to_numpy(dtype=np.float64)
+        # A wholly numeric frame stores as one array. Only a frame that mixes a label column
+        # with numeric ones is split, since a whole-frame float cast would fail on the labels.
+        if all(pd.api.types.is_numeric_dtype(frame[c]) for c in frame.columns):
+            payload[f"table::{table_name}::values"] = frame.to_numpy(dtype=np.float64)
+        else:
+            for column in frame.columns:
+                values = frame[column]
+                key = f"table::{table_name}::column::{column}"
+                payload[key] = (
+                    values.to_numpy(dtype=np.float64)
+                    if pd.api.types.is_numeric_dtype(values)
+                    else np.asarray([str(v) for v in values], dtype=object)
+                )
         payload[f"table::{table_name}::columns"] = np.asarray(
             [str(c) for c in frame.columns], dtype=object
         )

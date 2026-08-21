@@ -5,18 +5,7 @@ surface plus the handful of private helpers that tests and downstream code reach
 ``nimare.meta.cbmr``, so that the split stays invisible to importers.
 """
 
-# Re-exported, not used here: these were module-level names of the old single-file module, and
-# tests and downstream code still reach for them through ``nimare.meta.cbmr``.
-from nimare.meta.cbmr._helpers import (  # noqa: F401
-    DEFAULT_GROUP_NAME,
-    DEFAULT_INCIDENCE_THRESHOLD,
-    _as_csr_matrix,
-    _csr_row_indices,
-    _is_named_pairwise_contrast,
-    _normalize_named_pairwise_contrasts,
-    _uses_cuda,
-    _validate_incidence_threshold,
-)
+from nimare.meta.cbmr._helpers import DEFAULT_GROUP_NAME, DEFAULT_INCIDENCE_THRESHOLD
 from nimare.meta.cbmr.contrasts import ContrastError, evaluate_hypotheses
 from nimare.meta.cbmr.covariance import CovarianceError, sandwich_covariance
 from nimare.meta.cbmr.distributions import (
@@ -27,19 +16,15 @@ from nimare.meta.cbmr.distributions import (
     Poisson,
     resolve_distribution,
 )
-from nimare.meta.cbmr.estimator import CBMR, CBMREstimator
-from nimare.meta.cbmr.inference import CBMRInference
+from nimare.meta.cbmr.estimator import CBMR
 from nimare.meta.cbmr.model import CBMRModel
-from nimare.meta.cbmr.optimizers import fit_voxelwise_cbmr_approximate
 from nimare.meta.cbmr.predictor import CBMRPredictor, poisson_log_likelihood
-from nimare.meta.cbmr.results import CBMRFormulaResult, CBMRResult
+from nimare.meta.cbmr.results import CBMRResult
 from nimare.meta.cbmr.terms import Design, FormulaError, Term
 
 __all__ = [
     "CBMR",
-    "CBMREstimator",
     "CBMRModel",
-    "CBMRFormulaResult",
     "CBMRPredictor",
     "ClusteredNegativeBinomial",
     "Design",
@@ -55,9 +40,7 @@ __all__ = [
     "poisson_log_likelihood",
     "resolve_distribution",
     "sandwich_covariance",
-    "CBMRInference",
     "CBMRResult",
     "DEFAULT_GROUP_NAME",
     "DEFAULT_INCIDENCE_THRESHOLD",
-    "fit_voxelwise_cbmr_approximate",
 ]

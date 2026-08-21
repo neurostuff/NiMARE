@@ -663,8 +663,7 @@ def test_normalize_collection_passes_through_studyset(testdata_cbma):
 def test_cbmr_accepts_studyset_smoke():
     """CBMR should accept Studyset inputs."""
     pytest.importorskip("torch")
-    from nimare.meta import models
-    from nimare.meta.cbmr import CBMREstimator
+    from nimare.meta.cbmr import CBMR
 
     _, studyset = create_coordinate_studyset(
         foci=5,
@@ -679,10 +678,11 @@ def test_cbmr_accepts_studyset_smoke():
     ]
     annotations_df["drug_status"] = ["Yes" if i % 2 == 0 else "No" for i in range(n_rows)]
     studyset.annotations_df = annotations_df
-    cbmr = CBMREstimator(
-        group_categories=["diagnosis", "drug_status"],
+    # A pooled baseline plus a scalar moderator: twelve studies cannot support one spatial map
+    # per diagnosis-by-drug cell, which leaves the information matrix singular.
+    cbmr = CBMR(
+        "~ 1 + diagnosis",
         spline_spacing=100,
-        model=models.PoissonEstimator,
         n_iter=10,
         lr=1,
         tol=1e4,

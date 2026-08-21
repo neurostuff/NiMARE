@@ -52,6 +52,29 @@ def data():
     return annotations, bases, rng
 
 
+def test_simulated_counts_have_an_interior_maximum(data):
+    """Guard the premise of every statsmodels comparison in this module.
+
+    With the sparse 0/1 counts coordinate-based data produces -- no experiment reports two foci
+    in one voxel -- the Poisson likelihood is maximized only as coefficients run to infinity.
+    Both CBMR and statsmodels then wander off together, agreeing with each other while telling
+    you nothing. Verified previously: coefficients reach 90 there, and statsmodels reaches 91 on
+    the identical design. If the simulation is ever retuned into that regime, this fails first
+    and says why.
+    """
+    annotations, bases, rng = data
+    predictor = _build("~ s(diagnosis) + n", annotations, bases)
+    foci = _simulate(predictor, np.random.default_rng(29))
+
+    assert foci.mean() > 1.0, "counts too sparse; the MLE will run to the boundary"
+    assert (foci == 0).mean() < 0.5, "mostly zeros; expect Poisson separation"
+
+    fitted = _statsmodels_fit(predictor, foci)
+    assert fitted.converged
+    # exp(20) already overflows a float32 intensity map; a real interior optimum is small.
+    assert np.abs(fitted.params).max() < 20.0
+
+
 def _build(formula, annotations, bases):
     return CBMRPredictor(bind(Design.from_formula(formula), annotations), bases)
 
@@ -292,3 +315,19 @@ def test_sum_to_zero_coefficients_sum_to_zero(data):
     per_level = sum_to_zero_basis(2) @ gamma
 
     np.testing.assert_allclose(per_level.sum(axis=0), 0.0, atol=1e-10)
+
+
+def test_singular_information_says_which_knob_to_turn(data):
+    """A design the data cannot support should explain itself, not raise "Singular matrix".
+
+    numpy's bare LinAlgError gives a user no idea whether to coarsen the basis, raise the
+    incidence threshold, drop a term, or find more studies.
+    """
+    annotations, bases, _ = data
+    # Duplicated basis columns make the information exactly singular.
+    predictor = _build("~ s(diagnosis)", annotations, np.hstack([bases, bases]))
+    foci = _simulate(predictor, np.random.default_rng(73))
+    model = CBMRModel(predictor, Poisson()).fit(foci, n_iter=100)
+
+    with pytest.raises(np.linalg.LinAlgError, match="spline_spacing"):
+        model.covariance(foci)
