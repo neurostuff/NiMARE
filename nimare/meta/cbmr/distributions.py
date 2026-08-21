@@ -24,6 +24,8 @@ a blanket "voxelwise CBMR requires model=PoissonEstimator": not the moderator's 
 whether any experiments share a spatial map.
 """
 
+import math
+
 import numpy as np
 
 from nimare.meta.cbmr._torch import torch
@@ -49,6 +51,15 @@ class Distribution:
     def initial_nuisance(self, n_patterns):
         """Return starting values for the nuisance parameters, or None if there are none."""
         return None
+
+    def transform_nuisance(self, raw):
+        """Map unconstrained optimizer parameters onto the values the likelihood needs.
+
+        Keeps :meth:`log_likelihood` a function of the actual statistical parameters, so it can
+        be compared against a reference implementation without knowing how the optimizer
+        happens to parameterize them.
+        """
+        return raw
 
     def check_design(self, predictor):
         """Raise if this distribution cannot be used with ``predictor``'s design."""
@@ -120,10 +131,22 @@ class _OverdispersedDistribution(Distribution):
         return n_patterns
 
     def initial_nuisance(self, n_patterns):
-        """Return the historical 1e-2 starting value for every overdispersion parameter."""
+        """Return log-scale starting values, from the historical 1e-2 overdispersion."""
         return torch.full(
-            (n_patterns,), self.initial_overdispersion, dtype=torch.float64, requires_grad=True
+            (n_patterns,),
+            math.log(self.initial_overdispersion),
+            dtype=torch.float64,
+            requires_grad=True,
         )
+
+    def transform_nuisance(self, raw):
+        """Exponentiate, so overdispersion stays positive however the optimizer wanders.
+
+        An overdispersion of zero or below makes the likelihood undefined. The older code kept
+        one model on a square-root scale and the other unconstrained, which admits zero and puts
+        a derivative singularity there; a log scale rules both out for both models.
+        """
+        return torch.exp(raw)
 
 
 class NegativeBinomial(_OverdispersedDistribution):
