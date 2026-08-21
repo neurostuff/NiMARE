@@ -206,6 +206,34 @@ def with_texts(store, rows, field, values):
     return replace(store, texts=texts)
 
 
+def _note_row_resolver(store):
+    """Return ``resolve(study, analysis) -> row`` for the ids a NIMADS note uses.
+
+    A note names its analysis by that analysis' own id, which NIMADS does not
+    require to be unique across studies -- two studies each having an analysis
+    ``"1"`` is common. Keying on the analysis id alone therefore attached a note
+    to whichever of them came last. The pair is unique, so the pair is what is
+    matched, with the full ``study-analysis`` id accepted as well because that is
+    what :attr:`~nimare.studyset.Studyset.ids` hands a caller.
+    """
+    by_full = {str(key): i for i, key in enumerate(store.analysis_full_key)}
+    study_of = store.study_key[store.study_idx]
+    by_pair = {
+        (str(skey), str(akey)): i
+        for i, (skey, akey) in enumerate(zip(study_of, store.analysis_key))
+    }
+
+    def resolve(study, analysis):
+        analysis = str(analysis)
+        if study is not None:
+            row = by_pair.get((str(study), analysis))
+            if row is not None:
+                return row
+        return by_full.get(analysis)
+
+    return resolve
+
+
 def with_annotation_payload(store, payload):
     """Return a new store carrying a NIMADS annotation payload.
 
@@ -214,10 +242,10 @@ def with_annotation_payload(store, payload):
     """
     payload = dict(payload)
     ann_id = payload.get("id") or f"annotation{len(store.annotations)}"
-    row_of = {str(key): i for i, key in enumerate(store.analysis_key)}
+    resolve = _note_row_resolver(store)
     buckets = {}
     for note in payload.get("notes") or []:
-        row = row_of.get(str(note.get("analysis")))
+        row = resolve(note.get("study"), note.get("analysis"))
         if row is None:
             continue
         for key, value in (note.get("note") or {}).items():

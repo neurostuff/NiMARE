@@ -757,11 +757,17 @@ def test_cbmr_group_arrays_remain_aligned_when_experiment_has_no_in_mask_foci(
     dset = StandardizeField(fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]).transform(
         testdata_cbmr_simulated
     )
-    target_id = dset.annotations.iloc[0]["id"]
-    dset.coordinates.loc[
-        dset.coordinates["id"] == target_id,
-        ["x", "y", "z"],
-    ] = 10_000
+    target_id = dset.annotations_df.iloc[0]["id"]
+    # Move this experiment's foci far outside the mask. It has to keep foci, so
+    # that the coordinates requirement does not drop it, while contributing none
+    # inside the mask -- which is the state this test is about. A studyset is
+    # immutable, so the foci are reselected and replaced rather than assigned to.
+    target_pos = list(dset.ids).index(target_id)
+    dset = (
+        dset.select_points((dset.coordinates["id"] != target_id).to_numpy())
+        .materialize_points()
+        .with_points([target_pos], np.array([[10_000.0, 10_000.0, 10_000.0]]), space=dset.space)
+    )
 
     cbmr = CBMREstimator(
         group_categories=["diagnosis", "drug_status"],

@@ -381,3 +381,74 @@ def test_column_store_subset_drops_sparse_rows():
     # a declared-but-empty column stays declared
     assert "declared_only" in out
     assert out.sparse["declared_only"][0].tolist() == []
+
+
+def test_annotation_payload_matches_on_the_study_analysis_pair():
+    """Check that notes are not attached by a non-unique analysis id."""
+    document = {
+        "id": "ss",
+        "name": "ss",
+        "studies": [
+            {
+                "id": f"study-{s}",
+                "name": f"study {s}",
+                # Both studies call their analysis "1", which NIMADS permits.
+                "analyses": [
+                    {
+                        "id": "1",
+                        "name": "c",
+                        "points": [
+                            {"id": f"p{s}", "coordinates": [1.0, 2.0, 3.0], "space": "MNI"}
+                        ],
+                    }
+                ],
+            }
+            for s in (0, 1)
+        ],
+    }
+    studyset = Studyset(document)
+    assert list(studyset.ids) == ["study-0-1", "study-1-1"]
+
+    annotated = studyset.with_annotation_payload(
+        {
+            "id": "ann",
+            "name": "ann",
+            "note_keys": {"group": "string"},
+            "notes": [
+                {"study": "study-0", "analysis": "1", "note": {"group": "first"}},
+                {"study": "study-1", "analysis": "1", "note": {"group": "second"}},
+            ],
+        }
+    )
+    frame = annotated.annotations_df
+    assert frame.loc[frame["id"] == "study-0-1", "group"].tolist() == ["first"]
+    assert frame.loc[frame["id"] == "study-1-1", "group"].tolist() == ["second"]
+
+    # The same document with the annotation inline, which is the load path real
+    # neurostore payloads take.
+    with_payload = dict(document)
+    with_payload["annotations"] = [
+        {
+            "id": "ann",
+            "name": "ann",
+            "note_keys": {"group": "string"},
+            "notes": [
+                {"study": "study-0", "analysis": "1", "note": {"group": "first"}},
+                {"study": "study-1", "analysis": "1", "note": {"group": "second"}},
+            ],
+        }
+    ]
+    frame = Studyset(with_payload).annotations_df
+    assert frame.loc[frame["id"] == "study-0-1", "group"].tolist() == ["first"]
+    assert frame.loc[frame["id"] == "study-1-1", "group"].tolist() == ["second"]
+
+    # The full study-analysis id, which Studyset.ids hands out, also resolves.
+    by_full = studyset.with_annotation_payload(
+        {
+            "id": "ann",
+            "notes": [{"analysis": "study-1-1", "note": {"group": "second"}}],
+        }
+    )
+    frame = by_full.annotations_df
+    assert frame.loc[frame["id"] == "study-1-1", "group"].tolist() == ["second"]
+    assert frame.loc[frame["id"] == "study-0-1", "group"].isna().all()

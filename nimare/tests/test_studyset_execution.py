@@ -570,13 +570,26 @@ def test_cbmr_accepts_studyset_smoke():
         n_studies=12,
         seed=13,
     )
-    annotations_df = studyset.annotations_df.copy()
-    n_rows = annotations_df.shape[0]
-    annotations_df["diagnosis"] = [
-        "schizophrenia" if i % 2 == 0 else "depression" for i in range(n_rows)
-    ]
-    annotations_df["drug_status"] = ["Yes" if i % 2 == 0 else "No" for i in range(n_rows)]
-    studyset.annotations_df = annotations_df
+    # Categorical group labels, attached copy-on-write. A studyset is immutable,
+    # and the annotations frame is a merged read of every annotation set rather
+    # than a table to write back.
+    studyset = studyset.with_annotation_payload(
+        {
+            "id": "groups",
+            "name": "groups",
+            "note_keys": {"diagnosis": "string", "drug_status": "string"},
+            "notes": [
+                {
+                    "analysis": str(analysis_id),
+                    "note": {
+                        "diagnosis": "schizophrenia" if i % 2 == 0 else "depression",
+                        "drug_status": "Yes" if i % 2 == 0 else "No",
+                    },
+                }
+                for i, analysis_id in enumerate(studyset.ids)
+            ],
+        }
+    )
     cbmr = CBMREstimator(
         group_categories=["diagnosis", "drug_status"],
         spline_spacing=100,
