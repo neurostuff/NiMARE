@@ -19,10 +19,10 @@ from nimare.meta.cbmr._helpers import (
     _validate_incidence_threshold,
 )
 from nimare.meta.cbmr._torch import torch
+from nimare.meta.cbmr.basis import b_spline_bases
+from nimare.meta.cbmr.optimizers import fit_voxelwise_cbmr_approximate
 from nimare.meta.cbmr.results import CBMRResult
-from nimare.meta.utils import fit_voxelwise_cbmr_approximate
 from nimare.utils import (
-    b_spline_bases,
     dummy_encoding_moderators,
     get_masker,
     get_masker_mask_image,

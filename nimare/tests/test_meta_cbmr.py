@@ -26,7 +26,7 @@ else:
         CBMRResult,
         DEFAULT_GROUP_NAME,
     )
-    from nimare.meta.utils import fit_voxelwise_cbmr_approximate
+    from nimare.meta.cbmr.optimizers import fit_voxelwise_cbmr_approximate
 
 import nimare
 from nimare.correct import FDRCorrector, FWECorrector
@@ -906,14 +906,20 @@ def test_meta_package_defers_cbmr_import():
     # Clear by prefix, not by name. cbmr is a package, so leaving its submodules behind
     # would let a later import bind a fresh parent to stale children -- which breaks any
     # monkeypatch that addresses those submodules by dotted path.
-    stale = [
-        name
-        for name in sys.modules
-        if name == "nimare.meta" or name.startswith(("nimare.meta.cbmr", "nimare.meta.models"))
-    ]
-    saved = {name: sys.modules[name] for name in stale}
+    # Snapshot every nimare.meta module so the original objects can be put back exactly.
+    # Anything else in the process still holds references to classes and functions from these
+    # modules; swapping in freshly imported duplicates breaks identity comparisons, dotted-path
+    # monkeypatches, and pickling by qualified name.
+    before = {n: m for n, m in sys.modules.items() if n.startswith("nimare.meta")}
     saved_attr = nimare.__dict__.pop("meta", None)
-    for name in stale:
+
+    # Clear by prefix, not by exact name: cbmr is a package, so leaving its submodules behind
+    # would let the fresh import bind a new parent to stale children.
+    for name in [
+        n
+        for n in list(sys.modules)
+        if n == "nimare.meta" or n.startswith(("nimare.meta.cbmr", "nimare.meta.models"))
+    ]:
         del sys.modules[name]
 
     try:
@@ -923,12 +929,10 @@ def test_meta_package_defers_cbmr_import():
         assert "nimare.meta.models" not in sys.modules
         assert hasattr(meta, "ALE")
     finally:
-        # Put the original module objects back, so tests that already hold references to
-        # classes from them keep patching and comparing against the same objects.
-        for name in [n for n in sys.modules if n.startswith("nimare.meta")]:
-            if name not in saved:
+        for name in [n for n in list(sys.modules) if n.startswith("nimare.meta")]:
+            if name not in before:
                 del sys.modules[name]
-        sys.modules.update(saved)
+        sys.modules.update(before)
         if saved_attr is not None:
             nimare.__dict__["meta"] = saved_attr
 
@@ -2293,7 +2297,7 @@ def _reference_b_spline_bases(mask, spacing, margin=10):
     product one basis plane at a time, and exists so the optimized version can be pinned
     against it.
     """
-    from nimare.utils import coef_spline_bases
+    from nimare.meta.cbmr.basis import coef_spline_bases
 
     mask = np.asanyarray(mask).astype(bool, copy=False)
     xx = np.where(mask.sum(axis=(1, 2)) > 0)[0]
@@ -2323,7 +2327,7 @@ def test_b_spline_bases_matches_the_unfiltered_tensor_product(spacing):
     5.7 GB. The saving is only worth having if the result is untouched, so this pins it
     against the full-product reference, values and column order alike.
     """
-    from nimare.utils import b_spline_bases
+    from nimare.meta.cbmr.basis import b_spline_bases
 
     rng = np.random.default_rng(0)
     grid = np.zeros((26, 24, 22), dtype=bool)
@@ -2342,7 +2346,7 @@ def test_b_spline_bases_matches_the_unfiltered_tensor_product(spacing):
 
 def test_b_spline_bases_prunes_unsupported_bases():
     """The pruning must actually discard columns, or the equality test proves nothing."""
-    from nimare.utils import b_spline_bases, coef_spline_bases
+    from nimare.meta.cbmr.basis import b_spline_bases, coef_spline_bases
 
     grid = np.zeros((26, 24, 22), dtype=bool)
     grid[4:22, 3:21, 5:18] = True

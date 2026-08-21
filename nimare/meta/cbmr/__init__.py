@@ -19,8 +19,8 @@ from nimare.meta.cbmr._helpers import (  # noqa: F401
 )
 from nimare.meta.cbmr.estimator import CBMREstimator
 from nimare.meta.cbmr.inference import CBMRInference
+from nimare.meta.cbmr.optimizers import fit_voxelwise_cbmr_approximate
 from nimare.meta.cbmr.results import CBMRResult
-from nimare.meta.utils import fit_voxelwise_cbmr_approximate
 
 __all__ = [
     "CBMREstimator",
