@@ -402,6 +402,18 @@ def from_nimads(source, *, canonical_order=True, annotations=None):
 # --------------------------------------------------------------------- writing
 
 
+def _resolve(value, basepath):
+    """Make a relative image reference absolute, when a base path is given."""
+    import os
+
+    value = _jsonable(value)
+    if not basepath or not isinstance(value, str) or not value:
+        return value
+    if "://" in value or os.path.isabs(value):
+        return value
+    return os.path.join(basepath, value)
+
+
 def _jsonable(value):
     if isinstance(value, np.integer):
         return int(value)
@@ -528,8 +540,15 @@ def to_nimads_dict(
     *,
     include_annotations=True,
     order_by_source=True,
+    basepath=None,
 ):
-    """Rebuild the nested NIMADS document for the selected analyses."""
+    """Rebuild the nested NIMADS document for the selected analyses.
+
+    ``basepath`` resolves relative image references to absolute paths on the way
+    out. NIMADS export leaves them relative -- that is what the format stores --
+    but a consumer with no notion of the studyset's base path, such as a legacy
+    ``Dataset``, needs paths it can open.
+    """
     if analysis_rows is None:
         analysis_rows = np.arange(store.n_analyses)
     analysis_rows = np.asarray(analysis_rows, dtype=np.int64)
@@ -611,8 +630,8 @@ def to_nimads_dict(
                     "weights": weights[c_lo:c_hi],
                     "images": [
                         {
-                            "url": _jsonable(ia.dense["url"][i]),
-                            "filename": _jsonable(ia.dense["filename"][i]),
+                            "url": _resolve(ia.dense["url"][i], basepath),
+                            "filename": _resolve(ia.dense["filename"][i], basepath),
                             "value_type": _jsonable(ia.dense["value_type"][i]),
                             "space": _jsonable(ia.dense["space"][i]),
                             "metadata": _jsonable(ia.dense["metadata"][i]),

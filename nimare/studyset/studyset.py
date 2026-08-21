@@ -680,7 +680,10 @@ class Studyset:
         """
         from nimare.io import convert_nimads_to_dataset
 
-        return convert_nimads_to_dataset(self.to_dict())
+        # Resolved image paths: a Dataset has no base path of its own.
+        return convert_nimads_to_dataset(
+            to_nimads_dict(self.store, self._view.index, basepath=self.basepath)
+        )
 
     def save(self, filename):
         """Pickle the studyset."""
