@@ -158,6 +158,58 @@ class NiMAREBase(CacheMixin, metaclass=ABCMeta):
 
         return self
 
+    #: Inputs that must be available in the input collection. Keys are the names
+    #: written into ``inputs_``; values are ``(kind, field)`` pairs.
+    _required_inputs = {}
+
+    def _collect_inputs(self, dataset, drop_invalid=True):
+        """Search for, and validate, required inputs as necessary.
+
+        Populates ``inputs_`` with the shapes the algorithm declared, and keeps
+        the narrowed studyset and the aligned blocks they came from as
+        ``studyset_`` and ``blocks_``.
+
+        .. versionchanged:: 0.0.12
+
+            Renamed from ``_validate_input``.
+
+        Parameters
+        ----------
+        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
+        drop_invalid : :obj:`bool`, default=True
+            Whether to drop analyses without valid data.
+
+        Attributes
+        ----------
+        inputs_ : :obj:`dict`
+            The inputs named by ``_required_inputs``, plus the retained ``"id"``.
+        studyset_ : :obj:`~nimare.nimads.Studyset`
+            The narrowed studyset every input was derived from.
+        blocks_ : :obj:`dict`
+            ``{name: block}``, aligned to ``studyset_`` by construction.
+
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and
+            will be removed in a future release. Prefer
+            :class:`~nimare.nimads.Studyset`.
+        """
+        from nimare.studyset import normalize_collection
+
+        dataset = normalize_collection(dataset)
+        if not self._required_inputs:
+            return
+
+        from nimare.studyset.inputs import collect_inputs
+
+        self.studyset_, data, self.blocks_ = collect_inputs(
+            dataset, self._required_inputs, drop_invalid=drop_invalid
+        )
+        # Not overwritten wholesale: PairwiseCBMAEstimator collects twice and
+        # renames between calls.
+        if not hasattr(self, "inputs_"):
+            self.inputs_ = {}
+        self.inputs_.update(data)
+
     def save(self, filename, compress=True):
         """Pickle the class instance to the provided file.
 

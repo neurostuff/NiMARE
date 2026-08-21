@@ -757,11 +757,17 @@ def test_cbmr_group_arrays_remain_aligned_when_experiment_has_no_in_mask_foci(
     dset = StandardizeField(fields=["sample_sizes", "avg_age", "schizophrenia_subtype"]).transform(
         testdata_cbmr_simulated
     )
-    target_id = dset.annotations.iloc[0]["id"]
-    dset.coordinates.loc[
-        dset.coordinates["id"] == target_id,
-        ["x", "y", "z"],
-    ] = 10_000
+    target_id = dset.annotations_df.iloc[0]["id"]
+    # Move this experiment's foci far outside the mask. It has to keep foci, so
+    # that the coordinates requirement does not drop it, while contributing none
+    # inside the mask -- which is the state this test is about. A studyset is
+    # immutable, so the foci are reselected and replaced rather than assigned to.
+    target_pos = list(dset.ids).index(target_id)
+    dset = (
+        dset.select_points((dset.coordinates["id"] != target_id).to_numpy())
+        .materialize_points()
+        .with_points([target_pos], np.array([[10_000.0, 10_000.0, 10_000.0]]), space=dset.space)
+    )
 
     cbmr = CBMREstimator(
         group_categories=["diagnosis", "drug_status"],
@@ -828,16 +834,15 @@ def test_cbmr_groups_full_experiment_ids_instead_of_collapsing_study_ids():
 
 def test_StandardizeField(testdata_cbmr_simulated):
     """Unit test for StandardizeField."""
-    dset = StandardizeField(fields=["sample_sizes", "avg_age"]).transform(testdata_cbmr_simulated)
-    assert isinstance(dset, nimare.dataset.Dataset)
-    assert "standardized_sample_sizes" in dset.annotations
-    assert "standardized_avg_age" in dset.annotations
-    assert dset.annotations["standardized_sample_sizes"].mean() == pytest.approx(0.0, abs=1e-3)
-    assert dset.annotations["standardized_sample_sizes"].std(ddof=0) == pytest.approx(
-        1.0, abs=1e-3
+    studyset = StandardizeField(fields=["sample_sizes", "avg_age"]).transform(
+        testdata_cbmr_simulated
     )
-    assert dset.annotations["standardized_avg_age"].mean() == pytest.approx(0.0, abs=1e-3)
-    assert dset.annotations["standardized_avg_age"].std(ddof=0) == pytest.approx(1.0, abs=1e-3)
+    assert isinstance(studyset, nimare.nimads.Studyset)
+    annotations = studyset.annotations_df
+    for field in ("standardized_sample_sizes", "standardized_avg_age"):
+        assert field in annotations
+        assert annotations[field].mean() == pytest.approx(0.0, abs=1e-3)
+        assert annotations[field].std(ddof=0) == pytest.approx(1.0, abs=1e-3)
 
 
 def test_meta_package_defers_cbmr_import():

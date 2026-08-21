@@ -1530,7 +1530,7 @@ def load_nimads(studyset, annotation=None):
         )
 
     if annotation:
-        studyset.annotations = annotation
+        studyset = studyset.with_annotation_payload(annotation)
     return studyset
 
 

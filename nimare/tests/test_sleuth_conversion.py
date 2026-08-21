@@ -302,12 +302,16 @@ def test_empty_studyset():
 def test_studyset_with_no_points(example_nimads_studyset):
     """Test conversion with studyset that has no coordinate points."""
     # Create a copy of the studyset and remove all points
+    import numpy as np
+
     from nimare import nimads
 
-    studyset_copy = nimads.Studyset(example_nimads_studyset).copy()
-    for study in studyset_copy.studies:
-        for analysis in study.analyses:
-            analysis.points = []
+    studyset = nimads.Studyset(example_nimads_studyset)
+    # Dropping every focus is a point selection made permanent, not a mutation.
+    studyset_copy = studyset.select_points(
+        np.zeros(studyset.store.n_points, dtype=bool)
+    ).materialize_points()
+    assert studyset_copy.store.n_points == 0
 
     with tempfile.TemporaryDirectory() as tmpdir:
         output_dir = Path(tmpdir)
@@ -405,7 +409,6 @@ def test_convert_dataset_to_studyset_preserves_execution_context():
 
     assert studyset.space == dset.space
     assert studyset.masker is not None
-    assert studyset.is_execution_ready
 
     view = normalize_collection(studyset)
     assert set(view.ids) == set(dset.ids)

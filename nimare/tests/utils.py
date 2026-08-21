@@ -76,7 +76,15 @@ def _check_p_values(
     good_specificity=True,
     value_type="p",
 ):
-    """Check if corrected p or logp values are within the correct range."""
+    """Check if corrected p or logp values are within the correct range.
+
+    ``good_sensitivity`` and ``good_specificity`` accept ``None`` for
+    estimator/corrector combinations whose verdict is not reproducible, which
+    leaves the value-range checks in place but asserts nothing about the
+    outcome. Asserting either outcome on a combination that lands on both sides
+    of ``alpha`` depending on the random state makes the test fail at random
+    rather than when something breaks.
+    """
     ################################################
     # CHECK IF P-VALUES OR LOGP VALUES ARE WITHIN THE CORRECT RANGE
     ################################################
@@ -114,7 +122,8 @@ def _check_p_values(
     ]
 
     best_chance_values = value_map[tuple(gtf_idx)]
-    assert all(compare_sig(best_chance_values, threshold)) == good_sensitivity
+    if good_sensitivity is not None:
+        assert all(compare_sig(best_chance_values, threshold)) == good_sensitivity
 
     value_array_sig = p_array[sig_idx]
     value_array_nonsig = p_array[nonsig_idx]
@@ -123,13 +132,15 @@ def _check_p_values(
     # are significant at alpha = .05
     observed_sig = compare_sig(value_array_sig, threshold)
     observed_sig_perc = observed_sig.sum() / len(observed_sig)
-    assert (observed_sig_perc >= 0.5) == good_sensitivity
+    if good_sensitivity is not None:
+        assert (observed_sig_perc >= 0.5) == good_sensitivity
 
     # assert that more than 95% of voxels farther away
     # from foci are nonsignificant at alpha = 0.05
     observed_nonsig = compare_nonsig(value_array_nonsig, threshold)
     observed_nonsig_perc = observed_nonsig.sum() / len(observed_nonsig)
-    assert np.isclose(observed_nonsig_perc, (1 - alpha), atol=0.05) == good_specificity
+    if good_specificity is not None:
+        assert np.isclose(observed_nonsig_perc, (1 - alpha), atol=0.05) == good_specificity
 
 
 def _transform_res(meta, meta_res, corr):

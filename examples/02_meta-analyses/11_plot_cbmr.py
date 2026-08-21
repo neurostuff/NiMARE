@@ -70,7 +70,8 @@ annotations_df["schizophrenia_subtype"] = ["type1", "type2", "type3", "type4", "
 annotations_df["schizophrenia_subtype"] = (
     annotations_df["schizophrenia_subtype"].sample(frac=1).reset_index(drop=True)
 )  # random shuffle drug_status column
-studyset.annotations_df = annotations_df
+# A Studyset is immutable, so the edited frame is attached to a new one.
+studyset = studyset.with_annotations_df(annotations_df, name="moderators", replace=True)
 
 ###############################################################################
 # Estimation of group-specific spatial intensity functions

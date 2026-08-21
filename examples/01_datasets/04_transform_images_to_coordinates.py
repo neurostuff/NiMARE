@@ -35,20 +35,27 @@ dset_dir = download_nidm_pain()
 # -----------------------------------------------------------------------------
 studyset_file = os.path.join(get_resource_path(), "nidm_pain_studyset.json")
 studyset = Studyset(studyset_file, target="mni152_2mm")
-studyset.update_path(dset_dir)
+studyset = studyset.update_path(dset_dir)
 
 # ImagesToCoordinates uses z or p statistical maps
 z_transformer = ImageTransformer(target="z")
 studyset = z_transformer.transform(studyset)
 
+# A Studyset is immutable, so each removal returns a new one.
+
 study_no_images = "pain_02.nidm-1"
-# delete images for study
-studyset.images = studyset.images.query(f"id != '{study_no_images}'")
+# delete images for study. Image masks are aligned to ``image_rows``, which has
+# one row per stored image, rather than to the wide ``images`` frame.
+studyset = studyset.keep_images(studyset.image_rows["id"] != study_no_images)
 
 study_no_coordinates = "pain_03.nidm-1"
 
-# delete coordinates for study
-studyset.coordinates = studyset.coordinates.query(f"id != '{study_no_coordinates}'")
+# delete coordinates for study. ``select_points`` narrows the foci and keeps
+# every analysis, so the contrast survives with no coordinates of its own;
+# ``materialize_points`` then writes that selection into the store.
+studyset = studyset.select_points(
+    studyset.coordinates["id"] != study_no_coordinates
+).materialize_points()
 
 
 ###############################################################################
@@ -178,10 +185,11 @@ coord_two_sided = ImagesToCoordinates(merge_strategy="demolish", two_sided=True)
 
 studyset_two_sided = coord_two_sided.transform(studyset)
 
-studyset_positive = studyset_two_sided.copy()
-studyset_negative = studyset_two_sided.copy()
-studyset_positive.coordinates = studyset_two_sided.coordinates.query("z_stat >= 0.0")
-studyset_negative.coordinates = studyset_two_sided.coordinates.query("z_stat < 0.0")
+# Selecting foci needs no copy: each call returns its own studyset over the
+# same immutable store, so the two selections cannot interfere.
+z_stat = studyset_two_sided.coordinates["z_stat"]
+studyset_positive = studyset_two_sided.select_points(z_stat >= 0.0)
+studyset_negative = studyset_two_sided.select_points(z_stat < 0.0)
 
 # plot the results
 ale = ALE()
