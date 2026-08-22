@@ -1,9 +1,20 @@
-"""Classes for representing datasets of images and/or coordinates."""
+"""Classes for representing datasets of images and/or coordinates.
 
+.. deprecated:: 0.21.0
+    :class:`~nimare.dataset.Dataset` is deprecated and will be removed in NiMARE 1.0.0.
+    Use :class:`~nimare.nimads.Studyset` instead. Constructing a ``Dataset``, or passing
+    one to any NiMARE algorithm, raises a :class:`FutureWarning`; silence them with::
+
+        warnings.filterwarnings("ignore", message=".*nimare.dataset.Dataset is deprecated")
+"""
+
+import contextlib
+import contextvars
 import copy
 import inspect
 import logging
 import os.path as op
+import sys
 import warnings
 
 import numpy as np
@@ -27,6 +38,89 @@ from nimare.utils import (
 )
 
 LGR = logging.getLogger(__name__)
+
+#: Emitted verbatim by every runtime ``Dataset`` deprecation notice, so that users
+#: can silence the whole family with a single ``warnings`` filter.
+DATASET_DEPRECATION_MESSAGE = (
+    "nimare.dataset.Dataset is deprecated and will be removed in NiMARE 1.0.0. "
+    "Use nimare.nimads.Studyset instead: build one with Studyset(source), "
+    "Studyset.from_dataset(dataset), or one of the nimare.io.convert_*_to_studyset "
+    "functions."
+)
+
+
+#: Set while NiMARE is building a ``Dataset`` purely as an internal stepping stone --
+#: a ContextVar rather than a module global so concurrent callers do not silence each
+#: other's warnings.
+_DEPRECATION_SILENCED = contextvars.ContextVar(
+    "nimare_dataset_deprecation_silenced", default=False
+)
+
+
+@contextlib.contextmanager
+def _quiet_dataset_deprecation():
+    """Suppress ``Dataset`` deprecation notices raised inside the block.
+
+    For NiMARE-internal use only, on the paths where a ``Dataset`` is constructed
+    solely to be converted into a :class:`~nimare.nimads.Studyset`. The caller asked
+    for a ``Studyset`` and never sees the intermediate, so warning them about it would
+    point at code they cannot change.
+    """
+    token = _DEPRECATION_SILENCED.set(True)
+    try:
+        yield
+    finally:
+        _DEPRECATION_SILENCED.reset(token)
+
+
+def _user_stacklevel():
+    """Stack level of the nearest frame outside NiMARE.
+
+    A ``Dataset`` is reached by many routes -- directly, via ``nimare.io.convert_*``,
+    via ``nimare.extract.fetch_*`` -- each a different number of frames deep, so the
+    level is found rather than hard-coded. Falls back to the immediate caller when
+    every frame is NiMARE's own.
+    """
+    package_root = op.dirname(op.abspath(__file__))
+    # NiMARE's own tests are callers, not internals -- they should be blamed like
+    # any other user code rather than skipped over into pytest's frames.
+    test_root = op.join(package_root, "tests")
+
+    # 0 is this function, 1 is _warn_dataset_deprecated, 2 is whoever called it.
+    level, frame = 2, sys._getframe(2)
+    while frame is not None:
+        filename = op.abspath(frame.f_code.co_filename)
+        if not filename.startswith(package_root) or filename.startswith(test_root):
+            return level
+        frame, level = frame.f_back, level + 1
+    return 2
+
+
+def _warn_dataset_deprecated(context=""):
+    """Warn that ``Dataset`` is on its way out.
+
+    Parameters
+    ----------
+    context : :obj:`str`, optional
+        Prepended to :data:`DATASET_DEPRECATION_MESSAGE` to say what the caller was
+        doing with the ``Dataset``. Empty for plain instantiation.
+    """
+    if _DEPRECATION_SILENCED.get():
+        return
+
+    message = DATASET_DEPRECATION_MESSAGE
+    if context:
+        message = f"{context} {message}"
+    warnings.warn(message, FutureWarning, stacklevel=_user_stacklevel())
+
+
+def _warn_dataset_input():
+    """Warn that a ``Dataset`` was handed to an algorithm.
+
+    Most algorithms reach this through :func:`~nimare.studyset.normalize_collection`;
+    the few that consume a ``Dataset`` directly, without normalising, call it themselves.
+    """
+    _warn_dataset_deprecated("Passing a Dataset to a NiMARE algorithm is deprecated.")
 
 
 class Dataset(NiMAREBase):
@@ -78,6 +172,8 @@ class Dataset(NiMAREBase):
     _id_cols = ["id", "study_id", "contrast_id"]
 
     def __init__(self, source, target="mni152_2mm", mask=None):
+        _warn_dataset_deprecated()
+
         if isinstance(source, str):
             data = load_json(source)
         elif isinstance(source, dict):

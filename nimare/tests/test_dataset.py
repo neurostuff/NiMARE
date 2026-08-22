@@ -218,6 +218,7 @@ def test_posneg_warning():
     # Test Warning is not raised if there are only positive or negative z-stat
     with warnings.catch_warnings():
         warnings.simplefilter("error")
+        warnings.filterwarnings("ignore", category=FutureWarning)  # Dataset deprecation
         dset_pos = dataset.Dataset(data_pos_zstats)
         dset_neg = dataset.Dataset(data_neg_zstats)
 

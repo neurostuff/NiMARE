@@ -211,6 +211,13 @@ historical import path and adds nothing of its own.
 :mod:`nimare.dataset`: Legacy Dataset IO
 --------------------------------------------------
 
+.. warning::
+    :class:`~nimare.dataset.Dataset` is deprecated and will be removed in NiMARE 1.0.0.
+    Constructing one, or passing one to any algorithm, raises a :class:`FutureWarning`.
+    Use :class:`~nimare.studyset.Studyset` instead -- see
+    :meth:`~nimare.studyset.Studyset.from_dataset` and the
+    ``nimare.io.convert_*_to_studyset`` functions for the migration paths.
+
 .. automodule:: nimare.dataset
    :no-members:
    :no-inherited-members:

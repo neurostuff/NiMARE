@@ -16,7 +16,7 @@ from joblib import Memory
 from scipy import sparse as sp_sparse
 
 from nimare.base import NiMAREBase
-from nimare.dataset import Dataset
+from nimare.dataset import Dataset, _warn_dataset_input
 from nimare.meta.utils import (
     compute_ale_ma,
     compute_kda_ma,
@@ -205,7 +205,11 @@ class KernelTransformer(NiMAREBase):
                 # but has different affine, from original IJK.
                 coordinates[["i", "j", "k"]] = mm2vox(dataset[["x", "y", "z"]], mask.affine)
         else:
-            if not isinstance(dataset, Dataset):
+            if isinstance(dataset, Dataset):
+                # Kernels read a Dataset directly rather than normalising it, so the
+                # deprecation notice has to be raised here instead.
+                _warn_dataset_input()
+            else:
                 dataset = normalize_collection(dataset)
 
             masker = dataset.masker if not masker else masker
