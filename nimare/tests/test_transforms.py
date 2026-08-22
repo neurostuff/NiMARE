@@ -6,6 +6,7 @@ import time
 
 import nibabel as nib
 import numpy as np
+import pandas as pd
 import pytest
 from pymare.stats import log_chi2_sf
 from scipy import stats
@@ -94,6 +95,66 @@ def test_resolve_transforms_warns_on_multiple_group_sample_sizes(testdata_ibma, 
         )
 
     assert "one-sample" in caplog.text
+
+
+def _p_map(masker, rng=None):
+    """Write a p map over the masker's voxels, as an image object."""
+    rng = np.random.RandomState(0) if rng is None else rng
+    n_voxels = masker.transform(masker.mask_img).size
+    return masker.inverse_transform(rng.uniform(1e-4, 1.0, size=n_voxels))
+
+
+@pytest.mark.parametrize("target", ["z", "t", "g"])
+def test_resolve_transforms_warns_when_z_comes_from_a_p_map(testdata_ibma, caplog, target):
+    """A p map has no direction, so the z it yields is unsigned. Convert, but say so.
+
+    The warning has to survive the recursion as well: 't', 'g' and the rest reach z first,
+    and inherit its missing sign.
+    """
+    masker = testdata_ibma.masker
+    available = {"p": _p_map(masker), "sample_sizes": [20]}
+
+    with caplog.at_level(logging.WARNING, logger="nimare.transforms"):
+        img = transforms.resolve_transforms(target, available, masker)
+
+    assert img is not None
+    assert "unsigned" in caplog.text
+    assert "p map" in caplog.text
+    if target == "z":
+        values = masker.transform(img)
+        assert (values[np.isfinite(values)] >= 0).all()
+
+
+def test_resolve_transforms_does_not_warn_when_z_comes_from_a_t_map(testdata_ibma, caplog):
+    """The t path keeps the sign, so it must stay quiet. This is the asymmetry being fixed."""
+    row = testdata_ibma.images.iloc[0]
+
+    with caplog.at_level(logging.WARNING, logger="nimare.transforms"):
+        img = transforms.resolve_transforms(
+            "z", {"t": row["t"], "sample_sizes": [20]}, testdata_ibma.masker
+        )
+
+    assert img is not None
+    assert "unsigned" not in caplog.text
+
+
+def test_transform_images_names_the_analysis_in_the_unsigned_warning(
+    testdata_ibma, caplog, tmp_path
+):
+    """Name the analysis, so a studyset of many maps says which one lost its sign."""
+    masker = testdata_ibma.masker
+    p_file = str(tmp_path / "p.nii.gz")
+    _p_map(masker).to_filename(p_file)
+    images_df = pd.DataFrame({"id": ["study1-1"], "p": [p_file]})
+
+    with caplog.at_level(logging.WARNING, logger="nimare.transforms"):
+        new_images_df = transforms.transform_images(
+            images_df, target="z", masker=masker, out_dir=str(tmp_path)
+        )
+
+    assert new_images_df["z"].notnull().all()
+    assert "study1-1: " in caplog.text
+    assert "unsigned" in caplog.text
 
 
 def test_transform_images(testdata_ibma):

@@ -273,7 +273,7 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
                     available_data[k] = v
 
         # Get converted data
-        img = resolve_transforms(target, available_data, new_masker)
+        img = resolve_transforms(target, available_data, new_masker, id_=id_)
         if img is not None:
             if overwrite or not op.isfile(new_file):
                 img.to_filename(new_file)
@@ -291,8 +291,13 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
     return new_images_df
 
 
-def resolve_transforms(target, available_data, masker):
+def resolve_transforms(target, available_data, masker, id_=None):
     """Determine and apply the appropriate transforms to a target image type from available data.
+
+    .. versionchanged:: 0.21.0
+
+        * [ENH] Warn when ``z`` is derived from a p map, because that ``z`` is unsigned.
+        * [ENH] Accept ``id_``, so that warning can name the analysis it came from.
 
     .. versionchanged:: 0.0.8
 
@@ -314,12 +319,21 @@ def resolve_transforms(target, available_data, masker):
         Masker used to convert images to arrays and back. Preferably, this mask
         should cover the full acquisition matrix (rather than an ROI), given
         that the calculated images will be saved and used for the full Dataset.
+    id_ : :obj:`str` or None, optional
+        Identifier of the analysis the data belong to. Used only to name the analysis in
+        warnings. Default is None.
 
     Returns
     -------
     img_like or None
         Image object with the desired data type, if it can be generated.
         Otherwise, None.
+
+    Notes
+    -----
+    A ``z`` map derived from a p map is unsigned, since a p-value does not record the
+    direction of its effect, and so is anything derived from it in turn (``t``, ``beta``,
+    ``d``, ``g``). That conversion is still performed, but it warns.
     """
     if target in available_data.keys():
         LGR.warning(f"Target '{target}' already available.")
@@ -333,13 +347,22 @@ def resolve_transforms(target, available_data, masker):
         elif "p" in available_data.keys():
             p = masker.transform(available_data["p"])
             z = p_to_z(p)
+            prefix = f"{id_}: " if id_ is not None else ""
+            LGR.warning(
+                f"{prefix}Deriving 'z' from a p map. A p-value carries no direction, so "
+                "the result is unsigned: every voxel is positive. In a signed test "
+                "(Stouffers, Fishers) this analysis then contributes positive evidence "
+                "only, whichever way its contrast ran, and biases the pooled result "
+                "towards it. Supply a z map, or a t map with a sample size, to keep the "
+                "sign."
+            )
         else:
             return None
         z = masker.inverse_transform(z.squeeze())
         return z
     elif target == "t":
         # will return none given no transform/target exists
-        temp = resolve_transforms("z", available_data, masker)
+        temp = resolve_transforms("z", available_data, masker, id_=id_)
         if temp is not None:
             available_data["z"] = temp
 
@@ -355,7 +378,7 @@ def resolve_transforms(target, available_data, masker):
         # All three start from t and the sample size. t itself resolves from z, so a
         # studyset holding only z maps can still reach a standardized effect size.
         if "t" not in available_data.keys():
-            temp = resolve_transforms("t", available_data, masker)
+            temp = resolve_transforms("t", available_data, masker, id_=id_)
             if temp is not None:
                 available_data["t"] = temp
 
@@ -384,12 +407,12 @@ def resolve_transforms(target, available_data, masker):
     elif target == "beta":
         if "t" not in available_data.keys():
             # will return none given no transform/target exists
-            temp = resolve_transforms("t", available_data, masker)
+            temp = resolve_transforms("t", available_data, masker, id_=id_)
             if temp is not None:
                 available_data["t"] = temp
 
         if "varcope" not in available_data.keys():
-            temp = resolve_transforms("varcope", available_data, masker)
+            temp = resolve_transforms("varcope", available_data, masker, id_=id_)
             if temp is not None:
                 available_data["varcope"] = temp
 
