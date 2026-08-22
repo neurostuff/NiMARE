@@ -17,13 +17,19 @@ def normalize_collection(collection):
     A :class:`~nimare.dataset.Dataset` is converted here, at the boundary, so
     that nothing downstream has to know about it. ``Dataset`` is deprecated; the
     conversion is correctness-first, not speed-first.
+
+    Passing a ``Dataset`` emits a :class:`FutureWarning`. Nearly every algorithm
+    entry point warns from here; the exception is
+    :meth:`~nimare.meta.kernel.KernelTransformer.transform`, which reads a ``Dataset``
+    without normalising it and so raises the notice itself.
     """
-    from nimare.dataset import Dataset
+    from nimare.dataset import Dataset, _warn_dataset_input
     from nimare.studyset.studyset import Studyset
 
     if isinstance(collection, Studyset):
         return collection
     if isinstance(collection, Dataset):
+        _warn_dataset_input()
         return Studyset.from_dataset(collection)
     if isinstance(collection, (dict, str)):
         return Studyset(collection)

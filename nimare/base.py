@@ -190,7 +190,7 @@ class NiMAREBase(CacheMixin, metaclass=ABCMeta):
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and
-            will be removed in a future release. Prefer
+            will be removed in NiMARE 1.0.0. Prefer
             :class:`~nimare.nimads.Studyset`.
         """
         from nimare.studyset import normalize_collection

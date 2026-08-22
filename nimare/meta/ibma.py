@@ -144,7 +144,7 @@ class IBMAEstimator(Estimator):
 
     .. warning::
         Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
 
     .. versionchanged:: 0.21.0
 
@@ -253,7 +253,7 @@ class IBMAEstimator(Estimator):
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
         """
         masker, mask_img = get_masker_mask_image(self.masker, dataset=dataset)
 

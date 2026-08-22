@@ -1134,7 +1134,7 @@ def _add_metadata_to_dataframe(
 
     .. warning::
         Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer passing a :class:`~nimare.nimads.Studyset` when possible.
+        NiMARE 1.0.0. Prefer passing a :class:`~nimare.nimads.Studyset` when possible.
     """
     dataframe = dataframe.copy()
     metadata_fields = [metadata_field] if isinstance(metadata_field, str) else list(metadata_field)

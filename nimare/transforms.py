@@ -113,7 +113,7 @@ class ImageTransformer(NiMAREBase):
 
     .. warning::
         Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
 
     .. versionadded:: 0.0.9
 
@@ -151,7 +151,7 @@ class ImageTransformer(NiMAREBase):
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
         """
         dataset = normalize_collection(dataset)
 
@@ -516,7 +516,7 @@ class ImagesToCoordinates(NiMAREBase):
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
         """
         dataset = normalize_collection(dataset)
 
@@ -709,7 +709,7 @@ class StandardizeField(NiMAREBase):
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
         """
         dataset = normalize_collection(dataset)
 
