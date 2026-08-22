@@ -5,7 +5,7 @@ from itertools import zip_longest
 import numpy as np
 import sparse
 
-from nimare.dataset import Dataset
+from nimare.dataset import Dataset, _quiet_dataset_deprecation
 from nimare.io import convert_neurovault_to_dataset
 from nimare.meta.utils import compute_ale_ma, get_ale_kernel
 from nimare.studyset import normalize_collection
@@ -146,17 +146,18 @@ def create_coordinate_studyset(
         Generated foci in xyz (mm) coordinates.
     studyset : :class:`~nimare.nimads.Studyset`
     """
-    ground_truth_foci, dataset = create_coordinate_dataset(
-        foci=foci,
-        foci_percentage=foci_percentage,
-        fwhm=fwhm,
-        sample_size=sample_size,
-        n_studies=n_studies,
-        n_noise_foci=n_noise_foci,
-        seed=seed,
-        space=space,
-    )
-    return ground_truth_foci, normalize_collection(dataset)
+    with _quiet_dataset_deprecation():
+        ground_truth_foci, dataset = create_coordinate_dataset(
+            foci=foci,
+            foci_percentage=foci_percentage,
+            fwhm=fwhm,
+            sample_size=sample_size,
+            n_studies=n_studies,
+            n_noise_foci=n_noise_foci,
+            seed=seed,
+            space=space,
+        )
+        return ground_truth_foci, normalize_collection(dataset)
 
 
 def create_neurovault_dataset(
@@ -222,10 +223,11 @@ def create_neurovault_dataset(
 
 def _neurovault_studyset(collection_ids, contrasts, img_dir, map_type_conversion, **dset_kwargs):
     """Download NeuroVault images and return them as a studyset with z maps."""
-    dataset = convert_neurovault_to_dataset(
-        collection_ids, contrasts, img_dir, map_type_conversion, **dset_kwargs
-    )
-    return ImageTransformer(target="z").transform(dataset)
+    with _quiet_dataset_deprecation():
+        dataset = convert_neurovault_to_dataset(
+            collection_ids, contrasts, img_dir, map_type_conversion, **dset_kwargs
+        )
+        return ImageTransformer(target="z").transform(dataset)
 
 
 def create_neurovault_studyset(

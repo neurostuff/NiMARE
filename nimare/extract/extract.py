@@ -1,5 +1,6 @@
 """Tools for downloading datasets."""
 
+import contextlib
 import itertools
 import logging
 import os
@@ -145,14 +146,21 @@ def _materialize_found_databases(found_databases, return_type, target):
             f"Expected one of: {', '.join(sorted(VALID_FETCH_RETURN_TYPES))}."
         )
 
+    from nimare.dataset import _quiet_dataset_deprecation
+
     materialized = []
     for database in found_databases:
-        dataset = convert_neurosynth_to_dataset(
-            coordinates_file=database["coordinates"],
-            metadata_file=database["metadata"],
-            annotations_files=database["features"],
-            target=target,
+        # A studyset request only passes through Dataset; don't warn about the detour.
+        silence = (
+            contextlib.nullcontext() if return_type == "dataset" else _quiet_dataset_deprecation()
         )
+        with silence:
+            dataset = convert_neurosynth_to_dataset(
+                coordinates_file=database["coordinates"],
+                metadata_file=database["metadata"],
+                annotations_files=database["features"],
+                target=target,
+            )
         if return_type == "dataset":
             materialized.append(dataset)
         else:

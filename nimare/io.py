@@ -825,16 +825,18 @@ def convert_neurosynth_to_studyset(
     correctness rather than speed; loading a studyset from NIMADS or from a
     parquet release does not go through it.
     """
+    from nimare.dataset import _quiet_dataset_deprecation
     from nimare.studyset import Studyset
     from nimare.studyset.store import replace
 
-    dataset = convert_neurosynth_to_dataset(
-        coordinates_file,
-        metadata_file,
-        annotations_files=annotations_files,
-        feature_groups=feature_groups,
-        target=target,
-    )
+    with _quiet_dataset_deprecation():
+        dataset = convert_neurosynth_to_dataset(
+            coordinates_file,
+            metadata_file,
+            annotations_files=annotations_files,
+            feature_groups=feature_groups,
+            target=target,
+        )
     studyset = Studyset.from_dataset(dataset)
     return Studyset._wrap(
         studyset.view.__class__(
@@ -1448,9 +1450,11 @@ def convert_sleuth_to_studyset(text_file, target="ale_2mm"):
     :obj:`~nimare.nimads.Studyset`
         Studyset object containing experiment information from ``text_file``.
     """
+    from nimare.dataset import _quiet_dataset_deprecation
     from nimare.nimads import Studyset
 
-    dataset = convert_sleuth_to_dataset(text_file, target=target)
+    with _quiet_dataset_deprecation():
+        dataset = convert_sleuth_to_dataset(text_file, target=target)
     return Studyset.from_dataset(dataset)
 
 
