@@ -113,6 +113,41 @@ _REMOVED_PARAMETERS = {
 }
 
 
+#: Variance at or below which a dependence group's aggregated z statistic carries no
+#: information, because its images cancel. Matches the floor PyMARE's combination tests
+#: refuse to aggregate below, so a group is excluded here before PyMARE raises on it. Not a
+#: statistical threshold: it screens out exact cancellation and nothing else.
+_CANCELLATION_FLOOR = 1e-12
+
+#: How close an empirical correlation must be to -1 to count as a sign-flipped duplicate. A
+#: float-error tolerance, not a warning band.
+_MIRROR_TOLERANCE = 1e-6
+
+
+def _mirrored_pairs(values):
+    """Return the row pairs of ``values`` that are exact mirror images of each other.
+
+    Parameters
+    ----------
+    values : :obj:`numpy.ndarray` of shape (K, V)
+        Image data, one row per image.
+
+    Returns
+    -------
+    :obj:`list` of :obj:`tuple`
+        ``(i, j)`` row pairs, ``i < j``, whose *empirical* correlation is -1 to within
+        :data:`_MIRROR_TOLERANCE`. Empirical rather than estimated-null: a mirror pair
+        correlates -1 however much signal it shares, while its estimated null correlation is
+        pulled well away from -1 by that shared signal.
+    """
+    with np.errstate(invalid="ignore", divide="ignore"):
+        empirical = np.corrcoef(values)
+
+    # np.corrcoef reports NaN against a constant row, which is not a mirror image.
+    mirrored = np.isfinite(empirical) & (empirical <= -1.0 + _MIRROR_TOLERANCE)
+    return list(zip(*np.nonzero(np.triu(mirrored, k=1))))
+
+
 def _fill_doc(cls):
     """Substitute the shared blocks of :data:`_DOC_DICT` into a class docstring.
 
@@ -178,6 +213,11 @@ class IBMAEstimator(Estimator):
     #: do. Cluster-robust standard errors are distribution-free, so estimating a whole-brain
     #: correlation for the meta-regression estimators would produce something nothing reads.
     _requires_corr_matrix = False
+
+    #: The label each integer group code in ``inputs_["contrast_names"]`` stands for, so a
+    #: warning can name the study rather than the code. Filled in by
+    #: :meth:`_preprocess_dependence`.
+    _group_labels = {}
 
     #: How this estimator reacts to a masker that averages across voxels (e.g. a
     #: :class:`~nilearn.maskers.NiftiLabelsMasker`) rather than only selecting them.
@@ -421,6 +461,74 @@ class IBMAEstimator(Estimator):
         model = DependenceModel(self.inputs_["contrast_names"])
         return model if study_mask is None else model.for_images(study_mask)
 
+    def _group_name(self, code):
+        """Return a human-readable name for one integer group code."""
+        return str(self._group_labels.get(code, code))
+
+    def _image_names(self, indices):
+        """Return the ids of the images at ``indices``, as a comma-separated string."""
+        ids = self.inputs_["id"]
+        return ", ".join(str(ids[index]) for index in indices)
+
+    def _screen_dependence_groups(self, study_mask, corr, stat_maps):
+        """Judge each dependence group of one model before it is handed to PyMARE.
+
+        Parameters
+        ----------
+        study_mask : :obj:`numpy.ndarray` of shape (K,)
+            Indices into ``inputs_["id"]`` of the images this model is fitted over.
+        corr : :obj:`numpy.ndarray` of shape (N, N)
+            The estimated null correlation between every image, as ``inputs_["corr_matrix"]``
+            holds it.
+        stat_maps : :obj:`numpy.ndarray` of shape (K, V)
+            The image data this model is fitted over, in ``study_mask`` order.
+
+        Returns
+        -------
+        cancelling : :obj:`list` of :obj:`tuple`
+            ``(code, images, variance)`` for every group whose images cancel. ``images``
+            indexes ``inputs_["id"]``.
+        mirrored : :obj:`list` of :obj:`tuple`
+            ``(code, image_i, image_j)`` for every pair of images in a *surviving* group
+            that are exact mirror images of each other.
+
+        Notes
+        -----
+        Per model, because a group's membership is. Under a liberal mask a two-image group
+        can only cancel where both images are valid, and is a lone contrast elsewhere.
+
+        The two verdicts read different correlations. Cancellation is decided on the
+        estimated null correlation, since that is the matrix PyMARE aggregates the group
+        with; a sign-flipped duplicate is decided on the empirical one, which is what says
+        two uploads are the same contrast both ways round. See :func:`_mirrored_pairs`.
+        """
+        dependence = self._dependence(study_mask)
+        if not dependence.has_dependence:
+            return [], []
+
+        sub_corr = corr[np.ix_(study_mask, study_mask)]
+        cancelling, mirrored = [], []
+        for code, rows in dependence.group_rows():
+            if rows.size < 2:
+                # A group of one is aggregated as itself, with variance 1 by definition.
+                continue
+
+            # Mirrors StoufferCombinationTest._group_statistics, which computes this and
+            # then raises rather than returning it. Kept in step by
+            # test_cancellation_floor_still_matches_pymare.
+            block = sub_corr[np.ix_(rows, rows)]
+            variance = float(block.sum() / rows.size**2)
+            if not np.isfinite(variance) or variance <= _CANCELLATION_FLOOR:
+                cancelling.append((code, study_mask[rows], variance))
+                continue
+
+            mirrored.extend(
+                (code, study_mask[rows[i]], study_mask[rows[j]])
+                for i, j in _mirrored_pairs(stat_maps[rows])
+            )
+
+        return cancelling, mirrored
+
     def _resolve_masker(self, dataset):
         """Adopt the dataset's masker when none was supplied, and check it is usable here."""
         self.masker = self.masker or dataset.masker
@@ -468,6 +576,10 @@ class IBMAEstimator(Estimator):
         ``map_names`` -- into full-length voxel maps. Voxels no model covers come back NaN,
         the same way out-of-mask voxels already did.
 
+        Where a correlation matrix is passed through -- the combination tests, and only
+        them -- :meth:`_screen_dependence_groups` screens each model first, and a dependence
+        group whose images cancel is excluded from that model.
+
         Parameters
         ----------
         input_names : :obj:`list` of :obj:`str`
@@ -486,18 +598,49 @@ class IBMAEstimator(Estimator):
         n_voxels = self.inputs_[input_names[0]].shape[1]
         maps = {name: np.full(n_voxels, np.nan, dtype=float) for name in map_names}
 
+        corr = kwargs.get("corr")
         n_skipped = 0
+        n_models = 0
+        dropped, mirrored = {}, {}
         for study_mask, voxel_mask, arrays in self._model_bags(input_names):
+            n_models += 1
+
+            if corr is not None:
+                # study_mask is filtered alongside the data because everything derived from
+                # it -- the weights passed to PyMARE, the dof written back -- must keep
+                # describing the fit that actually happened.
+                cancelling, pairs = self._screen_dependence_groups(study_mask, corr, arrays[0])
+                for code, images, variance in cancelling:
+                    record = dropped.setdefault(
+                        code, {"images": images, "models": 0, "voxels": 0, "variance": variance}
+                    )
+                    record["images"] = np.union1d(record["images"], images)
+                    record["models"] += 1
+                    record["voxels"] += arrays[0].shape[1]
+
+                if cancelling:
+                    keep = ~np.isin(
+                        study_mask, np.concatenate([images for _, images, _ in cancelling])
+                    )
+                    study_mask = study_mask[keep]
+                    arrays = [values[keep] for values in arrays]
+
+                for code, first, second in pairs:
+                    mirrored.setdefault((int(first), int(second)), code)
+
             if not self._dependence(study_mask).supports_inference:
                 # Every image here comes from one group, so there is no independent
                 # replication to estimate a variance from. Leave the voxels NaN rather than
-                # report a statistic the data cannot support.
+                # report a statistic the data cannot support. Also catches a model the
+                # drop above left with one group.
                 n_skipped += 1
                 continue
 
             results = self._fit_model(*arrays, study_mask=study_mask, **kwargs)
             for name, values in zip(map_names, results):
                 maps[name][voxel_mask] = values
+
+        self._report_screened_groups(dropped, mirrored, n_models)
 
         if n_skipped:
             LGR.warning(
@@ -508,6 +651,38 @@ class IBMAEstimator(Estimator):
             )
 
         return maps
+
+    def _report_screened_groups(self, dropped, mirrored, n_models):
+        """Warn once per dependence group excluded, and once per mirror pair kept.
+
+        Aggregated over the models rather than emitted in the fitting loop, so a group
+        dropped from every bag of a liberal-mask run is reported once with a count.
+        """
+        for code, record in dropped.items():
+            LGR.warning(
+                "Dependence group %s (image(s) %s) was excluded from %d of %d model(s), "
+                "covering %d voxel(s): its aggregated z statistic has variance %.3g there, "
+                "so its images cancel and carry no information. The rest were fitted. "
+                "Usually one contrast was uploaded in both directions, or the group's "
+                "contrasts partition one cohort.",
+                self._group_name(code),
+                self._image_names(record["images"]),
+                record["models"],
+                n_models,
+                record["voxels"],
+                record["variance"],
+            )
+
+        for (first, second), code in mirrored.items():
+            LGR.warning(
+                "Image %s and image %s, both in dependence group %s, correlate exactly -1: "
+                "one is the other with its sign flipped. They do not cancel, so both were "
+                "kept, but almost certainly one contrast was uploaded twice in opposite "
+                "directions.",
+                self._image_names([first]),
+                self._image_names([second]),
+                self._group_name(code),
+            )
 
     def _dof_map(self, study_mask, n_voxels, est_summary=None):
         """Return the degrees of freedom map, one value per voxel.
@@ -620,6 +795,7 @@ class IBMAEstimator(Estimator):
         # irreproducible. str() first so a mix of label types still orders.
         label_to_int = {label: i for i, label in enumerate(sorted(set(labels), key=str))}
         self.inputs_["contrast_names"] = np.array([label_to_int[label] for label in labels])
+        self._group_labels = {code: label for label, code in label_to_int.items()}
 
         dependence = self._dependence()
         if not dependence.has_dependence:
@@ -815,6 +991,8 @@ class Fishers(IBMAEstimator):
 
         * New parameter: ``groupby``, identifying images contributed by the same participants.
         * The ``dof`` map now counts independent groups rather than images.
+        * A dependence group whose images cancel is now excluded from the voxels where it
+          cancels, with a warning naming the study.
 
     Requires z-statistic images, but will be extended to work with t-statistic images as well.
 
@@ -956,6 +1134,8 @@ class Stouffers(IBMAEstimator):
 
         * New parameter: ``groupby``, identifying images contributed by the same participants.
         * The ``dof`` map now counts independent groups rather than images.
+        * A dependence group whose images cancel is now excluded from the voxels where it
+          cancels, with a warning naming the study, instead of ending the meta-analysis.
 
     Requires z-statistic images.
 
