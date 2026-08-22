@@ -363,12 +363,7 @@ def resolve_transforms(target, available_data, masker, id_=None):
                 LGR.warning(
                     f"{prefix}Deriving 'z' from a p map, with nothing in the analysis to "
                     "give the direction. A p-value carries no sign, so the result is "
-                    "unsigned: every voxel is positive. In a signed test (Stouffers, "
-                    "Fishers) this analysis then contributes positive evidence only, "
-                    "whichever way its contrast ran. The p-values are read as two-tailed "
-                    "as well, so a one-tailed p map comes out with the wrong magnitude. "
-                    "Supply a z map, or a t map: with a sample size it sets the "
-                    "magnitude, without one it still sets the sign."
+                    "unsigned. This will be invalid input for signed tests (like Stouffers and Fishers)."
                 )
         else:
             return None
