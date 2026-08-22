@@ -11,7 +11,11 @@ import pytest
 
 import nimare
 from nimare import dataset
+from nimare.dataset import _quiet_dataset_deprecation
+from nimare.generate import create_coordinate_dataset, create_coordinate_studyset
+from nimare.meta.kernel import MKDAKernel
 from nimare.nimads import Studyset
+from nimare.studyset import normalize_collection
 from nimare.tests.utils import get_test_data_path
 from nimare.utils import load_json
 
@@ -225,3 +229,89 @@ def test_posneg_warning():
     assert isinstance(dset_posneg, nimare.dataset.Dataset)
     assert isinstance(dset_pos, nimare.dataset.Dataset)
     assert isinstance(dset_neg, nimare.dataset.Dataset)
+
+
+# ---------------------------------------------------------------------------
+# Deprecation: Dataset is removed in NiMARE 1.0.0
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def _pain_source():
+    """Raw NIMADS-ish dict for the NIDM pain dataset."""
+    return load_json(op.join(get_test_data_path(), "nidm_pain_dset.json"))
+
+
+def test_instantiating_a_dataset_warns(_pain_source):
+    """Constructing a Dataset points the user at Studyset."""
+    with pytest.warns(FutureWarning, match=r"Dataset is deprecated and will be removed in NiMARE"):
+        dset = dataset.Dataset(_pain_source)
+
+    assert isinstance(dset, dataset.Dataset)
+
+
+def test_dataset_deprecation_blames_the_caller(_pain_source):
+    """The warning points at user code, not at nimare/dataset.py."""
+    with pytest.warns(FutureWarning) as record:
+        dataset.Dataset(_pain_source)
+
+    assert op.basename(record[0].filename) == "test_dataset.py"
+
+
+def test_passing_a_dataset_to_an_algorithm_warns(_pain_source):
+    """Every algorithm entry point goes through normalize_collection, which warns."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FutureWarning)
+        dset = dataset.Dataset(_pain_source)
+
+    with pytest.warns(FutureWarning, match=r"Passing a Dataset to a NiMARE algorithm"):
+        normalize_collection(dset)
+
+
+def test_kernel_transformer_warns_on_a_dataset(_pain_source):
+    """Kernels read a Dataset directly, so they raise the notice themselves."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FutureWarning)
+        dset = dataset.Dataset(_pain_source)
+
+    with pytest.warns(FutureWarning, match=r"Passing a Dataset to a NiMARE algorithm"):
+        MKDAKernel().transform(dset, return_type="array")
+
+
+def test_passing_a_studyset_to_an_algorithm_is_quiet(_pain_source):
+    """The supported input must not warn."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FutureWarning)
+        studyset = Studyset.from_dataset(dataset.Dataset(_pain_source))
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        assert normalize_collection(studyset) is studyset
+
+
+def test_studyset_native_helpers_do_not_warn():
+    """A Dataset built only as an internal stepping stone stays invisible."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        _, studyset = create_coordinate_studyset(n_studies=3, sample_size=10, seed=42)
+
+    assert isinstance(studyset, Studyset)
+
+
+def test_dataset_producing_helpers_still_warn():
+    """Asking for a Dataset by name warns, even through a factory function."""
+    with pytest.warns(FutureWarning, match=r"Dataset is deprecated and will be removed in NiMARE"):
+        _, dset = create_coordinate_dataset(n_studies=3, sample_size=10, seed=42)
+
+    assert isinstance(dset, dataset.Dataset)
+
+
+def test_quiet_dataset_deprecation_restores_state(_pain_source):
+    """The internal silencer is scoped, not sticky."""
+    with _quiet_dataset_deprecation():
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", FutureWarning)
+            dataset.Dataset(_pain_source)
+
+    with pytest.warns(FutureWarning):
+        dataset.Dataset(_pain_source)
