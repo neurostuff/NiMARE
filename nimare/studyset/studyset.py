@@ -286,7 +286,35 @@ class Studyset:
 
     # -------------------------------------------------------------- selection
     def slice(self, ids=None, *, analyses=None, filter_level="analysis"):
-        """Return a studyset with only the requested ids."""
+        """Return a studyset with only the requested ids.
+
+        .. versionchanged:: 0.21.0
+
+            An id naming nothing raises instead of being ignored.
+
+        Parameters
+        ----------
+        ids : :obj:`str` or array_like of :obj:`str`
+            Analysis ids, or study ids when ``filter_level="study"``. An
+            analysis may be named by its full ``"<study id>-<analysis id>"`` id,
+            which :attr:`ids` lists, or by its analysis id alone. A short id
+            shared by several analyses selects all of them.
+        analyses : array_like of :obj:`str`, optional
+            An alias for ``ids``.
+        filter_level : {"analysis", "study"}, default="analysis"
+            Which level ``ids`` names.
+
+        Returns
+        -------
+        :class:`~nimare.studyset.Studyset`
+            A studyset holding only the named analyses.
+
+        Raises
+        ------
+        :obj:`ValueError`
+            If any id names nothing in this studyset, naming the ids that
+            failed. An empty ``ids`` is not an error.
+        """
         if ids is None and analyses is not None:
             ids = analyses
         elif ids is None:
@@ -298,15 +326,24 @@ class Studyset:
         return self.filter_ids(ids)
 
     def filter_ids(self, ids):
-        """Keep the named analyses. Full ids or short analysis ids both work."""
+        """Keep the named analyses, by full id or short analysis id.
+
+        Raises :obj:`ValueError` naming any id that matches nothing.
+        """
         return Studyset._wrap(self._view.select_keys(ids))
 
     def filter_study_ids(self, study_ids):
-        """Return a studyset with only the requested studies."""
+        """Return a studyset with only the requested studies.
+
+        Raises :obj:`ValueError` naming any id that matches nothing.
+        """
         return Studyset._wrap(self._view.select_studies(study_ids))
 
     def exclude_study_ids(self, study_ids):
-        """Return a studyset without the requested studies."""
+        """Return a studyset without the requested studies.
+
+        An id matching nothing is not an error.
+        """
         return Studyset._wrap(self._view.select_studies(study_ids, exclude=True))
 
     def filter_annotations(self, labels, threshold=0.001, match="all", annotation=None):
@@ -381,10 +418,7 @@ class Studyset:
 
     def get_analyses_by_label(self, labels=None, label_threshold=0.001, annotation=None):
         """Short analysis ids whose labels reach the threshold."""
-        return [
-            str(i).rsplit("-", 1)[-1]
-            for i in self.get_studies_by_label(labels, label_threshold, annotation)
-        ]
+        return self._short_ids(self.get_studies_by_label(labels, label_threshold, annotation))
 
     def get_studies_by_mask(self, mask):
         """Full analysis ids with at least one focus inside ``mask``."""
@@ -399,8 +433,8 @@ class Studyset:
         return list(self._view.analyses_with_points(flagged).keys.astype(str))
 
     def get_analyses_by_mask(self, mask):
-        """Return the full ids of analyses with at least one focus in ``mask``."""
-        return [str(i).rsplit("-", 1)[-1] for i in self.get_studies_by_mask(mask)]
+        """Return the short ids of analyses with at least one focus in ``mask``."""
+        return self._short_ids(self.get_studies_by_mask(mask))
 
     def get_studies_by_coordinate(self, xyz, r=20):
         """Full analysis ids with a focus within ``r`` mm of any of ``xyz``."""
@@ -425,7 +459,22 @@ class Studyset:
             hit = np.unique(groups[distances <= r])
         else:
             hit = np.unique(groups[np.argsort(distances)[:n]])
-        return [str(k).rsplit("-", 1)[-1] for k in block.group_keys[hit]]
+        return self._short_ids(block.group_keys[hit])
+
+    def _short_ids(self, full_ids):
+        """The declared analysis id of each full ``"<study id>-<analysis id>"`` id.
+
+        Looked up, not split off the full id, because either half may itself
+        contain a hyphen.
+        """
+        store = self.store
+        short = dict(
+            zip(
+                np.asarray(store.analysis_full_key).astype(str).tolist(),
+                np.asarray(store.analysis_key).astype(str).tolist(),
+            )
+        )
+        return [short[str(i)] for i in full_ids]
 
     def _frame_field(self, frame, field, what):
         """Field names in ``frame``, or one field's values."""

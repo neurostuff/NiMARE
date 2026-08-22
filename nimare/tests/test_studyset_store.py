@@ -524,3 +524,86 @@ def test_with_annotations_df_adds_alongside_by_default(store):
 
     assert {annotation.id for annotation in out.annotations} == before | {"extra_set"}
     assert out.annotations_df["extra"].tolist() == [1.0] * len(studyset)
+
+
+def selection_document():
+    """Ids that exercise every way selection can miss: hyphens and repeats."""
+    return {
+        "id": "ss",
+        "name": "ss",
+        "studies": [
+            {
+                "id": study,
+                "name": study,
+                "analyses": [
+                    {
+                        "id": analysis,
+                        "name": analysis,
+                        "points": [{"id": f"p{i}", "coordinates": xyz, "space": "MNI"}],
+                    }
+                    # "a-b" is hyphenated, and "plain" is declared by both studies,
+                    # which NIMADS permits.
+                    for i, (analysis, xyz) in enumerate(analyses)
+                ],
+            }
+            for study, analyses in (
+                ("mixed", (("a-b", [1.0, 2.0, 3.0]), ("plain", [4.0, 5.0, 6.0]))),
+                ("other", (("plain", [7.0, 8.0, 9.0]),)),
+            )
+        ],
+    }
+
+
+def test_slice_raises_on_an_unresolvable_analysis_id():
+    """Check that an id naming no analysis is an error, not an empty studyset."""
+    studyset = Studyset(selection_document())
+
+    # A list that mostly resolves is the dangerous case: the result looks right.
+    with pytest.raises(ValueError) as excinfo:
+        studyset.slice(analyses=["a-b", "nope", "also-nope"])
+    message = str(excinfo.value)
+    assert "nope" in message and "also-nope" in message and "a-b" not in message
+
+    # Long lists are counted rather than named in full.
+    with pytest.raises(ValueError, match=r"and 5 more"):
+        studyset.slice(analyses=[f"nope-{i}" for i in range(15)])
+
+    # Asking for nothing is not an error: no id failed to resolve.
+    assert len(studyset.slice(analyses=[])) == 0
+
+
+def test_slice_raises_on_an_id_outside_this_studyset():
+    """Check that an id held by the store but already sliced away still raises."""
+    kept = Studyset(selection_document()).slice(analyses=["mixed-a-b"])
+
+    with pytest.raises(ValueError, match="other-plain"):
+        kept.slice(analyses=["other-plain"])
+
+
+def test_slice_raises_on_an_unresolvable_study_id():
+    """Check that the study level reports an unresolvable id, but excluding does not."""
+    studyset = Studyset(selection_document())
+
+    with pytest.raises(ValueError, match="nope"):
+        studyset.slice(["nope"], filter_level="study")
+    assert len(studyset.exclude_study_ids(["nope"])) == 3
+
+
+def test_a_hyphenated_short_analysis_id_is_looked_up_not_split():
+    """Check that a hyphenated analysis id is reachable by the id it declares."""
+    studyset = Studyset(selection_document())
+
+    assert list(studyset.slice(analyses=["a-b"]).ids) == ["mixed-a-b"]
+    # "b" is what splitting the full id on its last hyphen produces, and it is
+    # not an id of anything, so the short ids the query helpers hand back can be
+    # fed straight back to slice.
+    with pytest.raises(ValueError, match=r"matches: b\."):
+        studyset.slice(analyses=["b"])
+    assert studyset.get_analyses_by_coordinate([1.0, 2.0, 3.0], r=1) == ["a-b"]
+
+
+def test_a_short_analysis_id_selects_every_analysis_that_declares_it():
+    """Check that a short id shared across studies keeps all of its analyses."""
+    studyset = Studyset(selection_document())
+
+    assert list(studyset.slice(analyses=["plain"]).ids) == ["mixed-plain", "other-plain"]
