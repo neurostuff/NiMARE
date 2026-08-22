@@ -296,7 +296,8 @@ def resolve_transforms(target, available_data, masker, id_=None):
 
     .. versionchanged:: 0.21.0
 
-        * [ENH] Warn when ``z`` is derived from a p map, because that ``z`` is unsigned.
+        * [FIX] Take the sign from a t map when converting a p map without a sample size.
+        * [ENH] Warn when ``z`` is derived from a p map with no sign available anywhere.
         * [ENH] Accept ``id_``, so that warning can name the analysis it came from.
 
     .. versionchanged:: 0.0.8
@@ -331,9 +332,11 @@ def resolve_transforms(target, available_data, masker, id_=None):
 
     Notes
     -----
-    A ``z`` map derived from a p map is unsigned, since a p-value does not record the
-    direction of its effect, and so is anything derived from it in turn (``t``, ``beta``,
-    ``d``, ``g``). That conversion is still performed, but it warns.
+    A p-value does not record the direction of its effect, so a ``z`` derived from a p map
+    and nothing else is unsigned, as is anything derived from it in turn (``t``, ``beta``,
+    ``d``, ``g``). That conversion is still performed, but it warns. A t map in the same
+    analysis supplies the direction even when it is missing the sample size the magnitude
+    would need, and the sign is taken from it instead, silently.
     """
     if target in available_data.keys():
         LGR.warning(f"Target '{target}' already available.")
@@ -347,15 +350,26 @@ def resolve_transforms(target, available_data, masker, id_=None):
         elif "p" in available_data.keys():
             p = masker.transform(available_data["p"])
             z = p_to_z(p)
-            prefix = f"{id_}: " if id_ is not None else ""
-            LGR.warning(
-                f"{prefix}Deriving 'z' from a p map. A p-value carries no direction, so "
-                "the result is unsigned: every voxel is positive. In a signed test "
-                "(Stouffers, Fishers) this analysis then contributes positive evidence "
-                "only, whichever way its contrast ran, and biases the pooled result "
-                "towards it. Supply a z map, or a t map with a sample size, to keep the "
-                "sign."
-            )
+            if "t" in available_data.keys():
+                # Reached only without a sample size, so the t map cannot set the
+                # magnitude, but it still carries the direction, which p does not, so take
+                # the sign from it rather than return an unsigned map. Where t is
+                # exactly 0 the voxel goes to 0: sign(0) is 0, and a t of 0 is a p of 1,
+                # whose z is 0 anyway, so the two agree. Non-finite t propagates.
+                t = masker.transform(available_data["t"])
+                z = np.sign(t) * z
+            else:
+                prefix = f"{id_}: " if id_ is not None else ""
+                LGR.warning(
+                    f"{prefix}Deriving 'z' from a p map, with nothing in the analysis to "
+                    "give the direction. A p-value carries no sign, so the result is "
+                    "unsigned: every voxel is positive. In a signed test (Stouffers, "
+                    "Fishers) this analysis then contributes positive evidence only, "
+                    "whichever way its contrast ran. The p-values are read as two-tailed "
+                    "as well, so a one-tailed p map comes out with the wrong magnitude. "
+                    "Supply a z map, or a t map: with a sample size it sets the "
+                    "magnitude, without one it still sets the sign."
+                )
         else:
             return None
         z = masker.inverse_transform(z.squeeze())

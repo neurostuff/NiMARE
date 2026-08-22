@@ -125,6 +125,31 @@ def test_resolve_transforms_warns_when_z_comes_from_a_p_map(testdata_ibma, caplo
         assert (values[np.isfinite(values)] >= 0).all()
 
 
+def test_resolve_transforms_takes_the_sign_from_t_without_a_sample_size(testdata_ibma, caplog):
+    """A t map with no sample size cannot set the magnitude, but it can still set the sign."""
+    masker = testdata_ibma.masker
+    rng = np.random.RandomState(1)
+    n_voxels = masker.transform(masker.mask_img).size
+    t_values = rng.normal(size=n_voxels)
+    t_values[:3] = [0.0, 5.0, -5.0]
+    p_values = rng.uniform(1e-4, 0.9, size=n_voxels)
+    available = {
+        "t": masker.inverse_transform(t_values),
+        "p": masker.inverse_transform(p_values),
+    }
+
+    with caplog.at_level(logging.WARNING, logger="nimare.transforms"):
+        img = transforms.resolve_transforms("z", available, masker)
+
+    z = masker.transform(img).squeeze()
+    assert np.allclose(z, np.sign(t_values) * transforms.p_to_z(p_values), atol=1e-4)
+    assert (z < 0).any()
+    # A t of exactly 0 has no direction to give, and is a p of 1, whose z is 0 regardless.
+    assert z[0] == 0
+    # The map is signed, so the warning reserved for unsigned ones must stay quiet.
+    assert "unsigned" not in caplog.text
+
+
 def test_resolve_transforms_does_not_warn_when_z_comes_from_a_t_map(testdata_ibma, caplog):
     """The t path keeps the sign, so it must stay quiet. This is the asymmetry being fixed."""
     row = testdata_ibma.images.iloc[0]
