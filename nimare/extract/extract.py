@@ -249,7 +249,7 @@ def fetch_neurosynth(
         fetch_neurosynth(version="7", source="abstract", vocab="terms")
 
     .. warning::
-        ``return_type="dataset"`` is deprecated and will be removed in a future release.
+        ``return_type="dataset"`` is deprecated and will be removed in NiMARE 1.0.0.
         Prefer the default ``return_type="studyset"``.
 
     .. warning::
@@ -319,7 +319,7 @@ def fetch_neuroquery(
     This function was adapted from neurosynth.base.dataset.download().
 
     .. warning::
-        ``return_type="dataset"`` is deprecated and will be removed in a future release.
+        ``return_type="dataset"`` is deprecated and will be removed in NiMARE 1.0.0.
         Prefer the default ``return_type="studyset"``.
     """
     URL = (
@@ -519,8 +519,8 @@ def download_abstracts(dataset, email):
     dataset : :obj:`~nimare.dataset.Dataset` or :obj:`~nimare.nimads.Studyset`
 
     .. warning::
-        Passing a :class:`~nimare.dataset.Dataset` is deprecated and will be removed in a future
-        release. Prefer passing a :class:`~nimare.nimads.Studyset`.
+        Passing a :class:`~nimare.dataset.Dataset` is deprecated and will be removed in NiMARE
+        1.0.0. Prefer passing a :class:`~nimare.nimads.Studyset`.
 
     This function assumes that the dataset uses identifiers in the format
     [PMID-EXPID]. Thus, the ``study_id`` column of the

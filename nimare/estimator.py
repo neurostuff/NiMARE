@@ -23,7 +23,7 @@ class Estimator(NiMAREBase):
 
     .. warning::
         Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
     """
 
     def __init__(
@@ -58,7 +58,7 @@ class Estimator(NiMAREBase):
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
         """
         pass
 
@@ -102,7 +102,7 @@ class Estimator(NiMAREBase):
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
 
         The `fit` method is a light wrapper that runs input validation and
         preprocessing before fitting the actual model. Estimators' individual

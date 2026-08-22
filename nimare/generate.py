@@ -36,8 +36,8 @@ def create_coordinate_dataset(
     """Generate coordinate based dataset for meta analysis.
 
     .. warning::
-        :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in a future
-        release. Prefer :func:`~nimare.generate.create_coordinate_studyset`.
+        :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in NiMARE
+        1.0.0. Prefer :func:`~nimare.generate.create_coordinate_studyset`.
 
     .. versionadded:: 0.0.4
 
@@ -171,8 +171,8 @@ def create_neurovault_dataset(
     .. versionadded:: 0.0.8
 
     .. warning::
-        :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in a future
-        release. Prefer :func:`~nimare.generate.create_neurovault_studyset`.
+        :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in NiMARE
+        1.0.0. Prefer :func:`~nimare.generate.create_neurovault_studyset`.
 
     This function will also attempt to generate Z images for any contrasts
     for which this is possible.

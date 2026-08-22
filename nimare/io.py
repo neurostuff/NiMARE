@@ -361,7 +361,7 @@ def convert_nimads_to_dataset(studyset, annotation=None):
         NiMARE Dataset object containing experiment information from nimads studyset.
 
     .. warning::
-        :class:`~nimare.dataset.Dataset` is deprecated and will be removed in a future release.
+        :class:`~nimare.dataset.Dataset` is deprecated and will be removed in NiMARE 1.0.0.
         Prefer keeping data in :class:`~nimare.nimads.Studyset` form and using
         :meth:`~nimare.nimads.Studyset.view` when a Dataset-like tabular view is needed.
     """
@@ -767,8 +767,8 @@ def convert_neurosynth_to_dataset(
         Dataset object containing experiment information from text_file.
 
     .. warning::
-        :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in a future
-        release. When possible, prefer :func:`~nimare.extract.fetch_neurosynth` or
+        :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in NiMARE
+        1.0.0. When possible, prefer :func:`~nimare.extract.fetch_neurosynth` or
         :func:`~nimare.extract.fetch_neuroquery`, which return
         :class:`~nimare.nimads.Studyset` objects by default.
 
@@ -1399,8 +1399,8 @@ def convert_sleuth_to_dataset(text_file, target="ale_2mm"):
     """Convert Sleuth output text file into NiMARE Dataset.
 
     .. warning::
-        :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in a future
-        release. Prefer :func:`~nimare.io.convert_sleuth_to_studyset`.
+        :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in NiMARE
+        1.0.0. Prefer :func:`~nimare.io.convert_sleuth_to_studyset`.
 
     Parameters
     ----------
@@ -1509,8 +1509,8 @@ def convert_dataset_to_nimads_dict(
     """Convert a NiMARE Dataset to a NIMADS Studyset dictionary.
 
     .. warning::
-        :class:`~nimare.dataset.Dataset` input is deprecated and will be removed in a future
-        release. Prefer operating on :class:`~nimare.nimads.Studyset` directly, or convert once
+        :class:`~nimare.dataset.Dataset` input is deprecated and will be removed in NiMARE
+        1.0.0. Prefer operating on :class:`~nimare.nimads.Studyset` directly, or convert once
         with :func:`~nimare.io.convert_dataset_to_studyset`.
 
     Parameters
@@ -1814,8 +1814,8 @@ def convert_dataset_to_studyset(
     also be written to disk (same behavior as :func:`convert_dataset_to_nimads_dict`).
 
     .. warning::
-        :class:`~nimare.dataset.Dataset` input is deprecated and will be removed in a future
-        release. For new workflows, prefer starting from :class:`~nimare.nimads.Studyset`
+        :class:`~nimare.dataset.Dataset` input is deprecated and will be removed in NiMARE
+        1.0.0. For new workflows, prefer starting from :class:`~nimare.nimads.Studyset`
         directly.
 
     Parameters
@@ -1916,8 +1916,8 @@ def convert_neurovault_to_dataset(
     .. versionadded:: 0.0.8
 
     .. warning::
-        :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in a future
-        release. Prefer :func:`~nimare.generate.create_neurovault_studyset`.
+        :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in NiMARE
+        1.0.0. Prefer :func:`~nimare.generate.create_neurovault_studyset`.
 
     Parameters
     ----------

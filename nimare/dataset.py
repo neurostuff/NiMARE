@@ -64,8 +64,8 @@ class Dataset(NiMAREBase):
     Notes
     -----
     .. warning::
-        :class:`~nimare.dataset.Dataset` is deprecated and will be removed in a future
-        release. For new workflows, use :class:`~nimare.nimads.Studyset` instead.
+        :class:`~nimare.dataset.Dataset` is deprecated and will be removed in NiMARE
+        1.0.0. For new workflows, use :class:`~nimare.nimads.Studyset` instead.
         If you need a Dataset-compatible tabular execution view, use
         :meth:`~nimare.nimads.Studyset.view`.
 

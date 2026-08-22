@@ -24,7 +24,7 @@ def macm_workflow(
     """Perform MACM with ALE algorithm.
 
     .. warning::
-        The legacy Dataset-file workflow is deprecated and will be removed in a future release.
+        The legacy Dataset-file workflow is deprecated and will be removed in NiMARE 1.0.0.
         Prefer loading a :class:`~nimare.nimads.Studyset` directly and using
         :meth:`~nimare.nimads.Studyset.get_studies_by_mask` plus
         :meth:`~nimare.nimads.Studyset.slice` before fitting an estimator.
