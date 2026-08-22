@@ -1,5 +1,6 @@
 """Utilities for coordinate-based meta-analysis estimators."""
 
+import logging
 import warnings
 
 import numpy as np
@@ -15,6 +16,8 @@ from nimare.utils import DEFAULT_FLOAT_DTYPE, _mask_img_to_bool, unique_rows
 KDA_SORT_MIN_STUDIES = 40
 # occupancy-mask vs. unique-rows crossover observed around ~50 foci/study
 KDA_OCCUPANCY_MIN_FOCI = 50
+LGR = logging.getLogger(__name__)
+_EPS = float(np.finfo(np.float64).tiny)
 
 
 @jit(nopython=True, cache=True)
