@@ -320,7 +320,7 @@ class IBMAEstimator(Estimator):
     #: Fewest analyses these estimators will fit; below it every output map is NaN. An
     #: analysis is at most one independent unit, so the floor on units is also the floor here.
     _min_analyses = MIN_INDEPENDENT_UNITS
-    
+
     #: Which collected images ``_drop_empty_images`` kept, or None. ``groupby`` labels given
     #: as a sequence are positional, so nothing else narrows them alongside the images.
     _images_kept = None
