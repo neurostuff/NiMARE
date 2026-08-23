@@ -273,7 +273,7 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
                     available_data[k] = v
 
         # Get converted data
-        img = resolve_transforms(target, available_data, new_masker, id_=id_)
+        img = resolve_transforms(target, available_data, new_masker)
         if img is not None:
             if overwrite or not op.isfile(new_file):
                 img.to_filename(new_file)
@@ -291,14 +291,13 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
     return new_images_df
 
 
-def resolve_transforms(target, available_data, masker, id_=None):
+def resolve_transforms(target, available_data, masker):
     """Determine and apply the appropriate transforms to a target image type from available data.
 
     .. versionchanged:: 0.21.0
 
         * [FIX] Take the sign from a t map when converting a p map without a sample size.
         * [ENH] Warn when ``z`` is converted from a p map with no sign available.
-        * [ENH] Accept ``id_``, to name the analysis in that warning.
 
     .. versionchanged:: 0.0.8
 
@@ -320,8 +319,6 @@ def resolve_transforms(target, available_data, masker, id_=None):
         Masker used to convert images to arrays and back. Preferably, this mask
         should cover the full acquisition matrix (rather than an ROI), given
         that the calculated images will be saved and used for the full Dataset.
-    id_ : :obj:`str` or None, optional
-        Identifier of the analysis, used to name it in warnings. Default is None.
 
     Returns
     -------
@@ -355,7 +352,9 @@ def resolve_transforms(target, available_data, masker, id_=None):
                 t = masker.transform(available_data["t"])
                 z = np.sign(t) * z
             else:
-                prefix = f"{id_}: " if id_ is not None else ""
+                # transform_images builds available_data from the whole images_df row,
+                # so the analysis id is already here to name in the warning.
+                prefix = f"{available_data['id']}: " if "id" in available_data else ""
                 LGR.warning(
                     f"{prefix}Deriving 'z' from a p map, with nothing in the analysis to "
                     "give the direction. A p-value carries no sign, so the result is "
@@ -369,7 +368,7 @@ def resolve_transforms(target, available_data, masker, id_=None):
         return z
     elif target == "t":
         # will return none given no transform/target exists
-        temp = resolve_transforms("z", available_data, masker, id_=id_)
+        temp = resolve_transforms("z", available_data, masker)
         if temp is not None:
             available_data["z"] = temp
 
@@ -385,7 +384,7 @@ def resolve_transforms(target, available_data, masker, id_=None):
         # All three start from t and the sample size. t itself resolves from z, so a
         # studyset holding only z maps can still reach a standardized effect size.
         if "t" not in available_data.keys():
-            temp = resolve_transforms("t", available_data, masker, id_=id_)
+            temp = resolve_transforms("t", available_data, masker)
             if temp is not None:
                 available_data["t"] = temp
 
@@ -414,12 +413,12 @@ def resolve_transforms(target, available_data, masker, id_=None):
     elif target == "beta":
         if "t" not in available_data.keys():
             # will return none given no transform/target exists
-            temp = resolve_transforms("t", available_data, masker, id_=id_)
+            temp = resolve_transforms("t", available_data, masker)
             if temp is not None:
                 available_data["t"] = temp
 
         if "varcope" not in available_data.keys():
-            temp = resolve_transforms("varcope", available_data, masker, id_=id_)
+            temp = resolve_transforms("varcope", available_data, masker)
             if temp is not None:
                 available_data["varcope"] = temp
 
