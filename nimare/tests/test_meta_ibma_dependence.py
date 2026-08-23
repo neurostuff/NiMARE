@@ -9,9 +9,9 @@ import pytest
 from nilearn.maskers import NiftiMasker
 
 from nimare.meta import ibma
-from nimare.meta.ibma import _null_correlation
 from nimare.meta._dependence import DependenceModel
 from nimare.meta._permutation import _permuted_ols
+from nimare.meta.ibma import _null_correlation
 from nimare.meta.utils import _apply_liberal_mask
 from nimare.transforms import z_to_p
 
