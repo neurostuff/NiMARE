@@ -97,12 +97,7 @@ class IBMAWorkflow(Workflow):
         dataset = normalize_collection(dataset)
 
         # Calculate missing images. Possible targets: {"z", "p", "beta", "varcope"}.
-        # Infer from self.estimator._required_inputs
-        targets = [
-            target
-            for _, (type_, target) in self.estimator._required_inputs.items()
-            if type_ == "image"
-        ]
+        targets = list(self.estimator._image_input_fields().values())
         xformer = ImageTransformer(target=targets)
         dataset = xformer.transform(dataset)
 
