@@ -363,7 +363,8 @@ def resolve_transforms(target, available_data, masker, id_=None):
                 LGR.warning(
                     f"{prefix}Deriving 'z' from a p map, with nothing in the analysis to "
                     "give the direction. A p-value carries no sign, so the result is "
-                    "unsigned. This will be invalid input for signed tests (like Stouffers and Fishers)."
+                    "unsigned. "
+                    "This will be invalid input for signed tests (like Stouffers)."
                 )
         else:
             return None
