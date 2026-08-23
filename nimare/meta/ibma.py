@@ -21,13 +21,13 @@ except ImportError:
     from nilearn._utils.niimg_conversions import check_same_fov
 
 from pymare.estimators.estimators import SMALL_SAMPLE_CORRECTIONS, WEIGHT_SCHEMES
-from pymare.stats import estimate_null_correlation
+from pymare.stats import estimate_null_correlation, undo_centering_shrinkage
 
 from nimare import _version
 from nimare.estimator import Estimator
 from nimare.meta._dependence import DependenceModel, hashable_label
 from nimare.meta._permutation import _empirical_max_p, _permuted_ols
-from nimare.meta.utils import _liberal_mask_bags, _liberal_mask_values
+from nimare.meta.utils import _liberal_mask_bags, _liberal_mask_values, _usable
 from nimare.transforms import d_to_g, p_to_z, t_to_d, t_to_nlogp, t_to_z
 from nimare.utils import (
     _check_ncores,
@@ -137,6 +137,90 @@ def _fill_doc(cls):
 
     cls.__doc__ = "\n".join(lines)
     return cls
+
+
+def _null_correlation(maps, groups):
+    """Estimate the null correlation between images that share no set of valid voxels.
+
+    Parameters
+    ----------
+    maps : :obj:`numpy.ndarray` of shape (K, V)
+        One masked image per row.
+    groups : :obj:`numpy.ndarray` of shape (K,)
+        Group codes, one per image.
+
+    Returns
+    -------
+    None or :obj:`numpy.ndarray` of shape (K, K)
+        The estimated correlation matrix, or None when no pair of images has two voxels
+        both are valid at.
+
+    Notes
+    -----
+    Real NeuroVault maps carry an exact 0 where they have no coverage, and no two of them
+    need cover the same voxels: on a 22-image staging studyset, 20.8% of the values are
+    structural zeros and *no* voxel is valid in every image. Correlating all of them anyway
+    correlates those placeholders, and centering is what makes that bite -- where two images
+    are both uncovered their residuals are both minus the across-image mean, so they track
+    each other perfectly. The bias runs in whichever direction the coverage pattern points:
+    with a shared signal of twice the noise sd, a true correlation of 0 between images
+    sharing a field of view is estimated at 0.67, while a true 0.5 between images with
+    independent fields of view is estimated at 0.10.
+
+    So each entry is estimated on the voxels where its own two images are both valid,
+    rather than one voxel set being imposed on every entry.
+
+    * The result is not guaranteed positive semi-definite, but neither is
+      :func:`~pymare.stats.estimate_null_correlation`'s, which is indefinite on 9 of 14 real
+      staging studysets. The combination tests read within-group blocks only, and
+      :func:`~pymare.stats.undo_centering_shrinkage` floors each block's mean correlation at
+      ``-1/(size - 1)``, which keeps every block sum non-negative.
+    * A pair with fewer than two shared voxels is left at zero. Those entries are never
+      read: a liberal-mask bag holds only images valid over the same voxels, so two images
+      that share none never appear in one fit.
+    * Centering over the images valid at each voxel, rather than over all K, shrinks the
+      residual correlations by more than the bias correction inverts, so this is biased
+      toward zero where coverage is sparse: about -0.05 at 70% coverage and -0.21 at 30%.
+      Inverting the shrinkage at the depth actually centered over would recover most of it,
+      but that derivation belongs in :func:`~pymare.stats.estimate_null_correlation`.
+    """
+    valid = _usable(maps)
+    if valid.all():
+        # Nothing to delete pairwise, which is where the aggressive-mask path always lands.
+        return estimate_null_correlation(maps, groups=groups)
+
+    # Strip the shared signal, as estimate_null_correlation does, but per voxel over the
+    # images valid there. Uncovered entries are zeroed so the sums below can be matrix
+    # products; the validity weights keep them out of every count.
+    counts = valid.sum(axis=0)
+    totals = np.where(valid, maps, 0.0).sum(axis=0, dtype=float)
+    means = np.divide(totals, counts, out=np.zeros_like(totals), where=counts > 0)
+    residuals = np.where(valid, np.asarray(maps, dtype=float) - means, 0.0)
+
+    # Pairwise-complete correlation for every pair at once. pandas.DataFrame.corr does the
+    # same thing in one call and agrees to 1.5e-14, but its Cython pair loop costs 6.7x
+    # these matrix products at 22 images and 20.7x at 100 (8.9 s against 0.43 s), since only
+    # these reach BLAS.
+    weights = valid.astype(float)
+    pair_voxels = weights @ weights.T
+    sums = residuals @ weights.T
+    squares = (residuals * residuals) @ weights.T
+    cross = residuals @ residuals.T
+    with np.errstate(invalid="ignore", divide="ignore"):
+        pair_means = sums / pair_voxels
+        covariance = cross / pair_voxels - pair_means * pair_means.T
+        variance = squares / pair_voxels - pair_means * pair_means
+        corr = covariance / np.sqrt(variance * variance.T)
+
+    estimable = np.isfinite(corr) & (pair_voxels >= 2)
+    if not estimable[~np.eye(corr.shape[0], dtype=bool)].any():
+        return None
+
+    corr = np.where(estimable, corr, 0.0)
+    # The two triangles are one quantity over one voxel set, so they differ only by rounding.
+    corr = np.clip((corr + corr.T) / 2.0, -1.0, 1.0)
+    np.fill_diagonal(corr, 1.0)
+    return undo_centering_shrinkage(corr, groups)
 
 
 class IBMAEstimator(Estimator):
@@ -300,14 +384,7 @@ class IBMAEstimator(Estimator):
         # them are. Both masking strategies intersect over inputs for that reason -- and for
         # the liberal path it also keeps the per-input bag lists aligned, since a varcope
         # blanked above would otherwise cut its maps into different bags from its betas.
-        #
-        # isfinite rather than ~isnan: an infinite value is not a usable statistic either,
-        # and it survives an isnan check. Input maps do carry them -- a t map divided by a
-        # zero standard error, say -- and one would otherwise reach PyMARE and turn a whole
-        # bag's output into NaN.
-        validity = np.logical_and.reduce(
-            [np.isfinite(self.inputs_[name]) & (self.inputs_[name] != 0) for name in image_names]
-        )
+        validity = np.logical_and.reduce([_usable(self.inputs_[name]) for name in image_names])
 
         if self.aggressive_mask:
             # Further reduce image-based inputs to remove "bad" voxels
@@ -646,28 +723,21 @@ class IBMAEstimator(Estimator):
             return
         maps = self.inputs_[image_names[0]]
 
-        # Correlate only where every image has a usable value. A single NaN makes
-        # np.corrcoef return NaN for that image's whole row, which estimate_null_correlation
-        # reads as zero correlation. The aggressive mask already guarantees this; the liberal
-        # path does not.
-        finite_voxels = np.all(np.isfinite(maps), axis=0)
-        if finite_voxels.sum() < 2:
+        # Correlating the raw maps measures how much studies agree, not how dependent they
+        # are: every map carries the same activation, so studies independent by construction
+        # still come out correlated. The shared signal is stripped first, which is what
+        # Brown's method and Stouffer's inflation term require, and the groups let the
+        # shrinkage that centering induces be inverted.
+        corr_matrix = _null_correlation(maps, self.inputs_["contrast_names"])
+        if corr_matrix is None:
             LGR.warning(
-                "Fewer than two voxels have a valid value in every image, so the null "
-                "correlation between the %d image(s) cannot be estimated. They are still "
-                "grouped, but the reference distribution will not be inflated for the "
-                "correlation within a group, so p-values may be anti-conservative.",
+                "No two of the %d image(s) have two voxels both are valid at, so the null "
+                "correlation between them cannot be estimated. They are still grouped, but "
+                "the reference distribution will not be inflated for the correlation within "
+                "a group, so p-values may be anti-conservative.",
                 n_studies,
             )
             return
-        maps = maps[:, finite_voxels]
-
-        # Correlating the raw maps measures how much studies agree, not how dependent they
-        # are: every map carries the same activation, so studies independent by construction
-        # still come out correlated. estimate_null_correlation strips the shared signal
-        # first, which is what Brown's method and Stouffer's inflation term require, and the
-        # groups let it invert the shrinkage that centering induces.
-        corr_matrix = estimate_null_correlation(maps, groups=self.inputs_["contrast_names"])
         self.inputs_["corr_matrix"] = corr_matrix
 
         off_diagonal = corr_matrix[~np.eye(corr_matrix.shape[0], dtype=bool)]
@@ -815,6 +885,8 @@ class Fishers(IBMAEstimator):
 
         * New parameter: ``groupby``, identifying images contributed by the same participants.
         * The ``dof`` map now counts independent groups rather than images.
+        * The null correlation between images is estimated per pair, on the voxels both are
+          valid at, rather than on the voxels every image is valid at.
 
     Requires z-statistic images, but will be extended to work with t-statistic images as well.
 
@@ -956,6 +1028,8 @@ class Stouffers(IBMAEstimator):
 
         * New parameter: ``groupby``, identifying images contributed by the same participants.
         * The ``dof`` map now counts independent groups rather than images.
+        * The null correlation between images is estimated per pair, on the voxels both are
+          valid at, rather than on the voxels every image is valid at.
 
     Requires z-statistic images.
 

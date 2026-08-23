@@ -9,6 +9,7 @@ import pytest
 from nilearn.maskers import NiftiMasker
 
 from nimare.meta import ibma
+from nimare.meta.ibma import _null_correlation
 from nimare.meta._dependence import DependenceModel
 from nimare.meta._permutation import _permuted_ols
 from nimare.meta.utils import _apply_liberal_mask
@@ -1144,3 +1145,44 @@ def test_permutation_batches_stay_within_their_memory_budget(use_weights, monkey
     # Slack for the null array and bookkeeping, but nowhere near the threefold overshoot an
     # undercounted budget produced.
     assert max(peaks) < 2 * budget
+
+
+def test_null_correlation_matches_pymare_when_nothing_is_missing():
+    """Complete data must keep giving exactly what PyMARE's own estimator gave."""
+    rng = np.random.RandomState(0)
+    maps = rng.normal(size=(4, 4000)) + 2.0 * rng.normal(size=4000)
+    groups = np.array([0, 0, 1, 1])
+
+    assert np.array_equal(
+        _null_correlation(maps, groups),
+        pymare.stats.estimate_null_correlation(maps, groups=groups),
+    )
+
+
+def test_null_correlation_ignores_the_zeros_that_stand_for_missing_coverage():
+    """A shared coverage hole is a shared constant, which centering makes look correlated.
+
+    Images 0 and 1 are independent but share a field of view and a strong shared signal.
+    """
+    rng = np.random.RandomState(0)
+    maps = rng.normal(size=(4, 4000)) + 2.0 * rng.normal(size=4000)
+    groups = np.array([0, 0, 1, 1])
+    holed = maps.copy()
+    holed[:2, :2000] = 0.0
+
+    complete = _null_correlation(maps, groups)[0, 1]
+    every_voxel = pymare.stats.estimate_null_correlation(holed, groups=groups)[0, 1]
+    pairwise = _null_correlation(holed, groups)[0, 1]
+
+    assert abs(complete) < 0.05
+    assert every_voxel > 0.6
+    assert abs(pairwise) < 0.25
+
+
+def test_null_correlation_gives_up_when_no_two_images_overlap():
+    """Two images that share no valid voxel leave nothing to estimate a correlation from."""
+    maps = np.ones((2, 400))
+    maps[0, 200:] = 0.0
+    maps[1, :200] = 0.0
+
+    assert _null_correlation(maps, np.array([0, 0])) is None
