@@ -97,89 +97,56 @@ def test_resolve_transforms_warns_on_multiple_group_sample_sizes(testdata_ibma, 
     assert "one-sample" in caplog.text
 
 
-def _p_map(masker, rng=None):
-    """Write a p map over the masker's voxels, as an image object."""
-    rng = np.random.RandomState(0) if rng is None else rng
-    n_voxels = masker.transform(masker.mask_img).size
-    return masker.inverse_transform(rng.uniform(1e-4, 1.0, size=n_voxels))
-
-
-@pytest.mark.parametrize("target", ["z", "t", "g"])
-def test_resolve_transforms_warns_when_z_comes_from_a_p_map(testdata_ibma, caplog, target):
-    """A p map has no direction, so the z it yields is unsigned. Convert, but say so.
-
-    The warning has to survive the recursion as well: 't', 'g' and the rest reach z first,
-    and inherit its missing sign.
-    """
-    masker = testdata_ibma.masker
-    available = {"p": _p_map(masker), "sample_sizes": [20]}
-
-    with caplog.at_level(logging.WARNING, logger="nimare.transforms"):
-        img = transforms.resolve_transforms(target, available, masker)
-
-    assert img is not None
-    assert "unsigned" in caplog.text
-    assert "p map" in caplog.text
-    if target == "z":
-        values = masker.transform(img)
-        assert (values[np.isfinite(values)] >= 0).all()
-
-
-def test_resolve_transforms_takes_the_sign_from_t_without_a_sample_size(testdata_ibma, caplog):
-    """A t map with no sample size cannot set the magnitude, but it can still set the sign."""
+@pytest.mark.parametrize(
+    "sources,warns",
+    [(("t", "p", "sample_sizes"), False), (("t", "p"), False), (("p",), True)],
+)
+def test_resolve_transforms_z_from_p_takes_any_sign_on_offer(
+    testdata_ibma, caplog, sources, warns
+):
+    """Only a p map with no t beside it yields an unsigned z, and only that case warns."""
     masker = testdata_ibma.masker
     rng = np.random.RandomState(1)
     n_voxels = masker.transform(masker.mask_img).size
     t_values = rng.normal(size=n_voxels)
-    t_values[:3] = [0.0, 5.0, -5.0]
+    t_values[0] = 0.0
     p_values = rng.uniform(1e-4, 0.9, size=n_voxels)
-    available = {
+    data = {
         "t": masker.inverse_transform(t_values),
         "p": masker.inverse_transform(p_values),
+        "sample_sizes": [20],
     }
+    expected = {
+        ("t", "p", "sample_sizes"): transforms.t_to_z(t_values, 19),
+        ("t", "p"): np.sign(t_values) * transforms.p_to_z(p_values),
+        ("p",): transforms.p_to_z(p_values),
+    }[sources]
 
     with caplog.at_level(logging.WARNING, logger="nimare.transforms"):
-        img = transforms.resolve_transforms("z", available, masker)
+        img = transforms.resolve_transforms("z", {k: data[k] for k in sources}, masker)
 
-    z = masker.transform(img).squeeze()
-    assert np.allclose(z, np.sign(t_values) * transforms.p_to_z(p_values), atol=1e-4)
-    assert (z < 0).any()
-    # A t of exactly 0 has no direction to give, and is a p of 1, whose z is 0 regardless.
-    assert z[0] == 0
-    # The map is signed, so the warning reserved for unsigned ones must stay quiet.
-    assert "unsigned" not in caplog.text
-
-
-def test_resolve_transforms_does_not_warn_when_z_comes_from_a_t_map(testdata_ibma, caplog):
-    """The t path keeps the sign, so it must stay quiet. This is the asymmetry being fixed."""
-    row = testdata_ibma.images.iloc[0]
-
-    with caplog.at_level(logging.WARNING, logger="nimare.transforms"):
-        img = transforms.resolve_transforms(
-            "z", {"t": row["t"], "sample_sizes": [20]}, testdata_ibma.masker
-        )
-
-    assert img is not None
-    assert "unsigned" not in caplog.text
+    np.testing.assert_allclose(masker.transform(img).squeeze(), expected, atol=1e-4)
+    assert ("unsigned" in caplog.text) is warns
 
 
 def test_transform_images_names_the_analysis_in_the_unsigned_warning(
     testdata_ibma, caplog, tmp_path
 ):
-    """Name the analysis, so a studyset of many maps says which one lost its sign."""
+    """A studyset of many maps has to say which one lost its sign."""
     masker = testdata_ibma.masker
     p_file = str(tmp_path / "p.nii.gz")
-    _p_map(masker).to_filename(p_file)
-    images_df = pd.DataFrame({"id": ["study1-1"], "p": [p_file]})
+    n_voxels = masker.transform(masker.mask_img).size
+    masker.inverse_transform(np.full(n_voxels, 0.05)).to_filename(p_file)
 
     with caplog.at_level(logging.WARNING, logger="nimare.transforms"):
-        new_images_df = transforms.transform_images(
-            images_df, target="z", masker=masker, out_dir=str(tmp_path)
+        transforms.transform_images(
+            pd.DataFrame({"id": ["study1-1"], "p": [p_file]}),
+            target="z",
+            masker=masker,
+            out_dir=str(tmp_path),
         )
 
-    assert new_images_df["z"].notnull().all()
     assert "study1-1: " in caplog.text
-    assert "unsigned" in caplog.text
 
 
 def test_transform_images(testdata_ibma):

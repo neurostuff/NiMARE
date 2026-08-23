@@ -297,8 +297,8 @@ def resolve_transforms(target, available_data, masker, id_=None):
     .. versionchanged:: 0.21.0
 
         * [FIX] Take the sign from a t map when converting a p map without a sample size.
-        * [ENH] Warn when ``z`` is derived from a p map with no sign available anywhere.
-        * [ENH] Accept ``id_``, so that warning can name the analysis it came from.
+        * [ENH] Warn when ``z`` is converted from a p map with no sign available.
+        * [ENH] Accept ``id_``, to name the analysis in that warning.
 
     .. versionchanged:: 0.0.8
 
@@ -321,8 +321,7 @@ def resolve_transforms(target, available_data, masker, id_=None):
         should cover the full acquisition matrix (rather than an ROI), given
         that the calculated images will be saved and used for the full Dataset.
     id_ : :obj:`str` or None, optional
-        Identifier of the analysis the data belong to. Used only to name the analysis in
-        warnings. Default is None.
+        Identifier of the analysis, used to name it in warnings. Default is None.
 
     Returns
     -------
@@ -332,11 +331,10 @@ def resolve_transforms(target, available_data, masker, id_=None):
 
     Notes
     -----
-    A p-value does not record the direction of its effect, so a ``z`` derived from a p map
-    and nothing else is unsigned, as is anything derived from it in turn (``t``, ``beta``,
-    ``d``, ``g``). That conversion is still performed, but it warns. A t map in the same
-    analysis supplies the direction even when it is missing the sample size the magnitude
-    would need, and the sign is taken from it instead, silently.
+    A p-value has no direction, so a ``z`` converted from a p map alone is unsigned, as is
+    anything converted from it in turn (``t``, ``beta``, ``d``, ``g``). That conversion is
+    performed anyway, and warns. A t map in the same analysis supplies the sign even when
+    it lacks the sample size its magnitude would need.
     """
     if target in available_data.keys():
         LGR.warning(f"Target '{target}' already available.")
@@ -351,11 +349,9 @@ def resolve_transforms(target, available_data, masker, id_=None):
             p = masker.transform(available_data["p"])
             z = p_to_z(p)
             if "t" in available_data.keys():
-                # Reached only without a sample size, so the t map cannot set the
-                # magnitude, but it still carries the direction, which p does not, so take
-                # the sign from it rather than return an unsigned map. Where t is
-                # exactly 0 the voxel goes to 0: sign(0) is 0, and a t of 0 is a p of 1,
-                # whose z is 0 anyway, so the two agree. Non-finite t propagates.
+                # Only reachable without a sample size, so p sets the magnitude and t
+                # sets the sign. A t of exactly 0 zeroes the voxel, which is also the z of
+                # the p of 1 that such a t implies.
                 t = masker.transform(available_data["t"])
                 z = np.sign(t) * z
             else:
@@ -364,7 +360,8 @@ def resolve_transforms(target, available_data, masker, id_=None):
                     f"{prefix}Deriving 'z' from a p map, with nothing in the analysis to "
                     "give the direction. A p-value carries no sign, so the result is "
                     "unsigned. "
-                    "This will be invalid input for signed tests (like Stouffers)."
+                    "This will be invalid input for signed tests (like Stouffers). "
+                    "P-values are read as two-tailed."
                 )
         else:
             return None
