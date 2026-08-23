@@ -19,7 +19,7 @@ import pandas as pd
 
 from nimare.studyset import blocks as _blocks
 from nimare.studyset import edit, requirements
-from nimare.studyset.columns import ID_COLS
+from nimare.studyset.columns import ID_COLS, join_names, missing_names
 from nimare.studyset.io import from_nimads, from_parquet, to_nimads_dict, write_nimads
 from nimare.studyset.io.parquet import write_parquet
 from nimare.studyset.layout import harmonize_space
@@ -394,10 +394,9 @@ class Studyset:
 
     def _label_block_for(self, labels, annotation=None):
         block = _blocks.label_block_for(self._view, annotation)
-        known = set(block.labels.tolist())
-        missing = [label for label in labels if label not in known]
+        missing = missing_names(labels, set(block.labels.tolist()))
         if missing:
-            raise ValueError(f"Missing label(s): {', '.join(map(str, missing))}")
+            raise ValueError(f"Missing label(s): {join_names(missing)}")
         return block
 
     def get_labels(self, ids=None):
@@ -413,28 +412,32 @@ class Studyset:
 
     def get_studies_by_label(self, labels=None, label_threshold=0.001, annotation=None):
         """Full analysis ids whose labels reach the threshold."""
-        masks = self._label_masks(labels, label_threshold, annotation)
-        return list(self.ids[masks.all(axis=0)])
+        return list(self.ids[self._label_masks(labels, label_threshold, annotation).all(axis=0)])
 
     def get_analyses_by_label(self, labels=None, label_threshold=0.001, annotation=None):
         """Short analysis ids whose labels reach the threshold."""
-        return self._short_ids(self.get_studies_by_label(labels, label_threshold, annotation))
+        keep = self._label_masks(labels, label_threshold, annotation).all(axis=0)
+        return list(self._view.short_keys[keep].astype(str))
 
-    def get_studies_by_mask(self, mask):
-        """Full analysis ids with at least one focus inside ``mask``."""
+    def _analyses_in_mask(self, mask):
+        """This selection, narrowed to analyses with at least one focus in ``mask``."""
         from nilearn.image import load_img
 
         from nimare.utils import _mask_img_to_bool
 
         if self.store.n_points == 0:
-            return []
+            return self._view.select(np.zeros(len(self._view), dtype=bool))
         mask = load_img(mask)
         flagged = self._view.points_in_mask(_mask_img_to_bool(mask), mask.affine)
-        return list(self._view.analyses_with_points(flagged).keys.astype(str))
+        return self._view.analyses_with_points(flagged)
+
+    def get_studies_by_mask(self, mask):
+        """Full analysis ids with at least one focus inside ``mask``."""
+        return list(self._analyses_in_mask(mask).keys.astype(str))
 
     def get_analyses_by_mask(self, mask):
-        """Return the short ids of analyses with at least one focus in ``mask``."""
-        return self._short_ids(self.get_studies_by_mask(mask))
+        """Short analysis ids with at least one focus inside ``mask``."""
+        return list(self._analyses_in_mask(mask).short_keys.astype(str))
 
     def get_studies_by_coordinate(self, xyz, r=20):
         """Full analysis ids with a focus within ``r`` mm of any of ``xyz``."""
@@ -459,22 +462,8 @@ class Studyset:
             hit = np.unique(groups[distances <= r])
         else:
             hit = np.unique(groups[np.argsort(distances)[:n]])
-        return self._short_ids(block.group_keys[hit])
-
-    def _short_ids(self, full_ids):
-        """The declared analysis id of each full ``"<study id>-<analysis id>"`` id.
-
-        Looked up, not split off the full id, because either half may itself
-        contain a hyphen.
-        """
-        store = self.store
-        short = dict(
-            zip(
-                np.asarray(store.analysis_full_key).astype(str).tolist(),
-                np.asarray(store.analysis_key).astype(str).tolist(),
-            )
-        )
-        return [short[str(i)] for i in full_ids]
+        # hit indexes the coordinate block's groups, which are this selection.
+        return list(self._view.short_keys[hit].astype(str))
 
     def _frame_field(self, frame, field, what):
         """Field names in ``frame``, or one field's values."""

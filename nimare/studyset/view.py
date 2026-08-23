@@ -22,13 +22,10 @@ from typing import Optional
 import numpy as np
 
 from nimare.studyset import layout
-from nimare.studyset.layout import ranges_to_indices
+from nimare.studyset.columns import join_names, missing_names, sorted_ranges
 from nimare.studyset.store import derived
 
 __all__ = ["Context", "View"]
-
-# How many unresolved ids an error names before it starts counting instead.
-_MAX_NAMED = 10
 
 
 @functools.lru_cache(maxsize=None)
@@ -104,6 +101,15 @@ class View:
         return got
 
     @property
+    def short_keys(self):
+        """The analysis ids the selected analyses declare, without their study."""
+        got = self._cache.get("short_keys")
+        if got is None:
+            got = self.store.analysis_key[self.index]
+            self._cache["short_keys"] = got
+        return got
+
+    @property
     def study_keys(self):
         """Unique study ids of the selected analyses."""
         got = self._cache.get("study_keys")
@@ -171,18 +177,15 @@ class View:
     def _require_keys(self, requested, rows, *, allow_short=True):
         """Raise unless every requested id names one of ``rows``."""
         store = self.store
-        present = set()
-        if len(rows):
-            present.update(_as_str(store.analysis_full_key[rows]).tolist())
-            if allow_short:
-                present.update(_as_str(store.analysis_key[rows]).tolist())
-        missing = _unresolved(requested, present)
+        present = set(store.analysis_full_key[rows].astype(str).tolist())
+        if allow_short:
+            present.update(store.analysis_key[rows].astype(str).tolist())
+        missing = missing_names(requested, present)
         if missing:
-            raise _unresolved_error(
-                "analysis",
-                missing,
-                "Analyses are matched on their full '<study id>-<analysis id>' id, which "
-                "Studyset.ids lists, or on the analysis id alone.",
+            raise ValueError(
+                f"No analysis in this studyset matches: {join_names(missing)}. Analyses are "
+                "matched on their full '<study id>-<analysis id>' id, which Studyset.ids "
+                "lists, or on the analysis id alone."
             )
 
     def drop_keys(self, keys):
@@ -204,17 +207,16 @@ class View:
         store = self.store
         requested = [str(k) for k in np.atleast_1d(study_keys)]
         wanted = np.asarray(requested, dtype=str)
-        hit = np.isin(_as_str(store.study_key), wanted)
+        hit = np.isin(store.study_key.astype(str), wanted)
         per_analysis = hit[store.study_idx[self.index]]
         if strict and not exclude:
             rows = self.index[per_analysis]
-            present = set(_as_str(store.study_key[store.study_idx[rows]]).tolist())
-            missing = _unresolved(requested, present)
+            present = set(store.study_key[store.study_idx[rows]].astype(str).tolist())
+            missing = missing_names(requested, present)
             if missing:
-                raise _unresolved_error(
-                    "study",
-                    missing,
-                    "Studies are matched on their own id, which Studyset.study_ids lists.",
+                raise ValueError(
+                    f"No study in this studyset matches: {join_names(missing)}. Studies are "
+                    "matched on their own id, which Studyset.study_ids lists."
                 )
         return self.select(~per_analysis if exclude else per_analysis)
 
@@ -381,37 +383,15 @@ def _resolve_key_rows(store, wanted, *, allow_short=True):
         got = cache.get(key)
         if got is None:
             source = store.analysis_full_key if kind == "full" else store.analysis_key
-            keys = _as_str(source)
+            keys = source.astype(str)
             order = np.argsort(keys, kind="stable")
             got = (keys[order], order)
             cache[key] = got
         keys, order = got
         if not len(keys):
             continue
-        starts = np.searchsorted(keys, wanted, side="left")
-        stops = np.searchsorted(keys, wanted, side="right")
-        positions, _ = ranges_to_indices(starts, stops)
+        positions, _ = layout.ranges_to_indices(*sorted_ranges(keys, wanted))
         rows.append(order[positions])
     if not rows:
         return np.empty(0, dtype=np.int64)
     return np.unique(np.concatenate(rows))
-
-
-def _as_str(values):
-    """``values`` as a string array, tolerating a store with no analyses."""
-    if values is None:
-        return np.empty(0, dtype=str)
-    return np.asarray(values).astype(str)
-
-
-def _unresolved(requested, present):
-    """The requested ids that ``present`` does not contain, in the order asked."""
-    return [key for key in dict.fromkeys(requested) if key not in present]
-
-
-def _unresolved_error(kind, missing, hint):
-    """A :class:`ValueError` naming the ids that resolved to nothing."""
-    shown = ", ".join(missing[:_MAX_NAMED])
-    if len(missing) > _MAX_NAMED:
-        shown += f", ... and {len(missing) - _MAX_NAMED} more"
-    return ValueError(f"No {kind} in this studyset matches: {shown}. {hint}")
