@@ -162,12 +162,38 @@ def _mask_coverage_to_null_ijk(masker, mask_coverage="brain", gm_threshold=0.1):
     return np.vstack(np.where(mask_bool)).T
 
 
+def _acceptable_kwargs(func, n_positional=0):
+    """Return the keyword names a callable accepts, or None if it accepts any.
+
+    .. versionadded:: 0.21.0
+
+    Parameters
+    ----------
+    func : :obj:`callable`
+        The callable to inspect.
+    n_positional : :obj:`int`, default=0
+        Leading parameters the caller passes positionally, which are therefore not
+        available as keywords.
+
+    Returns
+    -------
+    :obj:`list` of :obj:`str` or None
+        ``None`` when ``func`` declares ``**kwargs``, since that accepts anything.
+    """
+    params = list(inspect.signature(func).parameters.values())
+    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in params):
+        return None
+
+    return [param.name for param in params[n_positional:]]
+
+
 def _filter_kwargs(func, kwargs):
     """Return kwargs limited to a callable's supported parameters."""
-    signature = inspect.signature(func)
-    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()):
+    accepted = _acceptable_kwargs(func)
+    if accepted is None:
         return kwargs
-    return {key: value for key, value in kwargs.items() if key in signature.parameters}
+
+    return {key: value for key, value in kwargs.items() if key in accepted}
 
 
 def _check_ncores(n_cores):

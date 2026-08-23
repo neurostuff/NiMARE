@@ -38,6 +38,156 @@ def test_FWECorrector_montecarlo_custom_parameters():
     assert corr.parameters["n_cores"] == 2
 
 
+class RecordingEstimator(DummyEstimator):
+    """Estimator stand-in that records the keywords its correction method receives."""
+
+    def __init__(self):
+        self.call = None
+
+    def _record(self, result, **kwargs):
+        self.call = kwargs
+        return {"p": np.asarray(result.maps["p"])}, {}, "Corrected."
+
+
+class TunableEstimator(RecordingEstimator):
+    """Correction methods that take the optional parameter, as ALE and MKDAChi2 do."""
+
+    def correct_fwe_montecarlo(self, result, voxel_thresh=0.001, n_iters=5000, n_cores=1):
+        """Record the keywords and return an unchanged p map."""
+        return self._record(result, voxel_thresh=voxel_thresh, n_iters=n_iters, n_cores=n_cores)
+
+    def correct_fdr_indep(self, result, alpha=0.05):
+        """Record the keywords and return an unchanged p map."""
+        return self._record(result, alpha=alpha)
+
+
+class FixedEstimator(RecordingEstimator):
+    """Correction methods that do not, as PermutedOLS takes no ``voxel_thresh``."""
+
+    def correct_fwe_montecarlo(self, result, n_iters=5000, n_cores=1):
+        """Record the keywords and return an unchanged p map."""
+        return self._record(result, n_iters=n_iters, n_cores=n_cores)
+
+    def correct_fdr_indep(self, result):
+        """Record the keywords and return an unchanged p map."""
+        return self._record(result)
+
+
+class PermissiveEstimator(RecordingEstimator):
+    """A correction method declaring ``**kwargs``, which accepts anything."""
+
+    def correct_fwe_montecarlo(self, result, **kwargs):
+        """Record the keywords and return an unchanged p map."""
+        return self._record(result, **kwargs)
+
+
+def _result(mni_mask, estimator):
+    return MetaResult(estimator, mask=mni_mask, maps={"p": _masked_values(mni_mask, 0.01)})
+
+
+@pytest.mark.parametrize(
+    ("corrector", "expected"),
+    [
+        (
+            FWECorrector(method="montecarlo", n_iters=5, n_cores=None, voxel_thresh=None),
+            {"n_iters": 5},
+        ),
+        (FDRCorrector(method="indep", alpha=0.05, voxel_thresh=None), {}),
+    ],
+    ids=["fwe", "fdr"],
+)
+def test_corrector_drops_none_valued_kwargs(corrector, expected):
+    """An unset parameter defers to the correction method's default rather than erasing it."""
+    assert corrector.parameters == expected
+
+
+@pytest.mark.parametrize(
+    ("corrector", "estimator", "expected"),
+    [
+        (
+            FWECorrector(method="montecarlo", n_iters=5, voxel_thresh=None),
+            TunableEstimator,
+            {"voxel_thresh": 0.001, "n_iters": 5, "n_cores": 1},
+        ),
+        (
+            FWECorrector(method="montecarlo", voxel_thresh=0.01, n_iters=7, n_cores=2),
+            TunableEstimator,
+            {"voxel_thresh": 0.01, "n_iters": 7, "n_cores": 2},
+        ),
+        (
+            FWECorrector(method="montecarlo", n_iters=5, anything=1),
+            PermissiveEstimator,
+            {"n_iters": 5, "n_cores": 1, "anything": 1},
+        ),
+        (FDRCorrector(method="indep", alpha=0.01), TunableEstimator, {"alpha": 0.01}),
+    ],
+    ids=["unset_defers", "set_reaches", "var_keyword", "alpha_reaches"],
+)
+def test_keywords_reaching_an_estimator_method(mni_mask, corrector, estimator, expected):
+    """A keyword arrives as given, an unset one leaves the estimator's default in place.
+
+    ``alpha`` is a named parameter rather than a stored keyword, so it reaches the estimator
+    only by being forwarded.
+    """
+    corrected = corrector.transform(_result(mni_mask, estimator()))
+
+    # ``transform`` corrects a copy, so the estimator that ran is the one it hands back.
+    assert corrected.estimator.call == expected
+
+
+@pytest.mark.parametrize(
+    ("corrector", "estimator", "unexpected", "method_name", "accepted"),
+    [
+        (
+            FWECorrector(method="montecarlo", n_iters=5, voxel_thresh=0.01),
+            FixedEstimator,
+            "'voxel_thresh'",
+            "FixedEstimator.correct_fwe_montecarlo",
+            "n_iters, n_cores",
+        ),
+        (
+            FWECorrector(method="bonferroni", voxel_thresh=0.01),
+            DummyEstimator,
+            "'voxel_thresh'",
+            "FWECorrector.correct_fwe_bonferroni",
+            "(none)",
+        ),
+        (
+            FDRCorrector(method="indep", alpha=0.01),
+            FixedEstimator,
+            "'alpha'",
+            "FixedEstimator.correct_fdr_indep",
+            "(none)",
+        ),
+    ],
+    ids=["estimator_method", "native_method", "alpha"],
+)
+def test_corrector_rejects_keywords_the_method_cannot_take(
+    mni_mask, corrector, estimator, unexpected, method_name, accepted
+):
+    """Reject with a message the built-in TypeError would not produce.
+
+    Matching on the keyword name alone passes before the check exists, since Python names
+    it too. The accepted-argument list is what tells the two apart.
+    """
+    with pytest.raises(TypeError) as excinfo:
+        corrector.transform(_result(mni_mask, estimator()))
+
+    message = str(excinfo.value)
+    assert unexpected in message
+    assert method_name in message
+    assert f"Accepted keyword arguments: {accepted}" in message
+
+
+def test_native_fdr_method_reads_alpha_off_the_corrector(mni_mask):
+    """It takes only ``nlogp``, so forwarding ``alpha`` to it would be refused."""
+    corrected = FDRCorrector(method="indep", alpha=0.01).transform(
+        _result(mni_mask, DummyEstimator())
+    )
+
+    assert "p_corr-FDR_method-indep" in corrected.maps
+
+
 def test_MetaResult_clips_tiny_analytical_p_values_to_float32_floor(mni_mask):
     """Analytical p-values below float32 resolution should be censored, not zeroed."""
     p_values = _masked_values(mni_mask)
