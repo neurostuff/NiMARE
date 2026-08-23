@@ -156,6 +156,8 @@ class IBMAEstimator(Estimator):
           estimators. It was previously swallowed by ``**kwargs`` and had no effect.
         - Unrecognized keyword arguments now raise :obj:`TypeError` instead of being logged
           and ignored.
+        - Fitting fewer than two analyses now raises :obj:`ValueError` rather than
+          returning maps that are NaN at every voxel.
 
     .. versionchanged:: 0.2.1
 
@@ -185,6 +187,9 @@ class IBMAEstimator(Estimator):
     #: averaged; ``"warn"`` where the bias is real but unquantified; None where it does not
     #: apply.
     _voxel_averaging = "warn"
+
+    #: Fewest analyses these estimators will fit; below it every output map is NaN.
+    _min_analyses = 2
 
     def __init__(
         self,
@@ -248,6 +253,44 @@ class IBMAEstimator(Estimator):
         resample_kwargs = {k.split("resample__")[1]: v for k, v in resample_kwargs.items()}
         self._resample_kwargs.update(resample_kwargs)
 
+    def _check_enough_analyses(self, dataset):
+        """Refuse to fit fewer than :attr:`_min_analyses` analyses.
+
+        Parameters
+        ----------
+        dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
+            The collection ``fit`` was called with. Only its analysis count is read, taken
+            before analyses lacking the required data were dropped.
+
+        Raises
+        ------
+        ValueError
+            If fewer than :attr:`_min_analyses` analyses carry the data this estimator needs.
+
+        Notes
+        -----
+        One analysis is NaN at every voxel either way: under ``aggressive_mask`` its single
+        model fails :attr:`~nimare.meta._dependence.DependenceModel.supports_inference`, and
+        otherwise :func:`~nimare.meta.utils._liberal_mask_bags` drops every bag for holding
+        fewer than two studies, leaving no skipped model to warn about.
+        """
+        n_used = len(self.inputs_["id"])
+        if n_used >= self._min_analyses:
+            return
+
+        n_submitted = len(dataset.ids)
+        dropped = ""
+        if n_submitted > n_used:
+            required = ", ".join(repr(name) for name in self._required_inputs)
+            dropped = f"; the other {n_submitted - n_used} lacked required data ({required})"
+
+        raise ValueError(
+            f"{type(self).__name__} needs at least {self._min_analyses} analyses, but "
+            f"{n_used} of the {n_submitted} submitted reached the estimator{dropped}. One "
+            "analysis has no independent replication to estimate a variance from, so every "
+            "output map would be NaN."
+        )
+
     def _preprocess_input(self, dataset):
         """Preprocess inputs to the Estimator from the Dataset as needed.
 
@@ -255,6 +298,9 @@ class IBMAEstimator(Estimator):
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
             in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
+        # Before any image is loaded: the answer does not depend on their contents.
+        self._check_enough_analyses(dataset)
+
         masker, mask_img = get_masker_mask_image(self.masker, dataset=dataset)
 
         # Reserve the key for the correlation matrix

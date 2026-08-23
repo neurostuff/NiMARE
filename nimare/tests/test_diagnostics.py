@@ -421,6 +421,45 @@ def test_jackknife_with_custom_masker_smoke(testdata_ibma):
         jackknife.transform(res)
 
 
+def test_jackknife_needs_one_more_analysis_than_the_estimator(testdata_ibma):
+    """The refit is what shrinks the studyset, so the floor is the estimator's plus one."""
+    jackknife = diagnostics.Jackknife(target_image="z", target_threshold=0.5)
+
+    with pytest.raises(ValueError) as exc_info:
+        jackknife.transform(ibma.Fishers().fit(testdata_ibma.slice(testdata_ibma.ids[:2])))
+
+    message = str(exc_info.value)
+    assert "Jackknife needs at least 3 analyses" in message
+    assert "Fishers needs at least 2" in message
+
+    results = jackknife.transform(ibma.Fishers().fit(testdata_ibma.slice(testdata_ibma.ids[:3])))
+    assert results.tables["z_diag-Jackknife_tab-counts"].shape[0] == 3
+
+
+def test_jackknife_leaves_cbma_alone(testdata_cbma_full):
+    """CBMA estimators declare no floor, so a two-experiment jackknife must still run."""
+    ids_ = sorted(set(testdata_cbma_full.coordinates["id"]))[:2]
+    res = cbma.ALE().fit(testdata_cbma_full.slice(ids_))
+    jackknife = diagnostics.Jackknife(target_image="z", target_threshold=0.1)
+
+    results = jackknife.transform(res)
+
+    assert results.tables["z_diag-Jackknife_tab-counts_tail-positive"].shape[0] == 2
+
+
+def test_resampled_stability_refuses_replicates_below_the_estimator_floor(testdata_ibma):
+    """Leaving one of two out fits each replicate on a single analysis."""
+    res = ibma.Fishers().fit(testdata_ibma.slice(testdata_ibma.ids[:2]))
+    stability = diagnostics.ResampledStability(target_image="z", resampling_policy="leave_1_out")
+
+    with pytest.raises(ValueError) as exc_info:
+        stability.transform(res)
+
+    message = str(exc_info.value)
+    assert "keeps 1 of 2 analyses per replicate" in message
+    assert "Fishers needs at least 2" in message
+
+
 def test_focuscounter_negative_tail_label_map_naming(testdata_cbma_full):
     """Ensure single-tail negative clusters are labeled as negative."""
     dset = testdata_cbma_full.slice(testdata_cbma_full.ids[:5])

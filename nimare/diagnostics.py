@@ -44,6 +44,29 @@ POSTAIL_LBL = "PositiveTail"  # Label assigned to positive tail clusters
 NEGTAIL_LBL = "NegativeTail"  # Label assigned to negative tail clusters
 
 
+def _estimator_min_analyses(estimator):
+    """Return the fewest analyses ``estimator`` will fit, or None if it declares no floor.
+
+    Read off the estimator so a diagnostic refitting over subsets cannot drift from it.
+    CBMA estimators declare none, which turns off every check that consults this.
+    """
+    floor = getattr(estimator, "_min_analyses", None)
+    return None if floor is None else int(floor)
+
+
+def _refit_group_sizes(estimator):
+    """Return the size of each set of analyses a diagnostic would refit over.
+
+    One entry for a single-sample estimator, two for a pairwise one, which renames
+    ``inputs_["id"]`` to ``id1`` and ``id2`` as it collects each group.
+    """
+    return [
+        len(estimator.inputs_[key])
+        for key in ("id", "id1", "id2")
+        if key in getattr(estimator, "inputs_", {})
+    ]
+
+
 def _tail_mappings():
     """Return tail/sign mappings for consistent diagnostics labeling."""
     tail_to_sign = {"positive": POSTAIL_LBL, "negative": NEGTAIL_LBL}
@@ -782,6 +805,10 @@ class Diagnostics(NiMAREBase):
 class Jackknife(Diagnostics):
     """Run a jackknife analysis on a meta-analysis result.
 
+    .. versionchanged:: 0.21.0
+
+        * Raise :obj:`ValueError` when the result is too small to refit without one analysis.
+
     .. versionchanged:: 0.1.2
 
         * Support for pairwise meta-analyses.
@@ -805,6 +832,48 @@ class Jackknife(Diagnostics):
     summary statistics by the summary statistics from the original meta-analysis, and finally
     averaging the resulting proportion values across all voxels in each cluster.
     """
+
+    def _check_enough_analyses_to_drop_one(self, result):
+        """Refuse a result too small to refit without one of its analyses.
+
+        Parameters
+        ----------
+        result : :obj:`~nimare.results.MetaResult`
+            The result about to be jackknifed.
+
+        Raises
+        ------
+        ValueError
+            If dropping one analysis would leave the estimator below its own floor.
+        """
+        estimator = result.estimator
+        floor = _estimator_min_analyses(estimator)
+        if floor is None:
+            return
+
+        group_sizes = _refit_group_sizes(estimator)
+        if not group_sizes:
+            return
+
+        n_analyses = min(group_sizes)
+        minimum = floor + 1
+        if n_analyses >= minimum:
+            return
+
+        raise ValueError(
+            f"{type(self).__name__} needs at least {minimum} analyses, but this result was "
+            f"fitted on {n_analyses}: it refits the estimator without each analysis in turn, "
+            f"and {type(estimator).__name__} needs at least {floor}."
+        )
+
+    def transform(self, result):
+        """Refuse a result too small to leave one analysis out of, then run the jackknife.
+
+        Takes and returns what :meth:`Diagnostics.transform` does; see there for the tables
+        and maps added to ``result``.
+        """
+        self._check_enough_analyses_to_drop_one(result)
+        return super().transform(result)
 
     def _leave_one_out_values(self, expid, sign, result, target_value_map, image_cache=None):
         """Refit the Estimator without ``expid`` and return voxelwise proportional reductions.
@@ -1026,6 +1095,11 @@ class ResampledStability(NiMAREBase):
     input dataset and then characterizing the stability of the resulting
     meta-analytic map's voxelwise and/or clusterwise significance.
     Based on the implementation in :footcite:t:`Frahm_Monimu_Hoffstaedter`.
+
+    .. versionchanged:: 0.21.0
+
+        * Raise :obj:`ValueError` when a replicate would keep fewer analyses than the
+          estimator will fit.
 
     Parameters
     ----------
@@ -1334,6 +1408,15 @@ class ResampledStability(NiMAREBase):
 
         all_ids = list(result.estimator.inputs_["id"])
         subsets, target_n_used = self._resolve_subsets(len(all_ids))
+
+        # The retained size, not the total, so every policy is covered and not just leave_1_out.
+        floor = _estimator_min_analyses(result.estimator)
+        if floor is not None and target_n_used < floor:
+            raise ValueError(
+                f"resampling_policy={self.resampling_policy!r} keeps {target_n_used} of "
+                f"{len(all_ids)} analyses per replicate, but "
+                f"{type(result.estimator).__name__} needs at least {floor}."
+            )
 
         if isinstance(result.estimator, CBMAEstimator):
             stability_map = self._cbma_subset_stability(result, subsets, target_n_used)
