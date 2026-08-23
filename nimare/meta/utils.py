@@ -628,6 +628,8 @@ def _liberal_mask_bags(mask):
     Each voxel's pattern is packed into bytes and handed to :func:`numpy.unique`, so the
     grouping costs one sort rather than a quadratic pairwise comparison.
     """
+    # Necessary condition for :attr:`~nimare.meta._dependence.MIN_INDEPENDENT_UNITS`, not the
+    # same count: this is studies, and a bag meeting it can still hold one group.
     MIN_STUDY_THRESH = 2
 
     # Pack each voxel's column of S booleans into ceil(S / 8) bytes, so that a whole pattern

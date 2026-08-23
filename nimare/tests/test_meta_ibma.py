@@ -246,6 +246,37 @@ def test_stouffers_multiple_contrasts(testdata_ibma_multiple_contrasts, aggressi
     assert z_img.shape == (10, 10, 10)
 
 
+@pytest.mark.parametrize(
+    "with_dropped,expected",
+    [
+        (False, "1 of the 1 submitted reached the estimator."),
+        (True, "1 of the 2 submitted reached the estimator; the other 1 lacked required "),
+    ],
+    ids=["nothing-dropped", "one-dropped"],
+)
+def test_ibma_refuses_fewer_than_two_analyses(testdata_ibma, with_dropped, expected):
+    """One analysis is NaN at every voxel, and the message says where the others went."""
+    images = testdata_ibma.images
+    ids_ = images.loc[images["z"].notna(), "id"].tolist()[:1]
+    if with_dropped:
+        ids_ += images.loc[images["z"].isna(), "id"].tolist()[:1]
+
+    with pytest.raises(ValueError) as exc_info:
+        ibma.Fishers().fit(testdata_ibma.slice(ids_))
+
+    message = str(exc_info.value)
+    assert "Fishers needs at least 2 analyses" in message
+    assert expected in message
+    assert ("'z_maps'" in message) is with_dropped
+
+
+def test_ibma_fits_two_analyses(testdata_ibma):
+    """The floor is two, not three."""
+    results = ibma.Fishers().fit(testdata_ibma.slice(testdata_ibma.ids[:2]))
+
+    assert np.isfinite(results.get_map("z", return_type="array")).any()
+
+
 def _z_image_paths(dataset):
     """Return the z-image paths that are actually on disk, as the estimators see them."""
     return [
