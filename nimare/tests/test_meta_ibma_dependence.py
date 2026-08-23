@@ -959,7 +959,7 @@ def test_near_cancellation_is_left_alone_silently(caplog):
 
 
 def test_cancellation_floor_still_matches_pymare():
-    """PyMARE keeps its own floor as a function local, so drift between the two is silent.
+    """Keep the floor pinned to PyMARE's, which is a function local and so drifts silently.
 
     Excluding a group here only pre-empts PyMARE while everything PyMARE refuses is already
     excluded. The value cannot be imported, so the two are pinned by behaviour instead.
