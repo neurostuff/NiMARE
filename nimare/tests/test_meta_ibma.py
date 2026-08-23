@@ -3,6 +3,7 @@
 import logging
 import os.path as op
 
+import nibabel as nib
 import numpy as np
 import pytest
 from nilearn.image import concat_imgs
@@ -437,3 +438,93 @@ def test_combination_tests_report_no_evidence_as_zero(estimator):
     assert z_map[2] > 3
     assert z_map[3] > 0 and z_map[4] < 0
     assert np.isclose(z_map[3], -z_map[4])
+
+
+_EMPTY_SHAPE = (6, 7, 6)
+_EMPTY_AFFINE = np.diag([2.0, 2.0, 2.0, 1.0])
+
+
+def _write_nifti(path, data):
+    """Write ``data`` as a NIfTI at ``path`` and return the path."""
+    nib.save(nib.Nifti1Image(np.asarray(data, dtype=np.float32), _EMPTY_AFFINE), str(path))
+    return str(path)
+
+
+def _studyset_with_empty_images(tmp_path, empty, studies=("s0", "s0", "s0", "s1", "s2")):
+    """Return ``(studyset, mask)``: one z map per entry of ``studies``, zeroed at ``empty``."""
+    rng = np.random.RandomState(42)
+    analyses = {}
+    for i, study_id in enumerate(studies):
+        data = np.zeros(_EMPTY_SHAPE) if i in empty else rng.normal(1.0, 1.0, _EMPTY_SHAPE)
+        path = _write_nifti(tmp_path / f"z{i}.nii.gz", data)
+        analyses.setdefault(study_id, []).append((f"a{i}", path))
+
+    payload = {
+        "id": "ss",
+        "name": "ss",
+        "studies": [
+            {
+                "id": study_id,
+                "analyses": [
+                    {
+                        "id": analysis_id,
+                        "metadata": {"sample_sizes": [20]},
+                        "images": [{"value_type": "Z map", "filename": path, "space": "MNI"}],
+                    }
+                    for analysis_id, path in entries
+                ],
+            }
+            for study_id, entries in analyses.items()
+        ],
+    }
+    mask = _write_nifti(tmp_path / "mask.nii.gz", np.ones(_EMPTY_SHAPE))
+    return nimare.nimads.Studyset(payload), mask
+
+
+@pytest.mark.parametrize("aggressive_mask", [True, False], ids=["aggressive", "liberal"])
+def test_an_image_with_no_usable_voxel_is_dropped(tmp_path, caplog, aggressive_mask):
+    """An image that contributes nowhere must not be counted as an input, under either mask."""
+    studyset, mask = _studyset_with_empty_images(tmp_path, empty={2})
+
+    # use_sample_size adds a metadata input, so the drop has a second input to realign.
+    meta = ibma.Stouffers(mask=mask, aggressive_mask=aggressive_mask, use_sample_size=True)
+    with caplog.at_level(logging.WARNING, logger="nimare.meta.ibma"):
+        results = meta.fit(studyset)
+
+    assert "s0-a2" in caplog.text
+    assert [str(id_) for id_ in meta.inputs_["id"]] == ["s0-a0", "s0-a1", "s1-a3", "s2-a4"]
+    assert meta.inputs_["z_maps"].shape[0] == 4
+    assert len(meta.inputs_["contrast_names"]) == 4
+    assert len(meta.inputs_["sample_sizes"]) == 4
+    assert list(meta.studyset_.ids) == [str(id_) for id_ in meta.inputs_["id"]]
+    # Without the drop, the aggressive mask intersects the empty row into every map.
+    assert np.any(np.isfinite(results.maps["z"]))
+
+
+@pytest.mark.parametrize(
+    "empty,fit_kwargs,match",
+    [
+        ({2}, {"drop_invalid": False}, "s0-a2"),
+        (set(range(5)), {}, "nothing to meta-analyse"),
+    ],
+    ids=["not-asked-for", "nothing-left"],
+)
+def test_dropping_an_empty_image_is_refused(tmp_path, empty, fit_kwargs, match):
+    """Refuse when the caller did not ask for a drop, or when the drop leaves nothing."""
+    studyset, mask = _studyset_with_empty_images(tmp_path, empty=empty)
+
+    with pytest.raises(ValueError, match=match):
+        ibma.Stouffers(mask=mask).fit(studyset, **fit_kwargs)
+
+
+def test_dropping_an_empty_image_narrows_explicit_groupby_labels(tmp_path):
+    """Labels given to ``groupby`` are positional, so a dropped image drops its label."""
+    studyset, mask = _studyset_with_empty_images(
+        tmp_path, empty={1}, studies=("s0", "s0", "s1", "s2")
+    )
+
+    meta = ibma.Stouffers(mask=mask, groupby=["x", "x", "y", "y"])
+    meta.fit(studyset)
+
+    assert [str(id_) for id_ in meta.inputs_["id"]] == ["s0-a0", "s1-a2", "s2-a3"]
+    assert list(meta.inputs_["contrast_names"]) == [0, 1, 1]

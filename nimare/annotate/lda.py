@@ -105,7 +105,7 @@ class LDAModel(NiMAREBase):
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
         """
         tabular_source = normalize_collection(dset)
 

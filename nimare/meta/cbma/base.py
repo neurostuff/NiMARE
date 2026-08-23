@@ -47,7 +47,7 @@ class CBMAEstimator(Estimator):
 
     .. warning::
         Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
 
     .. versionchanged:: 0.12.0
 
@@ -163,7 +163,7 @@ class CBMAEstimator(Estimator):
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
         """
         validate_coordinate_spaces(self.inputs_["coordinates"])
         masker, mask_img = get_masker_mask_image(
@@ -246,7 +246,7 @@ class CBMAEstimator(Estimator):
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
         """
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
@@ -1281,7 +1281,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
 
         The `fit` method is a light wrapper that runs input validation and
         preprocessing before fitting the actual model. Estimators' individual

@@ -1,5 +1,6 @@
 """Tools for downloading datasets."""
 
+import contextlib
 import itertools
 import logging
 import os
@@ -145,14 +146,21 @@ def _materialize_found_databases(found_databases, return_type, target):
             f"Expected one of: {', '.join(sorted(VALID_FETCH_RETURN_TYPES))}."
         )
 
+    from nimare.dataset import _quiet_dataset_deprecation
+
     materialized = []
     for database in found_databases:
-        dataset = convert_neurosynth_to_dataset(
-            coordinates_file=database["coordinates"],
-            metadata_file=database["metadata"],
-            annotations_files=database["features"],
-            target=target,
+        # A studyset request only passes through Dataset; don't warn about the detour.
+        silence = (
+            contextlib.nullcontext() if return_type == "dataset" else _quiet_dataset_deprecation()
         )
+        with silence:
+            dataset = convert_neurosynth_to_dataset(
+                coordinates_file=database["coordinates"],
+                metadata_file=database["metadata"],
+                annotations_files=database["features"],
+                target=target,
+            )
         if return_type == "dataset":
             materialized.append(dataset)
         else:
@@ -249,7 +257,7 @@ def fetch_neurosynth(
         fetch_neurosynth(version="7", source="abstract", vocab="terms")
 
     .. warning::
-        ``return_type="dataset"`` is deprecated and will be removed in a future release.
+        ``return_type="dataset"`` is deprecated and will be removed in NiMARE 1.0.0.
         Prefer the default ``return_type="studyset"``.
 
     .. warning::
@@ -319,7 +327,7 @@ def fetch_neuroquery(
     This function was adapted from neurosynth.base.dataset.download().
 
     .. warning::
-        ``return_type="dataset"`` is deprecated and will be removed in a future release.
+        ``return_type="dataset"`` is deprecated and will be removed in NiMARE 1.0.0.
         Prefer the default ``return_type="studyset"``.
     """
     URL = (
@@ -519,8 +527,8 @@ def download_abstracts(dataset, email):
     dataset : :obj:`~nimare.dataset.Dataset` or :obj:`~nimare.nimads.Studyset`
 
     .. warning::
-        Passing a :class:`~nimare.dataset.Dataset` is deprecated and will be removed in a future
-        release. Prefer passing a :class:`~nimare.nimads.Studyset`.
+        Passing a :class:`~nimare.dataset.Dataset` is deprecated and will be removed in NiMARE
+        1.0.0. Prefer passing a :class:`~nimare.nimads.Studyset`.
 
     This function assumes that the dataset uses identifiers in the format
     [PMID-EXPID]. Thus, the ``study_id`` column of the

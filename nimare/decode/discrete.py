@@ -116,7 +116,7 @@ class BrainMapDecoder(Decoder):
 
     .. warning::
         Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
 
     .. versionadded:: 0.0.3
 
@@ -199,7 +199,7 @@ class BrainMapDecoder(Decoder):
 
         .. warning::
             Fitting decoders on :class:`~nimare.dataset.Dataset` inputs is deprecated and will be
-            removed in a future release. Prefer fitting on
+            removed in NiMARE 1.0.0. Prefer fitting on
             :class:`~nimare.nimads.Studyset`.
         """
         results = brainmap_decode(
@@ -400,7 +400,7 @@ class NeurosynthDecoder(Decoder):
 
     .. warning::
         Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
 
     .. versionadded:: 0.0.3
 
@@ -495,7 +495,7 @@ class NeurosynthDecoder(Decoder):
 
         .. warning::
             Fitting decoders on :class:`~nimare.dataset.Dataset` inputs is deprecated and will be
-            removed in a future release. Prefer fitting on
+            removed in NiMARE 1.0.0. Prefer fitting on
             :class:`~nimare.nimads.Studyset`.
         """
         results = neurosynth_decode(
@@ -693,7 +693,7 @@ class ROIAssociationDecoder(Decoder):
 
     .. warning::
         Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
 
     Parameters
     ----------
@@ -772,7 +772,7 @@ class ROIAssociationDecoder(Decoder):
 
         .. warning::
             Fitting decoders on :class:`~nimare.dataset.Dataset` inputs is deprecated and will be
-            removed in a future release. Prefer fitting on
+            removed in NiMARE 1.0.0. Prefer fitting on
             :class:`~nimare.nimads.Studyset`.
         """
         feature_values = self.inputs_["annotations"][self.features_].values
