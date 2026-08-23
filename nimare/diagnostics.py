@@ -50,21 +50,7 @@ def _estimator_min_analyses(estimator):
     Read off the estimator so a diagnostic refitting over subsets cannot drift from it.
     CBMA estimators declare none, which turns off every check that consults this.
     """
-    floor = getattr(estimator, "_min_analyses", None)
-    return None if floor is None else int(floor)
-
-
-def _refit_group_sizes(estimator):
-    """Return the size of each set of analyses a diagnostic would refit over.
-
-    One entry for a single-sample estimator, two for a pairwise one, which renames
-    ``inputs_["id"]`` to ``id1`` and ``id2`` as it collects each group.
-    """
-    return [
-        len(estimator.inputs_[key])
-        for key in ("id", "id1", "id2")
-        if key in getattr(estimator, "inputs_", {})
-    ]
+    return getattr(estimator, "_min_analyses", None)
 
 
 def _tail_mappings():
@@ -851,11 +837,9 @@ class Jackknife(Diagnostics):
         if floor is None:
             return
 
-        group_sizes = _refit_group_sizes(estimator)
-        if not group_sizes:
-            return
-
-        n_analyses = min(group_sizes)
+        # Only IBMA estimators declare a floor, and none of them is pairwise, so there is no
+        # id1/id2 pair to take the smaller of.
+        n_analyses = len(estimator.inputs_["id"])
         minimum = floor + 1
         if n_analyses >= minimum:
             return

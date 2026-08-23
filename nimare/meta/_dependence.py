@@ -9,6 +9,12 @@ term -- all belong to PyMARE.
 import numpy as np
 from pymare.stats import encode_groups, group_mean
 
+#: Independent units needed to estimate a variance. One unit says nothing about how much a
+#: second sample would have differed, so every floor in the library derives from this one:
+#: :attr:`DependenceModel.supports_inference` applies it to groups, and
+#: :attr:`~nimare.meta.ibma.IBMAEstimator._min_analyses` to the analyses that form them.
+MIN_INDEPENDENT_UNITS = 2
+
 
 def hashable_label(value):
     """Return a hashable stand-in for one group label.
@@ -115,7 +121,7 @@ class DependenceModel:
         that spread: PyMARE's cluster-robust sandwich, Stouffer's between-group variance and
         the sign-flip null all reject a single block outright.
         """
-        return self.n_groups >= 2
+        return self.n_groups >= MIN_INDEPENDENT_UNITS
 
     @property
     def dof(self):

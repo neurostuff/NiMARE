@@ -25,7 +25,11 @@ from pymare.stats import estimate_null_correlation
 
 from nimare import _version
 from nimare.estimator import Estimator
-from nimare.meta._dependence import DependenceModel, hashable_label
+from nimare.meta._dependence import (
+    MIN_INDEPENDENT_UNITS,
+    DependenceModel,
+    hashable_label,
+)
 from nimare.meta._permutation import _empirical_max_p, _permuted_ols
 from nimare.meta.utils import _liberal_mask_bags, _liberal_mask_values
 from nimare.transforms import d_to_g, p_to_z, t_to_d, t_to_nlogp, t_to_z
@@ -188,8 +192,9 @@ class IBMAEstimator(Estimator):
     #: apply.
     _voxel_averaging = "warn"
 
-    #: Fewest analyses these estimators will fit; below it every output map is NaN.
-    _min_analyses = 2
+    #: Fewest analyses these estimators will fit; below it every output map is NaN. An
+    #: analysis is at most one independent unit, so the floor on units is also the floor here.
+    _min_analyses = MIN_INDEPENDENT_UNITS
 
     def __init__(
         self,
