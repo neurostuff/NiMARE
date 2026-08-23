@@ -420,7 +420,7 @@ class Studyset:
         return list(self._view.short_keys[keep].astype(str))
 
     def _analyses_in_mask(self, mask):
-        """This selection, narrowed to analyses with at least one focus in ``mask``."""
+        """Studies filtered with at least one focus in ``mask``."""
         from nilearn.image import load_img
 
         from nimare.utils import _mask_img_to_bool
