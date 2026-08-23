@@ -162,6 +162,18 @@ class NiMAREBase(CacheMixin, metaclass=ABCMeta):
     #: written into ``inputs_``; values are ``(kind, field)`` pairs.
     _required_inputs = {}
 
+    def _image_input_fields(self):
+        """Return the ``_required_inputs`` entries declared as images.
+
+        Returns
+        -------
+        :obj:`dict`
+            ``{inputs_ key: image field}``, in ``_required_inputs`` order.
+        """
+        return {
+            name: field for name, (kind, field) in self._required_inputs.items() if kind == "image"
+        }
+
     def _collect_inputs(self, dataset, drop_invalid=True):
         """Search for, and validate, required inputs as necessary.
 

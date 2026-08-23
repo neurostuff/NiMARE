@@ -42,6 +42,7 @@ For more information about the components of coordinate-based meta-analysis in N
    :template: class.rst
 
    results.MetaResult
+   results.DroppedInput
 
 
 .. _api_correct_ref:

@@ -21,6 +21,113 @@ from nimare.utils import (
 LGR = logging.getLogger(__name__)
 
 
+class DroppedInput:
+    """Stand-in for an input image array dropped by :meth:`MetaResult.save`.
+
+    .. versionadded:: 0.21.0
+
+    Parameters
+    ----------
+    key : :obj:`str`
+        The ``estimator.inputs_`` key whose array was dropped.
+
+    Raises
+    ------
+    RuntimeError
+        On any read of the placeholder, naming the key and the flag that removed it.
+    """
+
+    def __init__(self, key):
+        self._key = key
+
+    def _raise(self, *args, **kwargs):
+        """Report the dropped key and how to get the array back."""
+        raise RuntimeError(
+            f"estimator.inputs_['{self._key}'] was dropped when this MetaResult was saved "
+            "with with_inputs=False, so the operations that read the input images -- "
+            "reporting, and Monte Carlo FWE correction of an image-based meta-analysis -- "
+            "cannot run on it. Refit the estimator to rebuild the inputs, or save the "
+            "result again with with_inputs=True."
+        )
+
+    def __getattr__(self, name):
+        """Raise on any public attribute lookup, such as ``.shape``."""
+        # Private and dunder names pass through so that pickle and copy can still probe
+        # the placeholder for ``__reduce_ex__``, ``__deepcopy__`` and the like.
+        if name.startswith("_"):
+            raise AttributeError(name)
+        self._raise()
+
+    __array__ = _raise
+    __getitem__ = _raise
+    __iter__ = _raise
+    __len__ = _raise
+
+    def __repr__(self):
+        """Show the dropped key."""
+        return f"DroppedInput({self._key!r})"
+
+
+def _shell(result, **overrides):
+    """Build a result carrying ``result``'s attributes, bypassing ``__init__``.
+
+    ``__init__`` deep-copies the estimator, rebuilds the masker and re-derives the
+    citations from the description, none of which a result built from an already-built
+    one needs.
+
+    Parameters
+    ----------
+    result : :class:`MetaResult`
+        The result to take attributes from.
+    overrides
+        Attributes to set in place of ``result``'s.
+
+    Returns
+    -------
+    :class:`MetaResult`
+        A new result of ``result``'s class.
+    """
+    new = object.__new__(type(result))
+    new.__dict__.update(result.__dict__)
+    new.__dict__.update(overrides)
+    return new
+
+
+def _drop_input_images(estimator):
+    """Return a shallow copy of ``estimator`` with its input image arrays replaced.
+
+    The keys replaced are the ones ``_required_inputs`` declares as images, plus the
+    ``"data_bags"`` derived from them. The rest of ``inputs_`` is small and is kept; the
+    diagnostics need ``inputs_["id"]`` to enumerate the studies they refit.
+
+    Parameters
+    ----------
+    estimator : :class:`~nimare.base.Estimator`
+        A fitted estimator.
+
+    Returns
+    -------
+    :class:`~nimare.base.Estimator`
+        A shallow copy carrying :class:`DroppedInput` placeholders, or ``estimator``
+        unchanged when it declares no image inputs.
+    """
+    inputs = getattr(estimator, "inputs_", None)
+    if not inputs:
+        return estimator
+
+    keys = set(estimator._image_input_fields())
+    keys.add("data_bags")
+    keys &= set(inputs)
+    if not keys:
+        return estimator
+
+    stripped = copy.copy(estimator)
+    stripped.inputs_ = {
+        key: (DroppedInput(key) if key in keys else value) for key, value in inputs.items()
+    }
+    return stripped
+
+
 class MetaResult(NiMAREBase):
     """Base class for meta-analytic results.
 
@@ -156,6 +263,41 @@ class MetaResult(NiMAREBase):
                 return squeeze_image(self.masker.inverse_transform([m]))
         return m
 
+    def save(self, filename, compress=True, with_inputs=True):
+        """Pickle the MetaResult to the provided file.
+
+        .. versionchanged:: 0.21.0
+
+            Added the ``with_inputs`` parameter.
+
+        Parameters
+        ----------
+        filename : :obj:`str`
+            File to which the result will be saved.
+        compress : :obj:`bool`, optional
+            If True, the file will be compressed with gzip. Otherwise, the
+            uncompressed version will be saved. Default = True.
+        with_inputs : :obj:`bool`, optional
+            Whether to write the estimator's input images into the file. Default = True.
+            False replaces them with :class:`DroppedInput` placeholders, which for an
+            image-based result is most of the file.
+
+            The maps, tables, masker, corrector and study ids are unaffected, so
+            ``get_map``, ``save_maps``, ``save_tables``, ``copy``, the Bonferroni and FDR
+            corrections and the diagnostics all still work; the diagnostics re-read the
+            images from disk for each refit. :func:`~nimare.reports.base.run_reports` and
+            ``FWECorrector(method="montecarlo")`` on an image-based estimator do not: they
+            read the input arrays, and raise when they reach a placeholder.
+        """
+        if with_inputs:
+            super().save(filename, compress=compress)
+            return
+
+        # A shell, not a copy: sharing the maps and tables avoids duplicating them in
+        # order to write a smaller file.
+        stripped = _shell(self, estimator=_drop_input_images(self.estimator))
+        NiMAREBase.save(stripped, filename, compress=compress)
+
     def save_maps(self, output_dir=".", prefix="", prefix_sep="_", names=None):
         """Save results to files.
 
@@ -248,17 +390,12 @@ class MetaResult(NiMAREBase):
 
     def copy(self):
         """Return copy of result object."""
-        new = object.__new__(MetaResult)
-        # Deep copy the estimator so that corrected results can update estimator state
-        # without mutating the original MetaResult or estimator.
-        new.estimator = copy.deepcopy(self.estimator)
-        new.corrector = self.corrector
-        new.diagnostics = self.diagnostics
-        new.masker = self.masker
-        new.maps = copy.deepcopy(self.maps)
-        new.tables = copy.deepcopy(self.tables)
-        new.metadata = {}
-        # Bypass the description_ setter (which re-parses bibtex on every call).
-        # Both attributes are already computed and neither changes after fit.
-        new._set_description(self.description_)
-        return new
+        return _shell(
+            self,
+            # Deep copy the estimator so that corrected results can update estimator state
+            # without mutating the original MetaResult or estimator.
+            estimator=copy.deepcopy(self.estimator),
+            maps=copy.deepcopy(self.maps),
+            tables=copy.deepcopy(self.tables),
+            metadata={},
+        )

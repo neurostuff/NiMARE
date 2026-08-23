@@ -273,9 +273,7 @@ class IBMAEstimator(Estimator):
             # A dictionary to collect data, to be further reduced by the liberal mask.
             self.inputs_["data_bags"] = {}
 
-        image_names = [
-            name for name, (type_, _) in self._required_inputs.items() if type_ == "image"
-        ]
+        image_names = list(self._image_input_fields())
         for name in image_names:
             # Mask required input images using either the dataset's mask or the estimator's.
             temp_arr = self._mask_images(masker, mask_img, self.inputs_[name])
@@ -639,9 +637,7 @@ class IBMAEstimator(Estimator):
 
         # Calculate the correlation matrix on the first image-based input,
         # which is the map the dependence acts on.
-        image_names = [
-            name for name, (type_, _) in self._required_inputs.items() if type_ == "image"
-        ]
+        image_names = list(self._image_input_fields())
         if not image_names:
             return
         maps = self.inputs_[image_names[0]]
