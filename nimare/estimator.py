@@ -23,8 +23,12 @@ class Estimator(NiMAREBase):
 
     .. warning::
         Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
     """
+
+    #: The ``drop_invalid`` ``fit`` was called with, for the validity that can only be
+    #: judged in ``_preprocess_input``, once the data are loaded.
+    _drop_invalid = True
 
     def __init__(
         self,
@@ -58,7 +62,7 @@ class Estimator(NiMAREBase):
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
         """
         pass
 
@@ -87,8 +91,8 @@ class Estimator(NiMAREBase):
         dataset : :obj:`~nimare.nimads.Studyset` or :obj:`~nimare.dataset.Dataset`
             Collection object to analyze.
         drop_invalid : :obj:`bool`, optional
-            Whether to automatically ignore any studies without the required data or not.
-            Default is True.
+            Whether to automatically ignore any studies without the required data, or with
+            data that cannot be used, such as an all-zero image. Default is True.
 
         Returns
         -------
@@ -102,7 +106,7 @@ class Estimator(NiMAREBase):
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
 
         The `fit` method is a light wrapper that runs input validation and
         preprocessing before fitting the actual model. Estimators' individual
@@ -110,6 +114,7 @@ class Estimator(NiMAREBase):
         call `fit`.
         """
         dataset = normalize_collection(dataset)
+        self._drop_invalid = drop_invalid
         self._collect_inputs(dataset, drop_invalid=drop_invalid)
         self._preprocess_input(dataset)
         maps, tables, description = self._cache(self._fit, func_memory_level=1)(dataset)

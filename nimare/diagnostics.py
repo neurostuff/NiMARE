@@ -1475,7 +1475,7 @@ class FocusFilter(NiMAREBase):
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
         """
         filtered = normalize_collection(dataset)
 

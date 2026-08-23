@@ -6,6 +6,7 @@ import time
 
 import nibabel as nib
 import numpy as np
+import pandas as pd
 import pytest
 from pymare.stats import log_chi2_sf
 from scipy import stats
@@ -94,6 +95,58 @@ def test_resolve_transforms_warns_on_multiple_group_sample_sizes(testdata_ibma, 
         )
 
     assert "one-sample" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "sources,warns",
+    [(("t", "p", "sample_sizes"), False), (("t", "p"), False), (("p",), True)],
+)
+def test_resolve_transforms_z_from_p_takes_any_sign_on_offer(
+    testdata_ibma, caplog, sources, warns
+):
+    """Only a p map with no t beside it yields an unsigned z, and only that case warns."""
+    masker = testdata_ibma.masker
+    rng = np.random.RandomState(1)
+    n_voxels = masker.transform(masker.mask_img).size
+    t_values = rng.normal(size=n_voxels)
+    t_values[0] = 0.0
+    p_values = rng.uniform(1e-4, 0.9, size=n_voxels)
+    data = {
+        "t": masker.inverse_transform(t_values),
+        "p": masker.inverse_transform(p_values),
+        "sample_sizes": [20],
+    }
+    expected = {
+        ("t", "p", "sample_sizes"): transforms.t_to_z(t_values, 19),
+        ("t", "p"): np.sign(t_values) * transforms.p_to_z(p_values),
+        ("p",): transforms.p_to_z(p_values),
+    }[sources]
+
+    with caplog.at_level(logging.WARNING, logger="nimare.transforms"):
+        img = transforms.resolve_transforms("z", {k: data[k] for k in sources}, masker)
+
+    np.testing.assert_allclose(masker.transform(img).squeeze(), expected, atol=1e-4)
+    assert ("unsigned" in caplog.text) is warns
+
+
+def test_transform_images_names_the_analysis_in_the_unsigned_warning(
+    testdata_ibma, caplog, tmp_path
+):
+    """A studyset of many maps has to say which one lost its sign."""
+    masker = testdata_ibma.masker
+    p_file = str(tmp_path / "p.nii.gz")
+    n_voxels = masker.transform(masker.mask_img).size
+    masker.inverse_transform(np.full(n_voxels, 0.05)).to_filename(p_file)
+
+    with caplog.at_level(logging.WARNING, logger="nimare.transforms"):
+        transforms.transform_images(
+            pd.DataFrame({"id": ["study1-1"], "p": [p_file]}),
+            target="z",
+            masker=masker,
+            out_dir=str(tmp_path),
+        )
+
+    assert "study1-1: " in caplog.text
 
 
 def test_transform_images(testdata_ibma):

@@ -19,7 +19,7 @@ import pandas as pd
 
 from nimare.studyset import blocks as _blocks
 from nimare.studyset import edit, requirements
-from nimare.studyset.columns import ID_COLS
+from nimare.studyset.columns import ID_COLS, join_names, missing_names
 from nimare.studyset.io import from_nimads, from_parquet, to_nimads_dict, write_nimads
 from nimare.studyset.io.parquet import write_parquet
 from nimare.studyset.layout import harmonize_space
@@ -286,7 +286,35 @@ class Studyset:
 
     # -------------------------------------------------------------- selection
     def slice(self, ids=None, *, analyses=None, filter_level="analysis"):
-        """Return a studyset with only the requested ids."""
+        """Return a studyset with only the requested ids.
+
+        .. versionchanged:: 0.21.0
+
+            An id naming nothing raises instead of being ignored.
+
+        Parameters
+        ----------
+        ids : :obj:`str` or array_like of :obj:`str`
+            Analysis ids, or study ids when ``filter_level="study"``. An
+            analysis may be named by its full ``"<study id>-<analysis id>"`` id,
+            which :attr:`ids` lists, or by its analysis id alone. A short id
+            shared by several analyses selects all of them.
+        analyses : array_like of :obj:`str`, optional
+            An alias for ``ids``.
+        filter_level : {"analysis", "study"}, default="analysis"
+            Which level ``ids`` names.
+
+        Returns
+        -------
+        :class:`~nimare.studyset.Studyset`
+            A studyset holding only the named analyses.
+
+        Raises
+        ------
+        :obj:`ValueError`
+            If any id names nothing in this studyset, naming the ids that
+            failed. An empty ``ids`` is not an error.
+        """
         if ids is None and analyses is not None:
             ids = analyses
         elif ids is None:
@@ -298,15 +326,24 @@ class Studyset:
         return self.filter_ids(ids)
 
     def filter_ids(self, ids):
-        """Keep the named analyses. Full ids or short analysis ids both work."""
+        """Keep the named analyses, by full id or short analysis id.
+
+        Raises :obj:`ValueError` naming any id that matches nothing.
+        """
         return Studyset._wrap(self._view.select_keys(ids))
 
     def filter_study_ids(self, study_ids):
-        """Return a studyset with only the requested studies."""
+        """Return a studyset with only the requested studies.
+
+        Raises :obj:`ValueError` naming any id that matches nothing.
+        """
         return Studyset._wrap(self._view.select_studies(study_ids))
 
     def exclude_study_ids(self, study_ids):
-        """Return a studyset without the requested studies."""
+        """Return a studyset without the requested studies.
+
+        An id matching nothing is not an error.
+        """
         return Studyset._wrap(self._view.select_studies(study_ids, exclude=True))
 
     def filter_annotations(self, labels, threshold=0.001, match="all", annotation=None):
@@ -315,7 +352,7 @@ class Studyset:
             raise ValueError("match must be 'all' or 'any'")
         masks = self._label_masks(labels, threshold, annotation)
         keep = masks.all(axis=0) if match == "all" else masks.any(axis=0)
-        return Studyset._wrap(self._view.select(keep))
+        return self.select_analyses(keep)
 
     def filter_metadata(self, field, op, value):
         """Keep analyses whose metadata ``field`` satisfies ``op value``."""
@@ -327,7 +364,11 @@ class Studyset:
         keep = _OPS[op](frame[field], value)
         if not isinstance(keep, pd.Series):
             keep = pd.Series(keep, index=frame.index)
-        return Studyset._wrap(self._view.select(keep.fillna(False).to_numpy(dtype=bool)))
+        return self.select_analyses(keep.fillna(False).to_numpy(dtype=bool))
+
+    def select_analyses(self, mask):
+        """Keep the analyses a boolean mask -- or an array of positions -- selects."""
+        return Studyset._wrap(self._view.select(mask))
 
     def select_points(self, point_mask):
         """Keep a subset of foci and every analysis."""
@@ -357,10 +398,9 @@ class Studyset:
 
     def _label_block_for(self, labels, annotation=None):
         block = _blocks.label_block_for(self._view, annotation)
-        known = set(block.labels.tolist())
-        missing = [label for label in labels if label not in known]
+        missing = missing_names(labels, set(block.labels.tolist()))
         if missing:
-            raise ValueError(f"Missing label(s): {', '.join(map(str, missing))}")
+            raise ValueError(f"Missing label(s): {join_names(missing)}")
         return block
 
     def get_labels(self, ids=None):
@@ -376,31 +416,32 @@ class Studyset:
 
     def get_studies_by_label(self, labels=None, label_threshold=0.001, annotation=None):
         """Full analysis ids whose labels reach the threshold."""
-        masks = self._label_masks(labels, label_threshold, annotation)
-        return list(self.ids[masks.all(axis=0)])
+        return list(self.ids[self._label_masks(labels, label_threshold, annotation).all(axis=0)])
 
     def get_analyses_by_label(self, labels=None, label_threshold=0.001, annotation=None):
         """Short analysis ids whose labels reach the threshold."""
-        return [
-            str(i).rsplit("-", 1)[-1]
-            for i in self.get_studies_by_label(labels, label_threshold, annotation)
-        ]
+        keep = self._label_masks(labels, label_threshold, annotation).all(axis=0)
+        return list(self._view.short_keys[keep].astype(str))
 
-    def get_studies_by_mask(self, mask):
-        """Full analysis ids with at least one focus inside ``mask``."""
+    def _analyses_in_mask(self, mask):
+        """Studies filtered with at least one focus in ``mask``."""
         from nilearn.image import load_img
 
         from nimare.utils import _mask_img_to_bool
 
         if self.store.n_points == 0:
-            return []
+            return self._view.select(np.zeros(len(self._view), dtype=bool))
         mask = load_img(mask)
         flagged = self._view.points_in_mask(_mask_img_to_bool(mask), mask.affine)
-        return list(self._view.analyses_with_points(flagged).keys.astype(str))
+        return self._view.analyses_with_points(flagged)
+
+    def get_studies_by_mask(self, mask):
+        """Full analysis ids with at least one focus inside ``mask``."""
+        return list(self._analyses_in_mask(mask).keys.astype(str))
 
     def get_analyses_by_mask(self, mask):
-        """Return the full ids of analyses with at least one focus in ``mask``."""
-        return [str(i).rsplit("-", 1)[-1] for i in self.get_studies_by_mask(mask)]
+        """Short analysis ids with at least one focus inside ``mask``."""
+        return list(self._analyses_in_mask(mask).short_keys.astype(str))
 
     def get_studies_by_coordinate(self, xyz, r=20):
         """Full analysis ids with a focus within ``r`` mm of any of ``xyz``."""
@@ -425,7 +466,8 @@ class Studyset:
             hit = np.unique(groups[distances <= r])
         else:
             hit = np.unique(groups[np.argsort(distances)[:n]])
-        return [str(k).rsplit("-", 1)[-1] for k in block.group_keys[hit]]
+        # hit indexes the coordinate block's groups, which are this selection.
+        return list(self._view.short_keys[hit].astype(str))
 
     def _frame_field(self, frame, field, what):
         """Field names in ``frame``, or one field's values."""

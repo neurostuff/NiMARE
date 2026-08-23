@@ -112,6 +112,24 @@ class DependenceModel:
         """Number of independent units backing the inference."""
         return int(self.group_order.size)
 
+    def group_rows(self):
+        """Yield ``(label, rows)`` for every group, in :attr:`group_order`.
+
+        The enumeration PyMARE's combination tests run over the labels they are handed, so a
+        per-group quantity computed here describes the block PyMARE will aggregate.
+
+        Yields
+        ------
+        label : :obj:`object`
+            The block label.
+        rows : :obj:`numpy.ndarray`
+            Row indices of that block's images, into this grouping rather than the full
+            dataset; :attr:`image_indices` translates them back.
+        """
+        codes, labels = self._encoded_blocks
+        for index, label in enumerate(labels):
+            yield label, np.flatnonzero(codes == index)
+
     @property
     def supports_inference(self):
         """Whether there are at least two independent units to compare.

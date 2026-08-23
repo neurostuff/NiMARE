@@ -175,7 +175,7 @@ class CBMREstimator(Estimator):
 
     .. warning::
         Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
-        a future release. Prefer :class:`~nimare.nimads.Studyset`.
+        NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
 
     .. versionadded:: 0.1.0
 
@@ -601,7 +601,7 @@ class CBMREstimator(Estimator):
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
         """
         masker, mask_img = get_masker_mask_image(
             self.masker,
@@ -648,7 +648,7 @@ class CBMREstimator(Estimator):
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
         """
         init_weight_kwargs = {
             "groups": self.groups,

@@ -594,6 +594,17 @@ def _calculate_cluster_measures(arr3d, threshold, conn, tail="upper"):
     return max_size, max_mass
 
 
+def _usable(data):
+    """Return which entries of an image array are usable statistics.
+
+    isfinite rather than ~isnan: an infinite value is not a usable statistic either, and it
+    survives an isnan check. Input maps do carry them -- a t map divided by a zero standard
+    error, say -- and one would otherwise reach PyMARE and turn a whole model's output into
+    NaN. Zero is the placeholder a NeuroVault map carries where it has no coverage.
+    """
+    return np.isfinite(data) & (data != 0)
+
+
 def _liberal_mask_bags(mask):
     """Group voxels by which studies cover them.
 
@@ -668,7 +679,7 @@ def _apply_liberal_mask(data, validity=None):
     data : (S x V) :class:`numpy.ndarray`
         2D numpy array (S x V) of images, where S is study and V is voxel.
     validity : None or (S x V) :class:`numpy.ndarray` of :obj:`bool`, optional
-        Which entries of ``data`` are usable. Default is those that are neither NaN nor zero.
+        Which entries of ``data`` are usable. Default is :func:`_usable` of ``data``.
 
     Returns
     -------
@@ -689,8 +700,7 @@ def _apply_liberal_mask(data, validity=None):
     them rather than repeated per input.
 
     """
-    # isfinite, not ~isnan: an infinite value is not a usable statistic either.
-    mask = np.isfinite(data) & (data != 0) if validity is None else np.asarray(validity)
+    mask = _usable(data) if validity is None else np.asarray(validity)
     bags = _liberal_mask_bags(mask)
 
     return (

@@ -11,6 +11,7 @@ from nilearn.maskers import NiftiMasker
 from nimare.meta import ibma
 from nimare.meta._dependence import DependenceModel
 from nimare.meta._permutation import _permuted_ols
+from nimare.meta.ibma import _null_correlation
 from nimare.meta.utils import _apply_liberal_mask
 from nimare.transforms import z_to_p
 
@@ -826,6 +827,165 @@ def test_null_correlation_ignores_voxels_missing_from_any_image(estimator):
     assert np.allclose(dirty, clean, atol=0.05)
 
 
+# Cancelling dependence groups
+
+
+def _combination_estimator(cls, z_maps, codes, corr):
+    """Return a combination test with hand-built bags and a supplied correlation matrix.
+
+    ``corr`` stands in for the null correlation ``_preprocess_dependence`` would estimate, so
+    a block can be pinned at exactly the value the verdict turns on.
+    """
+    meta = _bagged_estimator(cls, {"z_maps": np.asarray(z_maps, dtype=float)}, codes=codes)
+    meta.inputs_["corr_matrix"] = np.asarray(corr, dtype=float)
+    meta._group_labels = {int(code): f"study{int(code)}" for code in np.unique(codes)}
+    meta.generate_description = False
+    return meta
+
+
+@pytest.mark.parametrize("estimator", COMBINATION_ESTIMATORS)
+def test_cancelling_group_is_dropped_per_bag_not_fatally(estimator, caplog, monkeypatch):
+    """A group whose images cancel is excluded from the bags it cancels in, and no others.
+
+    PyMARE refuses to aggregate a group whose block sums to zero, which used to end the whole
+    meta-analysis over one study's uploads. Both combination tests are run because the drop
+    is not confined to the one that raised.
+    """
+    rng = np.random.RandomState(0)
+    z_maps = rng.normal(size=(4, 8))
+    z_maps[1] = -z_maps[0]
+    # Only images 0, 2 and 3 cover voxels 6-7, so image 0's group holds two images in one bag
+    # and one in the other.
+    z_maps[1, 6:] = np.nan
+    corr = np.eye(4)
+    corr[0, 1] = corr[1, 0] = -1.0
+    meta = _combination_estimator(estimator, z_maps, [0, 0, 1, 2], corr)
+
+    masks = []
+    real = meta._fit_model
+
+    def _record(*arrays, study_mask, **kwargs):
+        masks.append(list(study_mask))
+        return real(*arrays, study_mask=study_mask, **kwargs)
+
+    monkeypatch.setattr(meta, "_fit_model", _record)
+
+    with caplog.at_level(logging.WARNING, logger="nimare.meta.ibma"):
+        maps, _, _ = meta._fit(_FakeDataset(meta.masker))
+
+    assert masks == [[2, 3], [0, 2, 3]]
+    assert np.isfinite(maps["z"]).all()
+    # Degrees of freedom count the groups actually fitted, which differ between the bags.
+    assert np.allclose(maps["dof"][:6], 1.0)
+    assert np.allclose(maps["dof"][6:], 2.0)
+
+    assert "study0" in caplog.text
+    assert "excluded from 1 of 2 model(s)" in caplog.text
+    # The group went, so it must not also be reported as a mirror pair that was kept.
+    assert "correlate exactly -1" not in caplog.text
+
+
+def test_three_way_cancellation_drops_the_whole_group(caplog):
+    """A block can sum to nothing with no pair anywhere near -1, and all three must go.
+
+    Complementary networks from one cohort do this. With three members there is no principled
+    choice of which one to remove, so the group goes as a unit -- which here leaves a single
+    group, the case the existing skip already handles.
+    """
+    rng = np.random.RandomState(1)
+    corr = np.eye(4)
+    # Sums to zero: 3 + 2 * (-0.5 - 0.5 - 0.5).
+    corr[np.ix_([0, 1, 2], [0, 1, 2])] = [
+        [1.0, -0.5, -0.5],
+        [-0.5, 1.0, -0.5],
+        [-0.5, -0.5, 1.0],
+    ]
+    meta = _combination_estimator(ibma.Stouffers, rng.normal(size=(4, 8)), [0, 0, 0, 1], corr)
+
+    with caplog.at_level(logging.WARNING, logger="nimare.meta.ibma"):
+        maps, _, _ = meta._fit(_FakeDataset(meta.masker))
+
+    # Nothing was fitted, so every one of the three went: dropping any one or two of them
+    # would have left two groups to fit.
+    assert np.isnan(maps["z"]).all()
+    assert "img0, img1, img2" in caplog.text
+    assert "single group" in caplog.text
+    assert "correlate exactly -1" not in caplog.text
+
+
+def test_perfect_mirror_that_does_not_cancel_warns_but_keeps_the_data(caplog):
+    """Two images that are exact negatives can still fit, and that is worth saying loudly.
+
+    A third member keeps the group's block sum off zero. The estimated null correlation
+    cannot see the duplicate, being pulled away from -1 by the signal the two maps share.
+    """
+    rng = np.random.RandomState(2)
+    z_maps = rng.normal(size=(4, 8))
+    z_maps[1] = -z_maps[0]
+    corr = np.eye(4)
+    corr[np.ix_([0, 1, 2], [0, 1, 2])] = [[1.0, -0.5, 0.4], [-0.5, 1.0, 0.6], [0.4, 0.6, 1.0]]
+    meta = _combination_estimator(ibma.Stouffers, z_maps, [0, 0, 0, 1], corr)
+
+    with caplog.at_level(logging.WARNING, logger="nimare.meta.ibma"):
+        maps, _, _ = meta._fit(_FakeDataset(meta.masker))
+
+    # Dropping the group would have left one image, and so no fit at all.
+    assert np.isfinite(maps["z"]).all()
+    assert "correlate exactly -1" in caplog.text
+    assert "img0" in caplog.text and "img1" in caplog.text
+
+
+def test_near_cancellation_is_left_alone_silently(caplog):
+    """Strongly anti-correlated images that neither cancel nor mirror get no warning.
+
+    Where to draw a line short of exact cancellation is a policy only the caller can set, and
+    warning about every anti-correlated pair would bury the two cases that are worth
+    reporting.
+    """
+    rng = np.random.RandomState(3)
+    z_maps = rng.normal(size=(4, 8))
+    z_maps[1] = -z_maps[0] + 0.5 * rng.normal(size=8)
+    corr = np.eye(4)
+    corr[0, 1] = corr[1, 0] = -0.99
+    meta = _combination_estimator(ibma.Stouffers, z_maps, [0, 0, 1, 2], corr)
+
+    with caplog.at_level(logging.WARNING, logger="nimare.meta.ibma"):
+        maps, _, _ = meta._fit(_FakeDataset(meta.masker))
+
+    assert -1.0 < np.corrcoef(z_maps[:2])[0, 1] < -0.8, "fixture must be near, not exact"
+    # Three groups, so nothing was dropped: a drop would leave two, and dof 1.
+    assert np.allclose(maps["dof"], 2.0)
+    assert np.isfinite(maps["z"]).all()
+    assert caplog.text == ""
+
+
+def test_cancellation_floor_still_matches_pymare():
+    """Keep the floor pinned to PyMARE's, which is a function local and so drifts silently.
+
+    Excluding a group here only pre-empts PyMARE while everything PyMARE refuses is already
+    excluded. The value cannot be imported, so the two are pinned by behaviour instead.
+    """
+    rng = np.random.RandomState(5)
+    z_maps, weights = rng.normal(size=(4, 6)), np.ones((4, 1))
+    codes = np.array([0, 0, 1, 2])
+
+    def pymare_refuses(variance):
+        corr = np.eye(4)
+        # (2 + 2 * rho) / 4 is the block variance of a two-image group.
+        corr[0, 1] = corr[1, 0] = 2.0 * variance - 1.0
+        try:
+            pymare.estimators.StoufferCombinationTest(group_level=True).fit(
+                z=z_maps, w=weights, g=codes, corr=corr
+            )
+        except ValueError as exc:
+            return "cancel" in str(exc)
+        return False
+
+    assert pymare_refuses(ibma._CANCELLATION_FLOOR)
+    # The direction that matters: whatever NiMARE keeps, PyMARE must still accept.
+    assert not pymare_refuses(ibma._CANCELLATION_FLOOR * 1e3)
+
+
 # PermutedOLS
 
 
@@ -1144,3 +1304,44 @@ def test_permutation_batches_stay_within_their_memory_budget(use_weights, monkey
     # Slack for the null array and bookkeeping, but nowhere near the threefold overshoot an
     # undercounted budget produced.
     assert max(peaks) < 2 * budget
+
+
+def test_null_correlation_matches_pymare_when_nothing_is_missing():
+    """Complete data must keep giving exactly what PyMARE's own estimator gave."""
+    rng = np.random.RandomState(0)
+    maps = rng.normal(size=(4, 4000)) + 2.0 * rng.normal(size=4000)
+    groups = np.array([0, 0, 1, 1])
+
+    assert np.array_equal(
+        _null_correlation(maps, groups),
+        pymare.stats.estimate_null_correlation(maps, groups=groups),
+    )
+
+
+def test_null_correlation_ignores_the_zeros_that_stand_for_missing_coverage():
+    """A shared coverage hole is a shared constant, which centering makes look correlated.
+
+    Images 0 and 1 are independent but share a field of view and a strong shared signal.
+    """
+    rng = np.random.RandomState(0)
+    maps = rng.normal(size=(4, 4000)) + 2.0 * rng.normal(size=4000)
+    groups = np.array([0, 0, 1, 1])
+    holed = maps.copy()
+    holed[:2, :2000] = 0.0
+
+    complete = _null_correlation(maps, groups)[0, 1]
+    every_voxel = pymare.stats.estimate_null_correlation(holed, groups=groups)[0, 1]
+    pairwise = _null_correlation(holed, groups)[0, 1]
+
+    assert abs(complete) < 0.05
+    assert every_voxel > 0.6
+    assert abs(pairwise) < 0.25
+
+
+def test_null_correlation_gives_up_when_no_two_images_overlap():
+    """Two images that share no valid voxel leave nothing to estimate a correlation from."""
+    maps = np.ones((2, 400))
+    maps[0, 200:] = 0.0
+    maps[1, :200] = 0.0
+
+    assert _null_correlation(maps, np.array([0, 0])) is None

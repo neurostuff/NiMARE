@@ -92,17 +92,12 @@ class IBMAWorkflow(Workflow):
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
         """
         dataset = normalize_collection(dataset)
 
         # Calculate missing images. Possible targets: {"z", "p", "beta", "varcope"}.
-        # Infer from self.estimator._required_inputs
-        targets = [
-            target
-            for _, (type_, target) in self.estimator._required_inputs.items()
-            if type_ == "image"
-        ]
+        targets = list(self.estimator._image_input_fields().values())
         xformer = ImageTransformer(target=targets)
         dataset = xformer.transform(dataset)
 
