@@ -58,6 +58,53 @@ def _find_entities(filename, search_pairs, log=False):
     return False
 
 
+# Entity keys that may appear in a database feature filename, e.g.
+# "data-neurosynth_version-7_vocab-terms_source-abstract_type-tfidf_features.npz".
+# Only these keys are recognized when parsing, so an unexpected filename segment
+# cannot silently produce an incorrect entity mapping.
+_SEARCHABLE_ENTITIES = ("version", "vocab", "source", "type")
+_KNOWN_ENTITIES = ("data", *_SEARCHABLE_ENTITIES)
+
+
+def _get_available_entities(database_file_manifest, data=None):
+    """Collect the searchable entity values present in the database manifest.
+
+    Only the known entity keys (``data`` plus the searchable ``version``/``vocab``/
+    ``source``/``type``) are parsed from each feature filename; any other ``key-value``
+    segment is ignored, so filename changes cannot silently mismap entities.
+
+    Parameters
+    ----------
+    database_file_manifest : :obj:`list` of :obj:`dict`
+        Parsed ``database_file_manifest.json``; each entry has a ``"features"``
+        list of dictionaries with a ``"features"`` filename.
+    data : :obj:`str` or None, optional
+        If provided, restrict results to feature files for this data source
+        (e.g. ``"neurosynth"``). Default is None (all sources).
+
+    Returns
+    -------
+    :obj:`dict`
+        Mapping of each searchable entity (``"version"``, ``"vocab"``,
+        ``"source"``, ``"type"``) to a sorted list of its distinct values
+        across the matching feature files. Entities with no values are omitted.
+    """
+    values = {key: set() for key in _SEARCHABLE_ENTITIES}
+    for database in database_file_manifest:
+        for feature_dict in database.get("features", []):
+            entities = {}
+            for part in feature_dict.get("features", "").split("_"):
+                key, sep, value = part.partition("-")
+                if sep and key in _KNOWN_ENTITIES:
+                    entities[key] = value
+            if data is not None and entities.get("data") != data:
+                continue
+            for key in _SEARCHABLE_ENTITIES:
+                if key in entities:
+                    values[key].add(entities[key])
+    return {key: sorted(vals) for key, vals in values.items() if vals}
+
+
 def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
     """Fetch generic database."""
     res_dir = get_resource_path()
@@ -108,6 +155,20 @@ def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
                         }
                     )
                 found_files += [coordinates_file, metadata_file, *feature_dict.values()]
+
+    if not found_databases:
+        data_value = search_pairs.get("data")
+        available = _get_available_entities(database_file_manifest, data=data_value)
+        scope = f"data-{data_value}" if data_value else "the requested database"
+        if available:
+            options = "; ".join(f"{key}: {', '.join(vals)}" for key, vals in available.items())
+            detail = f" Available options for {scope} are: {options}."
+        else:
+            detail = (
+                f" No matching entries were found for {scope}; "
+                "see the database file manifest for valid patterns."
+            )
+        raise ValueError(f"No files matched the query {search_pairs}.{detail}")
 
     found_files = sorted(list(set(found_files)))
     for found_file in found_files:
