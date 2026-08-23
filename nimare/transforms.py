@@ -294,6 +294,11 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
 def resolve_transforms(target, available_data, masker):
     """Determine and apply the appropriate transforms to a target image type from available data.
 
+    .. versionchanged:: 0.21.0
+
+        * [FIX] Take the sign from a t map when converting a p map without a sample size.
+        * [ENH] Warn when ``z`` is converted from a p map with no sign available.
+
     .. versionchanged:: 0.0.8
 
         * [FIX] Remove unnecessary dimensions from output image object *img_like*. \
@@ -320,6 +325,13 @@ def resolve_transforms(target, available_data, masker):
     img_like or None
         Image object with the desired data type, if it can be generated.
         Otherwise, None.
+
+    Notes
+    -----
+    A p-value has no direction, so a ``z`` converted from a p map alone is unsigned, as is
+    anything converted from it in turn (``t``, ``beta``, ``d``, ``g``). That conversion is
+    performed anyway, and warns. A t map in the same analysis supplies the sign even when
+    it lacks the sample size its magnitude would need.
     """
     if target in available_data.keys():
         LGR.warning(f"Target '{target}' already available.")
@@ -333,6 +345,23 @@ def resolve_transforms(target, available_data, masker):
         elif "p" in available_data.keys():
             p = masker.transform(available_data["p"])
             z = p_to_z(p)
+            if "t" in available_data.keys():
+                # Only reachable without a sample size, so p sets the magnitude and t
+                # sets the sign. A t of exactly 0 zeroes the voxel, which is also the z of
+                # the p of 1 that such a t implies.
+                t = masker.transform(available_data["t"])
+                z = np.sign(t) * z
+            else:
+                # transform_images builds available_data from the whole images_df row,
+                # so the analysis id is already here to name in the warning.
+                prefix = f"{available_data['id']}: " if "id" in available_data else ""
+                LGR.warning(
+                    f"{prefix}Deriving 'z' from a p map, with nothing in the analysis to "
+                    "give the direction. A p-value carries no sign, so the result is "
+                    "unsigned. "
+                    "This will be invalid input for signed tests (like Stouffers). "
+                    "P-values are read as two-tailed."
+                )
         else:
             return None
         z = masker.inverse_transform(z.squeeze())
