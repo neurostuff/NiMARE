@@ -315,7 +315,7 @@ class Studyset:
             raise ValueError("match must be 'all' or 'any'")
         masks = self._label_masks(labels, threshold, annotation)
         keep = masks.all(axis=0) if match == "all" else masks.any(axis=0)
-        return Studyset._wrap(self._view.select(keep))
+        return self.select_analyses(keep)
 
     def filter_metadata(self, field, op, value):
         """Keep analyses whose metadata ``field`` satisfies ``op value``."""
@@ -327,7 +327,11 @@ class Studyset:
         keep = _OPS[op](frame[field], value)
         if not isinstance(keep, pd.Series):
             keep = pd.Series(keep, index=frame.index)
-        return Studyset._wrap(self._view.select(keep.fillna(False).to_numpy(dtype=bool)))
+        return self.select_analyses(keep.fillna(False).to_numpy(dtype=bool))
+
+    def select_analyses(self, mask):
+        """Keep the analyses a boolean mask -- or an array of positions -- selects."""
+        return Studyset._wrap(self._view.select(mask))
 
     def select_points(self, point_mask):
         """Keep a subset of foci and every analysis."""

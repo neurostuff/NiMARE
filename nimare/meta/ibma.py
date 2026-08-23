@@ -156,6 +156,7 @@ class IBMAEstimator(Estimator):
           estimators. It was previously swallowed by ``**kwargs`` and had no effect.
         - Unrecognized keyword arguments now raise :obj:`TypeError` instead of being logged
           and ignored.
+        - An image with no usable voxel is dropped and named; ``drop_invalid=False`` raises.
 
     .. versionchanged:: 0.2.1
 
@@ -185,6 +186,10 @@ class IBMAEstimator(Estimator):
     #: averaged; ``"warn"`` where the bias is real but unquantified; None where it does not
     #: apply.
     _voxel_averaging = "warn"
+
+    #: Which collected images ``_drop_empty_images`` kept, or None. ``groupby`` labels given
+    #: as a sequence are positional, so nothing else narrows them alongside the images.
+    _images_kept = None
 
     def __init__(
         self,
@@ -257,6 +262,9 @@ class IBMAEstimator(Estimator):
         """
         masker, mask_img = get_masker_mask_image(self.masker, dataset=dataset)
 
+        # Whatever a previous fit dropped says nothing about this one.
+        self._images_kept = None
+
         # Reserve the key for the correlation matrix
         self.inputs_["corr_matrix"] = None
 
@@ -307,6 +315,14 @@ class IBMAEstimator(Estimator):
             [np.isfinite(self.inputs_[name]) & (self.inputs_[name] != 0) for name in image_names]
         )
 
+        # Neither masking strategy notices an image with no usable voxel: the aggressive mask
+        # intersects its empty row into every output map, and the liberal mask leaves it out
+        # of every bag while it keeps its row in inputs_.
+        usable = validity.any(axis=1)
+        if not usable.all():
+            self._drop_empty_images(usable, image_names)
+            validity = validity[usable]
+
         if self.aggressive_mask:
             # Further reduce image-based inputs to remove "bad" voxels
             # (voxels with zeros or NaNs in any studies)
@@ -328,6 +344,59 @@ class IBMAEstimator(Estimator):
                 ]
 
         self._preprocess_dependence(dataset)
+
+    def _drop_empty_images(self, keep, image_names):
+        """Drop the input images that hold no usable voxel, and realign every input to them.
+
+        Parameters
+        ----------
+        keep : :obj:`numpy.ndarray`
+            Boolean, one entry per collected image, False where every voxel is unusable.
+        image_names : :obj:`list` of :obj:`str`
+            The ``inputs_`` keys holding masked image arrays.
+
+        Raises
+        ------
+        ValueError
+            If ``drop_invalid`` is False, or if no image would be left.
+
+        Notes
+        -----
+        Narrowing ``studyset_`` and collecting from it again is what keeps ``inputs_``,
+        ``blocks_`` and ``studyset_`` describing the same analyses. The masked arrays are
+        carried across so that no image is read off disk twice.
+        """
+        ids = np.asarray(self.inputs_["id"], dtype=str)
+        n_total = ids.size
+        dropped = ", ".join(ids[~keep])
+        n_dropped = n_total - int(keep.sum())
+
+        if not self._drop_invalid:
+            raise ValueError(
+                f"{n_dropped} of {n_total} images have no voxel with a usable value in every "
+                f"required input, so they can contribute nothing: {dropped}. Pass "
+                "drop_invalid=True to drop them and analyse the rest."
+            )
+
+        if not keep.any():
+            raise ValueError(
+                f"None of the {n_total} images have a voxel with a usable value in every "
+                f"required input, so there is nothing to meta-analyse: {dropped}."
+            )
+
+        LGR.warning(
+            "Dropping %d of %d image(s) with no voxel holding a usable value in every "
+            "required input: %s.",
+            n_dropped,
+            n_total,
+            dropped,
+        )
+
+        arrays = {name: self.inputs_[name][keep] for name in image_names}
+        self._images_kept = keep
+        self.studyset_ = self.studyset_.select_analyses(keep)
+        self._collect_inputs(self.studyset_)
+        self.inputs_.update(arrays)
 
     def _load_image(self, filename, mask_img):
         """Load one input image, resampling it only if its FOV differs from the mask's."""
@@ -570,6 +639,10 @@ class IBMAEstimator(Estimator):
 
         if self.groupby is not None and self.groupby is not False:  # explicit labels
             labels = [hashable_label(v) for v in np.asarray(self.groupby).ravel()]
+            kept = self._images_kept
+            if kept is not None and len(labels) == kept.size:
+                # One label per collected image, so a dropped image takes its label with it.
+                labels = [label for label, keep in zip(labels, kept) if keep]
             if len(labels) != len(self.inputs_["id"]):
                 raise ValueError(
                     f"groupby must contain one label per image: expected "
