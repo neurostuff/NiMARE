@@ -1,7 +1,6 @@
 """Fitting and covariance for a term-based CBMR model.
 
-Holds one flat coefficient vector, sliced according to the design's parameter layout. That is
-not a detail of storage; it is what makes the covariance correct by construction.
+Holds one flat coefficient vector, sliced according to the design's parameter layout.
 
 
 The cost is a dense ``(n_parameters, n_parameters)`` Hessian: 3.3M entries for a
