@@ -22,7 +22,7 @@ from typing import Optional
 import numpy as np
 
 from nimare.studyset import layout
-from nimare.studyset.columns import sorted_lookup
+from nimare.studyset.columns import join_names, missing_names, sorted_ranges
 from nimare.studyset.store import derived
 
 __all__ = ["Context", "View"]
@@ -101,6 +101,15 @@ class View:
         return got
 
     @property
+    def short_keys(self):
+        """The analysis ids the selected analyses declare, without their study."""
+        got = self._cache.get("short_keys")
+        if got is None:
+            got = self.store.analysis_key[self.index]
+            self._cache["short_keys"] = got
+        return got
+
+    @property
     def study_keys(self):
         """Unique study ids of the selected analyses."""
         got = self._cache.get("study_keys")
@@ -139,25 +148,76 @@ class View:
             idx = self.index[idx]
         return View(self.store, idx, self.point_mask, self.context)
 
-    def select_keys(self, keys, *, allow_short=True):
-        """Narrow to the named analyses, by full id or short analysis id."""
-        wanted = np.unique(np.asarray([str(k) for k in np.atleast_1d(keys)], dtype=str))
+    def select_keys(self, keys, *, allow_short=True, strict=True):
+        """Narrow to the named analyses, by full id or short analysis id.
+
+        Parameters
+        ----------
+        keys : :obj:`str` or array_like of :obj:`str`
+            Analysis ids, each a full ``"<study id>-<analysis id>"`` id or the
+            analysis id on its own.
+        allow_short : :obj:`bool`, default=True
+            Whether an analysis id on its own may be matched.
+        strict : :obj:`bool`, default=True
+            Whether to raise on an id matching no analysis in this selection.
+
+        Raises
+        ------
+        :obj:`ValueError`
+            If ``strict`` and any id matches nothing. The error names them.
+        """
+        requested = [str(k) for k in np.atleast_1d(keys)]
+        wanted = np.unique(np.asarray(requested, dtype=str))
         rows = _resolve_key_rows(self.store, wanted, allow_short=allow_short)
         keep = np.isin(self.index, rows)
+        if strict:
+            self._require_keys(requested, self.index[keep], allow_short=allow_short)
         return self.select(keep)
 
+    def _require_keys(self, requested, rows, *, allow_short=True):
+        """Raise unless every requested id names one of ``rows``."""
+        store = self.store
+        present = set(store.analysis_full_key[rows].astype(str).tolist())
+        if allow_short:
+            present.update(store.analysis_key[rows].astype(str).tolist())
+        missing = missing_names(requested, present)
+        if missing:
+            raise ValueError(
+                f"No analysis in this studyset matches: {join_names(missing)}. Analyses are "
+                "matched on their full '<study id>-<analysis id>' id, which Studyset.ids "
+                "lists, or on the analysis id alone."
+            )
+
     def drop_keys(self, keys):
-        """Narrow to everything except the named analyses."""
+        """Narrow to everything except the named analyses.
+
+        An id matching nothing is not an error: it is absent from the result
+        either way.
+        """
         wanted = np.unique(np.asarray([str(k) for k in np.atleast_1d(keys)], dtype=str))
         rows = _resolve_key_rows(self.store, wanted, allow_short=True)
         return self.select(~np.isin(self.index, rows))
 
-    def select_studies(self, study_keys, *, exclude=False):
-        """Narrow by parent study."""
+    def select_studies(self, study_keys, *, exclude=False, strict=True):
+        """Narrow by parent study.
+
+        ``strict`` raises on a study id with no analyses in this selection. It
+        does not apply to ``exclude``, for the reason given on :meth:`drop_keys`.
+        """
         store = self.store
-        wanted = np.asarray([str(k) for k in np.atleast_1d(study_keys)], dtype=str)
+        requested = [str(k) for k in np.atleast_1d(study_keys)]
+        wanted = np.asarray(requested, dtype=str)
         hit = np.isin(store.study_key.astype(str), wanted)
         per_analysis = hit[store.study_idx[self.index]]
+        if strict and not exclude:
+            rows = self.index[per_analysis]
+            present = set(store.study_key[store.study_idx[rows]].astype(str).tolist())
+            missing = missing_names(requested, present)
+            if missing:
+                raise ValueError(
+                    f"No study in this studyset matches: {join_names(missing)}. Studies are "
+                    "matched on their own id, which Studyset.study_ids lists."
+                )
         return self.select(~per_analysis if exclude else per_analysis)
 
     def select_points(self, mask):
@@ -310,7 +370,11 @@ class View:
 
 
 def _resolve_key_rows(store, wanted, *, allow_short=True):
-    """Rows whose full id -- or short analysis id -- is in ``wanted``."""
+    """Every row whose full id -- or declared analysis id -- is in ``wanted``.
+
+    NIMADS does not require an analysis id to be unique across studies, so a
+    short id can name several rows and all of them are returned.
+    """
     cache = derived(store)
     rows = []
     kinds = ("full", "short") if allow_short else ("full",)
@@ -318,20 +382,16 @@ def _resolve_key_rows(store, wanted, *, allow_short=True):
         key = ("sorted_keys", kind)
         got = cache.get(key)
         if got is None:
-            if kind == "full":
-                keys = store.analysis_full_key.astype(str)
-            else:
-                keys = np.asarray(
-                    [str(k).rsplit("-", 1)[-1] for k in store.analysis_full_key], dtype=str
-                )
+            source = store.analysis_full_key if kind == "full" else store.analysis_key
+            keys = source.astype(str)
             order = np.argsort(keys, kind="stable")
             got = (keys[order], order)
             cache[key] = got
         keys, order = got
         if not len(keys):
             continue
-        pos, ok = sorted_lookup(keys, wanted)
-        rows.append(order[pos[ok]])
+        positions, _ = layout.ranges_to_indices(*sorted_ranges(keys, wanted))
+        rows.append(order[positions])
     if not rows:
         return np.empty(0, dtype=np.int64)
     return np.unique(np.concatenate(rows))

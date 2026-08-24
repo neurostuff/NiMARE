@@ -31,8 +31,14 @@ __all__ = [
     "ID_COLS",
     "LabelNamer",
     "is_missing",
+    "join_names",
+    "missing_names",
     "sorted_lookup",
+    "sorted_ranges",
 ]
+
+# How many names an error message lists before it starts counting instead.
+MAX_NAMED = 10
 
 
 class Dict8:
@@ -123,22 +129,46 @@ def is_missing(value):
     return value is None or (isinstance(value, float) and value != value)
 
 
+def sorted_ranges(sorted_keys, wanted):
+    """Return ``(starts, stops)``: the run of ``sorted_keys`` equal to each wanted value.
+
+    Empty where the value is absent, and longer than one element where
+    ``sorted_keys`` repeats it.
+    """
+    sorted_keys = np.asarray(sorted_keys)
+    wanted = np.asarray(wanted)
+    return (
+        np.searchsorted(sorted_keys, wanted, side="left"),
+        np.searchsorted(sorted_keys, wanted, side="right"),
+    )
+
+
 def sorted_lookup(sorted_keys, wanted):
     """Return ``(pos, found)`` for ``wanted`` against ``sorted_keys``.
 
     ``pos`` is where each wanted value sits in ``sorted_keys``; ``found`` says
-    whether it is actually there. The guard against running off the end and
-    matching the wrong neighbour is fiddly enough that three sites had their own
-    copy of it.
+    whether it is actually there. Callers that want every match of a repeated
+    key rather than the first want :func:`sorted_ranges` instead.
     """
-    sorted_keys = np.asarray(sorted_keys)
-    wanted = np.asarray(wanted)
-    n = len(sorted_keys)
-    pos = np.searchsorted(sorted_keys, wanted)
-    if not n:
-        return pos, np.zeros(len(wanted), dtype=bool)
-    found = (pos < n) & (sorted_keys[np.minimum(pos, n - 1)] == wanted)
-    return pos, found
+    starts, stops = sorted_ranges(sorted_keys, wanted)
+    return starts, stops > starts
+
+
+def missing_names(requested, present):
+    """Return the requested names ``present`` lacks, in the order asked, deduplicated."""
+    return [name for name in dict.fromkeys(requested) if name not in present]
+
+
+def join_names(names):
+    """Join ``names`` for an error message, counting the tail beyond ``MAX_NAMED``.
+
+    An id list can be thousands long, and a message reproducing all of them
+    cannot be read.
+    """
+    shown = ", ".join(map(str, names[:MAX_NAMED]))
+    if len(names) > MAX_NAMED:
+        shown += f", ... and {len(names) - MAX_NAMED} more"
+    return shown
 
 
 @dataclass

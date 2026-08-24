@@ -248,7 +248,7 @@ class CorrelationDecoder(Decoder):
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
         """
         self._precomputed_ma_maps_ = None
         self._precomputed_ma_map_id_to_idx_ = None
@@ -531,7 +531,7 @@ class CorrelationDistributionDecoder(Decoder):
 
         .. warning::
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
-            in a future release. Prefer :class:`~nimare.nimads.Studyset`.
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
         """
         n_features = len(self.features_)
         maps = _collect_feature_maps(

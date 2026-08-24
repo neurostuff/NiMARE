@@ -1,5 +1,6 @@
 """Tools for downloading datasets."""
 
+import contextlib
 import itertools
 import logging
 import os
@@ -57,6 +58,53 @@ def _find_entities(filename, search_pairs, log=False):
     return False
 
 
+# Entity keys that may appear in a database feature filename, e.g.
+# "data-neurosynth_version-7_vocab-terms_source-abstract_type-tfidf_features.npz".
+# Only these keys are recognized when parsing, so an unexpected filename segment
+# cannot silently produce an incorrect entity mapping.
+_SEARCHABLE_ENTITIES = ("version", "vocab", "source", "type")
+_KNOWN_ENTITIES = ("data", *_SEARCHABLE_ENTITIES)
+
+
+def _get_available_entities(database_file_manifest, data=None):
+    """Collect the searchable entity values present in the database manifest.
+
+    Only the known entity keys (``data`` plus the searchable ``version``/``vocab``/
+    ``source``/``type``) are parsed from each feature filename; any other ``key-value``
+    segment is ignored, so filename changes cannot silently mismap entities.
+
+    Parameters
+    ----------
+    database_file_manifest : :obj:`list` of :obj:`dict`
+        Parsed ``database_file_manifest.json``; each entry has a ``"features"``
+        list of dictionaries with a ``"features"`` filename.
+    data : :obj:`str` or None, optional
+        If provided, restrict results to feature files for this data source
+        (e.g. ``"neurosynth"``). Default is None (all sources).
+
+    Returns
+    -------
+    :obj:`dict`
+        Mapping of each searchable entity (``"version"``, ``"vocab"``,
+        ``"source"``, ``"type"``) to a sorted list of its distinct values
+        across the matching feature files. Entities with no values are omitted.
+    """
+    values = {key: set() for key in _SEARCHABLE_ENTITIES}
+    for database in database_file_manifest:
+        for feature_dict in database.get("features", []):
+            entities = {}
+            for part in feature_dict.get("features", "").split("_"):
+                key, sep, value = part.partition("-")
+                if sep and key in _KNOWN_ENTITIES:
+                    entities[key] = value
+            if data is not None and entities.get("data") != data:
+                continue
+            for key in _SEARCHABLE_ENTITIES:
+                if key in entities:
+                    values[key].add(entities[key])
+    return {key: sorted(vals) for key, vals in values.items() if vals}
+
+
 def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
     """Fetch generic database."""
     res_dir = get_resource_path()
@@ -108,6 +156,20 @@ def _fetch_database(search_pairs, database_url, out_dir, overwrite=False):
                     )
                 found_files += [coordinates_file, metadata_file, *feature_dict.values()]
 
+    if not found_databases:
+        data_value = search_pairs.get("data")
+        available = _get_available_entities(database_file_manifest, data=data_value)
+        scope = f"data-{data_value}" if data_value else "the requested database"
+        if available:
+            options = "; ".join(f"{key}: {', '.join(vals)}" for key, vals in available.items())
+            detail = f" Available options for {scope} are: {options}."
+        else:
+            detail = (
+                f" No matching entries were found for {scope}; "
+                "see the database file manifest for valid patterns."
+            )
+        raise ValueError(f"No files matched the query {search_pairs}.{detail}")
+
     found_files = sorted(list(set(found_files)))
     for found_file in found_files:
         print(f"Downloading {found_file}", flush=True)
@@ -145,14 +207,21 @@ def _materialize_found_databases(found_databases, return_type, target):
             f"Expected one of: {', '.join(sorted(VALID_FETCH_RETURN_TYPES))}."
         )
 
+    from nimare.dataset import _quiet_dataset_deprecation
+
     materialized = []
     for database in found_databases:
-        dataset = convert_neurosynth_to_dataset(
-            coordinates_file=database["coordinates"],
-            metadata_file=database["metadata"],
-            annotations_files=database["features"],
-            target=target,
+        # A studyset request only passes through Dataset; don't warn about the detour.
+        silence = (
+            contextlib.nullcontext() if return_type == "dataset" else _quiet_dataset_deprecation()
         )
+        with silence:
+            dataset = convert_neurosynth_to_dataset(
+                coordinates_file=database["coordinates"],
+                metadata_file=database["metadata"],
+                annotations_files=database["features"],
+                target=target,
+            )
         if return_type == "dataset":
             materialized.append(dataset)
         else:
@@ -249,7 +318,7 @@ def fetch_neurosynth(
         fetch_neurosynth(version="7", source="abstract", vocab="terms")
 
     .. warning::
-        ``return_type="dataset"`` is deprecated and will be removed in a future release.
+        ``return_type="dataset"`` is deprecated and will be removed in NiMARE 1.0.0.
         Prefer the default ``return_type="studyset"``.
 
     .. warning::
@@ -319,7 +388,7 @@ def fetch_neuroquery(
     This function was adapted from neurosynth.base.dataset.download().
 
     .. warning::
-        ``return_type="dataset"`` is deprecated and will be removed in a future release.
+        ``return_type="dataset"`` is deprecated and will be removed in NiMARE 1.0.0.
         Prefer the default ``return_type="studyset"``.
     """
     URL = (
@@ -519,8 +588,8 @@ def download_abstracts(dataset, email):
     dataset : :obj:`~nimare.dataset.Dataset` or :obj:`~nimare.nimads.Studyset`
 
     .. warning::
-        Passing a :class:`~nimare.dataset.Dataset` is deprecated and will be removed in a future
-        release. Prefer passing a :class:`~nimare.nimads.Studyset`.
+        Passing a :class:`~nimare.dataset.Dataset` is deprecated and will be removed in NiMARE
+        1.0.0. Prefer passing a :class:`~nimare.nimads.Studyset`.
 
     This function assumes that the dataset uses identifiers in the format
     [PMID-EXPID]. Thus, the ``study_id`` column of the

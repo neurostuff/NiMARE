@@ -12,6 +12,7 @@ from nimare.stats import nlogp_bonferroni, nlogp_fdr
 from nimare.transforms import nlogp_to_z
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
+    _acceptable_kwargs,
     _clip_p_values,
     _minimum_positive_float,
     _nlogp_to_logp_values,
@@ -25,17 +26,32 @@ class Corrector(NiMAREBase):
 
     .. versionadded:: 0.0.3
 
+    .. versionchanged:: 0.21.0
+
+        ``None``-valued keyword arguments are dropped, and the rest are validated in
+        :meth:`transform` against the correction method that will receive them.
+
+    Parameters
+    ----------
+    **kwargs
+        Keyword arguments for the correction method. Ones set to ``None`` are dropped, so an
+        unset parameter defers to that method's own default.
     """
 
     # The name of the method that must be implemented in an Estimator class
     # in order to override the default correction method.
     _correction_method = None
 
+    # Named ``__init__`` parameters to forward to an Estimator-implemented correction method,
+    # which cannot read them off ``self`` the way the Corrector's own methods do.
+    _estimator_parameters = ()
+
     # Maps that must be available in the MetaResult instance
     _required_maps = ("p",)
 
-    def __init__(self):
-        pass
+    def __init__(self, **kwargs):
+        # A ``None`` is an unset parameter, not a request to override a default with nothing.
+        self.parameters = {k: v for k, v in kwargs.items() if v is not None}
 
     @abstractproperty
     def _name_suffix(self):
@@ -101,6 +117,48 @@ class Corrector(NiMAREBase):
                     f"{type(self)} requires '{rm}' maps to be present in the MetaResult, "
                     "but none were found."
                 )
+
+    def _estimator_kwargs(self):
+        """Return the keywords for an Estimator-implemented correction method.
+
+        The stored ``**kwargs``, plus ``_estimator_parameters``. The latter are absorbed by
+        the constructor signature, so they never reach ``self.parameters`` and an Estimator
+        would otherwise run at its own default however the caller set them.
+        """
+        kwargs = dict(self.parameters)
+        for name in self._estimator_parameters:
+            value = getattr(self, name)
+            if value is not None:
+                kwargs[name] = value
+
+        return kwargs
+
+    def _validate_parameters(self, correction_method, parameters):
+        """Raise if ``correction_method`` cannot accept ``parameters``.
+
+        The correction method is only known once ``transform`` has a MetaResult, so this is
+        the first point at which keywords collected by ``__init__`` can be checked.
+
+        Raises
+        ------
+        TypeError
+            Naming ``correction_method`` and the keywords it does accept. A method
+            declaring ``**kwargs`` accepts anything and is not checked.
+        """
+        # The result is passed positionally, so the first parameter is not a keyword.
+        accepted = _acceptable_kwargs(correction_method, n_positional=1)
+        if accepted is None:
+            return
+
+        unexpected = sorted(set(parameters) - set(accepted))
+        if unexpected:
+            method_name = getattr(correction_method, "__qualname__", str(correction_method))
+            raise TypeError(
+                f"{type(self).__name__}(method='{self.method}') was given "
+                f"{', '.join(repr(kwarg) for kwarg in unexpected)}, which "
+                f"{method_name} does not accept. "
+                f"Accepted keyword arguments: {', '.join(accepted) if accepted else '(none)'}."
+            )
 
     @staticmethod
     def _secondary_map_names(rm):
@@ -214,11 +272,13 @@ class Corrector(NiMAREBase):
                 "Using correction method implemented in Estimator: "
                 f"{est.__class__.__module__}.{est.__class__.__name__}.{correction_method}."
             )
-            corr_maps, corr_tables, description = getattr(est, correction_method)(
-                result, **self.parameters
-            )
+            estimator_method = getattr(est, correction_method)
+            parameters = self._estimator_kwargs()
+            self._validate_parameters(estimator_method, parameters)
+            corr_maps, corr_tables, description = estimator_method(result, **parameters)
         else:
             self._collect_inputs(result)
+            self._validate_parameters(getattr(self, correction_method), self.parameters)
             corr_maps, corr_tables, description = self._transform(result, method=correction_method)
 
         # Update corrected map names and enforce float32 outputs for map arrays.
@@ -317,6 +377,8 @@ class FWECorrector(Corrector):
         Number of cores to use for Monte Carlo correction. Default is 1.
     **kwargs
         Keyword arguments to be used by the FWE correction implementation.
+        Ones set to ``None`` are dropped; the rest must be accepted by that implementation,
+        or :meth:`transform` raises :obj:`TypeError`.
     """
 
     _correction_method = "fwe"
@@ -326,15 +388,13 @@ class FWECorrector(Corrector):
             raise ValueError(f"Unsupported FWE correction method '{method}'")
 
         if method == "montecarlo":
-            # Only override estimator defaults when values are explicitly provided.
-            # If ``n_iters`` is None, defer to the estimator's own default, which may vary
-            # across estimators (e.g., MKDAChi2 vs. CBMAEstimator).
-            if n_iters is not None:
-                kwargs["n_iters"] = n_iters
+            # ``None`` is dropped by ``Corrector.__init__``, deferring to the estimator's own
+            # default, which varies (e.g., MKDAChi2 vs. CBMAEstimator).
+            kwargs["n_iters"] = n_iters
             kwargs["n_cores"] = n_cores
 
         self.method = method
-        self.parameters = kwargs
+        super().__init__(**kwargs)
 
     @property
     def _name_suffix(self):
@@ -396,9 +456,20 @@ class FDRCorrector(Corrector):
         The FDR correction rate to use. Default is 0.05. Note that the step-up procedure
         only rescales the p-values, so this does not affect the corrected maps; it is the
         rate they are meant to be thresholded at.
+        Forwarded to an Estimator-implemented correction method, which cannot read it off
+        the Corrector; one with no ``alpha`` parameter raises rather than quietly using its
+        own rate.
+    **kwargs
+        Keyword arguments to be used by the FDR correction implementation.
+        Ones set to ``None`` are dropped; the rest must be accepted by that implementation,
+        or :meth:`transform` raises :obj:`TypeError`.
 
     Notes
     -----
+    .. versionchanged:: 0.21.0
+
+        ``alpha`` now reaches an Estimator-implemented correction method.
+
     This corrector supports a small number of internal FDR correction methods, but can also use
     special methods implemented within individual Estimators.
     To determine what methods are available for the Estimator you're using, use :meth:`inspect`.
@@ -408,11 +479,12 @@ class FDRCorrector(Corrector):
     """
 
     _correction_method = "fdr"
+    _estimator_parameters = ("alpha",)
 
     def __init__(self, method="indep", alpha=0.05, **kwargs):
         self.alpha = alpha
         self.method = method
-        self.parameters = kwargs
+        super().__init__(**kwargs)
 
     @property
     def _name_suffix(self):
