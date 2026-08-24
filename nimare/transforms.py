@@ -1,6 +1,5 @@
 """Miscellaneous spatial and statistical transforms."""
 
-import copy
 import logging
 import os
 import os.path as op
@@ -154,20 +153,9 @@ class ImageTransformer(NiMAREBase):
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
             in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
-        from nimare.dataset import Dataset
+        dataset = normalize_collection(dataset)
 
-        if not isinstance(dataset, Dataset):
-            dataset = normalize_collection(dataset)
-
-        # Using attribute check instead of type check to allow fake Datasets for testing.
-        if not hasattr(dataset, "slice"):
-            raise ValueError(
-                f"Argument 'dataset' must be a valid Dataset object, not a {type(dataset)}."
-            )
-
-        new_dataset = dataset.copy()
         temp_images = dataset.images
-
         for target_type in self.target:
             temp_images = transform_images(
                 temp_images,
@@ -177,7 +165,35 @@ class ImageTransformer(NiMAREBase):
                 out_dir=dataset.basepath,
                 overwrite=self.overwrite,
             )
-        new_dataset.images = temp_images
+
+        # Append the derived maps rather than replacing an images table. A
+        # studyset holds every image an analysis has, so a generated map sits
+        # alongside the one it came from instead of overwriting a type slot.
+        existing = dataset.images
+        # Grouped by type as it is gathered. Three parallel lists that had to
+        # stay in step, then be regrouped by scanning them once per type, is
+        # precisely the bookkeeping a block-shaped input is supposed to remove.
+        added = {}
+        row_of = dataset.row_of_id()
+        for imtype in self.target:
+            if imtype not in temp_images.columns:
+                continue
+            before = existing[imtype] if imtype in existing.columns else None
+            for i, (analysis_id, path) in enumerate(zip(temp_images["id"], temp_images[imtype])):
+                if not isinstance(path, str) or not path:
+                    continue
+                if before is not None and before.iloc[i] == path:
+                    continue  # already present
+                row = row_of.get(str(analysis_id))
+                if row is None:
+                    continue
+                positions, refs = added.setdefault(imtype, ([], []))
+                positions.append(row)
+                refs.append(path)
+        new_dataset = dataset
+        for imtype in sorted(added):
+            positions, refs = added[imtype]
+            new_dataset = new_dataset.with_images(positions, refs, imtype)
         return new_dataset
 
 
@@ -502,10 +518,7 @@ class ImagesToCoordinates(NiMAREBase):
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
             in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
-        from nimare.dataset import Dataset
-
-        if not isinstance(dataset, Dataset):
-            dataset = normalize_collection(dataset)
+        dataset = normalize_collection(dataset)
 
         # relevant variables from dataset
         space = dataset.space
@@ -633,10 +646,55 @@ class ImagesToCoordinates(NiMAREBase):
                     "one-sided tests. This might lead to unexpected results."
                 )
 
-        new_dataset = copy.deepcopy(dataset)
-        new_dataset.coordinates = coordinates_df
-        new_dataset.metadata = metadata
+        # Append the generated foci to the analyses they belong to, and record
+        # where they came from as a metadata column.
+        row_of = dataset.row_of_id()
+        extra_cols = [
+            c
+            for c in coordinates_df.columns
+            if c not in ("id", "study_id", "contrast_id", "x", "y", "z", "space")
+        ]
+        positions, xyz = [], []
+        point_values = {name: [] for name in extra_cols}
+        for i, (analysis_id, x, y, z) in enumerate(
+            zip(
+                coordinates_df["id"],
+                coordinates_df["x"],
+                coordinates_df["y"],
+                coordinates_df["z"],
+            )
+        ):
+            row = row_of.get(str(analysis_id))
+            if row is None:
+                continue
+            positions.append(row)
+            xyz.append([x, y, z])
+            for name in extra_cols:
+                value = coordinates_df[name].iloc[i]
+                point_values[name].append(None if value != value else value)
 
+        if self.merge_strategy == "demolish":
+            base = dataset.select_points(
+                np.zeros(dataset.store.n_points, dtype=bool)
+            ).materialize_points()
+        else:
+            base = dataset
+        new_dataset = (
+            base.with_points(
+                positions,
+                xyz,
+                space=space,
+                kind="center of mass",
+                values=point_values or None,
+            )
+            if positions
+            else base
+        )
+        source = metadata.set_index("id")["coordinate_source"]
+        new_dataset = new_dataset.with_metadata(
+            "coordinate_source",
+            [source.get(str(key), "original") for key in new_dataset.ids],
+        )
         return new_dataset
 
 
@@ -653,12 +711,7 @@ class StandardizeField(NiMAREBase):
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
             in a future release. Prefer :class:`~nimare.nimads.Studyset`.
         """
-        from nimare.dataset import Dataset
-
-        if not isinstance(dataset, Dataset):
-            dataset = normalize_collection(dataset)
-        # update a copy of the dataset
-        dataset = dataset.copy()
+        dataset = normalize_collection(dataset)
 
         categorical_metadata, numerical_metadata = [], []
         for metadata_name in self.fields:
@@ -678,17 +731,16 @@ class StandardizeField(NiMAREBase):
             raise ValueError("No numerical metadata found.")
 
         annot_df = dataset.annotations_df
-        moderators = annot_df[numerical_metadata]
-        standardize_moderators = moderators - np.mean(moderators, axis=0)
-        standardize_moderators /= np.std(standardize_moderators, axis=0)
-        if isinstance(self.fields, str):
-            column_name = "standardized_" + self.fields
-        elif isinstance(self.fields, list):
-            column_name = ["standardized_" + moderator for moderator in numerical_metadata]
-        annot_df[column_name] = standardize_moderators
-        dataset.annotations_df = annot_df
-
-        return dataset
+        moderators = annot_df[numerical_metadata].astype(float)
+        standardized = moderators - np.mean(moderators, axis=0)
+        standardized /= np.std(standardized, axis=0)
+        labels = ["standardized_" + moderator for moderator in numerical_metadata]
+        return dataset.with_annotation(
+            "standardized",
+            labels,
+            standardized.to_numpy(dtype=float),
+            note_key_types={label: "number" for label in labels},
+        )
 
 
 def sample_sizes_to_dof(sample_sizes):

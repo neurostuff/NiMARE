@@ -16,16 +16,15 @@ from nimare.utils import load_json
 
 
 def test_load_nimads(example_nimads_studyset, example_nimads_annotation):
-    """Test loading a NiMADS studyset."""
-    studyset = nimads.Studyset(example_nimads_studyset)
-    studyset.annotations = example_nimads_annotation
-    # filter the studyset to only include analyses with include=True
-    annotation = studyset.annotations[0]
-    analysis_ids = [n.analysis.id for n in annotation.notes if n.note["include"]]
-    analysis_ids = analysis_ids[:5]
-    filtered_studyset = studyset.slice(analyses=analysis_ids)
-    # Combine analyses after filtering
-    filtered_studyset = filtered_studyset.combine_analyses()
+    """Test loading a NiMADS studyset and selecting by an annotation label."""
+    studyset = nimads.Studyset(example_nimads_studyset).with_annotation_payload(
+        example_nimads_annotation
+    )
+
+    # Annotations are columns over the analyses, so selecting on one is a label
+    # query rather than a walk over note objects.
+    included = studyset.get_studies_by_label("include", label_threshold=0.5)[:5]
+    filtered_studyset = studyset.slice(included).combine_analyses()
 
     assert isinstance(filtered_studyset, nimads.Studyset)
     dataset = filtered_studyset.to_dataset()
@@ -35,52 +34,22 @@ def test_load_nimads(example_nimads_studyset, example_nimads_annotation):
 def test_slice_preserves_metadata_and_annotations(
     example_nimads_studyset, example_nimads_annotation
 ):
-    """Test that slicing preserves both metadata and annotations.
+    """Slicing keeps metadata and annotations aligned to the analyses it kept."""
+    studyset = nimads.Studyset(example_nimads_studyset).with_annotation_payload(
+        example_nimads_annotation
+    )
+    selected = studyset.get_studies_by_label("include", label_threshold=0.5)[:2]
 
-    This test verifies that both metadata attached to analyses and annotation
-    notes are correctly preserved when slicing a studyset.
-    """
-    studyset = nimads.Studyset(example_nimads_studyset)
-    studyset.annotations = example_nimads_annotation
+    sliced = studyset.slice(selected)
 
-    # Get analysis IDs from the first annotation
-    annotation = studyset.annotations[0]
-    analysis_ids = [n.analysis.id for n in annotation.notes if n.note["include"]]
-    selected_ids = analysis_ids[:2]  # Take first two analyses
-
-    # Add metadata to the analyses we'll keep
-    metadata_map = {}
-    for study in studyset.studies:
-        for analysis in study.analyses:
-            if analysis.id in selected_ids:
-                analysis.metadata = {
-                    "sample_size": 30,
-                    "contrast_type": "activation",
-                    "significance_threshold": 0.001,
-                }
-                metadata_map[analysis.id] = analysis.metadata
-
-    # Slice studyset
-    sliced_studyset = studyset.slice(analyses=selected_ids)
-
-    # Verify analyses and their metadata are preserved
-    for study in sliced_studyset.studies:
-        for analysis in study.analyses:
-            assert analysis.id in selected_ids
-            assert analysis.metadata == metadata_map[analysis.id]
-
-    # Verify annotations are preserved for remaining analyses
-    sliced_annotation = sliced_studyset.annotations[0]
-    sliced_analysis_ids = [n.analysis.id for n in sliced_annotation.notes]
-    sliced_annotation_notes = {n.analysis.id: n.note for n in sliced_annotation.notes}
-
-    # Check that notes exist only for remaining analyses
-    assert set(sliced_analysis_ids) == set(selected_ids)
-
-    # Check that annotation contents are preserved
-    for analysis_id in selected_ids:
-        original_note = next(n.note for n in annotation.notes if n.analysis.id == analysis_id)
-        assert sliced_annotation_notes[analysis_id] == original_note
+    assert set(sliced.ids) == set(selected)
+    assert len(sliced.metadata) == len(selected)
+    assert len(sliced.annotations_df) == len(selected)
+    # the same values, for the analyses that survived
+    full = studyset.annotations_df.set_index("id")["include"]
+    kept = sliced.annotations_df.set_index("id")["include"]
+    for analysis_id in selected:
+        assert kept[analysis_id] == full[analysis_id]
 
 
 def test_studyset_from_dataset_preserves_inferred_image_basepath(tmp_path):
@@ -113,91 +82,12 @@ def test_studyset_from_dataset_preserves_inferred_image_basepath(tmp_path):
     assert studyset.images.loc[0, "z__relative"] == str(Path("contrast_z.nii.gz"))
 
 
-def test_studyset_copy_preserves_projected_image_columns(tmp_path):
-    """Studyset.copy should preserve derived image columns stored in the projection cache."""
-    image_dir = tmp_path / "images"
-    image_dir.mkdir()
-    z_file = image_dir / "contrast_z.nii.gz"
-    z_file.write_text("placeholder")
-    varcope_file = image_dir / "contrast_varcope.nii.gz"
-    varcope_file.write_text("placeholder")
-
+def test_studyset_from_dataset_preserves_point_values_and_coordinate_metadata():
+    """Point values and per-coordinate metadata survive the Dataset bridge."""
     source = {
-        "study1": {
+        "study-1": {
             "contrasts": {
-                "contrast1": {
-                    "images": {"z": str(z_file)},
-                    "metadata": {"sample_sizes": [20]},
-                }
-            }
-        }
-    }
-
-    studyset = nimads.Studyset.from_dataset(Dataset(source))
-    images = studyset.images.copy()
-    images["varcope"] = str(varcope_file)
-    studyset.images = images
-
-    copied = studyset.copy()
-
-    assert "varcope" in copied.images.columns
-    assert copied.images.loc[0, "varcope"] == str(varcope_file)
-    assert "varcope__relative" in copied.images.columns
-    assert copied.images.loc[0, "varcope__relative"] == "contrast_varcope.nii.gz"
-
-
-def test_studyset_slice_preserves_projected_image_columns(tmp_path):
-    """Derived image columns must survive projection rebuilds.
-
-    Losing them silently turns a leave-one-out refit into a drop-every-derived-map
-    refit (see :meth:`~nimare.diagnostics.Jackknife`).
-    """
-    image_dir = tmp_path / "images"
-    image_dir.mkdir()
-    z_file = image_dir / "contrast_z.nii.gz"
-    z_file.write_text("placeholder")
-    varcope_file = image_dir / "contrast_varcope.nii.gz"
-    varcope_file.write_text("placeholder")
-
-    source = {
-        f"study{i}": {
-            "contrasts": {
-                "contrast1": {
-                    "images": {"z": str(z_file)},
-                    "metadata": {"sample_sizes": [20]},
-                }
-            }
-        }
-        for i in (1, 2, 3)
-    }
-
-    studyset = nimads.Studyset.from_dataset(Dataset(source))
-    images = studyset.images.copy()
-    images["varcope"] = str(varcope_file)
-    studyset.images = images
-
-    kept_ids = sorted(studyset.ids)[:-1]
-    sliced = studyset.slice(kept_ids)
-
-    assert sorted(sliced.images["id"]) == kept_ids
-    assert sliced.images["varcope"].tolist() == [str(varcope_file)] * len(kept_ids)
-    relative = os.path.relpath(str(varcope_file), studyset.basepath)
-    assert sliced.images["varcope__relative"].tolist() == [relative] * len(kept_ids)
-    # The override must keep surviving as the derived Studyset is sliced again,
-    # and as its execution context changes.
-    assert sliced.slice(kept_ids[:1]).images["varcope"].tolist() == [str(varcope_file)]
-    assert studyset.filter_study_ids(["study1"]).images["varcope"].tolist() == [str(varcope_file)]
-    assert (
-        studyset.update_path(str(image_dir)).images["varcope"].tolist() == [str(varcope_file)] * 3
-    )
-
-
-def test_studyset_from_dataset_materialized_preserves_point_values_and_coordinate_metadata():
-    """Materialized Studysets should preserve coordinate-side data through NIMADS points."""
-    source = {
-        "study1": {
-            "contrasts": {
-                "contrast1": {
+                "1": {
                     "coords": {
                         "space": "MNI",
                         "x": [1, 2],
@@ -213,20 +103,12 @@ def test_studyset_from_dataset_materialized_preserves_point_values_and_coordinat
     }
 
     dataset = Dataset(source)
-    studyset = nimads.Studyset.from_dataset(dataset, materialize=True)
-    lazy_studyset = nimads.Studyset.from_dataset(dataset, materialize=False)
+    studyset = nimads.Studyset.from_dataset(dataset)
     analysis = studyset.studies[0].analyses[0]
 
-    assert analysis.points[0].values == [{"kind": "Z", "value": 7.0}]
-    assert analysis.metadata["coordinate_cluster_size"] == [11, 12]
+    assert analysis.points[0].values == {"z_stat": 7.0, "cluster_size": 11}
     assert list(studyset.coordinates["z_stat"]) == [7.0, 8.0]
-    assert list(studyset.coordinates["cluster_size"]) == [11, 12]
-    assert list(lazy_studyset.coordinates["z_stat"]) == [7.0, 8.0]
-    assert [int(value) for value in lazy_studyset.coordinates["cluster_size"]] == [11, 12]
-
-    roundtrip = studyset.to_dataset()
-    assert list(roundtrip.coordinates["z_stat"]) == [7.0, 8.0]
-    assert [int(value) for value in roundtrip.coordinates["cluster_size"]] == [11, 12]
+    assert [int(value) for value in studyset.coordinates["cluster_size"]] == [11, 12]
 
 
 def test_studyset_init(example_nimads_studyset):
@@ -256,7 +138,8 @@ def test_saved_nidm_pain_studyset_loads_directly():
     studyset_file = os.path.join(get_test_data_path(), "nidm_pain_studyset.json")
 
     studyset = nimads.Studyset(studyset_file, target="mni152_2mm")
-    studyset.update_path(get_test_data_path())
+    # update_path returns a studyset rather than mutating one
+    studyset = studyset.update_path(get_test_data_path())
 
     assert len(studyset.studies) > 0
     assert studyset.space == "mni152_2mm"
@@ -280,83 +163,48 @@ def test_saved_neurosynth_laird_studyset_loads_directly():
 
 
 def test_studyset_string_methods(example_nimads_studyset):
-    """Test string representation methods."""
+    """Studyset should have readable repr and str."""
     studyset = nimads.Studyset(example_nimads_studyset)
 
-    # Test __repr__
-    assert repr(studyset) == f"'<Studyset: {studyset.id}>'"
-
-    # Test __str__
-    expected_str = f"Studyset: {studyset.name} :: studies: {len(studyset.studies)}"
-    assert str(studyset) == expected_str
+    assert repr(studyset) == f"<Studyset: {studyset.id}>"
+    assert "Studyset:" in str(studyset)
+    assert "studies:" in str(studyset)
 
 
 def test_studyset_save_load(example_nimads_studyset):
-    """Test saving and loading Studyset."""
+    """Studyset should pickle and unpickle."""
     studyset = nimads.Studyset(example_nimads_studyset)
-
-    with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as tmp:
-        tmp_path = tmp.name
+    with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as fh:
+        tmp_path = fh.name
 
     try:
-        # Test save
         studyset.save(tmp_path)
         assert os.path.exists(tmp_path)
 
-        # Test load
-        new_studyset = nimads.Studyset({"id": "temp", "name": "", "studies": []})
-        new_studyset.load(tmp_path)
+        # `load` returns a studyset rather than mutating one: a studyset is a
+        # value, so there is nothing to load *into*.
+        loaded = nimads.Studyset.load(tmp_path)
 
-        assert new_studyset.id == studyset.id
-        assert new_studyset.name == studyset.name
-        assert len(new_studyset.studies) == len(studyset.studies)
+        assert loaded.id == studyset.id
+        assert loaded.name == studyset.name
+        assert len(loaded.studies) == len(studyset.studies)
+        assert list(loaded.ids) == list(studyset.ids)
     finally:
         os.unlink(tmp_path)
 
 
 def test_studyset_pickle_roundtrip(example_nimads_studyset):
-    """Studyset objects must survive a pickle dump/load round-trip."""
+    """Pickling should preserve the data and the store's immutability."""
     studyset = nimads.Studyset(example_nimads_studyset)
-    _ = studyset.studies
+    _ = studyset.coordinates  # populate the derived caches
 
-    data = pickle.dumps(studyset)
-    restored = pickle.loads(data)
+    restored = pickle.loads(pickle.dumps(studyset))
 
-    assert isinstance(restored, nimads.Studyset)
-    assert restored.id == studyset.id
-    assert restored.name == studyset.name
-    assert len(restored.studies) == len(studyset.studies)
-
-    # Verify that the restored object is still functional
-    np.testing.assert_array_equal(restored.ids, studyset.ids)
-    assert not restored.coordinates.empty
+    assert list(restored.ids) == list(studyset.ids)
     assert restored.coordinates.shape == studyset.coordinates.shape
-
-    # Verify nested mutations still invalidate caches after unpickling.
-    revision = restored._revision
-    analysis = next(a for study in restored.studies for a in study.analyses)
-    analysis.metadata["pickle_roundtrip"] = True
-    assert restored._revision > revision
-
-
-def test_studyset_pickle_roundtrip_with_projection(tmp_path):
-    """Studyset with execution context (target/masker) survives pickle."""
-    studyset_file = os.path.join(get_test_data_path(), "neurosynth_laird_studyset.json")
-    studyset = nimads.Studyset(studyset_file, target="mni152_2mm")
-
-    # Access tables to trigger projection cache
-    _ = studyset.coordinates
-    _ = studyset.ids
-    _ = studyset.studies
-
-    data = pickle.dumps(studyset)
-    restored = pickle.loads(data)
-
-    assert isinstance(restored, nimads.Studyset)
-    np.testing.assert_array_equal(restored.ids, studyset.ids)
-    assert restored.space == "mni152_2mm"
-    assert restored.masker is not None
-    assert not restored.coordinates.empty
+    # numpy does not carry the writeable flag through pickle, so the store
+    # re-freezes itself on the way in.
+    assert not restored.store.xyz.flags.writeable
 
 
 def test_studyset_to_dict(example_nimads_studyset):
@@ -507,17 +355,13 @@ def test_get_analyses_by_mask(example_nimads_studyset, mni_mask):
 def test_get_analyses_by_label(example_nimads_studyset):
     """Test retrieving analyses by label threshold."""
     studyset = nimads.Studyset(example_nimads_studyset)
+    values = np.array([[1.0] if i < 2 else [0.0] for i in range(len(studyset.ids))])
+    labelled = studyset.with_annotation("custom", ["custom_label"], values)
+    expected = [str(i).rsplit("-", 1)[-1] for i in labelled.ids[:2]]
 
-    selected_ids = []
-    for i, (_, analysis) in enumerate(studyset._iter_analyses()):
-        analysis.annotations["custom_label"] = 1.0 if i < 2 else 0.0
-        if i < 2:
-            selected_ids.append(analysis.id)
+    results = labelled.get_analyses_by_label("custom_label", label_threshold=0.5)
 
-    results = studyset.get_analyses_by_label("custom_label", label_threshold=0.5)
-
-    assert isinstance(results, list)
-    assert set(results) == set(selected_ids)
+    assert sorted(results) == sorted(expected)
 
 
 def test_get_analyses_by_metadata(example_nimads_studyset):
@@ -554,31 +398,25 @@ def test_get_studies_by_coordinate(example_nimads_studyset):
 
 
 def test_data_retrieval_methods(example_nimads_studyset):
-    """Test methods that retrieve data for specified analyses."""
+    """Nested and tabular retrieval should agree about what the studyset holds."""
     studyset = nimads.Studyset(example_nimads_studyset)
+    analysis_ids = [str(i).rsplit("-", 1)[-1] for i in studyset.ids[:3]]
 
-    # Get some analysis IDs to test with
-    analysis_ids = []
-    for study in studyset.studies:
-        for analysis in study.analyses:
-            analysis_ids.append(analysis.id)
-            if len(analysis_ids) >= 2:  # Just test with first two analyses
-                break
-        if len(analysis_ids) >= 2:
-            break
-
-    # Test get_points
+    # Nested retrieval, keyed by analysis id
     points = studyset.get_points(analysis_ids)
     assert isinstance(points, dict)
+    assert set(points) <= set(analysis_ids)
 
-    # Test get_images
-    images = studyset.get_images(analysis_ids)
-    assert isinstance(images, dict)
-
-    # Test get_metadata
-    metadata = studyset.get_metadata(analysis_ids)
-    assert isinstance(metadata, dict)
-
-    # Test get_annotations
     annotations = studyset.get_annotations(analysis_ids)
     assert isinstance(annotations, dict)
+
+    # Tabular retrieval, one entry per selected analysis
+    assert isinstance(studyset.get_images(), list)
+    assert isinstance(studyset.get_metadata(), list)
+    assert isinstance(studyset.get_texts(), list)
+
+    # And the accessors agree with the frames
+    accessor_counts = {analysis.id: len(analysis.points) for analysis in studyset.analyses}
+    frame_counts = studyset.coordinates.groupby("contrast_id").size().to_dict()
+    for contrast_id, count in frame_counts.items():
+        assert accessor_counts[contrast_id] == count

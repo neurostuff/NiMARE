@@ -1,242 +1,165 @@
-"""Benchmark the CBMR estimators."""
+"""Benchmark coordinate-based meta-regression.
 
-import inspect
+Timed around where the cost actually is. Fitting cost is driven by the number of *distinct
+spatial patterns* a design produces, not by how many terms it has: a grouped design collapses
+onto one log-intensity map per group, while a continuously varying spatial term gives every
+experiment its own, which is the expensive end. Inference cost is dominated by the covariance --
+the Fisher information is a dense (parameters x parameters) Hessian, and a sandwich estimator
+adds a meat matrix of the same size on top.
+"""
 
 import numpy as np
 
-from nimare.generate import create_coordinate_dataset
-from nimare.meta import models
-from nimare.meta.cbmr import CBMREstimator, CBMRInference
+from nimare.generate import create_coordinate_studyset
+from nimare.meta.cbmr import CBMR
 from nimare.transforms import StandardizeField
 
-GROUP_CATEGORIES = ["diagnosis", "drug_status"]
-MODERATORS = ["standardized_sample_sizes", "standardized_avg_age"]
 N_STUDIES = 100
 RANDOM_STATE = 100
 
+# Coarse spacing and a loose tolerance, so a timing run measures the code path rather than how
+# long the optimizer wanders. See the golden-fixture module for why tightening the tolerance on
+# coordinate data does not buy a better fit.
+FIT_KWARGS = dict(
+    spline_spacing=100,
+    n_iter=200,
+    lr=1,
+    tol=1e4,
+    device="cpu",
+    random_state=RANDOM_STATE,
+    generate_description=False,
+)
 
-def _make_cbmr_dataset():
-    """Simulate and standardize a CBMR benchmark dataset."""
-    _, dataset = create_coordinate_dataset(
+
+def _make_studyset():
+    """Simulate and standardize a Studyset with two factors and two moderators."""
+    _, studyset = create_coordinate_studyset(
         foci=10,
         sample_size=(20, 40),
         n_studies=N_STUDIES,
         seed=RANDOM_STATE,
     )
-    n_rows = dataset.annotations.shape[0]
-    dataset.annotations["diagnosis"] = [
+    annotations = studyset.annotations_df.copy()
+    n_rows = annotations.shape[0]
+    annotations["diagnosis"] = [
         "schizophrenia" if i % 2 == 0 else "depression" for i in range(n_rows)
     ]
-    dataset.annotations["drug_status"] = ["Yes" if i % 2 == 0 else "No" for i in range(n_rows)]
-    dataset.annotations["drug_status"] = (
-        dataset.annotations["drug_status"]
-        .sample(frac=1, random_state=RANDOM_STATE)
-        .reset_index(drop=True)
+    annotations["drug_status"] = ["Yes" if i % 2 == 0 else "No" for i in range(n_rows)]
+    annotations["drug_status"] = (
+        annotations["drug_status"].sample(frac=1, random_state=RANDOM_STATE).reset_index(drop=True)
     )
-    dataset.annotations["sample_sizes"] = [
-        dataset.metadata.sample_sizes[i][0] for i in range(n_rows)
-    ]
-    dataset.annotations["avg_age"] = np.arange(n_rows)
-    return StandardizeField(fields=["sample_sizes", "avg_age"]).transform(dataset)
-
-
-def _supports_moderator_effect():
-    """Return whether the installed CBMR estimator exposes the moderator_effect selector."""
-    return "moderator_effect" in inspect.signature(CBMREstimator).parameters
-
-
-def _supports_inference_moderator_effect():
-    """Return whether CBMRInference exposes the moderator_effect selector."""
-    return "moderator_effect" in inspect.signature(CBMRInference).parameters
-
-
-def _fit_cbmr(
-    dataset,
-    group_categories,
-    moderators,
-    model=models.PoissonEstimator,
-    moderator_effect="global",
-):
-    """Fit a CBMR estimator with common benchmark options."""
-    kwargs = {}
-    if moderator_effect is not None and _supports_moderator_effect():
-        kwargs["moderator_effect"] = moderator_effect
-
-    meta = CBMREstimator(
-        group_categories=list(group_categories),
-        moderators=list(moderators),
-        spline_spacing=100,
-        model=model,
-        penalty=False,
-        n_iter=200,
-        lr=1,
-        tol=1e4,
-        device="cpu",
-        **kwargs,
-    )
-    return meta.fit(dataset)
-
-
-def _fit_cbmr_inference(result):
-    """Fit a CBMRInference object with common benchmark options."""
-    kwargs = {}
-    if _supports_inference_moderator_effect():
-        kwargs["moderator_effect"] = getattr(result, "moderator_effect", "global")
-
-    inference = CBMRInference(device="cpu", **kwargs)
-    inference.fit(result)
-    return inference
+    annotations["sample_sizes"] = [studyset.metadata.sample_sizes[i][0] for i in range(n_rows)]
+    annotations["avg_age"] = np.arange(n_rows)
+    # A Studyset is immutable, so the edited frame is attached to a new one.
+    studyset = studyset.with_annotations_df(annotations, name="moderators", replace=True)
+    return StandardizeField(fields=["sample_sizes", "avg_age"]).transform(studyset)
 
 
 class _CBMRBenchmarkMixin:
     """Shared setup for CBMR benchmarks."""
 
     def setup(self):
-        """
-        Set up the data.
+        """Simulate the Studyset the benchmarks fit."""
+        self.studyset = _make_studyset()
 
-        Simulates and standardizes the dataset required for the benchmarks.
-        """
-        self.dataset = _make_cbmr_dataset()
-        self.group_categories = list(GROUP_CATEGORIES)
-        self.moderators = list(MODERATORS)
+    def _fit(self, formula, **overrides):
+        """Fit one formula with the shared benchmark options."""
+        return CBMR(formula, **{**FIT_KWARGS, **overrides}).fit(dataset=self.studyset)
 
 
-class TimeCBMR(_CBMRBenchmarkMixin):
-    """Time CBMR estimators."""
-
-    def _fit_cbmr(self, model, moderator_effect=None):
-        """Fit a CBMR estimator with common benchmark options."""
-        _fit_cbmr(
-            self.dataset,
-            self.group_categories,
-            self.moderators,
-            model=model,
-            moderator_effect=moderator_effect,
-        )
+class TimeCBMRDistributions(_CBMRBenchmarkMixin):
+    """Time each observation distribution on the same grouped design."""
 
     def time_poisson(self):
-        """
-        Time the Poisson CBMR estimator.
-
-        Fits the Poisson CBMR estimator to the dataset and measures the time taken.
-        """
-        self._fit_cbmr(models.PoissonEstimator)
+        """Time the Poisson fit, the default and by far the cheapest."""
+        self._fit("~ s(diagnosis:drug_status)")
 
     def time_negative_binomial(self):
-        """
-        Time the Negative Binomial CBMR estimator.
-
-        Fits the Negative Binomial CBMR estimator to the dataset and measures the time taken.
-        """
-        self._fit_cbmr(models.NegativeBinomialEstimator, moderator_effect="global")
+        """Time the negative binomial fit, which adds one overdispersion parameter per group."""
+        self._fit("~ s(diagnosis:drug_status)", distribution="negativebinomial", lr=1e-2)
 
     def time_clustered_negative_binomial(self):
-        """
-        Time the Clustered Negative Binomial CBMR estimator.
-
-        Fits the Clustered Negative Binomial CBMR estimator to the dataset and measures the time
-        taken.
-        """
-        self._fit_cbmr(
-            models.ClusteredNegativeBinomialEstimator,
-            moderator_effect="global",
+        """Time the clustered negative binomial fit."""
+        self._fit(
+            "~ s(diagnosis:drug_status)",
+            distribution="clusterednegativebinomial",
+            lr=1e-2,
         )
+
+
+class TimeCBMRDesigns(_CBMRBenchmarkMixin):
+    """Time designs whose spatial-pattern counts differ, which is what drives fitting cost."""
+
+    def time_pooled(self):
+        """One shared map: a single spatial pattern, the cheapest possible design."""
+        self._fit("~ 1")
+
+    def time_grouped(self):
+        """One map per cell: four spatial patterns."""
+        self._fit("~ s(diagnosis:drug_status)")
+
+    def time_scalar_moderator(self):
+        """Time a scalar moderator, which adds one coefficient and no new patterns."""
+        self._fit("~ s(diagnosis:drug_status) + standardized_sample_sizes")
+
+    def time_spatial_moderator(self):
+        """Time a continuous spatial term, which gives every experiment its own pattern.
+
+        The expensive end of the range, and the case the old implementation needed a separate
+        model class for. Worth watching: this is where a regression would show up first.
+        """
+        self._fit("~ s(diagnosis:drug_status) + s(standardized_avg_age)")
+
+    def time_sum_to_zero(self):
+        """Additive spatial factors, via the sum-to-zero reparameterization."""
+        self._fit("~ sz(diagnosis) + sz(drug_status)")
 
 
 class TimeCBMRInference(_CBMRBenchmarkMixin):
-    """Time CBMR inference routines."""
+    """Time hypothesis testing, whose cost is dominated by the covariance estimate."""
 
     def setup(self):
-        """Set up a fitted CBMR result and reusable contrasts for inference benchmarks."""
+        """Fit once, then time inference against the fitted result."""
         super().setup()
-        self.result = _fit_cbmr(self.dataset, self.group_categories, self.moderators)
-        self.group_contrast_name = "DepressionYes-DepressionNo"
-        self.moderator_contrast_name = "standardized_sample_sizes-standardized_avg_age"
-        self.contrast_inference = _fit_cbmr_inference(self.result)
-        self.group_inference = _fit_cbmr_inference(self.result)
-        self.moderator_inference = _fit_cbmr_inference(self.result)
-        self.combined_inference = _fit_cbmr_inference(self.result)
-        self.group_glh_inference = _fit_cbmr_inference(self.result)
-        self.group_contrast = self.contrast_inference.create_contrast(
-            [self.group_contrast_name],
-            source="groups",
-        )
-        self.moderator_contrast = self.contrast_inference.create_contrast(
-            [self.moderator_contrast_name],
-            source="moderators",
-        )
-        self.multi_group_contrast = [
-            [[1, -1, 0, 0], [1, 0, -1, 0], [0, 0, 1, -1]],
-        ]
+        self.result = self._fit("~ s(diagnosis:drug_status) + standardized_sample_sizes")
 
-    def time_fit(self):
-        """
-        Time fitting the CBMRInference object.
+    def time_spatial_contrast_fisher(self):
+        """Time a per-voxel contrast using the Fisher-information covariance."""
+        self.result.test("schizophrenia-Yes = schizophrenia-No", name="bench")
 
-        Copies the fitted CBMR result and constructs group/moderator lookup structures.
-        """
-        _fit_cbmr_inference(self.result)
+    def time_spatial_contrast_sandwich(self):
+        """Time the same contrast with a clustered sandwich covariance.
 
-    def time_create_group_contrast(self):
+        The sandwich adds a meat matrix the same size as the bread, so this is the more
+        expensive of the two covariance paths.
         """
-        Time named group contrast construction.
-
-        Parses a pairwise group contrast into the contrast matrix used downstream.
-        """
-        self.contrast_inference.create_contrast([self.group_contrast_name], source="groups")
-
-    def time_create_moderator_contrast(self):
-        """
-        Time named moderator contrast construction.
-
-        Parses a pairwise moderator contrast into the contrast matrix used downstream.
-        """
-        self.contrast_inference.create_contrast(
-            [self.moderator_contrast_name],
-            source="moderators",
+        self.result.test(
+            "schizophrenia-Yes = schizophrenia-No",
+            name="bench",
+            cov_type="sandwich",
+            meat="cluster",
         )
 
-    def time_group_inference(self):
-        """
-        Time group-level CBMR inference.
-
-        Runs spatial intensity inference for one pairwise group contrast.
-        """
-        self.group_inference.transform(
-            t_con_groups=self.group_contrast,
-            t_con_moderators=False,
+    def time_joint_contrast(self):
+        """Time a generalized linear hypothesis, which solves a small system per voxel."""
+        self.result.test(
+            ["schizophrenia-Yes = schizophrenia-No", "depression-Yes = depression-No"],
+            name="bench",
         )
 
-    def time_moderator_inference(self):
-        """
-        Time moderator-level CBMR inference.
+    def time_scalar_contrast(self):
+        """Time a scalar term's test, which needs no per-voxel work at all."""
+        self.result.test("standardized_sample_sizes = 0", name="bench")
 
-        Runs scalar moderator inference for one pairwise moderator contrast.
-        """
-        self.moderator_inference.transform(
-            t_con_groups=False,
-            t_con_moderators=self.moderator_contrast,
-        )
 
-    def time_combined_inference(self):
-        """
-        Time combined group and moderator CBMR inference.
+class TimeCBMRDiagnostics(_CBMRBenchmarkMixin):
+    """Time the moderator-effect diagnostic maps."""
 
-        Runs both group-level and moderator-level inference in one transform call.
-        """
-        self.combined_inference.transform(
-            t_con_groups=self.group_contrast,
-            t_con_moderators=self.moderator_contrast,
-        )
+    def setup(self):
+        """Fit a design with a spatial moderator, which is what the diagnostics describe."""
+        super().setup()
+        self.result = self._fit("~ s(diagnosis) + s(standardized_avg_age)")
 
-    def time_group_glh_inference(self):
-        """
-        Time multi-row GLH group inference.
-
-        Runs a generalized linear hypothesis test over all fitted group intensities.
-        """
-        self.group_glh_inference.transform(
-            t_con_groups=self.multi_group_contrast,
-            t_con_moderators=False,
-        )
+    def time_moderator_effect_maps(self):
+        """Time relative-intensity and intensity-difference map generation."""
+        self.result.moderator_effect_maps()

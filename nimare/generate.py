@@ -8,6 +8,7 @@ import sparse
 from nimare.dataset import Dataset
 from nimare.io import convert_neurovault_to_dataset
 from nimare.meta.utils import compute_ale_ma, get_ale_kernel
+from nimare.studyset import normalize_collection
 from nimare.transforms import ImageTransformer
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
@@ -20,13 +21,6 @@ from nimare.utils import (
 # defaults for creating a neurovault dataset
 NEUROVAULT_IDS = (8836, 8838, 8893, 8895, 8892, 8891, 8962, 8894, 8956, 8854, 9000)
 CONTRAST_OF_INTEREST = {"animal": "as-Animal"}
-
-
-def _studyset_from_dataset(dataset):
-    """Convert a Dataset into a Studyset."""
-    from nimare.nimads import Studyset
-
-    return Studyset.from_dataset(dataset)
 
 
 def create_coordinate_dataset(
@@ -162,7 +156,7 @@ def create_coordinate_studyset(
         seed=seed,
         space=space,
     )
-    return ground_truth_foci, _studyset_from_dataset(dataset)
+    return ground_truth_foci, normalize_collection(dataset)
 
 
 def create_neurovault_dataset(
@@ -219,13 +213,19 @@ def create_neurovault_dataset(
     :obj:`~nimare.dataset.Dataset`
         Dataset object containing experiment information from neurovault.
     """
+    # The image transformer works on -- and returns -- a studyset, so convert
+    # back on the way out: this function promises a Dataset.
+    return _neurovault_studyset(
+        collection_ids, contrasts, img_dir, map_type_conversion, **dset_kwargs
+    ).to_dataset()
+
+
+def _neurovault_studyset(collection_ids, contrasts, img_dir, map_type_conversion, **dset_kwargs):
+    """Download NeuroVault images and return them as a studyset with z maps."""
     dataset = convert_neurovault_to_dataset(
         collection_ids, contrasts, img_dir, map_type_conversion, **dset_kwargs
     )
-    transformer = ImageTransformer(target="z")
-    dataset = transformer.transform(dataset)
-
-    return dataset
+    return ImageTransformer(target="z").transform(dataset)
 
 
 def create_neurovault_studyset(
@@ -245,14 +245,9 @@ def create_neurovault_studyset(
     :obj:`~nimare.nimads.Studyset`
         Studyset object containing experiment information from NeuroVault.
     """
-    dataset = create_neurovault_dataset(
-        collection_ids=collection_ids,
-        contrasts=contrasts,
-        img_dir=img_dir,
-        map_type_conversion=map_type_conversion,
-        **dset_kwargs,
+    return _neurovault_studyset(
+        collection_ids, contrasts, img_dir, map_type_conversion, **dset_kwargs
     )
-    return _studyset_from_dataset(dataset)
 
 
 def _create_source(foci, sample_sizes, space="MNI"):

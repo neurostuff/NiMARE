@@ -71,9 +71,13 @@ studyset = create_neurovault_studyset(
 # still have T maps and regenerate them.
 from nimare.transforms import ImageTransformer
 
-images = studyset.images.copy()
-images.loc[images["t"].notnull(), "z"] = None
-studyset.images = images
+# A Studyset is immutable, so removing images returns a new one. Masks are
+# aligned to ``image_rows``, which has one row per stored image, rather than to
+# the wide ``images`` frame.
+rows = studyset.image_rows
+has_t = set(rows.loc[rows["value_type"] == "t", "id"])
+derived_z = (rows["value_type"] == "z") & rows["id"].isin(has_t)
+studyset = studyset.keep_images(~derived_z)
 
 # Some studies are now missing Z maps again.
 studyset.images[["t", "z"]]
