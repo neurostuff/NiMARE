@@ -3,15 +3,6 @@
 Holds one flat coefficient vector, sliced according to the design's parameter layout. That is
 not a detail of storage; it is what makes the covariance correct by construction.
 
-Standard errors come from the inverse of the Fisher information. The information over a flat
-vector is a single matrix, so the covariance of a term is a *block of the inverse*. Keeping
-coefficients in separate per-group and per-moderator containers, as the older code does, makes
-it natural to invert each block instead, which drops the cross terms -- and cross terms are not
-small here. A moderator coefficient pooled across groups is correlated with every group's
-spatial coefficients, and ignoring that understated its variance by about 6%, while a separate
-bug that computed the block from only the last group inflated it by around 50%. Both were
-possible because the layout was implicit. Here it is explicit and there is only one matrix to
-invert.
 
 The cost is a dense ``(n_parameters, n_parameters)`` Hessian: 3.3M entries for a
 four-group model at spacing 10, which is fine, but it grows quadratically, so
