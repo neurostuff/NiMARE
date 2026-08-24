@@ -6,14 +6,29 @@ onto one log-intensity map per group, while a continuously varying spatial term 
 experiment its own, which is the expensive end. Inference cost is dominated by the covariance --
 the Fisher information is a dense (parameters x parameters) Hessian, and a sandwich estimator
 adds a meat matrix of the same size on top.
+
+ASV runs this benchmark file against both the PR commit and the base commit. The base commit has
+the legacy ``CBMREstimator`` API, while the PR has the formula-based ``CBMR`` API, so this module
+keeps a small compatibility layer for the base side of ``asv continuous``.
 """
 
 import numpy as np
 
-from nimare.generate import create_coordinate_studyset
-from nimare.meta.cbmr import CBMR
 from nimare.transforms import StandardizeField
 
+try:
+    from nimare.generate import create_coordinate_studyset
+    from nimare.meta.cbmr import CBMR
+
+    HAS_FORMULA_CBMR = True
+except ImportError:
+    from nimare.generate import create_coordinate_dataset
+    from nimare.meta import models
+    from nimare.meta.cbmr import CBMREstimator, CBMRInference
+
+    HAS_FORMULA_CBMR = False
+
+GROUP_CATEGORIES = ["diagnosis", "drug_status"]
 N_STUDIES = 100
 RANDOM_STATE = 100
 
@@ -33,38 +48,99 @@ FIT_KWARGS = dict(
 
 def _make_studyset():
     """Simulate and standardize a Studyset with two factors and two moderators."""
-    _, studyset = create_coordinate_studyset(
+    if HAS_FORMULA_CBMR:
+        _, studyset = create_coordinate_studyset(
+            foci=10,
+            sample_size=(20, 40),
+            n_studies=N_STUDIES,
+            seed=RANDOM_STATE,
+        )
+        annotations = studyset.annotations_df.copy()
+        n_rows = annotations.shape[0]
+        annotations["diagnosis"] = [
+            "schizophrenia" if i % 2 == 0 else "depression" for i in range(n_rows)
+        ]
+        annotations["drug_status"] = ["Yes" if i % 2 == 0 else "No" for i in range(n_rows)]
+        annotations["drug_status"] = (
+            annotations["drug_status"]
+            .sample(frac=1, random_state=RANDOM_STATE)
+            .reset_index(drop=True)
+        )
+        annotations["sample_sizes"] = [studyset.metadata.sample_sizes[i][0] for i in range(n_rows)]
+        annotations["avg_age"] = np.arange(n_rows)
+        studyset = studyset.with_annotations_df(annotations, name="moderators", replace=True)
+        return StandardizeField(fields=["sample_sizes", "avg_age"]).transform(studyset)
+
+    _, dataset = create_coordinate_dataset(
         foci=10,
         sample_size=(20, 40),
         n_studies=N_STUDIES,
         seed=RANDOM_STATE,
     )
-    annotations = studyset.annotations_df.copy()
-    n_rows = annotations.shape[0]
-    annotations["diagnosis"] = [
+    n_rows = dataset.annotations.shape[0]
+    dataset.annotations["diagnosis"] = [
         "schizophrenia" if i % 2 == 0 else "depression" for i in range(n_rows)
     ]
-    annotations["drug_status"] = ["Yes" if i % 2 == 0 else "No" for i in range(n_rows)]
-    annotations["drug_status"] = (
-        annotations["drug_status"].sample(frac=1, random_state=RANDOM_STATE).reset_index(drop=True)
+    dataset.annotations["drug_status"] = ["Yes" if i % 2 == 0 else "No" for i in range(n_rows)]
+    dataset.annotations["drug_status"] = (
+        dataset.annotations["drug_status"]
+        .sample(frac=1, random_state=RANDOM_STATE)
+        .reset_index(drop=True)
     )
-    annotations["sample_sizes"] = [studyset.metadata.sample_sizes[i][0] for i in range(n_rows)]
-    annotations["avg_age"] = np.arange(n_rows)
-    # A Studyset is immutable, so the edited frame is attached to a new one.
-    studyset = studyset.with_annotations_df(annotations, name="moderators", replace=True)
-    return StandardizeField(fields=["sample_sizes", "avg_age"]).transform(studyset)
+    dataset.annotations["sample_sizes"] = [
+        dataset.metadata.sample_sizes[i][0] for i in range(n_rows)
+    ]
+    dataset.annotations["avg_age"] = np.arange(n_rows)
+    return StandardizeField(fields=["sample_sizes", "avg_age"]).transform(dataset)
+
+
+def _legacy_model(distribution):
+    """Map a formula-API distribution name to the legacy CBMR model class."""
+    return {
+        "poisson": models.PoissonEstimator,
+        "negativebinomial": models.NegativeBinomialEstimator,
+        "clusterednegativebinomial": models.ClusteredNegativeBinomialEstimator,
+    }[distribution]
+
+
+def _legacy_terms(formula):
+    """Map representative formula benchmark cases onto the legacy CBMR API."""
+    if formula == "~ 1":
+        return [], []
+    if "standardized_sample_sizes" in formula and "standardized_avg_age" in formula:
+        return GROUP_CATEGORIES, ["standardized_sample_sizes", "standardized_avg_age"]
+    if "standardized_sample_sizes" in formula:
+        return GROUP_CATEGORIES, ["standardized_sample_sizes"]
+    if "standardized_avg_age" in formula:
+        return GROUP_CATEGORIES, ["standardized_avg_age"]
+    return GROUP_CATEGORIES, []
 
 
 class _CBMRBenchmarkMixin:
     """Shared setup for CBMR benchmarks."""
 
     def setup(self):
-        """Simulate the Studyset the benchmarks fit."""
+        """Simulate the data the benchmarks fit."""
         self.studyset = _make_studyset()
 
-    def _fit(self, formula, **overrides):
+    def _fit(self, formula, distribution="poisson", **overrides):
         """Fit one formula with the shared benchmark options."""
-        return CBMR(formula, **{**FIT_KWARGS, **overrides}).fit(dataset=self.studyset)
+        fit_kwargs = {**FIT_KWARGS, **overrides}
+        if HAS_FORMULA_CBMR:
+            return CBMR(formula, distribution=distribution, **fit_kwargs).fit(
+                dataset=self.studyset,
+            )
+
+        group_categories, moderators = _legacy_terms(formula)
+        fit_kwargs.pop("generate_description")
+        estimator = CBMREstimator(
+            group_categories=list(group_categories),
+            moderators=list(moderators),
+            model=_legacy_model(distribution),
+            penalty=False,
+            **fit_kwargs,
+        )
+        return estimator.fit(self.studyset)
 
 
 class TimeCBMRDistributions(_CBMRBenchmarkMixin):
@@ -122,10 +198,29 @@ class TimeCBMRInference(_CBMRBenchmarkMixin):
         """Fit once, then time inference against the fitted result."""
         super().setup()
         self.result = self._fit("~ s(diagnosis:drug_status) + standardized_sample_sizes")
+        if not HAS_FORMULA_CBMR:
+            self.contrast_name = "DepressionYes-DepressionNo"
+            self.group_contrast = self._legacy_inference().create_contrast(
+                [self.contrast_name],
+                source="groups",
+            )
+            self.moderator_contrast = [[1]]
+
+    def _legacy_inference(self):
+        """Return a fitted legacy inference object."""
+        inference = CBMRInference(device="cpu")
+        inference.fit(self.result)
+        return inference
 
     def time_spatial_contrast_fisher(self):
         """Time a per-voxel contrast using the Fisher-information covariance."""
-        self.result.test("schizophrenia-Yes = schizophrenia-No", name="bench")
+        if HAS_FORMULA_CBMR:
+            self.result.test("schizophrenia-Yes = schizophrenia-No", name="bench")
+        else:
+            self._legacy_inference().transform(
+                t_con_groups=self.group_contrast,
+                t_con_moderators=False,
+            )
 
     def time_spatial_contrast_sandwich(self):
         """Time the same contrast with a clustered sandwich covariance.
@@ -133,23 +228,41 @@ class TimeCBMRInference(_CBMRBenchmarkMixin):
         The sandwich adds a meat matrix the same size as the bread, so this is the more
         expensive of the two covariance paths.
         """
-        self.result.test(
-            "schizophrenia-Yes = schizophrenia-No",
-            name="bench",
-            cov_type="sandwich",
-            meat="cluster",
-        )
+        if HAS_FORMULA_CBMR:
+            self.result.test(
+                "schizophrenia-Yes = schizophrenia-No",
+                name="bench",
+                cov_type="sandwich",
+                meat="cluster",
+            )
+        else:
+            self._legacy_inference().transform(
+                t_con_groups=self.group_contrast,
+                t_con_moderators=False,
+            )
 
     def time_joint_contrast(self):
         """Time a generalized linear hypothesis, which solves a small system per voxel."""
-        self.result.test(
-            ["schizophrenia-Yes = schizophrenia-No", "depression-Yes = depression-No"],
-            name="bench",
-        )
+        if HAS_FORMULA_CBMR:
+            self.result.test(
+                ["schizophrenia-Yes = schizophrenia-No", "depression-Yes = depression-No"],
+                name="bench",
+            )
+        else:
+            self._legacy_inference().transform(
+                t_con_groups=[[[1, -1, 0, 0], [1, 0, -1, 0], [0, 0, 1, -1]]],
+                t_con_moderators=False,
+            )
 
     def time_scalar_contrast(self):
         """Time a scalar term's test, which needs no per-voxel work at all."""
-        self.result.test("standardized_sample_sizes = 0", name="bench")
+        if HAS_FORMULA_CBMR:
+            self.result.test("standardized_sample_sizes = 0", name="bench")
+        else:
+            self._legacy_inference().transform(
+                t_con_groups=False,
+                t_con_moderators=self.moderator_contrast,
+            )
 
 
 class TimeCBMRDiagnostics(_CBMRBenchmarkMixin):
@@ -162,4 +275,8 @@ class TimeCBMRDiagnostics(_CBMRBenchmarkMixin):
 
     def time_moderator_effect_maps(self):
         """Time relative-intensity and intensity-difference map generation."""
-        self.result.moderator_effect_maps()
+        if HAS_FORMULA_CBMR:
+            self.result.moderator_effect_maps()
+        else:
+            inference = CBMRInference(device="cpu")
+            inference.fit(self.result)
