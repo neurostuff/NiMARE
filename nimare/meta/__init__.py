@@ -28,12 +28,10 @@ from .kernel import ALEKernel, KDAKernel, MKDAKernel
 
 _OPTIONAL_SUBMODULES = {
     "cbmr": ".cbmr",
-    "models": ".models",
 }
 
 _OPTIONAL_EXPORTS = {
-    "CBMREstimator": (".cbmr", "CBMREstimator"),
-    "CBMRInference": (".cbmr", "CBMRInference"),
+    "CBMR": (".cbmr", "CBMR"),
     "CBMRResult": (".cbmr", "CBMRResult"),
 }
 
@@ -63,8 +61,7 @@ __all__ = [
     "MKDADensity",
     "MKDAChi2",
     "KDA",
-    "CBMREstimator",
-    "CBMRInference",
+    "CBMR",
     "CBMRResult",
     "DerSimonianLaird",
     "Fishers",
@@ -80,7 +77,6 @@ __all__ = [
     "kernel",
     "ibma",
     "cbmr",
-    "models",
     "ale",
     "mkda",
 ]

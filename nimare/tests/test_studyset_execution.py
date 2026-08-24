@@ -561,8 +561,7 @@ def test_normalize_collection_passes_through_studyset(testdata_cbma):
 def test_cbmr_accepts_studyset_smoke():
     """CBMR should accept Studyset inputs."""
     pytest.importorskip("torch")
-    from nimare.meta import models
-    from nimare.meta.cbmr import CBMREstimator
+    from nimare.meta.cbmr import CBMR
 
     _, studyset = create_coordinate_studyset(
         foci=5,
@@ -570,9 +569,9 @@ def test_cbmr_accepts_studyset_smoke():
         n_studies=12,
         seed=13,
     )
-    # Categorical group labels, attached copy-on-write. A studyset is immutable,
-    # and the annotations frame is a merged read of every annotation set rather
-    # than a table to write back.
+    # Categorical group labels, attached copy-on-write. A studyset is immutable, and the
+    # annotations frame is a merged read of every annotation set rather than a table to write
+    # back, so the payload form is what states the label types.
     studyset = studyset.with_annotation_payload(
         {
             "id": "groups",
@@ -590,10 +589,11 @@ def test_cbmr_accepts_studyset_smoke():
             ],
         }
     )
-    cbmr = CBMREstimator(
-        group_categories=["diagnosis", "drug_status"],
+    # A pooled baseline plus a scalar moderator: twelve studies cannot support one spatial map
+    # per diagnosis-by-drug cell, which leaves the information matrix singular.
+    cbmr = CBMR(
+        "~ 1 + diagnosis",
         spline_spacing=100,
-        model=models.PoissonEstimator,
         n_iter=10,
         lr=1,
         tol=1e4,

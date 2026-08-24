@@ -5,6 +5,8 @@ docs/_build/
 docs/generated/
 docs/modules/
 docs/auto_examples/
+# sphinx-gallery writes per-example timings on every docs build.
+docs/sg_execution_times.rst
 nimare/resources/data/neurovault-data/
 nimare/tests/data/downloaded/
 nimare/tests/resources/data/neurovault-data/
