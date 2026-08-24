@@ -106,7 +106,7 @@ def _legacy_model(distribution):
 def _legacy_terms(formula):
     """Map representative formula benchmark cases onto the legacy CBMR API."""
     if formula == "~ 1":
-        return [], []
+        return None, []
     if "standardized_sample_sizes" in formula and "standardized_avg_age" in formula:
         return GROUP_CATEGORIES, ["standardized_sample_sizes", "standardized_avg_age"]
     if "standardized_sample_sizes" in formula:
@@ -134,7 +134,7 @@ class _CBMRBenchmarkMixin:
         group_categories, moderators = _legacy_terms(formula)
         fit_kwargs.pop("generate_description")
         estimator = CBMREstimator(
-            group_categories=list(group_categories),
+            group_categories=None if group_categories is None else list(group_categories),
             moderators=list(moderators),
             model=_legacy_model(distribution),
             penalty=False,
