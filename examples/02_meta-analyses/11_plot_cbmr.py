@@ -78,15 +78,15 @@ FIT_KWARGS = dict(
 # One spatial map per group
 # -----------------------------------------------------------------------------
 # ``s(diagnosis:drug_status)`` crosses the two factors and gives every combination of levels its
-# own intensity map. This is the model produced by the old
-# ``group_categories=["diagnosis", "drug_status"]`` argument -- note that it was always a full
-# interaction, which the formula now says out loud.
+# own intensity map. This is the model the old ``group_categories=["diagnosis", "drug_status"]``
+# argument produced -- note that it was always a full interaction, which the formula now says
+# out loud.
 
 group_results = CBMR("~ s(diagnosis:drug_status)", **FIT_KWARGS).fit(dataset=studyset)
 
 print(group_results.describe_terms())
 
-_ = plot_stat_map(
+plot_stat_map(
     group_results.get_map("spatialIntensity_group-schizophrenia-Yes"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
@@ -96,7 +96,7 @@ _ = plot_stat_map(
     threshold=1e-4,
     vmax=1e-3,
 )
-_ = plot_stat_map(
+plot_stat_map(
     group_results.get_map("spatialIntensity_group-depression-No"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
@@ -118,16 +118,16 @@ _ = plot_stat_map(
 # ``t_test``, so arithmetic (``"2 * a = b + c"``), bare difference expressions (``"a - b"``) and
 # non-zero right-hand sides (``"a = 1"``) all work.
 #
-# Each contrast reports its effect size and standard error, not only its significance. It includes
-# ``est_`` and ``se_`` alongside ``z_``, ``p_`` and ``logp_``, which is the vocabulary the rest of
-# NiMARE uses.
+# Each contrast reports its effect size and standard error, not only its significance -- ``est_``
+# and ``se_`` alongside ``z_``, ``p_`` and ``logp_``, which is the vocabulary the rest of NiMARE
+# uses.
 
 drug_effect = group_results.test(
     "schizophrenia-Yes = schizophrenia-No",
     name="schizophrenia-drug",
 )
 
-_ = plot_stat_map(
+plot_stat_map(
     drug_effect.get_map("z_schizophrenia-drug"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
@@ -142,7 +142,7 @@ _ = plot_stat_map(
 # The effect size is a map in its own right, and worth looking at before the statistics: a
 # significant contrast whose estimate is negligible is a large sample, not a large effect.
 
-_ = plot_stat_map(
+plot_stat_map(
     drug_effect.get_map("est_schizophrenia-drug"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
@@ -154,9 +154,8 @@ _ = plot_stat_map(
 ###############################################################################
 # Asking which levels differ is a request for *every* comparison, so there is no need to write
 # them out one at a time. ``method=`` generates a named family, after ``emmeans``' contrast
-# families and ``gratia::difference_smooths``. Use ``"pairwise"`` for all pairs, ``"reference"``
-# against the first level, ``"consecutive"`` against the previous one, and ``"zero"`` against
-# zero.
+# families and ``gratia::difference_smooths``: ``"pairwise"`` for all pairs, ``"reference"``
+# against the first level, ``"consecutive"`` against the previous one, ``"zero"`` against zero.
 
 all_pairs = group_results.test(term="diagnosis:drug_status", method="pairwise")
 print(sorted(name for name in all_pairs.maps if name.startswith("z_")))
@@ -170,7 +169,7 @@ joint = group_results.test(
     name="drug-anywhere",
 )
 
-_ = plot_stat_map(
+plot_stat_map(
     joint.get_map("chiSquare_drug-anywhere"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
@@ -196,7 +195,7 @@ robust = group_results.test(
 
 corrected = FDRCorrector(method="indep", alpha=0.05).transform(robust)
 
-_ = plot_stat_map(
+plot_stat_map(
     corrected.get_map("z_drug-robust_corr-FDR_method-indep"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
@@ -231,7 +230,7 @@ mixed_results = CBMR(
 print(mixed_results.describe_terms())
 print(mixed_results.tables["moderatorEffect_standardized_sample_sizes"])
 
-_ = plot_stat_map(
+plot_stat_map(
     mixed_results.get_map("voxelwiseModeratorEffect_standardized_avg_age"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
@@ -262,7 +261,7 @@ for axis, result, map_name, title in (
     (axes[0], age_model_based, "z_age-model-based", "Inverse Fisher information"),
     (axes[1], age_robust, "z_age-robust", "Clustered sandwich"),
 ):
-    _ = plot_stat_map(
+    plot_stat_map(
         result.get_map(map_name),
         axes=axis,
         cut_coords=[0, 0, -8],
@@ -287,7 +286,7 @@ for axis, result, map_name, title in (
 # ID is the one to threshold. RI is large wherever the baseline is small, so a striking ratio in
 # a region nobody reports is not a finding. Plotting them together is the point.
 
-_ = mixed_results.plot_moderator_effects(
+mixed_results.plot_moderator_effects(
     moderator="standardized_avg_age",
     unit_change=1.0,
     group="schizophrenia-Yes",
@@ -314,7 +313,7 @@ additive_results = CBMR("~ sz(diagnosis) + sz(drug_status)", **FIT_KWARGS).fit(d
 
 print(additive_results.describe_terms())
 
-_ = plot_stat_map(
+plot_stat_map(
     additive_results.get_map("spatialIntensity_group-Default"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
@@ -324,7 +323,7 @@ _ = plot_stat_map(
     threshold=1e-4,
     vmax=1e-3,
 )
-_ = plot_stat_map(
+plot_stat_map(
     additive_results.get_map("spatialFactorEffect_diagnosis-sz1"),
     cut_coords=[0, 0, -8],
     draw_cross=False,
