@@ -24,8 +24,8 @@ budget is logged at fit time and available from
 :meth:`~nimare.meta.cbmr.CBMRResult.describe_terms`.
 """
 
+import matplotlib.pyplot as plt
 import numpy as np
-import scipy
 from nilearn.plotting import plot_stat_map
 
 from nimare.correct import FDRCorrector
@@ -134,7 +134,7 @@ plot_stat_map(
     cmap="RdBu_r",
     symmetric_cbar=True,
     title="Drug effect within schizophrenia",
-    threshold=scipy.stats.norm.isf(0.4),
+    threshold=None,
     vmax=2,
 )
 
@@ -202,7 +202,7 @@ plot_stat_map(
     cmap="RdBu_r",
     symmetric_cbar=True,
     title="Drug effect, clustered SEs, FDR corrected",
-    threshold=scipy.stats.norm.isf(0.4),
+    threshold=None,
     vmax=2,
 )
 
@@ -216,6 +216,11 @@ plot_stat_map(
 # voxel by the same factor. A spatially varying one can change the pattern. That is the real
 # distinction, and it is why the two answers arrive in different places: a scalar coefficient in
 # a table, a coefficient map among the maps.
+#
+# The next fit moves from a model whose moderator effect is global to one that includes a
+# spatially varying covariate. ``standardized_sample_sizes`` remains global, while
+# ``s(standardized_avg_age)`` estimates an age-effect map, allowing the association with age to
+# differ across voxels.
 
 mixed_results = CBMR(
     "~ s(diagnosis:drug_status) + standardized_sample_sizes + s(standardized_avg_age)",
@@ -233,6 +238,40 @@ plot_stat_map(
     symmetric_cbar=True,
     title="Age effect on log intensity (per SD)",
 )
+
+###############################################################################
+# Comparing model-based and robust uncertainty
+# -----------------------------------------------------------------------------
+# The fitted coefficient map is unchanged by the covariance estimator. What changes is the
+# uncertainty attached to the same spatially varying effect. By default, ``test`` uses the inverse
+# Fisher information matrix. Passing ``cov_type="sandwich"`` asks for clustered robust standard
+# errors instead, allowing foci from the same experiment to be correlated.
+
+age_model_based = mixed_results.test("standardized_avg_age = 0", name="age-model-based")
+age_robust = mixed_results.test(
+    "standardized_avg_age = 0",
+    name="age-robust",
+    cov_type="sandwich",
+    meat="cluster",
+    correction="hc1",
+)
+
+figure, axes = plt.subplots(1, 2, figsize=(10, 4))
+for axis, result, map_name, title in (
+    (axes[0], age_model_based, "z_age-model-based", "Inverse Fisher information"),
+    (axes[1], age_robust, "z_age-robust", "Clustered sandwich"),
+):
+    plot_stat_map(
+        result.get_map(map_name),
+        axes=axis,
+        cut_coords=[0, 0, -8],
+        draw_cross=False,
+        cmap="RdBu_r",
+        symmetric_cbar=True,
+        title=title,
+        threshold=None,
+        vmax=2,
+    )
 
 ###############################################################################
 # Reading a moderator map: relative intensity and intensity difference
