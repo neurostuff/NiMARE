@@ -165,7 +165,7 @@ class BrainMapDecoder(Decoder):
         features=None,
         frequency_threshold=0.001,
         u=0.05,
-        correction="fdr_bh",
+        correction="bh",
     ):
         self.feature_group = feature_group
         self.features = features
@@ -224,7 +224,7 @@ def brainmap_decode(
     features=None,
     frequency_threshold=0.001,
     u=0.05,
-    correction="fdr_bh",
+    correction="bh",
 ):
     """Perform image-to-text decoding for discrete inputs according to the BrainMap method.
 
@@ -460,7 +460,7 @@ class NeurosynthDecoder(Decoder):
         frequency_threshold=0.001,
         prior=0.5,
         u=0.05,
-        correction="fdr_bh",
+        correction="bh",
     ):
         self.feature_group = feature_group
         self.features = features
@@ -522,7 +522,7 @@ def neurosynth_decode(
     frequency_threshold=0.001,
     prior=0.5,
     u=0.05,
-    correction="fdr_bh",
+    correction="bh",
 ):
     """Perform discrete functional decoding according to Neurosynth's meta-analytic method.
 
