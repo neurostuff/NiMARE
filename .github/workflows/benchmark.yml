@@ -20,4 +20,7 @@ jobs:
       - run: git fetch origin $GITHUB_BASE_REF:base $GITHUB_REF:pr
       - run: pip install asv virtualenv
       - run: asv machine --yes
-      - run: asv continuous base pr
+      # 1.2 rather than asv's default 1.1. The CBMR benchmarks run in single-digit
+      # milliseconds, and run-to-run spread on a shared runner is wider than 10% at that
+      # size, so 1.1 reports noise as a regression.
+      - run: asv continuous --factor 1.2 base pr
