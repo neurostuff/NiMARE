@@ -14,6 +14,7 @@ import numpy as np
 
 from nimare.meta.cbmr._torch import torch
 from nimare.meta.cbmr.distributions import resolve_distribution
+from nimare.meta.cbmr.information import closed_form_information
 
 LGR = logging.getLogger(__name__)
 
@@ -57,6 +58,7 @@ class CBMRModel(torch.nn.Module):
             torch.nn.Parameter(nuisance.detach().to(device)) if nuisance is not None else None
         )
         self._iterations = 0
+        self._covariance_cache = None
 
     @property
     def n_parameters(self):
@@ -101,6 +103,8 @@ class CBMRModel(torch.nn.Module):
         tol : :obj:`float`, optional
             Stopping tolerance on the change in the objective. Default is 1e-8.
         """
+        # Any refit invalidates a cached covariance, which is a function of the converged fit.
+        self._covariance_cache = None
         parameters = [self.coefficients] + ([] if self.nuisance is None else [self.nuisance])
         optimizer = torch.optim.LBFGS(
             params=parameters,
@@ -133,9 +137,17 @@ class CBMRModel(torch.nn.Module):
         """Return the observed Fisher information over the flat coefficient vector.
 
         One matrix over all coefficients, so the cross blocks between terms are present rather
-        than assumed away. Nuisance parameters are held fixed at their fitted values, matching
-        how CBMR has always reported regression standard errors.
+        than assumed away. Nuisance parameters are held fixed at their fitted values.
+
+        Computed in closed form for every distribution with automatic differentiation as the
+        fallback for distributions added without a derivation.
         """
+        closed_form = closed_form_information(self.distribution)
+        if closed_form is not None:
+            return closed_form(self, foci)
+
+        # No derivation, so differentiate. jacfwd(jacrev(.)) builds an intermediate of shape
+        # (n_parameters, n_patterns, n_voxels), which is tens of GB on a many-group model.
         flat = self.coefficients.detach().clone()
         nuisance = None if self.nuisance is None else self.nuisance.detach().clone()
 
@@ -161,35 +173,35 @@ class CBMRModel(torch.nn.Module):
         meat, correction, ridge
             Passed to :func:`~nimare.meta.cbmr.covariance.sandwich_covariance` when
             ``cov_type="sandwich"``.
-        """
-        if cov_type == "sandwich":
-            from nimare.meta.cbmr.covariance import sandwich_covariance
 
-            return sandwich_covariance(self, foci, meat=meat, correction=correction, ridge=ridge)
-        if cov_type != "fisher":
+        Notes
+        -----
+        The result is cached. It is a function of the converged coefficients and the foci, so
+        every hypothesis tested against one fit asks for the same matrix, and
+        :meth:`~nimare.meta.cbmr.results.CBMRResult.test` would otherwise rebuild it each time.
+        The cache holds one matrix, is keyed on the foci and the covariance options, and is
+        cleared by :meth:`fit`. At many groups that matrix is large; could be well over 500mb,
+        but it is shared by every result derived from the fit, since ``CBMRResult.copy`` passes
+        the estimator by reference.
+        """
+        from nimare.meta.cbmr.covariance import fisher_covariance, sandwich_covariance
+
+        key = (cov_type, meat, correction, ridge)
+        cached = self._covariance_cache
+        if cached is not None and cached[0] is foci and cached[1] == key:
+            return cached[2]
+
+        if cov_type == "sandwich":
+            value = sandwich_covariance(self, foci, meat=meat, correction=correction, ridge=ridge)
+        elif cov_type == "fisher":
+            value = fisher_covariance(self, self.information_matrix(foci))
+        else:
             raise ValueError(f"cov_type must be 'fisher' or 'sandwich', got {cov_type!r}.")
 
-        information = self.information_matrix(foci)
-        condition = np.linalg.cond(information)
-        advice = (
-            "The design asks for more spatial detail than these foci can support. Try a coarser "
-            "spline_spacing, a higher incidence_threshold, fewer s() terms, or more experiments; "
-            "CBMRResult.describe_terms() reports the parameter budget per term."
-        )
-        if condition > 1.0 / np.finfo(float).eps:
-            LGR.warning(
-                f"The Fisher information matrix has condition number {condition:.3g}, past what "
-                "double precision can invert meaningfully, so these standard errors should not "
-                f"be trusted. {advice}"
-            )
-        try:
-            return np.linalg.inv(information)
-        except np.linalg.LinAlgError as error:
-            # numpy's bare "Singular matrix" gives a user no idea which knob to turn.
-            raise np.linalg.LinAlgError(
-                f"The Fisher information matrix over {self.n_parameters} coefficients is "
-                f"singular, so no standard errors exist for this fit. {advice}"
-            ) from error
+        # ``foci`` is held in the key, not just its id: ids are recycled, and a freed matrix
+        # could otherwise let a later call match a cache entry that is not its own.
+        self._covariance_cache = (foci, key, value)
+        return value
 
     def standard_errors(self, foci, **covariance_kwargs):
         """Return coefficient standard errors, keyed by term.

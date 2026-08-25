@@ -119,9 +119,15 @@ def _legacy_terms(formula):
 class _CBMRBenchmarkMixin:
     """Shared setup for CBMR benchmarks."""
 
-    def setup(self):
-        """Simulate the data the benchmarks fit."""
-        self.studyset = _make_studyset()
+    def setup_cache(self):
+        """Simulate the studyset once per process.
+
+        """
+        return _make_studyset()
+
+    def setup(self, studyset):
+        """Take the simulated studyset from the cache."""
+        self.studyset = studyset
 
     def _fit(self, formula, distribution="poisson", **overrides):
         """Fit one formula with the shared benchmark options."""
@@ -146,15 +152,15 @@ class _CBMRBenchmarkMixin:
 class TimeCBMRDistributions(_CBMRBenchmarkMixin):
     """Time each observation distribution on the same grouped design."""
 
-    def time_poisson(self):
+    def time_poisson(self, studyset):
         """Time the Poisson fit, the default and by far the cheapest."""
         self._fit("~ s(diagnosis:drug_status)")
 
-    def time_negative_binomial(self):
+    def time_negative_binomial(self, studyset):
         """Time the negative binomial fit, which adds one overdispersion parameter per group."""
         self._fit("~ s(diagnosis:drug_status)", distribution="negativebinomial", lr=1e-2)
 
-    def time_clustered_negative_binomial(self):
+    def time_clustered_negative_binomial(self, studyset):
         """Time the clustered negative binomial fit."""
         self._fit(
             "~ s(diagnosis:drug_status)",
@@ -166,19 +172,19 @@ class TimeCBMRDistributions(_CBMRBenchmarkMixin):
 class TimeCBMRDesigns(_CBMRBenchmarkMixin):
     """Time designs whose spatial-pattern counts differ, which is what drives fitting cost."""
 
-    def time_pooled(self):
+    def time_pooled(self, studyset):
         """One shared map: a single spatial pattern, the cheapest possible design."""
         self._fit("~ 1")
 
-    def time_grouped(self):
+    def time_grouped(self, studyset):
         """One map per cell: four spatial patterns."""
         self._fit("~ s(diagnosis:drug_status)")
 
-    def time_scalar_moderator(self):
+    def time_scalar_moderator(self, studyset):
         """Time a scalar moderator, which adds one coefficient and no new patterns."""
         self._fit("~ s(diagnosis:drug_status) + standardized_sample_sizes")
 
-    def time_spatial_moderator(self):
+    def time_spatial_moderator(self, studyset):
         """Time a continuous spatial term, which gives every experiment its own pattern.
 
         The expensive end of the range, and the case the old implementation needed a separate
@@ -186,7 +192,7 @@ class TimeCBMRDesigns(_CBMRBenchmarkMixin):
         """
         self._fit("~ s(diagnosis:drug_status) + s(standardized_avg_age)")
 
-    def time_sum_to_zero(self):
+    def time_sum_to_zero(self, studyset):
         """Additive spatial factors, via the sum-to-zero reparameterization."""
         self._fit("~ sz(diagnosis) + sz(drug_status)")
 
@@ -194,9 +200,9 @@ class TimeCBMRDesigns(_CBMRBenchmarkMixin):
 class TimeCBMRInference(_CBMRBenchmarkMixin):
     """Time hypothesis testing, whose cost is dominated by the covariance estimate."""
 
-    def setup(self):
+    def setup(self, studyset):
         """Fit once, then time inference against the fitted result."""
-        super().setup()
+        super().setup(studyset)
         self.result = self._fit("~ s(diagnosis:drug_status) + standardized_sample_sizes")
         if not HAS_FORMULA_CBMR:
             self.contrast_name = "DepressionYes-DepressionNo"
@@ -212,7 +218,7 @@ class TimeCBMRInference(_CBMRBenchmarkMixin):
         inference.fit(self.result)
         return inference
 
-    def time_spatial_contrast_fisher(self):
+    def time_spatial_contrast_fisher(self, studyset):
         """Time a per-voxel contrast using the Fisher-information covariance."""
         if HAS_FORMULA_CBMR:
             self.result.test("schizophrenia-Yes = schizophrenia-No", name="bench")
@@ -222,7 +228,7 @@ class TimeCBMRInference(_CBMRBenchmarkMixin):
                 t_con_moderators=False,
             )
 
-    def time_spatial_contrast_sandwich(self):
+    def time_spatial_contrast_sandwich(self, studyset):
         """Time the same contrast with a clustered sandwich covariance.
 
         The sandwich adds a meat matrix the same size as the bread, so this is the more
@@ -241,7 +247,7 @@ class TimeCBMRInference(_CBMRBenchmarkMixin):
                 t_con_moderators=False,
             )
 
-    def time_joint_contrast(self):
+    def time_joint_contrast(self, studyset):
         """Time a generalized linear hypothesis, which solves a small system per voxel."""
         if HAS_FORMULA_CBMR:
             self.result.test(
@@ -254,7 +260,7 @@ class TimeCBMRInference(_CBMRBenchmarkMixin):
                 t_con_moderators=False,
             )
 
-    def time_scalar_contrast(self):
+    def time_scalar_contrast(self, studyset):
         """Time a scalar term's test, which needs no per-voxel work at all."""
         if HAS_FORMULA_CBMR:
             self.result.test("standardized_sample_sizes = 0", name="bench")
@@ -263,20 +269,3 @@ class TimeCBMRInference(_CBMRBenchmarkMixin):
                 t_con_groups=False,
                 t_con_moderators=self.moderator_contrast,
             )
-
-
-class TimeCBMRDiagnostics(_CBMRBenchmarkMixin):
-    """Time the moderator-effect diagnostic maps."""
-
-    def setup(self):
-        """Fit a design with a spatial moderator, which is what the diagnostics describe."""
-        super().setup()
-        self.result = self._fit("~ s(diagnosis) + s(standardized_avg_age)")
-
-    def time_moderator_effect_maps(self):
-        """Time relative-intensity and intensity-difference map generation."""
-        if HAS_FORMULA_CBMR:
-            self.result.moderator_effect_maps()
-        else:
-            inference = CBMRInference(device="cpu")
-            inference.fit(self.result)

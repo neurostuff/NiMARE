@@ -12,25 +12,34 @@ from nimare.tests.utils import get_test_data_path
 class TimeCBMA:
     """Time CBMA estimators."""
 
-    def setup(self):
-        """
-        Setup the data.
+    def setup_cache(self):
+        """Build the datasets once per process.
 
-        Loads the dataset required for the benchmarks.
         """
-        self.dataset = nimare.dataset.Dataset(
+        dataset = nimare.dataset.Dataset(
             os.path.join(get_test_data_path(), "test_pain_dataset.json")
         )
-        _, self.dataset_dense = create_coordinate_dataset(
+        _, dataset_dense = create_coordinate_dataset(
             foci=60,
             n_studies=100,
             foci_percentage="100%",
             seed=123,
         )
-        self.studyset = Studyset.from_dataset(self.dataset)
-        self.studyset_dense = Studyset.from_dataset(self.dataset_dense)
+        return {
+            "dataset": dataset,
+            "dataset_dense": dataset_dense,
+            "studyset": Studyset.from_dataset(dataset),
+            "studyset_dense": Studyset.from_dataset(dataset_dense),
+        }
 
-    def time_ale(self):
+    def setup(self, data):
+        """Take the datasets from the cache."""
+        self.dataset = data["dataset"]
+        self.dataset_dense = data["dataset_dense"]
+        self.studyset = data["studyset"]
+        self.studyset_dense = data["studyset_dense"]
+
+    def time_ale(self, data):
         """
         Time the ALE estimator.
 
@@ -39,7 +48,7 @@ class TimeCBMA:
         meta = ALE()
         meta.fit(self.dataset)
 
-    def time_mkdadensity(self):
+    def time_mkdadensity(self, data):
         """
         Time the MKDADensity estimator.
 
@@ -48,14 +57,14 @@ class TimeCBMA:
         meta = MKDADensity()
         meta.fit(self.dataset)
 
-    def time_mkdadensity_studyset(self):
+    def time_mkdadensity_studyset(self, data):
         """
         Time the MKDADensity estimator on a Studyset converted from the benchmark Dataset.
         """
         meta = MKDADensity()
         meta.fit(self.studyset)
 
-    def time_mkdadensity_dense(self):
+    def time_mkdadensity_dense(self, data):
         """
         Time the MKDADensity estimator on a denser simulated dataset.
 
@@ -65,14 +74,14 @@ class TimeCBMA:
         meta = MKDADensity()
         meta.fit(self.dataset_dense)
 
-    def time_mkdadensity_dense_studyset(self):
+    def time_mkdadensity_dense_studyset(self, data):
         """
         Time the MKDADensity estimator on a dense Studyset input.
         """
         meta = MKDADensity()
         meta.fit(self.studyset_dense)
 
-    def time_kda(self):
+    def time_kda(self, data):
         """
         Time the KDA estimator.
 
@@ -81,14 +90,14 @@ class TimeCBMA:
         meta = KDA()
         meta.fit(self.dataset)
 
-    def time_kda_studyset(self):
+    def time_kda_studyset(self, data):
         """
         Time the KDA estimator on a Studyset converted from the benchmark Dataset.
         """
         meta = KDA()
         meta.fit(self.studyset)
 
-    def time_mkdachi2(self):
+    def time_mkdachi2(self, data):
         """
         Time the MKDAChi2 estimator.
 
@@ -97,14 +106,14 @@ class TimeCBMA:
         meta = MKDAChi2()
         meta.fit(self.dataset, self.dataset)
 
-    def time_mkdachi2_studyset(self):
+    def time_mkdachi2_studyset(self, data):
         """
         Time the MKDAChi2 estimator on Studyset inputs converted from the benchmark Dataset.
         """
         meta = MKDAChi2()
         meta.fit(self.studyset, self.studyset)
 
-    def time_mkdachi2_dense(self):
+    def time_mkdachi2_dense(self, data):
         """
         Time the MKDAChi2 estimator on a denser simulated dataset.
 
@@ -114,14 +123,14 @@ class TimeCBMA:
         meta = MKDAChi2()
         meta.fit(self.dataset_dense, self.dataset_dense)
 
-    def time_mkdachi2_dense_studyset(self):
+    def time_mkdachi2_dense_studyset(self, data):
         """
         Time the MKDAChi2 estimator on dense Studyset inputs.
         """
         meta = MKDAChi2()
         meta.fit(self.studyset_dense, self.studyset_dense)
 
-    def time_ale_studyset(self):
+    def time_ale_studyset(self, data):
         """
         Time the ALE estimator on a Studyset converted from the benchmark Dataset.
         """

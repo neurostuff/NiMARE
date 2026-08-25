@@ -43,6 +43,14 @@ def _as_dense_array(value):
     return np.asarray(value, dtype=float)
 
 
+def experiment_totals(foci):
+    """Return the foci count per experiment, for a sparse matrix or an array alike.
+
+    ``sum`` works on both, so the experiment-by-voxel grid is never materialised.
+    """
+    return np.asarray(foci.sum(axis=1)).reshape(-1)
+
+
 def _as_tensor(array, dtype=torch.float64):
     """Convert an array to a torch tensor, copying anything that is not already contiguous.
 
@@ -105,20 +113,30 @@ class SpatialPatterns:
     def marginal_by_pattern(self, foci):
         """Sum foci counts over the experiments sharing each pattern.
 
+        Written as a product with the ``(n_experiments, n_patterns)`` membership matrix. That
+        keeps a sparse ``foci`` sparse, so the cost is one pass over the stored nonzeros rather
+        than one over the full experiment-by-voxel grid -- the array this module exists to avoid,
+        31 GB at 17,000 experiments over a 2 mm mask. The same expression handles a dense
+        ``foci``, and is faster there than the scatter-add it replaces.
+
         Returns
         -------
         :obj:`numpy.ndarray`
             Shape ``(n_patterns, n_voxels)``.
         """
-        foci = _as_dense_array(foci)
         if foci.shape[0] != self.n_experiments:
             raise ValueError(
                 f"foci has {foci.shape[0]} rows but the design covers {self.n_experiments} "
                 "experiments."
             )
-        marginal = np.zeros((self.n_patterns, foci.shape[1]), dtype=float)
-        np.add.at(marginal, self.assignment, foci)
-        return marginal
+        membership = scipy.sparse.csr_matrix(
+            (np.ones(self.n_experiments), (np.arange(self.n_experiments), self.assignment)),
+            shape=(self.n_experiments, self.n_patterns),
+        )
+        marginal = membership.T @ foci
+        if scipy.sparse.issparse(marginal):
+            marginal = marginal.todense()
+        return np.asarray(marginal, dtype=float)
 
 
 class CBMRPredictor:
@@ -250,9 +268,7 @@ def poisson_log_likelihood(predictor, spatial_coef, global_coef, foci):
     marginal_by_pattern = _as_tensor(
         predictor.patterns.marginal_by_pattern(foci), spatial_coef.dtype
     )
-    foci_per_experiment = _as_tensor(
-        np.asarray(_as_dense_array(foci).sum(axis=1)).reshape(-1), spatial_coef.dtype
-    )
+    foci_per_experiment = _as_tensor(experiment_totals(foci), spatial_coef.dtype)
 
     log_intensity = predictor.log_intensity_by_pattern(spatial_coef)
     moderator = predictor.moderator_effect(global_coef).to(spatial_coef.dtype)
