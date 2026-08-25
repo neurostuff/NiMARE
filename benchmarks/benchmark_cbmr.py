@@ -263,20 +263,3 @@ class TimeCBMRInference(_CBMRBenchmarkMixin):
                 t_con_groups=False,
                 t_con_moderators=self.moderator_contrast,
             )
-
-
-class TimeCBMRDiagnostics(_CBMRBenchmarkMixin):
-    """Time the moderator-effect diagnostic maps."""
-
-    def setup(self):
-        """Fit a design with a spatial moderator, which is what the diagnostics describe."""
-        super().setup()
-        self.result = self._fit("~ s(diagnosis) + s(standardized_avg_age)")
-
-    def time_moderator_effect_maps(self):
-        """Time relative-intensity and intensity-difference map generation."""
-        if HAS_FORMULA_CBMR:
-            self.result.moderator_effect_maps()
-        else:
-            inference = CBMRInference(device="cpu")
-            inference.fit(self.result)
