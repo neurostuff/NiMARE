@@ -137,10 +137,10 @@ class CBMRModel(torch.nn.Module):
         """Return the observed Fisher information over the flat coefficient vector.
 
         One matrix over all coefficients, so the cross blocks between terms are present rather
-       than assumed away. Nuisance parameters are held fixed at their fitted values.
+        than assumed away. Nuisance parameters are held fixed at their fitted values.
 
-        Computed in closed form for every distribution with automatic differentiation as the fallback for
-        distributions added without a derivation.
+        Computed in closed form for every distribution with automatic differentiation as the
+        fallback for distributions added without a derivation.
         """
         closed_form = closed_form_information(self.distribution)
         if closed_form is not None:
@@ -180,8 +180,9 @@ class CBMRModel(torch.nn.Module):
         every hypothesis tested against one fit asks for the same matrix, and
         :meth:`~nimare.meta.cbmr.results.CBMRResult.test` would otherwise rebuild it each time.
         The cache holds one matrix, is keyed on the foci and the covariance options, and is
-        cleared by :meth:`fit`. At many groups that matrix is large; could be well over 500mb, but it is shared by every result derived from the fit, since
-        ``CBMRResult.copy`` passes the estimator by reference.
+        cleared by :meth:`fit`. At many groups that matrix is large; could be well over 500mb,
+        but it is shared by every result derived from the fit, since ``CBMRResult.copy`` passes
+        the estimator by reference.
         """
         from nimare.meta.cbmr.covariance import fisher_covariance, sandwich_covariance
 
