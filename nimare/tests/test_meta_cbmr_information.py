@@ -20,6 +20,7 @@ else:
         bordered_inverse,
         cholesky_inverse,
         is_block_diagonal,
+        one_norm_condition_number,
         spatial_components,
         symmetric_condition_number,
     )
@@ -274,6 +275,43 @@ def test_a_singular_design_explains_itself_on_the_blockwise_route(data):
 
     with pytest.raises(np.linalg.LinAlgError, match="spline_spacing"):
         model.covariance(foci)
+
+
+def test_one_norm_condition_number_never_underestimates():
+    """kappa_2 <= kappa_1 for symmetric matrices, so warning on the 1-norm cannot miss one.
+
+    That inequality is the whole reason the bordered route may report the cheaper norm.
+    """
+    rng = np.random.default_rng(4)
+    for size in (5, 20, 60):
+        for trial in range(5):
+            root = rng.normal(size=(size, size)) / np.sqrt(size)
+            matrix = root @ root.T + np.eye(size) * 10.0 ** rng.integers(-6, 1)
+            inverse = np.linalg.inv(matrix)
+            assert np.linalg.cond(matrix) <= one_norm_condition_number(matrix, inverse) * (
+                1 + 1e-9
+            ), f"kappa_2 exceeded kappa_1 at size {size}, trial {trial}"
+
+
+def test_bordered_route_uses_the_cheap_condition_number(data):
+    """A moderator design takes the bordered route, whose conditioning comes from the inverse.
+
+    Pinned by identity with ``bordered_inverse`` rather than by a private attribute, so the
+    assertion survives a refactor of how the route is chosen.
+    """
+    model, foci = _fit("~ s(diagnosis) + n", "poisson", data)
+    information = model.information_matrix(foci)
+    components = spatial_components(model.predictor.patterns.loadings, model.predictor.n_bases)
+    assert model.n_global == 1 and len(components) > 1
+    assert is_block_diagonal(information[: model.n_spatial, : model.n_spatial], components)
+
+    covariance = model.covariance(foci)
+    expected = bordered_inverse(information, components, model.n_spatial)
+    np.testing.assert_array_equal(covariance, expected)
+    # The bound that lets this route report the cheaper norm.
+    assert one_norm_condition_number(information, covariance) >= np.linalg.cond(information) * (
+        1 - 1e-9
+    )
 
 
 def test_cholesky_inverse_declines_a_non_positive_definite_matrix():

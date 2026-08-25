@@ -317,6 +317,44 @@ def symmetric_condition_number(information, blocks=None):
     return np.inf if smallest == 0 else np.abs(values).max() / smallest
 
 
+def one_norm_condition_number(information, inverse):
+    """Return the exact 1-norm condition number of a matrix whose inverse is already known.
+
+    Two O(n^2) passes, against O(n^3) for an eigendecomposition.
+
+    Parameters
+    ----------
+    information : :obj:`numpy.ndarray`
+        The matrix.
+    inverse : :obj:`numpy.ndarray`
+        Its inverse.
+
+    Returns
+    -------
+    :obj:`float`
+
+    Notes
+    -----
+    For a symmetric matrix ``kappa_2 <= kappa_1``: ``||M||_1 == ||M||_inf``, so
+    ``||M||_2 <= sqrt(||M||_1 ||M||_inf) == ||M||_1``, and the same holds for the inverse.
+    Warning on the 1-norm therefore never misses a matrix the 2-norm would have flagged. It can
+    warn on one the 2-norm would not: measured on CBMR information matrices the two differ by
+    roughly one to two orders of magnitude.
+    """
+    return float(np.abs(information).sum(axis=0).max() * np.abs(inverse).sum(axis=0).max())
+
+
+def _warn_if_ill_conditioned(n_parameters, condition, norm):
+    """Warn when the information is past what double precision can invert meaningfully."""
+    if condition > 1.0 / np.finfo(float).eps:
+        LGR.warning(
+            f"The Fisher information matrix over {n_parameters} coefficients has {norm} "
+            f"condition number {condition:.3g}, past what double precision can invert "
+            "meaningfully, so these standard errors should not be trusted. "
+            f"{_CONDITION_ADVICE}"
+        )
+
+
 def cholesky_inverse(information):
     """Invert a positive definite matrix from one Cholesky factor.
 
@@ -403,7 +441,9 @@ def fisher_covariance(model, information):
 
     Warns
     -----
-    If the condition number is past what double precision can invert.
+    If the condition number is past what double precision can invert. The message names the
+    norm: the bordered route reports the 1-norm, which is an upper bound on the 2-norm the
+    other routes report.
 
     Notes
     -----
@@ -418,28 +458,37 @@ def fisher_covariance(model, information):
     # when there are none.
     separable = not model.n_global and is_block_diagonal(information, components)
 
-    condition = symmetric_condition_number(information, components if separable else None)
-    if condition > 1.0 / np.finfo(float).eps:
-        LGR.warning(
-            f"The Fisher information matrix has condition number {condition:.3g}, past what "
-            "double precision can invert meaningfully, so these standard errors should not be "
-            f"trusted. {_CONDITION_ADVICE}"
-        )
+    # The bordered route runs first because it can report its own conditioning. A bordered
+    # matrix's spectrum is not the union of its blocks', so the 2-norm would need a full
+    # eigendecomposition of the whole matrix; the 1-norm falls out of the inverse this route
+    # already builds. bordered_inverse returns None rather than raising, so a singular matrix
+    # still reaches the shared handling below.
+    if (
+        not separable
+        and model.n_global
+        and len(components) > 1
+        and is_block_diagonal(information[:n_spatial, :n_spatial], components)
+    ):
+        bordered = bordered_inverse(information, components, n_spatial)
+        if bordered is not None:
+            _warn_if_ill_conditioned(
+                model.n_parameters, one_norm_condition_number(information, bordered), "1-norm"
+            )
+            return bordered
+
+    # Everywhere else the condition number is cheap, or the matrix is dense anyway. It is taken
+    # before the inverse so that a singular matrix is still described rather than only raising.
+    _warn_if_ill_conditioned(
+        model.n_parameters,
+        symmetric_condition_number(information, components if separable else None),
+        "2-norm",
+    )
 
     # One handler for every route: numpy's bare "Singular matrix" does not say which setting to
     # change, and the message should not depend on which route hit the singularity.
     try:
         if separable:
             return blockwise_inverse(information, components)
-
-        if (
-            model.n_global
-            and len(components) > 1
-            and is_block_diagonal(information[:n_spatial, :n_spatial], components)
-        ):
-            bordered = bordered_inverse(information, components, n_spatial)
-            if bordered is not None:
-                return bordered
 
         inverse = cholesky_inverse(information)
         if inverse is not None:
