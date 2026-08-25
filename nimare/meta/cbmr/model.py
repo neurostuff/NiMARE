@@ -14,6 +14,7 @@ import numpy as np
 
 from nimare.meta.cbmr._torch import torch
 from nimare.meta.cbmr.distributions import resolve_distribution
+from nimare.meta.cbmr.information import closed_form_information
 
 LGR = logging.getLogger(__name__)
 
@@ -135,7 +136,19 @@ class CBMRModel(torch.nn.Module):
         One matrix over all coefficients, so the cross blocks between terms are present rather
         than assumed away. Nuisance parameters are held fixed at their fitted values, matching
         how CBMR has always reported regression standard errors.
+
+        Computed in closed form where a derivation exists, which for the distributions NiMARE
+        ships is always; see :mod:`nimare.meta.cbmr.information`. Automatic differentiation
+        remains the fallback for a distribution added without one.
         """
+        closed_form = closed_form_information(self.distribution)
+        if closed_form is not None:
+            return closed_form(self, foci)
+
+        # No derivation for this distribution, so differentiate it. jacfwd(jacrev(.)) carries one
+        # tangent per parameter through the likelihood at once, so the intermediate is
+        # (n_parameters, n_patterns, n_voxels) -- tens of GB on a many-group model. That is why
+        # the three distributions NiMARE ships have closed forms above.
         flat = self.coefficients.detach().clone()
         nuisance = None if self.nuisance is None else self.nuisance.detach().clone()
 
@@ -169,27 +182,9 @@ class CBMRModel(torch.nn.Module):
         if cov_type != "fisher":
             raise ValueError(f"cov_type must be 'fisher' or 'sandwich', got {cov_type!r}.")
 
-        information = self.information_matrix(foci)
-        condition = np.linalg.cond(information)
-        advice = (
-            "The design asks for more spatial detail than these foci can support. Try a coarser "
-            "spline_spacing, a higher incidence_threshold, fewer s() terms, or more experiments; "
-            "CBMRResult.describe_terms() reports the parameter budget per term."
-        )
-        if condition > 1.0 / np.finfo(float).eps:
-            LGR.warning(
-                f"The Fisher information matrix has condition number {condition:.3g}, past what "
-                "double precision can invert meaningfully, so these standard errors should not "
-                f"be trusted. {advice}"
-            )
-        try:
-            return np.linalg.inv(information)
-        except np.linalg.LinAlgError as error:
-            # numpy's bare "Singular matrix" gives a user no idea which knob to turn.
-            raise np.linalg.LinAlgError(
-                f"The Fisher information matrix over {self.n_parameters} coefficients is "
-                f"singular, so no standard errors exist for this fit. {advice}"
-            ) from error
+        from nimare.meta.cbmr.covariance import fisher_covariance
+
+        return fisher_covariance(self, self.information_matrix(foci))
 
     def standard_errors(self, foci, **covariance_kwargs):
         """Return coefficient standard errors, keyed by term.

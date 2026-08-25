@@ -105,17 +105,31 @@ class SpatialPatterns:
     def marginal_by_pattern(self, foci):
         """Sum foci counts over the experiments sharing each pattern.
 
+        A sparse ``foci`` is kept sparse: the scatter-add is written as a product with the
+        ``(n_experiments, n_patterns)`` 0/1 membership matrix, which costs one pass over the
+        stored nonzeros instead of one pass over the full experiment-by-voxel grid. That grid is
+        the array this module exists to avoid --- at 17,000 experiments over a 2 mm mask it is
+        31 GB --- and it would otherwise be materialised here on every likelihood evaluation.
+
         Returns
         -------
         :obj:`numpy.ndarray`
             Shape ``(n_patterns, n_voxels)``.
         """
-        foci = _as_dense_array(foci)
         if foci.shape[0] != self.n_experiments:
             raise ValueError(
                 f"foci has {foci.shape[0]} rows but the design covers {self.n_experiments} "
                 "experiments."
             )
+        if scipy.sparse.issparse(foci):
+            rows = np.arange(self.n_experiments)
+            membership = scipy.sparse.csr_matrix(
+                (np.ones(self.n_experiments), (rows, self.assignment)),
+                shape=(self.n_experiments, self.n_patterns),
+            )
+            return np.asarray((membership.T @ foci).todense(), dtype=float)
+
+        foci = _as_dense_array(foci)
         marginal = np.zeros((self.n_patterns, foci.shape[1]), dtype=float)
         np.add.at(marginal, self.assignment, foci)
         return marginal
