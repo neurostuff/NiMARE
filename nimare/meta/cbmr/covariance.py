@@ -405,14 +405,26 @@ def bordered_inverse(information, blocks, n_spatial):
     """
     border = information[:n_spatial, n_spatial:]
     try:
-        d_inverse = blockwise_inverse(information[:n_spatial, :n_spatial], blocks)
-        weighted = d_inverse @ border  # D^-1 C
+        # Keep the inverse of D as blocks. Building it densely would allocate n_spatial^2 to
+        # hold mostly zeros, and every product below would then walk them: forming D^-1 C
+        # blockwise costs sum(|block|^2 Q) instead of n_spatial^2 Q.
+        pieces = [np.linalg.inv(information[np.ix_(index, index)]) for index in blocks]
+        weighted = np.empty_like(border)  # D^-1 C
+        for index, piece in zip(blocks, pieces):
+            weighted[index] = piece @ border[index]
         schur = information[n_spatial:, n_spatial:] - border.T @ weighted
         schur_inverse = np.linalg.inv(schur)
     except np.linalg.LinAlgError:
         return None
+
     inverse = np.empty_like(information)
-    inverse[:n_spatial, :n_spatial] = d_inverse + weighted @ schur_inverse @ weighted.T
+    # The leading block is D^-1 plus a rank-Q update. The update is dense, so it is written
+    # first and the diagonal blocks added into it, which needs one n_spatial^2 array rather
+    # than one for D^-1 and another for the sum.
+    leading = weighted @ schur_inverse @ weighted.T
+    for index, piece in zip(blocks, pieces):
+        leading[np.ix_(index, index)] += piece
+    inverse[:n_spatial, :n_spatial] = leading
     inverse[:n_spatial, n_spatial:] = -weighted @ schur_inverse
     inverse[n_spatial:, :n_spatial] = inverse[:n_spatial, n_spatial:].T
     inverse[n_spatial:, n_spatial:] = schur_inverse
