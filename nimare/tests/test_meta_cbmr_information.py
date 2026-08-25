@@ -281,15 +281,31 @@ def test_covariance_matches_a_dense_inverse(formula, distribution, data):
     assert np.abs(produced - reference).max() / np.abs(reference).max() < tolerance
 
 
-def test_marginal_by_pattern_is_unchanged_by_sparsity(data):
-    """The sparse path must give the same result as the dense one."""
+@pytest.mark.parametrize("distribution", DISTRIBUTIONS)
+def test_sparse_and_dense_foci_agree(distribution, data):
+    """One code path serves both, so the two representations must not diverge.
+
+    The estimator always builds a sparse matrix, but ``fit`` and ``information_matrix`` accept
+    an array too, and NiMARE's other CBMR tests pass one.
+    """
     import scipy.sparse
 
     annotations, bases = data
     predictor = CBMRPredictor(bind(Design.from_formula("~ s(diagnosis)"), annotations), bases)
     rng = np.random.default_rng(5)
     dense = rng.poisson(0.4, (predictor.patterns.n_experiments, N_VOXELS)).astype(float)
+    sparse = scipy.sparse.csr_matrix(dense)
+
     np.testing.assert_array_equal(
         predictor.patterns.marginal_by_pattern(dense),
-        predictor.patterns.marginal_by_pattern(scipy.sparse.csr_matrix(dense)),
+        predictor.patterns.marginal_by_pattern(sparse),
+    )
+
+    model = CBMRModel(predictor, distribution=distribution)
+    model.fit(dense, n_iter=20, tol=1e-8)
+    np.testing.assert_allclose(
+        float(model.log_likelihood(dense)), float(model.log_likelihood(sparse)), rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        model.information_matrix(dense), model.information_matrix(sparse), rtol=1e-12
     )

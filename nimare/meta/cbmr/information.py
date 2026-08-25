@@ -9,11 +9,6 @@ a 21-group model over 21,789 voxels. All three distributions have a closed form 
 Only ``Sigma_p``, the second derivative of the pattern's term in the log-intensity, differs
 between them. Each is ``n_patterns`` rank-updates of width ``n_bases``, so nothing of size
 ``n_parameters`` is built.
-
-Notes
------
-Every identity here is derived and proved at https://github.com/jdkent/cbmr-proofs, and checked
-against ``torch.func.hessian`` in ``nimare/tests/test_meta_cbmr_information.py``.
 """
 
 import numpy as np
@@ -27,7 +22,7 @@ from nimare.meta.cbmr.distributions import (
 
 
 def _fitted_pieces(model):
-    """Return the fitted quantities all three closed forms share."""
+    """Return the fitted quantities all closed forms share."""
     predictor = model.predictor
     flat = model.coefficients.detach().cpu().numpy()
     n_spatial, n_global = model.n_spatial, model.n_global
@@ -65,16 +60,16 @@ def _nuisance(model):
     return model.distribution.transform_nuisance(model.nuisance).detach().cpu().numpy()
 
 
-def poisson_information_matrix(model, foci=None):
+def poisson_information_matrix(model):
     """Return the observed Fisher information of a fitted Poisson model.
+
+    Takes no foci. Under a log link the Poisson information depends only on the fitted
+    coefficients, so the counts drop out.
 
     Parameters
     ----------
     model : :class:`~nimare.meta.cbmr.model.CBMRModel`
         Fitted model.
-    foci : optional
-        Ignored. Under a log link the Poisson information depends only on the fitted
-        coefficients, so the counts drop out.
 
     Returns
     -------
@@ -282,11 +277,16 @@ def _experiment_totals(foci):
     return np.asarray(foci.sum(axis=1)).reshape(-1).astype(float)
 
 
+def _poisson_entry(model, foci):
+    """Adapt the Poisson signature to the ``(model, foci)`` the dispatch uses."""
+    return poisson_information_matrix(model)
+
+
 #: Most specific class first, so a subclass resolves to its own entry rather than a base's.
 CLOSED_FORMS = (
     (ClusteredNegativeBinomial, clustered_negative_binomial_information_matrix),
     (NegativeBinomial, negative_binomial_information_matrix),
-    (Poisson, poisson_information_matrix),
+    (Poisson, _poisson_entry),
 )
 
 
