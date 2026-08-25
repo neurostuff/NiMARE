@@ -137,18 +137,16 @@ class CBMRModel(torch.nn.Module):
         than assumed away. Nuisance parameters are held fixed at their fitted values, matching
         how CBMR has always reported regression standard errors.
 
-        Computed in closed form where a derivation exists, which for the distributions NiMARE
-        ships is always; see :mod:`nimare.meta.cbmr.information`. Automatic differentiation
-        remains the fallback for a distribution added without one.
+        Computed in closed form for every distribution NiMARE ships; see
+        :mod:`nimare.meta.cbmr.information`. Automatic differentiation is the fallback for one
+        added without a derivation.
         """
         closed_form = closed_form_information(self.distribution)
         if closed_form is not None:
             return closed_form(self, foci)
 
-        # No derivation for this distribution, so differentiate it. jacfwd(jacrev(.)) carries one
-        # tangent per parameter through the likelihood at once, so the intermediate is
-        # (n_parameters, n_patterns, n_voxels) -- tens of GB on a many-group model. That is why
-        # the three distributions NiMARE ships have closed forms above.
+        # No derivation, so differentiate. jacfwd(jacrev(.)) builds an intermediate of shape
+        # (n_parameters, n_patterns, n_voxels), which is tens of GB on a many-group model.
         flat = self.coefficients.detach().clone()
         nuisance = None if self.nuisance is None else self.nuisance.detach().clone()
 

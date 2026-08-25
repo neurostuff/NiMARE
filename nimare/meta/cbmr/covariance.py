@@ -216,26 +216,35 @@ def sandwich_covariance(model, foci, meat="cluster", correction="hc1", ridge=0.0
     return bread_inverse @ meat_matrix @ bread_inverse
 
 
-# ---------------------------------------------------------------------------------------------
-# Structure of the Fisher information, and the strategies it permits.
-#
-# The information matrix's beta-beta block is ``sum_p L_pc L_pc' (B^T Sigma_p B)``, so the factor
-# ``L_pc L_pc'`` decides which entries can be nonzero at all -- independently of the
-# distribution, since it is a statement about the design. That sparsity is what the routines
-# below exploit. Each is proved at https://github.com/jdkent/cbmr-proofs.
-# ---------------------------------------------------------------------------------------------
+# The information matrix's spatial block is ``sum_p L_pc L_pc' (B^T Sigma_p B)``, so the factor
+# ``L_pc L_pc'`` decides which entries can be nonzero. That depends on the design, not on the
+# distribution. The routines below exploit it; each is proved at
+# https://github.com/jdkent/cbmr-proofs.
 
 
 def spatial_components(loadings, n_bases):
     """Return the groups of spatial parameter indices that can covary.
 
-    Two spatial columns are coupled when some pattern loads on both, since that is the only way a
-    cross term can be nonzero, and coupling is transitive -- so this is connected components over
-    the columns, seeded by each pattern's support. A cell-means factor gives one component per
-    level; a sum-to-zero term or a spatial covariate couples everything.
+    Two columns are coupled when some pattern loads on both. Coupling is transitive, so these are
+    the connected components of the columns.
 
-    Independent of the global block: this is the structure of ``D`` in the bordered form
-    ``[[D, C], [C^T, E]]``, which survives moderators even though full block diagonality does not.
+    Parameters
+    ----------
+    loadings : :obj:`numpy.ndarray`
+        Shape ``(n_patterns, n_spatial_columns)``.
+    n_bases : :obj:`int`
+        Width of the spline basis.
+
+    Returns
+    -------
+    :obj:`list` of :obj:`numpy.ndarray`
+        Index arrays into the spatial parameters.
+
+    Notes
+    -----
+    A cell-means factor gives one component per level. A sum-to-zero term or a spatial covariate
+    couples every column into one. Moderators do not enter: this describes ``D`` in the bordered
+    form ``[[D, C], [C^T, E]]``, which survives them.
     """
     n_columns = loadings.shape[1]
     parent = np.arange(n_columns)
@@ -263,12 +272,11 @@ def spatial_components(loadings, n_bases):
 
 
 def is_block_diagonal(information, blocks):
-    """Whether ``information`` really is block diagonal over ``blocks``.
+    """Return whether ``information`` is block diagonal over ``blocks``.
 
-    Nonzero *counts* rather than magnitudes: the claim being checked is that the off-block
-    entries are structurally absent, so a small-but-nonzero entry means the derivation is wrong,
-    not that the block is nearly separable. Rounding a real coupling to zero would silently
-    understate a standard error.
+    Compares nonzero counts, not magnitudes. The off-block entries should be exactly absent, so a
+    small nonzero one means the derivation is wrong. Treating it as zero would understate a
+    standard error.
     """
     if len(blocks) < 2:
         return False
@@ -282,10 +290,23 @@ def is_block_diagonal(information, blocks):
 def symmetric_condition_number(information, blocks=None):
     """Return the exact 2-norm condition number of a symmetric matrix.
 
-    For symmetric ``H`` the singular values are the absolute eigenvalues, so a symmetric
-    eigensolver replaces the SVD that ``np.linalg.cond`` forms -- exact, with no hypothesis on
-    the design, and several times faster. When ``H`` is block diagonal its spectrum is the union
-    of the blocks', so the eigensolver runs per block instead of once on the whole.
+    Parameters
+    ----------
+    information : :obj:`numpy.ndarray`
+        Symmetric matrix.
+    blocks : :obj:`list` of :obj:`numpy.ndarray`, optional
+        Blocks it is block diagonal over. Pass them to run the eigensolver per block.
+
+    Returns
+    -------
+    :obj:`float`
+        ``inf`` if the matrix is singular.
+
+    Notes
+    -----
+    A symmetric matrix's singular values are its absolute eigenvalues, so an eigensolver gives
+    the same answer as the SVD ``np.linalg.cond`` forms, several times faster. A block diagonal
+    matrix's spectrum is the union of its blocks'.
     """
     if blocks is None:
         values = np.linalg.eigvalsh(information)
@@ -298,10 +319,13 @@ def symmetric_condition_number(information, blocks=None):
 
 
 def cholesky_inverse(information):
-    """Invert a positive definite matrix from one Cholesky factor, or return None.
+    """Invert a positive definite matrix from one Cholesky factor.
 
-    ``None`` rather than an exception for a non-positive-definite matrix: that is a statement
-    about the fit, which the caller reports, not an error in this routine.
+    Returns
+    -------
+    :obj:`numpy.ndarray` or None
+        None if the matrix is not positive definite. That is a fact about the fit for the caller
+        to report, not an error here.
     """
     factor, info = lapack.dpotrf(information, lower=1, clean=1)
     if info != 0:
@@ -323,11 +347,24 @@ def blockwise_inverse(information, blocks):
 def bordered_inverse(information, blocks, n_spatial):
     """Invert ``[[D, C], [C^T, E]]`` with ``D`` block diagonal, by Schur complement.
 
-    Recovers most of the blockwise saving for a design whose spatial columns separate but which
-    carries global moderators: the cross block couples every spatial column through ``gamma``, so
-    the matrix is not block diagonal at all, but ``D`` underneath it still is. Returns None if
-    ``D`` or the Schur complement is singular, so the caller can fall back rather than propagate
-    a nonsense covariance.
+    Parameters
+    ----------
+    information : :obj:`numpy.ndarray`
+        The full matrix.
+    blocks : :obj:`list` of :obj:`numpy.ndarray`
+        Blocks of ``D``, from :func:`spatial_components`.
+    n_spatial : :obj:`int`
+        Where the border starts.
+
+    Returns
+    -------
+    :obj:`numpy.ndarray` or None
+        None if ``D`` or the Schur complement is singular, so the caller can fall back.
+
+    Notes
+    -----
+    Moderators couple every spatial column through ``gamma``, so the matrix is not block diagonal
+    even when ``D`` is. This keeps most of the blockwise saving anyway.
     """
     border = information[:n_spatial, n_spatial:]
     try:
@@ -346,25 +383,35 @@ def bordered_inverse(information, blocks, n_spatial):
 
 
 def fisher_covariance(model, information):
-    """Invert the observed information, exploiting whatever structure the design left.
+    """Invert the observed information, using whatever structure the design leaves.
 
-    A ladder, most specific rung first:
+    Parameters
+    ----------
+    model : :class:`~nimare.meta.cbmr.model.CBMRModel`
+        Fitted model, for its design and parameter counts.
+    information : :obj:`numpy.ndarray`
+        Observed Fisher information.
 
-    block diagonal
-        the spatial columns separate and there are no moderators. The spectrum is the union of
-        the blocks' and the inverse is blockwise. Only a lone cell-means factor reaches here.
-    bordered block diagonal
-        the spatial columns separate but moderators border them. The inverse still goes
-        blockwise, through a Schur complement; the condition number cannot follow, because the
-        spectrum of a bordered matrix is not the union of its parts.
-    dense
-        everything else. Still two improvements on a plain SVD-plus-LU: the condition number
-        comes from a symmetric eigensolver, and the inverse from a Cholesky factor when the
-        matrix is positive definite.
+    Returns
+    -------
+    :obj:`numpy.ndarray`
+        The inverse.
 
-    Every rung returns the same matrix and reports the same condition number to the last digit;
-    only the work differs. Structural claims are checked against the matrix in hand rather than
-    assumed.
+    Raises
+    ------
+    numpy.linalg.LinAlgError
+        If the information is singular, with advice on which setting to change.
+
+    Warns
+    -----
+    If the condition number is past what double precision can invert.
+
+    Notes
+    -----
+    Three routes, tried in order: blockwise when the spatial columns separate and there are no
+    moderators, a Schur complement when moderators border separable columns, and a dense inverse
+    otherwise. All three return the same matrix and report the same condition number; only the
+    cost differs. Structure is checked against the matrix, not assumed.
     """
     n_spatial = model.n_spatial
     loadings, n_bases = model.predictor.patterns.loadings, model.predictor.n_bases
@@ -379,9 +426,8 @@ def fisher_covariance(model, information):
             f"trusted. {_CONDITION_ADVICE}"
         )
 
-    # Every route funnels through one handler: a singular design must explain itself the same
-    # way whichever rung happened to reach it, and numpy's bare "Singular matrix" tells a user
-    # nothing about which knob to turn.
+    # One handler for every route: numpy's bare "Singular matrix" does not say which setting to
+    # change, and the message should not depend on which route hit the singularity.
     try:
         if separable:
             return blockwise_inverse(information, blocks)
@@ -406,8 +452,7 @@ def fisher_covariance(model, information):
         ) from error
 
 
-#: Repeated where a singular or ill-conditioned information matrix is reported, so a user gets
-#: the same actionable message from either path.
+#: Shared by the singular and ill-conditioned messages.
 _CONDITION_ADVICE = (
     "The design asks for more spatial detail than these foci can support. Try a coarser "
     "spline_spacing, a higher incidence_threshold, fewer s() terms, or more experiments; "

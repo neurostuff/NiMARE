@@ -105,11 +105,10 @@ class SpatialPatterns:
     def marginal_by_pattern(self, foci):
         """Sum foci counts over the experiments sharing each pattern.
 
-        A sparse ``foci`` is kept sparse: the scatter-add is written as a product with the
-        ``(n_experiments, n_patterns)`` 0/1 membership matrix, which costs one pass over the
-        stored nonzeros instead of one pass over the full experiment-by-voxel grid. That grid is
-        the array this module exists to avoid --- at 17,000 experiments over a 2 mm mask it is
-        31 GB --- and it would otherwise be materialised here on every likelihood evaluation.
+        A sparse ``foci`` stays sparse. The scatter-add becomes a product with the
+        ``(n_experiments, n_patterns)`` membership matrix, which costs one pass over the stored
+        nonzeros rather than one over the full experiment-by-voxel grid. That grid is the array
+        this module exists to avoid: 31 GB at 17,000 experiments over a 2 mm mask.
 
         Returns
         -------

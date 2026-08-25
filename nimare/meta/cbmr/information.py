@@ -1,51 +1,19 @@
 """Closed-form observed information for the CBMR distributions.
 
-Why this exists
----------------
-:meth:`~nimare.meta.cbmr.model.CBMRModel.information_matrix` differentiates the log-likelihood
-twice with ``torch.func.hessian``, which is ``jacfwd(jacrev(...))``. Forward mode carries one
-tangent per parameter through the likelihood simultaneously, so the intermediate log-intensity
-tensor has shape ``(n_parameters, n_patterns, n_voxels)``. For a 21-group model over 21,789
-voxels that is 28.7 GB -- an out-of-memory kill rather than a slow fit -- and the size is driven
-by the group count, so resampling to a coarser grid does not avoid it.
-
-All three distributions admit a closed form, and it is the same shape in each case. Writing the
-likelihood over patterns as ``predictor.py`` does, ``-log L = sum_p f_p(S_p, gamma)`` with
-``S = (L b) B^T`` the log-intensity, the predictor is *linear* in the coefficients, so the chain
-rule contributes no curvature term and::
+``torch.func.hessian`` is ``jacfwd(jacrev(...))``. Forward mode carries one tangent per
+parameter, so its intermediate has shape ``(n_parameters, n_patterns, n_voxels)`` -- 28.7 GB for
+a 21-group model over 21,789 voxels. All three distributions have a closed form that avoids it::
 
     H_bb[(c,k),(c',k')] = sum_p L_pc L_pc' (B^T Sigma_p B)[k,k']
 
-with ``Sigma_p`` the second differential of ``f_p`` in the log-intensity. What differs between
-the distributions is only ``Sigma_p``:
+Only ``Sigma_p``, the second derivative of the pattern's term in the log-intensity, differs
+between them. Each is ``n_patterns`` rank-updates of width ``n_bases``, so nothing of size
+``n_parameters`` is built.
 
-Poisson
-    ``Sigma_p = T_p diag(exp(S_p))``. The data terms are linear in the coefficients, so they
-    differentiate away: the Poisson Hessian does not depend on the foci at all. This is the
-    canonical-link property -- observed and expected information coincide.
-NegativeBinomial
-    ``Sigma_p = diag(w_p)`` with ``w_pv = (R + Y_pv) u_pv A / (u_pv + A)^2``, writing
-    ``A = S1/(theta S2)`` and ``R = S1 A``. Same shape, different weight, and now foci
-    dependent. The Poisson weight is the ``theta -> 0`` limit of this one.
-ClusteredNegativeBinomial
-    The spatial coefficients reach this likelihood only through the scalar
-    ``E_p = sum_v exp(S_pv)``, so ``Sigma_p`` is diagonal *plus rank one* and the spatial block
-    picks up a correction ``g'' a_p a_p^T`` with ``a_p = B^T exp(S_p)``.
-
-Each is ``n_patterns`` symmetric rank-updates of width ``n_bases``, costing
-``O(n_patterns x n_voxels x n_bases^2)`` and allocating one ``(n_voxels, n_bases)`` temporary.
-No ``n_parameters``-sized intermediate is formed anywhere, which is the axis that made the model
-impossible to fit.
-
-The nuisance parameters are held fixed at their fitted values throughout, which is what
-``information_matrix`` has always done and what CBMR reports regression standard errors from.
-That is what makes the overdispersed cases tractable: their special functions then depend on
-constants alone.
-
-Every identity above is proved symbolically, term by term, at
-https://github.com/jdkent/cbmr-proofs -- 59 claims, each a residual simplified by sympy to
-exactly zero -- and checked numerically against ``torch.func.hessian`` in
-``nimare/tests/test_meta_cbmr_information.py``.
+Notes
+-----
+Every identity here is derived and proved at https://github.com/jdkent/cbmr-proofs, and checked
+against ``torch.func.hessian`` in ``nimare/tests/test_meta_cbmr_information.py``.
 """
 
 import numpy as np
@@ -59,7 +27,7 @@ from nimare.meta.cbmr.distributions import (
 
 
 def _fitted_pieces(model):
-    """Return the quantities all three closed forms are written in terms of."""
+    """Return the fitted quantities all three closed forms share."""
     predictor = model.predictor
     flat = model.coefficients.detach().cpu().numpy()
     n_spatial, n_global = model.n_spatial, model.n_global
@@ -98,10 +66,20 @@ def _nuisance(model):
 
 
 def poisson_information_matrix(model, foci=None):
-    """Return the observed Fisher information of a fitted Poisson CBMR, in closed form.
+    """Return the observed Fisher information of a fitted Poisson model.
 
-    Takes no foci: the Hessian of this likelihood does not depend on them. Identical to
-    ``torch.func.hessian`` of the negative log-likelihood to within floating-point rounding.
+    Parameters
+    ----------
+    model : :class:`~nimare.meta.cbmr.model.CBMRModel`
+        Fitted model.
+    foci : optional
+        Ignored. Under a log link the Poisson information depends only on the fitted
+        coefficients, so the counts drop out.
+
+    Returns
+    -------
+    :obj:`numpy.ndarray`
+        Shape ``(n_parameters, n_parameters)``.
     """
     predictor, loadings, intensity, global_block, weight = _fitted_pieces(model)
     n_spatial, n_global, n_bases = model.n_spatial, model.n_global, predictor.n_bases
@@ -138,14 +116,28 @@ def poisson_information_matrix(model, foci=None):
 
 
 def negative_binomial_information_matrix(model, foci):
-    """Return the observed Fisher information of a fitted NegativeBinomial CBMR, in closed form.
+    """Return the observed Fisher information of a fitted NegativeBinomial model.
 
-    Written as ``Psi(R, A, S)`` with ``R = S1^2/(theta S2)`` and ``A = S1/(theta S2)``, which is
-    what makes the derivation tractable: the special functions depend only on ``R``, the voxels
-    only on ``S``, and the moderators only on ``R`` and ``A``.
+    Parameters
+    ----------
+    model : :class:`~nimare.meta.cbmr.model.CBMRModel`
+        Fitted model.
+    foci : array_like or :obj:`scipy.sparse.spmatrix`
+        Foci counts. Used, unlike the Poisson case, but only through the pattern marginals.
 
-    Unlike the Poisson case the foci do not drop out -- ``R + Y_v`` is a per-voxel weight -- but
-    they enter only through the pattern marginals.
+    Returns
+    -------
+    :obj:`numpy.ndarray`
+        Shape ``(n_parameters, n_parameters)``.
+
+    Notes
+    -----
+    Uses ``A = S1/(theta S2)`` and ``R = S1 A`` in place of NiMARE's shape and probability. In
+    those terms the gamma functions depend only on ``R``, the voxels only on the log-intensity,
+    and the moderators only on ``R`` and ``A``.
+
+    Precision is poor when ``theta`` approaches zero. The moderator block then sums large terms
+    of opposite sign, and the fit is a Poisson one in all but name.
     """
     predictor, loadings, intensity, global_block, weight = _fitted_pieces(model)
     n_spatial, n_global, n_bases = model.n_spatial, model.n_global, predictor.n_bases
@@ -190,7 +182,7 @@ def negative_binomial_information_matrix(model, foci):
         a_2 = a * (np.outer(d_log_a, d_log_a) + dd_log_1 - dd_log_2)
         r_2 = r * (np.outer(d_log_r, d_log_r) + 2 * dd_log_1 - dd_log_2)
 
-        # d2Psi/dS dR and d2Psi/dS dA, each carried into gamma by its own chain rule factor.
+        # d2Psi/dS dR and d2Psi/dS dA, each carried into gamma by its own chain factor.
         _scatter_cross(information, row, n_bases, n_spatial, bases.T @ (u / denominator), r_1)
         _scatter_cross(
             information, row, n_bases, n_spatial,
@@ -219,14 +211,25 @@ def negative_binomial_information_matrix(model, foci):
 
 
 def clustered_negative_binomial_information_matrix(model, foci):
-    """Return the observed information of a fitted ClusteredNegativeBinomial, in closed form.
+    """Return the observed Fisher information of a fitted ClusteredNegativeBinomial model.
 
+    Parameters
+    ----------
+    model : :class:`~nimare.meta.cbmr.model.CBMRModel`
+        Fitted model.
+    foci : array_like or :obj:`scipy.sparse.spmatrix`
+        Foci counts. Only the per-experiment totals matter here.
+
+    Returns
+    -------
+    :obj:`numpy.ndarray`
+        Shape ``(n_parameters, n_parameters)``.
+
+    Notes
+    -----
     The spatial coefficients reach this likelihood only through the scalar
-    ``E_p = sum_v exp(S_pv)``, so the spatial block is not the plain ``B^T diag(w) B`` of the
-    other two but that shape plus a rank-one correction, with ``a_p = B^T exp(S_p)``.
-
-    Only the per-experiment foci totals appear; the per-voxel marginals enter the likelihood
-    linearly and so vanish from the Hessian, as in the Poisson case.
+    ``E_p = sum_v exp(S_pv)``. That makes the spatial block ``B^T diag(w) B`` plus a rank-one
+    correction, where the other two distributions need only the first term.
     """
     predictor, loadings, intensity, global_block, weight = _fitted_pieces(model)
     n_spatial, n_global, n_bases = model.n_spatial, model.n_global, predictor.n_bases
@@ -279,8 +282,7 @@ def _experiment_totals(foci):
     return np.asarray(foci.sum(axis=1)).reshape(-1).astype(float)
 
 
-#: The closed form for each distribution, most specific class first so a subclass resolves to
-#: its own entry rather than a base's.
+#: Most specific class first, so a subclass resolves to its own entry rather than a base's.
 CLOSED_FORMS = (
     (ClusteredNegativeBinomial, clustered_negative_binomial_information_matrix),
     (NegativeBinomial, negative_binomial_information_matrix),
@@ -289,10 +291,18 @@ CLOSED_FORMS = (
 
 
 def closed_form_information(distribution):
-    """Return the closed-form information matrix for ``distribution``, or None if there is none.
+    """Return the closed-form information function for ``distribution``, or None.
 
-    None is the signal to fall back to automatic differentiation, so a distribution added
-    without a derivation keeps working rather than silently getting the wrong Hessian.
+    Parameters
+    ----------
+    distribution : :class:`~nimare.meta.cbmr.distributions.Distribution`
+        Observation distribution.
+
+    Returns
+    -------
+    callable or None
+        None means no derivation covers this distribution, and the caller should fall back to
+        automatic differentiation rather than use another distribution's formula.
     """
     for klass, function in CLOSED_FORMS:
         if isinstance(distribution, klass):

@@ -1,13 +1,8 @@
 """Tests for the closed-form observed information and the covariance strategies.
 
-Checked against ``torch.func.hessian`` -- the code path these replace -- rather than against a
-reimplementation of the same algebra, so a shared mistake cannot pass. The derivations themselves
-are proved symbolically at https://github.com/jdkent/cbmr-proofs; what is checked here is their
-implementation: the vectorisation, the pattern assembly, the loadings scatter, and the dispatch.
-
-Two structural claims get their own tests because they would otherwise fail silently. The
-Poisson Hessian must not depend on the foci (a canonical-link property), and the other two must,
-so an implementation that ignored the data would pass every equality test but be wrong.
+Checked against ``torch.func.hessian``, the path these replace, so a shared mistake cannot pass.
+The derivations are proved at https://github.com/jdkent/cbmr-proofs; what is checked here is the
+code that implements them.
 """
 
 import numpy as np
@@ -38,9 +33,8 @@ pytestmark = pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed
 N_PER_GROUP = 12
 N_VOXELS = 30
 N_BASES = 4
-# Every design shape the grammar produces that bears on these routines: a cell-means factor
-# (disjoint loadings), the same with one and with two moderators (the cross and global blocks),
-# and a sum-to-zero term (loadings that are neither one-hot nor nonnegative).
+# A cell-means factor, the same with one and two moderators, and a sum-to-zero term whose
+# loadings are neither one-hot nor positive.
 FORMULAS = [
     "~ s(diagnosis)",
     "~ s(diagnosis) + n",
@@ -70,13 +64,9 @@ def data():
 def _fit(formula, distribution, data, n_iter=60):
     """Fit ``distribution`` to counts drawn from a matching generative model.
 
-    The draw matters. Simulating Poisson counts and then fitting a negative binomial drives the
-    overdispersion to the Poisson boundary -- measured, 5e-7 -- and there the (R, A)
-    reparameterisation has A ~ 1e6 and R ~ 1e7, so the gamma-gamma block becomes large
-    opposite-signed terms cancelling to a small one. Both the closed form and automatic
-    differentiation lose precision there, in different ways, and comparing them tests the
-    conditioning of a degenerate fit rather than the derivation. Overdispersed data keeps the
-    fit in the regime the distribution is for.
+    The draw matters. Fitting a negative binomial to Poisson counts pushes its overdispersion to
+    zero, where the closed form loses precision and the comparison measures that instead of the
+    derivation. Overdispersed counts keep the fit in the range the distribution is meant for.
     """
     annotations, bases = data
     predictor = CBMRPredictor(bind(Design.from_formula(formula), annotations), bases)
@@ -91,13 +81,12 @@ def _fit(formula, distribution, data, n_iter=60):
     if distribution == "poisson":
         foci = rng.poisson(mean).astype(float)
     elif distribution == "clusterednegativebinomial":
-        # One latent factor per experiment, shared across the whole brain -- which is exactly
-        # what distinguishes this model from the plain negative binomial. A voxelwise mixture
-        # leaves it with nothing to estimate and its overdispersion collapses.
+        # One factor per experiment, shared across the brain. That is what separates this model
+        # from the plain negative binomial, and a voxelwise mixture leaves it nothing to fit.
         factor = rng.gamma(size, 1.0 / size, size=mean.shape[0])[:, None]
         foci = rng.poisson(mean * factor).astype(float)
     else:
-        # Independent gamma variation at each voxel: the negative binomial's own mixture.
+        # Independent gamma variation at each voxel.
         foci = rng.poisson(rng.gamma(size, mean / size)).astype(float)
     model = CBMRModel(predictor, distribution=distribution)
     model.fit(foci, n_iter=n_iter, tol=1e-8)
@@ -128,11 +117,10 @@ def test_closed_form_matches_autodiff(formula, distribution, data):
 
 @pytest.mark.parametrize("distribution", ["negativebinomial", "clusterednegativebinomial"])
 def test_overdispersion_stays_off_the_poisson_boundary(distribution, data):
-    """Guard the premise of the comparison above.
+    """Guard the premise of the test above.
 
-    If the simulated counts stop being overdispersed, the fits collapse toward Poisson and the
-    equality tests start measuring floating-point cancellation instead of the derivation. This
-    fails first and says so.
+    If the counts stop being overdispersed, the fits collapse toward Poisson and the equality
+    tests start measuring rounding error. This fails first and says so.
     """
     model, _ = _fit("~ s(diagnosis) + n", distribution, data)
     fitted = model.overdispersion()
@@ -141,7 +129,7 @@ def test_overdispersion_stays_off_the_poisson_boundary(distribution, data):
 
 
 def test_poisson_information_ignores_the_foci(data):
-    """A canonical link makes observed and expected information coincide."""
+    """Under a log link the counts drop out of the Poisson information."""
     model, foci = _fit("~ s(diagnosis)", "poisson", data)
     one = closed_form_information(model.distribution)(model, foci)
     two = closed_form_information(model.distribution)(model, foci * 3)
@@ -150,7 +138,7 @@ def test_poisson_information_ignores_the_foci(data):
 
 @pytest.mark.parametrize("distribution", ["negativebinomial", "clusterednegativebinomial"])
 def test_overdispersed_information_uses_the_foci(distribution, data):
-    """The other two must respond, so a foci-blind implementation cannot pass silently."""
+    """The other two must respond, or an implementation ignoring the counts would pass."""
     model, foci = _fit("~ s(diagnosis)", distribution, data)
     one = closed_form_information(model.distribution)(model, foci)
     two = closed_form_information(model.distribution)(model, foci * 3)
@@ -158,7 +146,7 @@ def test_overdispersed_information_uses_the_foci(distribution, data):
 
 
 def test_unknown_distribution_falls_back_to_autodiff(data):
-    """A distribution with no derivation must not silently get someone else's Hessian."""
+    """A distribution with no derivation must not get another one's Hessian."""
     from nimare.meta.cbmr.distributions import Distribution
     from nimare.meta.cbmr.predictor import poisson_log_likelihood
 
@@ -177,7 +165,7 @@ def test_unknown_distribution_falls_back_to_autodiff(data):
 
 
 def test_information_is_block_diagonal_for_a_cell_means_factor(data):
-    """Off-block entries are structurally absent, not merely small."""
+    """Off-block entries are exactly zero, not merely small."""
     model, foci = _fit("~ s(diagnosis)", "poisson", data)
     information = model.information_matrix(foci)
     blocks = spatial_components(model.predictor.patterns.loadings, model.predictor.n_bases)
@@ -190,7 +178,7 @@ def test_information_is_block_diagonal_for_a_cell_means_factor(data):
 
 
 def test_a_moderator_couples_every_column_but_not_the_spatial_block(data):
-    """The bordered structure survives what block diagonality does not."""
+    """Moderators end block diagonality but leave the spatial blocks separable."""
     model, foci = _fit("~ s(diagnosis) + n", "poisson", data)
     information = model.information_matrix(foci)
     spatial = spatial_components(model.predictor.patterns.loadings, model.predictor.n_bases)
@@ -200,7 +188,7 @@ def test_a_moderator_couples_every_column_but_not_the_spatial_block(data):
 
 
 def test_every_inverse_route_agrees():
-    """Blockwise, bordered and Cholesky are one matrix by three roads."""
+    """Blockwise, bordered and Cholesky must give one matrix, not three."""
     n_blocks, width, border = 3, 6, 2
     rng = np.random.default_rng(11)
     blocks, index = [], []
@@ -237,7 +225,7 @@ def test_every_inverse_route_agrees():
     )
     np.testing.assert_allclose(cholesky_inverse(full), np.linalg.inv(full), atol=1e-8)
 
-    # With no border the Schur complement must reproduce the blockwise inverse exactly.
+    # With no border the Schur complement must match the blockwise inverse.
     shrunk = full.copy()
     shrunk[:n_spatial, n_spatial:] = 0.0
     shrunk[n_spatial:, :n_spatial] = 0.0
@@ -249,11 +237,10 @@ def test_every_inverse_route_agrees():
 
 
 def test_a_singular_design_explains_itself_on_the_blockwise_route(data):
-    """The actionable message must not depend on which rung reached the singularity.
+    """The message must not depend on which route hit the singularity.
 
-    The blockwise route inverts each block with ``np.linalg.inv`` directly, so without a shared
-    handler it would surface numpy's bare "Singular matrix" while the dense route explained
-    itself. This is the design that takes that route.
+    The blockwise route inverts each block directly, so without a shared handler it would raise
+    numpy's bare "Singular matrix". This design takes that route.
     """
     annotations, bases = data
     # Duplicated basis columns make each block exactly singular.
@@ -275,7 +262,7 @@ def test_a_singular_design_explains_itself_on_the_blockwise_route(data):
 
 
 def test_cholesky_inverse_declines_a_non_positive_definite_matrix():
-    """It reports rather than raises, so the caller can fall back."""
+    """It returns None rather than raising, so the caller can fall back."""
     assert cholesky_inverse(np.array([[1.0, 2.0], [2.0, 1.0]])) is None
 
 
@@ -295,7 +282,7 @@ def test_covariance_matches_a_dense_inverse(formula, distribution, data):
 
 
 def test_marginal_by_pattern_is_unchanged_by_sparsity(data):
-    """The sparse path added to marginal_by_pattern must be the same scatter-add."""
+    """The sparse path must give the same result as the dense one."""
     import scipy.sparse
 
     annotations, bases = data
