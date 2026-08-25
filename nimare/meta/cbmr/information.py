@@ -41,8 +41,27 @@ def _intensity_pieces(model):
     return predictor, loadings, intensity, global_block, weight
 
 
+def _symmetrize(matrix):
+    """Return the exact symmetric part of a matrix that is symmetric in exact arithmetic.
+
+    ``B^T diag(w) B`` is symmetric on paper, but BLAS sums the ``[i, j]`` and ``[j, i]`` dot
+    products in different orders, so they can differ in the last bit. ``eigvalsh`` and the
+    Cholesky read one triangle only, so that difference would quietly decide which value is used.
+    """
+    return 0.5 * (matrix + matrix.T)
+
+
+def _finalize(information, n_spatial, n_global):
+    """Mirror the spatial-by-global block and make the moderator block exactly symmetric."""
+    if n_global:
+        information[n_spatial:, :n_spatial] = information[:n_spatial, n_spatial:].T
+        information[n_spatial:, n_spatial:] = _symmetrize(information[n_spatial:, n_spatial:])
+    return information
+
+
 def _scatter_spatial(information, row, n_bases, block):
     """Add ``L_pc L_pc' * block`` into every spatial cross block the pattern's support touches."""
+    block = _symmetrize(block)
     support = np.flatnonzero(row)
     for c in support:
         rows = slice(c * n_bases, (c + 1) * n_bases)
@@ -97,17 +116,15 @@ def poisson_information_matrix(model):
         marginal_basis = intensity @ bases  # a_pk
         moderator = np.zeros((predictor.patterns.n_patterns, n_global))  # U_pq
         np.add.at(moderator, assignment, weight[:, None] * global_block)
-        cross = np.einsum(
+        information[:n_spatial, n_spatial:] = np.einsum(
             "pc,pk,pq->ckq", loadings, marginal_basis, moderator, optimize=True
         ).reshape(n_spatial, n_global)
-        information[:n_spatial, n_spatial:] = cross
-        information[n_spatial:, :n_spatial] = cross.T
 
         energy = intensity.sum(axis=1)  # E_p
         information[n_spatial:, n_spatial:] = global_block.T @ (
             global_block * (weight * energy[assignment])[:, None]
         )
-    return information
+    return _finalize(information, n_spatial, n_global)
 
 
 def negative_binomial_information_matrix(model, foci):
@@ -198,9 +215,7 @@ def negative_binomial_information_matrix(model, foci):
             + psi_a * a_2
         )
 
-    if n_global:
-        information[n_spatial:, :n_spatial] = information[:n_spatial, n_spatial:].T
-    return information
+    return _finalize(information, n_spatial, n_global)
 
 
 def clustered_negative_binomial_information_matrix(model, foci):
@@ -263,9 +278,7 @@ def clustered_negative_binomial_information_matrix(model, foci):
             member_block * (scale * energy)[:, None]
         )
 
-    if n_global:
-        information[n_spatial:, :n_spatial] = information[:n_spatial, n_spatial:].T
-    return information
+    return _finalize(information, n_spatial, n_global)
 
 
 def _poisson_entry(model, foci):

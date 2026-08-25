@@ -138,7 +138,9 @@ def test_information_is_symmetric(formula, distribution, data):
     """
     model, foci = _fit(formula, distribution, data)
     information = model.information_matrix(foci)
-    np.testing.assert_allclose(information, information.T, rtol=1e-12, atol=0)
+    # Exact equality, not a tolerance. Each block is built to be bitwise symmetric, so a
+    # tolerance here would hide the case this is guarding against.
+    np.testing.assert_array_equal(information, information.T)
 
 
 def test_poisson_information_ignores_the_foci(data):
