@@ -13,12 +13,8 @@ class TimeCBMA:
     """Time CBMA estimators."""
 
     def setup_cache(self):
-        """Build the datasets once per process, not once per timed sample.
+        """Build the datasets once per process.
 
-        asv re-runs ``setup`` before every sample. Building these costs seconds while the
-        estimators they feed run in tens of milliseconds, so setup dominated the suite's wall
-        clock without appearing in any reported number. The fixtures pickle to about 4.5 MB and
-        load in a few milliseconds, and fitting does not modify them.
         """
         dataset = nimare.dataset.Dataset(
             os.path.join(get_test_data_path(), "test_pain_dataset.json")

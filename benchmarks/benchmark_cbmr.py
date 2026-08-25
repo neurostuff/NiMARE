@@ -120,12 +120,8 @@ class _CBMRBenchmarkMixin:
     """Shared setup for CBMR benchmarks."""
 
     def setup_cache(self):
-        """Simulate the studyset once per process, not once per timed sample.
+        """Simulate the studyset once per process.
 
-        asv re-runs ``setup`` before every sample, and simulating the studyset costs seconds
-        while the benchmarks it feeds run in milliseconds. ``setup_cache`` runs once and its
-        result is pickled and handed to each sample, which is about 1.9 MB and a hundredth of a
-        second here.
         """
         return _make_studyset()
 
