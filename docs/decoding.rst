@@ -256,7 +256,7 @@ of foci associated with each study in the database.
    decoder = BrainMapDecoder(
        frequency_threshold=0.001,
        u=0.05,
-       correction='fdr_bh',
+       correction='bh',
    )
    decoder.fit(ns_dset)
    decoding_results = decoder.transform(amygdala_ids)
@@ -360,7 +360,7 @@ probability of any given experiment including a given label.
    decoder = NeurosynthDecoder(
        frequency_threshold=0.001,
        u=0.05,
-       correction='fdr_bh',
+       correction='bh',
    )
    decoder.fit(ns_dset)
    decoding_results = decoder.transform(amygdala_ids)
@@ -387,8 +387,6 @@ This approach uses the following steps to calculate label-wise correlation value
 
    decoder = ROIAssociationDecoder(
       "data/amygdala.nii.gz",
-      u=0.05,
-      correction="fdr_bh",
    )
    decoder.fit(ns_dset)
    decoding_results = decoder.transform()
