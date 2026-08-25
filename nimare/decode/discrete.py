@@ -165,7 +165,7 @@ class BrainMapDecoder(Decoder):
         features=None,
         frequency_threshold=0.001,
         u=0.05,
-        correction="fdr_bh",
+        correction="bh",
     ):
         self.feature_group = feature_group
         self.features = features
@@ -224,7 +224,7 @@ def brainmap_decode(
     features=None,
     frequency_threshold=0.001,
     u=0.05,
-    correction="fdr_bh",
+    correction="bh",
 ):
     """Perform image-to-text decoding for discrete inputs according to the BrainMap method.
 
@@ -349,15 +349,17 @@ def brainmap_decode(
     nlogp_ri[n_selected_term < 5] = 0.0
 
     # Multiple comparisons correction across features. Separately done for FI and RI.
-    if correction in ("bh", "by"):
+    if correction is None:
+        nlogp_corr_fi = nlogp_fi
+        nlogp_corr_ri = nlogp_ri
+    elif correction in ("bh", "by"):
         nlogp_corr_fi = nlogp_fdr(nlogp_fi, method=correction)
         nlogp_corr_ri = nlogp_fdr(nlogp_ri, method=correction)
     elif correction == "bonferroni":
         nlogp_corr_fi = nlogp_bonferroni(nlogp_fi)
         nlogp_corr_ri = nlogp_bonferroni(nlogp_ri)
     else:
-        nlogp_corr_fi = nlogp_fi
-        nlogp_corr_ri = nlogp_ri
+        raise ValueError("Argument 'correction' must be one of None, 'bh', 'by', or 'bonferroni'.")
 
     # Compute z-values
     p_corr_fi = _clip_p_values(np.exp(nlogp_corr_fi), dtype=np.float64, copy=False)
@@ -460,7 +462,7 @@ class NeurosynthDecoder(Decoder):
         frequency_threshold=0.001,
         prior=0.5,
         u=0.05,
-        correction="fdr_bh",
+        correction="bh",
     ):
         self.feature_group = feature_group
         self.features = features
@@ -522,7 +524,7 @@ def neurosynth_decode(
     frequency_threshold=0.001,
     prior=0.5,
     u=0.05,
-    correction="fdr_bh",
+    correction="bh",
 ):
     """Perform discrete functional decoding according to Neurosynth's meta-analytic method.
 
@@ -643,15 +645,17 @@ def neurosynth_decode(
     sign_ri = np.sign(p_selected_g_term - p_selected_g_noterm).ravel()  # pylint: disable=no-member
 
     # Multiple comparisons correction across terms. Separately done for FI and RI.
-    if correction in ("bh", "by"):
+    if correction is None:
+        nlogp_corr_fi = nlogp_fi
+        nlogp_corr_ri = nlogp_ri
+    elif correction in ("bh", "by"):
         nlogp_corr_fi = nlogp_fdr(nlogp_fi, method=correction)
         nlogp_corr_ri = nlogp_fdr(nlogp_ri, method=correction)
     elif correction == "bonferroni":
         nlogp_corr_fi = nlogp_bonferroni(nlogp_fi)
         nlogp_corr_ri = nlogp_bonferroni(nlogp_ri)
     else:
-        nlogp_corr_fi = nlogp_fi
-        nlogp_corr_ri = nlogp_ri
+        raise ValueError("Argument 'correction' must be one of None, 'bh', 'by', or 'bonferroni'.")
 
     # Compute z-values
     p_corr_fi = _clip_p_values(np.exp(nlogp_corr_fi), dtype=np.float64, copy=False)
