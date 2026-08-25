@@ -30,6 +30,7 @@ import numpy as np
 
 from nimare.meta.cbmr._torch import torch
 from nimare.meta.cbmr.predictor import (
+    experiment_totals,
     _as_tensor,
     poisson_log_likelihood,
 )
@@ -100,10 +101,7 @@ def _pattern_quantities(predictor, spatial_coef, global_coef, foci):
     log_intensity = predictor.log_intensity_by_pattern(spatial_coef)
     moderator = predictor.moderator_effect(global_coef).to(spatial_coef.dtype)
     foci_per_voxel = _as_tensor(predictor.patterns.marginal_by_pattern(foci), spatial_coef.dtype)
-    # foci.sum works on both a sparse matrix and an array, so the grid is never materialised.
-    foci_per_experiment = _as_tensor(
-        np.asarray(foci.sum(axis=1)).reshape(-1), spatial_coef.dtype
-    )
+    foci_per_experiment = _as_tensor(experiment_totals(foci), spatial_coef.dtype)
     return log_intensity, moderator, foci_per_voxel, foci_per_experiment
 
 

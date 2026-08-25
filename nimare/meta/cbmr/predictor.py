@@ -43,6 +43,14 @@ def _as_dense_array(value):
     return np.asarray(value, dtype=float)
 
 
+def experiment_totals(foci):
+    """Return the foci count per experiment, for a sparse matrix or an array alike.
+
+    ``sum`` works on both, so the experiment-by-voxel grid is never materialised.
+    """
+    return np.asarray(foci.sum(axis=1)).reshape(-1)
+
+
 def _as_tensor(array, dtype=torch.float64):
     """Convert an array to a torch tensor, copying anything that is not already contiguous.
 
@@ -260,10 +268,7 @@ def poisson_log_likelihood(predictor, spatial_coef, global_coef, foci):
     marginal_by_pattern = _as_tensor(
         predictor.patterns.marginal_by_pattern(foci), spatial_coef.dtype
     )
-    # foci.sum works on both a sparse matrix and an array, so the grid is never materialised.
-    foci_per_experiment = _as_tensor(
-        np.asarray(foci.sum(axis=1)).reshape(-1), spatial_coef.dtype
-    )
+    foci_per_experiment = _as_tensor(experiment_totals(foci), spatial_coef.dtype)
 
     log_intensity = predictor.log_intensity_by_pattern(spatial_coef)
     moderator = predictor.moderator_effect(global_coef).to(spatial_coef.dtype)

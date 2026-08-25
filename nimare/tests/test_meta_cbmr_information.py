@@ -128,6 +128,19 @@ def test_overdispersion_stays_off_the_poisson_boundary(distribution, data):
     assert fitted.min() > 1e-3, f"overdispersion collapsed to {fitted}; counts are not dispersed"
 
 
+@pytest.mark.parametrize("distribution", DISTRIBUTIONS)
+@pytest.mark.parametrize("formula", FORMULAS)
+def test_information_is_symmetric(formula, distribution, data):
+    """A Hessian is symmetric, and each closed form mirrors its cross block by hand.
+
+    That last step is repeated once per distribution, so a fourth one could omit it and produce
+    a matrix that inverts fine but is wrong above the diagonal.
+    """
+    model, foci = _fit(formula, distribution, data)
+    information = model.information_matrix(foci)
+    np.testing.assert_allclose(information, information.T, rtol=1e-12, atol=0)
+
+
 def test_poisson_information_ignores_the_foci(data):
     """Under a log link the counts drop out of the Poisson information."""
     model, foci = _fit("~ s(diagnosis)", "poisson", data)

@@ -414,11 +414,14 @@ def fisher_covariance(model, information):
     cost differs. Structure is checked against the matrix, not assumed.
     """
     n_spatial = model.n_spatial
-    loadings, n_bases = model.predictor.patterns.loadings, model.predictor.n_bases
-    blocks = spatial_components(loadings, n_bases) if not model.n_global else []
-    separable = bool(blocks) and is_block_diagonal(information, blocks)
+    components = spatial_components(
+        model.predictor.patterns.loadings, model.predictor.n_bases
+    )
+    # Moderators couple every spatial column through gamma, so the whole matrix separates only
+    # when there are none.
+    separable = not model.n_global and is_block_diagonal(information, components)
 
-    condition = symmetric_condition_number(information, blocks if separable else None)
+    condition = symmetric_condition_number(information, components if separable else None)
     if condition > 1.0 / np.finfo(float).eps:
         LGR.warning(
             f"The Fisher information matrix has condition number {condition:.3g}, past what "
@@ -430,16 +433,14 @@ def fisher_covariance(model, information):
     # change, and the message should not depend on which route hit the singularity.
     try:
         if separable:
-            return blockwise_inverse(information, blocks)
+            return blockwise_inverse(information, components)
 
-        if model.n_global:
-            spatial = spatial_components(loadings, n_bases)
-            if len(spatial) > 1 and is_block_diagonal(
-                information[:n_spatial, :n_spatial], spatial
-            ):
-                bordered = bordered_inverse(information, spatial, n_spatial)
-                if bordered is not None:
-                    return bordered
+        if model.n_global and len(components) > 1 and is_block_diagonal(
+            information[:n_spatial, :n_spatial], components
+        ):
+            bordered = bordered_inverse(information, components, n_spatial)
+            if bordered is not None:
+                return bordered
 
         inverse = cholesky_inverse(information)
         if inverse is not None:

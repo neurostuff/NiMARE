@@ -14,6 +14,7 @@ between them. Each is ``n_patterns`` rank-updates of width ``n_bases``, so nothi
 import numpy as np
 from scipy.special import digamma, polygamma
 
+from nimare.meta.cbmr.predictor import experiment_totals
 from nimare.meta.cbmr.distributions import (
     ClusteredNegativeBinomial,
     NegativeBinomial,
@@ -21,8 +22,8 @@ from nimare.meta.cbmr.distributions import (
 )
 
 
-def _fitted_pieces(model):
-    """Return the fitted quantities all closed forms share."""
+def _intensity_pieces(model):
+    """Return the fitted intensity and moderator weights all closed forms share."""
     predictor = model.predictor
     flat = model.coefficients.detach().cpu().numpy()
     n_spatial, n_global = model.n_spatial, model.n_global
@@ -42,9 +43,10 @@ def _fitted_pieces(model):
 
 def _scatter_spatial(information, row, n_bases, block):
     """Add ``L_pc L_pc' * block`` into every spatial cross block the pattern's support touches."""
-    for c in np.flatnonzero(row):
+    support = np.flatnonzero(row)
+    for c in support:
         rows = slice(c * n_bases, (c + 1) * n_bases)
-        for d in np.flatnonzero(row):
+        for d in support:
             information[rows, d * n_bases : (d + 1) * n_bases] += (row[c] * row[d]) * block
 
 
@@ -76,7 +78,7 @@ def poisson_information_matrix(model):
     :obj:`numpy.ndarray`
         Shape ``(n_parameters, n_parameters)``.
     """
-    predictor, loadings, intensity, global_block, weight = _fitted_pieces(model)
+    predictor, loadings, intensity, global_block, weight = _intensity_pieces(model)
     n_spatial, n_global, n_bases = model.n_spatial, model.n_global, predictor.n_bases
     bases = predictor.bases
     assignment = predictor.patterns.assignment
@@ -86,8 +88,6 @@ def poisson_information_matrix(model):
 
     information = np.zeros((n_spatial + n_global, n_spatial + n_global))
     for p, row in enumerate(loadings):
-        if not np.any(row) or total[p] == 0.0:
-            continue
         _scatter_spatial(
             information, row, n_bases,
             bases.T @ (bases * (total[p] * intensity[p])[:, None]),
@@ -134,7 +134,7 @@ def negative_binomial_information_matrix(model, foci):
     Precision is poor when ``theta`` approaches zero. The moderator block then sums large terms
     of opposite sign, and the fit is a Poisson one in all but name.
     """
-    predictor, loadings, intensity, global_block, weight = _fitted_pieces(model)
+    predictor, loadings, intensity, global_block, weight = _intensity_pieces(model)
     n_spatial, n_global, n_bases = model.n_spatial, model.n_global, predictor.n_bases
     n_voxels, bases = predictor.n_voxels, predictor.bases
     assignment = predictor.patterns.assignment
@@ -143,8 +143,6 @@ def negative_binomial_information_matrix(model, foci):
 
     information = np.zeros((n_spatial + n_global, n_spatial + n_global))
     for p, row in enumerate(loadings):
-        if not np.any(row):
-            continue
         members = np.flatnonzero(assignment == p)
         member_weight = weight[members]
         sum_1 = member_weight.sum()
@@ -226,17 +224,15 @@ def clustered_negative_binomial_information_matrix(model, foci):
     ``E_p = sum_v exp(S_pv)``. That makes the spatial block ``B^T diag(w) B`` plus a rank-one
     correction, where the other two distributions need only the first term.
     """
-    predictor, loadings, intensity, global_block, weight = _fitted_pieces(model)
+    predictor, loadings, intensity, global_block, weight = _intensity_pieces(model)
     n_spatial, n_global, n_bases = model.n_spatial, model.n_global, predictor.n_bases
     bases = predictor.bases
     assignment = predictor.patterns.assignment
     overdispersion = _nuisance(model)
-    per_experiment = _experiment_totals(foci)
+    per_experiment = experiment_totals(foci)
 
     information = np.zeros((n_spatial + n_global, n_spatial + n_global))
     for p, row in enumerate(loadings):
-        if not np.any(row):
-            continue
         members = np.flatnonzero(assignment == p)
         precision = 1.0 / overdispersion[p]
         u = intensity[p]
@@ -270,11 +266,6 @@ def clustered_negative_binomial_information_matrix(model, foci):
     if n_global:
         information[n_spatial:, :n_spatial] = information[:n_spatial, n_spatial:].T
     return information
-
-
-def _experiment_totals(foci):
-    """Return the foci count per experiment, without densifying a sparse matrix."""
-    return np.asarray(foci.sum(axis=1)).reshape(-1).astype(float)
 
 
 def _poisson_entry(model, foci):
