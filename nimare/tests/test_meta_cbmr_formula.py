@@ -496,3 +496,68 @@ def test_the_public_fit_reports_the_design_derived_standard_errors(studyset):
 
     actual = np.sqrt(np.diag(estimator.cbmr_model.covariance(foci)))
     np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-10)
+
+
+def test_exposure_conditions_the_fit_and_leaves_the_studyset_alone(studyset):
+    """End to end: the derived column is generated, used, and not left behind.
+
+    It depends on this fit's mask and incidence_threshold, so a later fit with different
+    settings must not find a stale one sitting in the studyset's annotations.
+    """
+    before = studyset.annotations_df.copy()
+    result = _fit("~ s(diagnosis) + exposure()", studyset)
+
+    assert "_cbmr_n_foci" not in studyset.annotations_df.columns
+    assert list(studyset.annotations_df.columns) == list(before.columns)
+    assert "_cbmr_n_foci" in result.estimator.annotations_.columns
+
+    # An exposure owns no coefficient, so it gets no table and no row anywhere.
+    assert not [key for key in result.tables if "exposure" in key]
+    assert result.estimator.bound_design.n_parameters(result.estimator.predictor.n_bases) == CBMR(
+        "~ s(diagnosis)", **FIT_KWARGS
+    ).fit(dataset=studyset).estimator.bound_design.n_parameters(result.estimator.predictor.n_bases)
+
+
+def test_exposure_makes_each_group_a_distribution(studyset):
+    """The score equation normalizes every spatial term without being asked.
+
+    Only approximately, and the approximation is the basis rather than the optimizer: the score
+    equation forces ``sum_v (B1)_v exp(s_g) = sum_v (B1)_v y``, and a B-spline basis with its
+    first column dropped and its unsupported ones removed is a partition of unity to within a
+    percent or so rather than exactly. Fitted to convergence, because the suite's fast settings
+    stop far short of it and the level is the last thing to settle.
+    """
+    converged = dict(tol=1e-4, n_iter=1500)
+    exposed = _fit("~ s(diagnosis) + exposure()", studyset, **converged)
+    plain = _fit("~ s(diagnosis)", studyset, **converged)
+
+    def group_totals(result):
+        return np.array(
+            [
+                result.maps[key].sum()
+                for key in result.maps
+                if key.startswith("spatialIntensity_group-")
+            ]
+        )
+
+    assert np.allclose(group_totals(exposed), 1.0, rtol=0.05)
+    # Without it each map is a rate, whose integral is the group's mean foci count.
+    assert group_totals(plain).min() > 2.0
+
+
+def test_a_moderator_alongside_exposure_is_refused_with_advice(studyset):
+    """Its estimate would be exactly zero whatever the data."""
+    with pytest.raises(FormulaError, match="no coefficient to estimate"):
+        _fit("~ s(diagnosis) + standardized_sample_sizes + exposure()", studyset)
+
+
+def test_a_spatial_moderator_alongside_exposure_is_allowed(studyset):
+    """Conditioning removes the volume question and leaves the shape question intact."""
+    result = _fit("~ s(diagnosis) + s(standardized_avg_age) + exposure()", studyset)
+    assert "voxelwiseModeratorEffect_standardized_avg_age" in result.maps
+
+
+def test_offset_in_a_public_formula_points_at_exposure(studyset):
+    """The name CBMR does not use says which one it does."""
+    with pytest.raises(FormulaError, match="exposure"):
+        CBMR("~ s(diagnosis) + offset(log(n))", **FIT_KWARGS)

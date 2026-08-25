@@ -60,6 +60,47 @@ stronger claim and costs far fewer parameters. Note the change in interpretation
 factor's coefficients *are* each level's log-intensity map, while an ``sz()`` factor's are
 deviations from the baseline that ``1`` supplies, so a baseline term is always present alongside
 one.
+
+Why an exposure is not a moderator
+----------------------------------
+``exposure(x)`` multiplies the expected count by ``x`` instead of giving it a coefficient::
+
+    ~ s(diagnosis) + exposure()              # condition on each study's own foci count
+    ~ s(diagnosis) + exposure(sample_size)   # any positive numeric annotation
+
+The name is ``exposure`` rather than ``offset`` because of the scale. R's ``offset()`` takes the
+linear predictor, which is why it is written ``offset(log(n))``; ``statsmodels`` distinguishes the
+two by name for the same reason, its ``exposure=`` being logged internally. CBMR takes the count
+itself, and carries it multiplicatively rather than as ``log(x)`` added to the predictor, which is
+the whole reason an experiment with no foci inside the mask is representable: it contributes
+``0`` to the pattern total and drops out, instead of producing ``log(0)``.
+
+What that changes is the estimand, and it is worth being explicit about it. Write an
+inhomogeneous Poisson likelihood in terms of each experiment's total ``y_i.`` and its spatial
+distribution ``p_i``, and it factorizes exactly::
+
+    L = prod_i Poisson(y_i. ; Lambda_i)  x  prod_i Multinomial(y_i ; y_i., p_i)
+
+A *spatial* term describes ``p_i`` -- where foci fall. A *non-spatial* term multiplies the whole
+map by ``exp(gamma z_i)``, so it describes ``Lambda_i`` -- how many foci there are -- and nothing
+else. ``exposure()`` fits the second factor and conditions the first away, which turns each
+spatial term from a rate into a distribution over voxels.
+
+Two consequences follow, and both are enforced rather than left to be discovered:
+
+* A non-spatial term alongside ``exposure()`` has no coefficient to estimate. Conditioning on each
+  experiment's total fits that total exactly, so the score of any non-spatial column is identically
+  zero and its estimate is exactly zero whatever the data -- reported with an ordinary standard
+  error, which reads as a confident null. The design is refused instead. Ask the question spatially
+  with ``s(z)``, or model the totals separately: for a design whose spatial terms are factors,
+  CBMR's coefficient for a non-spatial term is numerically the same as a count regression of
+  ``n_foci`` on that term with one fixed effect per spatial map.
+* The overdispersed distributions have nothing left to estimate either, since both exist to absorb
+  between-experiment variation in total count, and ``exposure()`` absorbs it first.
+
+The likelihood is returned up to a parameter-free constant that depends on the exposure, so a
+log-likelihood, an AIC or a likelihood ratio from an ``exposure()`` model cannot be compared with
+one from a model without it. Those are different likelihoods, of different quantities.
 """
 
 import re
@@ -71,7 +112,16 @@ import patsy
 SPATIAL_MARKERS = ("s", "spatial")
 SUM_TO_ZERO_MARKERS = ("sz",)
 SUM_TO_ZERO = "sum_to_zero"
+EXPOSURE_MARKERS = ("exposure",)
+OFFSET_MARKERS = ("offset",)
 INTERCEPT_TERM = "1"
+DERIVED_EXPOSURE_COLUMN = "_cbmr_n_foci"
+"""Name of the generated column holding each experiment's in-mask foci count.
+
+Namespaced like ``_cbmr_group`` so it cannot collide with a user annotation. ``exposure()``
+resolves to it, and nothing has to guess whether a bare ``n_foci`` meant this or a column
+of the user's own -- there is no bare name to guess about.
+"""
 INTERCEPT_COLUMN = "Intercept"
 """Name of the baseline coefficient.
 
@@ -104,12 +154,16 @@ class Term:
         ``"sum_to_zero"`` reparameterizes a factor term so its coefficients sum to zero across
         levels, after mgcv's ``bs="sz"``. Required to combine two spatial factors additively;
         see the module docstring. Default is None.
+    exposure : :obj:`bool`, optional
+        Whether the term is an exposure rather than a moderator: it multiplies the expected
+        count instead of carrying a coefficient. See the module docstring. Default is False.
     """
 
     expr: str
     spatial: bool
     spacing: int = None
     constraint: str = None
+    exposure: bool = False
 
     def __post_init__(self):
         """Validate the term's fields."""
@@ -134,11 +188,29 @@ class Term:
                     f"{self.expr!r}: it exists to stop a spatial factor from competing with the "
                     "spatial baseline, and a non-spatial term never does."
                 )
+        if self.exposure:
+            if self.spatial:
+                raise FormulaError(
+                    f"exposure({self.expr}) cannot also be spatial. An exposure is one number "
+                    "per experiment with no coefficient, so there is nothing for a spline basis "
+                    "to vary over. A per-voxel exposure -- a coverage mask -- is a different "
+                    "term that CBMR does not have yet."
+                )
+            if self.spacing is not None or self.constraint is not None:
+                raise FormulaError(
+                    f"exposure({self.expr}) takes no spacing= or bs=; both describe a spline "
+                    "basis, and an exposure has none."
+                )
 
     @property
     def is_intercept(self):
         """Whether this term is the spatial baseline."""
         return self.expr == INTERCEPT_TERM
+
+    @property
+    def is_derived_exposure(self):
+        """Whether this term is ``exposure()``, the response's own per-experiment totals."""
+        return self.exposure and self.expr == DERIVED_EXPOSURE_COLUMN
 
     @property
     def is_sum_to_zero(self):
@@ -147,6 +219,8 @@ class Term:
 
     def __str__(self):
         """Render the term back into formula syntax."""
+        if self.exposure:
+            return "exposure()" if self.is_derived_exposure else f"exposure({self.expr})"
         if self.is_intercept:
             return INTERCEPT_TERM
         if not self.spatial:
@@ -174,6 +248,38 @@ def _split_top_level(text, separator="+"):
         raise FormulaError(f"Unbalanced parentheses in {text!r}.")
     parts.append("".join(current))
     return [part.strip() for part in parts]
+
+
+def _parse_exposure_marker(piece):
+    """Return the exposure expression if ``piece`` marks one, else None.
+
+    ``exposure()`` means the response's own per-experiment totals, which the estimator supplies
+    as :data:`DERIVED_EXPOSURE_COLUMN`. Spelling it with no argument is what makes the name
+    unshadowable: there is no bare word for a user annotation to collide with.
+    """
+    match = re.fullmatch(r"(\w+)\s*\((.*)\)", piece, flags=re.DOTALL)
+    if match is None:
+        return None
+    marker = match.group(1)
+    if marker in OFFSET_MARKERS:
+        raise FormulaError(
+            f"{piece!r}: CBMR spells this exposure(...), not offset(...). The difference is the "
+            "scale. R's offset() takes the linear predictor, so it is written offset(log(n)); "
+            "exposure() takes the count itself and multiplies the expected value by it, which "
+            "is what lets an experiment with no foci in the mask carry an exposure of zero "
+            "instead of a logarithm of zero. Write exposure() for the response's own totals, "
+            "or exposure(column) for a quantity of your own."
+        )
+    if marker not in EXPOSURE_MARKERS:
+        return None
+
+    arguments = [argument for argument in _split_top_level(match.group(2), separator=",")]
+    arguments = [argument for argument in arguments if argument]
+    if not arguments:
+        return DERIVED_EXPOSURE_COLUMN
+    if len(arguments) > 1:
+        raise FormulaError(f"{piece!r} takes at most one expression, got {arguments!r}.")
+    return arguments[0]
 
 
 def _parse_spatial_marker(piece):
@@ -240,12 +346,21 @@ class Design:
         object.__setattr__(self, "terms", tuple(self.terms))
         seen = {}
         for term in self.terms:
-            key = (term.expr, term.spatial, term.constraint)
+            # ``exposure`` belongs in the key: ``~ s(g) + n + exposure(n)`` names the same
+            # column twice on purpose -- it is how a user asks whether the coefficient really is
+            # 1 -- and without it that reads as a duplicate.
+            key = (term.expr, term.spatial, term.constraint, term.exposure)
             if key in seen:
                 raise FormulaError(f"Term {term} appears more than once.")
             seen[key] = True
         if not self.terms:
             raise FormulaError("A design needs at least one term.")
+        if len(self.exposure_terms) > 1:
+            names = ", ".join(str(term) for term in self.exposure_terms)
+            raise FormulaError(
+                f"A design takes at most one exposure, got {names}. Two exposures would "
+                "multiply, which is what a single exposure(a * b) says more clearly."
+            )
 
     @classmethod
     def from_formula(cls, formula):
@@ -277,9 +392,20 @@ class Design:
                 terms.append(Term(expr=INTERCEPT_TERM, spatial=True))
                 continue
 
+            exposure = _parse_exposure_marker(piece)
+            if exposure is not None:
+                terms.append(Term(expr=exposure, spatial=False, exposure=True))
+                continue
+
             marker = _parse_spatial_marker(piece)
             if marker is not None:
                 expression, spacing, constraint = marker
+                if _parse_exposure_marker(expression) is not None:
+                    raise FormulaError(
+                        f"{piece!r} makes an exposure spatial. An exposure is one number per "
+                        "experiment with no coefficient, so there is nothing for a spline basis "
+                        f"to vary over. Write the two as separate terms if you meant both."
+                    )
                 if expression == INTERCEPT_TERM:
                     explicit_intercept = True
                 terms.append(
@@ -307,7 +433,12 @@ class Design:
     @property
     def global_terms(self):
         """Terms with a single coefficient per experiment-level column."""
-        return tuple(term for term in self.terms if not term.spatial)
+        return tuple(term for term in self.terms if not term.spatial and not term.exposure)
+
+    @property
+    def exposure_terms(self):
+        """Terms that multiply the expected count instead of carrying a coefficient."""
+        return tuple(term for term in self.terms if term.exposure)
 
     def with_term(self, term):
         """Return a copy with one more term appended."""
@@ -448,6 +579,8 @@ class TermBlock:
 
     def n_parameters(self, n_bases):
         """Return the number of coefficients this term owns, given the basis width."""
+        if self.term.exposure:
+            return 0
         return self.n_columns * (n_bases if self.term.spatial else 1)
 
 
@@ -481,6 +614,26 @@ class BoundDesign:
         """Bound terms whose coefficients vary over voxels."""
         return tuple(block for block in self.blocks if block.term.spatial)
 
+    @property
+    def exposure_blocks(self):
+        """Bound terms that multiply the expected count instead of carrying a coefficient."""
+        return tuple(block for block in self.blocks if block.term.exposure)
+
+    @property
+    def exposure(self):
+        """Return the per-experiment exposure, or None when the design has no exposure term.
+
+        ``None`` rather than a vector of ones so that the overwhelmingly common no-exposure
+        path allocates nothing and every consumer can branch on identity.
+        """
+        blocks = self.exposure_blocks
+        if not blocks:
+            return None
+        values = np.ones(blocks[0].block.shape[0], dtype=float)
+        for block in blocks:
+            values = values * block.block[:, 0]
+        return values
+
     def n_parameters(self, n_bases):
         """Return the total number of coefficients, given the spline basis width."""
         return sum(block.n_parameters(n_bases) for block in self.blocks)
@@ -489,6 +642,11 @@ class BoundDesign:
         """Map each term to the slice of the flat coefficient vector it owns."""
         slices, offset = {}, 0
         for block in self.blocks:
+            if block.term.exposure:
+                # Skipped rather than given a zero-width slice, so that every dict keyed by this
+                # mapping -- fitted coefficients, standard errors -- has no entry for a term that
+                # owns no parameter, instead of an empty one to be special-cased at each use.
+                continue
             width = block.n_parameters(n_bases)
             slices[str(block.term)] = slice(offset, offset + width)
             offset += width
@@ -504,6 +662,9 @@ class BoundDesign:
         """
         lines = []
         for block in self.blocks:
+            if block.term.exposure:
+                lines.append(f"  {str(block.term):32} {'':>4}                    fixed at 1")
+                continue
             lines.append(
                 f"  {str(block.term):32} {block.n_columns:>4} column(s) x "
                 f"{n_bases if block.term.spatial else 1:>5} = "
@@ -511,6 +672,32 @@ class BoundDesign:
             )
         lines.append(f"  {'total':32} {'':>4}            {self.n_parameters(n_bases):>13}")
         return "\n".join(lines)
+
+
+def _validate_exposure(term, block, names):
+    """Check that an exposure block is one non-negative column.
+
+    An exposure multiplies the expected count, so a factor expanding to indicators would say
+    something no user means, and a negative value has no reading at all. Zero is allowed and
+    deliberate: it is how an experiment with no foci inside the mask carries no information
+    about where foci fall, without a logarithm of zero appearing anywhere.
+    """
+    if block.shape[1] != 1:
+        raise FormulaError(
+            f"{term} expands to {block.shape[1]} columns ({', '.join(names)}), but an exposure "
+            "is a single number per experiment. This is what a factor does; an exposure has to "
+            "be numeric."
+        )
+    values = block[:, 0]
+    if not np.all(np.isfinite(values)):
+        raise FormulaError(f"{term} contains non-finite values; an exposure must be finite.")
+    if np.any(values < 0):
+        raise FormulaError(
+            f"{term} contains negative values. An exposure multiplies the expected count, so it "
+            "cannot be negative. If this is already on the log scale, pass the count itself."
+        )
+    if not np.any(values > 0):
+        raise FormulaError(f"{term} is zero for every experiment, which leaves no data to fit.")
 
 
 def bind(design, annotations):
@@ -526,6 +713,8 @@ def bind(design, annotations):
         block, names, levels, level_map = _experiment_block(
             term.expr, annotations, term.constraint
         )
+        if term.exposure:
+            _validate_exposure(term, block, names)
         blocks.append(
             TermBlock(
                 term=term,

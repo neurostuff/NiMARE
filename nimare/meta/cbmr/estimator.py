@@ -60,7 +60,9 @@ from nimare.meta.cbmr._helpers import (
 )
 from nimare.meta.cbmr._torch import torch
 from nimare.meta.cbmr.basis import b_spline_bases
+from nimare.meta.cbmr.predictor import experiment_totals
 from nimare.meta.cbmr.results import CBMRResult
+from nimare.meta.cbmr.terms import DERIVED_EXPOSURE_COLUMN, FormulaError
 from nimare.utils import get_masker, get_masker_mask_image, get_template, seed_torch
 
 LGR = logging.getLogger(__name__)
@@ -263,6 +265,7 @@ class CBMR(_CBMRInputs):
         CBMR("~ s(diagnosis:drug_status)")                 # a map per cell
         CBMR("~ s(diagnosis) + sample_size")               # plus a scalar moderator
         CBMR("~ s(diagnosis) + sample_size + s(avg_age)")  # one of each
+        CBMR("~ s(diagnosis) + exposure()")                # conditioned on each study's count
 
     ``s()`` crosses a term with the spline basis, making its coefficient a map; without it the
     term gets a single coefficient. That is the whole global-versus-voxelwise distinction, and
@@ -270,6 +273,14 @@ class CBMR(_CBMRInputs):
     the older interface could not express at all -- ``s(sample_size)`` for a spatially varying
     moderator pooled across groups, ``s(diagnosis) + s(drug_status)`` for additive spatial main
     effects, ``diagnosis:sample_size`` for a group-specific scalar slope.
+
+    ``exposure()`` is the one term that is not a moderator. It conditions the fit on each
+    experiment's own foci count, so every spatial term estimates a distribution over voxels
+    rather than a rate and a contrast between groups asks where foci fall rather than how many.
+    That is a different estimand, and it has consequences -- a non-spatial term has nothing left
+    to estimate beside it, and neither do the overdispersed distributions, so both are refused
+    rather than fitted to zero. ``exposure(column)`` carries a quantity of the user's own and
+    has none of those consequences. See :mod:`nimare.meta.cbmr.terms`.
 
     Parameters
     ----------
@@ -369,7 +380,28 @@ class CBMR(_CBMRInputs):
                 "to line up with the foci matrix. This is a bug in the studyset layer rather "
                 "than in the formula."
             )
+
+        # A copy, because the frame belongs to the studyset and the generated column below does
+        # not: it depends on this fit's mask and incidence_threshold, so leaving it behind would
+        # give a later fit with different settings a column whose meaning had silently changed.
+        annotations = annotations.copy()
+        annotations[DERIVED_EXPOSURE_COLUMN] = experiment_totals(self.inputs_["foci"])
         return annotations
+
+    def _log_exposure(self, annotations):
+        """Report what the exposure does to the experiments that have none."""
+        exposure = self.predictor.exposure
+        if exposure is None:
+            return
+        empty = int(np.sum(np.asarray(exposure) == 0))
+        if not empty:
+            return
+        LGR.info(
+            f"{empty}/{len(exposure)} experiments have an exposure of zero. They are retained "
+            "and stay aligned with their annotations; under an exposure they contribute nothing, "
+            "because a study reporting no foci inside the mask says nothing about where foci "
+            "fall."
+        )
 
     def _fit(self, dataset):
         """Fit the formula-specified model and summarize it into maps and tables."""
@@ -380,8 +412,11 @@ class CBMR(_CBMRInputs):
         seed_torch(self.random_state, self.device)
 
         annotations = self._experiment_annotations()
+        self.annotations_ = annotations
         self.bound_design = bind(self.design, annotations)
+        _reject_moderators_under_a_derived_exposure(self.bound_design)
         self.predictor = CBMRPredictor(self.bound_design, self.inputs_["coef_spline_bases"])
+        self._log_exposure(annotations)
 
         n_bases = self.predictor.n_bases
         LGR.info(
@@ -414,6 +449,10 @@ class CBMR(_CBMRInputs):
         errors = self.cbmr_model.standard_errors(foci)
 
         for block in self.bound_design.blocks:
+            if block.term.exposure:
+                # No coefficient, so no estimate, no standard error and no table. Reporting a
+                # row for it would invite a hypothesis to be written over a fixed quantity.
+                continue
             name = str(block.term)
             values = np.atleast_2d(coefficients[name])
             error_values = np.atleast_2d(errors[name])
@@ -476,6 +515,20 @@ class CBMR(_CBMRInputs):
             self.distribution.name, f"the {self.distribution.name} model"
         )
         n_bases = self.predictor.n_bases
+        exposure_text = ""
+        exposure_terms = self.bound_design.design.exposure_terms
+        if exposure_terms:
+            term = exposure_terms[0]
+            quantity = (
+                "each experiment's own foci count inside the analysis mask"
+                if term.is_derived_exposure
+                else f"the annotation {term.expr!r}"
+            )
+            exposure_text = (
+                f" The model was conditioned on {quantity}, which was carried as an exposure "
+                "with a fixed coefficient rather than fitted, so each spatial term estimates a "
+                "distribution over voxels rather than a rate."
+            )
         return (
             f"A coordinate-based meta-regression with the design {self.bound_design.design} was "
             f"fitted with NiMARE {__version__}, using {distribution_text}. Spatial structure was "
@@ -483,8 +536,46 @@ class CBMR(_CBMRInputs):
             f"{n_bases} bases over {self.predictor.n_voxels} analysis-mask voxels, for "
             f"{self.bound_design.n_parameters(n_bases)} coefficients across "
             f"{self.predictor.patterns.n_experiments} experiments and "
-            f"{self.predictor.patterns.n_patterns} distinct spatial map(s)."
+            f"{self.predictor.patterns.n_patterns} distinct spatial map(s)." + exposure_text
         )
+
+
+def _reject_moderators_under_a_derived_exposure(bound_design):
+    """Refuse a non-spatial term alongside ``exposure()``, whose estimate is zero regardless.
+
+    Conditioning on each experiment's own total fits that total exactly. A non-spatial column
+    reaches the data only through those totals, so its score is identically zero and its maximum
+    likelihood estimate is exactly zero whatever the data -- reported, with an ordinary standard
+    error, as a confident null. Refusing beats reporting it.
+    """
+    derived = [block.term for block in bound_design.blocks if block.term.is_derived_exposure]
+    if not derived:
+        return
+    moderators = [
+        block.term
+        for block in bound_design.blocks
+        if not block.term.spatial and not block.term.exposure
+    ]
+    if not moderators:
+        return
+    names = ", ".join(str(term) for term in moderators)
+    spatial = " + ".join(f"s({term.expr})" for term in moderators)
+    raise FormulaError(
+        f"{names} has no coefficient to estimate alongside exposure(). Conditioning on each "
+        "experiment's foci count fits its total exactly, and a non-spatial term acts only on "
+        "that total, so its estimate is exactly zero whatever the data -- which would still be "
+        "reported with a standard error, and read as a confident null. Two ways to write what "
+        "you probably meant:\n"
+        f"  ~ ... + {spatial}\n"
+        "      ask whether the moderator changes *where* foci fall, which conditioning leaves "
+        "intact and which is the question an exposure model can answer;\n"
+        "  or model the totals separately\n"
+        "      they are an ordinary count regression on the per-experiment foci count with one "
+        "fixed effect per spatial map, and CBMR's coefficient for a non-spatial term is "
+        "numerically identical to it. Fit that alongside, and report both.\n"
+        "An exposure of your own, exposure(some_column), does not fit the totals exactly and so "
+        "is not refused."
+    )
 
 
 def _table_safe(name):

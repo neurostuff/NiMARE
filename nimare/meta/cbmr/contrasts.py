@@ -73,6 +73,10 @@ def _level_index(bound_design):
     """
     names, term_of, seen = [], {}, {}
     for block in bound_design.blocks:
+        if block.term.exposure:
+            # An exposure owns no coefficient, so it contributes no level to write a hypothesis
+            # over. Naming one is caught by build_contrast, which can say so specifically.
+            continue
         for level in block.level_names:
             if level in term_of:
                 raise ContrastError(
@@ -119,6 +123,30 @@ def _derive_label(statements):
     return ";".join(s.replace(" ", "") for s in statements)
 
 
+def _reject_exposure_references(bound_design, statements):
+    """Say so plainly when a hypothesis names the exposure, rather than "unknown coefficient"."""
+    exposure_names = {
+        level
+        for block in bound_design.blocks
+        if block.term.exposure
+        for level in (block.level_names + (block.term.expr, str(block.term)))
+    }
+    if not exposure_names:
+        return
+    for statement in statements:
+        for token in _REFERENCE.findall(str(statement)):
+            if token in exposure_names:
+                term = next(b.term for b in bound_design.blocks if b.term.exposure)
+                raise ContrastError(
+                    f"{token!r} is the exposure {term}, which has no coefficient to test. Its "
+                    "value is fixed at 1 by construction rather than estimated, so there is no "
+                    "hypothesis to state about it. What the exposure changes is what every "
+                    "*other* term means: each spatial term is a distribution over voxels rather "
+                    "than a rate, so a contrast between them compares where foci fall rather "
+                    "than how many."
+                )
+
+
 def build_contrast(bound_design, hypotheses):
     """Translate hypotheses into a contrast over one term's coefficients.
 
@@ -131,6 +159,7 @@ def build_contrast(bound_design, hypotheses):
         raise ContrastError("No hypotheses given.")
 
     names, term_of, aliases = _level_index(bound_design)
+    _reject_exposure_references(bound_design, statements)
     canonical = [_canonicalize(str(s), names, aliases) for s in statements]
 
     try:
