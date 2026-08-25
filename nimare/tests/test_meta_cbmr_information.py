@@ -314,6 +314,40 @@ def test_bordered_route_uses_the_cheap_condition_number(data):
     )
 
 
+def test_covariance_is_cached_across_hypotheses(data):
+    """Every hypothesis against one fit asks for the same matrix; it should be built once."""
+    model, foci = _fit("~ s(diagnosis) + n", "poisson", data)
+    first = model.covariance(foci)
+    assert model.covariance(foci) is first, "a repeated call should hit the cache"
+
+    # The options are part of the key, so a different estimator is not served from it.
+    assert model.covariance(foci, cov_type="sandwich", correction="hc0") is not first
+
+    # A different foci must not match, even though the previous one may have been freed.
+    other = foci * 2
+    assert model.covariance(other) is not first
+    np.testing.assert_allclose(
+        model.covariance(other), np.linalg.inv(model.information_matrix(other)), rtol=1e-6
+    )
+
+
+def test_refitting_clears_the_covariance_cache(data):
+    """The covariance describes the converged fit, so refitting must not serve the old one."""
+    model, foci = _fit("~ s(diagnosis)", "poisson", data)
+    stale = model.covariance(foci)
+    model.fit(foci, n_iter=5, tol=1e-8)
+    fresh = model.covariance(foci)
+    assert fresh is not stale
+
+
+def test_cached_covariance_matches_an_uncached_one(data):
+    """The cache must not change any number a contrast produces."""
+    model, foci = _fit("~ s(diagnosis) + n", "poisson", data)
+    cached = model.covariance(foci)
+    model._covariance_cache = None
+    np.testing.assert_array_equal(model.covariance(foci), cached)
+
+
 def test_cholesky_inverse_declines_a_non_positive_definite_matrix():
     """It returns None rather than raising, so the caller can fall back."""
     assert cholesky_inverse(np.array([[1.0, 2.0], [2.0, 1.0]])) is None
