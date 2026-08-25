@@ -14,12 +14,12 @@ between them. Each is ``n_patterns`` rank-updates of width ``n_bases``, so nothi
 import numpy as np
 from scipy.special import digamma, polygamma
 
-from nimare.meta.cbmr.predictor import experiment_totals
 from nimare.meta.cbmr.distributions import (
     ClusteredNegativeBinomial,
     NegativeBinomial,
     Poisson,
 )
+from nimare.meta.cbmr.predictor import experiment_totals
 
 
 def _intensity_pieces(model):
@@ -108,8 +108,7 @@ def poisson_information_matrix(model):
     information = np.zeros((n_spatial + n_global, n_spatial + n_global))
     for p, row in enumerate(loadings):
         _scatter_spatial(
-            information, row, n_bases,
-            bases.T @ (bases * (total[p] * intensity[p])[:, None]),
+            information, row, n_bases, bases.T @ (bases * (total[p] * intensity[p])[:, None])
         )
 
     if n_global:
@@ -171,10 +170,8 @@ def negative_binomial_information_matrix(model, foci):
         counts = marginal[p]
         denominator = u + a
 
-        _scatter_spatial(
-            information, row, n_bases,
-            bases.T @ (bases * ((r + counts) * u * a / denominator**2)[:, None]),
-        )
+        weight_v = (r + counts) * u * a / denominator**2
+        _scatter_spatial(information, row, n_bases, bases.T @ (bases * weight_v[:, None]))
         if not n_global:
             continue
 
@@ -194,14 +191,14 @@ def negative_binomial_information_matrix(model, foci):
 
         # d2Psi/dS dR and d2Psi/dS dA, each carried into gamma by its own chain factor.
         _scatter_cross(information, row, n_bases, n_spatial, bases.T @ (u / denominator), r_1)
-        _scatter_cross(
-            information, row, n_bases, n_spatial,
-            -(bases.T @ ((r + counts) * u / denominator**2)), a_1,
-        )
+        cross_a = -(bases.T @ ((r + counts) * u / denominator**2))
+        _scatter_cross(information, row, n_bases, n_spatial, cross_a, a_1)
 
         psi_r = (
-            -digamma(counts + r).sum() + n_voxels * digamma(r)
-            - n_voxels * np.log(a) + np.log(denominator).sum()
+            -digamma(counts + r).sum()
+            + n_voxels * digamma(r)
+            - n_voxels * np.log(a)
+            + np.log(denominator).sum()
         )
         psi_a = -n_voxels * r / a + ((r + counts) / denominator).sum()
         psi_rr = -polygamma(1, counts + r).sum() + n_voxels * polygamma(1, r)
@@ -261,19 +258,16 @@ def clustered_negative_binomial_information_matrix(model, foci):
         curvature = -(excess * np.square(member_weight) / denominator**2).sum()
         marginal_basis = bases.T @ u  # a_k
 
-        _scatter_spatial(
-            information, row, n_bases,
-            gradient * (bases.T @ (bases * u[:, None]))
-            + curvature * np.outer(marginal_basis, marginal_basis),
+        block = gradient * (bases.T @ (bases * u[:, None])) + curvature * np.outer(
+            marginal_basis, marginal_basis
         )
+        _scatter_spatial(information, row, n_bases, block)
         if not n_global:
             continue
 
         member_block = global_block[members]
         scale = excess * precision * member_weight / denominator**2
-        _scatter_cross(
-            information, row, n_bases, n_spatial, marginal_basis, scale @ member_block
-        )
+        _scatter_cross(information, row, n_bases, n_spatial, marginal_basis, scale @ member_block)
         information[n_spatial:, n_spatial:] += member_block.T @ (
             member_block * (scale * energy)[:, None]
         )

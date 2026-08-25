@@ -281,8 +281,7 @@ def is_block_diagonal(information, blocks):
     if len(blocks) < 2:
         return False
     return all(
-        np.count_nonzero(information[index])
-        == np.count_nonzero(information[np.ix_(index, index)])
+        np.count_nonzero(information[index]) == np.count_nonzero(information[np.ix_(index, index)])
         for index in blocks
     )
 
@@ -414,9 +413,7 @@ def fisher_covariance(model, information):
     cost differs. Structure is checked against the matrix, not assumed.
     """
     n_spatial = model.n_spatial
-    components = spatial_components(
-        model.predictor.patterns.loadings, model.predictor.n_bases
-    )
+    components = spatial_components(model.predictor.patterns.loadings, model.predictor.n_bases)
     # Moderators couple every spatial column through gamma, so the whole matrix separates only
     # when there are none.
     separable = not model.n_global and is_block_diagonal(information, components)
@@ -435,8 +432,10 @@ def fisher_covariance(model, information):
         if separable:
             return blockwise_inverse(information, components)
 
-        if model.n_global and len(components) > 1 and is_block_diagonal(
-            information[:n_spatial, :n_spatial], components
+        if (
+            model.n_global
+            and len(components) > 1
+            and is_block_diagonal(information[:n_spatial, :n_spatial], components)
         ):
             bordered = bordered_inverse(information, components, n_spatial)
             if bordered is not None:

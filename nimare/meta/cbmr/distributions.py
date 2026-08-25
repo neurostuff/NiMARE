@@ -30,8 +30,8 @@ import numpy as np
 
 from nimare.meta.cbmr._torch import torch
 from nimare.meta.cbmr.predictor import (
-    experiment_totals,
     _as_tensor,
+    experiment_totals,
     poisson_log_likelihood,
 )
 

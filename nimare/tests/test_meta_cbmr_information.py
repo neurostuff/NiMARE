@@ -94,7 +94,7 @@ def _fit(formula, distribution, data, n_iter=60):
 
 
 def _autodiff_information(model, foci):
-    """The path the closed forms replace, called directly."""
+    """Return the information matrix by automatic differentiation, as the stock path does."""
     flat = model.coefficients.detach().clone()
     nuisance = None if model.nuisance is None else model.nuisance.detach().clone()
 
