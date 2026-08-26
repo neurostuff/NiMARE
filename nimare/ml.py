@@ -12,35 +12,13 @@ from joblib import hash as joblib_hash
 from scipy import sparse
 from sklearn.compose import ColumnTransformer
 from sklearn.decomposition import TruncatedSVD
-from sklearn.model_selection import GroupKFold, GroupShuffleSplit
 from sklearn.utils import Bunch
 
 from nimare.base import NiMAREBase
 
 LGR = logging.getLogger(__name__)
 
-__all__ = ["MAFeatureDataset", "MAFeatureExtractor", "make_map_reducer"]
-
-
-class _GroupBoundCV:
-    """Bind study groups to a scikit-learn cross-validator."""
-
-    def __init__(self, inner: Any, groups: Any):
-        self._inner = inner
-        self._groups = groups
-
-    def split(self, X: Any, y: Any | None = None, groups: Any | None = None):
-        """Generate splits using the bound study groups."""
-        return self._inner.split(X, y, groups=self._groups)
-
-    def get_n_splits(
-        self,
-        X: Any | None = None,
-        y: Any | None = None,
-        groups: Any | None = None,
-    ):
-        """Return the number of splits from the wrapped cross-validator."""
-        return self._inner.get_n_splits(X, y, self._groups)
+__all__ = ["MAFeatureExtractor", "make_map_reducer"]
 
 
 class MAFeatureDataset(NiMAREBase):
@@ -185,7 +163,8 @@ class MAFeatureDataset(NiMAREBase):
         sklearn.utils.Bunch-like
             Dataset bundle with attributes `data` (same as `features`),
             `target` (or `None`), `groups` (same as `study_ids`), and
-            `feature_names`, `map_columns`, and `descriptor_columns`.
+            `ids`, `feature_names`, `provenance`, `map_columns`, and
+            `descriptor_columns`.
 
         Notes
         -----
@@ -196,7 +175,9 @@ class MAFeatureDataset(NiMAREBase):
             data=self.features,
             target=self.target,
             groups=self.study_ids,
+            ids=self.ids,
             feature_names=self.feature_names,
+            provenance=self.provenance,
             map_columns=self.map_columns,
             descriptor_columns=self.descriptor_columns,
         )
@@ -228,41 +209,6 @@ class MAFeatureDataset(NiMAREBase):
             ]
         )
 
-    def make_cv(
-        self,
-        n_splits: int = 5,
-        test_size: float | int | None = None,
-        random_state: int | None = None,
-    ):
-        """Build a cross-validator bound to this dataset's study groups.
-
-        Parameters
-        ----------
-        n_splits : int, default=5
-            Number of folds or shuffled splits.
-        test_size : float or int, optional
-            Test-group proportion or count. If None, use GroupKFold.
-        random_state : int, optional
-            Random seed used by GroupShuffleSplit.
-
-        Returns
-        -------
-        _GroupBoundCV
-            Cross-validator that always splits using this dataset's study IDs.
-        """
-        if test_size is None:
-            if n_splits > len(np.unique(self.study_ids)):
-                raise ValueError("n_splits cannot exceed the number of unique study IDs")
-            inner = GroupKFold(n_splits=n_splits)
-        else:
-            inner = GroupShuffleSplit(
-                n_splits=n_splits,
-                test_size=test_size,
-                random_state=random_state,
-            )
-
-        return _GroupBoundCV(inner, self.study_ids)
-
     def copy(self):
         """Return an independent copy of the dataset.
 
@@ -275,9 +221,9 @@ class MAFeatureDataset(NiMAREBase):
 
 
 class MAFeatureExtractor(NiMAREBase):
-    """Orchestrate conversion from a Studyset to MA feature datasets.
+    """Orchestrate conversion from a Studyset to scikit-learn feature data.
 
-    This helper converts a NiMARE Studyset into an aligned MA feature dataset.
+    This helper converts a NiMARE Studyset into an aligned scikit-learn Bunch.
 
     Parameters
     ----------
@@ -356,18 +302,29 @@ class MAFeatureExtractor(NiMAREBase):
 
         return table[field].to_numpy(dtype=object), field
 
-    def transform(self, studyset: Any):
-        """Transform a Studyset into an MA feature dataset.
+    def transform(
+        self,
+        studyset: Any,
+        map_reducer: str | None = None,
+        map_reducer_params: dict[str, Any] | None = None,
+    ):
+        """Transform a Studyset into a scikit-learn-compatible dataset.
 
         Parameters
         ----------
         studyset : object
             NiMARE Studyset input.
+        map_reducer : str, optional
+            Map-feature reduction workflow name used to build an unfitted
+            preprocessor.
+        map_reducer_params : dict, optional
+            Additional map-reducer parameters.
 
         Returns
         -------
-        MAFeatureDataset
-            Dataset containing all extracted analysis rows.
+        sklearn.utils.Bunch
+            Dataset containing aligned feature data, targets, study groups,
+            analysis IDs, provenance, and an optional unfitted preprocessor.
         """
         if self.missing_coordinates not in ("drop", "include"):
             raise ValueError("missing_coordinates must be 'drop' or 'include'")
@@ -398,6 +355,8 @@ class MAFeatureExtractor(NiMAREBase):
                     studyset.coordinates,
                     studyset.metadata,
                     studyset.masker.mask_img,
+                    type(kernel_transformer).__module__,
+                    type(kernel_transformer).__qualname__,
                     kernel_transformer.get_params(),
                 )
             )
@@ -463,7 +422,16 @@ class MAFeatureExtractor(NiMAREBase):
             masker=studyset.masker,
         )
 
-        return dataset
+        bunch = dataset.to_sklearn()
+        bunch.preprocessor = None
+        if map_reducer is not None:
+            map_reducer_params = {} if map_reducer_params is None else dict(map_reducer_params)
+            bunch.preprocessor = dataset.make_preprocessor(
+                map_reducer,
+                **map_reducer_params,
+            )
+
+        return bunch
 
 
 def make_map_reducer(method: str, masker: Any | None = None, **kwargs: Any):

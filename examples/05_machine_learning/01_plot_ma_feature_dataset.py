@@ -13,7 +13,7 @@ flanker task analyses from a parquet-backed Studyset.
 from pathlib import Path
 
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import GroupKFold, cross_val_score
 from sklearn.pipeline import make_pipeline
 
 from nimare.meta.kernel import MKDAKernel
@@ -52,15 +52,17 @@ extractor = MAFeatureExtractor(
 # -----------------------------------------------------------------------------
 # The masked activation maps are sparse and high-dimensional, so we reduce only
 # the map features with truncated SVD inside each cross-validation fold.
-dataset = extractor.transform(studyset)
-bunch = dataset.to_sklearn()
+bunch = extractor.transform(
+    studyset,
+    map_reducer="truncated_svd",
+    map_reducer_params={
+        "n_components": 50,
+        "random_state": RANDOM_SEED,
+    },
+)
 
 pipeline = make_pipeline(
-    dataset.make_preprocessor(
-        "truncated_svd",
-        n_components=50,
-        random_state=RANDOM_SEED,
-    ),
+    bunch.preprocessor,
     LogisticRegression(
         max_iter=1000,
         class_weight="balanced",
@@ -71,7 +73,8 @@ scores = cross_val_score(
     pipeline,
     bunch.data,
     bunch.target,
-    cv=dataset.make_cv(5),
+    cv=GroupKFold(5),
+    groups=bunch.groups,
 )
 
 print(f"Feature data shape: {bunch.data.shape}")

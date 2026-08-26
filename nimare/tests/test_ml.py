@@ -13,7 +13,6 @@ from sklearn.linear_model import Ridge
 from sklearn.model_selection import (
     GridSearchCV,
     GroupKFold,
-    GroupShuffleSplit,
     cross_val_score,
 )
 from sklearn.pipeline import make_pipeline
@@ -318,6 +317,8 @@ def test_ma_feature_dataset_to_sklearn(ma_feature_dataset):
         expected_sparse=True,
     )
     assert bunch.data is ds.features
+    assert bunch.ids is ds.ids
+    assert bunch.provenance is ds.provenance
     assert bunch.map_columns == ds.map_columns
     assert bunch.descriptor_columns == ds.descriptor_columns
 
@@ -341,59 +342,31 @@ def test_ma_feature_dataset_make_preprocessor(ma_feature_dataset):
     np.testing.assert_array_equal(transformed[:, 1], ds._descriptor_features.ravel())
 
 
-@pytest.mark.parametrize(
-    ("test_size", "splitter_type"),
-    [(None, GroupKFold), (1, GroupShuffleSplit)],
-)
-def test_ma_feature_dataset_make_cv_binds_groups(
-    ma_feature_dataset,
-    test_size,
-    splitter_type,
-):
-    """CV splitters always use the dataset's study groups."""
-    ds = ma_feature_dataset.copy()
-    ds.study_ids = np.repeat(["study_0", "study_1", "study_2"], 2)
-    cv = ds.make_cv(
-        n_splits=3,
-        test_size=test_size,
-        random_state=RANDOM_SEED,
-    )
-
-    assert isinstance(cv._inner, splitter_type)
-    assert cv.get_n_splits(ds.features, ds.target) == 3
-
-    bogus_groups = np.asarray([f"row_{idx}" for idx in range(len(ds.ids))])
-    for train_idx, test_idx in cv.split(ds.features, ds.target, groups=bogus_groups):
-        assert set(ds.study_ids[train_idx]).isdisjoint(ds.study_ids[test_idx])
-
-
-def test_ma_feature_dataset_make_cv_rejects_too_many_folds(ma_feature_dataset):
-    """Grouped K-fold requires at least one study group per fold."""
-    ds = ma_feature_dataset.copy()
-    ds.study_ids = np.repeat(["study_0", "study_1", "study_2"], 2)
-
-    with pytest.raises(ValueError, match="n_splits cannot exceed"):
-        ds.make_cv(n_splits=4)
-
-
 def test_ma_feature_dataset_sklearn_pipeline(ma_feature_dataset):
-    """The preprocessor and bound CV work in sklearn model selection."""
+    """The preprocessor and grouped CV work in sklearn model selection."""
     ds = ma_feature_dataset.copy()
     ds.study_ids = np.repeat(["study_0", "study_1", "study_2"], 2)
     pipeline = make_pipeline(
         ds.make_preprocessor(n_components=1, random_state=RANDOM_SEED),
         Ridge(),
     )
+    cv = GroupKFold(n_splits=3)
 
-    scores = cross_val_score(pipeline, ds.features, ds.target, cv=ds.make_cv(n_splits=3))
+    scores = cross_val_score(
+        pipeline,
+        ds.features,
+        ds.target,
+        cv=cv,
+        groups=ds.study_ids,
+    )
     assert scores.shape == (3,)
 
     search = GridSearchCV(
         pipeline,
         {"ridge__alpha": [0.5, 1.0]},
-        cv=ds.make_cv(n_splits=3),
+        cv=cv,
     )
-    search.fit(ds.features, ds.target)
+    search.fit(ds.features, ds.target, groups=ds.study_ids)
     assert search.best_estimator_ is not None
 
 
@@ -466,7 +439,7 @@ def test_ma_feature_extractor_selected_values_alignment(ml_studyset):
 
 
 def test_ma_feature_extractor_transform(ml_studyset):
-    """Transform a Studyset into one aligned MAFeatureDataset."""
+    """Transform a Studyset into one aligned sklearn Bunch."""
     studyset = ml_studyset
     descriptor_name = "motor_label"
     target_name = "target_score"
@@ -482,20 +455,23 @@ def test_ma_feature_extractor_transform(ml_studyset):
         target_field={"source": "annotations", "field": target_name},
     )
 
-    dataset = extractor.transform(studyset)
+    bunch = extractor.transform(
+        studyset,
+        map_reducer="truncated_svd",
+        map_reducer_params={"n_components": 2, "random_state": RANDOM_SEED},
+    )
 
-    assert isinstance(dataset, MAFeatureDataset)
-    assert len(dataset.ids) == len(studyset.ids)
-    assert sparse.issparse(dataset._map_features)
-    assert dataset._masker is studyset.masker
-    assert descriptor_name in dataset.feature_names
-    assert target_name not in dataset.feature_names
+    assert len(bunch.ids) == len(studyset.ids)
+    assert sparse.issparse(bunch.data[:, bunch.map_columns])
+    assert descriptor_name in bunch.feature_names
+    assert target_name not in bunch.feature_names
+    assert isinstance(bunch.preprocessor, ColumnTransformer)
+    assert not hasattr(bunch.preprocessor, "transformers_")
 
-    bunch = dataset.to_sklearn()
     assert_sklearn_bunch_valid(
         bunch,
         expected_feature_rows=len(studyset.ids),
-        expected_feature_names=dataset.feature_names,
+        expected_feature_names=bunch.feature_names,
         expected_columns_by_group={descriptor_name: descriptor_by_study},
         expected_target_by_group=target_by_study,
         expected_sparse=True,
@@ -525,20 +501,21 @@ def test_ma_feature_extractor_handles_missing_coordinates(
         missing_coordinates=missing_coordinates,
     )
 
-    dataset = extractor.transform(studyset)
+    bunch = extractor.transform(studyset)
 
     expected_ids = studyset.ids if keep_missing else studyset.ids[studyset.ids != missing_id]
-    np.testing.assert_array_equal(dataset.ids, expected_ids)
+    np.testing.assert_array_equal(bunch.ids, expected_ids)
     expected_annotations = studyset.annotations_df.set_index("id").loc[expected_ids]
     np.testing.assert_array_equal(
-        dataset._descriptor_features.ravel(), expected_annotations["motor_label"]
+        _get_data_column(bunch.data, bunch.feature_names.index("motor_label")),
+        expected_annotations["motor_label"],
     )
-    np.testing.assert_array_equal(dataset.target, expected_annotations["target_score"])
-    assert dataset.provenance["dropped_ids"] == ([] if keep_missing else [missing_id])
+    np.testing.assert_array_equal(bunch.target, expected_annotations["target_score"])
+    assert bunch.provenance["dropped_ids"] == ([] if keep_missing else [missing_id])
 
     if keep_missing:
-        missing_row = np.flatnonzero(dataset.ids == missing_id)[0]
-        assert dataset._map_features[missing_row].nnz == 0
+        missing_row = np.flatnonzero(bunch.ids == missing_id)[0]
+        assert bunch.data[missing_row, bunch.map_columns].nnz == 0
 
 
 def test_ma_feature_extractor_rejects_invalid_missing_coordinates(ml_studyset):
@@ -570,18 +547,22 @@ def test_ma_feature_extractor_reuses_map_cache(ml_studyset):
             data = self.scale * np.arange(n_rows * 3, dtype=float).reshape(n_rows, 3)
             return sparse.csr_matrix(data)
 
+    class NegatingCountingKernel(CountingKernel):
+        def transform(self, studyset, return_type="sparse"):
+            return -super().transform(studyset, return_type=return_type)
+
     studyset = ml_studyset.copy()
     kernel = CountingKernel()
     extractor = MAFeatureExtractor(kernel_transformer=kernel)
 
-    first_dataset = extractor.transform(studyset)
-    second_dataset = extractor.transform(studyset)
+    first_bunch = extractor.transform(studyset)
+    second_bunch = extractor.transform(studyset)
 
     assert kernel.n_calls == 1
-    assert first_dataset._map_features is not second_dataset._map_features
+    assert first_bunch.data is not second_bunch.data
     np.testing.assert_array_equal(
-        first_dataset._map_features.toarray(),
-        second_dataset._map_features.toarray(),
+        first_bunch.data.toarray(),
+        second_bunch.data.toarray(),
     )
 
     coordinates = studyset.coordinates.copy()
@@ -591,11 +572,20 @@ def test_ma_feature_extractor_reuses_map_cache(ml_studyset):
     assert kernel.n_calls == 2
 
     kernel.scale = 2
-    scaled_dataset = extractor.transform(studyset)
+    scaled_bunch = extractor.transform(studyset)
     assert kernel.n_calls == 3
     np.testing.assert_array_equal(
-        scaled_dataset._map_features.toarray(),
-        2 * second_dataset._map_features.toarray(),
+        scaled_bunch.data.toarray(),
+        2 * second_bunch.data.toarray(),
+    )
+
+    negating_kernel = NegatingCountingKernel(scale=2)
+    extractor.kernel_transformer = negating_kernel
+    negated_bunch = extractor.transform(studyset)
+    assert negating_kernel.n_calls == 1
+    np.testing.assert_array_equal(
+        negated_bunch.data.toarray(),
+        -scaled_bunch.data.toarray(),
     )
 
 
