@@ -23,7 +23,14 @@ from nimare.meta.cbmr.predictor import experiment_totals
 
 
 def _intensity_pieces(model):
-    """Return the fitted intensity and moderator weights all closed forms share."""
+    """Return the fitted intensity and per-experiment weights all closed forms share.
+
+    ``weight`` is ``E_i exp(m_i)``, and it comes from
+    :meth:`~nimare.meta.cbmr.predictor.CBMRPredictor.experiment_weights` rather than being
+    rebuilt here. Rebuilding it was how this function could disagree with the likelihood: the
+    exposure would have been present in the fit and absent from every closed form, while the
+    autodiff fallback stayed correct and so agreed with neither.
+    """
     predictor = model.predictor
     flat = model.coefficients.detach().cpu().numpy()
     n_spatial, n_global = model.n_spatial, model.n_global
@@ -32,12 +39,9 @@ def _intensity_pieces(model):
     loadings = predictor.patterns.loadings
     intensity = np.exp((loadings @ spatial) @ predictor.bases.T)  # exp(S), (n_patterns, n_voxels)
 
-    if n_global:
-        global_block = predictor.global_block
-        weight = np.exp(global_block @ flat[n_spatial:])  # exp(m_i)
-    else:
-        global_block = None
-        weight = np.ones(predictor.patterns.assignment.size)
+    global_coef = model.unpack(model.coefficients.detach())[1]
+    weight = predictor.experiment_weights(global_coef).detach().cpu().numpy()
+    global_block = predictor.global_block if n_global else None
     return predictor, loadings, intensity, global_block, weight
 
 

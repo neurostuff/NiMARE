@@ -66,16 +66,18 @@ def _validate(meat, correction):
 
 
 def _fitted_pieces(model, foci):
-    """Return residuals, fitted means, and the design's structural blocks."""
+    """Return residuals, fitted means, and the design's structural blocks.
+
+    The mean carries the exposure; the score contributions below do not gain a term for it,
+    because an exposure owns no coefficient and so contributes no score of its own. What it does
+    change is every *other* term's residual, which is why it belongs here rather than being
+    applied by each caller.
+    """
     predictor = model.predictor
     counts = _as_dense_array(foci)
 
     spatial_coef, global_coef = model.unpack(model.coefficients.detach())
-    log_intensity = predictor.log_intensity_by_pattern(spatial_coef).detach().cpu().numpy()
-    moderator = predictor.moderator_effect(global_coef).detach().cpu().numpy()
-
-    eta = log_intensity[predictor.patterns.assignment] + moderator[:, None]
-    mean = np.exp(eta)
+    mean = predictor.fitted_mean(spatial_coef, global_coef).detach().cpu().numpy()
     return counts - mean, mean, predictor.spatial_block, predictor.global_block, predictor.bases
 
 
@@ -209,11 +211,45 @@ def sandwich_covariance(model, foci, meat="cluster", correction="hc1", ridge=0.0
             )
         meat_matrix = meat_matrix * (n_observations / (n_observations - n_parameters))
 
+    _warn_if_meat_is_rank_deficient(model, meat_matrix, meat_kind)
+
     bread = model.information_matrix(foci)
     if ridge:
         bread = bread + ridge * np.eye(n_parameters)
     bread_inverse = np.linalg.inv(bread)
     return bread_inverse @ meat_matrix @ bread_inverse
+
+
+def _warn_if_meat_is_rank_deficient(model, meat_matrix, meat_kind):
+    """Warn when the meat is singular, which an exposure makes it by construction.
+
+    Under ``exposure()`` each experiment's fitted total equals its observed total, so its
+    residuals sum to zero and its cluster score is orthogonal to the constant direction of its
+    spatial pattern -- one null direction per pattern. That is the conditional model behaving
+    correctly rather than a fault: the variance of a quantity that has been conditioned on really
+    is zero. It is still worth saying out loud, because the resulting standard errors are much
+    smaller than the unconditional ones and the difference is a change of estimand, not a gain in
+    precision.
+    """
+    eigenvalues = np.linalg.eigvalsh(meat_matrix)
+    largest = eigenvalues.max()
+    if largest <= 0:
+        return
+    deficient = int(np.sum(eigenvalues <= largest * 1e-10))
+    if not deficient:
+        return
+    detail = (
+        " This is expected under exposure(): conditioning on each experiment's total leaves its "
+        "residuals summing to zero, so each spatial pattern loses one direction. Standard errors "
+        "are for the conditional model -- where foci fall, given how many -- and are not "
+        "comparable with those from a fit without the exposure."
+        if model.predictor.has_exposure
+        else " Standard errors along those directions rest on the bread alone."
+    )
+    LGR.warning(
+        f"The {meat_kind} meat matrix is rank deficient in {deficient} of "
+        f"{meat_matrix.shape[0]} directions.{detail}"
+    )
 
 
 # The information matrix's spatial block is ``sum_p L_pc L_pc' (B^T Sigma_p B)``, so the factor

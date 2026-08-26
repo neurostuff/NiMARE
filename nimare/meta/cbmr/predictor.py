@@ -20,8 +20,15 @@ coefficients, and every experiment sharing that row shares a log-intensity map. 
 
     log L = sum_p [ Y_p . s_p  +  sum_{i in p} y_i. m_i  -  (sum_v exp(s_p)) T_p ]
 
-with ``Y_p`` the voxel marginal within pattern ``p`` and ``T_p = sum_{i in p} exp(m_i)``. Cost is
+with ``Y_p`` the voxel marginal within pattern ``p`` and ``T_p = sum_{i in p} E_i exp(m_i)``,
+where ``E_i`` is the experiment's exposure and is ``1`` unless the design says otherwise. Cost is
 O(n_patterns x n_voxels).
+
+An exposure enters only through ``T_p``, on the natural scale. Written that way its own
+contribution to the likelihood, ``sum_i y_i. log E_i``, is free of every parameter and so is never
+formed -- which is what makes ``E_i = 0`` exactly representable rather than a logarithm of zero to
+be managed. The cost is that log-likelihoods are comparable only between models sharing an
+exposure; see the note in :mod:`nimare.meta.cbmr.terms`.
 
 That single expression covers the whole range. Group-only spatial terms give one pattern per
 group, recovering the fast path exactly. A spatial covariate gives every experiment its own
@@ -157,7 +164,14 @@ class CBMRPredictor:
             raise ValueError("bases must be two-dimensional (n_voxels x n_bases).")
 
         spatial_blocks = [block.block for block in bound_design.blocks if block.term.spatial]
-        global_blocks = [block.block for block in bound_design.blocks if not block.term.spatial]
+        # An exposure term is non-spatial but owns no coefficient, so it must not reach
+        # ``global_block``: everything downstream reads that as the fitted moderator columns and
+        # would quietly hand the exposure a coefficient, which is the one thing it must not have.
+        global_blocks = [
+            block.block
+            for block in bound_design.blocks
+            if not block.term.spatial and not block.term.exposure
+        ]
         if not spatial_blocks:
             raise ValueError(
                 "A CBMR design needs at least one spatial term; the spatial intensity is the "
@@ -166,6 +180,7 @@ class CBMRPredictor:
 
         self.spatial_block = np.hstack(spatial_blocks)
         self.global_block = np.hstack(global_blocks) if global_blocks else None
+        self.exposure = bound_design.exposure
         self.patterns = SpatialPatterns(self.spatial_block)
 
     @property
@@ -192,6 +207,26 @@ class CBMRPredictor:
     def n_parameters(self):
         """Total number of coefficients."""
         return self.n_spatial_columns * self.n_bases + self.n_global_columns
+
+    @property
+    def has_exposure(self):
+        """Whether the design carries an exposure."""
+        return self.exposure is not None
+
+    def experiment_weights(self, global_coef, dtype=None):
+        """Return ``E_i exp(m_i)``, the multiplier on each experiment's spatial intensity.
+
+        The single place this product is formed. Every consumer -- the likelihood, the closed-form
+        information, the sandwich, the overdispersed marginals -- needs exactly it, and an earlier
+        arrangement in which two of them built it separately is how a change to one could be
+        silently missing from the other.
+        """
+        weights = torch.exp(self.moderator_effect(global_coef))
+        if dtype is not None:
+            weights = weights.to(dtype)
+        if self.exposure is None:
+            return weights
+        return _as_tensor(self.exposure, weights.dtype) * weights
 
     def log_intensity_by_pattern(self, spatial_coef):
         """Return the spatial log-intensity for each distinct pattern.
@@ -233,18 +268,35 @@ class CBMRPredictor:
 
         Materializes the array this module exists to avoid, so it is for diagnostics and tests
         rather than for fitting. :func:`poisson_log_likelihood` never calls it.
+
+        Carries the coefficients only. The exposure multiplies the *mean* rather than adding to
+        the predictor, so it is applied by :meth:`fitted_mean` instead; adding ``log(E_i)`` here
+        would reintroduce the logarithm of zero the multiplicative form exists to avoid.
         """
         by_pattern = self.log_intensity_by_pattern(spatial_coef)
         assignment = torch.as_tensor(self.patterns.assignment, dtype=torch.long)
         eta = by_pattern[assignment]
         return eta + self.moderator_effect(global_coef)[:, None]
 
+    def fitted_mean(self, spatial_coef, global_coef=None):
+        """Return the fitted (experiment x voxel) mean, exposure included.
+
+        ``mu_iv = E_i exp(m_i) exp(s_{p(i)}(v))``. Materializes the full array, so it is for the
+        sandwich and for diagnostics rather than for fitting.
+        """
+        by_pattern = torch.exp(self.log_intensity_by_pattern(spatial_coef))
+        assignment = torch.as_tensor(self.patterns.assignment, dtype=torch.long)
+        weights = self.experiment_weights(global_coef, by_pattern.dtype)
+        return by_pattern[assignment] * weights[:, None]
+
 
 def poisson_log_likelihood(predictor, spatial_coef, global_coef, foci):
     """Poisson log-likelihood of ``foci`` under ``predictor``, up to a constant.
 
     Drops the ``-sum(log(y!))`` term, which does not depend on the parameters, matching what
-    CBMR has always reported.
+    CBMR has always reported, and with an exposure also drops ``sum_i y_i. log E_i``, which does
+    not either. The second makes log-likelihoods incomparable across designs with different
+    exposures; see the module docstring.
 
     Evaluated on marginals rather than on the (experiment x voxel) array; see the module
     docstring. Exact, not an approximation -- verified against the elementwise form.
@@ -278,11 +330,11 @@ def poisson_log_likelihood(predictor, spatial_coef, global_coef, foci):
     # sum_i y_i. m_i
     moderator_term = torch.dot(foci_per_experiment, moderator)
 
-    # sum_p (sum_v exp(s_p)) T_p, with T_p the summed moderator effect within pattern p
+    # sum_p (sum_v exp(s_p)) T_p, with T_p the summed weight within pattern p
     intensity_sum = torch.exp(log_intensity).sum(dim=1)
     assignment = torch.as_tensor(predictor.patterns.assignment, dtype=torch.long)
     moderator_sum = torch.zeros(
         predictor.patterns.n_patterns, dtype=spatial_coef.dtype
-    ).index_add_(0, assignment, torch.exp(moderator))
+    ).index_add_(0, assignment, predictor.experiment_weights(global_coef, spatial_coef.dtype))
 
     return spatial_term + moderator_term - torch.dot(intensity_sum, moderator_sum)
