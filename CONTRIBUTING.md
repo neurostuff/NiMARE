@@ -105,8 +105,8 @@ NiMARE is organized as a domain-focused Python package under `nimare/`.
     `nimare/estimator.py`, `nimare/results.py`, `nimare/utils.py`, and `nimare/transforms.py`.
 - Analysis methods are grouped by domain. For example, `nimare/meta/` contains meta-analytic
     estimators, with coordinate-based methods in `nimare/meta/cbma/`, image-based methods in
-    `nimare/meta/ibma.py`, kernels in `nimare/meta/kernel.py`, CBMR in `nimare/meta/cbmr.py`, and
-    CBMR torch models in `nimare/meta/models.py`.
+    `nimare/meta/ibma.py`, kernels in `nimare/meta/kernel.py`, CBMR in `nimare/meta/cbmr/`, and
+    CBMR torch models in `nimare/meta/cbmr/model.py`.
 - Public APIs are exposed from package `__init__.py` files. Optional CBMR exports are lazily
     imported in `nimare/meta/__init__.py` so importing `nimare.meta` does not require torch.
 - Tests live in `nimare/tests/` and are grouped by feature or module, for example
@@ -117,7 +117,7 @@ NiMARE is organized as a domain-focused Python package under `nimare/`.
 
 - Modules and files use lowercase, descriptive names with underscores when needed
     (`cbmr.py`, `models.py`, `test_meta_cbmr.py`).
-- Classes use `PascalCase` (`CBMREstimator`, `CBMRInference`, `CBMRResult`).
+- Classes use `PascalCase` (`CBMR`, `CBMRModel`, `CBMRResult`).
 - Functions, methods, variables, and pytest fixtures use `snake_case`.
 - Private helpers and implementation details are prefixed with an underscore
     (`_validate_incidence_threshold`, `_build_group_foci_matrices`).
