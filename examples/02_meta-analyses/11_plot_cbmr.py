@@ -12,16 +12,28 @@ written as a formula, in which every term states its own *spatial resolution*::
 
     CBMR("~ s(diagnosis) + sample_size")
 
-``s()`` crosses a term with the spatial spline basis, so its coefficient becomes a map. Without
-it, the term gets a single coefficient that applies to the whole brain. That distinction is the
-entire difference between what CBMR used to call global and voxelwise moderator effects, and
-because each term declares it separately, a model can freely mix the two.
+Use ``s(term)`` when the effect of ``term`` should vary across the brain. ``s(diagnosis)`` gives
+each diagnosis level a smooth spatial map, ``s(diagnosis:drug_status)`` gives each level
+combination its own map, and ``s(standardized_avg_age)`` estimates an age-effect map. Without
+``s()``, a term gets a single coefficient that applies to the whole brain. Because each term
+declares this separately, a model can freely mix scalar and spatial effects.
 
 The parameter cost follows from the same mark. At ``spline_spacing=10`` on the 2 mm brain mask
 the basis has 457 columns, so every ``s()`` term costs 457 coefficients per column -- as much as
 another group's entire baseline map. That is worth knowing before adding one, which is why the
 budget is logged at fit time and available from
 :meth:`~nimare.meta.cbmr.CBMRResult.describe_terms`.
+
+For more background on model formulas, `Patsy's formula documentation`_ introduces the notation
+used by Python model libraries, and `R's formula documentation`_ gives the broader
+Wilkinson-style conventions. NiMARE's ``s()`` term is inspired by mgcv's `smooth-term syntax`_.
+
+.. _Patsy's formula documentation:
+    https://patsy.readthedocs.io/en/latest/formulas.html
+.. _R's formula documentation:
+    https://stat.ethz.ch/R-manual/R-devel/library/stats/html/formula.html
+.. _smooth-term syntax:
+    https://stat.ethz.ch/R-manual/R-devel/library/mgcv/html/s.html
 """
 
 import matplotlib.pyplot as plt
@@ -269,7 +281,7 @@ for axis, result, map_name, title in (
         cmap="RdBu_r",
         symmetric_cbar=True,
         title=title,
-        threshold=None,
+        threshold=1e-6,
         vmax=2,
     )
 
@@ -290,6 +302,7 @@ mixed_results.plot_moderator_effects(
     moderator="standardized_avg_age",
     unit_change=1.0,
     group="schizophrenia-Yes",
+    threshold=1e-6,
     cut_coords=[0, 0, -8],
     draw_cross=False,
     cmap="RdBu_r",
@@ -302,12 +315,18 @@ mixed_results.plot_moderator_effects(
 # ``s(diagnosis:drug_status)`` gives every cell a free map. The additive alternative says the two
 # factors shift one underlying map independently -- a stronger claim, and far cheaper.
 #
-# Writing it as ``s(diagnosis) + s(drug_status)`` does not work, and CBMR refuses it: each
+# Use ``sz(term)`` when a factor should contribute a spatial deviation from a shared baseline,
+# rather than a fully separate spatial map for every combination of levels. Writing the additive
+# model as ``s(diagnosis) + s(drug_status)`` does not work, and CBMR refuses it: each
 # cell-means spatial factor's columns sum to the constant, so their difference is exactly zero
 # and the design is rank deficient by a whole basis width whatever the data. ``sz()`` is the
 # identified form, after mgcv's ``bs="sz"`` basis. It constrains each factor's coefficients to
 # sum to zero across levels, so they measure deviations from a shared baseline instead of
-# competing with it.
+# competing with it. See mgcv's `sum-to-zero smooth interaction documentation`_ for the
+# statistical motivation behind this parameterization.
+#
+# .. _sum-to-zero smooth interaction documentation:
+#    https://stat.ethz.ch/R-manual/R-devel/library/mgcv/html/smooth.construct.sz.smooth.spec.html
 
 additive_results = CBMR("~ sz(diagnosis) + sz(drug_status)", **FIT_KWARGS).fit(dataset=studyset)
 
@@ -353,33 +372,3 @@ overdispersed = CBMR(
 ).fit(dataset=studyset)
 
 print(overdispersed.tables["overdispersion"])
-
-###############################################################################
-# Migrating from the old interface
-# -----------------------------------------------------------------------------
-# The five moderator arguments and the ``moderator_effect`` switch are replaced by the formula:
-#
-# .. list-table::
-#    :header-rows: 1
-#
-#    * - Old
-#      - New
-#    * - ``CBMREstimator()``
-#      - ``CBMR("~ 1")``
-#    * - ``group_categories=["a", "b"]``
-#      - ``CBMR("~ s(a:b)")``
-#    * - ``moderators=["n"], moderator_effect="global"``
-#      - ``CBMR("~ s(a:b) + n")``
-#    * - ``moderators=["n"], moderator_effect="voxelwise"``
-#      - ``CBMR("~ s(a:b) + s(a:b:n)")``
-#    * - ``moderator_effect="mixed", global_moderators=["n"], voxelwise_moderators=["age"]``
-#      - ``CBMR("~ s(a:b) + n + s(age)")``
-#    * - ``model=models.NegativeBinomialEstimator``
-#      - ``distribution="negativebinomial"``
-#    * - ``infer(group_contrasts=[[[1, -1, 0, 0]]])``
-#      - ``result.test("a1-b1 = a1-b2")``, or ``result.test(term=..., method="pairwise")``
-#
-# Note the fourth row. The old voxelwise mode keyed moderator coefficients by group, so it was
-# always the group-crossed form ``s(a:b:n)``. A moderator map *pooled* across groups, ``s(n)``,
-# had no representation at all; nor did a group-specific scalar slope, ``a:n``, since global
-# moderator coefficients were shared by construction. Both are now writable.
