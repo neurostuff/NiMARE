@@ -58,12 +58,31 @@ class CBMRModel(torch.nn.Module):
             torch.nn.Parameter(nuisance.detach().to(device)) if nuisance is not None else None
         )
         self._iterations = 0
+        self._foci = None
+        self._candidate_foci = None
         self._covariance_cache = None
 
     @property
     def n_parameters(self):
         """Number of regression coefficients, excluding nuisance parameters."""
         return self.n_spatial + self.n_global
+
+    @property
+    def foci(self):
+        """Foci counts the model was fit to."""
+        return self._require_foci()
+
+    @staticmethod
+    def _copy_foci(foci):
+        """Return a copy of foci that external mutation cannot change in place."""
+        copied = foci.copy() if hasattr(foci, "copy") else np.array(foci, copy=True)
+        if hasattr(copied, "setflags"):
+            copied.setflags(write=False)
+        for array_name in ("data", "indices", "indptr", "row", "col"):
+            array = getattr(copied, array_name, None)
+            if hasattr(array, "setflags"):
+                array.setflags(write=False)
+        return copied
 
     def unpack(self, flat):
         """Split a flat coefficient vector into spatial and non-spatial parts."""
@@ -73,8 +92,21 @@ class CBMRModel(torch.nn.Module):
         global_coef = flat[self.n_spatial :] if self.n_global else None
         return spatial, global_coef
 
-    def log_likelihood(self, foci, flat=None, nuisance=None):
+    def _require_foci(self):
+        """Return the fitted foci matrix, or fail if the model has not been fit."""
+        if self._foci is None:
+            raise ValueError(
+                "CBMRModel must be fit before foci-dependent quantities are available."
+            )
+        return self._foci
+
+    def _active_foci(self):
+        """Return the candidate foci during fitting, otherwise the fitted foci."""
+        return self._candidate_foci if self._candidate_foci is not None else self._require_foci()
+
+    def log_likelihood(self, flat=None, nuisance=None):
         """Return the log-likelihood at ``flat``, defaulting to the current coefficients."""
+        foci = self._active_foci()
         flat = self.coefficients if flat is None else flat
         raw_nuisance = self.nuisance if nuisance is None else nuisance
         spatial, global_coef = self.unpack(flat)
@@ -85,9 +117,9 @@ class CBMRModel(torch.nn.Module):
             self.predictor, spatial, global_coef, transformed, foci
         )
 
-    def forward(self, foci):
+    def forward(self):
         """Return the negative log-likelihood, the quantity being minimized."""
-        return -self.log_likelihood(foci)
+        return -self.log_likelihood()
 
     def fit(self, foci, n_iter=1000, lr=1.0, tol=1e-8):
         """Fit by L-BFGS.
@@ -103,9 +135,11 @@ class CBMRModel(torch.nn.Module):
         tol : :obj:`float`, optional
             Stopping tolerance on the change in the objective. Default is 1e-8.
         """
-        # Any refit invalidates a cached covariance, which is a function of the converged fit.
-        self._covariance_cache = None
         parameters = [self.coefficients] + ([] if self.nuisance is None else [self.nuisance])
+        previous_values = [parameter.detach().clone() for parameter in parameters]
+        previous_iterations = self._iterations
+        candidate_foci = self._copy_foci(foci)
+        self._candidate_foci = candidate_foci
         optimizer = torch.optim.LBFGS(
             params=parameters,
             lr=lr,
@@ -114,26 +148,40 @@ class CBMRModel(torch.nn.Module):
             line_search_fn="strong_wolfe",
         )
 
-        def closure():
-            optimizer.zero_grad()
-            loss = self(foci)
-            loss.backward()
-            return loss
+        try:
 
-        optimizer.step(closure)
-        state = optimizer.state.get(parameters[0], {})
-        self._iterations = int(state.get("n_iter", 0))
+            def closure():
+                optimizer.zero_grad()
+                loss = self()
+                loss.backward()
+                return loss
 
-        loss = self(foci)
-        if not torch.isfinite(loss):
-            raise ValueError(
-                f"The {self.distribution.name} log-likelihood became "
-                f"{float(loss.detach())} during optimization. Try a smaller lr, a coarser "
-                "spline_spacing, or the Poisson distribution."
-            )
+            optimizer.step(closure)
+            state = optimizer.state.get(parameters[0], {})
+            iterations = int(state.get("n_iter", 0))
+
+            loss = self()
+            if not torch.isfinite(loss):
+                raise ValueError(
+                    f"The {self.distribution.name} log-likelihood became "
+                    f"{float(loss.detach())} during optimization. Try a smaller lr, a coarser "
+                    "spline_spacing, or the Poisson distribution."
+                )
+        except Exception:
+            with torch.no_grad():
+                for parameter, previous_value in zip(parameters, previous_values):
+                    parameter.copy_(previous_value)
+            self._iterations = previous_iterations
+            raise
+        finally:
+            self._candidate_foci = None
+
+        self._foci = candidate_foci
+        self._covariance_cache = None
+        self._iterations = iterations
         return self
 
-    def information_matrix(self, foci):
+    def information_matrix(self):
         """Return the observed Fisher information over the flat coefficient vector.
 
         One matrix over all coefficients, so the cross blocks between terms are present rather
@@ -142,9 +190,10 @@ class CBMRModel(torch.nn.Module):
         Computed in closed form for every distribution with automatic differentiation as the
         fallback for distributions added without a derivation.
         """
+        self._require_foci()
         closed_form = closed_form_information(self.distribution)
         if closed_form is not None:
-            return closed_form(self, foci)
+            return closed_form(self)
 
         # No derivation, so differentiate. jacfwd(jacrev(.)) builds an intermediate of shape
         # (n_parameters, n_patterns, n_voxels), which is tens of GB on a many-group model.
@@ -152,18 +201,16 @@ class CBMRModel(torch.nn.Module):
         nuisance = None if self.nuisance is None else self.nuisance.detach().clone()
 
         def negative_log_likelihood(vector):
-            return -self.log_likelihood(foci, flat=vector, nuisance=nuisance)
+            return -self.log_likelihood(flat=vector, nuisance=nuisance)
 
         hessian = torch.func.hessian(negative_log_likelihood)(flat)
         return hessian.reshape(self.n_parameters, self.n_parameters).detach().cpu().numpy()
 
-    def covariance(self, foci, cov_type="fisher", meat="cluster", correction="hc1", ridge=0.0):
+    def covariance(self, cov_type="fisher", meat="cluster", correction="hc1", ridge=0.0):
         """Return the coefficient covariance.
 
         Parameters
         ----------
-        foci : array_like
-            Foci counts the model was fitted to.
         cov_type : {"fisher", "sandwich"}, optional
             ``"fisher"`` inverts the observed information, which is correct only if the Poisson
             mean-variance relationship holds. ``"sandwich"`` replaces the model-based variance
@@ -176,40 +223,37 @@ class CBMRModel(torch.nn.Module):
 
         Notes
         -----
-        The result is cached. It is a function of the converged coefficients and the foci, so
-        every hypothesis tested against one fit asks for the same matrix, and
+        The result is cached. It is a function of the converged coefficients and the fitted foci,
+        so every hypothesis tested against one fit asks for the same matrix, and
         :meth:`~nimare.meta.cbmr.results.CBMRResult.test` would otherwise rebuild it each time.
-        The cache holds one matrix, is keyed on the foci and the covariance options, and is
-        cleared by :meth:`fit`. At many groups that matrix is large; could be well over 500mb,
-        but it is shared by every result derived from the fit, since ``CBMRResult.copy`` passes
-        the estimator by reference.
+        The cache holds one matrix, is keyed on the covariance options, and is cleared by
+        :meth:`fit`. At many groups that matrix is large; could be well over 500mb, but it is
+        shared by every result derived from the fit, since ``CBMRResult.copy`` passes the
+        estimator by reference.
         """
         from nimare.meta.cbmr.covariance import fisher_covariance, sandwich_covariance
 
+        self._require_foci()
         key = (cov_type, meat, correction, ridge)
         cached = self._covariance_cache
-        if cached is not None and cached[0] is foci and cached[1] == key:
-            return cached[2]
+        if cached is not None and cached[0] == key:
+            return cached[1]
 
         if cov_type == "sandwich":
-            value = sandwich_covariance(self, foci, meat=meat, correction=correction, ridge=ridge)
+            value = sandwich_covariance(self, meat=meat, correction=correction, ridge=ridge)
         elif cov_type == "fisher":
-            value = fisher_covariance(self, self.information_matrix(foci))
+            value = fisher_covariance(self, self.information_matrix())
         else:
             raise ValueError(f"cov_type must be 'fisher' or 'sandwich', got {cov_type!r}.")
 
-        # ``foci`` is held in the key, not just its id: ids are recycled, and a freed matrix
-        # could otherwise let a later call match a cache entry that is not its own.
-        self._covariance_cache = (foci, key, value)
+        self._covariance_cache = (key, value)
         return value
 
-    def standard_errors(self, foci, **covariance_kwargs):
+    def standard_errors(self, **covariance_kwargs):
         """Return coefficient standard errors, keyed by term.
 
         Parameters
         ----------
-        foci : array_like
-            Foci counts the model was fitted to.
         **covariance_kwargs
             Passed to :meth:`covariance`, so ``cov_type="sandwich"`` gives robust errors.
 
@@ -219,7 +263,7 @@ class CBMRModel(torch.nn.Module):
             Maps the rendered term to an array of standard errors, shaped
             ``(n_columns, n_bases)`` for a spatial term and ``(n_columns,)`` otherwise.
         """
-        covariance = self.covariance(foci, **covariance_kwargs)
+        covariance = self.covariance(**covariance_kwargs)
         errors = np.sqrt(np.diag(covariance))
         result = {}
         for name, term_slice in self.predictor.design.parameter_slices(

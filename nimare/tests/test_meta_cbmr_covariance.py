@@ -116,7 +116,7 @@ def test_iid_hc0_matches_statsmodels(fitted):
     checked against :func:`_reference_sandwich` instead.
     """
     model, foci, _ = fitted
-    actual = sandwich_covariance(model, foci, meat="iid", correction="hc0")
+    actual = sandwich_covariance(model, meat="iid", correction="hc0")
     expected = _statsmodels(model, foci, cov_type="HC0").cov_params()
 
     np.testing.assert_allclose(actual, np.asarray(expected), rtol=1e-5, atol=1e-9)
@@ -145,7 +145,7 @@ def test_iid_sandwich_matches_the_direct_computation(fitted, correction):
     are built from the design's Kronecker structure rather than from its rows.
     """
     model, foci, _ = fitted
-    actual = sandwich_covariance(model, foci, meat="iid", correction=correction)
+    actual = sandwich_covariance(model, meat="iid", correction=correction)
     expected = _reference_sandwich(model, foci, correction)
 
     np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-10)
@@ -161,7 +161,7 @@ def test_cluster_sandwich_matches_statsmodels(fitted):
     n_experiments = model.predictor.patterns.n_experiments
     groups = np.repeat(np.arange(n_experiments), N_VOXELS)
 
-    actual = sandwich_covariance(model, foci, meat="cluster", correction="hc0")
+    actual = sandwich_covariance(model, meat="cluster", correction="hc0")
     expected = _statsmodels(
         model, foci, cov_type="cluster", cov_kwds={"groups": groups, "use_correction": False}
     ).cov_params()
@@ -176,8 +176,8 @@ def test_cluster_standard_errors_exceed_model_based_ones(fitted):
     uncertainty. If this ever reversed, the estimator would be giving false comfort.
     """
     model, foci, _ = fitted
-    model_based = np.sqrt(np.diag(model.covariance(foci)))
-    clustered = np.sqrt(np.diag(sandwich_covariance(model, foci, meat="cluster")))
+    model_based = np.sqrt(np.diag(model.covariance()))
+    clustered = np.sqrt(np.diag(sandwich_covariance(model, meat="cluster")))
 
     assert np.median(clustered / model_based) > 1.0
 
@@ -186,7 +186,7 @@ def test_sandwich_is_symmetric_and_positive_semidefinite(fitted):
     """A covariance matrix has to look like one."""
     model, foci, _ = fitted
     for meat, correction in (("cluster", "hc1"), ("iid", "hc3")):
-        covariance = sandwich_covariance(model, foci, meat=meat, correction=correction)
+        covariance = sandwich_covariance(model, meat=meat, correction=correction)
         np.testing.assert_allclose(covariance, covariance.T, rtol=1e-10)
         eigenvalues = np.linalg.eigvalsh(covariance)
         assert eigenvalues.min() > -1e-8 * max(1.0, eigenvalues.max())
@@ -195,8 +195,8 @@ def test_sandwich_is_symmetric_and_positive_semidefinite(fitted):
 def test_ridge_regularizes_the_bread(fitted):
     """A ridge should shrink the covariance, for designs whose information is near-singular."""
     model, foci, _ = fitted
-    plain = sandwich_covariance(model, foci, meat="cluster", correction="hc0")
-    ridged = sandwich_covariance(model, foci, meat="cluster", correction="hc0", ridge=1.0)
+    plain = sandwich_covariance(model, meat="cluster", correction="hc0")
+    ridged = sandwich_covariance(model, meat="cluster", correction="hc0", ridge=1.0)
 
     assert np.trace(ridged) < np.trace(plain)
 
@@ -205,16 +205,16 @@ def test_cluster_with_hc3_is_refused(fitted):
     """Per-observation leverage has no meaning once observations are summed into clusters."""
     model, foci, _ = fitted
     with pytest.raises(CovarianceError, match="no counterpart"):
-        sandwich_covariance(model, foci, meat="cluster", correction="hc3")
+        sandwich_covariance(model, meat="cluster", correction="hc3")
 
 
 def test_invalid_options_are_reported(fitted):
     """Typos in the options should name the alternatives."""
     model, foci, _ = fitted
     with pytest.raises(CovarianceError, match="meat must be one of"):
-        sandwich_covariance(model, foci, meat="sandwich")
+        sandwich_covariance(model, meat="sandwich")
     with pytest.raises(CovarianceError, match="correction must be one of"):
-        sandwich_covariance(model, foci, correction="hc9")
+        sandwich_covariance(model, correction="hc9")
 
 
 def test_hc1_refuses_an_overparameterized_design(fitted):
@@ -226,8 +226,8 @@ def test_hc1_refuses_an_overparameterized_design(fitted):
         bind(Design.from_formula("~ s(dx) + n"), annotations),
         wide / wide.sum(axis=1, keepdims=True),
     )
-    wide_model = CBMRModel(predictor, Poisson())
     wide_foci = np.asarray(foci)
+    wide_model = CBMRModel(predictor, Poisson()).fit(wide_foci, n_iter=1)
 
     with pytest.raises(CovarianceError, match="hc1 scales by"):
-        sandwich_covariance(wide_model, wide_foci, meat="cluster", correction="hc1")
+        sandwich_covariance(wide_model, meat="cluster", correction="hc1")

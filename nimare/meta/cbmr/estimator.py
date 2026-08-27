@@ -430,10 +430,10 @@ class CBMR(_CBMRInputs):
         self.cbmr_model = CBMRModel(self.predictor, self.distribution, device=self.device)
         self.cbmr_model.fit(foci, n_iter=self.n_iter, lr=self.lr, tol=self.tol)
 
-        maps, tables = self._summarize(foci)
+        maps, tables = self._summarize()
         return maps, tables, self._description_text()
 
-    def _summarize(self, foci):
+    def _summarize(self):
         """Turn the fitted model into result maps and tables.
 
         Reported per *term*, not per spatial pattern. A design with a continuously varying
@@ -446,7 +446,7 @@ class CBMR(_CBMRInputs):
         maps, tables = {}, {}
         bases = self.predictor.bases
         coefficients = self.cbmr_model.fitted_coefficients()
-        errors = self.cbmr_model.standard_errors(foci)
+        errors = self.cbmr_model.standard_errors()
 
         for block in self.bound_design.blocks:
             if block.term.exposure:

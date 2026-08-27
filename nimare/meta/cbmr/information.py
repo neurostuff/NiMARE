@@ -130,15 +130,13 @@ def poisson_information_matrix(model):
     return _finalize(information, n_spatial, n_global)
 
 
-def negative_binomial_information_matrix(model, foci):
+def negative_binomial_information_matrix(model):
     """Return the observed Fisher information of a fitted NegativeBinomial model.
 
     Parameters
     ----------
     model : :class:`~nimare.meta.cbmr.model.CBMRModel`
         Fitted model.
-    foci : array_like or :obj:`scipy.sparse.spmatrix`
-        Foci counts. Used, unlike the Poisson case, but only through the pattern marginals.
 
     Returns
     -------
@@ -159,7 +157,7 @@ def negative_binomial_information_matrix(model, foci):
     n_voxels, bases = predictor.n_voxels, predictor.bases
     assignment = predictor.patterns.assignment
     overdispersion = _nuisance(model)
-    marginal = predictor.patterns.marginal_by_pattern(foci)
+    marginal = predictor.patterns.marginal_by_pattern(model.foci)
 
     information = np.zeros((n_spatial + n_global, n_spatial + n_global))
     for p, row in enumerate(loadings):
@@ -219,15 +217,13 @@ def negative_binomial_information_matrix(model, foci):
     return _finalize(information, n_spatial, n_global)
 
 
-def clustered_negative_binomial_information_matrix(model, foci):
+def clustered_negative_binomial_information_matrix(model):
     """Return the observed Fisher information of a fitted ClusteredNegativeBinomial model.
 
     Parameters
     ----------
     model : :class:`~nimare.meta.cbmr.model.CBMRModel`
         Fitted model.
-    foci : array_like or :obj:`scipy.sparse.spmatrix`
-        Foci counts. Only the per-experiment totals matter here.
 
     Returns
     -------
@@ -245,7 +241,7 @@ def clustered_negative_binomial_information_matrix(model, foci):
     bases = predictor.bases
     assignment = predictor.patterns.assignment
     overdispersion = _nuisance(model)
-    per_experiment = experiment_totals(foci)
+    per_experiment = experiment_totals(model.foci)
 
     information = np.zeros((n_spatial + n_global, n_spatial + n_global))
     for p, row in enumerate(loadings):
@@ -279,8 +275,8 @@ def clustered_negative_binomial_information_matrix(model, foci):
     return _finalize(information, n_spatial, n_global)
 
 
-def _poisson_entry(model, foci):
-    """Adapt the Poisson signature to the ``(model, foci)`` the dispatch uses."""
+def _poisson_entry(model):
+    """Adapt the Poisson signature to the dispatch used by closed-form information."""
     return poisson_information_matrix(model)
 
 

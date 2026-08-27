@@ -465,9 +465,7 @@ def test_the_public_fit_optimizes_the_statsmodels_likelihood(studyset, formula):
     expected = statsmodels_api.GLM(
         foci.reshape(-1), design, family=statsmodels_api.families.Poisson()
     ).loglike(coefficients)
-    actual = float(estimator.cbmr_model.log_likelihood(foci).detach()) - float(
-        gammaln(foci + 1).sum()
-    )
+    actual = float(estimator.cbmr_model.log_likelihood().detach()) - float(gammaln(foci + 1).sum())
 
     np.testing.assert_allclose(actual, expected, rtol=1e-9)
 
@@ -486,7 +484,6 @@ def test_the_public_fit_reports_the_design_derived_standard_errors(studyset):
     estimator = CBMR("~ 1 + diagnosis", **FIT_KWARGS)
     estimator.fit(dataset=studyset)
 
-    foci = np.asarray(estimator.inputs_["foci"].todense(), dtype=float)
     design = _materialize_public_design(estimator)
     coefficients = estimator.cbmr_model.coefficients.detach().numpy()
 
@@ -494,7 +491,7 @@ def test_the_public_fit_reports_the_design_derived_standard_errors(studyset):
     information = design.T @ (design * mean[:, None])
     expected = np.sqrt(np.diag(np.linalg.inv(information)))
 
-    actual = np.sqrt(np.diag(estimator.cbmr_model.covariance(foci)))
+    actual = np.sqrt(np.diag(estimator.cbmr_model.covariance()))
     np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-10)
 
 

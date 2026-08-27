@@ -277,10 +277,9 @@ def test_the_closed_form_information_sees_the_exposure(data, formula):
     form while the autodiff fallback stayed correct.
     """
     model = _model(formula, data)
-    foci = data[2]
 
     def negative_log_likelihood(vector):
-        return -model.log_likelihood(foci, flat=vector, nuisance=None)
+        return -model.log_likelihood(flat=vector, nuisance=None)
 
     reference = (
         torch.func.hessian(negative_log_likelihood)(model.coefficients.detach().clone())
@@ -289,7 +288,7 @@ def test_the_closed_form_information_sees_the_exposure(data, formula):
         .cpu()
         .numpy()
     )
-    analytic = closed_form_information(model.distribution)(model, foci)
+    analytic = closed_form_information(model.distribution)(model)
     assert np.abs(analytic - reference).max() < 1e-8 * np.abs(reference).max()
 
 
