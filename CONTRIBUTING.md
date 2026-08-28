@@ -142,9 +142,7 @@ NiMARE is organized as a domain-focused Python package under `nimare/`.
 
 ### Imports and dependency organization
 
-Imports are grouped as standard library, third-party packages, then local `nimare` imports. isort is
-configured with the Black profile. Prefer importing concrete helpers from the package module that
-owns them, and keep optional imports guarded when importing them eagerly would make unrelated APIs
+Imports are grouped as standard library, third-party packages, then local `nimare` imports. Prefer importing concrete helpers from the package module that owns them, and keep optional imports guarded when importing them eagerly would make unrelated APIs
 unavailable.
 
 Dependencies are declared in `setup.cfg`, with optional extras such as `cbmr` for torch-backed CBMR
@@ -158,12 +156,9 @@ functionality. Test, documentation, and optional runtime dependencies are separa
     runtime messages.
 - Do not silently ignore invalid inputs. Either raise an error or log a warning consistent with the
     rest of the module.
-- Configuration lives in `pyproject.toml` and `setup.cfg`. Black and flake8 use a 99-character line
-    length, and docstrings follow the NumPy convention.
+- Configuration lives in `pyproject.toml` and `setup.cfg`.
 - Tests use pytest fixtures, `pytest.mark.parametrize`, deterministic random states, and explicit
     skip conditions for optional dependencies such as torch and CUDA.
-- Numerical tests use `numpy.testing` or `pandas.testing` helpers instead of hand-written array or
-    DataFrame comparisons.
 
 ### Formatting and documentation style
 
