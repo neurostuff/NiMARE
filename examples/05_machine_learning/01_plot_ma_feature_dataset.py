@@ -5,7 +5,7 @@
 Masked activation feature dataset workflow
 ==========================================
 
-Convert a Studyset with complete coordinates into a scikit-learn-compatible
+Convert a Studyset into a scikit-learn-compatible
 dataset. This example uses modeled activation maps to classify n-back and
 flanker task analyses from a parquet-backed Studyset.
 """
@@ -26,10 +26,9 @@ RANDOM_SEED = 13
 ###############################################################################
 # Load the n-back/flanker Studyset
 # -----------------------------------------------------------------------------
-# The bundled parquet Studyset contains coordinate analyses selected from
-# NeuroStore for n-back and flanker tasks. The Studyset constructor reads the
-# ``studyset.json`` manifest and keeps the table-backed views available without
-# materializing nested Study and Analysis objects.
+# The bundled Studyset contains coordinate-based analyses of n-back and flanker
+# tasks from NeuroStore. Its parquet tables are loaded from the accompanying
+# ``studyset.json`` manifest.
 studyset_dir = Path(get_resource_path()) / "nback_vs_flanker_studyset_2026-07"
 studyset = Studyset(studyset_dir)
 
@@ -40,8 +39,9 @@ print(studyset.metadata["comparison_task"].value_counts().to_string())
 ###############################################################################
 # Configure feature extraction
 # -----------------------------------------------------------------------------
-# ``comparison_task`` is a metadata field with labels ``"n-back"`` and
-# ``"flanker"``.
+# The extractor applies an MKDA kernel to the coordinates from each analysis to
+# generate voxelwise MA features. The ``comparison_task`` metadata field
+# provides the ``"n-back"`` and ``"flanker"`` target labels.
 extractor = MAFeatureExtractor(
     kernel_transformer=MKDAKernel(r=10),
     target_field={"source": "metadata", "field": "comparison_task"},
@@ -50,8 +50,9 @@ extractor = MAFeatureExtractor(
 ###############################################################################
 # Export the scikit-learn dataset and classify task labels
 # -----------------------------------------------------------------------------
-# The masked activation maps are sparse and high-dimensional, so we reduce only
-# the map features with truncated SVD inside each cross-validation fold.
+# The voxelwise MA features are sparse and high-dimensional. Truncated SVD is
+# fit within each cross-validation fold. GroupKFold keeps analyses from the
+# same study together, preventing study-level leakage between partitions.
 bunch = extractor.transform(
     studyset,
     map_reducer="truncated_svd",

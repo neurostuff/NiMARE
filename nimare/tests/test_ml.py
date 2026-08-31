@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+import nibabel as nib
 import numpy as np
 import pytest
+from nilearn.maskers import NiftiLabelsMasker, NiftiMapsMasker
 from scipy import sparse
+from sklearn.base import clone
 from sklearn.compose import ColumnTransformer
 from sklearn.decomposition import TruncatedSVD
 from sklearn.linear_model import Ridge
@@ -111,6 +114,10 @@ def ma_feature_dataset(ml_studyset):
         [map_features, sparse.csr_matrix(descriptor_features)],
         format="csr",
     )
+    mask_data = np.zeros((2, 2, 2), dtype=np.uint8)
+    mask_data[0, 0, 0] = 1
+    mask_data[1, 1, 1] = 1
+    feature_masker = get_masker(nib.Nifti1Image(mask_data, np.eye(4)))
 
     return MAFeatureDataset(
         features=features,
@@ -121,7 +128,7 @@ def ma_feature_dataset(ml_studyset):
         provenance={"source": {"ids": list(ids)}},
         map_features=map_features,
         descriptor_features=descriptor_features,
-        masker=studyset.masker,
+        masker=feature_masker,
     )
 
 
@@ -412,6 +419,16 @@ def test_ma_feature_extractor_initialization():
     assert extractor.memory_level == 1
     assert extractor._map_cache == {}
 
+    unsupported_parameters = [
+        {"descriptor_transformers": {}},
+        {"target_transformer": object()},
+        {"memory": "cache"},
+        {"memory_level": 2},
+    ]
+    for kwargs in unsupported_parameters:
+        with pytest.raises(NotImplementedError, match="not yet implemented"):
+            MAFeatureExtractor(kernel_transformer=kernel_transformer, **kwargs)
+
 
 def test_ma_feature_extractor_selected_values_alignment(ml_studyset):
     """Selected Studyset field values remain aligned to analysis IDs."""
@@ -603,3 +620,74 @@ def test_make_map_reducer_truncated_svd():
 
     with pytest.raises(NotImplementedError):
         make_map_reducer("variance_threshold")
+
+
+def test_make_map_reducer_nifti_maps_masker(ma_feature_dataset):
+    """Aggregate sparse map features with a continuous maps atlas."""
+    source_masker = ma_feature_dataset._masker
+    features = ma_feature_dataset._map_features
+    maps_data = np.zeros((*source_masker.mask_img_.shape, 2), dtype=float)
+    maps_data[0, 0, 0, 0] = 1.0
+    maps_data[1, 1, 1, 0] = 0.25
+    maps_data[0, 0, 0, 1] = 0.25
+    maps_data[1, 1, 1, 1] = 1.0
+    maps_img = nib.Nifti1Image(maps_data, source_masker.mask_img_.affine)
+    atlas_masker = NiftiMapsMasker(
+        maps_img=maps_img,
+        standardize=False,
+        resampling_target="data",
+        reports=False,
+    )
+    reducer = make_map_reducer(
+        "atlas_aggregation",
+        masker=source_masker,
+        atlas_masker=atlas_masker,
+        batch_size=2,
+    )
+
+    expected_masker = clone(atlas_masker)
+    expected_masker.set_params(mask_img=source_masker.mask_img)
+    expected_masker.fit(source_masker.mask_img)
+    expected = expected_masker.transform(source_masker.inverse_transform(features.toarray()))
+    transformed = clone(reducer).fit_transform(features)
+
+    assert reducer.source_mask_img is source_masker.mask_img
+    assert transformed.shape == (len(ma_feature_dataset.ids), 2)
+    np.testing.assert_allclose(transformed, expected)
+
+
+def test_make_map_reducer_nifti_labels_masker(ma_feature_dataset):
+    """Aggregate sparse map features with a discrete labels atlas."""
+    source_masker = ma_feature_dataset._masker
+    features = ma_feature_dataset._map_features
+    labels_data = np.ones(source_masker.mask_img_.shape, dtype=np.int16)
+    labels_img = nib.Nifti1Image(labels_data, source_masker.mask_img_.affine)
+    atlas_masker = NiftiLabelsMasker(
+        labels_img=labels_img,
+        standardize=False,
+        resampling_target="data",
+        reports=False,
+    )
+    reducer = make_map_reducer(
+        "atlas_aggregation",
+        masker=source_masker,
+        atlas_masker=atlas_masker,
+        batch_size=2,
+    )
+
+    expected = features.toarray().mean(axis=1, keepdims=True)
+    transformed = reducer.fit_transform(features)
+
+    assert transformed.shape == (len(ma_feature_dataset.ids), 1)
+    np.testing.assert_allclose(transformed, expected)
+
+
+def test_make_map_reducer_atlas_requires_source_masker(ma_feature_dataset):
+    """Atlas aggregation requires the voxel-ordering source masker."""
+    atlas_masker = NiftiLabelsMasker(
+        labels_img=ma_feature_dataset._masker.mask_img_,
+        reports=False,
+    )
+
+    with pytest.raises(ValueError, match="source masker"):
+        make_map_reducer("atlas_aggregation", atlas_masker=atlas_masker)

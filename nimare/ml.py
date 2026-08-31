@@ -9,10 +9,13 @@ from typing import Any
 
 import numpy as np
 from joblib import hash as joblib_hash
+from nilearn.masking import unmask
 from scipy import sparse
+from sklearn.base import BaseEstimator, TransformerMixin, clone
 from sklearn.compose import ColumnTransformer
 from sklearn.decomposition import TruncatedSVD
 from sklearn.utils import Bunch
+from sklearn.utils.validation import check_is_fitted
 
 from nimare.base import NiMAREBase
 
@@ -236,21 +239,23 @@ class MAFeatureExtractor(NiMAREBase):
     descriptor_transformers : dict, optional
         Optional mapping from descriptor field selectors to explicit
         transformers or vectorizers for non-numeric descriptor fields, by
-        default None.
+        default None. Non-None values are not yet implemented.
     target_field : dict, optional
         Optional field selector for y, by default None.
     target_transformer : object, optional
         Optional transformer or label extractor for free-text or multi-label
-        targets, by default None.
+        targets, by default None. Non-None values are not yet implemented.
     missing_coordinates : {'include', 'drop'}, default='drop'
         Whether analyses without coordinates are retained as all-zero sparse
         rows or removed before row construction.
     cache_maps : bool, default=True
         Whether to cache generated MA map features across repeated calls.
     memory : object, optional
-        joblib Memory-like object for caching, by default None.
+        Reserved for future joblib caching support, by default None. Non-None
+        values are not yet implemented.
     memory_level : int, default=1
-        Caching verbosity, by default 1.
+        Reserved for future joblib caching support. Values other than 1 are
+        not yet implemented.
     """
 
     def __init__(
@@ -265,6 +270,15 @@ class MAFeatureExtractor(NiMAREBase):
         memory: Any | None = None,
         memory_level: int = 1,
     ):
+        if descriptor_transformers is not None:
+            raise NotImplementedError("descriptor_transformers is not yet implemented.")
+        if target_transformer is not None:
+            raise NotImplementedError("target_transformer is not yet implemented.")
+        if memory is not None:
+            raise NotImplementedError("memory is not yet implemented.")
+        if memory_level != 1:
+            raise NotImplementedError("memory_level is not yet implemented.")
+
         self.kernel_transformer = kernel_transformer
         self.descriptor_fields = descriptor_fields
         self.descriptor_transformers = descriptor_transformers
@@ -434,12 +448,43 @@ class MAFeatureExtractor(NiMAREBase):
         return bunch
 
 
+class _NilearnMaskerReducer(TransformerMixin, BaseEstimator):
+    """Reduce masked voxel features with a volumetric Nilearn masker."""
+
+    def __init__(self, source_mask_img, atlas_masker, batch_size=10):
+        self.source_mask_img = source_mask_img
+        self.atlas_masker = atlas_masker
+        self.batch_size = batch_size
+
+    def fit(self, X, y=None):
+        """Fit a cloned atlas masker in the source-mask space."""
+        atlas_masker = clone(self.atlas_masker)
+        atlas_masker.set_params(mask_img=self.source_mask_img)
+        self.atlas_masker_ = atlas_masker.fit(self.source_mask_img)
+        self.n_features_in_ = X.shape[1]
+        return self
+
+    def transform(self, X):
+        """Convert masked features to images and extract atlas features."""
+        check_is_fitted(self, ["atlas_masker_"])
+        reduced_batches = []
+        for start in range(0, X.shape[0], self.batch_size):
+            batch = X[start : start + self.batch_size]
+            if sparse.issparse(batch):
+                batch = batch.toarray()
+
+            images = unmask(batch, self.source_mask_img)
+            reduced_batches.append(self.atlas_masker_.transform(images))
+
+        return np.vstack(reduced_batches)
+
+
 def make_map_reducer(method: str, masker: Any | None = None, **kwargs: Any):
     """Construct a map-feature reducer.
 
     Parameters
     ----------
-    method : str
+    method : {"atlas_aggregation", "truncated_svd"}
         Reduction workflow name.
     masker : object, optional
         Masker defining the map-feature voxel ordering, by default None.
@@ -453,10 +498,18 @@ def make_map_reducer(method: str, masker: Any | None = None, **kwargs: Any):
 
     Raises
     ------
+    ValueError
+        Raised when atlas aggregation is requested without a source masker.
     NotImplementedError
-        Raised for reducer methods outside the current truncated-SVD path.
+        Raised for unsupported reducer methods.
     """
     if method == "truncated_svd":
         return TruncatedSVD(**kwargs)
+
+    if method == "atlas_aggregation":
+        if masker is None:
+            raise ValueError("A source masker is required for atlas aggregation.")
+
+        return _NilearnMaskerReducer(source_mask_img=masker.mask_img, **kwargs)
 
     raise NotImplementedError(f"Map reducer '{method}' is not yet implemented.")
