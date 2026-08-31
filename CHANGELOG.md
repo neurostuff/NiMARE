@@ -2,7 +2,124 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.20.0...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.21.0...HEAD)
+
+## [0.21.0](https://github.com/neurostuff/NiMARE/compare/0.20.0...0.21.0) - 2026-08-31
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### Backwards-incompatible changes
+
+1. NIMADS rewritten to be completely immutable #1103
+   Classes gone: Annotation, Condition, Note. Annotations are now AnnotationSet/LabelBlock; Study/Analysis/Point/Image survive as read-only accessors.
+   Mutation API gone: the setters (studyset.coordinates = df, .images =, .metadata =, .texts =, .annotations_df =), plus set_annotations_df, touch, materialize, is_materialized, is_execution_ready, from_table_cache, *NotifyDict. The store is immutable; growth is copy-on-write via with_points, with_images, with_metadata, with_annotation, with_texts, keep_images.
+   Studyset.get(dict*) removed — the requirements/blocks mechanism (resolve(), coordinate_block(), image_block(), label_block()) replaces it. This is what Estimator.*collect_inputs now uses.
+   Signature changes: get_metadata, get_images, get_texts, get_annotations all dropped their analyses= argument; get_images gained policy=; get_studies_by_label/get_analyses_by_label/filter_annotations gained annotation=.
+   New methods: from_parquet, to_parquet, harmonized(target), select_analyses, select_points, with_context, sample_sizes, analyses, **len**.
+   Studyset.slice now raises ValueError on any id it can't resolve instead of silently returning a subset (#1113). Previously a typo, a foreign id, and "no data" were indistinguishable.
+   Estimators now expose studyset* and blocks_ alongside inputs_; _required_inputs moved from Estimator up to NiMAREBase.
+   
+2. Dataset is now formally deprecated for 1.0.0 (#1107)
+   Constructing a Dataset or passing one to any algorithm emits a FutureWarning. Silence with:
+   
+
+```
+warnings.filterwarnings("ignore", message=".*nimare.dataset.Dataset is deprecated")
+
+```
+Also: `Dataset.get_studies_by_label` documents its real default of `label_threshold=0.001` (previously documented as 0.5).
+
+3. CBMR rewritten around a formula interface, write like in R or statsmodels.
+
+CBMREstimator and CBMRInference are removed; the class is now CBMR.
+group_categories, moderators, global_moderators, voxelwise_moderators, moderator_effect and penalty are all replaced by a single formula: CBMR("~ s(diagnosis) + sample_size"). s() marks a term as spatially varying.
+model=models.PoissonEstimator → distribution="poisson" | "negativebinomial" | "clusterednegativebinomial".
+nimare.meta.models no longer exists.
+New defaults: n_iter 2000→1000, tol 1e-9→1e-8, new incidence_threshold=0.001 that drops low-incidence voxels from the mask.
+Mixed coordinate spaces are now rejected with a message pointing at Studyset.harmonized().
+4. IBMA constructor changes — aggressive_mask default flipped True → False. Meta-analyses now run in liberal-mask bags by default, so voxel coverage (and results) change for anyone relying on the old default.
+Stouffers(normalize_contrast_weights=...) removed — raises TypeError directing you to groupby.
+PermutedOLS gained an explicit constructor (two_sided, use_sample_size, n_jobs, random_state=42).
+The PyMARE-backed estimators now share a *PyMARERegressionEstimator base.
+An IBMA fewer than two analyses now raises instead of returning all-NaN maps (#1112). CBMA is unaffected.
+Input images with no usable voxel are dropped (e.g. an all-zero upload) rather than silently emptying the mask or padding inputs*["id"] (#1114).
+p_to_z on an unsigned p map now warns that the result contributes positive evidence only (#1108).
+5. Corrector kwargs are validated
+Corrector.**init** now drops None-valued kwargs and transform validates the rest against the correction method that will receive them, raising TypeError for anything unaccepted (#1109). Correction methods take nlogp instead of p — correct_fdr_indep(p) → correct_fdr_indep(nlogp), which matters for anyone subclassing Corrector.
+
+6. Discrete decoder correction default (#1122)
+   BrainMapDecoder / brainmap_decode / NeurosynthDecoder: default changed "fdr_bh" → "bh". "fdr_bh" was never a recognised value, so it silently meant no correction; results will now differ. Unrecognised values raise ValueError instead of falling through to uncorrected.
+   
+7. Diagnostics voxel_thresh → target_threshold
+   voxel_thresh is a deprecated alias that warns; passing both raises.
+   
+8. Dependency bumps
+   pymare>=0.0.8 → >=0.0.12, matplotlib>=3.6.0 → >=3.8.0.
+   
+
+### New features
+
+IBMA dependence handling (#1090, #1110, #1115) — a groupby parameter on every IBMA estimator identifying images that share participants (defaults to study_id; False opts out). Adds weight_scheme ('rescale'/'individual'/'collapse') and rho, cluster-robust CR2 standard errors with Satterthwaite dof, per-pair null-correlation estimation, and graceful dropping of a group whose images exactly cancel.
+
+small_sample_correction (#1094) — forwards PyMARE's Knapp–Hartung adjustment through the regression estimators.
+
+Log-space p-values (#1099) — new public transforms.z_to_nlogp, nlogp_to_z, t_to_nlogp, chi2_to_nlogp and stats.nlogp_bonferroni, stats.nlogp_fdr. Correction, MKDA chi-square, ALE and the discrete decoders now carry statistics in log space, so p-values no longer bottom out at float32's 1e-45 or at np.spacing(1).
+
+Spatial CBMR estimator + tutorial (#1080), closed-form observed information (#1121), per-experiment exposure() conditioning (#1123), foci stored on CBMRModel (#1126), plus CBMR benchmarks in [benchmarks/benchmark_cbmr.py](vscode-webview://00b8c1ffl2c01l4hks1jjf5u8o2jrul45eennee4ol6tggttondb/benchmarks/benchmark_cbmr.py).
+
+ImageTransformer gains d, g, g_var targets (#1092) — standardized effect sizes were previously reachable only inside FixedEffectsHedges.
+
+PermutedOLS emits an uncorrected p map (#1091), so FDRCorrector and Bonferroni work on it.
+
+MetaResult.save(..., with_inputs=False) and a new public results.DroppedInput (#1111) — drops ~29 MB of duplicated input arrays from a 36 MB pickle, raising a clear error if a later operation needs them.
+
+Parquet studyset I/O promoted to the public surface: from_parquet, write_parquet, convert_neurostore_json_to_parquet.
+
+Workflow parameter forwarding fixed — voxel_thresh/cluster_threshold/n_cores are now applied to already-instantiated estimators/correctors/diagnostics that left the parameter at its default, and filtered out for components that don't accept them. Previously they were silently ignored.
+
+Better errors: fetch_* raises naming the query when nothing matches (#1085); Jackknife/FocusCounter fall back to the base z-stat image when handed a cluster-corrected target (#1087).
+
+Fix: off-by-one indexing in the GCLDA log-likelihood, with LAPACK matrix inversion replaced by a closed-form 3×3 inverse (#1098).
+
+#### What's Changed
+
+* Add CBMR benchmarks by @yifan0330 in https://github.com/neurostuff/NiMARE/pull/1083
+* [FIX] asv env by @jdkent in https://github.com/neurostuff/NiMARE/pull/1088
+* [FIX] table generation with cluster corrected images in Jackknife and focuscounter by @jdkent in https://github.com/neurostuff/NiMARE/pull/1087
+* [ENH] ibma image dependence by @jdkent in https://github.com/neurostuff/NiMARE/pull/1090
+* [ENH] Report an uncorrected p map from PermutedOLS by @jdkent in https://github.com/neurostuff/NiMARE/pull/1091
+* [ENH] Add d, g and g_var targets to ImageTransformer by @jdkent in https://github.com/neurostuff/NiMARE/pull/1092
+* [ENH] Forward PyMARE's small_sample_correction by @jdkent in https://github.com/neurostuff/NiMARE/pull/1094
+* [PERF] reduce test runtime by @jdkent in https://github.com/neurostuff/NiMARE/pull/1100
+* [FIX] Keep assigned Studyset tables through projection rebuilds by @jdkent in https://github.com/neurostuff/NiMARE/pull/1102
+* Correct off-by-one indexing in GCLDA log-likelihood calculation and replace LAPACK matrix inversion by @tsalo in https://github.com/neurostuff/NiMARE/pull/1098
+* [ENH/FIX] switch to using lossless nlogp logp to convert statistical values ove… by @jdkent in https://github.com/neurostuff/NiMARE/pull/1099
+* Document the label_threshold parameter in get_studies_by_label by @lobennett in https://github.com/neurostuff/NiMARE/pull/1084
+* [ENH] columnar studyset by @jdkent in https://github.com/neurostuff/NiMARE/pull/1103
+* Update pymare version to 0.0.12 in setup.cfg by @jdkent in https://github.com/neurostuff/NiMARE/pull/1106
+* Dep/dataset removal 1.0.0 by @jdkent in https://github.com/neurostuff/NiMARE/pull/1107
+* [FIX] warn unsigned p to z by @jdkent in https://github.com/neurostuff/NiMARE/pull/1108
+* Let MetaResult.save leave the input images out of the file by @jdkent in https://github.com/neurostuff/NiMARE/pull/1111
+* Drop an input image that has no usable voxel by @jdkent in https://github.com/neurostuff/NiMARE/pull/1114
+* [FIX] Drop a dependence group that cancels instead of failing the run by @jdkent in https://github.com/neurostuff/NiMARE/pull/1110
+* Raise on an id that Studyset.slice cannot resolve by @jdkent in https://github.com/neurostuff/NiMARE/pull/1113
+* [FIX] Drop None-valued Corrector kwargs and validate the rest against the m… by @jdkent in https://github.com/neurostuff/NiMARE/pull/1109
+* Estimate the null correlation per pair of images by @jdkent in https://github.com/neurostuff/NiMARE/pull/1115
+* Refuse an image-based meta-analysis of fewer than two analyses by @jdkent in https://github.com/neurostuff/NiMARE/pull/1112
+* Raise an informative error when a fetch query matches no files by @lobennett in https://github.com/neurostuff/NiMARE/pull/1085
+* Add spatial CBMR estimator and tutorial by @yifan0330 in https://github.com/neurostuff/NiMARE/pull/1080
+* Compute the CBMR observed information in closed form by @jdkent in https://github.com/neurostuff/NiMARE/pull/1121
+* Fix discrete decoder correction defaults by @const7 in https://github.com/neurostuff/NiMARE/pull/1122
+* Condition CBMR on a per-experiment exposure by @jdkent in https://github.com/neurostuff/NiMARE/pull/1123
+* Store foci on CBMRModel by @yifan0330 in https://github.com/neurostuff/NiMARE/pull/1126
+* Move development conventions into contributing guide by @yifan0330 in https://github.com/neurostuff/NiMARE/pull/1125
+* Update CBMR tutorial formula guidance by @yifan0330 in https://github.com/neurostuff/NiMARE/pull/1124
+
+#### New Contributors
+
+* @lobennett made their first contribution in https://github.com/neurostuff/NiMARE/pull/1084
+* @const7 made their first contribution in https://github.com/neurostuff/NiMARE/pull/1122
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.20.0...0.21.0
 
 ## [0.20.0](https://github.com/neurostuff/NiMARE/compare/0.19.0...0.20.0) - 2026-05-14
 
