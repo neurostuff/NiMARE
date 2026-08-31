@@ -65,7 +65,7 @@ def _validate(meat, correction):
     return meat, correction
 
 
-def _fitted_pieces(model, foci):
+def _fitted_pieces(model):
     """Return residuals, fitted means, and the design's structural blocks.
 
     The mean carries the exposure; the score contributions below do not gain a term for it,
@@ -74,21 +74,21 @@ def _fitted_pieces(model, foci):
     applied by each caller.
     """
     predictor = model.predictor
-    counts = _as_dense_array(foci)
+    counts = _as_dense_array(model.foci)
 
     spatial_coef, global_coef = model.unpack(model.coefficients.detach())
     mean = predictor.fitted_mean(spatial_coef, global_coef).detach().cpu().numpy()
     return counts - mean, mean, predictor.spatial_block, predictor.global_block, predictor.bases
 
 
-def _leverage(model, foci, spatial_block, global_block, bases, mean):
+def _leverage(model, spatial_block, global_block, bases, mean):
     """Return the leverage of every experiment-voxel cell.
 
     ``h_iv = x_iv' A^-1 x_iv`` scaled by the cell's mean, as for any GLM hat value. Assembled
     from the design's structure rather than from the rows themselves, which would be an
     (experiment x voxel) x parameters array.
     """
-    bread_inverse = np.linalg.inv(model.information_matrix(foci))
+    bread_inverse = np.linalg.inv(model.information_matrix())
     n_spatial = model.n_spatial
     n_columns, n_bases = spatial_block.shape[1], bases.shape[1]
 
@@ -159,15 +159,13 @@ def _scores_by_cluster(residuals, spatial_block, global_block, bases, n_spatial)
     return np.hstack([spatial_scores, global_scores])
 
 
-def sandwich_covariance(model, foci, meat="cluster", correction="hc1", ridge=0.0):
+def sandwich_covariance(model, meat="cluster", correction="hc1", ridge=0.0):
     """Return the sandwich covariance of the regression coefficients.
 
     Parameters
     ----------
     model : :class:`~nimare.meta.cbmr.model.CBMRModel`
         Fitted model.
-    foci : array_like
-        Foci counts the model was fitted to.
     meat : {"cluster", "iid"}, optional
         How score contributions are grouped. Default is ``"cluster"``, which allows arbitrary
         correlation within an experiment.
@@ -183,12 +181,12 @@ def sandwich_covariance(model, foci, meat="cluster", correction="hc1", ridge=0.0
         Covariance matrix over the flat coefficient vector, in the design's parameter layout.
     """
     meat_kind, correction = _validate(meat, correction)
-    residuals, mean, spatial_block, global_block, bases = _fitted_pieces(model, foci)
+    residuals, mean, spatial_block, global_block, bases = _fitted_pieces(model)
     n_spatial = model.n_spatial
     n_parameters = model.n_parameters
 
     if correction == "hc3":
-        leverage = _leverage(model, foci, spatial_block, global_block, bases, mean)
+        leverage = _leverage(model, spatial_block, global_block, bases, mean)
         # Clip below one: a leverage at or above one would divide by zero, which happens when a
         # cell is fitted exactly and carries no information about anything else.
         residuals = residuals / np.clip(1.0 - leverage, 1e-6, None)
@@ -213,7 +211,7 @@ def sandwich_covariance(model, foci, meat="cluster", correction="hc1", ridge=0.0
 
     _warn_if_meat_is_rank_deficient(model, meat_matrix, meat_kind)
 
-    bread = model.information_matrix(foci)
+    bread = model.information_matrix()
     if ridge:
         bread = bread + ridge * np.eye(n_parameters)
     bread_inverse = np.linalg.inv(bread)

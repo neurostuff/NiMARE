@@ -103,11 +103,9 @@ class CBMRResult(MetaResult):
                 "This result has no fitted model to test; it was not produced by CBMR.fit."
             )
 
-        foci = estimator.inputs_["foci"]
         computed = evaluate_hypotheses(
             model,
             hypotheses,
-            foci,
             name=name,
             term=term,
             method=method,

@@ -94,13 +94,13 @@ def _fit(formula, distribution, data, n_iter=60):
     return model, foci
 
 
-def _autodiff_information(model, foci):
+def _autodiff_information(model):
     """Return the information matrix by automatic differentiation, as the stock path does."""
     flat = model.coefficients.detach().clone()
     nuisance = None if model.nuisance is None else model.nuisance.detach().clone()
 
     def negative_log_likelihood(vector):
-        return -model.log_likelihood(foci, flat=vector, nuisance=nuisance)
+        return -model.log_likelihood(flat=vector, nuisance=nuisance)
 
     hessian = torch.func.hessian(negative_log_likelihood)(flat)
     return hessian.reshape(model.n_parameters, model.n_parameters).detach().cpu().numpy()
@@ -110,9 +110,9 @@ def _autodiff_information(model, foci):
 @pytest.mark.parametrize("formula", FORMULAS)
 def test_closed_form_matches_autodiff(formula, distribution, data):
     """The closed form is the same matrix automatic differentiation produces."""
-    model, foci = _fit(formula, distribution, data)
-    reference = _autodiff_information(model, foci)
-    analytic = closed_form_information(model.distribution)(model, foci)
+    model, _ = _fit(formula, distribution, data)
+    reference = _autodiff_information(model)
+    analytic = closed_form_information(model.distribution)(model)
     assert np.abs(analytic - reference).max() < 1e-8 * np.abs(reference).max()
 
 
@@ -137,8 +137,8 @@ def test_information_is_symmetric(formula, distribution, data):
     That last step is repeated once per distribution, so a fourth one could omit it and produce
     a matrix that inverts fine but is wrong above the diagonal.
     """
-    model, foci = _fit(formula, distribution, data)
-    information = model.information_matrix(foci)
+    model, _ = _fit(formula, distribution, data)
+    information = model.information_matrix()
     # Exact equality, not a tolerance. Each block is built to be bitwise symmetric, so a
     # tolerance here would hide the case this is guarding against.
     np.testing.assert_array_equal(information, information.T)
@@ -147,8 +147,9 @@ def test_information_is_symmetric(formula, distribution, data):
 def test_poisson_information_ignores_the_foci(data):
     """Under a log link the counts drop out of the Poisson information."""
     model, foci = _fit("~ s(diagnosis)", "poisson", data)
-    one = closed_form_information(model.distribution)(model, foci)
-    two = closed_form_information(model.distribution)(model, foci * 3)
+    one = closed_form_information(model.distribution)(model)
+    model._foci = foci * 3
+    two = closed_form_information(model.distribution)(model)
     np.testing.assert_allclose(one, two, rtol=1e-12)
 
 
@@ -156,8 +157,9 @@ def test_poisson_information_ignores_the_foci(data):
 def test_overdispersed_information_uses_the_foci(distribution, data):
     """The other two must respond, or an implementation ignoring the counts would pass."""
     model, foci = _fit("~ s(diagnosis)", distribution, data)
-    one = closed_form_information(model.distribution)(model, foci)
-    two = closed_form_information(model.distribution)(model, foci * 3)
+    one = closed_form_information(model.distribution)(model)
+    model._foci = foci * 3
+    two = closed_form_information(model.distribution)(model)
     assert np.abs(one - two).max() > 1e-6 * np.abs(one).max()
 
 
@@ -175,15 +177,13 @@ def test_unknown_distribution_falls_back_to_autodiff(data):
     assert closed_form_information(Unlisted()) is None
     model, foci = _fit("~ s(diagnosis)", "poisson", data)
     model.distribution = Unlisted()
-    np.testing.assert_allclose(
-        model.information_matrix(foci), _autodiff_information(model, foci), rtol=1e-9
-    )
+    np.testing.assert_allclose(model.information_matrix(), _autodiff_information(model), rtol=1e-9)
 
 
 def test_information_is_block_diagonal_for_a_cell_means_factor(data):
     """Off-block entries are exactly zero, not merely small."""
-    model, foci = _fit("~ s(diagnosis)", "poisson", data)
-    information = model.information_matrix(foci)
+    model, _ = _fit("~ s(diagnosis)", "poisson", data)
+    information = model.information_matrix()
     blocks = spatial_components(model.predictor.patterns.loadings, model.predictor.n_bases)
     assert len(blocks) == 2
     assert is_block_diagonal(information, blocks)
@@ -195,8 +195,8 @@ def test_information_is_block_diagonal_for_a_cell_means_factor(data):
 
 def test_a_moderator_couples_every_column_but_not_the_spatial_block(data):
     """Moderators end block diagonality but leave the spatial blocks separable."""
-    model, foci = _fit("~ s(diagnosis) + n", "poisson", data)
-    information = model.information_matrix(foci)
+    model, _ = _fit("~ s(diagnosis) + n", "poisson", data)
+    information = model.information_matrix()
     spatial = spatial_components(model.predictor.patterns.loadings, model.predictor.n_bases)
     assert len(spatial) == 2, "the spatial columns must still separate"
     assert is_block_diagonal(information[: model.n_spatial, : model.n_spatial], spatial)
@@ -274,7 +274,7 @@ def test_a_singular_design_explains_itself_on_the_blockwise_route(data):
     model.fit(foci, n_iter=60, tol=1e-8)
 
     with pytest.raises(np.linalg.LinAlgError, match="spline_spacing"):
-        model.covariance(foci)
+        model.covariance()
 
 
 def test_one_norm_condition_number_never_underestimates():
@@ -299,13 +299,13 @@ def test_bordered_route_uses_the_cheap_condition_number(data):
     Pinned by identity with ``bordered_inverse`` rather than by a private attribute, so the
     assertion survives a refactor of how the route is chosen.
     """
-    model, foci = _fit("~ s(diagnosis) + n", "poisson", data)
-    information = model.information_matrix(foci)
+    model, _ = _fit("~ s(diagnosis) + n", "poisson", data)
+    information = model.information_matrix()
     components = spatial_components(model.predictor.patterns.loadings, model.predictor.n_bases)
     assert model.n_global == 1 and len(components) > 1
     assert is_block_diagonal(information[: model.n_spatial, : model.n_spatial], components)
 
-    covariance = model.covariance(foci)
+    covariance = model.covariance()
     expected = bordered_inverse(information, components, model.n_spatial)
     np.testing.assert_array_equal(covariance, expected)
     # The bound that lets this route report the cheaper norm.
@@ -316,36 +316,29 @@ def test_bordered_route_uses_the_cheap_condition_number(data):
 
 def test_covariance_is_cached_across_hypotheses(data):
     """Every hypothesis against one fit asks for the same matrix; it should be built once."""
-    model, foci = _fit("~ s(diagnosis) + n", "poisson", data)
-    first = model.covariance(foci)
-    assert model.covariance(foci) is first, "a repeated call should hit the cache"
+    model, _ = _fit("~ s(diagnosis) + n", "poisson", data)
+    first = model.covariance()
+    assert model.covariance() is first, "a repeated call should hit the cache"
 
     # The options are part of the key, so a different estimator is not served from it.
-    assert model.covariance(foci, cov_type="sandwich", correction="hc0") is not first
-
-    # A different foci must not match, even though the previous one may have been freed.
-    other = foci * 2
-    assert model.covariance(other) is not first
-    np.testing.assert_allclose(
-        model.covariance(other), np.linalg.inv(model.information_matrix(other)), rtol=1e-6
-    )
+    assert model.covariance(cov_type="sandwich", correction="hc0") is not first
 
 
 def test_refitting_clears_the_covariance_cache(data):
     """The covariance describes the converged fit, so refitting must not serve the old one."""
     model, foci = _fit("~ s(diagnosis)", "poisson", data)
-    stale = model.covariance(foci)
+    stale = model.covariance()
     model.fit(foci, n_iter=5, tol=1e-8)
-    fresh = model.covariance(foci)
+    fresh = model.covariance()
     assert fresh is not stale
 
 
 def test_cached_covariance_matches_an_uncached_one(data):
     """The cache must not change any number a contrast produces."""
-    model, foci = _fit("~ s(diagnosis) + n", "poisson", data)
-    cached = model.covariance(foci)
+    model, _ = _fit("~ s(diagnosis) + n", "poisson", data)
+    cached = model.covariance()
     model._covariance_cache = None
-    np.testing.assert_array_equal(model.covariance(foci), cached)
+    np.testing.assert_array_equal(model.covariance(), cached)
 
 
 def test_cholesky_inverse_declines_a_non_positive_definite_matrix():
@@ -357,13 +350,13 @@ def test_cholesky_inverse_declines_a_non_positive_definite_matrix():
 @pytest.mark.parametrize("formula", FORMULAS)
 def test_covariance_matches_a_dense_inverse(formula, distribution, data):
     """Whichever rung the design reaches, the answer is the dense inverse."""
-    model, foci = _fit(formula, distribution, data)
-    information = model.information_matrix(foci)
+    model, _ = _fit(formula, distribution, data)
+    information = model.information_matrix()
     condition = np.linalg.cond(information)
     if condition > 1.0 / np.finfo(float).eps:
         pytest.skip("information matrix is numerically singular; no inverse to compare against")
     reference = np.linalg.inv(information)
-    produced = model.covariance(foci)
+    produced = model.covariance()
     tolerance = max(1e-10, 100 * condition * np.finfo(float).eps)
     assert np.abs(produced - reference).max() / np.abs(reference).max() < tolerance
 
@@ -390,9 +383,8 @@ def test_sparse_and_dense_foci_agree(distribution, data):
 
     model = CBMRModel(predictor, distribution=distribution)
     model.fit(dense, n_iter=20, tol=1e-8)
-    np.testing.assert_allclose(
-        float(model.log_likelihood(dense)), float(model.log_likelihood(sparse)), rtol=1e-12
-    )
-    np.testing.assert_allclose(
-        model.information_matrix(dense), model.information_matrix(sparse), rtol=1e-12
-    )
+    dense_likelihood = float(model.log_likelihood())
+    dense_information = model.information_matrix()
+    model._foci = sparse
+    np.testing.assert_allclose(dense_likelihood, float(model.log_likelihood()), rtol=1e-12)
+    np.testing.assert_allclose(dense_information, model.information_matrix(), rtol=1e-12)

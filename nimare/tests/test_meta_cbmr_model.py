@@ -135,9 +135,61 @@ def test_fitted_coefficients_match_statsmodels(data, formula):
     model = CBMRModel(predictor, Poisson()).fit(foci, n_iter=2000, tol=1e-12)
     expected = _statsmodels_fit(predictor, foci)
 
+    assert model.foci is not foci
+    assert not model.foci.flags.writeable
+    np.testing.assert_array_equal(model.foci, foci)
     np.testing.assert_allclose(
         model.coefficients.detach().numpy(), expected.params, rtol=1e-4, atol=1e-5
     )
+
+
+def test_fitted_foci_are_isolated_from_later_input_mutation(data):
+    """Changing the caller's array after fit must not change fitted quantities."""
+    annotations, bases, _ = data
+    predictor = _build("~ s(diagnosis) + n", annotations, bases)
+    foci = _simulate(predictor, np.random.default_rng(33))
+    expected_foci = foci.copy()
+
+    model = CBMRModel(predictor, Poisson()).fit(foci, n_iter=500)
+    likelihood = float(model.log_likelihood())
+    covariance = model.covariance()
+
+    foci += 100.0
+
+    np.testing.assert_array_equal(model.foci, expected_foci)
+    np.testing.assert_allclose(float(model.log_likelihood()), likelihood, rtol=1e-12)
+    assert model.covariance() is covariance
+
+
+def test_failed_refit_preserves_the_previous_fitted_state(data, monkeypatch):
+    """A failed refit must not pair new foci with the previous coefficients."""
+    annotations, bases, _ = data
+    predictor = _build("~ s(diagnosis) + n", annotations, bases)
+    first_foci = _simulate(predictor, np.random.default_rng(35))
+    second_foci = _simulate(predictor, np.random.default_rng(36))
+
+    model = CBMRModel(predictor, Poisson()).fit(first_foci, n_iter=500)
+    previous_foci = model.foci
+    previous_coefficients = model.coefficients.detach().clone()
+    previous_iterations = model._iterations
+    previous_covariance = model.covariance()
+
+    def fail_after_mutation(optimizer, closure):
+        with torch.no_grad():
+            for group in optimizer.param_groups:
+                for parameter in group["params"]:
+                    parameter.add_(1.0)
+        raise RuntimeError("optimizer failed")
+
+    monkeypatch.setattr(torch.optim.LBFGS, "step", fail_after_mutation)
+    with pytest.raises(RuntimeError, match="optimizer failed"):
+        model.fit(second_foci, n_iter=1)
+
+    assert model.foci is previous_foci
+    assert model._iterations == previous_iterations
+    assert model.covariance() is previous_covariance
+    np.testing.assert_array_equal(model.foci, previous_foci)
+    np.testing.assert_allclose(model.coefficients.detach(), previous_coefficients)
 
 
 @pytest.mark.parametrize(
@@ -157,7 +209,7 @@ def test_standard_errors_match_statsmodels(data, formula):
     model = CBMRModel(predictor, Poisson()).fit(foci, n_iter=2000, tol=1e-12)
     expected = _statsmodels_fit(predictor, foci)
 
-    errors = np.sqrt(np.diag(model.covariance(foci)))
+    errors = np.sqrt(np.diag(model.covariance()))
     np.testing.assert_allclose(errors, expected.bse, rtol=1e-5, atol=1e-8)
 
 
@@ -172,7 +224,7 @@ def test_information_matrix_has_nonzero_cross_blocks(data):
     foci = _simulate(predictor, np.random.default_rng(41))
     model = CBMRModel(predictor, Poisson()).fit(foci, n_iter=500)
 
-    information = model.information_matrix(foci)
+    information = model.information_matrix()
     slices = predictor.design.parameter_slices(predictor.n_bases)
     cross = information[slices["s(diagnosis)"], slices["n"]]
 
@@ -187,7 +239,7 @@ def test_standard_errors_are_reported_per_term(data):
     foci = _simulate(predictor, np.random.default_rng(43))
     model = CBMRModel(predictor, Poisson()).fit(foci, n_iter=500)
 
-    errors = model.standard_errors(foci)
+    errors = model.standard_errors()
     assert set(errors) == {"s(diagnosis)", "n"}
     assert errors["s(diagnosis)"].shape == (2, N_BASES)
     assert errors["n"].shape == (1,)
@@ -217,7 +269,7 @@ def test_negative_binomial_fits_a_grouped_design(data):
     assert model.nuisance is not None
     assert model.nuisance.shape == (predictor.patterns.n_patterns,)
     assert torch.all(torch.isfinite(model.nuisance))
-    assert torch.isfinite(model.log_likelihood(foci))
+    assert torch.isfinite(model.log_likelihood())
 
     # Reported on the statistical scale and strictly positive, whatever the optimizer did to
     # the unconstrained parameter it actually moves.
@@ -266,7 +318,7 @@ def test_ill_conditioned_information_warns(data, caplog):
 
     with caplog.at_level("WARNING", logger="nimare.meta.cbmr.model"):
         try:
-            model.covariance(foci)
+            model.covariance()
         except np.linalg.LinAlgError:
             pass  # exactly singular is also an acceptable outcome
     assert any("condition number" in message for message in caplog.messages)
@@ -293,7 +345,7 @@ def test_additive_sum_to_zero_factors_are_fittable(data):
         model.coefficients.detach().numpy(), expected.params, rtol=1e-4, atol=1e-5
     )
     np.testing.assert_allclose(
-        np.sqrt(np.diag(model.covariance(foci))), expected.bse, rtol=1e-5, atol=1e-8
+        np.sqrt(np.diag(model.covariance())), expected.bse, rtol=1e-5, atol=1e-8
     )
 
 
@@ -330,4 +382,4 @@ def test_singular_information_says_which_knob_to_turn(data):
     model = CBMRModel(predictor, Poisson()).fit(foci, n_iter=100)
 
     with pytest.raises(np.linalg.LinAlgError, match="spline_spacing"):
-        model.covariance(foci)
+        model.covariance()

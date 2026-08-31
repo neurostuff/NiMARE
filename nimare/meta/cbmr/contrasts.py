@@ -276,7 +276,7 @@ def _statistics(model, block, contrast, constants, covariance_block, bases):
 
 
 def evaluate_hypotheses(
-    model, hypotheses=None, foci=None, name=None, term=None, method=None, **covariance_kwargs
+    model, hypotheses=None, name=None, term=None, method=None, **covariance_kwargs
 ):
     """Test hypotheses about the fitted coefficients.
 
@@ -287,8 +287,6 @@ def evaluate_hypotheses(
     hypotheses : :obj:`str` or :obj:`list` of :obj:`str`, optional
         Hypotheses over level names. A list is tested jointly, as a generalized linear
         hypothesis, rather than one at a time.
-    foci : array_like
-        The foci the model was fitted to.
     name : :obj:`str`, optional
         Overrides the label derived from the hypothesis. Rarely needed.
     term, method : :obj:`str`, optional
@@ -320,7 +318,7 @@ def evaluate_hypotheses(
 
     bases = model.predictor.bases
     slices = bound_design.parameter_slices(model.predictor.n_bases)
-    covariance = model.covariance(foci, **covariance_kwargs)
+    covariance = model.covariance(**covariance_kwargs)
 
     maps, tables = {}, {}
     for label, statement in requested:

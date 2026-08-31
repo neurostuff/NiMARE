@@ -130,25 +130,25 @@ def test_patsy_grammar_reaches_users(fitted, statement, expected_label):
     Arithmetic and bare difference expressions come free with
     :meth:`patsy.DesignInfo.linear_constraint`; a hand-rolled parser had neither.
     """
-    model, foci = fitted
-    result = evaluate_hypotheses(model, statement, foci)
+    model, _ = fitted
+    result = evaluate_hypotheses(model, statement)
     emitted = list(result["maps"]) + list(result["tables"])
     assert any(name.endswith(expected_label) for name in emitted), emitted
 
 
 def test_a_non_zero_right_hand_side_shifts_the_estimate(fitted):
     """``a = 1`` must test against one, not against zero."""
-    model, foci = fitted
-    against_zero = evaluate_hypotheses(model, "a = 0", foci)["maps"]["est_a"]
-    against_one = evaluate_hypotheses(model, "a = 1", foci)["maps"]["est_a_vs_1"]
+    model, _ = fitted
+    against_zero = evaluate_hypotheses(model, "a = 0")["maps"]["est_a"]
+    against_one = evaluate_hypotheses(model, "a = 1")["maps"]["est_a_vs_1"]
 
     np.testing.assert_allclose(against_one, against_zero - 1.0, rtol=1e-10)
 
 
 def test_a_list_is_tested_jointly(fitted):
     """Several statements are one generalized linear hypothesis, not several tests."""
-    model, foci = fitted
-    result = evaluate_hypotheses(model, ["a = b", "b = c"], foci, name="joint")
+    model, _ = fitted
+    result = evaluate_hypotheses(model, ["a = b", "b = c"], name="joint")
 
     assert "chiSquare_joint" in result["maps"]
     assert np.all(result["maps"]["chiSquare_joint"] >= 0)
@@ -158,16 +158,16 @@ def test_a_list_is_tested_jointly(fitted):
 
 def test_unknown_coefficients_list_the_options(fitted):
     """A typo should name what the design actually has."""
-    model, foci = fitted
+    model, _ = fitted
     with pytest.raises(ContrastError, match="coefficient names"):
-        evaluate_hypotheses(model, "a = z", foci)
+        evaluate_hypotheses(model, "a = z")
 
 
 def test_cross_term_contrasts_are_refused(fitted):
     """A map and a number have no common scale, so this is refused rather than guessed."""
-    model, foci = fitted
+    model, _ = fitted
     with pytest.raises(ContrastError, match="must stay within one term"):
-        evaluate_hypotheses(model, "a = n", foci)
+        evaluate_hypotheses(model, "a = n")
 
 
 def test_a_degenerate_contrast_is_refused(fitted):
@@ -176,9 +176,9 @@ def test_a_degenerate_contrast_is_refused(fitted):
     Caught by patsy rather than here -- it reports "no variables appear in constraint" -- which is
     why there is no separate check for it in ``build_contrast``.
     """
-    model, foci = fitted
+    model, _ = fitted
     with pytest.raises(ContrastError, match="no variables appear"):
-        evaluate_hypotheses(model, "a - a = 0", foci)
+        evaluate_hypotheses(model, "a - a = 0")
 
 
 # ---------------------------------------------------------------- translation
@@ -191,8 +191,8 @@ def test_level_contrasts_work_on_a_reparameterized_term():
     ``dx[sz2]``, so a user could only state hypotheses in a space with no interpretation. This is
     exactly the hypothesis-matrix versus contrast-matrix distinction ``hypr`` formalizes.
     """
-    model, foci = _fit("~ sz(dx) + n")
-    result = evaluate_hypotheses(model, "a = b", foci)
+    model, _ = _fit("~ sz(dx) + n")
+    result = evaluate_hypotheses(model, "a = b")
 
     assert set(result["maps"]) == {
         "est_a_vs_b",
@@ -219,8 +219,8 @@ def test_the_same_contrast_agrees_across_parameterizations():
     constrained = _fit_to("~ sz(dx) + n", foci, annotations, bases)
 
     for statement in ("a = b", "b = c", "2 * a = b + c"):
-        first = evaluate_hypotheses(cell_means, statement, foci)["maps"]
-        second = evaluate_hypotheses(constrained, statement, foci)["maps"]
+        first = evaluate_hypotheses(cell_means, statement)["maps"]
+        second = evaluate_hypotheses(constrained, statement)["maps"]
         key = next(k for k in first if k.startswith("z_"))
         np.testing.assert_allclose(
             second[key], first[key], rtol=1e-4, atol=1e-6, err_msg=statement
@@ -237,8 +237,8 @@ def test_estimate_and_standard_error_maps_are_emitted(fitted):
     Contrast exposes ``effect_size``/``effect_variance``; emitting only ``z`` would put CBMR at
     odds with both, and with its own scalar path.
     """
-    model, foci = fitted
-    maps = evaluate_hypotheses(model, "a = b", foci)["maps"]
+    model, _ = fitted
+    maps = evaluate_hypotheses(model, "a = b")["maps"]
 
     assert {"est_a_vs_b", "se_a_vs_b"} <= set(maps)
     assert np.all(maps["se_a_vs_b"] > 0)
@@ -257,7 +257,7 @@ def test_spatial_contrast_matches_statsmodels(fitted):
     ).fit()
     covariance = np.asarray(expected_fit.cov_params())
 
-    maps = evaluate_hypotheses(model, "a = b", foci)["maps"]
+    maps = evaluate_hypotheses(model, "a = b")["maps"]
 
     names = list(predictor.design.blocks[0].column_names)
     index_a, index_b = names.index("dx[a]"), names.index("dx[b]")
@@ -284,7 +284,7 @@ def test_scalar_contrast_matches_statsmodels(fitted):
         family=statsmodels_api.families.Poisson(),
     ).fit()
 
-    table = evaluate_hypotheses(model, "n = 0", foci)["tables"]["contrast_n"]
+    table = evaluate_hypotheses(model, "n = 0")["tables"]["contrast_n"]
 
     assert {"est", "se", "z", "p", "logp"} <= set(table.columns)
     np.testing.assert_allclose(table["est"].iloc[0], expected_fit.params[-1], rtol=1e-4)
@@ -293,9 +293,9 @@ def test_scalar_contrast_matches_statsmodels(fitted):
 
 def test_reversing_a_contrast_flips_its_sign(fitted):
     """A sanity check that the direction means what it reads as."""
-    model, foci = fitted
-    forward = evaluate_hypotheses(model, "a = b", foci)["maps"]
-    reverse = evaluate_hypotheses(model, "b = a", foci)["maps"]
+    model, _ = fitted
+    forward = evaluate_hypotheses(model, "a = b")["maps"]
+    reverse = evaluate_hypotheses(model, "b = a")["maps"]
 
     np.testing.assert_allclose(forward["est_a_vs_b"], -reverse["est_b_vs_a"], rtol=1e-10)
     np.testing.assert_allclose(forward["se_a_vs_b"], reverse["se_b_vs_a"], rtol=1e-10)
@@ -315,15 +315,15 @@ def test_reversing_a_contrast_flips_its_sign(fitted):
 )
 def test_named_families_enumerate_the_comparisons(fitted, method, expected):
     """Enumerate every comparison, instead of asking the user for one call per pair."""
-    model, foci = fitted
+    model, _ = fitted
     labels = [label for label, _ in generate_hypotheses(model.predictor.design, "dx", method)]
     assert labels == expected
 
 
 def test_pairwise_emits_one_set_of_maps_per_pair(fitted):
     """Each generated contrast gets its own label, as gratia's difference_smooths does."""
-    model, foci = fitted
-    maps = evaluate_hypotheses(model, term="dx", method="pairwise", foci=foci)["maps"]
+    model, _ = fitted
+    maps = evaluate_hypotheses(model, term="dx", method="pairwise")["maps"]
 
     assert sorted(k for k in maps if k.startswith("z_")) == ["z_a_vs_b", "z_a_vs_c", "z_b_vs_c"]
     assert sorted(k for k in maps if k.startswith("est_")) == [
@@ -335,9 +335,9 @@ def test_pairwise_emits_one_set_of_maps_per_pair(fitted):
 
 def test_a_generated_family_agrees_with_the_hand_written_contrast(fitted):
     """Generating a contrast must not compute anything different from naming it."""
-    model, foci = fitted
-    generated = evaluate_hypotheses(model, term="dx", method="pairwise", foci=foci)["maps"]
-    named = evaluate_hypotheses(model, "a = b", foci)["maps"]
+    model, _ = fitted
+    generated = evaluate_hypotheses(model, term="dx", method="pairwise")["maps"]
+    named = evaluate_hypotheses(model, "a = b")["maps"]
 
     np.testing.assert_allclose(generated["z_a_vs_b"], named["z_a_vs_b"], rtol=1e-12)
 
@@ -366,13 +366,13 @@ def test_unknown_method_and_term_are_reported(fitted):
 
 def test_the_two_forms_are_mutually_exclusive(fitted):
     """Naming a hypothesis and generating a family are alternatives, not combinable."""
-    model, foci = fitted
+    model, _ = fitted
     with pytest.raises(ContrastError, match="not both"):
-        evaluate_hypotheses(model, "a = b", foci, term="dx", method="pairwise")
+        evaluate_hypotheses(model, "a = b", term="dx", method="pairwise")
     with pytest.raises(ContrastError, match="together"):
-        evaluate_hypotheses(model, foci=foci, term="dx")
+        evaluate_hypotheses(model, term="dx")
     with pytest.raises(ContrastError, match="Give either"):
-        evaluate_hypotheses(model, foci=foci)
+        evaluate_hypotheses(model)
 
 
 def test_build_contrast_pushes_through_the_level_map():
