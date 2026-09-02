@@ -94,7 +94,7 @@ One example of a generic method is the "bonferroni" method for the FWECorrector.
 Generic multiple-comparison correction methods fail to properly account for
 the spatial smoothness, correlation, and null distribution characteristics
 unique to coordinate-based meta-analyses like ALE. As outlined by
-Eickhoff et al. (2016) and Frahm et al. :footcite:p:`frahm2022evaluation`,
+Eickhoff et al. :footcite:p:`eickhoff2016behavior` and Frahm et al. :footcite:p:`frahm2022evaluation`,
 using these generic approaches results in suboptimal statistical control,
 making estimator-specific or permutation/Monte Carlo-based corrections
 necessary for valid inferences.
