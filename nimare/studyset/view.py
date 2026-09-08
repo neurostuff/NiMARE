@@ -290,8 +290,13 @@ class View:
         inv = np.linalg.inv(affine)
         with np.errstate(invalid="ignore"):
             ijk = (xyz @ inv[:3, :3].T + inv[:3, 3]).astype(np.int32)
-        ijk = np.clip(ijk, 0, np.asarray(mask_data.shape) - 1)
-        return mask_data[ijk[:, 0], ijk[:, 1], ijk[:, 2]] > 0
+        shape = np.asarray(mask_data.shape)
+        in_bounds = np.all((ijk >= 0) & (ijk < shape), axis=1)
+        inside = np.zeros(len(ijk), dtype=bool)
+        if in_bounds.any():
+            valid = ijk[in_bounds]
+            inside[in_bounds] = mask_data[valid[:, 0], valid[:, 1], valid[:, 2]] > 0
+        return inside
 
     def points_near(self, xyz, radius):
         """Point-level boolean for foci within ``radius`` mm of any of ``xyz``."""
