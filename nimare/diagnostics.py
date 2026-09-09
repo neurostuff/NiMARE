@@ -32,6 +32,7 @@ from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _check_ncores,
     _filter_kwargs,
+    _get_voxel_values,
     _mask_coverage_to_null_ijk,
     _mask_img_to_bool,
     get_masker,
@@ -272,7 +273,6 @@ def _count_foci_per_cluster(label_arr, clust_ids, ijk):
     if ijk.size == 0:
         return np.array([counts[c_val] for c_val in clust_ids])
 
-    shape = np.asarray(label_arr.shape)
     # The 27 integer offsets around a focus's containing voxel. Every voxel within a unit
     # distance of any point in that voxel is among them.
     offsets = np.stack(np.meshgrid(*([np.arange(-1, 2)] * 3), indexing="ij"), axis=-1)
@@ -280,17 +280,12 @@ def _count_foci_per_cluster(label_arr, clust_ids, ijk):
 
     for focus in ijk:
         candidates = np.floor(focus).astype(np.int64) + offsets
-        in_bounds = np.all((candidates >= 0) & (candidates < shape), axis=1)
-        candidates = candidates[in_bounds]
-        if not candidates.size:
-            continue
-
         near = np.sum(np.square(candidates - focus), axis=1) < 1.0
-        candidates = candidates[near]
-        if not candidates.size:
+        labels, in_bounds = _get_voxel_values(label_arr, candidates)
+        labels = labels[near & in_bounds]
+        if not labels.size:
             continue
 
-        labels = label_arr[candidates[:, 0], candidates[:, 1], candidates[:, 2]]
         for c_val in np.unique(labels):
             if c_val in counts:
                 counts[c_val] += 1
@@ -1488,12 +1483,8 @@ class FocusFilter(NiMAREBase):
         # rather than a rewritten table.
         xyz, _, _ = harmonized_coordinates(filtered.store, filtered.space)
         ijk = mm2vox(xyz, affine)
-        shape = np.asarray(mask_array.shape)
-        in_bounds = np.all((ijk >= 0) & (ijk < shape), axis=1)
-        keep = np.zeros(len(ijk), dtype=bool)
-        if in_bounds.any():
-            inside = ijk[in_bounds]
-            keep[in_bounds] = mask_array[inside[:, 0], inside[:, 1], inside[:, 2]] == 1
+        values, in_bounds = _get_voxel_values(mask_array, ijk)
+        keep = (values == 1) & in_bounds
 
         LGR.info(
             f"{int((~keep).sum())}/{len(keep)} coordinates fall outside of the mask. "

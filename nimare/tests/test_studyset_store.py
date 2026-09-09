@@ -605,14 +605,20 @@ def test_a_hyphenated_short_analysis_id_is_looked_up_not_split():
 def test_points_outside_mask_volume_are_not_clipped_to_edge():
     """An out-of-volume focus cannot inherit a boundary voxel's mask value."""
     document = selection_document()
-    document["studies"][0]["analyses"][0]["points"][0]["coordinates"] = [100, 0, 0]
+    document["studies"][0]["analyses"][0]["points"][0]["coordinates"] = [2, 0, 0]
+    document["studies"][0]["analyses"][1]["points"][0]["coordinates"] = [
+        4294967298,
+        0,
+        0,
+    ]
     studyset = Studyset(document, target=None)
     mask = np.zeros((3, 3, 3), dtype=bool)
     mask[2, 0, 0] = True
 
     inside = studyset.view.points_in_mask(mask, np.eye(4))
 
-    assert not inside[0]
+    assert inside[0]
+    assert not inside[1]
 
 
 def test_a_short_analysis_id_selects_every_analysis_that_declares_it():

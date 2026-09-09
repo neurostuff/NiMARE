@@ -265,6 +265,17 @@ def test_mm2vox():
     assert np.array_equal(utils.mm2vox(test, aff), true)
 
 
+def test_get_voxel_values_marks_out_of_bounds_indices():
+    """Voxel lookup returns values and distinguishes clipped indices."""
+    data = np.arange(27).reshape(3, 3, 3)
+    ijk = np.array([[2, 0, 0], [3, 0, 0], [-1, 0, 0], [4294967298, 0, 0]])
+
+    values, in_bounds = utils._get_voxel_values(data, ijk)
+
+    assert values[0] == data[2, 0, 0]
+    assert np.array_equal(in_bounds, [True, False, False, False])
+
+
 def test_apply_liberal_mask():
     """Test _apply_liberal_mask."""
     data = np.array([[1, 2, np.nan, np.nan], [4, np.nan, 6, 5], [0, 8, 9, 3]])

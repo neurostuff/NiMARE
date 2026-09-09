@@ -432,6 +432,40 @@ def vox2mm(ijk, affine):
     return xyz
 
 
+def _get_voxel_values(data, ijk):
+    """Return values at voxel indices and flag indices outside ``data``.
+
+    Parameters
+    ----------
+    data : :obj:`numpy.ndarray`
+        Array from which to retrieve values.
+    ijk : (N, D) array_like
+        Matrix subscripts, with one column for each dimension of ``data``.
+
+    Returns
+    -------
+    values : (N,) :obj:`numpy.ndarray`
+        Values at the supplied indices. Values for out-of-bounds indices are
+        retrieved from a clipped boundary index and must be combined with
+        ``in_bounds`` before use.
+    in_bounds : (N,) :obj:`numpy.ndarray`
+        Boolean array indicating which indices lie within ``data``.
+    """
+    data = np.asarray(data)
+    with np.errstate(invalid="ignore"):
+        ijk = np.atleast_2d(np.asarray(ijk)).astype(np.int64)
+
+    if ijk.shape[1] != data.ndim:
+        raise ValueError(
+            f"Voxel indices have {ijk.shape[1]} dimensions, but data has {data.ndim}."
+        )
+
+    shape = np.asarray(data.shape)
+    in_bounds = np.all((ijk >= 0) & (ijk < shape), axis=1)
+    flat_idx = np.ravel_multi_index(tuple(ijk.T), data.shape, mode="clip")
+    return data.reshape(-1)[flat_idx], in_bounds
+
+
 def mm2vox(xyz, affine):
     """Convert coordinates to matrix subscripts.
 
