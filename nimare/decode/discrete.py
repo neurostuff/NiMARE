@@ -757,6 +757,14 @@ class ROIAssociationDecoder(Decoder):
         self.features = features
         self.frequency_threshold = 0
 
+    def _preprocess_input(self, dataset):
+        """Retain ROI features with at least one strictly positive annotation."""
+        super()._preprocess_input(dataset)
+        annotations = self.inputs_["annotations"][self.features_]
+        self.features_ = annotations.columns[(annotations > 0).any(axis=0)].tolist()
+        if not self.features_:
+            raise Exception("No features identified in the input Studyset/Dataset collection!")
+
     def _fit(self, dataset):
         roi_values = self.kernel_transformer.transform(
             self.inputs_["coordinates"],
