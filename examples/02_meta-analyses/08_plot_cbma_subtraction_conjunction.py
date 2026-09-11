@@ -171,7 +171,12 @@ subtraction_corrector = FWECorrector(
 workflow = PairwiseCBMAWorkflow(
     estimator=subtraction_estimator,
     corrector=subtraction_corrector,
-    diagnostics=FocusCounter(voxel_thresh=0.01, display_second_group=True),
+    diagnostics=Jackknife(
+        target_image="z_desc-group1MinusGroup2Size_level-cluster_corr-FWE_method-montecarlo",
+        voxel_thresh=None,
+        display_second_group=True,
+    ),
+    voxel_thresh=None,
 )
 res_sub = workflow.fit(knowledge_studyset, related_studyset)
 
