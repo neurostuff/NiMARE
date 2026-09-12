@@ -36,6 +36,9 @@ warnings.simplefilter("ignore")
 
 THRESHOLD_Z = 3.2905267314919255
 
+#: Cluster-forming threshold used by the false positive rate run.
+CLUSTER_FORMING_P = 0.01
+
 
 def _pain_studyset():
     import os
@@ -153,6 +156,9 @@ def run_fpr(n_sims=10, n_iters=100):
                     selection_model=model,
                     null_method=null_method,
                     n_iters=n_iters,
+                    # Match the forming threshold the correction below asks for, so fit()'s
+                    # permutations record the cluster nulls and they are not rebuilt.
+                    cluster_threshold=CLUSTER_FORMING_P,
                     seed=1000 * seed,
                 )
                 result = estimator.fit(studyset)
@@ -177,7 +183,7 @@ def run_fpr(n_sims=10, n_iters=100):
                 )
                 if null_method == "montecarlo":
                     maps, _, _ = estimator.correct_fwe_montecarlo(
-                        result, voxel_thresh=0.01, n_iters=n_iters
+                        result, voxel_thresh=CLUSTER_FORMING_P, n_iters=n_iters
                     )
                     voxel.append(rejects(maps, "logp_level-voxel"))
                     size.append(rejects(maps, "logp_desc-size_level-cluster"))
