@@ -122,14 +122,20 @@ def run_fpr(n_sims=10, n_iters=100):
     affine = np.array([[4.0, 0, 0, -40.0], [0, 4.0, 0, -40.0], [0, 0, 4.0, -40.0], [0, 0, 0, 1.0]])
     mask = nib.Nifti1Image(np.ones((21, 21, 21), dtype=np.int32), affine)
 
+    def rejects(maps, name):
+        return bool(np.any(10.0 ** -maps[name] < 0.05))
+
     print(f"global null: 30 studies x 8 noise foci, {n_sims} sims, {n_iters} null iterations")
-    print(
-        f"{'model':16s} {'null':12s} {'p<.05':>7s} {'bonferroni':>11s} {'FDR':>6s} {'FWE-mc':>7s}"
+    header = (
+        f"{'model':16s} {'null':12s} {'p<.05':>7s} {'p<.01':>7s} {'bonf':>6s} {'FDR':>6s} "
+        f"{'vFWE':>6s} {'cFWE-size':>10s} {'cFWE-mass':>10s}"
     )
+    print(header)
 
     for model in ("none", "zero-inflated"):
         for null_method in ("parametric", "montecarlo"):
-            rates, bonferroni, fdr, montecarlo = [], [], [], []
+            rates01, rates05 = [], []
+            bonferroni, fdr, voxel, size, mass = [], [], [], [], []
             for seed in range(n_sims):
                 studyset = create_effect_size_coordinate_studyset(
                     [(0, 0, 0)],
@@ -150,7 +156,9 @@ def run_fpr(n_sims=10, n_iters=100):
                     seed=1000 * seed,
                 )
                 result = estimator.fit(studyset)
-                rates.append(np.mean(result.get_map("p", return_type="array") < 0.05))
+                p_map = result.get_map("p", return_type="array")
+                rates05.append(np.mean(p_map < 0.05))
+                rates01.append(np.mean(p_map < 0.01))
                 bonferroni.append(
                     np.any(
                         FWECorrector(method="bonferroni")
@@ -168,18 +176,20 @@ def run_fpr(n_sims=10, n_iters=100):
                     )
                 )
                 if null_method == "montecarlo":
-                    montecarlo.append(
-                        np.any(
-                            FWECorrector(method="montecarlo", n_iters=n_iters)
-                            .transform(result)
-                            .maps["p_corr-FWE_method-montecarlo"]
-                            < 0.05
-                        )
+                    maps, _, _ = estimator.correct_fwe_montecarlo(
+                        result, voxel_thresh=0.01, n_iters=n_iters
                     )
-            mc = np.mean(montecarlo) if montecarlo else float("nan")
+                    voxel.append(rejects(maps, "logp_level-voxel"))
+                    size.append(rejects(maps, "logp_desc-size_level-cluster"))
+                    mass.append(rejects(maps, "logp_desc-mass_level-cluster"))
+
+            def mean_or_nan(values):
+                return np.mean(values) if values else float("nan")
+
             print(
-                f"{model:16s} {null_method:12s} {np.mean(rates):7.3f} "
-                f"{np.mean(bonferroni):11.2f} {np.mean(fdr):6.2f} {mc:7.2f}"
+                f"{model:16s} {null_method:12s} {np.mean(rates05):7.3f} {np.mean(rates01):7.3f} "
+                f"{np.mean(bonferroni):6.2f} {np.mean(fdr):6.2f} {mean_or_nan(voxel):6.2f} "
+                f"{mean_or_nan(size):10.2f} {mean_or_nan(mass):10.2f}"
             )
 
 

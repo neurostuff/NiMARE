@@ -88,13 +88,14 @@ import numpy as np
 import pandas as pd
 from joblib import Memory, Parallel, delayed
 from nilearn.maskers import NiftiMasker
-from scipy import stats
+from scipy import ndimage, stats
 from scipy.special import ndtr
 from tqdm.auto import tqdm
 
 from nimare import _version
 from nimare.estimator import Estimator
 from nimare.meta.utils import (
+    _calculate_cluster_measures,
     _get_mask_flat_to_masked,
     _kernel_to_sparse_support,
     get_ale_kernel,
@@ -103,6 +104,7 @@ from nimare.meta.utils import (
 from nimare.transforms import d_to_g, t_to_d, t_to_z, z_to_t
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
+    _mask_img_to_bool,
     _add_metadata_to_dataframe,
     _check_ncores,
     _nlogp_to_logp_values,
@@ -133,6 +135,19 @@ NULL_METHODS = ("montecarlo", "parametric")
 _NULL_Z_STEP = 0.01
 _NULL_MAX_Z = 50.0
 
+#: EM stops on a voxel once mu and the prevalence both move less than this in one step.
+_EM_TOLERANCE = 1e-5
+#: Rebuild the working set only once this fraction of it has settled, so that compaction
+#: (which touches every pair) is amortized rather than run every iteration.
+_EM_COMPACTION_FRACTION = 0.05
+
+#: Minimum relocations used to fix the cluster-forming threshold before the main null loop.
+_NULL_PILOT_ITERS = 20
+
+#: Faces-only connectivity for cluster labelling, matching Nilearn and the other CBMA
+#: estimators.
+_CLUSTER_CONNECTIVITY = ndimage.generate_binary_structure(rank=3, connectivity=1)
+
 _INV_SQRT_2PI = 1.0 / np.sqrt(2.0 * np.pi)
 
 
@@ -145,6 +160,114 @@ def _normal_pdf(x):
 def _null_bin_edges():
     """Bin edges for the Monte Carlo null histogram of |z|."""
     return np.arange(0.0, _NULL_MAX_Z + _NULL_Z_STEP, _NULL_Z_STEP)
+
+
+def _stat_from_histogram(p_value, histogram):
+    """Smallest ``|z|`` whose null p-value is at or below ``p_value``.
+
+    The inverse of :func:`_p_from_histogram`, used to turn a cluster-forming p threshold into
+    the statistic threshold the clusters are actually defined on.
+    """
+    total = histogram.sum()
+    if total <= 0:
+        return np.inf
+    survival = np.concatenate([np.cumsum(histogram[::-1])[::-1], [0.0]])
+    p_by_bin = (survival + 1.0) / (total + 1.0)
+    reached = np.flatnonzero(p_by_bin <= p_value)
+    if not reached.size:
+        return np.inf
+    return float(reached[0] * _NULL_Z_STEP)
+
+
+def _max_statistic_maps(observed, null_maxima, sign):
+    """Corrected ``-log10(p)`` and signed z for a statistic against its maximum-statistic null."""
+    p_corrected = (1 + np.sum(null_maxima[None, :] >= observed[:, None], axis=1)) / (
+        1 + len(null_maxima)
+    )
+    logp = _nlogp_to_logp_values(np.log(np.clip(p_corrected, 1e-300, None)))
+    z_corrected = stats.norm.isf(np.clip(p_corrected, 1e-16, 1.0) / 2.0) * sign
+    return (
+        logp.astype(DEFAULT_FLOAT_DTYPE),
+        z_corrected.astype(DEFAULT_FLOAT_DTYPE),
+    )
+
+
+def _observed_cluster_measures(volume, threshold):
+    """Per-voxel cluster size and mass of the cluster each voxel belongs to.
+
+    Voxels below threshold, and voxels in no cluster, get zero -- so they take the largest
+    corrected p-value the null can give.
+    """
+    sizes = np.zeros(volume.shape, dtype=float)
+    masses = np.zeros(volume.shape, dtype=float)
+    excursion = np.abs(volume) > threshold
+    if not excursion.any():
+        return sizes, masses
+
+    mass_values = np.abs(volume) - threshold
+    for polarity in (volume > threshold, volume < -threshold):
+        if not polarity.any():
+            continue
+        labels, n_clusters = ndimage.label(polarity, _CLUSTER_CONNECTIVITY)
+        if not n_clusters:
+            continue
+        cluster_ids = np.arange(1, n_clusters + 1)
+        cluster_sizes = np.bincount(labels.ravel())[1:]
+        cluster_masses = np.asarray(ndimage.sum(mass_values, labels=labels, index=cluster_ids))
+        inside = labels > 0
+        sizes[inside] = cluster_sizes[labels[inside] - 1]
+        masses[inside] = cluster_masses[labels[inside] - 1]
+    return sizes, masses
+
+
+def _censoring_terms(mu, cutoffs, sigma):
+    """P(|g| < c | mu) and the pieces of its derivatives, for a set of silent observations.
+
+    Returned together because the E step and the M step both need them at the same ``mu``, and
+    the normal CDFs here are the single most expensive thing the estimator does.
+    """
+    upper = (cutoffs - mu) / sigma
+    lower = (-cutoffs - mu) / sigma
+    prob = np.clip(ndtr(upper) - ndtr(lower), 1e-12, None)
+    pdf_upper = _normal_pdf(upper)
+    pdf_lower = _normal_pdf(lower)
+    return {
+        "prob": prob,
+        "score": -(pdf_upper - pdf_lower) / sigma / prob,
+        "d2_over_prob": -(upper * pdf_upper - lower * pdf_lower) / sigma**2 / prob,
+    }
+
+
+def _mu_derivatives(
+    *,
+    width,
+    mu_rep,
+    g_rep,
+    precision_rep,
+    rep_voxel,
+    weight_rep,
+    sil_voxel,
+    weight_sil,
+    censoring,
+):
+    """Voxelwise first and second derivatives of the weighted log-likelihood in ``mu``.
+
+    Contributions arrive as one entry per weighted ``(study, voxel)`` pair and are summed onto
+    voxels with :func:`numpy.bincount`.
+    """
+    score = np.bincount(
+        rep_voxel, weights=weight_rep * (g_rep - mu_rep) * precision_rep, minlength=width
+    )
+    curvature = -np.bincount(rep_voxel, weights=weight_rep * precision_rep, minlength=width)
+
+    censor_score = censoring["score"]
+    score += np.bincount(sil_voxel, weights=weight_sil * censor_score, minlength=width)
+    curvature += np.bincount(
+        sil_voxel,
+        weights=weight_sil * (censoring["d2_over_prob"] - censor_score**2),
+        minlength=width,
+    )
+    return score, curvature
 
 
 def _p_from_histogram(values, histogram):
@@ -349,6 +472,11 @@ class CBES(Estimator):
             ``g / se`` referred to a normal distribution. Fast, and **anticonservative**: see
             the warning below. Useful for inspecting the effect-size maps, not for inference.
 
+    cluster_threshold : :obj:`float` or None, default=0.001
+        Cluster-forming threshold, as an uncorrected p-value, for the cluster-level FWE null
+        that :meth:`fit` builds alongside the voxel-level one. Set to None to skip it, which
+        makes :meth:`correct_fwe_montecarlo` pay for a second pass over the permutations if
+        cluster correction is then requested.
     n_iters : :obj:`int`, default=1000
         Monte Carlo iterations for the null. Each is a full refit, so this is the dominant
         cost of the estimator -- far more so than for ALE, whose per-iteration statistic is
@@ -382,6 +510,13 @@ class CBES(Estimator):
     "n_studies"    Number of studies with a focus inside the kernel support.
     "n_eff"        Kish effective number of studies, ``(sum w)^2 / sum w^2``.
     ============== ===============================================================
+
+    :meth:`correct_fwe_montecarlo` adds ``logp_level-voxel``,
+    ``logp_desc-size_level-cluster`` and ``logp_desc-mass_level-cluster`` (each with a
+    signed ``z_*`` companion), matching the names
+    :class:`~nimare.meta.cbma.ale.ALE` uses. :class:`~nimare.correct.FDRCorrector` and
+    ``FWECorrector(method="bonferroni")`` work off the uncorrected ``"p"`` map instead,
+    and are only meaningful when that map came from the Monte Carlo null.
 
     Warnings
     --------
@@ -420,6 +555,7 @@ class CBES(Estimator):
         kernel_min_weight=0.01,
         max_iter=25,
         null_method="montecarlo",
+        cluster_threshold=0.001,
         n_iters=1000,
         n_cores=1,
         seed=0,
@@ -448,8 +584,8 @@ class CBES(Estimator):
                 "null_method='parametric' produces anticonservative p-values: the standard "
                 "error treats tau-squared and the mixture weights as known, and the reported "
                 "peaks it pools were selected for being large. Under a global null it flags "
-                "roughly 40%% of voxels at p < .05 (10%% with selection_model='zero-inflated') "
-                "instead of 5%%, and FDR and Bonferroni built on top of it reject in every "
+                "roughly 40% of voxels at p < .05 (10% with selection_model='zero-inflated') "
+                "instead of 5%, and FDR and Bonferroni built on top of it reject in every "
                 "null simulation. Use null_method='montecarlo' for inference."
             )
         if isinstance(threshold, str):
@@ -474,6 +610,7 @@ class CBES(Estimator):
         self.kernel_min_weight = kernel_min_weight
         self.max_iter = max_iter
         self.null_method = null_method
+        self.cluster_threshold = cluster_threshold
         self.n_iters = n_iters
         self.n_cores = n_cores
         self.seed = seed
@@ -834,6 +971,10 @@ class CBES(Estimator):
 
         active_lookup = np.full(n_voxels, -1, dtype=np.int64)
         active_lookup[active] = np.arange(active.size)
+        # Reused across studies to deduplicate the voxels a study's spheres cover. A scratch
+        # bitmap costs one pass over the hits; ``np.unique`` sorts or hashes them, and with
+        # a 20 mm sphere per focus there are a great many hits.
+        seen = np.zeros(active.size, dtype=bool)
 
         cols, positions = [], []
         for position, study_id in enumerate(study_ids):
@@ -851,8 +992,13 @@ class CBES(Estimator):
             reached = reached[in_bounds & (reached >= 0)].astype(np.int64)
             if not reached.size:
                 continue
-            local = np.unique(active_lookup[reached])
+            local = active_lookup[reached]
             local = local[local >= 0]
+            if not local.size:
+                continue
+            seen[local] = True
+            local = np.flatnonzero(seen)
+            seen[local] = False
             cols.append(local)
             positions.append(np.full(local.size, position, dtype=np.int64))
 
@@ -973,137 +1119,175 @@ class CBES(Estimator):
         fit["se"][active] = se_out
 
     def _fit_chunk(self, *, weights, g_obs, var_obs, covered, tau2, null_var, cutoffs, start):
-        """EM for one block of voxels. Returns ``(mu, prevalence, se)``, one value per voxel."""
+        """EM for one block of voxels. Returns ``(mu, prevalence, se)``, one value per voxel.
+
+        Works on the ``(study, voxel)`` pairs that carry weight rather than on the dense
+        study-by-voxel block. At any given voxel a study either reported nearby or was silent
+        there, and in a real studyset most studies are neither -- they reported in the region
+        but outside this voxel's kernel, so they inform neither term. Evaluating normal CDFs
+        across the full block and then multiplying most of them by zero was 97% of the runtime.
+        The arithmetic is unchanged; only the entries that contribute are visited.
+        """
         zero_inflated = self.selection_model == "zero-inflated"
+        width = weights.shape[1]
 
-        reports = weights > 0
+        reporting = np.flatnonzero(weights > 0)
         # Covered but out of kernel range: the study said something about this region but
-        # nothing about this voxel. It informs neither term.
-        silent = ~covered
+        # nothing about this voxel. It informs neither term, and is in neither index.
+        silence = np.flatnonzero(~covered)
+        rep_voxel, rep_study = reporting % width, reporting // width
+        sil_voxel, sil_study = silence % width, silence // width
+        del rep_study
 
-        sigma_reported = np.sqrt(var_obs + tau2)
-        sigma_silent = np.sqrt(null_var + tau2)
-        sigma_null = np.sqrt(np.broadcast_to(null_var, silent.shape))
+        w_rep = weights.ravel()[reporting]
+        g_rep = g_obs.ravel()[reporting]
+        var_rep = var_obs.ravel()[reporting]
+        sigma_rep = np.sqrt(var_rep + tau2[rep_voxel])
+        precision_rep = 1.0 / sigma_rep**2
 
-        weight_reported = np.where(reports, weights, 0.0)
+        cutoff_sil = cutoffs.ravel()[sil_study]
+        null_var_sil = null_var.ravel()[sil_study]
+        sigma_sil = np.sqrt(null_var_sil + tau2[sil_voxel])
 
         # A reporting study's log-likelihood is discounted by the spatial kernel, so a silent
         # study entering at full weight would count for more than a study that actually
         # measured something -- silence would outvote evidence, and the estimate would sit well
         # below the truth however many studies reported. Put a silent study on the same footing
         # as an average reporting study at this voxel instead.
-        n_reporting = reports.sum(axis=0)
+        n_reporting = np.bincount(rep_voxel, minlength=width)
+        sum_reported = np.bincount(rep_voxel, weights=w_rep, minlength=width)
         reporter_scale = np.divide(
-            weight_reported.sum(axis=0),
-            n_reporting,
-            out=np.ones(weights.shape[1]),
-            where=n_reporting > 0,
+            sum_reported, n_reporting, out=np.ones(width), where=n_reporting > 0
         )
-        weight_silent = silent.astype(float) * reporter_scale
+        w_sil = reporter_scale[sil_voxel]
 
         # Probability a silent study stays silent when it has no effect at all. Fixed across
         # iterations, and close to one whenever the threshold is the usual several sigma.
+        null_sd_sil = np.sqrt(null_var_sil)
         prob_silent_null = np.clip(
-            ndtr(cutoffs / sigma_null) - ndtr(-cutoffs / sigma_null),
-            1e-12,
-            None,
+            ndtr(cutoff_sil / null_sd_sil) - ndtr(-cutoff_sil / null_sd_sil), 1e-12, None
         )
-        density_null = _normal_pdf(g_obs / np.sqrt(var_obs)) / np.sqrt(var_obs)
+        density_null = _normal_pdf(g_rep / np.sqrt(var_rep)) / np.sqrt(var_rep)
 
         mu = start.copy()
-        pi = np.full(mu.shape, 0.5 if zero_inflated else 1.0)
-        total_weight = weight_reported.sum(axis=0) + weight_silent.sum(axis=0)
+        pi = np.full(width, 0.5 if zero_inflated else 1.0)
+        total_weight = np.bincount(rep_voxel, weights=w_rep, minlength=width) + np.bincount(
+            sil_voxel, weights=w_sil, minlength=width
+        )
+        resp_rep = np.ones(reporting.size)
+        resp_sil = np.ones(silence.size)
 
+        # Voxels converge at very different rates: most settle within a handful of iterations
+        # while a few drift for dozens. Iterating the whole block until the slowest voxel is
+        # done wastes nearly all of the work, and stopping on a global criterion instead leaves
+        # the stragglers short of the MLE. So settled voxels are retired from the working set
+        # and the rest keep going.
+        mu_out = np.zeros(width)
+        pi_out = np.zeros(width)
+        se_out = np.full(width, np.inf)
+        voxel_ids = np.arange(width)
+
+        def _retire(positions, curvature):
+            """Write out voxels that have converged."""
+            ids = voxel_ids[positions]
+            mu_out[ids] = mu[positions]
+            pi_out[ids] = pi[positions]
+            curv = curvature[positions]
+            informative = curv < 0
+            se_out[ids[informative]] = 1.0 / np.sqrt(-curv[informative])
+
+        curvature = np.zeros(width)
         for _ in range(self.max_iter):
-            previous_pi = pi
+            if not mu.size:
+                break
+            censoring = _censoring_terms(mu[sil_voxel], cutoff_sil, sigma_sil)
+            pi_shift = np.zeros(mu.size)
             if zero_inflated:
-                density_effect = _normal_pdf((g_obs - mu) / sigma_reported) / sigma_reported
-                resp_reported = pi * density_effect
-                resp_reported /= resp_reported + (1.0 - pi) * density_null + 1e-300
+                pi_rep, pi_sil = pi[rep_voxel], pi[sil_voxel]
+                density_effect = _normal_pdf((g_rep - mu[rep_voxel]) / sigma_rep) / sigma_rep
+                resp_rep = pi_rep * density_effect
+                resp_rep /= resp_rep + (1.0 - pi_rep) * density_null + 1e-300
+                resp_sil = pi_sil * censoring["prob"]
+                resp_sil /= resp_sil + (1.0 - pi_sil) * prob_silent_null + 1e-300
 
-                prob_silent_effect = self._silence_probability(mu, cutoffs, sigma_silent)
-                resp_silent = pi * prob_silent_effect
-                resp_silent /= resp_silent + (1.0 - pi) * prob_silent_null + 1e-300
-
-                numerator = (weight_reported * resp_reported).sum(axis=0) + (
-                    weight_silent * resp_silent
-                ).sum(axis=0)
+                numerator = np.bincount(
+                    rep_voxel, weights=w_rep * resp_rep, minlength=mu.size
+                ) + np.bincount(sil_voxel, weights=w_sil * resp_sil, minlength=mu.size)
+                previous_pi = pi
                 pi = np.clip(
                     np.divide(
                         numerator,
                         total_weight,
-                        out=np.zeros_like(mu),
+                        out=np.zeros(mu.size),
                         where=total_weight > 0,
                     ),
                     1e-4,
                     1.0 - 1e-4,
                 )
-            else:
-                resp_reported = np.ones_like(g_obs)
-                resp_silent = np.ones_like(g_obs)
+                pi_shift = np.abs(pi - previous_pi)
 
-            score, curvature = self._mu_derivatives(
-                mu,
-                g_obs=g_obs,
-                sigma_reported=sigma_reported,
-                sigma_silent=sigma_silent,
-                cutoffs=cutoffs,
-                weight_reported=weight_reported * resp_reported,
-                weight_silent=weight_silent * resp_silent,
+            score, curvature = _mu_derivatives(
+                width=mu.size,
+                mu_rep=mu[rep_voxel],
+                g_rep=g_rep,
+                precision_rep=precision_rep,
+                rep_voxel=rep_voxel,
+                weight_rep=w_rep * resp_rep,
+                sil_voxel=sil_voxel,
+                weight_sil=w_sil * resp_sil,
+                censoring=censoring,
             )
             step = np.where(curvature < 0, -score / curvature, 0.0)
             # The likelihood is concave but flat far from the data; cap the step so a voxel
             # with almost no reporting weight cannot run away.
             mu = mu + np.clip(step, -1.0, 1.0)
-            pi_shift = np.max(np.abs(pi - previous_pi)) if zero_inflated else 0.0
-            if max(np.max(np.abs(step)), pi_shift) < 1e-5:
+
+            settled = (np.abs(step) < _EM_TOLERANCE) & (pi_shift < _EM_TOLERANCE)
+            if settled.all():
+                _retire(np.flatnonzero(settled), curvature)
+                mu = mu[:0]
                 break
+            if settled.mean() < _EM_COMPACTION_FRACTION:
+                continue
 
-        _, curvature = self._mu_derivatives(
-            mu,
-            g_obs=g_obs,
-            sigma_reported=sigma_reported,
-            sigma_silent=sigma_silent,
-            cutoffs=cutoffs,
-            weight_reported=weight_reported * resp_reported,
-            weight_silent=weight_silent * resp_silent,
-        )
-        se = np.full(mu.shape, np.inf)
-        informative = curvature < 0
-        se[informative] = 1.0 / np.sqrt(-curvature[informative])
-        return mu, pi, se
+            _retire(np.flatnonzero(settled), curvature)
+            keep = ~settled
+            position = np.full(mu.size, -1, dtype=np.int64)
+            position[np.flatnonzero(keep)] = np.arange(int(keep.sum()))
 
-    @staticmethod
-    def _silence_probability(mu, cutoffs, sigma):
-        """P(|g| < c | mu), the chance a study with effect ``mu`` reports nothing."""
-        return np.clip(
-            ndtr((cutoffs - mu) / sigma) - ndtr((-cutoffs - mu) / sigma),
-            1e-12,
-            None,
-        )
+            moved = position[rep_voxel]
+            kept_pairs = moved >= 0
+            rep_voxel = moved[kept_pairs]
+            w_rep, g_rep = w_rep[kept_pairs], g_rep[kept_pairs]
+            sigma_rep, precision_rep = sigma_rep[kept_pairs], precision_rep[kept_pairs]
+            density_null, resp_rep = density_null[kept_pairs], resp_rep[kept_pairs]
 
-    @staticmethod
-    def _mu_derivatives(
-        mu, *, g_obs, sigma_reported, sigma_silent, cutoffs, weight_reported, weight_silent
-    ):
-        """First and second derivatives of the weighted log-likelihood with respect to mu."""
-        precision = 1.0 / sigma_reported**2
-        score = (weight_reported * (g_obs - mu) * precision).sum(axis=0)
-        curvature = -(weight_reported * precision).sum(axis=0)
+            moved = position[sil_voxel]
+            kept_pairs = moved >= 0
+            sil_voxel = moved[kept_pairs]
+            w_sil, cutoff_sil = w_sil[kept_pairs], cutoff_sil[kept_pairs]
+            sigma_sil, prob_silent_null = sigma_sil[kept_pairs], prob_silent_null[kept_pairs]
+            resp_sil = resp_sil[kept_pairs]
 
-        upper = (cutoffs - mu) / sigma_silent
-        lower = (-cutoffs - mu) / sigma_silent
-        prob = np.clip(ndtr(upper) - ndtr(lower), 1e-12, None)
-        pdf_upper = _normal_pdf(upper)
-        pdf_lower = _normal_pdf(lower)
+            mu, pi = mu[keep], pi[keep]
+            total_weight = total_weight[keep]
+            voxel_ids = voxel_ids[keep]
 
-        d_prob = -(pdf_upper - pdf_lower) / sigma_silent
-        d2_prob = -(upper * pdf_upper - lower * pdf_lower) / sigma_silent**2
-        censor_score = d_prob / prob
+        if mu.size:
+            _, curvature = _mu_derivatives(
+                width=mu.size,
+                mu_rep=mu[rep_voxel],
+                g_rep=g_rep,
+                precision_rep=precision_rep,
+                rep_voxel=rep_voxel,
+                weight_rep=w_rep * resp_rep,
+                sil_voxel=sil_voxel,
+                weight_sil=w_sil * resp_sil,
+                censoring=_censoring_terms(mu[sil_voxel], cutoff_sil, sigma_sil),
+            )
+            _retire(np.arange(mu.size), curvature)
 
-        score = score + (weight_silent * censor_score).sum(axis=0)
-        curvature = curvature + (weight_silent * (d2_prob / prob - censor_score**2)).sum(axis=0)
-        return score, curvature
+        return mu_out, pi_out, se_out
 
     def _statistic(self, table, sample_sizes, thresholds):
         """Fit one configuration of foci and return ``(fit, z)``.
@@ -1123,13 +1307,24 @@ class CBES(Estimator):
         z_values[~fit["covered"]] = 0.0
         return fit, z_values
 
+    def _mask_bool(self):
+        """Boolean analysis mask, cached: the null loop unmasks a volume every iteration."""
+        cached = getattr(self, "_mask_bool_", None)
+        if cached is None:
+            cached = _mask_img_to_bool(self.masker.mask_img)
+            self._mask_bool_ = cached
+        return cached
+
     def _in_mask_ijk(self):
         """Voxel indices a relocated focus may land on."""
         # ``[:, :3]``: a mask image may carry a trailing singleton volume axis.
         return np.argwhere(np.asarray(self.masker.mask_img.dataobj) > 0)[:, :3]
 
-    def _null_iteration(self, seed, in_mask_ijk, sample_sizes, thresholds):
-        """One relocation of every focus. Returns ``(histogram of |z|, max |z|)``.
+    def _null_iteration(self, seed, in_mask_ijk, sample_sizes, thresholds, cluster_stat=None):
+        """One relocation of every focus.
+
+        Returns ``(histogram of |z|, max |z|, max cluster size, max cluster mass)``; the two
+        cluster measures are zero unless ``cluster_stat`` gives a cluster-forming threshold.
 
         Relocating the foci while keeping their effect sizes and study membership is the same
         null the convergence-based estimators use -- that reported coordinates fall at random
@@ -1144,25 +1339,73 @@ class CBES(Estimator):
 
         absolute = np.abs(z_null)
         counts, _ = np.histogram(np.clip(absolute, 0, _NULL_MAX_Z), bins=_null_bin_edges())
-        return counts, float(absolute.max()) if absolute.size else 0.0
+        peak = float(absolute.max()) if absolute.size else 0.0
 
-    def _compute_montecarlo_null(self, n_iters, n_cores, seed):
-        """Accumulate the voxelwise and maximum-statistic null distributions in one pass."""
+        max_size = max_mass = 0.0
+        if cluster_stat is not None and np.isfinite(cluster_stat):
+            mask_bool = self._mask_bool()
+            volume = np.zeros(mask_bool.shape, dtype=float)
+            volume[mask_bool] = z_null
+            max_size, max_mass = _calculate_cluster_measures(
+                volume, cluster_stat, _CLUSTER_CONNECTIVITY, tail="two"
+            )
+        return counts, peak, float(max_size), float(max_mass)
+
+    def _compute_montecarlo_null(
+        self, n_iters, n_cores, seed, cluster_stat=None, cluster_threshold=None
+    ):
+        """Accumulate the null distributions in one pass over the relocations.
+
+        The voxelwise histogram (for uncorrected p), the maximum ``|z|`` (for voxel-level FWE)
+        and, when clusters are wanted, the maximum cluster size and mass all come from the same
+        refits. Computing them separately would mean permuting two or three times, and a
+        permutation here is a full refit.
+
+        Clusters need a forming threshold, and an honest one can only be read off the null that
+        this pass is producing. Rather than permute twice, ``cluster_threshold`` (a p-value) is
+        resolved against a short pilot run first; the pilot costs a few percent of the main
+        loop where a second full pass would cost 100%.
+        """
         in_mask_ijk = self._in_mask_ijk()
         sample_sizes = getattr(self, "_sample_sizes_", None)
         thresholds = getattr(self, "_thresholds_", None)
-
         n_cores = _check_ncores(n_cores)
+
+        if cluster_stat is None and cluster_threshold is not None:
+            n_pilot = int(min(max(_NULL_PILOT_ITERS, n_iters // 20), n_iters))
+            pilot = Parallel(n_jobs=n_cores)(
+                # Seeded past the main loop's range so the pilot draws are disjoint from
+                # it, and never negative, which ``default_rng`` rejects.
+                delayed(self._null_iteration)(
+                    seed + n_iters + i, in_mask_ijk, sample_sizes, thresholds
+                )
+                for i in range(n_pilot)
+            )
+            pilot_histogram = np.sum([counts for counts, _, _, _ in pilot], axis=0).astype(
+                np.float64
+            )
+            cluster_stat = _stat_from_histogram(cluster_threshold, pilot_histogram)
+            self.null_distributions_["cluster_forming_stat"] = cluster_stat
+
         results = Parallel(n_jobs=n_cores)(
-            delayed(self._null_iteration)(seed + i, in_mask_ijk, sample_sizes, thresholds)
+            delayed(self._null_iteration)(
+                seed + i, in_mask_ijk, sample_sizes, thresholds, cluster_stat
+            )
             for i in tqdm(range(n_iters), disable=n_iters < 50, desc="CBES null")
         )
 
-        histogram = np.sum([counts for counts, _ in results], axis=0).astype(np.float64)
-        max_values = np.array([peak for _, peak in results], dtype=float)
+        histogram = np.sum([counts for counts, _, _, _ in results], axis=0).astype(np.float64)
+        max_values = np.array([peak for _, peak, _, _ in results], dtype=float)
         self.null_distributions_["histogram_bins"] = _null_bin_edges()
         self.null_distributions_["histweights_corr-none_method-montecarlo"] = histogram
         self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = max_values
+        if cluster_stat is not None:
+            self.null_distributions_[
+                "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+            ] = np.array([size for _, _, size, _ in results], dtype=float)
+            self.null_distributions_[
+                "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+            ] = np.array([mass for _, _, _, mass in results], dtype=float)
         return histogram, max_values
 
     def _fit(self, dataset):
@@ -1175,6 +1418,7 @@ class CBES(Estimator):
             )
 
         self.null_distributions_ = {}
+        self._mask_bool_ = None
         table = self._build_focus_table()
         self._focus_table_ = table
 
@@ -1190,7 +1434,12 @@ class CBES(Estimator):
         fit, z_values = self._statistic(table, self._sample_sizes_, self._thresholds_)
 
         if self.null_method == "montecarlo":
-            histogram, _ = self._compute_montecarlo_null(self.n_iters, self.n_cores, self.seed)
+            histogram, _ = self._compute_montecarlo_null(
+                self.n_iters,
+                self.n_cores,
+                self.seed,
+                cluster_threshold=self.cluster_threshold,
+            )
             p_values = _p_from_histogram(np.abs(z_values), histogram)
         else:
             p_values = stats.norm.sf(np.abs(z_values)) * 2.0
@@ -1213,20 +1462,39 @@ class CBES(Estimator):
 
     # ------------------------------------------------------------- correction
 
-    def correct_fwe_montecarlo(self, result, n_iters=None, n_cores=None, seed=None):
-        """Voxel-level FWE correction from the maximum-statistic null.
+    def correct_fwe_montecarlo(
+        self,
+        result,
+        voxel_thresh=0.001,
+        n_iters=None,
+        n_cores=None,
+        seed=None,
+        vfwe_only=False,
+    ):
+        """FWE correction from maximum-statistic nulls, at voxel and cluster level.
 
         Each iteration moves every focus to a uniformly drawn in-mask voxel, carrying its
-        effect size and study membership with it, and refits. The maximum ``|z|`` over the
-        brain builds the null. When :meth:`fit` already ran the same relocations for
-        ``null_method="montecarlo"``, those are reused rather than recomputed.
+        effect size and study membership with it, and refits. Three null distributions come out
+        of the same refits: the maximum ``|z|``, the maximum cluster size, and the maximum
+        cluster mass. Clusters are formed on ``|z|`` at the statistic corresponding to
+        ``voxel_thresh``, read off the uncorrected null rather than assumed -- CBES's ``z`` is
+        not standard normal, so a nominal 3.29 would not be a p of .001.
+
+        When :meth:`fit` ran the same relocations for ``null_method="montecarlo"`` at the same
+        cluster-forming threshold, all three nulls are reused and this is nearly free. Asking
+        for a different ``voxel_thresh`` than the estimator's ``cluster_threshold``, or fitting
+        with ``null_method="parametric"``, means permuting again here.
 
         Parameters
         ----------
         result : :obj:`~nimare.results.MetaResult`
             Result of a previous :meth:`fit`.
+        voxel_thresh : :obj:`float`, default=0.001
+            Cluster-forming threshold, as an uncorrected p-value.
         n_iters, n_cores, seed : optional
             Override the estimator's own settings for this correction.
+        vfwe_only : :obj:`bool`, default=False
+            Only compute voxel-level correction.
 
         Returns
         -------
@@ -1240,30 +1508,70 @@ class CBES(Estimator):
         seed = self.seed if seed is None else seed
 
         cached = self.null_distributions_.get("values_level-voxel_corr-fwe_method-montecarlo")
-        if cached is not None and len(cached) == n_iters and seed == self.seed:
-            max_values = cached
-        else:
-            _, max_values = self._compute_montecarlo_null(n_iters, n_cores, seed)
+        reusable = cached is not None and len(cached) == n_iters and seed == self.seed
+
+        cluster_stat = self.null_distributions_.get("cluster_forming_stat")
+        already_clustered = (
+            reusable
+            and cluster_stat is not None
+            and voxel_thresh == self.cluster_threshold
+            and "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+            in self.null_distributions_
+        )
+
+        if vfwe_only:
+            if not reusable:
+                _, cached = self._compute_montecarlo_null(n_iters, n_cores, seed)
+        elif not already_clustered:
+            # fit() either did not permute, or did so at a different cluster-forming
+            # threshold, so the cluster nulls have to be built here.
+            _, cached = self._compute_montecarlo_null(
+                n_iters, n_cores, seed, cluster_threshold=voxel_thresh
+            )
+            cluster_stat = self.null_distributions_.get("cluster_forming_stat")
+
+        if not vfwe_only and (cluster_stat is None or not np.isfinite(cluster_stat)):
+            LGR.warning(
+                f"No statistic reaches p < {voxel_thresh} under the null from {n_iters} "
+                "iterations, so no cluster can form. Reporting voxel-level correction only; "
+                "raise n_iters or voxel_thresh."
+            )
+            vfwe_only = True
 
         observed = np.abs(result.maps["z"])
-        p_corrected = (1 + np.sum(max_values[None, :] >= observed[:, None], axis=1)) / (
-            1 + len(max_values)
-        )
-        z_corrected = stats.norm.isf(np.clip(p_corrected, 1e-16, 1.0) / 2.0) * np.sign(
-            result.maps["z"]
+        sign = np.sign(result.maps["z"])
+        maps = {}
+        maps["logp_level-voxel"], maps["z_level-voxel"] = _max_statistic_maps(
+            observed, cached, sign
         )
 
-        maps = {
-            "p": p_corrected.astype(DEFAULT_FLOAT_DTYPE),
-            "z": z_corrected.astype(DEFAULT_FLOAT_DTYPE),
-            "logp": _nlogp_to_logp_values(np.log(np.clip(p_corrected, 1e-300, None))),
-        }
+        if not vfwe_only:
+            mask_bool = self._mask_bool()
+            volume = np.zeros(mask_bool.shape, dtype=float)
+            volume[mask_bool] = result.maps["z"]
+            sizes, masses = _observed_cluster_measures(volume, cluster_stat)
+            for label, observed_measure, key in (
+                ("size", sizes, "values_desc-size_level-cluster_corr-fwe_method-montecarlo"),
+                ("mass", masses, "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"),
+            ):
+                null = self.null_distributions_[key]
+                logp, z_corrected = _max_statistic_maps(observed_measure[mask_bool], null, sign)
+                maps[f"logp_desc-{label}_level-cluster"] = logp
+                maps[f"z_desc-{label}_level-cluster"] = z_corrected
+
+        scope = "voxel-level" if vfwe_only else "voxel- and cluster-level"
         description = (
-            "Family-wise error rate correction was performed with a voxel-level Monte Carlo "
-            f"procedure using {len(max_values)} iterations, in which every focus was relocated "
-            "to a uniformly drawn voxel within the analysis mask while retaining its effect "
-            "size and study membership."
+            f"Family-wise error rate correction was performed with a {scope} Monte Carlo "
+            f"procedure using {n_iters} iterations, in which every focus was relocated to a "
+            "uniformly drawn voxel within the analysis mask while retaining its effect size "
+            "and study membership."
         )
+        if not vfwe_only:
+            description += (
+                f" Clusters were formed at an uncorrected p of {voxel_thresh}, which "
+                f"corresponds to |z| > {cluster_stat:.2f} under that null, and were compared "
+                "against the null distributions of maximum cluster size and mass."
+            )
         return maps, {}, description
 
     # ------------------------------------------------------------ description

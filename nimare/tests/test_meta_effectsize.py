@@ -10,6 +10,7 @@ from nimare.generate import create_effect_size_coordinate_studyset
 from nimare.meta.cbma.effectsize import (
     CBES,
     _local_dersimonian_laird,
+    _null_bin_edges,
     null_effect_variance,
     peak_stat_to_hedges_g,
 )
@@ -284,11 +285,14 @@ def test_fixed_effects_option_zeroes_tau2(studyset, small_mask):
 def test_correct_fwe_montecarlo(studyset, small_mask):
     estimator = CBES(fwhm=12.0, mask=small_mask, selection_model="none", null_method="parametric")
     result = estimator.fit(studyset)
-    maps, tables, description = estimator.correct_fwe_montecarlo(result, n_iters=5, seed=0)
+    maps, tables, description = estimator.correct_fwe_montecarlo(
+        result, n_iters=5, seed=0, vfwe_only=True
+    )
 
     assert tables == {}
     assert "Monte Carlo" in description
-    p_corrected = maps["p"]
+    logp = maps["logp_level-voxel"]
+    p_corrected = 10.0**-logp
     assert np.all((p_corrected > 0) & (p_corrected <= 1))
     # Correction can only make p-values larger.
     assert np.all(p_corrected >= result.get_map("p", return_type="array") - 1e-6)
@@ -370,7 +374,6 @@ def test_montecarlo_null_calibrates_uncorrected_p(null_studyset, small_mask):
     [
         (FDRCorrector(method="indep"), "p_corr-FDR_method-indep"),
         (FWECorrector(method="bonferroni"), "p_corr-FWE_method-bonferroni"),
-        (FWECorrector(method="montecarlo", n_iters=20), "p_corr-FWE_method-montecarlo"),
     ],
 )
 def test_stock_correctors_work(studyset, small_mask, corrector, map_name):
@@ -384,6 +387,94 @@ def test_stock_correctors_work(studyset, small_mask, corrector, map_name):
     assert np.all(p_corr >= result.get_map("p", return_type="array") - 1e-6)
 
 
+def test_fwe_montecarlo_reports_voxel_and_cluster_levels(studyset, small_mask):
+    """Voxel-level, cluster-size and cluster-mass corrections all come from one permutation."""
+    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="montecarlo", n_iters=25)
+    result = estimator.fit(studyset)
+    maps, tables, description = estimator.correct_fwe_montecarlo(result, voxel_thresh=0.01)
+
+    assert tables == {}
+    assert set(maps) == {
+        "logp_level-voxel",
+        "z_level-voxel",
+        "logp_desc-size_level-cluster",
+        "z_desc-size_level-cluster",
+        "logp_desc-mass_level-cluster",
+        "z_desc-mass_level-cluster",
+    }
+    for name, values in maps.items():
+        assert np.all(np.isfinite(values)), name
+        if name.startswith("logp"):
+            assert np.all(values >= 0)  # -log10(p) of a p in (0, 1]
+
+    for key in (
+        "values_desc-size_level-cluster_corr-fwe_method-montecarlo",
+        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo",
+    ):
+        assert len(estimator.null_distributions_[key]) == 25
+    assert "corresponds to |z|" in description
+
+
+def test_fwe_montecarlo_vfwe_only_returns_only_voxel_maps(studyset, small_mask):
+    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="montecarlo", n_iters=20)
+    result = estimator.fit(studyset)
+    maps, _, description = estimator.correct_fwe_montecarlo(result, vfwe_only=True)
+
+    assert set(maps) == {"logp_level-voxel", "z_level-voxel"}
+    assert "voxel-level" in description
+
+
+def test_cluster_null_is_built_during_fit(studyset, small_mask):
+    """The permutations fit() runs already record cluster measures, so correcting is free.
+
+    The forming threshold comes from a pilot run rather than from a second pass over the
+    permutations, which is what it would otherwise cost.
+    """
+    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="montecarlo", n_iters=20)
+    estimator.fit(studyset)
+
+    assert "cluster_forming_stat" in estimator.null_distributions_
+    for key in (
+        "values_desc-size_level-cluster_corr-fwe_method-montecarlo",
+        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo",
+    ):
+        assert len(estimator.null_distributions_[key]) == 20
+
+
+def test_cluster_threshold_none_skips_the_cluster_null(studyset, small_mask):
+    estimator = CBES(
+        fwhm=12.0,
+        mask=small_mask,
+        null_method="montecarlo",
+        n_iters=20,
+        cluster_threshold=None,
+    )
+    estimator.fit(studyset)
+
+    assert (
+        "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+        not in estimator.null_distributions_
+    )
+
+
+def test_stat_from_histogram_inverts_p_from_histogram():
+    """The cluster-forming threshold is read off the same null the p-values come from."""
+    from nimare.meta.cbma.effectsize import _p_from_histogram, _stat_from_histogram
+
+    rng = np.random.default_rng(3)
+    histogram, _ = np.histogram(
+        np.clip(np.abs(rng.standard_normal(500_000)), 0, 50.0), bins=_null_bin_edges()
+    )
+    histogram = histogram.astype(float)
+
+    for target in (0.05, 0.01, 0.001):
+        stat = _stat_from_histogram(target, histogram)
+        assert _p_from_histogram(np.array([stat]), histogram)[0] <= target
+        # And the bin just below it does not reach the threshold.
+        below = _p_from_histogram(np.array([stat - 0.01]), histogram)[0]
+        assert below > target
+
+
 def test_fwe_montecarlo_reuses_the_null_from_fit(studyset, small_mask):
     """Fitting with the Monte Carlo null already paid for the max-statistic distribution."""
     estimator = CBES(fwhm=12.0, mask=small_mask, null_method="montecarlo", n_iters=20)
@@ -391,11 +482,11 @@ def test_fwe_montecarlo_reuses_the_null_from_fit(studyset, small_mask):
     assert "values_level-voxel_corr-fwe_method-montecarlo" in estimator.null_distributions_
 
     cached = estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]
-    maps, _, _ = estimator.correct_fwe_montecarlo(result, n_iters=20)
+    maps, _, _ = estimator.correct_fwe_montecarlo(result, n_iters=20, vfwe_only=True)
     assert np.array_equal(
         cached, estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]
     )
-    assert maps["p"].shape == result.get_map("p", return_type="array").shape
+    assert maps["logp_level-voxel"].shape == result.get_map("p", return_type="array").shape
 
 
 def test_null_is_built_from_the_selected_statistic(studyset, small_mask):
@@ -424,3 +515,45 @@ def test_kernel_truncation_bounds_the_support(studyset, small_mask):
     reached_wide = np.sum(wide.get_map("n_studies", return_type="array") > 0)
     reached_narrow = np.sum(narrow.get_map("n_studies", return_type="array") > 0)
     assert reached_narrow < reached_wide
+
+
+def test_fit_chunk_ignores_studies_that_say_nothing_here():
+    """The EM visits only weighted (study, voxel) pairs; padding must not change the answer.
+
+    A study that covers the region but whose peak is outside this voxel's kernel informs
+    neither the density term nor the censoring term. Adding such studies is the case the
+    sparse-pair EM has to get right, since they are exactly the entries it skips.
+    """
+    rng = np.random.default_rng(0)
+    n_studies, n_voxels = 6, 40
+    weights = np.where(
+        rng.random((n_studies, n_voxels)) < 0.5, rng.random((n_studies, n_voxels)), 0.0
+    )
+    kwargs = dict(
+        weights=weights,
+        g_obs=np.where(weights > 0, rng.normal(0.5, 0.3, weights.shape), 0.0),
+        var_obs=rng.uniform(0.02, 0.1, weights.shape),
+        covered=rng.random(weights.shape) < 0.7,
+        tau2=rng.uniform(0.0, 0.04, n_voxels),
+        null_var=rng.uniform(0.02, 0.08, (n_studies, 1)),
+        cutoffs=rng.uniform(0.3, 0.8, (n_studies, 1)),
+        start=rng.normal(0.5, 0.2, n_voxels),
+    )
+    estimator = CBES(max_iter=8, null_method="parametric")
+    baseline = estimator._fit_chunk(**kwargs)
+
+    # Three extra studies that are covered everywhere and reach no voxel.
+    padded = dict(kwargs)
+    pad = np.zeros((3, n_voxels))
+    padded["weights"] = np.vstack([kwargs["weights"], pad])
+    padded["g_obs"] = np.vstack([kwargs["g_obs"], pad])
+    padded["var_obs"] = np.vstack([kwargs["var_obs"], np.ones((3, n_voxels))])
+    padded["covered"] = np.vstack([kwargs["covered"], np.ones((3, n_voxels), dtype=bool)])
+    padded["null_var"] = np.vstack([kwargs["null_var"], np.full((3, 1), 0.05)])
+    padded["cutoffs"] = np.vstack([kwargs["cutoffs"], np.full((3, 1), 0.5)])
+    padded_result = estimator._fit_chunk(**padded)
+
+    for name, before, after in zip(("mu", "prevalence", "se"), baseline, padded_result):
+        finite = np.isfinite(before)
+        assert np.array_equal(finite, np.isfinite(after)), name
+        assert np.allclose(before[finite], after[finite], rtol=1e-12), name

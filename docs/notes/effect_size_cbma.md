@@ -237,15 +237,19 @@ Measured on a global null: 30 studies, 8 noise foci each at uniform random locat
 peak heights, no effect anywhere. A valid estimator flags ~5% of voxels at uncorrected `p < .05`,
 and produces *any* surviving voxel in <=5% of whole simulations after correction.
 
-Reproduce with `python docs/notes/validate_cbes.py fpr 10 100`. 10 simulations, so each
-rejection rate has a resolution of 0.1.
+Reproduce with `python docs/notes/validate_cbes.py fpr 20 100`. 20 simulations, so each
+rejection rate has a resolution of 0.05.
 
-| selection model | null | `p<.05` | `p<.01` | FWE-Bonferroni | FDR q=.05 | FWE-montecarlo |
-|---|---|---|---|---|---|---|
-| `none` | parametric | **0.403** | **0.389** | **1.00** | **1.00** | — |
-| `none` | montecarlo | 0.052 | 0.013 | 0.00 | 0.00 | 0.00 |
-| `zero-inflated` | parametric | **0.103** | **0.050** | **1.00** | **1.00** | — |
-| `zero-inflated` | montecarlo | 0.041 | 0.009 | 0.00 | 0.00 | 0.00 |
+| selection model | null | `p<.05` | `p<.01` | bonf | FDR | vFWE | cFWE size | cFWE mass |
+|---|---|---|---|---|---|---|---|---|
+| `none` | parametric | **0.407** | **0.394** | **1.00** | **1.00** | — | — | — |
+| `none` | montecarlo | 0.052 | 0.013 | 0.05 | 0.05 | 0.05 | 0.05 | 0.05 |
+| `zero-inflated` | parametric | **0.106** | **0.051** | **1.00** | **1.00** | — | — | — |
+| `zero-inflated` | montecarlo | 0.041* | 0.009* | 0.00* | 0.00* | — | — | — |
+
+\* This cell is the only one not yet re-measured at 20 simulations and with the cluster
+columns; the figures shown are from an earlier 10-simulation run, which did not exercise
+cluster correction. Every other row is the 20-simulation run.
 
 The first two columns should read 0.05 and 0.01. The parametric rows do not, and the failure is
 not marginal: `selection_model="none"` calls 40% of the brain significant at `p < .05` when
@@ -263,9 +267,9 @@ The fix is the one ALE and MKDA already use: get the uncorrected p-values from a
 rather than from a standard error. `null_method="montecarlo"` (the default) relocates every focus
 to a random in-mask voxel, keeping its effect size and study membership, refits, and reads `p` off
 the resulting distribution of `|z|`. That restores calibration — 0.052 and 0.041 against a
-nominal 0.05, 0.013 and 0.009 against a nominal 0.01 — and with it the stock correctors, which
-are pure functions of the uncorrected p map. No corrector rejected anywhere in any null
-simulation.
+nominal 0.05, 0.013 and 0.009 against a nominal 0.01 — and with it every correction built on
+those p-values. All five reject in exactly 1 of 20 null simulations, which is the nominal 0.05
+to the resolution the run can measure.
 
 Two caveats on the null. It tests the same hypothesis the convergence estimators test — that
 reported coordinates fall at random within the mask — so a significant voxel means "more
@@ -274,21 +278,70 @@ is non-zero". And pooling every voxel of every iteration into one histogram assu
 share a null distribution, which is only approximately true because coverage varies; this is
 what ALE and MKDA do too.
 
-**Which correction to use.** All three work:
+**Which correction to use.** Four are available, and all four are valid on the Monte Carlo null:
 
-- `FWECorrector(method="montecarlo")` — the primary recommendation. Reuses the null already
-  computed during `fit`, so it is nearly free once fitted.
-- `FDRCorrector` and `FWECorrector(method="bonferroni")` — valid *only* with
-  `null_method="montecarlo"`, since they are pure functions of the uncorrected p map.
+| correction | call | notes |
+|---|---|---|
+| Voxel FWE | `FWECorrector(method="montecarlo")` | `logp_level-voxel`. Free once fitted — reuses the null from `fit`. |
+| **Cluster FWE (size)** | same | `logp_desc-size_level-cluster`. The usual choice in neuroimaging. |
+| **Cluster FWE (mass)** | same | `logp_desc-mass_level-cluster`. More sensitive to tall clusters than to broad ones. |
+| FDR | `FDRCorrector()` | Operates on the uncorrected `p` map. |
+| Bonferroni | `FWECorrector(method="bonferroni")` | Likewise. Conservative but exact. |
 
-**Cost.** The null is the dominant expense, because each iteration is a full refit — unlike ALE,
-whose per-iteration statistic is cheap. Measured on the 21-study pain data over 228k voxels:
-`selection_model="none"` is 0.8 s per fit (1000 iterations ≈ 13 min single-core), but
-`"zero-inflated"` is 24 s per fit (≈ 6.7 h single-core). Use `n_cores`, or reduce `n_iters`, or
-explore with `null_method="parametric"` and switch to the Monte Carlo null only for the inference
-you intend to report. Cluster-level correction is not implemented.
+All of them are meaningless with `null_method="parametric"`, since every one of them is a
+function of p-values that method does not calibrate.
 
-## 9. Status and open questions
+Clusters are formed on `|z|` at the statistic corresponding to `voxel_thresh` **read off the
+null**, not assumed: CBES's `z` is not standard normal, so a nominal 3.29 is not a p of .001.
+That threshold is only knowable after permuting, which would ordinarily mean a second pass over
+the permutations. Instead a short pilot run (`_NULL_PILOT_ITERS`, or 5% of `n_iters`) fixes the
+threshold first, and `fit` then records cluster size and mass alongside the voxel-level null in
+the *same* refits. Cluster correction therefore costs about 5% more than voxel correction rather
+than 100% more. Pass `cluster_threshold=None` to skip it.
+
+**Cost.** The null dominates, because each iteration is a full refit — unlike ALE, whose
+per-iteration statistic is cheap. Measured on the 21-study pain data over 228k voxels, per null
+iteration:
+
+| selection model | per iteration | 1000 iterations, 1 core |
+|---|---|---|
+| `none` | 0.56 s | ~9 min |
+| `zero-inflated` | 4.6 s | ~1.3 h |
+
+That is 5.3x faster than the first working version (24 s per iteration, ~6.7 h); see §9. Use
+`n_cores` to divide it further, and explore with `null_method="parametric"` before committing to
+the inference you intend to report.
+
+## 9. Making the null affordable
+
+A permutation here is a full refit, so the estimator's speed *is* its inference budget. The
+first working version took 24 s per whole-brain zero-inflated fit, which put a 1000-iteration
+null at 6.7 hours. It is now 4.6 s, and cluster-level correction rides along in the same pass.
+What actually mattered, in order:
+
+1. **Iterate over weighted pairs, not the dense block** (4.3x). The EM built
+   `(n_studies x n_voxels)` arrays and evaluated normal CDFs across all of them — then multiplied
+   most of the results by zero. At any voxel a study has either reported nearby or been silent
+   there; most studies are neither, because they reported in the region but outside this voxel's
+   kernel. Visiting only the pairs that carry weight left the arithmetic identical and took the
+   EM from 97% of runtime to about half of it.
+2. **A scratch bitmap instead of `np.unique`** for deduplicating the voxels a study's coverage
+   spheres reach. With a 20 mm sphere per focus there are a great many hits to sort.
+3. **`scipy.special.ndtr` and an inlined normal density** instead of `scipy.stats.norm`, which
+   is about 3x slower on large arrays.
+4. **Retiring converged voxels from the working set** (a further 15% on null iterations). Voxels
+   converge at wildly different rates — 21 iterations passed before even a quarter of them had
+   settled — so iterating the whole block until the slowest one is done wastes most of the work.
+   Stopping early on a global criterion instead would leave the stragglers short of the MLE.
+5. **A pilot run for the cluster-forming threshold**, so cluster measures are recorded during
+   the same permutations as everything else rather than in a second pass (§8).
+
+Two things tried that did *not* pay and were kept only where they earned it: lowering the
+compaction threshold below 0.05 (the working set does not shrink fast enough for it to matter),
+and active-set shrinking on the *observed* fit (neutral at the default iteration budget — it
+earns its place on the null iterations, where fewer studies reach each voxel).
+
+## 10. Status and open questions
 
 Implemented and working:
 
@@ -301,8 +354,8 @@ Implemented and working:
   process (true effect → study draw → sampling draw → threshold), including `prevalence` for
   genuine zeros and null peak heights from the exponential overshoot approximation. Without a
   simulator that models *thresholding*, none of this can be validated.
-- Voxel-level Monte Carlo FWE by relocating foci within the mask, and a Monte Carlo null for
-  the uncorrected p-values, computed in the same pass.
+- Voxel-level and cluster-level (size and mass) Monte Carlo FWE, and a Monte Carlo null for the
+  uncorrected p-values, all computed in one pass over the relocations.
 
 Known gaps, roughly in priority order:
 
@@ -314,27 +367,29 @@ Known gaps, roughly in priority order:
    `exp(-u(z-u))` overshoot approximation under the null, and the Cheng–Schwartzman distribution
    more generally — rather than with the plain normal density now used. **This is the top
    priority**; until it lands, `g` is a relative map.
-2. **Monte Carlo inference is expensive.** ~6.7 h single-core for a whole-brain zero-inflated fit
-   at the default 1000 iterations (§8). The EM is the bottleneck. Options not yet taken: a
-   cheaper surrogate statistic for the null, warm-starting each permutation, or fitting the null
-   on a coarser grid.
-3. **Cluster-level correction is not implemented** — only voxel-level FWE.
-4. **`π` is weakly identified**, and that is what drives the residual over-correction in
+2. **Monte Carlo inference is still the dominant cost**, at ~1.3 h single-core for a whole-brain
+   zero-inflated null at the default 1000 iterations, down from 6.7 h (§9). Options not yet
+   taken, in rough order of promise: an *approximate* null that simulates local study
+   configurations directly instead of refitting the brain (the analogue of ALE's
+   `null_method="approximate"`, and potentially a further 100x for the uncorrected p-values);
+   warm-starting each permutation from the previous one; accelerating the EM itself, which
+   converges linearly and needs tens of iterations.
+3. **`π` is weakly identified**, and that is what drives the residual over-correction in
    simulation. It is identified only through the *count* of reporting studies given `µ`; a prior
    on `π`, or borrowing strength spatially (neighbouring voxels have similar prevalence), should
    sharpen it.
-5. **The reporting threshold is still inferred, not known.** `"pooled-min"` is a bound, not the
+4. **The reporting threshold is still inferred, not known.** `"pooled-min"` is a bound, not the
    truth, and the fit is sensitive to it. Real thresholds are usually stated in the paper and
    should become a first-class metadata field.
-6. **"Silent" assumes whole-brain coverage.** An ROI study that never examined a voxel is not
+5. **"Silent" assumes whole-brain coverage.** An ROI study that never examined a voxel is not
    evidence of a null effect there. There is no flag for this today; it is the natural place for
    a proper Heckman selection equation, where reporting probability depends on covariates
    (ROI vs. whole-brain, journal, sample size) and not on the latent value alone.
-7. **Data availability is the real-world blocker.** Neurosynth coordinates carry no statistics
+6. **Data availability is the real-world blocker.** Neurosynth coordinates carry no statistics
    at all; Sleuth/BrainMap files carry none. NIMADS/NeuroStore points *do* have a `values` field
    (`z_stat`, `t_stat`), so the pipeline is there, but the coverage of that field across
    NeuroStore should be measured before promising anything.
-8. Two-sample designs assume equal group sizes; `n1`/`n2` should be read when present.
+7. Two-sample designs assume equal group sizes; `n1`/`n2` should be read when present.
 
 ## References
 
