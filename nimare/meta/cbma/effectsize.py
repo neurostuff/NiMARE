@@ -523,11 +523,12 @@ class CBES(Estimator):
     This estimator is new and has not been validated against a reference implementation.
 
     Do not use ``null_method="parametric"`` for inference. Measured on a global null (30
-    studies of pure noise foci, 10 simulations), it returned uncorrected ``p < .05`` for 40% of
-    voxels with ``selection_model="none"`` and 10% with ``"zero-inflated"``, against a nominal
+    studies of pure noise foci, 20 simulations), it returned uncorrected ``p < .05`` for 41% of
+    voxels with ``selection_model="none"`` and 11% with ``"zero-inflated"``, against a nominal
     5%, and FDR and Bonferroni built on those p-values rejected somewhere in 100% of null
-    simulations. The Monte Carlo null returned 0.052 and 0.041 respectively, and no corrector
-    rejected in any null simulation.
+    simulations. The Monte Carlo null returned 0.052 and 0.042 respectively, and every
+    correction built on it rejected in 1 or 2 of the 20 simulations -- consistent with a
+    nominal 0.05, though 20 simulations cannot resolve a rate more finely than that.
 
     The effect-size maps are well ranked but poorly calibrated in magnitude. Against a
     random-effects pooling of the 21 NIDM pain studies' full t images, CBES run on peaks

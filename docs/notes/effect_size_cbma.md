@@ -245,11 +245,7 @@ rejection rate has a resolution of 0.05.
 | `none` | parametric | **0.407** | **0.394** | **1.00** | **1.00** | — | — | — |
 | `none` | montecarlo | 0.052 | 0.013 | 0.05 | 0.05 | 0.05 | 0.05 | 0.05 |
 | `zero-inflated` | parametric | **0.106** | **0.051** | **1.00** | **1.00** | — | — | — |
-| `zero-inflated` | montecarlo | 0.041* | 0.009* | 0.00* | 0.00* | — | — | — |
-
-\* This cell is the only one not yet re-measured at 20 simulations and with the cluster
-columns; the figures shown are from an earlier 10-simulation run, which did not exercise
-cluster correction. Every other row is the 20-simulation run.
+| `zero-inflated` | montecarlo | 0.042 | 0.009 | 0.10 | 0.10 | 0.10 | 0.05 | 0.05 |
 
 The first two columns should read 0.05 and 0.01. The parametric rows do not, and the failure is
 not marginal: `selection_model="none"` calls 40% of the brain significant at `p < .05` when
@@ -266,10 +262,17 @@ faithfully correcting p-values that were already meaningless.
 The fix is the one ALE and MKDA already use: get the uncorrected p-values from a **spatial null**
 rather than from a standard error. `null_method="montecarlo"` (the default) relocates every focus
 to a random in-mask voxel, keeping its effect size and study membership, refits, and reads `p` off
-the resulting distribution of `|z|`. That restores calibration — 0.052 and 0.041 against a
+the resulting distribution of `|z|`. That restores calibration — 0.052 and 0.042 against a
 nominal 0.05, 0.013 and 0.009 against a nominal 0.01 — and with it every correction built on
-those p-values. All five reject in exactly 1 of 20 null simulations, which is the nominal 0.05
-to the resolution the run can measure.
+those p-values.
+
+Read the corrected columns with the sample size in mind: 20 simulations resolves a rejection
+rate only to 0.05, so every cell above is either 1/20 or 2/20. The three cells at 0.10
+(Bonferroni, FDR and voxel FWE under the zero-inflated model) are 2 of 20, which a true rate of
+0.05 produces 26% of the time — so this run is consistent with correct control but cannot
+demonstrate it. Nothing here rules out a mild inflation at the voxel level under the
+zero-inflated model, and confirming it either way needs a few hundred simulations. The cluster
+levels came in at 1/20 in every configuration.
 
 Two caveats on the null. It tests the same hypothesis the convergence estimators test — that
 reported coordinates fall at random within the mask — so a significant voxel means "more
