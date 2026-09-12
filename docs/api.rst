@@ -22,6 +22,7 @@ For more information about the components of coordinate-based meta-analysis in N
    meta.ibma
    meta.cbma.ale
    meta.cbma.mkda
+   meta.cbma.effectsize
    meta.cbma.base
    meta.kernel
    meta.cbmr
@@ -342,6 +343,7 @@ For more information about fetching data from the internet, see :ref:`fetching t
 
    generate.create_coordinate_dataset
    generate.create_coordinate_studyset
+   generate.create_effect_size_coordinate_studyset
    generate.create_neurovault_dataset
    generate.create_neurovault_studyset
 

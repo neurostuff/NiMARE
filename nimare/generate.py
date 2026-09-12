@@ -291,6 +291,158 @@ def _create_source(foci, sample_sizes, space="MNI"):
     return source
 
 
+def create_effect_size_coordinate_studyset(
+    ground_truth_foci,
+    effect_sizes=0.5,
+    n_studies=20,
+    sample_size=(20, 40),
+    tau=0.0,
+    prevalence=1.0,
+    threshold_z=3.2905267314919255,
+    spatial_sd=6.0,
+    n_noise_foci=0,
+    noise_extent=60.0,
+    design="one-sample",
+    seed=None,
+    space="MNI",
+):
+    """Simulate a studyset whose coordinates carry reported z statistics.
+
+    .. versionadded:: 0.13.0
+
+    Unlike :func:`create_coordinate_dataset`, which only places foci, this simulates the whole
+    reporting process that coordinate-based *effect-size* estimation has to invert: a true
+    effect size at each ground-truth location, a study-level draw around it, a sampling draw
+    around that, and finally a **within-study threshold** that decides whether the peak is
+    reported at all. Studies whose local effect fails to clear the threshold contribute no
+    focus there, which is exactly the censoring that makes the reported peaks a biased sample
+    of the field.
+
+    Parameters
+    ----------
+    ground_truth_foci : :obj:`list` of :obj:`tuple`
+        xyz (mm) coordinates of the true effects.
+    effect_sizes : :obj:`float` or :obj:`list`, default=0.5
+        True population Hedges' g at each ground-truth focus. A scalar applies to all of them.
+    n_studies : :obj:`int`, default=20
+        Number of studies to simulate.
+    sample_size : :obj:`int` or :obj:`tuple`, default=(20, 40)
+        Per-study sample size, or the inclusive range to draw it from.
+    tau : :obj:`float`, default=0.0
+        Between-study standard deviation of the true effect at a focus.
+    prevalence : :obj:`float`, default=1.0
+        Probability that any given study has a non-null effect at a given focus. Below 1.0 the
+        studies are a genuine mixture: some have an effect of the stated size, the rest have
+        exactly zero. This is the situation a plain censored model cannot represent -- it has
+        to explain a study's silence as a small common effect rather than as no effect -- and
+        is what ``CBES(selection_model="zero-inflated")`` is built to recover.
+    threshold_z : :obj:`float`, default=3.29
+        Two-tailed reporting threshold on the z scale (p < .001 by default). A study reports a
+        peak only where its observed statistic clears this.
+    spatial_sd : :obj:`float`, default=6.0
+        Standard deviation, in mm, of the localization error on a reported peak.
+    n_noise_foci : :obj:`int`, default=0
+        Number of null foci per study. Their locations are uniform in a cube of side
+        ``2 * noise_extent`` and their statistics are drawn from the exponential
+        peak-overshoot approximation for the height of a suprathreshold local maximum, so
+        noise peaks look like real reported peaks rather than like implausibly large ones.
+    noise_extent : :obj:`float`, default=60.0
+        Half-width, in mm, of the cube noise foci are drawn from.
+    design : {"one-sample", "two-sample"}, default="one-sample"
+        Design to simulate. Only affects the statistic/effect-size conversion.
+    seed : :obj:`int` or None, optional
+        Random seed.
+    space : :obj:`str`, default="MNI"
+        Coordinate space label recorded on each point.
+
+    Returns
+    -------
+    :obj:`~nimare.studyset.Studyset`
+        Studyset whose points carry a ``Z`` value and whose analyses carry ``sample_sizes``.
+
+    Examples
+    --------
+    >>> studyset = create_effect_size_coordinate_studyset(
+    ...     [(0, 0, 0)], effect_sizes=0.8, n_studies=10, seed=1
+    ... )
+    """
+    from nimare.studyset import Studyset
+    from nimare.transforms import t_to_z
+
+    rng = np.random.default_rng(seed)
+
+    ground_truth_foci = np.atleast_2d(np.asarray(ground_truth_foci, dtype=float))
+    effect_sizes = np.broadcast_to(
+        np.asarray(effect_sizes, dtype=float), (len(ground_truth_foci),)
+    )
+
+    if isinstance(sample_size, (int, np.integer)):
+        sample_sizes = np.full(n_studies, int(sample_size))
+    else:
+        low, high = sample_size
+        sample_sizes = rng.integers(int(low), int(high) + 1, size=n_studies)
+
+    studies = []
+    for i_study, n_subjects in enumerate(sample_sizes):
+        dof = n_subjects - 1 if design == "one-sample" else n_subjects - 2
+        scale = (
+            np.sqrt(1.0 / n_subjects)
+            if design == "one-sample"
+            else np.sqrt(4.0 / n_subjects)  # equal groups: sqrt(1/n1 + 1/n2)
+        )
+
+        points = []
+        for focus, true_g in zip(ground_truth_foci, effect_sizes):
+            if prevalence < 1.0 and rng.random() >= prevalence:
+                continue  # this study simply has no effect here
+            study_effect = rng.normal(true_g, tau) if tau else true_g
+            sampling_sd = np.sqrt(scale**2 + study_effect**2 / (2.0 * n_subjects))
+            observed_d = rng.normal(study_effect, sampling_sd)
+            observed_z = t_to_z(np.array([observed_d / scale]), dof)[0]
+            if np.abs(observed_z) < threshold_z:
+                continue
+            reported = focus + rng.normal(0, spatial_sd, size=3)
+            points.append(
+                {
+                    "space": space,
+                    "coordinates": [float(c) for c in reported],
+                    "values": [{"kind": "Z", "value": float(observed_z)}],
+                }
+            )
+
+        for _ in range(n_noise_foci):
+            # Height of a null suprathreshold local maximum: P(Z > z | Z > u) ~= exp(-u(z - u)).
+            overshoot = rng.exponential(1.0 / threshold_z)
+            noise_z = (threshold_z + overshoot) * rng.choice([-1.0, 1.0])
+            points.append(
+                {
+                    "space": space,
+                    "coordinates": [
+                        float(c) for c in rng.uniform(-noise_extent, noise_extent, size=3)
+                    ],
+                    "values": [{"kind": "Z", "value": float(noise_z)}],
+                }
+            )
+
+        studies.append(
+            {
+                "id": f"study-{i_study}",
+                "name": f"study-{i_study}",
+                "metadata": {"sample_sizes": [int(n_subjects)]},
+                "analyses": [
+                    {
+                        "id": f"study-{i_study}-1",
+                        "name": "1",
+                        "metadata": {"sample_sizes": [int(n_subjects)]},
+                        "points": points,
+                    }
+                ],
+            }
+        )
+
+    return Studyset({"id": "simulated", "name": "simulated", "studies": studies})
+
+
 def _create_foci(foci, foci_percentage, fwhm, n_studies, n_noise_foci, rng, space):
     """Generate study specific foci.
 
