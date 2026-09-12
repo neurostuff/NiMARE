@@ -37,19 +37,45 @@ sense in which the spatial model is a *weighting scheme* rather than a separate 
 Selection
 ---------
 Reported peaks are not a random sample of the effect-size field: they are the values that
-survived a within-study threshold, so pooling them naively is a spatial winner's curse.
-``selection_model="censored"`` replaces the weighted mean with the maximizer of a weighted
-*censored* (Tobit) log-likelihood,
+survived a within-study threshold, so pooling them naively is a spatial winner's curse. But a
+study that reported nothing near :math:`v` usually has *no effect there*, not a small one, and
+a plain censored model cannot say so -- with one shared :math:`\\mu` per voxel, silence can only
+be read as evidence that :math:`\\mu` is small, which drags the estimate below the truth.
+
+``selection_model="zero-inflated"`` (the default) therefore fits a mixture at each voxel. With
+probability :math:`\\pi(v)` a study has a real effect :math:`\\delta_k \\sim N(\\mu(v),
+\\tau^2(v))`; otherwise it has none. Either way it reports a peak only if
+:math:`|\\hat{g}_k| > c_k`. A study that reported nothing contributes the *probability of that
+silence* under both components, so the data decide which explanation it supports:
 
 .. math::
 
-    \\ell(\\mu; v) = \\sum_k \\Big[ w_k(v)\\,\\log \\phi_{\\sigma_k}(g_k - \\mu)
-                    + (1 - w_k(v))\\, \\log P(|\\hat{g}_k| < c_k \\mid \\mu) \\Big],
+    \\ell(\\mu, \\pi; v) = \\sum_{k \\in R} w_k(v)\\, \\log\\big[
+            \\pi \\phi_{\\sigma_k}(g_k - \\mu) + (1 - \\pi) \\phi_{s_k}(g_k) \\big]
+        + \\sum_{k \\notin R} m_k(v)\\, \\log\\big[
+            \\pi P(|\\hat{g}| < c_k \\mid \\mu) + (1 - \\pi) P(|\\hat{g}| < c_k \\mid 0)
+            \\big],
 
-in which a study that reported nothing near :math:`v` contributes the *probability that it
-would have reported nothing* rather than an imputed value. No effect-size images are imputed
-at any point; non-reporting enters only through that censoring probability, as in
-:footcite:t:`tench2017coordinate`.
+maximized by EM with :math:`\\tau^2` held at its moment estimate. No effect-size images are
+imputed at any point; non-reporting enters only through those probabilities, as in
+:footcite:t:`tench2017coordinate`. ``selection_model="tobit"`` drops the zero component, and
+``"none"`` pools only the reported peaks.
+
+Two details that matter more than the choice of likelihood. Membership of :math:`R`, the set of
+studies that reported *something* near :math:`v`, is judged over a wider radius than the kernel
+:math:`w_k` that weights their values -- a study whose peak landed 6 mm away should have its
+value discounted but has plainly not been silent. And :math:`m_k`, the weight on a silent
+study, is the average :math:`w` of the reporting studies at that voxel rather than 1: reporting
+studies are kernel-discounted, so giving silence full weight lets it outvote evidence.
+
+Inference
+---------
+``g / se`` is not a null-referenced statistic -- the peaks being pooled were selected for being
+large, so under a global null the pooled effect at a focus is large by construction. Uncorrected
+p-values therefore come from a spatial null by default (``null_method="montecarlo"``), which
+relocates every focus within the mask and refits, exactly as the convergence-based estimators
+do. See the :class:`CBES` warnings for what the parametric alternative does to the false
+positive rate.
 
 References
 ----------
@@ -60,9 +86,11 @@ import logging
 
 import numpy as np
 import pandas as pd
-from joblib import Memory
+from joblib import Memory, Parallel, delayed
 from nilearn.maskers import NiftiMasker
 from scipy import stats
+from scipy.special import ndtr
+from tqdm.auto import tqdm
 
 from nimare import _version
 from nimare.estimator import Estimator
@@ -76,6 +104,7 @@ from nimare.transforms import d_to_g, t_to_d, t_to_z, z_to_t
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _add_metadata_to_dataframe,
+    _check_ncores,
     _nlogp_to_logp_values,
     get_masker,
     get_masker_mask_image,
@@ -97,6 +126,44 @@ DEFAULT_REPORTING_THRESHOLD_Z = 3.2905267314919255
 DESIGNS = ("one-sample", "two-sample")
 
 SELECTION_MODELS = ("zero-inflated", "tobit", "none")
+
+NULL_METHODS = ("montecarlo", "parametric")
+
+#: Resolution of the Monte Carlo null histogram for |z|, and where its upper tail is clipped.
+_NULL_Z_STEP = 0.01
+_NULL_MAX_Z = 50.0
+
+_INV_SQRT_2PI = 1.0 / np.sqrt(2.0 * np.pi)
+
+
+def _normal_pdf(x):
+    """Standard normal density. ``scipy.stats.norm.pdf`` is ~3x slower on large arrays, and
+    the EM below evaluates it on an (n_studies, n_voxels) block on every iteration."""
+    return np.exp(-0.5 * x * x) * _INV_SQRT_2PI
+
+
+def _null_bin_edges():
+    """Bin edges for the Monte Carlo null histogram of |z|."""
+    return np.arange(0.0, _NULL_MAX_Z + _NULL_Z_STEP, _NULL_Z_STEP)
+
+
+def _p_from_histogram(values, histogram):
+    """Two-tailed p for ``|z|`` against a histogram of null ``|z|`` values.
+
+    Pooling every voxel of every iteration into one histogram is what ALE and MKDA do for
+    their uncorrected nulls; it assumes voxels share a null distribution, which is only
+    approximately true here because coverage varies across the brain.
+    """
+    total = histogram.sum()
+    if total <= 0:
+        return np.ones_like(values, dtype=float)
+
+    # Survival counts: how many null values land at or above each bin's lower edge.
+    survival = np.concatenate([np.cumsum(histogram[::-1])[::-1], [0.0]])
+    index = np.clip(
+        np.floor(np.asarray(values) / _NULL_Z_STEP).astype(np.int64), 0, len(histogram)
+    )
+    return (survival[index] + 1.0) / (total + 1.0)
 
 
 def peak_stat_to_hedges_g(stat, sample_size, stat_type="z", design="one-sample"):
@@ -261,8 +328,35 @@ class CBES(Estimator):
         study whose peak sits 6 mm away should have its *value* discounted, but it has plainly
         not been silent. Defaults to twice the kernel FWHM (20 mm when ``fwhm`` is None). Only
         used when ``selection_model="censored"``.
+    kernel_min_weight : :obj:`float`, default=0.01
+        Truncate the spatial kernel below this fraction of its peak. A focus then reaches only
+        voxels it says something about (about 13 mm for a 10 mm FWHM), which is what keeps
+        ``n_studies`` interpretable and the fit affordable.
     max_iter : :obj:`int`, default=25
         Maximum Newton iterations for the censored likelihood.
+    null_method : {"montecarlo", "parametric"}, default="montecarlo"
+        How uncorrected p-values are obtained.
+
+        ``"montecarlo"``
+            Relocate every focus to a random in-mask voxel ``n_iters`` times, keeping its
+            effect size and study membership, and read p off the resulting null distribution
+            of ``|z|``. This is the null the convergence-based estimators use -- that reported
+            coordinates fall at random within the mask -- and it is the only one validated
+            here. It is also what makes :class:`~nimare.correct.FDRCorrector` and
+            ``FWECorrector(method="bonferroni")`` meaningful, since both simply operate on
+            these p-values.
+        ``"parametric"``
+            ``g / se`` referred to a normal distribution. Fast, and **anticonservative**: see
+            the warning below. Useful for inspecting the effect-size maps, not for inference.
+
+    n_iters : :obj:`int`, default=1000
+        Monte Carlo iterations for the null. Each is a full refit, so this is the dominant
+        cost of the estimator -- far more so than for ALE, whose per-iteration statistic is
+        much cheaper. Reduce it, or use ``null_method="parametric"``, when exploring.
+    n_cores : :obj:`int`, default=1
+        Cores for the Monte Carlo null. ``-1`` uses all available.
+    seed : :obj:`int`, default=0
+        Seed for the relocation draws.
     mask : Niimg-like object or None, optional
         Mask to use. If None, the collection's masker is used.
     memory, memory_level, generate_description
@@ -291,11 +385,21 @@ class CBES(Estimator):
 
     Warnings
     --------
-    This estimator is new and its inference has not been validated against a reference
-    implementation. The parametric p-values assume the local weighted estimate is normal with
-    the reported standard error; with ``selection_model="none"`` they also ignore the
-    thresholding that generated the peaks, and so are anticonservative. Prefer
-    :meth:`correct_fwe_montecarlo`.
+    This estimator is new and has not been validated against a reference implementation.
+
+    Do not use ``null_method="parametric"`` for inference. Measured on a global null (30
+    studies of pure noise foci, 10 simulations), it returned uncorrected ``p < .05`` for 40% of
+    voxels with ``selection_model="none"`` and 10% with ``"zero-inflated"``, against a nominal
+    5%, and FDR and Bonferroni built on those p-values rejected somewhere in 100% of null
+    simulations. The Monte Carlo null returned 0.052 and 0.041 respectively, and no corrector
+    rejected in any null simulation.
+
+    The effect-size maps are well ranked but poorly calibrated in magnitude. Against a
+    random-effects pooling of the 21 NIDM pain studies' full t images, CBES run on peaks
+    thresholded out of those same images reached rho = 0.84 (ALE, 0.18) but overestimated the
+    effect roughly twofold (0.80 against 0.41 where the reference exceeded 0.2). Reported
+    peaks are local maxima, and that inflation is not yet modelled. Treat ``g`` as a relative
+    map until it is.
 
     References
     ----------
@@ -313,7 +417,12 @@ class CBES(Estimator):
         selection_model="zero-inflated",
         threshold="pooled-min",
         coverage_radius=None,
+        kernel_min_weight=0.01,
         max_iter=25,
+        null_method="montecarlo",
+        n_iters=1000,
+        n_cores=1,
+        seed=0,
         memory=Memory(location=None, verbose=0),
         memory_level=0,
         generate_description=True,
@@ -331,6 +440,17 @@ class CBES(Estimator):
         if selection_model not in SELECTION_MODELS:
             raise ValueError(
                 f"selection_model must be one of {SELECTION_MODELS}; got {selection_model!r}."
+            )
+        if null_method not in NULL_METHODS:
+            raise ValueError(f"null_method must be one of {NULL_METHODS}; got {null_method!r}.")
+        if null_method == "parametric":
+            LGR.warning(
+                "null_method='parametric' produces anticonservative p-values: the standard "
+                "error treats tau-squared and the mixture weights as known, and the reported "
+                "peaks it pools were selected for being large. Under a global null it flags "
+                "roughly 40%% of voxels at p < .05 (10%% with selection_model='zero-inflated') "
+                "instead of 5%%, and FDR and Bonferroni built on top of it reject in every "
+                "null simulation. Use null_method='montecarlo' for inference."
             )
         if isinstance(threshold, str):
             if threshold not in ("pooled-min", "study-min"):
@@ -351,7 +471,12 @@ class CBES(Estimator):
         self.selection_model = selection_model
         self.threshold = threshold
         self.coverage_radius = coverage_radius
+        self.kernel_min_weight = kernel_min_weight
         self.max_iter = max_iter
+        self.null_method = null_method
+        self.n_iters = n_iters
+        self.n_cores = n_cores
+        self.seed = seed
 
         if mask is not None:
             mask = get_masker(mask, memory=memory, memory_level=memory_level)
@@ -510,13 +635,23 @@ class CBES(Estimator):
     # ------------------------------------------------------- spatial machinery
 
     def _kernel_support(self, sample_size=None):
-        """Sparse (offsets, weights) for the spatial-uncertainty kernel, peak-normalized."""
+        """Sparse (offsets, weights) for the spatial-uncertainty kernel, peak-normalized.
+
+        Truncated at ``kernel_min_weight`` of the peak. :func:`get_ale_kernel` keeps every
+        voxel above floating-point zero, which for a 10 mm FWHM kernel is a radius of about
+        26 mm -- so on a whole-brain mask every voxel ends up "reached" by several studies at
+        weights of order 1e-10, ``n_studies`` stops meaning anything, and the censoring term
+        is evaluated at voxels no study says anything about.
+        """
         mask_img = self.masker.mask_img
         if self.fwhm is not None:
             _, kernel = get_ale_kernel(mask_img, fwhm=self.fwhm)
         else:
             _, kernel = get_ale_kernel(mask_img, sample_size=sample_size)
-        offsets, values = _kernel_to_sparse_support(kernel / kernel.max())
+
+        kernel = kernel / kernel.max()
+        kernel[kernel < self.kernel_min_weight] = 0.0
+        offsets, values = _kernel_to_sparse_support(kernel)
         return offsets, values
 
     def _study_voxel_weights(self, study_table, offsets, values, mask_flat_to_masked, shape):
@@ -572,7 +707,8 @@ class CBES(Estimator):
     def _accumulate(self, table):
         """Walk the studies once, returning per-study voxel contributions and voxel sums."""
         mask_img = self.masker.mask_img
-        shape = np.asarray(mask_img.shape, dtype=np.int64)
+        # ``shape[:3]``: a mask image may carry a trailing singleton volume axis.
+        shape = np.asarray(mask_img.shape[:3], dtype=np.int64)
         mask_flat_to_masked = _get_mask_flat_to_masked(mask_img)
         n_voxels = int(mask_flat_to_masked.max()) + 1 if mask_flat_to_masked.size else 0
 
@@ -687,7 +823,8 @@ class CBES(Estimator):
         estimate toward zero.
         """
         mask_img = self.masker.mask_img
-        shape = np.asarray(mask_img.shape, dtype=np.int64)
+        # ``shape[:3]``: a mask image may carry a trailing singleton volume axis.
+        shape = np.asarray(mask_img.shape[:3], dtype=np.int64)
         mask_flat_to_masked = _get_mask_flat_to_masked(mask_img)
 
         radius = self.coverage_radius
@@ -867,19 +1004,20 @@ class CBES(Estimator):
         # Probability a silent study stays silent when it has no effect at all. Fixed across
         # iterations, and close to one whenever the threshold is the usual several sigma.
         prob_silent_null = np.clip(
-            stats.norm.cdf(cutoffs / sigma_null) - stats.norm.cdf(-cutoffs / sigma_null),
+            ndtr(cutoffs / sigma_null) - ndtr(-cutoffs / sigma_null),
             1e-12,
             None,
         )
-        density_null = stats.norm.pdf(g_obs / np.sqrt(var_obs)) / np.sqrt(var_obs)
+        density_null = _normal_pdf(g_obs / np.sqrt(var_obs)) / np.sqrt(var_obs)
 
         mu = start.copy()
         pi = np.full(mu.shape, 0.5 if zero_inflated else 1.0)
         total_weight = weight_reported.sum(axis=0) + weight_silent.sum(axis=0)
 
         for _ in range(self.max_iter):
+            previous_pi = pi
             if zero_inflated:
-                density_effect = stats.norm.pdf((g_obs - mu) / sigma_reported) / sigma_reported
+                density_effect = _normal_pdf((g_obs - mu) / sigma_reported) / sigma_reported
                 resp_reported = pi * density_effect
                 resp_reported /= resp_reported + (1.0 - pi) * density_null + 1e-300
 
@@ -917,7 +1055,8 @@ class CBES(Estimator):
             # The likelihood is concave but flat far from the data; cap the step so a voxel
             # with almost no reporting weight cannot run away.
             mu = mu + np.clip(step, -1.0, 1.0)
-            if np.max(np.abs(step)) < 1e-6:
+            pi_shift = np.max(np.abs(pi - previous_pi)) if zero_inflated else 0.0
+            if max(np.max(np.abs(step)), pi_shift) < 1e-5:
                 break
 
         _, curvature = self._mu_derivatives(
@@ -938,7 +1077,7 @@ class CBES(Estimator):
     def _silence_probability(mu, cutoffs, sigma):
         """P(|g| < c | mu), the chance a study with effect ``mu`` reports nothing."""
         return np.clip(
-            stats.norm.cdf((cutoffs - mu) / sigma) - stats.norm.cdf((-cutoffs - mu) / sigma),
+            ndtr((cutoffs - mu) / sigma) - ndtr((-cutoffs - mu) / sigma),
             1e-12,
             None,
         )
@@ -954,9 +1093,9 @@ class CBES(Estimator):
 
         upper = (cutoffs - mu) / sigma_silent
         lower = (-cutoffs - mu) / sigma_silent
-        prob = np.clip(stats.norm.cdf(upper) - stats.norm.cdf(lower), 1e-12, None)
-        pdf_upper = stats.norm.pdf(upper)
-        pdf_lower = stats.norm.pdf(lower)
+        prob = np.clip(ndtr(upper) - ndtr(lower), 1e-12, None)
+        pdf_upper = _normal_pdf(upper)
+        pdf_lower = _normal_pdf(lower)
 
         d_prob = -(pdf_upper - pdf_lower) / sigma_silent
         d2_prob = -(upper * pdf_upper - lower * pdf_lower) / sigma_silent**2
@@ -965,6 +1104,66 @@ class CBES(Estimator):
         score = score + (weight_silent * censor_score).sum(axis=0)
         curvature = curvature + (weight_silent * (d2_prob / prob - censor_score**2)).sum(axis=0)
         return score, curvature
+
+    def _statistic(self, table, sample_sizes, thresholds):
+        """Fit one configuration of foci and return ``(fit, z)``.
+
+        The observed map and every Monte Carlo relocation go through this, so the null is
+        built from exactly the statistic being tested. Running the null off the naive
+        weighted mean while the observed map came from the selection model would compare two
+        different quantities.
+        """
+        fit = self._pool(table)
+        if self.selection_model != "none":
+            self._apply_selection_model(fit, table, thresholds, sample_sizes)
+
+        z_values = np.divide(
+            fit["g"], fit["se"], out=np.zeros_like(fit["g"]), where=np.isfinite(fit["se"])
+        )
+        z_values[~fit["covered"]] = 0.0
+        return fit, z_values
+
+    def _in_mask_ijk(self):
+        """Voxel indices a relocated focus may land on."""
+        # ``[:, :3]``: a mask image may carry a trailing singleton volume axis.
+        return np.argwhere(np.asarray(self.masker.mask_img.dataobj) > 0)[:, :3]
+
+    def _null_iteration(self, seed, in_mask_ijk, sample_sizes, thresholds):
+        """One relocation of every focus. Returns ``(histogram of |z|, max |z|)``.
+
+        Relocating the foci while keeping their effect sizes and study membership is the same
+        null the convergence-based estimators use -- that reported coordinates fall at random
+        within the mask -- but evaluated with a statistic that is sensitive to magnitude.
+        """
+        rng = np.random.default_rng(seed)
+        permuted = self._focus_table_.copy()
+        permuted[["i", "j", "k"]] = in_mask_ijk[
+            rng.integers(0, len(in_mask_ijk), size=len(permuted))
+        ]
+        _, z_null = self._statistic(permuted, sample_sizes, thresholds)
+
+        absolute = np.abs(z_null)
+        counts, _ = np.histogram(np.clip(absolute, 0, _NULL_MAX_Z), bins=_null_bin_edges())
+        return counts, float(absolute.max()) if absolute.size else 0.0
+
+    def _compute_montecarlo_null(self, n_iters, n_cores, seed):
+        """Accumulate the voxelwise and maximum-statistic null distributions in one pass."""
+        in_mask_ijk = self._in_mask_ijk()
+        sample_sizes = getattr(self, "_sample_sizes_", None)
+        thresholds = getattr(self, "_thresholds_", None)
+
+        n_cores = _check_ncores(n_cores)
+        results = Parallel(n_jobs=n_cores)(
+            delayed(self._null_iteration)(seed + i, in_mask_ijk, sample_sizes, thresholds)
+            for i in tqdm(range(n_iters), disable=n_iters < 50, desc="CBES null")
+        )
+
+        histogram = np.sum([counts for counts, _ in results], axis=0).astype(np.float64)
+        max_values = np.array([peak for _, peak in results], dtype=float)
+        self.null_distributions_["histogram_bins"] = _null_bin_edges()
+        self.null_distributions_["histweights_corr-none_method-montecarlo"] = histogram
+        self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = max_values
+        return histogram, max_values
 
     def _fit(self, dataset):
         self.dataset = dataset
@@ -975,21 +1174,27 @@ class CBES(Estimator):
                 "Only NiftiMaskers are allowed for this Estimator."
             )
 
+        self.null_distributions_ = {}
         table = self._build_focus_table()
         self._focus_table_ = table
 
-        fit = self._pool(table)
-        if self.selection_model != "none":
-            self._sample_sizes_ = self._all_sample_sizes(dataset)
-            self._thresholds_ = self._study_thresholds(table, self._sample_sizes_)
-            self._apply_selection_model(fit, table, self._thresholds_, self._sample_sizes_)
-
-        z_values = np.divide(
-            fit["g"], fit["se"], out=np.zeros_like(fit["g"]), where=np.isfinite(fit["se"])
+        self._sample_sizes_ = (
+            self._all_sample_sizes(dataset) if self.selection_model != "none" else None
         )
-        p_values = stats.norm.sf(np.abs(z_values)) * 2.0
+        self._thresholds_ = (
+            self._study_thresholds(table, self._sample_sizes_)
+            if self.selection_model != "none"
+            else None
+        )
+
+        fit, z_values = self._statistic(table, self._sample_sizes_, self._thresholds_)
+
+        if self.null_method == "montecarlo":
+            histogram, _ = self._compute_montecarlo_null(self.n_iters, self.n_cores, self.seed)
+            p_values = _p_from_histogram(np.abs(z_values), histogram)
+        else:
+            p_values = stats.norm.sf(np.abs(z_values)) * 2.0
         p_values[~fit["covered"]] = 1.0
-        z_values[~fit["covered"]] = 0.0
 
         maps = {
             "g": fit["g"].astype(DEFAULT_FLOAT_DTYPE),
@@ -1008,63 +1213,45 @@ class CBES(Estimator):
 
     # ------------------------------------------------------------- correction
 
-    def correct_fwe_montecarlo(self, result, n_iters=1000, n_cores=1, seed=0):
-        """Voxel-level FWE correction by relocating foci within the mask.
+    def correct_fwe_montecarlo(self, result, n_iters=None, n_cores=None, seed=None):
+        """Voxel-level FWE correction from the maximum-statistic null.
 
         Each iteration moves every focus to a uniformly drawn in-mask voxel, carrying its
-        effect size and variance with it, and refits. The maximum ``|z|`` over the brain builds
-        the null. This tests the same null hypothesis as the convergence-based estimators --
-        that reported coordinates fall at random within the mask -- but with a statistic that
-        is sensitive to effect-size magnitude rather than coordinate density.
+        effect size and study membership with it, and refits. The maximum ``|z|`` over the
+        brain builds the null. When :meth:`fit` already ran the same relocations for
+        ``null_method="montecarlo"``, those are reused rather than recomputed.
 
         Parameters
         ----------
         result : :obj:`~nimare.results.MetaResult`
             Result of a previous :meth:`fit`.
-        n_iters : :obj:`int`, default=1000
-            Number of permutations.
-        n_cores : :obj:`int`, default=1
-            Unused; present for interface compatibility with the other CBMA estimators.
-        seed : :obj:`int`, default=0
-            Seed for the relocation draws.
+        n_iters, n_cores, seed : optional
+            Override the estimator's own settings for this correction.
 
         Returns
         -------
         maps, tables, description
         """
-        del n_cores  # single-threaded for now; kept so FWECorrector can pass it through.
-
-        table = getattr(self, "_focus_table_", None)
-        if table is None:
+        if getattr(self, "_focus_table_", None) is None:
             raise ValueError("correct_fwe_montecarlo requires a fitted estimator.")
 
-        mask_img = self.masker.mask_img
-        in_mask_ijk = np.argwhere(mask_img.get_fdata() > 0)
-        rng = np.random.default_rng(seed)
+        n_iters = self.n_iters if n_iters is None else n_iters
+        n_cores = self.n_cores if n_cores is None else n_cores
+        seed = self.seed if seed is None else seed
 
-        observed_z = np.abs(result.maps["z"])
-        null_max = np.empty(n_iters, dtype=float)
+        cached = self.null_distributions_.get("values_level-voxel_corr-fwe_method-montecarlo")
+        if cached is not None and len(cached) == n_iters and seed == self.seed:
+            max_values = cached
+        else:
+            _, max_values = self._compute_montecarlo_null(n_iters, n_cores, seed)
 
-        permuted = table.copy()
-        for i_iter in range(n_iters):
-            draws = rng.integers(0, len(in_mask_ijk), size=len(permuted))
-            permuted[["i", "j", "k"]] = in_mask_ijk[draws]
-            fit = self._pool(permuted)
-            with np.errstate(invalid="ignore", divide="ignore"):
-                z_null = np.divide(
-                    fit["g"], fit["se"], out=np.zeros_like(fit["g"]), where=np.isfinite(fit["se"])
-                )
-            null_max[i_iter] = np.max(np.abs(z_null)) if z_null.size else 0.0
-
-        p_corrected = (1 + np.sum(null_max[None, :] >= observed_z[:, None], axis=1)) / (
-            1 + n_iters
+        observed = np.abs(result.maps["z"])
+        p_corrected = (1 + np.sum(max_values[None, :] >= observed[:, None], axis=1)) / (
+            1 + len(max_values)
         )
         z_corrected = stats.norm.isf(np.clip(p_corrected, 1e-16, 1.0) / 2.0) * np.sign(
             result.maps["z"]
         )
-
-        self.null_distributions_ = getattr(self, "null_distributions_", {})
-        self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = null_max
 
         maps = {
             "p": p_corrected.astype(DEFAULT_FLOAT_DTYPE),
@@ -1073,8 +1260,9 @@ class CBES(Estimator):
         }
         description = (
             "Family-wise error rate correction was performed with a voxel-level Monte Carlo "
-            f"procedure using {n_iters} iterations, in which every focus was relocated to a "
-            "uniformly drawn voxel within the analysis mask while retaining its effect size."
+            f"procedure using {len(max_values)} iterations, in which every focus was relocated "
+            "to a uniformly drawn voxel within the analysis mask while retaining its effect "
+            "size and study membership."
         )
         return maps, {}, description
 
@@ -1116,12 +1304,25 @@ class CBES(Estimator):
         n_studies = (
             self._focus_table_["id"].nunique() if hasattr(self, "_focus_table_") else "an unknown"
         )
+        if self.null_method == "montecarlo":
+            inference = (
+                " Uncorrected p-values were obtained from a Monte Carlo null distribution, in "
+                f"which every focus was relocated to a random voxel within the analysis mask "
+                f"{self.n_iters} times while retaining its effect size and study membership."
+            )
+        else:
+            inference = (
+                " Uncorrected p-values were obtained by referring the pooled estimate to a "
+                "normal distribution; these are anticonservative and should not be used for "
+                "inference."
+            )
         return (
             "A coordinate-based effect-size meta-analysis was performed with NiMARE "
             f"{__version__} (RRID:SCR_017398; \\citealt{{Salo2023}}). Each reported peak "
             f"statistic was converted to Hedges' g using the study's sample size and a "
             f"{self.design} design, and peaks were assigned spatial uncertainty with "
-            f"{kernel_description}. Voxel-wise pooling used {heterogeneity}.{selection} "
+            f"{kernel_description}. Voxel-wise pooling used {heterogeneity}.{selection}"
+            f"{inference} "
             f"The input dataset included {n_foci} foci with reported statistics from "
             f"{n_studies} experiments."
         )

@@ -4,6 +4,8 @@ import nibabel as nib
 import numpy as np
 import pytest
 
+from nimare.correct import FDRCorrector, FWECorrector
+
 from nimare.generate import create_effect_size_coordinate_studyset
 from nimare.meta.cbma.effectsize import (
     CBES,
@@ -155,6 +157,7 @@ def test_local_dl_is_zero_without_two_studies():
         ({"design": "three-sample"}, "design must be"),
         ({"tau2_method": "reml"}, "tau2_method must be"),
         ({"selection_model": "heckman"}, "selection_model must be"),
+        ({"null_method": "bootstrap"}, "null_method must be"),
         ({"threshold": object()}, "threshold must be"),
         ({"threshold": "global-min"}, "threshold must be"),
     ],
@@ -170,11 +173,11 @@ def test_cbes_requires_a_reported_statistic(small_mask):
 
     _, plain = create_coordinate_studyset(foci=1, n_studies=5, sample_size=20, seed=1)
     with pytest.raises(ValueError, match="no usable 'z_stat' or 't_stat'"):
-        CBES(mask=small_mask, selection_model="none").fit(plain)
+        CBES(mask=small_mask, selection_model="none", null_method="parametric").fit(plain)
 
 
 def test_cbes_produces_expected_maps(studyset, small_mask):
-    result = CBES(fwhm=12.0, mask=small_mask).fit(studyset)
+    result = CBES(fwhm=12.0, mask=small_mask, null_method="parametric").fit(studyset)
 
     expected = {"g", "se", "z", "p", "logp", "tau2", "n_studies", "n_eff", "prevalence"}
     assert expected <= set(result.maps)
@@ -205,18 +208,24 @@ def test_cbes_produces_expected_maps(studyset, small_mask):
 
 
 def test_cbes_description_mentions_the_model(studyset, small_mask):
-    result = CBES(fwhm=12.0, mask=small_mask).fit(studyset)
+    result = CBES(fwhm=12.0, mask=small_mask, null_method="parametric").fit(studyset)
     assert "Hedges" in result.description_
     assert "censor" in result.description_.lower()
 
-    quiet = CBES(fwhm=12.0, mask=small_mask, generate_description=False).fit(studyset)
+    quiet = CBES(
+        fwhm=12.0, mask=small_mask, generate_description=False, null_method="parametric"
+    ).fit(studyset)
     assert quiet.description_ == ""
 
 
 def test_selection_model_reduces_the_winners_curse(studyset, small_mask):
     """Pooling reported peaks alone overestimates; modelling the silence pulls it back."""
-    naive = CBES(fwhm=12.0, mask=small_mask, selection_model="none").fit(studyset)
-    corrected = CBES(fwhm=12.0, mask=small_mask, selection_model="zero-inflated").fit(studyset)
+    naive = CBES(fwhm=12.0, mask=small_mask, selection_model="none", null_method="parametric").fit(
+        studyset
+    )
+    corrected = CBES(
+        fwhm=12.0, mask=small_mask, selection_model="zero-inflated", null_method="parametric"
+    ).fit(studyset)
 
     naive_g = value_at(naive, "g")
     corrected_g = value_at(corrected, "g")
@@ -234,10 +243,12 @@ def test_tobit_undercorrects_when_studies_genuinely_have_no_effect(mixed_studyse
     silence as a small shared effect and drags the estimate down; the zero-inflated model can
     attribute it to the zero component instead.
     """
-    tobit = CBES(fwhm=12.0, mask=small_mask, selection_model="tobit").fit(mixed_studyset)
-    zero_inflated = CBES(fwhm=12.0, mask=small_mask, selection_model="zero-inflated").fit(
-        mixed_studyset
-    )
+    tobit = CBES(
+        fwhm=12.0, mask=small_mask, selection_model="tobit", null_method="parametric"
+    ).fit(mixed_studyset)
+    zero_inflated = CBES(
+        fwhm=12.0, mask=small_mask, selection_model="zero-inflated", null_method="parametric"
+    ).fit(mixed_studyset)
     assert value_at(zero_inflated, "g") > value_at(tobit, "g")
     assert value_at(zero_inflated, "prevalence") < 1.0
 
@@ -257,19 +268,21 @@ def test_prevalence_tracks_the_simulated_fraction(small_mask):
             noise_extent=30.0,
             spatial_sd=4.0,
         )
-        result = CBES(fwhm=12.0, mask=small_mask).fit(studyset)
+        result = CBES(fwhm=12.0, mask=small_mask, null_method="parametric").fit(studyset)
         estimates[prevalence] = value_at(result, "prevalence")
 
     assert estimates[1.0] > estimates[0.4]
 
 
 def test_fixed_effects_option_zeroes_tau2(studyset, small_mask):
-    result = CBES(fwhm=12.0, mask=small_mask, tau2_method="none").fit(studyset)
+    result = CBES(fwhm=12.0, mask=small_mask, tau2_method="none", null_method="parametric").fit(
+        studyset
+    )
     assert np.all(result.get_map("tau2", return_type="array") == 0)
 
 
 def test_correct_fwe_montecarlo(studyset, small_mask):
-    estimator = CBES(fwhm=12.0, mask=small_mask, selection_model="none")
+    estimator = CBES(fwhm=12.0, mask=small_mask, selection_model="none", null_method="parametric")
     result = estimator.fit(studyset)
     maps, tables, description = estimator.correct_fwe_montecarlo(result, n_iters=5, seed=0)
 
@@ -283,7 +296,7 @@ def test_correct_fwe_montecarlo(studyset, small_mask):
 
 def test_correct_fwe_montecarlo_needs_a_fit(small_mask):
     with pytest.raises(ValueError, match="requires a fitted estimator"):
-        CBES(mask=small_mask).correct_fwe_montecarlo(None, n_iters=2)
+        CBES(mask=small_mask, null_method="parametric").correct_fwe_montecarlo(None, n_iters=2)
 
 
 def test_simulator_respects_the_reporting_threshold():
@@ -304,3 +317,110 @@ def test_simulator_prevalence_reduces_reporting():
         )
         counts.append(len(studyset.coordinates))
     assert counts[0] > counts[1]
+
+
+# ---------------------------------------------------------------------------- inference
+
+
+@pytest.fixture(scope="module")
+def null_studyset():
+    """30 studies reporting nothing but noise: no effect exists anywhere."""
+    return create_effect_size_coordinate_studyset(
+        [TRUTH],
+        effect_sizes=0.0,
+        n_studies=30,
+        sample_size=(20, 40),
+        prevalence=0.0,
+        n_noise_foci=8,
+        noise_extent=30.0,
+        seed=21,
+    )
+
+
+def test_parametric_null_warns_that_it_is_anticonservative(small_mask, caplog):
+    with caplog.at_level("WARNING"):
+        CBES(mask=small_mask, null_method="parametric")
+    assert "anticonservative" in caplog.text
+
+
+def test_montecarlo_null_calibrates_uncorrected_p(null_studyset, small_mask):
+    """Under a global null the parametric p-values are far too liberal; the spatial null is not.
+
+    This is the reason ``null_method`` defaults to ``"montecarlo"``. The parametric standard
+    error treats tau-squared as known and ignores that the peaks being pooled were selected for
+    being large, so ``g / se`` is not a null-referenced statistic at all.
+    """
+    parametric = CBES(
+        fwhm=12.0, mask=small_mask, selection_model="none", null_method="parametric"
+    ).fit(null_studyset)
+    montecarlo = CBES(
+        fwhm=12.0, mask=small_mask, selection_model="none", null_method="montecarlo", n_iters=50
+    ).fit(null_studyset)
+
+    parametric_rate = np.mean(parametric.get_map("p", return_type="array") < 0.05)
+    montecarlo_rate = np.mean(montecarlo.get_map("p", return_type="array") < 0.05)
+
+    assert parametric_rate > 0.20  # measured around 0.40
+    assert montecarlo_rate < 0.15
+    assert montecarlo_rate < parametric_rate
+
+
+@pytest.mark.parametrize(
+    "corrector,map_name",
+    [
+        (FDRCorrector(method="indep"), "p_corr-FDR_method-indep"),
+        (FWECorrector(method="bonferroni"), "p_corr-FWE_method-bonferroni"),
+        (FWECorrector(method="montecarlo", n_iters=20), "p_corr-FWE_method-montecarlo"),
+    ],
+)
+def test_stock_correctors_work(studyset, small_mask, corrector, map_name):
+    """The generic correctors need only a p map, which CBES provides."""
+    result = CBES(fwhm=12.0, mask=small_mask, null_method="montecarlo", n_iters=20).fit(studyset)
+    corrected = corrector.transform(result)
+
+    p_corr = corrected.get_map(map_name, return_type="array")
+    assert np.all((p_corr > 0) & (p_corr <= 1))
+    # Correction can only make p-values larger.
+    assert np.all(p_corr >= result.get_map("p", return_type="array") - 1e-6)
+
+
+def test_fwe_montecarlo_reuses_the_null_from_fit(studyset, small_mask):
+    """Fitting with the Monte Carlo null already paid for the max-statistic distribution."""
+    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="montecarlo", n_iters=20)
+    result = estimator.fit(studyset)
+    assert "values_level-voxel_corr-fwe_method-montecarlo" in estimator.null_distributions_
+
+    cached = estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]
+    maps, _, _ = estimator.correct_fwe_montecarlo(result, n_iters=20)
+    assert np.array_equal(
+        cached, estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]
+    )
+    assert maps["p"].shape == result.get_map("p", return_type="array").shape
+
+
+def test_null_is_built_from_the_selected_statistic(studyset, small_mask):
+    """The permutation refits under the same selection model the observed map used."""
+    estimator = CBES(
+        fwhm=12.0,
+        mask=small_mask,
+        selection_model="zero-inflated",
+        null_method="montecarlo",
+        n_iters=10,
+    )
+    estimator.fit(studyset)
+    histogram = estimator.null_distributions_["histweights_corr-none_method-montecarlo"]
+    assert histogram.sum() > 0
+
+
+def test_kernel_truncation_bounds_the_support(studyset, small_mask):
+    """A tighter truncation lets each focus reach fewer voxels."""
+    wide = CBES(fwhm=12.0, mask=small_mask, kernel_min_weight=1e-6, null_method="parametric").fit(
+        studyset
+    )
+    narrow = CBES(
+        fwhm=12.0, mask=small_mask, kernel_min_weight=0.25, null_method="parametric"
+    ).fit(studyset)
+
+    reached_wide = np.sum(wide.get_map("n_studies", return_type="array") > 0)
+    reached_narrow = np.sum(narrow.get_map("n_studies", return_type="array") > 0)
+    assert reached_narrow < reached_wide

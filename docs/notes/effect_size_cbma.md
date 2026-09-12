@@ -193,7 +193,102 @@ Read this honestly:
 - **`g` is not a detection map.** A voxel reached by one noise focus has a large `g` and no
   precision behind it. Threshold on `z` (or on `n_studies`), not on `g`.
 
-## 7. Status and open questions
+## 7. Does it recover what the images say?
+
+The strongest available test, because it has a real ground truth. Take the 21 NIDM pain studies,
+which have full `t` images. Build a reference by pooling per-study Hedges' `g` across all 21
+images voxelwise (random effects, DerSimonian–Laird). Then throw the images away: threshold them
+at `p < .001`, keep only the peak coordinates and their `z` values — 2,725 foci, about 1.2% of
+voxels — and run CBES on that. Whatever it recovers, it recovers from ~1% of the data.
+
+Reproduce with `python docs/notes/validate_cbes.py images`.
+
+| estimator | r | rho | calibration slope | mean where reference > 0.2 |
+|---|---|---|---|---|
+| CBES, `none` | 0.735 | 0.770 | 0.21 | 1.056 |
+| CBES, `tobit` | 0.797 | 0.839 | 0.34 | 0.798 |
+| CBES, `zero-inflated` | 0.780 | 0.822 | 0.31 | 0.848 |
+| CBES, `zero-inflated` (`g_marginal`) | **0.802** | **0.840** | 0.35 | 0.792 |
+| ALE (`z`) | 0.198 | 0.192 | 0.07 | 0.656 |
+| MKDADensity (`z`) | 0.243 | 0.213 | 0.10 | 0.573 |
+| *reference* | | | | *0.412* |
+
+A calibration slope is the regression of the reference on the estimate: 1.0 would be perfectly
+calibrated, and anything below it means the estimate moves further than the truth does.
+
+Two conclusions, and they point opposite ways.
+
+**Ranking is good, and much better than convergence.** rho = 0.84 against the full-image effect
+size, from 1.2% of the data. ALE on the identical coordinates gets 0.19 — which is not a knock on
+ALE, it is measuring convergence and is being scored here on a quantity it never claimed to
+estimate. It does say that if you want a map that tracks effect magnitude, coordinate density is
+close to useless for it and the reported statistics carry almost all of the signal.
+
+**Calibration is poor: the magnitude is roughly twice the truth.** 0.80 against a reference of
+0.41. The selection models help (1.06 → 0.80) but do not close it. The reason is gap 4 below and
+it is not a tuning problem: a reported peak is a *local maximum*, and its height is inflated
+relative to the field around it by an amount the current model does not touch. Correcting for the
+*threshold* is not the same as correcting for *being a maximum*, and on real data with N = 9–32
+the latter is now the dominant bias. **Treat `g` as a relative map until this is fixed.**
+
+## 8. False positive control
+
+Measured on a global null: 30 studies, 8 noise foci each at uniform random locations with null
+peak heights, no effect anywhere. A valid estimator flags ~5% of voxels at uncorrected `p < .05`,
+and produces *any* surviving voxel in <=5% of whole simulations after correction.
+
+Reproduce with `python docs/notes/validate_cbes.py fpr 10 100`. 10 simulations, so each
+rejection rate has a resolution of 0.1.
+
+| selection model | null | `p<.05` | `p<.01` | FWE-Bonferroni | FDR q=.05 | FWE-montecarlo |
+|---|---|---|---|---|---|---|
+| `none` | parametric | **0.403** | **0.389** | **1.00** | **1.00** | — |
+| `none` | montecarlo | 0.052 | 0.013 | 0.00 | 0.00 | 0.00 |
+| `zero-inflated` | parametric | **0.103** | **0.050** | **1.00** | **1.00** | — |
+| `zero-inflated` | montecarlo | 0.041 | 0.009 | 0.00 | 0.00 | 0.00 |
+
+The first two columns should read 0.05 and 0.01. The parametric rows do not, and the failure is
+not marginal: `selection_model="none"` calls 40% of the brain significant at `p < .05` when
+nothing is there.
+
+`g / se` is simply not a null-referenced statistic. The standard error treats `tau2` and the
+mixture weights as known, and — more fundamentally — every peak being pooled was selected for
+being large, so under the null the pooled effect at a focus is large and "significant" by
+construction. The zero-inflated model helps a lot (0.40 → 0.10), because widespread silence
+pushes `π` and `µ` down, but it does not fix the reference distribution. Bonferroni and FDR
+inherit the problem and reject in *every* null simulation. They are not broken; they are
+faithfully correcting p-values that were already meaningless.
+
+The fix is the one ALE and MKDA already use: get the uncorrected p-values from a **spatial null**
+rather than from a standard error. `null_method="montecarlo"` (the default) relocates every focus
+to a random in-mask voxel, keeping its effect size and study membership, refits, and reads `p` off
+the resulting distribution of `|z|`. That restores calibration — 0.052 and 0.041 against a
+nominal 0.05, 0.013 and 0.009 against a nominal 0.01 — and with it the stock correctors, which
+are pure functions of the uncorrected p map. No corrector rejected anywhere in any null
+simulation.
+
+Two caveats on the null. It tests the same hypothesis the convergence estimators test — that
+reported coordinates fall at random within the mask — so a significant voxel means "more
+effect here than random placement of these same reported effects would give", not "the effect
+is non-zero". And pooling every voxel of every iteration into one histogram assumes voxels
+share a null distribution, which is only approximately true because coverage varies; this is
+what ALE and MKDA do too.
+
+**Which correction to use.** All three work:
+
+- `FWECorrector(method="montecarlo")` — the primary recommendation. Reuses the null already
+  computed during `fit`, so it is nearly free once fitted.
+- `FDRCorrector` and `FWECorrector(method="bonferroni")` — valid *only* with
+  `null_method="montecarlo"`, since they are pure functions of the uncorrected p map.
+
+**Cost.** The null is the dominant expense, because each iteration is a full refit — unlike ALE,
+whose per-iteration statistic is cheap. Measured on the 21-study pain data over 228k voxels:
+`selection_model="none"` is 0.8 s per fit (1000 iterations ≈ 13 min single-core), but
+`"zero-inflated"` is 24 s per fit (≈ 6.7 h single-core). Use `n_cores`, or reduce `n_iters`, or
+explore with `null_method="parametric"` and switch to the Monte Carlo null only for the inference
+you intend to report. Cluster-level correction is not implemented.
+
+## 9. Status and open questions
 
 Implemented and working:
 
@@ -206,31 +301,40 @@ Implemented and working:
   process (true effect → study draw → sampling draw → threshold), including `prevalence` for
   genuine zeros and null peak heights from the exponential overshoot approximation. Without a
   simulator that models *thresholding*, none of this can be validated.
-- Voxel-level Monte Carlo FWE by relocating foci within the mask.
+- Voxel-level Monte Carlo FWE by relocating foci within the mask, and a Monte Carlo null for
+  the uncorrected p-values, computed in the same pass.
 
 Known gaps, roughly in priority order:
 
-1. **`π` is weakly identified**, and that is what drives the residual over-correction. It is
-   identified only through the *count* of reporting studies given `µ`; a prior on `π`, or
-   borrowing strength spatially (neighbouring voxels have similar prevalence), should sharpen it.
-2. **Inference is the weakest part.** Per-voxel standard errors come from the observed
-   information with `τ²` and the EM responsibilities held fixed, so they are optimistic. The
-   Monte Carlo null is voxel-level only; cluster-level (size/mass) is not implemented.
-3. **The reporting threshold is still inferred, not known.** `"pooled-min"` is a bound, not the
+1. **Peak-height bias is not corrected, and it is now the largest error.** We model the
+   selection event as `|ĝ| > c` but treat the reported value as an unbiased draw from the field.
+   It is really the height of a *local maximum*, which is inflated on top of the thresholding.
+   This is what leaves the real-data estimates ~2x high (§7). The fix is to model the reported
+   value with the peak-height distribution for a smooth Gaussian field — Chumbley & Friston's
+   `exp(-u(z-u))` overshoot approximation under the null, and the Cheng–Schwartzman distribution
+   more generally — rather than with the plain normal density now used. **This is the top
+   priority**; until it lands, `g` is a relative map.
+2. **Monte Carlo inference is expensive.** ~6.7 h single-core for a whole-brain zero-inflated fit
+   at the default 1000 iterations (§8). The EM is the bottleneck. Options not yet taken: a
+   cheaper surrogate statistic for the null, warm-starting each permutation, or fitting the null
+   on a coarser grid.
+3. **Cluster-level correction is not implemented** — only voxel-level FWE.
+4. **`π` is weakly identified**, and that is what drives the residual over-correction in
+   simulation. It is identified only through the *count* of reporting studies given `µ`; a prior
+   on `π`, or borrowing strength spatially (neighbouring voxels have similar prevalence), should
+   sharpen it.
+5. **The reporting threshold is still inferred, not known.** `"pooled-min"` is a bound, not the
    truth, and the fit is sensitive to it. Real thresholds are usually stated in the paper and
    should become a first-class metadata field.
-4. **Peak-height bias is not corrected.** We model the selection event as `|ĝ| > c` but treat
-   the reported value as an unbiased draw. It is really the height of a *local maximum*, which
-   is further inflated. The overshoot distribution is the fix.
-5. **"Silent" assumes whole-brain coverage.** An ROI study that never examined a voxel is not
+6. **"Silent" assumes whole-brain coverage.** An ROI study that never examined a voxel is not
    evidence of a null effect there. There is no flag for this today; it is the natural place for
    a proper Heckman selection equation, where reporting probability depends on covariates
    (ROI vs. whole-brain, journal, sample size) and not on the latent value alone.
-6. **Data availability is the real-world blocker.** Neurosynth coordinates carry no statistics
+7. **Data availability is the real-world blocker.** Neurosynth coordinates carry no statistics
    at all; Sleuth/BrainMap files carry none. NIMADS/NeuroStore points *do* have a `values` field
    (`z_stat`, `t_stat`), so the pipeline is there, but the coverage of that field across
    NeuroStore should be measured before promising anything.
-7. Two-sample designs assume equal group sizes; `n1`/`n2` should be read when present.
+8. Two-sample designs assume equal group sizes; `n1`/`n2` should be read when present.
 
 ## References
 
