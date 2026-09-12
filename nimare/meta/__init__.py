@@ -9,9 +9,11 @@ from .cbma import (
     SCALE,
     ALESubtraction,
     BalancedALESubtraction,
+    CoordinateEffectSize,
     MKDAChi2,
     MKDADensity,
     ale,
+    effectsize,
     mkda,
 )
 from .ibma import (
@@ -61,6 +63,7 @@ __all__ = [
     "MKDADensity",
     "MKDAChi2",
     "KDA",
+    "CoordinateEffectSize",
     "CBMR",
     "CBMRResult",
     "DerSimonianLaird",
@@ -79,4 +82,5 @@ __all__ = [
     "cbmr",
     "ale",
     "mkda",
+    "effectsize",
 ]

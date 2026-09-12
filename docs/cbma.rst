@@ -16,7 +16,9 @@ First, let's describe, in basic terms, what each of these elements means.
 Kernels
 -------
 
-All of the CBMA algorithms currently implemented in NiMARE are `kernel-based` methods.
+Most of the CBMA algorithms currently implemented in NiMARE are `kernel-based` methods.
+(The exception is :class:`~nimare.meta.cbma.effectsize.CoordinateEffectSize`, which uses no
+kernel at all -- see :ref:`effect size cbma` below.)
 In kernel-based CBMA, coordinates are convolved with some kind of kernel to produce a "modeled activation" map for each experiment in the dataset.
 The modeled activation map acts as a substitute for the original, unthresholded statistical map from which the coordinates were derived.
 The kernel used to create the modeled activation map varies across approaches, but the most common are
@@ -65,6 +67,102 @@ as long as there are enough iterations.
     In general, we recommend using the ``approximate`` method.
 
 Example: :ref:`null-method-example`
+
+.. _effect size cbma:
+
+Estimating effect size instead of convergence
+---------------------------------------------
+
+Everything above answers one question: *do foci cluster here more than chance?*
+That is a question about **where** effects are, and it deliberately discards the
+statistic values reported alongside the coordinates.
+It cannot tell you **how big** the effect is.
+
+:class:`~nimare.meta.cbma.effectsize.CoordinateEffectSize` answers the other question.
+It converts each reported peak statistic into Hedges' *g*, groups foci into spatial clusters,
+and fits a random-effects meta-analysis within each cluster,
+so the output is an effect size with a confidence interval and a heterogeneity estimate
+rather than a convergence statistic.
+The null hypothesis is therefore *H0: delta = 0 in this region*,
+not *H0: foci are spatially random*, and the two are not interchangeable.
+
+The censoring problem
+`````````````````````
+
+The obstacle that makes this hard is not the effect-size conversion, which is elementary.
+It is that **studies only report peaks that cleared their own reporting threshold.**
+
+A study that reports nothing in a region has not given you *no* information.
+It has told you its statistic there fell *below* its threshold.
+That is a **left-censored** observation -- not a missing one, and not a zero.
+
+This matters enormously:
+
+- Treating unreported studies as **zeros** (roughly the ES-SDM convention) biases the
+  estimate **toward the null**.
+- **Dropping** them and averaging only the reported peaks biases the estimate
+  **away from the null** -- often severely, since the reported values are a selected tail.
+- Writing down the **censored likelihood** -- a plain density for the studies that reported,
+  and a below-threshold probability for those that did not -- is unbiased,
+  and it requires no imputation of study images whatsoever,
+  because the unobserved values are integrated out in closed form.
+
+This is the approach of :footcite:t:`tench2017coordinate` and
+:footcite:t:`costafreda2012parametric`.
+The same algebra appears independently in several literatures: as the Tobit model in
+econometrics, as "non-detect" estimation in environmental statistics,
+and as *winner's-curse* correction in statistical genetics.
+Neuroimaging peaks are a winner's-curse problem with a spatial index.
+
+Why clusters rather than voxels
+```````````````````````````````
+
+Nothing in the data licenses an effect-size value at a voxel where no study reported
+anything, so the estimator does not invent one.
+Foci are grouped by average-linkage clustering and the meta-analysis runs once per cluster,
+which also means the number of tests is a few dozen rather than ~200,000 --
+so ordinary FDR across clusters is meaningful.
+Use ``FDRCorrector(method="cluster")``, not the voxelwise methods:
+every voxel in a cluster carries the same p-value,
+so counting voxels would inflate the number of tests by orders of magnitude.
+
+.. warning::
+    **The estimate refers to the effect size at the reported peak, and it is still biased
+    upward.**
+    Conditioning on "cleared the threshold" does not correct for a reported peak being the
+    *maximum* over a search region.
+    For a 10 mm radius and typical smoothness that inflation is on the order of
+    ``1.4 / sqrt(N)`` -- around 0.3 in *g* units at N = 20, which can rival the effect being
+    estimated.
+    The ``bias_peak`` column of the cluster table reports this magnitude per cluster.
+    Correcting it properly requires the random-field peak-height distribution
+    :footcite:p:`durnez2016power` and is not implemented.
+
+.. important::
+    The set of studies used as the censoring denominator is the set of studies with at least
+    one focus **somewhere** in the brain.
+    A study that reported no foci at all cannot currently be represented in a NiMARE
+    collection (see `#294 <https://github.com/neurostuff/NiMARE/issues/294>`_),
+    and its absence biases the estimate upward.
+
+What to inspect in the output
+`````````````````````````````
+
+The voxel maps exist so the result plots like any other,
+but the substance is in ``result.tables``:
+
+``clusters``
+    One row per cluster: centroid, how many studies reported versus were censored,
+    ``g`` with its standard error and confidence interval, ``tau2``, ``i2``,
+    the uncorrected and FDR-corrected p-values, ``g_naive`` (what you would have got by
+    averaging the reported peaks alone), and the ``bias_peak`` diagnostic.
+``study_contributions``
+    One row per study per cluster, recording whether that study was ``reported``,
+    ``censored``, excluded as ``buffer`` (it had a focus just outside the region, so
+    calling it censored would be wrong), or excluded for a ``missing`` statistic.
+    For a selection model this table *is* the audit trail -- comparing ``g`` against
+    ``g_naive`` while reading the status counts is the fastest way to see how hard the
+    censoring correction is working.
 
 .. _multiple comparisons correction:
 
