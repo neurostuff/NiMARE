@@ -3,15 +3,20 @@
 import numpy as np
 import pandas as pd
 import pytest
+from scipy.cluster.hierarchy import fcluster, linkage
+from scipy.spatial.distance import pdist
 from scipy.stats import norm
 
 from nimare.correct import FDRCorrector
 from nimare.meta.cbma import _selection as sel
 from nimare.meta.cbma.effectsize import (
+    _MAX_DISTANCE_MATRIX_BYTES,
     CoordinateEffectSize,
+    _cluster_foci,
     _dersimonian_laird,
     _g_variance,
     _hedges_g,
+    _solve_batch_with_variance,
     _solve_with_variance,
 )
 from nimare.results import MetaResult
@@ -391,3 +396,149 @@ def test_montecarlo_null_produces_a_cluster_level_p_value(cbma_with_statistics):
     finite = clusters["p_desc-mc"].dropna()
     assert not finite.empty
     assert ((finite >= 0) & (finite <= 1)).all()
+
+
+# ---------------------------------------------------------------------------
+# Performance rework: the optimized paths must agree with the readable ones.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("two_sided", [True, False])
+@pytest.mark.parametrize("likelihood", ["censored", "conditional"])
+def test_batch_solver_matches_single_cluster_solver(two_sided, likelihood):
+    """The vectorized solver must reproduce the single-cluster one exactly.
+
+    Fits are solved for every cluster at once for speed; that optimization is
+    only safe if it is indistinguishable from solving them one at a time,
+    including the divergence and no-data sentinels.
+    """
+    rng = np.random.default_rng(11)
+    n_fits, width = 80, 30
+    g = rng.normal(0.7, 0.5, (n_fits, width))
+    s = rng.uniform(0.1, 0.5, (n_fits, width))
+    c = rng.uniform(0.2, 1.0, (n_fits, width))
+    reported = np.abs(g) > c if two_sided else g > c
+    include = rng.random((n_fits, width)) > 0.2
+    for row in range(n_fits):
+        picks = rng.choice(width, 4, replace=False)
+        reported[row, picks] = True
+        include[row, picks] = True
+
+    batch_delta, batch_se, batch_ok = sel.solve_delta_batch(
+        g, s, c, reported, include, two_sided, likelihood, tol=1e-10
+    )
+    for row in range(n_fits):
+        mask = include[row]
+        delta, se, converged = sel.solve_delta(
+            g[row][mask], s[row][mask], c[row][mask], reported[row][mask], two_sided, likelihood
+        )
+        assert batch_ok[row] == converged
+        assert batch_delta[row] == pytest.approx(delta, abs=1e-8)
+        if np.isfinite(se):
+            assert batch_se[row] == pytest.approx(se, abs=1e-8)
+        else:
+            assert not np.isfinite(batch_se[row])
+
+
+@pytest.mark.parametrize("two_sided", [True, False])
+@pytest.mark.parametrize("likelihood", ["censored", "conditional"])
+def test_batch_loglikelihood_matches_single(two_sided, likelihood):
+    """The batched log-likelihood must match the per-fit one."""
+    rng = np.random.default_rng(12)
+    n_fits, width = 40, 16
+    g = rng.normal(0.6, 0.4, (n_fits, width))
+    s = rng.uniform(0.15, 0.5, (n_fits, width))
+    c = rng.uniform(0.2, 0.9, (n_fits, width))
+    reported = np.abs(g) > c if two_sided else g > c
+    include = rng.random((n_fits, width)) > 0.2
+    for row in range(n_fits):
+        picks = rng.choice(width, 3, replace=False)
+        reported[row, picks] = True
+        include[row, picks] = True
+    delta = rng.normal(0.5, 0.2, n_fits)
+
+    batched = sel.batch_loglikelihood(delta, g, s, c, reported, include, two_sided, likelihood)
+    for row in range(n_fits):
+        mask = include[row]
+        expected = sel.loglikelihood(
+            delta[row],
+            g[row][mask],
+            s[row][mask],
+            c[row][mask],
+            reported[row][mask],
+            two_sided,
+            likelihood,
+        )
+        assert batched[row] == pytest.approx(expected, rel=1e-10, abs=1e-10)
+
+
+def test_variance_fixed_point_is_accurate():
+    """Aitken extrapolation must beat plain iteration, not merely run faster.
+
+    The model-based variance depends on delta, and that fixed point converges
+    only linearly -- about one decimal digit per pass -- so iterating it to
+    convergence is expensive. Extrapolation has to earn its place by landing
+    closer to the true optimum than the passes it replaces.
+    """
+    rng = np.random.default_rng(13)
+    n_fits, width = 30, 25
+    sample_size = rng.integers(15, 80, (n_fits, width)).astype(float)
+    g = rng.normal(0.6, 0.3, (n_fits, width))
+    packed = {
+        "g": g,
+        "sample_size": sample_size,
+        "thresh": np.abs(g) * 0.4,
+        "reported": np.ones((n_fits, width), dtype=bool),
+        "include": np.ones((n_fits, width), dtype=bool),
+    }
+    packed["reported"][:, 10:] = False
+
+    converged, _, _ = _solve_batch_with_variance(packed, 0.0, False, "censored", n_iter=40)
+    accelerated, _, _ = _solve_batch_with_variance(packed, 0.0, False, "censored")
+    assert np.nanmax(np.abs(accelerated - converged)) < 1e-6
+
+
+def test_clustering_uses_one_algorithm_at_every_size():
+    """Clustering must not change algorithm with dataset size.
+
+    An earlier version switched to a connectivity-constrained agglomeration
+    above 2,500 foci. That is a different algorithm, not an approximation --
+    it returned less than half as many clusters, an adjusted Rand index of
+    0.08 against average linkage -- so crossing the threshold silently changed
+    the meta-analysis result. This pins the behaviour on both sides of where
+    that switch used to be.
+    """
+    rng = np.random.default_rng(14)
+    for n_foci in (2_400, 2_600):
+        xyz = np.vstack(
+            [
+                rng.uniform(-60, 60, (n_foci // 2, 3)),
+                rng.uniform(-60, 60, (10, 3))[rng.integers(0, 10, n_foci - n_foci // 2)]
+                + rng.normal(0, 6, (n_foci - n_foci // 2, 3)),
+            ]
+        )
+        expected = fcluster(linkage(pdist(xyz), method="average"), t=10.0, criterion="distance")
+        np.testing.assert_array_equal(_cluster_foci(xyz, 10.0), expected)
+
+
+def test_clustering_refuses_an_oversized_problem():
+    """Past the memory budget, fail up front instead of dying mid-fit."""
+    too_many = int(np.sqrt(2 * _MAX_DISTANCE_MATRIX_BYTES / 8)) + 5_000
+    with pytest.raises(ValueError, match="distance matrix"):
+        # Only the shape is inspected before the guard fires, so this allocates
+        # a view rather than the full coordinate array.
+        _cluster_foci(np.broadcast_to(np.zeros(3), (too_many, 3)), 10.0)
+
+
+def test_cluster_assembly_status_counts_are_exhaustive(cbma_with_statistics):
+    """Vectorized assembly must still account for every study in every cluster."""
+    estimator = CoordinateEffectSize(radius=12.0, min_studies=3, tau2="fixed")
+    result = estimator.fit(cbma_with_statistics)
+    contributions = result.tables["study_contributions"]
+    roster = cbma_with_statistics.coordinates["id"].nunique()
+    per_cluster = contributions.groupby("cluster_id")["status"].value_counts().unstack()
+    assert (per_cluster.sum(axis=1) == roster).all()
+    # A study is reported in a cluster only if it actually has a focus in range.
+    reported = contributions[contributions["status"] == "reported"]
+    assert reported["g"].notna().all()
+    assert contributions[contributions["status"] != "reported"]["g"].isna().all()

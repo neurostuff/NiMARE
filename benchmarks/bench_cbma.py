@@ -2,9 +2,11 @@
 
 import os
 
+import numpy as np
+
 import nimare
 from nimare.generate import create_coordinate_dataset
-from nimare.meta.cbma import ALE, KDA, MKDAChi2, MKDADensity
+from nimare.meta.cbma import ALE, KDA, CoordinateEffectSize, MKDAChi2, MKDADensity
 from nimare.nimads import Studyset
 from nimare.tests.utils import get_test_data_path
 
@@ -13,9 +15,7 @@ class TimeCBMA:
     """Time CBMA estimators."""
 
     def setup_cache(self):
-        """Build the datasets once per process.
-
-        """
+        """Build the datasets once per process."""
         dataset = nimare.dataset.Dataset(
             os.path.join(get_test_data_path(), "test_pain_dataset.json")
         )
@@ -25,9 +25,22 @@ class TimeCBMA:
             foci_percentage="100%",
             seed=123,
         )
+        # CoordinateEffectSize meta-analyses the peak statistic, which
+        # `create_coordinate_dataset` does not emit, so attach plausible Z
+        # scores. Seeded so timings are comparable between runs.
+        rng = np.random.default_rng(123)
+        effect_size_dataset = nimare.dataset.Dataset(
+            os.path.join(get_test_data_path(), "test_pain_dataset.json")
+        )
+        effect_size_dataset.coordinates = effect_size_dataset.coordinates.copy()
+        effect_size_dataset.coordinates["z_stat"] = rng.uniform(
+            3.1, 7.0, len(effect_size_dataset.coordinates)
+        )
+
         return {
             "dataset": dataset,
             "dataset_dense": dataset_dense,
+            "effect_size_dataset": effect_size_dataset,
             "studyset": Studyset.from_dataset(dataset),
             "studyset_dense": Studyset.from_dataset(dataset_dense),
         }
@@ -36,6 +49,7 @@ class TimeCBMA:
         """Take the datasets from the cache."""
         self.dataset = data["dataset"]
         self.dataset_dense = data["dataset_dense"]
+        self.effect_size_dataset = data["effect_size_dataset"]
         self.studyset = data["studyset"]
         self.studyset_dense = data["studyset_dense"]
 
@@ -136,3 +150,23 @@ class TimeCBMA:
         """
         meta = ALE()
         meta.fit(self.studyset)
+
+    def time_coordinate_effect_size_fixed(self, data):
+        """
+        Time CoordinateEffectSize with a fixed-effects model.
+
+        Isolates clustering, cluster assembly and the batched solve, with no
+        between-study variance search.
+        """
+        meta = CoordinateEffectSize(radius=12.0, min_studies=3, tau2="fixed")
+        meta.fit(self.effect_size_dataset)
+
+    def time_coordinate_effect_size_profile(self, data):
+        """
+        Time CoordinateEffectSize in its default configuration.
+
+        The profile-likelihood tau-squared search dominates this estimator's
+        runtime, so this is the case a regression is most likely to show up in.
+        """
+        meta = CoordinateEffectSize(radius=12.0, min_studies=3)
+        meta.fit(self.effect_size_dataset)
