@@ -1475,12 +1475,40 @@ class CBES(Estimator):
             best_ll[better] = loglik[better]
             g_rate[better] = value
 
-        from_values = np.abs(fit["g"][active])
-        usable = from_values > 0
-        if not usable.any() or from_values[usable].mean() <= 0:
+        # The rates are a binary regression, so they only say anything where the reporting
+        # fraction has curvature. Where almost nobody reported, the likelihood is flat near
+        # zero and the fit returns zero however large the true effect; where almost everybody
+        # did, it is monotone with no upper bound -- complete separation -- and the fit runs to
+        # the top of the grid. Pooling across both is what made this estimator fail in opposite
+        # directions on simulated (rho -> 0.5 regardless of truth) and real data (rho -> 1.0
+        # against an image-calibrated 0.38). Only the intermediate voxels are informative.
+        reporting_fraction = reported.mean(axis=0)
+        informative = (reporting_fraction > 0.15) & (reporting_fraction < 0.85)
+        saturated = float(np.mean(reporting_fraction >= 0.85))
+        if informative.sum() < 20:
+            LGR.warning(
+                "Reporting-rate calibration has too few informative voxels: "
+                f"{100 * saturated:.0f}% of them have almost every study reporting, where the "
+                "rate likelihood is unbounded above, and most of the rest have almost none, "
+                "where it is flat. Falling back to a relative map."
+            )
             return 1.0
 
-        scale = float(np.abs(g_rate[usable]).mean() / from_values[usable].mean())
+        from_values = np.abs(fit["g"][active])
+        usable = informative & (from_values > 0) & (g_rate > 0) & (g_rate < grid[-1])
+        if usable.sum() < 20 or from_values[usable].mean() <= 0:
+            LGR.warning(
+                "Reporting-rate calibration found no voxel where the rates are both "
+                "informative and unsaturated; falling back to a relative map."
+            )
+            return 1.0
+
+        # A slope through the origin rather than a ratio of means: it weights voxels by how
+        # much effect they actually carry, instead of letting a voxel with almost none cast an
+        # equal vote.
+        numerator = float(np.sum(from_values[usable] * np.abs(g_rate[usable])))
+        denominator = float(np.sum(from_values[usable] ** 2))
+        scale = numerator / denominator if denominator > 0 else np.nan
         if not np.isfinite(scale) or scale <= 0:
             LGR.warning("Reporting-rate calibration gave no usable scale; falling back to 1.0.")
             return 1.0
