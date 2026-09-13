@@ -2,6 +2,7 @@
 
 import nibabel as nib
 import numpy as np
+import pandas as pd
 import pytest
 
 from nimare.correct import FDRCorrector, FWECorrector
@@ -238,21 +239,24 @@ def test_selection_model_reduces_the_winners_curse(studyset, small_mask):
     assert abs(corrected_g - TRUE_G) < abs(naive_g - TRUE_G)
 
 
-def test_tobit_undercorrects_when_studies_genuinely_have_no_effect(mixed_studyset, small_mask):
-    """The zero component is what keeps silence from being read as a small common effect.
+def test_zero_component_keeps_silence_from_reading_as_a_small_common_effect(
+    mixed_studyset, small_mask
+):
+    """Half the studies are genuinely null at the focus, and the model must be able to say so.
 
-    With half the studies genuinely null at the focus, a plain Tobit has to explain their
-    silence as a small shared effect and drags the estimate down; the zero-inflated model can
-    attribute it to the zero component instead.
+    Without a zero component the only way to explain their silence is a small shared effect,
+    which drags the estimate below the truth -- measured at -0.16 to -0.34 before the mixture
+    was added, and the reason the plain Tobit is not offered. With it, the silence goes to the
+    zero component and the effect among the studies that have one is recovered.
     """
-    tobit = CBES(
-        fwhm=12.0, mask=small_mask, selection_model="tobit", null_method="parametric"
-    ).fit(mixed_studyset)
-    zero_inflated = CBES(
+    result = CBES(
         fwhm=12.0, mask=small_mask, selection_model="zero-inflated", null_method="parametric"
     ).fit(mixed_studyset)
-    assert value_at(zero_inflated, "g") > value_at(tobit, "g")
-    assert value_at(zero_inflated, "prevalence") < 1.0
+
+    assert 0.0 < value_at(result, "prevalence") < 1.0  # some studies null, some not
+    assert value_at(result, "g") > 0.0  # and the effect among the rest is positive
+    # The marginal is the product, and is what a convergence method would be approximating.
+    assert value_at(result, "g_marginal") < value_at(result, "g")
 
 
 def test_prevalence_tracks_the_simulated_fraction(small_mask):
@@ -795,17 +799,26 @@ def test_infer_threshold_from_minimum_recovers_a_known_threshold():
             assert abs(fixed - true_u) < 0.15
 
 
-def test_study_min_corrected_sits_below_study_min(studyset, small_mask):
-    """Undoing the order statistic can only lower a study's inferred threshold."""
-    cutoffs = {}
-    for keyword in ("study-min", "study-min-corrected"):
-        estimator = CBES(fwhm=8.0, null_method="parametric", threshold=keyword, mask=small_mask)
-        estimator.fit(studyset)
-        cutoffs[keyword] = estimator._cutoffs_z_
+def test_study_min_undoes_the_order_statistic(studyset, small_mask):
+    """``"study-min"`` infers each study's threshold, it does not take the minimum at face value.
 
-    raw, fixed = cutoffs["study-min"], cutoffs["study-min-corrected"]
-    assert (fixed <= raw + 1e-8).all()
-    assert (fixed < raw - 1e-3).any()
+    The smallest of a study's reported peaks sits above its threshold by an amount that grows as
+    the study reports fewer of them, so the inferred cutoff must land below the raw minimum --
+    never above it, and by more when there are fewer peaks to draw from.
+    """
+    estimator = CBES(fwhm=8.0, null_method="parametric", threshold="study-min", mask=small_mask)
+    estimator.fit(studyset)
+
+    table = estimator._focus_table_
+    raw = (
+        pd.Series(estimator._reported_z(table), index=np.asarray(table["id"].values, dtype=object))
+        .groupby(level=0)
+        .min()
+    )
+    inferred = estimator._cutoffs_z_.reindex(raw.index)
+
+    assert (inferred <= raw + 1e-8).all()
+    assert (inferred < raw - 1e-3).any()
 
 
 def test_threshold_can_name_a_metadata_field(small_mask):
@@ -1050,7 +1063,7 @@ def test_only_the_magnitude_depends_on_the_uncalibrated_scale(small_mask):
             fwhm=8.0,
             mask=small_mask,
             null_method="parametric",
-            threshold="study-min-corrected",
+            threshold="study-min",
             peak_bias="per-study",
             peak_bias_scale=scale,
         ).fit(studyset)
@@ -1086,9 +1099,7 @@ def test_approximate_null_agrees_with_the_relocation_null(small_mask):
         noise_extent=30.0,
         threshold_z=[2.3263, 3.0902, 3.2905, 4.2649],
     )
-    common = dict(
-        fwhm=10.0, mask=small_mask, threshold="study-min-corrected", peak_bias="per-study", seed=0
-    )
+    common = dict(fwhm=10.0, mask=small_mask, threshold="study-min", peak_bias="per-study", seed=0)
     exact = CBES(null_method="montecarlo", n_iters=150, **common).fit(studyset)
     approximate = CBES(null_method="approximate", n_iters=300, **common).fit(studyset)
 

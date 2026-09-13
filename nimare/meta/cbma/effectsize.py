@@ -58,8 +58,12 @@ silence* under both components, so the data decide which explanation it supports
 
 maximized by EM with :math:`\\tau^2` held at its moment estimate. No effect-size images are
 imputed at any point; non-reporting enters only through those probabilities, as in
-:footcite:t:`tench2017coordinate`. ``selection_model="tobit"`` drops the zero component, and
-``"none"`` pools only the reported peaks.
+:footcite:t:`tench2017coordinate`. ``selection_model="none"`` pools only the reported peaks.
+
+A plain Tobit -- the same censoring without the zero component -- was tried and dropped. It has
+to explain every silence as a small common effect rather than as no effect, which drags the
+estimate to -0.16 and -0.34 where the truth is positive. Zero inflation is what fixes that, so
+there is no regime in which the plain version is the right choice.
 
 Two details that matter more than the choice of likelihood. Membership of :math:`R`, the set of
 studies that reported *something* near :math:`v`, is judged over a wider radius than the kernel
@@ -124,7 +128,7 @@ __version__ = _version.get_versions()["version"]
 _MIN_VARIANCE = 1e-8
 
 #: Keywords ``threshold`` understands; any other string names a metadata field.
-THRESHOLD_KEYWORDS = ("pooled-min", "study-min", "study-min-corrected")
+THRESHOLD_KEYWORDS = ("pooled-min", "study-min")
 
 #: Default two-tailed reporting threshold, on the z scale, when a study gives no better
 #: information. p < .001 uncorrected, the most common screening threshold in the literature.
@@ -132,7 +136,7 @@ DEFAULT_REPORTING_THRESHOLD_Z = 3.2905267314919255
 
 DESIGNS = ("one-sample", "two-sample")
 
-SELECTION_MODELS = ("zero-inflated", "tobit", "none")
+SELECTION_MODELS = ("zero-inflated", "none")
 
 #: How a study's silence is modelled: at the voxel, or over its neighbourhood.
 CENSORING_MODELS = ("pointwise", "rft")
@@ -947,7 +951,7 @@ class CBES(Estimator):
         ``"dl"`` estimates a local between-study variance with a kernel-weighted
         DerSimonian-Laird moment estimator; ``"none"`` fits a fixed-effects model
         (:math:`\\tau^2 \\equiv 0`).
-    selection_model : {"censored", "none"}, default="censored"
+    selection_model : {"zero-inflated", "none"}, default="zero-inflated"
         ``"censored"`` adds, for every study that reported nothing in this region, a term for
         the probability that it would have reported nothing, and returns the maximizer of that
         Tobit log-likelihood. ``"none"`` pools only the reported peaks, and is biased away from
@@ -962,16 +966,13 @@ class CBES(Estimator):
             The smallest absolute statistic reported anywhere in the collection. One threshold
             for everyone, and the tightest bound available if that assumption holds.
         ``"study-min"``
-            The smallest absolute statistic each study reported. Biased upward for studies that
-            reported few peaks -- a study with one focus has no information about its own
-            threshold at all.
-        ``"study-min-corrected"``
-            The same per-study minimum, with the order statistic undone. The smallest of
-            ``m_k`` peaks above ``u_k`` sits above ``u_k`` by an amount that grows with
-            ``m_k``, so :func:`infer_threshold_from_minimum` solves for the ``u_k`` whose
-            expected minimum is what the study actually reported. Use this when studies
-            plainly thresholded differently and none of them says how -- the usual case in a
-            literature search.
+            Each study's own smallest reported statistic, with the order statistic undone. The
+            smallest of ``m_k`` peaks above ``u_k`` sits above ``u_k`` by an amount that grows
+            as ``m_k`` shrinks, so :func:`infer_threshold_from_minimum` solves for the ``u_k``
+            whose expected minimum is what the study actually reported -- never worse than the
+            raw minimum, and reducing to it once a study reports enough peaks. Use this when
+            studies plainly thresholded differently and none of them says how, which is the
+            usual case in a literature search.
 
             Both per-study rules assume the reported peaks are whatever cleared the study's
             height threshold. Reporting one local maximum per cluster, the common convention,
@@ -985,8 +986,8 @@ class CBES(Estimator):
 
             The consequence is an inferred threshold biased high, which makes silence look less
             surprising than it was and under-corrects the selection. Prefer the metadata field
-            when the papers state their extent threshold, and treat ``"study-min-corrected"``
-            as a lower bound on the bias when they do not.
+            when the papers state their extent threshold, and treat ``"study-min"`` as a
+            lower bound on the bias when they do not.
         any other string
             The name of a metadata field holding each study's threshold on the z scale, for
             collections where the papers state it. Studies missing the field take the median
@@ -1158,23 +1159,15 @@ class CBES(Estimator):
             )
         if null_method not in NULL_METHODS:
             raise ValueError(f"null_method must be one of {NULL_METHODS}; got {null_method!r}.")
-        if isinstance(peak_bias_scale, str) and peak_bias_scale not in (
-            "auto",
-            "rates",
-            "images",
-            "mle",
-            "rate-match",
-        ):
+        if isinstance(peak_bias_scale, str) and peak_bias_scale not in ("auto", "images"):
             raise ValueError(
-                "peak_bias_scale must be 'auto', 'rate-match', 'mle', 'rates', 'images', "
-                "or a positive "
-                f"number; got {peak_bias_scale!r}."
+                "peak_bias_scale must be 'auto', 'images', or a positive number; got "
+                f"{peak_bias_scale!r}."
             )
         if not isinstance(peak_bias_scale, str) and not float(peak_bias_scale) > 0:
             raise ValueError(
-                "peak_bias_scale must be 'auto', 'rate-match', 'mle', 'rates', 'images', "
-                "or a positive "
-                f"number; got {peak_bias_scale!r}."
+                "peak_bias_scale must be 'auto', 'images', or a positive number; got "
+                f"{peak_bias_scale!r}."
             )
         if isinstance(peak_bias, str):
             if peak_bias != "per-study":
@@ -1465,21 +1458,21 @@ class CBES(Estimator):
             cutoff_z = np.full(
                 len(index), float(np.nanmin(reported_z)) if reported_z.size else np.nan
             )
-        elif self.threshold in ("study-min", "study-min-corrected"):
+        elif self.threshold == "study-min":
             grouped = pd.Series(reported_z, index=study_ids).groupby(level=0)
             per_study = grouped.min().astype(float)
-            if self.threshold == "study-min-corrected":
-                # A study's smallest reported peak is the minimum of however many peaks it
-                # reported, so it sits above the threshold by an amount that depends on that
-                # count. Undo the order statistic instead of taking the minimum at face value.
-                per_study = pd.Series(
-                    [
-                        infer_threshold_from_minimum(minimum, count)
-                        for minimum, count in zip(per_study.values, grouped.size().values)
-                    ],
-                    index=per_study.index,
-                    dtype=float,
-                )
+            # A study's smallest reported peak is the minimum of however many peaks it
+            # reported, so it sits above the threshold by an amount that depends on that count.
+            # Undoing the order statistic is never worse than taking the minimum at face value,
+            # and reduces to it when the study reported enough peaks for the gap to vanish.
+            per_study = pd.Series(
+                [
+                    infer_threshold_from_minimum(minimum, count)
+                    for minimum, count in zip(per_study.values, grouped.size().values)
+                ],
+                index=per_study.index,
+                dtype=float,
+            )
             fallback = float(np.nanmedian(per_study.values)) if len(per_study) else np.nan
             cutoff_z = per_study.reindex(index).astype(float).fillna(fallback).values
         elif isinstance(self.threshold, str):
@@ -1562,7 +1555,7 @@ class CBES(Estimator):
         """
         if self.peak_bias is None:
             return 1.0
-        if self.peak_bias_scale not in ("auto", "rates", "images", "mle", "rate-match"):
+        if self.peak_bias_scale not in ("auto", "images"):
             if self._image_studies_ and self.peak_bias_scale == 1.0:
                 LGR.warning(  # noqa: E501
                     "This fit mixes images with coordinates but leaves peak_bias_scale at "
@@ -1580,27 +1573,6 @@ class CBES(Estimator):
             table, self._cutoffs_z_, sample_sizes, provisional
         )
 
-        if self.peak_bias_scale == "rate-match":
-            scale = self._calibrate_scale_by_moments(
-                table, self._cutoffs_z_, sample_sizes, reporting_ids
-            )
-            self._peak_bias_scale_ = scale
-            return scale
-
-        if self.peak_bias_scale == "mle":
-            scale = self._calibrate_scale_by_likelihood(
-                table, self._cutoffs_z_, sample_sizes, reporting_ids
-            )
-            self._peak_bias_scale_ = scale
-            return scale
-
-        if self.peak_bias_scale == "rates":
-            # No images needed: the rates identify the scale on their own. Opt-in only --
-            # "auto" does not reach here, because the estimator built on that identification
-            # is not yet validated against a collection whose scale is known independently.
-            fit = self._pool(scaled, None)
-            return self._calibrate_scale_from_rates(fit, scaled, self._cutoffs_z_, sample_sizes)
-
         if not self._image_studies_:
             LGR.warning(
                 "peak_bias_scale needs images to calibrate against, and this collection "
@@ -1613,468 +1585,6 @@ class CBES(Estimator):
         return self._calibrate_peak_bias_scale(
             scaled, sample_sizes, thresholds, self._image_studies_
         )
-
-    def _model_loglik(self, fit, table, cutoffs_g, sample_sizes, image_ids=()):
-        """Weighted log-likelihood of the fitted model, summed over every voxel.
-
-        Evaluated at the fitted ``mu`` and ``pi`` rather than during the EM, so the active-set
-        compaction does not have to be unwound. ``cutoffs_g`` are on whatever scale the
-        censoring term is meant to live on -- for calibration that is the *true* one.
-        """
-        active = np.flatnonzero(fit["covered"])
-        if not active.size:
-            return -np.inf
-
-        study_ids = list(sample_sizes.index)
-        n_studies = len(study_ids)
-        null_var = null_effect_variance(sample_sizes.values, design=self.design)[:, None]
-        cutoffs = np.abs(np.asarray(cutoffs_g))[:, None]
-        zero_inflated = self.selection_model == "zero-inflated"
-
-        cov_col, cov_pos = self._coverage_entries(
-            table, study_ids, active, fit["n_voxels"], image_ids=tuple(image_ids or ())
-        )
-        values = self._value_entries(fit, study_ids, active, fit["n_voxels"])
-
-        total = 0.0
-        chunk = max(1, int(2e6 // max(n_studies, 1)))
-        value_order = np.argsort(values["col"], kind="mergesort")
-        values = {name: array[value_order] for name, array in values.items()}
-        cov_order = np.argsort(cov_col, kind="mergesort")
-        cov_col, cov_pos = cov_col[cov_order], cov_pos[cov_order]
-
-        for lo in range(0, active.size, chunk):
-            hi = min(lo + chunk, active.size)
-            width = hi - lo
-            weights = np.zeros((n_studies, width))
-            g_obs = np.zeros((n_studies, width))
-            var_obs = np.ones((n_studies, width))
-            v_lo, v_hi = np.searchsorted(values["col"], [lo, hi])
-            if v_hi > v_lo:
-                rows, cols = values["pos"][v_lo:v_hi], values["col"][v_lo:v_hi] - lo
-                weights[rows, cols] = values["w"][v_lo:v_hi]
-                g_obs[rows, cols] = values["g"][v_lo:v_hi]
-                var_obs[rows, cols] = values["var"][v_lo:v_hi]
-
-            covered = np.zeros((n_studies, width), dtype=bool)
-            c_lo, c_hi = np.searchsorted(cov_col, [lo, hi])
-            if c_hi > c_lo:
-                covered[cov_pos[c_lo:c_hi], cov_col[c_lo:c_hi] - lo] = True
-
-            tau2 = fit["tau2"][active[lo:hi]][None, :]
-            mu = fit["g"][active[lo:hi]][None, :]
-            pi = (
-                fit["prevalence"][active[lo:hi]][None, :]
-                if zero_inflated and "prevalence" in fit
-                else np.ones((1, width))
-            )
-
-            sigma = np.sqrt(var_obs + tau2)
-            density_effect = _normal_pdf((g_obs - mu) / sigma) / sigma
-            density_null = _normal_pdf(g_obs / sigma) / sigma
-            mixed = pi * density_effect + (1.0 - pi) * density_null
-            reporting = weights > 0
-            total += float(
-                np.sum(weights[reporting] * np.log(np.clip(mixed[reporting], 1e-300, None)))
-            )
-
-            sigma_null = np.sqrt(null_var + tau2)
-            silent_effect = np.clip(
-                ndtr((cutoffs - mu) / sigma_null) - ndtr((-cutoffs - mu) / sigma_null), 1e-12, None
-            )
-            silent_null = np.clip(
-                ndtr(cutoffs / sigma_null) - ndtr(-cutoffs / sigma_null), 1e-12, None
-            )
-            mixed_silent = pi * silent_effect + (1.0 - pi) * silent_null
-            silent = ~covered
-            if silent.any():
-                # Silent studies enter at the mean reporting weight, as they do in the fit.
-                w_silent = float(np.mean(weights[reporting])) if reporting.any() else 1.0
-                total += float(
-                    w_silent * np.sum(np.log(np.clip(mixed_silent[silent], 1e-300, None)))
-                )
-        return total
-
-    def _calibrate_scale_by_moments(
-        self, table, cutoff_z, sample_sizes, reporting_ids, n_voxels_used=5000
-    ):
-        """Fix the overall scale by matching how often each study reported.
-
-        Profiling the likelihood cannot do this, and the reason is structural: its value term
-        is exactly scale-invariant, so the only term that moves with the scale is the censoring
-        one, which is maximized by an effect of zero wherever most studies are silent. The
-        likelihood runs to zero and stays there.
-
-        The information that does identify the scale is the reporting *rate*, which lives in
-        the indicator ``1 - P_silent`` rather than in the value density. So it is used as a
-        moment condition instead: pick the scale whose predicted reporting rate matches the
-        observed one. Predicted rates rise with the scale, because a larger effect clears the
-        threshold more often, and the observed rate is a fixed target, so the match is unique.
-
-        Matching the *overall* rate would not be enough. The prevalence is free to absorb an
-        overall shift -- more studies having an effect and each effect being larger both raise
-        the rate -- so the two are not separable from one number. They separate by sample size:
-        a larger effect raises the reporting rate more for a well-powered study than a small
-        one, while a larger prevalence raises it uniformly. So the moments matched here are the
-        *per-study* rates, one per study, which carry that gradient. The sample size is doing
-        the same work it does throughout this estimator: moving selection without moving the
-        effect.
-
-        Evaluated on a random subsample of covered voxels, since these are aggregate rates and
-        a few thousand voxels pin them; that keeps the search to seconds rather than one
-        whole-brain fit per candidate.
-        """
-        study_ids = list(sample_sizes.index)
-        n_studies = len(study_ids)
-
-        base = self._pool(table, None)
-        covered_all = np.flatnonzero(base["covered"])
-        if covered_all.size < 50:
-            LGR.warning("Too few covered voxels to calibrate the scale from reporting rates.")
-            return 1.0
-
-        rng = np.random.default_rng(self.seed)
-        size = int(min(covered_all.size, n_voxels_used))
-        active = np.sort(rng.choice(covered_all, size=size, replace=False))
-
-        cov_col, cov_pos = self._coverage_entries(table, study_ids, active, base["n_voxels"])
-        values = self._value_entries(base, study_ids, active, base["n_voxels"])
-
-        weights = np.zeros((n_studies, size))
-        g_unit = np.zeros((n_studies, size))
-        var_unit = np.ones((n_studies, size))
-        weights[values["pos"], values["col"]] = values["w"]
-        g_unit[values["pos"], values["col"]] = values["g"]
-        var_unit[values["pos"], values["col"]] = values["var"]
-        covered = np.zeros((n_studies, size), dtype=bool)
-        covered[cov_pos, cov_col] = True
-
-        observed_rate = covered.mean(axis=1)
-        if not (0 < observed_rate.mean() < 1):
-            LGR.warning("Reporting rates carry no gradient; cannot calibrate the scale.")
-            return 1.0
-
-        # True scale throughout: the cutoffs and dispersions are pinned by the sample size and
-        # are exactly what makes the rate informative. Rescaling them is what floats them.
-        cutoff_g, _ = peak_stat_to_hedges_g(
-            cutoff_z.values, sample_sizes.values, stat_type="z", design=self.design
-        )
-        cutoff_g = np.abs(cutoff_g)[:, None]
-        null_var = null_effect_variance(sample_sizes.values, design=self.design)[:, None]
-        rft = self._rft_arrays(study_ids, sample_sizes)
-
-        def predicted(candidate):
-            self._peak_bias_scale_ = float(candidate)
-            factors = self._peak_bias_factors(cutoff_z, sample_sizes, reporting_ids)
-            scale = factors.loc[study_ids].to_numpy()[:, None]
-            g_obs = g_unit * scale
-            var_obs = np.where(weights > 0, var_unit * scale**2, 1.0)
-
-            safe = np.where(var_obs > 0, var_obs, 1.0)
-            a = weights / safe
-            tau2 = (
-                _local_dersimonian_laird(
-                    weights.sum(0),
-                    a.sum(0),
-                    (a**2).sum(0),
-                    (a * g_obs).sum(0),
-                    (a * g_obs**2).sum(0),
-                    (weights**2 / safe).sum(0),
-                    (weights > 0).sum(0).astype(float),
-                )
-                if self.tau2_method == "dl"
-                else np.zeros(size)
-            )
-            pooling = np.where(weights > 0, weights / (var_obs + tau2), 0.0)
-            denominator = pooling.sum(0)
-            start = np.divide(
-                (pooling * g_obs).sum(0), denominator, out=np.zeros(size), where=denominator > 0
-            )
-            mu, pi, _ = self._fit_chunk(
-                weights=weights,
-                g_obs=g_obs,
-                var_obs=var_obs,
-                covered=covered,
-                tau2=tau2,
-                null_var=null_var,
-                cutoffs=cutoff_g,
-                start=start,
-                rft=rft,
-            )
-            if rft is None:
-                sigma = np.sqrt(null_var + tau2[None, :])
-                silent_effect = np.clip(
-                    ndtr((cutoff_g - mu[None, :]) / sigma)
-                    - ndtr((-cutoff_g - mu[None, :]) / sigma),
-                    1e-12,
-                    1.0,
-                )
-                silent_null = np.clip(ndtr(cutoff_g / sigma) - ndtr(-cutoff_g / sigma), 1e-12, 1.0)
-            else:
-                # The predicted rate must come from the model the fit used, or this compares a
-                # regional event against a pointwise probability -- the very mismatch that sent
-                # every earlier calibration attempt to a search boundary.
-                spread = np.broadcast_to(mu[None, :], (n_studies, size))
-                silent_effect = _rft_censoring_terms(
-                    spread, rft["cutoff_z"], rft["sqrt_n"], rft["resels"], rft["ec_peak"]
-                )["prob"]
-                silent_null = _rft_censoring_terms(
-                    np.zeros_like(spread),
-                    rft["cutoff_z"],
-                    rft["sqrt_n"],
-                    rft["resels"],
-                    rft["ec_peak"],
-                )["prob"]
-            weight_pi = pi[None, :] if self.selection_model == "zero-inflated" else 1.0
-            silent = weight_pi * silent_effect + (1.0 - weight_pi) * silent_null
-            return (1.0 - silent).mean(axis=1)
-
-        grid = np.geomspace(0.02, 2.0, 18)
-        losses = []
-        for candidate in grid:
-            try:
-                loss = float(np.sum((predicted(candidate) - observed_rate) ** 2))
-            except Exception:  # noqa: BLE001
-                loss = np.inf
-            losses.append(loss)
-        losses = np.asarray(losses)
-        if not np.isfinite(losses).any():
-            return 1.0
-
-        best = int(np.argmin(losses))
-        if best in (0, len(grid) - 1):
-            LGR.warning(
-                f"Reporting-rate moment matching ran to {grid[best]:.3f}, an end of its search "
-                "range, so the observed rates are not reachable by any scale in it. Falling "
-                "back to a relative map."
-            )
-            return 1.0
-
-        # Parabolic interpolation through the three points around the minimum.
-        lo, mid, hi = np.log(grid[best - 1 : best + 2])
-        a_, b_, c_ = losses[best - 1 : best + 2]
-        denominator = a_ - 2 * b_ + c_
-        offset = 0.5 * (a_ - c_) / denominator if abs(denominator) > 1e-300 else 0.0
-        scale = float(np.exp(mid + offset * (hi - lo) / 2.0))
-        LGR.info(
-            f"Reporting-rate moment matching gives peak_bias_scale = {scale:.3f} "
-            f"(observed mean rate {observed_rate.mean():.3f})"
-        )
-        return scale
-
-    def _calibrate_scale_by_likelihood(self, table, cutoff_z, sample_sizes, reporting_ids):
-        """Maximum-likelihood estimate of the overall scale, profiling over it.
-
-        Every earlier attempt compared two separate fits and took a ratio, and that is what
-        kept failing: a ratio of means lets a voxel with no effect vote as loudly as one
-        carrying the signal, and the rate-only fit it was compared against is meaningless
-        wherever almost nobody or almost everybody reported. Both failure modes came from
-        pooling a per-voxel quantity by hand.
-
-        The profile likelihood does not pool anything by hand. For a candidate scale ``c`` the
-        reported values are rescaled, the model is refitted, and the whole log-likelihood is
-        evaluated -- so every voxel contributes exactly as much as its own information about
-        ``c`` warrants, and voxels that say nothing say nothing.
-
-        Two details make the comparison across ``c`` legitimate:
-
-        * The censoring term stays on the **true** scale, with cutoffs ``u_k / sqrt(N_k)`` and
-          dispersions pinned by ``N_k``. That is the whole source of identification -- rescaling
-          it too, as the first version did, floats quantities the sample size had fixed and
-          makes the likelihood flat in ``c``.
-        * Rescaling the data needs its Jacobian. Transforming ``p -> c p`` changes the density
-          by ``c`` per observation, so ``sum(w) * log(c)`` is added back. Without it the
-          likelihood is maximized by ``c -> 0``, which merely squeezes the data onto a point
-          and fits it perfectly.
-
-        .. warning::
-            Measured against an image calibration of 0.380 on the NIDM pain collection, this
-            returns the bottom of its search range. The reason is structural rather than a bug
-            in the search, and it is worth stating because it also explains why every
-            ratio-based attempt failed:
-
-            The value term here is *exactly* scale-invariant. Rescaling the reported values
-            rescales the re-estimated ``tau^2`` with them, so the log-density gains ``-log c``
-            and the Jacobian adds back ``+log c``; they cancel. The only term left that moves
-            with the scale is the censoring one, and since most study-voxel pairs are silent
-            that term is maximized by an effect of zero. Nothing opposes it, because the
-            reported peak heights carry no scale information in this regime.
-
-            The information that *does* identify the scale is the reporting **rate**, and it
-            lives in the indicator likelihood ``prod (1 - P_silent)`` over reporters, not in the
-            value density this likelihood uses for them. Recovering it needs the rate treated as
-            a moment condition -- choose the scale whose predicted reporting rate matches the
-            observed one -- rather than profiling a likelihood that cannot see it. Until then
-            this returns 1.0 and warns.
-        """
-        grid = np.geomspace(0.05, 1.5, 24)
-        best_scale, best_loglik = 1.0, -np.inf
-
-        cutoff_g, _ = peak_stat_to_hedges_g(
-            cutoff_z.values, sample_sizes.values, stat_type="z", design=self.design
-        )
-        cutoff_g = np.abs(cutoff_g)  # true scale; deliberately never rescaled by c
-
-        for candidate in grid:
-            factors = pd.Series(np.full(len(sample_sizes), 1.0), index=sample_sizes.index)
-            self._peak_bias_scale_ = float(candidate)
-            factors = self._peak_bias_factors(cutoff_z, sample_sizes, reporting_ids)
-            scaled, _ = self._apply_peak_bias(table, cutoff_z, sample_sizes, factors)
-            if not len(scaled):
-                continue
-
-            fit = self._pool(scaled, None)
-            if not fit["covered"].any():
-                continue
-            thresholds_true = pd.Series(cutoff_g, index=sample_sizes.index)
-            self._apply_selection_model(fit, scaled, thresholds_true, sample_sizes)
-            loglik = self._model_loglik(fit, scaled, cutoff_g, sample_sizes)
-
-            # Jacobian of p -> rho_k p, so densities at different scales are comparable.
-            jacobian = float(
-                np.sum(
-                    np.log(
-                        np.clip(
-                            factors.reindex(np.asarray(scaled["id"].values, dtype=object))
-                            .astype(float)
-                            .fillna(candidate)
-                            .values,
-                            1e-300,
-                            None,
-                        )
-                    )
-                )
-            )
-            loglik += jacobian
-            if np.isfinite(loglik) and loglik > best_loglik:
-                best_loglik, best_scale = loglik, float(candidate)
-
-        if best_scale <= grid[0] * 1.001 or best_scale >= grid[-1] * 0.999:
-            LGR.warning(
-                f"The scale profile has no interior maximum -- it ran to {best_scale:.3f}, an "
-                "end of the search range. That is expected: the value term of a censored "
-                "likelihood is exactly scale-invariant (rescaling the data rescales tau-squared "
-                "with it, and the Jacobian cancels what is left), so the only term that moves "
-                "with the scale is the censoring one, which is maximized by an effect of zero "
-                "wherever most studies are silent. Reported peak heights carry no scale "
-                "information to oppose it. Falling back to a relative map; use images, or a "
-                "scale you trust, to fix the magnitude."
-            )
-            return 1.0
-
-        LGR.info(f"Profile-likelihood peak_bias_scale = {best_scale:.3f}")
-        return best_scale
-
-    def _calibrate_scale_from_rates(self, fit, table, cutoff_z, sample_sizes):
-        """Fix the overall scale from how *often* studies reported, using no images.
-
-        The peak heights carry almost no magnitude information in the usual underpowered
-        regime, but whether a study reported at all carries a great deal. Silence is a probit
-        in the effect size whose slope is fixed by the sample size:
-
-            P(study k silent at v) = Phi((c_k - g) / s_k) - Phi((-c_k - g) / s_k)
-
-        with ``c_k = u_k / sqrt(N_k)`` and ``s_k = sqrt(1 / N_k + tau^2)``. Neither is a free
-        parameter -- both are pinned by ``N_k`` -- so across studies that differ in sample size
-        the pattern of who reported traces out a dose-response curve and identifies ``g`` on an
-        absolute scale. In Heckman's terms the sample size is an exclusion restriction: it
-        moves selection without moving the effect. Fitting ``g`` from the reporting indicators
-        alone recovers a simulated truth of 0.50 as 0.496 and 0.80 as 0.810, with the heights
-        never used.
-
-        So the reported values do not have to supply the scale, and should not: they identify
-        ``g / rho``, while the rates identify ``g``. The ratio is ``rho``. This is the same
-        shape as :meth:`_calibrate_peak_bias_scale` with silence as the anchor instead of
-        images, which matters because most collections have no images at all.
-
-        Rescaling the censoring threshold and the null variance by ``rho`` -- as an earlier
-        version did -- is exactly what destroys this, because it floats two quantities that
-        ``N_k`` had pinned. They are deliberately left alone here.
-        """
-        active = np.flatnonzero(fit["covered"])
-        if not active.size:
-            return 1.0
-
-        study_ids = list(sample_sizes.index)
-        # True-scale cutoffs and dispersions: no rho anywhere, which is the whole point.
-        cutoff_g, _ = peak_stat_to_hedges_g(
-            cutoff_z.values, sample_sizes.values, stat_type="z", design=self.design
-        )
-        cutoff_g = np.abs(cutoff_g)[:, None]
-        null_var = null_effect_variance(sample_sizes.values, design=self.design)[:, None]
-
-        cov_col, cov_pos = self._coverage_entries(
-            table, study_ids, active, fit["n_voxels"], image_ids=()
-        )
-        reported = np.zeros((len(study_ids), active.size), dtype=bool)
-        reported[cov_pos, cov_col] = True
-        if not reported.any() or reported.all():
-            LGR.warning(
-                "Cannot calibrate the scale from reporting rates: every study is either "
-                "silent everywhere or reporting everywhere, so the rates carry no gradient. "
-                "Falling back to a relative map."
-            )
-            return 1.0
-
-        sigma = np.sqrt(null_var + fit["tau2"][active][None, :])
-        # One-dimensional and smooth in g, and only a single global ratio is wanted, so a grid
-        # is both sufficient and cheaper than iterating a Newton step per voxel.
-        grid = np.linspace(0.0, 3.0, 121)
-        best_ll = np.full(active.size, -np.inf)
-        g_rate = np.zeros(active.size)
-        for value in grid:
-            silent_p = np.clip(
-                ndtr((cutoff_g - value) / sigma) - ndtr((-cutoff_g - value) / sigma),
-                1e-12,
-                1 - 1e-12,
-            )
-            loglik = np.where(reported, np.log1p(-silent_p), np.log(silent_p)).sum(axis=0)
-            better = loglik > best_ll
-            best_ll[better] = loglik[better]
-            g_rate[better] = value
-
-        # The rates are a binary regression, so they only say anything where the reporting
-        # fraction has curvature. Where almost nobody reported, the likelihood is flat near
-        # zero and the fit returns zero however large the true effect; where almost everybody
-        # did, it is monotone with no upper bound -- complete separation -- and the fit runs to
-        # the top of the grid. Pooling across both is what made this estimator fail in opposite
-        # directions on simulated (rho -> 0.5 regardless of truth) and real data (rho -> 1.0
-        # against an image-calibrated 0.38). Only the intermediate voxels are informative.
-        reporting_fraction = reported.mean(axis=0)
-        informative = (reporting_fraction > 0.15) & (reporting_fraction < 0.85)
-        saturated = float(np.mean(reporting_fraction >= 0.85))
-        if informative.sum() < 20:
-            LGR.warning(
-                "Reporting-rate calibration has too few informative voxels: "
-                f"{100 * saturated:.0f}% of them have almost every study reporting, where the "
-                "rate likelihood is unbounded above, and most of the rest have almost none, "
-                "where it is flat. Falling back to a relative map."
-            )
-            return 1.0
-
-        from_values = np.abs(fit["g"][active])
-        usable = informative & (from_values > 0) & (g_rate > 0) & (g_rate < grid[-1])
-        if usable.sum() < 20 or from_values[usable].mean() <= 0:
-            LGR.warning(
-                "Reporting-rate calibration found no voxel where the rates are both "
-                "informative and unsaturated; falling back to a relative map."
-            )
-            return 1.0
-
-        # A slope through the origin rather than a ratio of means: it weights voxels by how
-        # much effect they actually carry, instead of letting a voxel with almost none cast an
-        # equal vote.
-        numerator = float(np.sum(from_values[usable] * np.abs(g_rate[usable])))
-        denominator = float(np.sum(from_values[usable] ** 2))
-        scale = numerator / denominator if denominator > 0 else np.nan
-        if not np.isfinite(scale) or scale <= 0:
-            LGR.warning("Reporting-rate calibration gave no usable scale; falling back to 1.0.")
-            return 1.0
-        LGR.info(
-            f"Calibrated peak_bias_scale = {scale:.3f} from reporting rates over "
-            f"{int(usable.sum())} voxels, using no images."
-        )
-        return min(scale, 1.0)
 
     def _calibrate_peak_bias_scale(self, table, sample_sizes, thresholds, image_studies):
         """Read the overall peak-to-field ratio off the studies that supplied images.
@@ -2485,8 +1995,7 @@ class CBES(Estimator):
         no effect here at all, or it has one that failed to clear its reporting threshold. The
         zero-inflated model lets the data decide between them, so silence no longer has to be
         explained as a small-but-real common effect -- which is what drags a plain Tobit fit
-        below the truth. With ``selection_model="tobit"`` the zero component is switched off
-        and every study is assumed to share one effect, censored by the threshold.
+        below the truth.
 
         ``tau2`` is held at its moment estimate throughout, so each EM iteration optimizes only
         :math:`\mu` (concave, one-dimensional) alongside a closed-form update for
@@ -3279,13 +2788,6 @@ class CBES(Estimator):
                 "separates the proportion of studies with a non-null effect from the size of "
                 "that effect and corrects the estimate for the within-study thresholding that "
                 "generated the reported peaks. No effect-size images were imputed."
-            )
-        elif self.selection_model == "tobit":
-            selection = (
-                " Studies that reported no peak in a region contributed the probability of that "
-                "non-report to a censored (Tobit) likelihood there, correcting the estimate for "
-                "the within-study thresholding that generated the reported peaks. No "
-                "effect-size images were imputed."
             )
         else:
             selection = (
