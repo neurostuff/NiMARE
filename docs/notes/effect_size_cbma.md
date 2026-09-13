@@ -260,9 +260,9 @@ inherit the problem and reject in *every* null simulation. They are not broken; 
 faithfully correcting p-values that were already meaningless.
 
 The fix is the one ALE and MKDA already use: get the uncorrected p-values from a **spatial null**
-rather than from a standard error. `null_method="montecarlo"` (the default) relocates every focus
-to a random in-mask voxel, keeping its effect size and study membership, refits, and reads `p` off
-the resulting distribution of `|z|`. That restores calibration — 0.052 and 0.042 against a
+rather than from a standard error. `null_method="montecarlo"` relocates every focus to a random
+in-mask voxel, keeping its effect size and study membership, refits, and reads `p` off the
+resulting distribution of `|z|`. That restores calibration — 0.052 and 0.042 against a
 nominal 0.05, 0.013 and 0.009 against a nominal 0.01 — and with it every correction built on
 those p-values.
 
@@ -291,8 +291,9 @@ what ALE and MKDA do too.
 | FDR | `FDRCorrector()` | Operates on the uncorrected `p` map. |
 | Bonferroni | `FWECorrector(method="bonferroni")` | Likewise. Conservative but exact. |
 
-All of them are meaningless with `null_method="parametric"`, since every one of them is a
-function of p-values that method does not calibrate.
+All of them are meaningless without a calibrated uncorrected `p`, since every one of them is a
+function of it -- which is why the parametric option was removed rather than kept as a fast
+default.
 
 Clusters are formed on `|z|` at the statistic corresponding to `voxel_thresh` **read off the
 null**, not assumed: CBES's `z` is not standard normal, so a nominal 3.29 is not a p of .001.
@@ -312,8 +313,9 @@ iteration:
 | `zero-inflated` | 4.6 s | ~1.3 h |
 
 That is 5.3x faster than the first working version (24 s per iteration, ~6.7 h); see §9. Use
-`n_cores` to divide it further, and explore with `null_method="parametric"` before committing to
-the inference you intend to report.
+`n_cores` to divide it further. The default `null_method="approximate"` (§18) avoids this cost
+entirely -- it does not refit at all -- and matches the relocation null's calibration, so the
+table above is the price of the *reference* null rather than of routine use.
 
 ## 9. Making the null affordable
 
@@ -608,7 +610,9 @@ density the likelihood substitutes for reporters.
 field over the region fails to clear the threshold. A 20 mm sphere is 4169 voxels at 2 mm, so
 the two differ enormously: the observed coverage rate on the NIDM pain studies is 0.677, and
 the pointwise form reaches only 0.440 even at g = 0.8. It cannot produce the observed rate at
-any effect size. `censoring="rft"` fixes this, and is worth having on its own merits.
+any effect size. An RFT regional censoring term fixes exactly that, which is why it looked
+worth having on its own merits. Benchmarked head to head it is not, and it has been removed --
+see section 18.
 
 **Smoothness then decides the answer.** The regional term needs the FWHM of the studies'
 statistic maps, which coordinates do not carry. Assuming 8 mm makes the search rail low;
@@ -775,46 +779,119 @@ says something the ratio of means does not. And the error was invisible on real 
 because it produced a believable number; it took a simulator with a known truth, which did not
 exist until section 16's work, to expose it.
 
+## 18. The option benchmark: why only one censoring model and one null survive
+
+Sections 15 and 17 argued the regional censoring term on theory: silence really is a regional
+event, and the pointwise form really cannot reach the observed coverage rate. That argument is
+correct and it still did not produce a better estimator. Benchmarked against the pointwise form
+on the same simulations, `censoring="rft"` loses on every axis that matters.
+
+Under a global null, 15 simulations, 30 studies of 8 noise foci each at mixed thresholds
+(nominal 0.050 and 0.0010):
+
+| censoring | null method | unc < .05 | unc < .001 | s/fit |
+|---|---|---|---|---|
+| pointwise | montecarlo  | 0.041 | 0.0010 | 53.7 |
+| rft       | montecarlo  | 0.042 | 0.0009 | 158.0 |
+| pointwise | approximate | 0.042 | 0.0010 | 14.0 |
+| rft       | approximate | 0.036 | 0.0003 | 15.4 |
+
+On the field simulator with a known `g = 0.6`, where the peaks are genuinely selected rather
+than planted, 6 simulations:
+
+| censoring | g at the truth | prevalence at the truth |
+|---|---|---|
+| pointwise | 0.665 | 0.970 |
+| rft       | 0.882 | 0.442 |
+
+Three things follow.
+
+**It buys no calibration.** Paired with the Monte Carlo null the two are indistinguishable
+under the global null -- 0.041 against 0.042, 0.0010 against 0.0009 -- for 2.9x the runtime.
+Whatever the regional term fixes, it is not the false positive rate.
+
+**Paired with the approximate null it is conservative.** 0.036 against a nominal 0.050, and
+0.0003 against 0.0010, so it gives up a third of the power at the tail. The approximate null
+convolves per-study contributions assuming they combine independently; the regional term
+correlates them through a shared neighbourhood, and the convolution no longer matches the
+statistic it is supposed to approximate.
+
+**It is worse where it was supposed to be better.** The regional term exists to fix the
+magnitude, and on known truth it overshoots by 47% where the pointwise form overshoots by 11%.
+It also halves the estimated prevalence at a voxel where the effect is present in every study
+-- 0.442 against 0.970. Reading a higher reporting probability into each study's silence, it
+explains the observed peaks with fewer studies carrying a larger effect. The theory was right
+about the direction and wrong about the size, because it is driven by an assumed smoothness
+that section 15 already showed varies more within a brain than between studies.
+
+So the option is gone, along with `smoothness_fwhm`, `_expected_ec`, `_ec_peak`,
+`_coverage_resels`, `_rft_censoring_terms` and the Gauss-Hermite quadrature over study effects.
+The surviving configuration is pointwise censoring with the approximate null, which matches the
+best calibration seen anywhere in the table at a quarter of the cost of the Monte Carlo null
+and a tenth of the cost of the regional term.
+
+The negative result is worth more than the code was. A regional censoring term is the obvious
+next thing for anyone reading section 15 to try, and the reason it fails is not that the model
+is wrong -- it is that the model needs a smoothness that coordinates do not carry and that is
+not constant over a brain even when images do carry it.
+
 ## 14. Status and open questions
 
-Implemented and working:
+The option surface, after the cuts in §18 and the ones before it:
 
-- `nimare.meta.cbma.CBES` — the estimator above, with `selection_model` in
-  `{"zero-inflated", "tobit", "none"}`, fitted by EM over voxel blocks.
-- `nimare.meta.cbma.effectsize.peak_stat_to_hedges_g` — `t`/`z` + `N` → Hedges' `g` and its
-  variance, reusing `transforms.t_to_d` / `d_to_g` so coordinate- and image-based estimates land
-  on one scale.
-- `nimare.generate.create_effect_size_coordinate_studyset` — simulates the whole reporting
-  process (true effect → study draw → sampling draw → threshold), including `prevalence` for
-  genuine zeros and null peak heights from the exponential overshoot approximation. Without a
-  simulator that models *thresholding*, none of this can be validated.
-- Voxel-level and cluster-level (size and mass) Monte Carlo FWE, and a Monte Carlo null for the
-  uncorrected p-values, all computed in one pass over the relocations.
+| option | values | default |
+|---|---|---|
+| `selection_model` | `"zero-inflated"`, `"none"` | `"zero-inflated"` |
+| `null_method` | `"approximate"`, `"montecarlo"`, `"none"` | `"approximate"` |
+| `threshold` | `"pooled-min"`, `"study-min"`, or a metadata field name | `"pooled-min"` |
+| `peak_bias` | `None`, a float, `"per-study"` | `None` |
+| `peak_bias_scale` | a float, `"auto"`, `"images"`, `"reference"` | `1.0` |
+
+`"tobit"`, `"parametric"` and `censoring="rft"` were all tried and removed rather than left as
+options: the first was dominated by the zero-inflated model, the second produced p-values that
+were simply wrong (41% rejection at a nominal 5% under a global null), and the third is §18.
+Keeping a knob whose every setting is worse than the default is not flexibility.
+
+Implemented and validated:
+
+- `nimare.meta.cbma.CBES` — the estimator above, fitted by EM over voxel blocks, with pointwise
+  censoring of silent studies.
+- `peak_stat_to_hedges_g` — `t`/`z` + `N` → Hedges' `g` and its variance, reusing
+  `transforms.t_to_d` / `d_to_g` so coordinate- and image-based estimates land on one scale.
+- `create_effect_size_coordinate_studyset` — simulates the whole reporting process (true effect
+  → study draw → sampling draw → threshold), and with `simulate_field=True` produces peaks by
+  taking local maxima of a smooth noisy field, so the peak-height inflation is real rather than
+  planted. Without a simulator that models *thresholding*, none of this can be validated.
+- The approximate null: a voxel's null drawn from the studies' foci counts and kernel geometry
+  rather than by refitting the brain. Agrees with the relocation null to r = 0.999 on the
+  p-values, costs nothing in the size of the mask, and is now the default (§18).
+- Per-study peak-height correction (`peak_bias="per-study"`), which predicts reported
+  magnitudes at r = 0.980 and cuts their between-study spread from CV 0.320 to 0.067.
+- Threshold inference from the smallest reported peak, accurate to 0.008 z against an oracle.
+- Voxel-level and cluster-level (size and mass) Monte Carlo FWE, computed in one pass over the
+  relocations, with a GPD tail approximation bounded to the range where it was validated.
 
 Known gaps, roughly in priority order:
 
-1. **Peak-height bias is not corrected, and it is now the largest error.** We model the
-   selection event as `|ĝ| > c` but treat the reported value as an unbiased draw from the field.
-   It is really the height of a *local maximum*, which is inflated on top of the thresholding.
-   This is what leaves the real-data estimates ~2x high (§7). The fix is to model the reported
-   value with the peak-height distribution for a smooth Gaussian field — Chumbley & Friston's
-   `exp(-u(z-u))` overshoot approximation under the null, and the Cheng–Schwartzman distribution
-   more generally — rather than with the plain normal density now used. **This is the top
-   priority**; until it lands, `g` is a relative map.
-2. **Monte Carlo inference is still the dominant cost**, at ~1.3 h single-core for a whole-brain
-   zero-inflated null at the default 1000 iterations, down from 6.7 h (§9). Options not yet
-   taken, in rough order of promise: an *approximate* null that simulates local study
-   configurations directly instead of refitting the brain (the analogue of ALE's
-   `null_method="approximate"`, and potentially a further 100x for the uncorrected p-values);
-   warm-starting each permutation from the previous one; accelerating the EM itself, which
-   converges linearly and needs tens of iterations.
-3. **`π` is weakly identified**, and that is what drives the residual over-correction in
-   simulation. It is identified only through the *count* of reporting studies given `µ`; a prior
-   on `π`, or borrowing strength spatially (neighbouring voxels have similar prevalence), should
-   sharpen it.
-4. **The reporting threshold is still inferred, not known.** `"pooled-min"` is a bound, not the
-   truth, and the fit is sensitive to it. Real thresholds are usually stated in the paper and
-   should become a first-class metadata field.
+1. **The absolute scale of `g` is not identified from coordinates alone.** Seven attempts at
+   recovering it are documented in §15, and the reason they fail is structural rather than a
+   matter of finding a better optimizer: the censored likelihood's value term is exactly
+   invariant to the scale, and the one term that does move depends on a local smoothness that
+   coordinates do not carry and that varies more within a brain than between studies. The
+   per-study correction removes the part of the bias that varies between studies; the common
+   factor still needs images (`peak_bias_scale="images"`) or a reference corpus
+   (`"reference"`, §16, good to about a factor of two). **Until one of those is supplied, `g`
+   is a relative map and should be read as one.** This is the estimator's central limitation
+   and the thing to be honest about in any write-up.
+2. **`peak_bias_scale="images"` currently makes things worse**, by 1.8-2x on known truth,
+   because it confounds the shape of the reference with its scale. §17 traces this to a metric
+   with a collapsing denominator; the calibration was fixed to use a top-quartile paired median,
+   but the end-to-end behaviour has not been re-validated since.
+3. **Mixed image + coordinate weighting is unresolved.** Coordinates come out under-weighted
+   relative to images by roughly 43x against their actual squared error. The direction of the
+   combined estimate is sound; its magnitude should be read as an upper bound.
+4. **`π` is weakly identified.** It is identified only through the *count* of reporting studies
+   given `µ`; a prior on `π`, or borrowing strength spatially, should sharpen it.
 5. **"Silent" assumes whole-brain coverage.** An ROI study that never examined a voxel is not
    evidence of a null effect there. There is no flag for this today; it is the natural place for
    a proper Heckman selection equation, where reporting probability depends on covariates

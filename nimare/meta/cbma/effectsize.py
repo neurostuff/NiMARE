@@ -76,10 +76,12 @@ Inference
 ---------
 ``g / se`` is not a null-referenced statistic -- the peaks being pooled were selected for being
 large, so under a global null the pooled effect at a focus is large by construction. Uncorrected
-p-values therefore come from a spatial null by default (``null_method="montecarlo"``), which
-relocates every focus within the mask and refits, exactly as the convergence-based estimators
-do. See the :class:`CBES` notes for what a normal-theory alternative does to the false
-positive rate.
+p-values therefore come from a spatial null: the same null the convergence-based estimators
+use, that reported coordinates fall at random within the mask. By default
+(``null_method="approximate"``) a voxel's null is drawn directly from the studies' foci counts
+and kernel geometry, which costs nothing in the size of the mask; ``"montecarlo"`` relocates
+every focus and refits, and is what the approximation is validated against. See the
+:class:`CBES` notes for what a normal-theory alternative does to the false positive rate.
 
 References
 ----------
@@ -181,9 +183,6 @@ DEFAULT_REPORTING_THRESHOLD_Z = 3.2905267314919255
 DESIGNS = ("one-sample", "two-sample")
 
 SELECTION_MODELS = ("zero-inflated", "none")
-
-#: How a study's silence is modelled: at the voxel, or over its neighbourhood.
-CENSORING_MODELS = ("pointwise", "rft")
 
 NULL_METHODS = ("montecarlo", "approximate", "none")
 
@@ -404,159 +403,6 @@ def _observed_cluster_measures(volume, threshold):
         sizes[inside] = cluster_sizes[labels[inside] - 1]
         masses[inside] = cluster_masses[labels[inside] - 1]
     return sizes, masses
-
-
-#: Euler-characteristic density coefficients for a Gaussian field, dimensions 1 to 3.
-_EC_COEFFS = (
-    np.sqrt(4.0 * np.log(2.0)) / (2.0 * np.pi),
-    (4.0 * np.log(2.0)) / (2.0 * np.pi) ** 1.5,
-    (4.0 * np.log(2.0)) ** 1.5 / (2.0 * np.pi) ** 2,
-)
-
-
-def _expected_ec(z, resels):
-    """Expected Euler characteristic above ``z``, and its first two derivatives in ``z``.
-
-    For a smooth Gaussian field over a region with resel counts ``resels = (R1, R2, R3)``:
-
-    .. math::
-        E[EC](z) = \\bar\\Phi(z) + R_1 \\rho_1(z) + R_2 \\rho_2(z) + R_3 \\rho_3(z)
-
-    All four terms are kept, and that is not fussiness. The three-dimensional density alone
-    *rises* between :math:`z = 1` and :math:`z = \\sqrt3`, so a truncation that keeps only it
-    and the Gaussian tail is not monotone in ``z`` -- which in this model means a larger effect
-    could make a study *more* likely to stay silent. The full sum is monotone over the range
-    that matters, because the one- and two-dimensional terms dominate exactly where the
-    three-dimensional one misbehaves.
-
-    Both derivatives are wanted by the Newton step in the EM and both are closed form.
-    """
-    z = np.asarray(z, dtype=float)
-    c1, c2, c3 = _EC_COEFFS
-    r1, r2, r3 = resels
-    bulk = np.exp(-0.5 * z * z)
-    gauss = _normal_pdf(z)
-    z2 = z * z
-
-    value = (1.0 - ndtr(z)) + bulk * (r1 * c1 + r2 * c2 * z + r3 * c3 * (z2 - 1.0))
-    first = -gauss + bulk * (-r1 * c1 * z + r2 * c2 * (1.0 - z2) + r3 * c3 * z * (3.0 - z2))
-    second = z * gauss + bulk * (
-        r1 * c1 * (z2 - 1.0) + r2 * c2 * z * (z2 - 3.0) + r3 * c3 * (z2 * z2 - 6.0 * z2 + 3.0)
-    )
-    return value, first, second
-
-
-def _coverage_resels(radius_mm, smoothness_fwhm):
-    """Resel counts ``(R1, R2, R3)`` of the sphere a study's silence is judged over."""
-    radius = float(radius_mm)
-    fwhm = float(smoothness_fwhm)
-    return (
-        4.0 * radius / fwhm,
-        2.0 * np.pi * radius**2 / fwhm**2,
-        4.0 / 3.0 * np.pi * radius**3 / fwhm**3,
-    )
-
-
-def _ec_peak(resels):
-    """Where ``E[EC]`` stops rising, so it can be held non-increasing below that.
-
-    The expected Euler characteristic of a real field can only fall as the threshold rises --
-    raising the bar cannot produce more clusters. The RFT expansion does not respect that at
-    low thresholds, where the Euler characteristic counts handles and holes rather than
-    clusters and the approximation is simply out of its range: with a 20 mm sphere it rises up
-    to about z = 1.35 before turning over, and goes negative below zero.
-
-    Clamping the argument at the turning point replaces the invalid branch with the smallest
-    non-increasing envelope of the valid one. Below it the term saturates -- an effect that
-    large is reported essentially always -- which is the right behaviour and, unlike the raw
-    expansion, a monotone one.
-    """
-
-    def slope(z):
-        return float(_expected_ec(np.array([z]), resels)[1][0])
-
-    # Solved rather than scanned: a grid returns the last point still *rising*, which sits just
-    # short of the turning point and leaves a sliver of the rising branch inside the supposedly
-    # non-increasing envelope.
-    low, high = 0.5, 6.0
-    if slope(low) <= 0.0:
-        return low
-    if slope(high) > 0.0:
-        return high
-    return float(brentq(slope, low, high, xtol=1e-8))
-
-
-#: Gauss-Hermite nodes and weights for integrating the regional term over study effects.
-_GH_NODES, _GH_WEIGHTS = np.polynomial.hermite.hermgauss(5)
-_GH_WEIGHTS = _GH_WEIGHTS / np.sqrt(np.pi)
-
-
-def _rft_censoring_terms(mu, cutoff_z, sqrt_n, resels, ec_peak=None, tau=None):
-    """P(a study stayed silent over its whole neighbourhood), and its derivatives in ``mu``.
-
-    The pointwise censoring term asks whether *this voxel* cleared the threshold. The event
-    that actually happened is whether the study's statistic field reached the threshold
-    anywhere in the region its silence is scored over -- a maximum over a neighbourhood, not a
-    point. Random field theory gives that directly:
-
-    .. math::
-        P(\\text{reach } u) = 1 - e^{-2 E[EC](u - g\\sqrt{N})}
-
-    two-sided, the noncentrality :math:`g\\sqrt{N}` shifting the threshold.
-
-    The difference is not cosmetic. A 20 mm sphere holds 4169 voxels at 2 mm, 1.8% of the
-    brain, so the chance of reaching a threshold *somewhere* inside it is far above the chance
-    at any one voxel, and the pointwise form predicts far less reporting than actually occurs.
-    That is tolerable for a relative map, where the same understatement applies everywhere, and
-    fatal as soon as absolute reporting rates matter -- which is what fixing the effect-size
-    scale requires, and why five attempts at it failed.
-
-    Returned in the same form as :func:`_censoring_terms` so the EM can take either: ``prob`` is
-    P(silent), ``score`` is ``d log prob / d mu``, and ``d2_over_prob`` is ``prob'' / prob``,
-    which :func:`_mu_derivatives` turns into the curvature.
-    """
-    peak = _ec_peak(resels) if ec_peak is None else float(ec_peak)
-
-    def at(effect):
-        """P(silent), dP/d effect and d2P/d effect^2 at a *given* study-level effect."""
-        shifted = cutoff_z - effect * sqrt_n
-        clamped = shifted <= peak
-        value, first, second = _expected_ec(np.where(clamped, peak, shifted), resels)
-        # Held flat past the turning point, so the derivatives are zero there too -- otherwise
-        # the Newton step would follow a gradient the function no longer has.
-        first = np.where(clamped, 0.0, first)
-        second = np.where(clamped, 0.0, second)
-
-        prob = np.exp(-2.0 * value)
-        # w = u - theta sqrt(N), so dP/dtheta = 2 sqrt(N) E'(w) P, and differentiating again
-        # gives dP2 = 2 N P (2 E'(w)^2 - E''(w)).
-        first_p = 2.0 * sqrt_n * first * prob
-        second_p = 2.0 * sqrt_n * sqrt_n * prob * (2.0 * first * first - second)
-        return prob, first_p, second_p
-
-    if tau is None:
-        # Deterministic noncentrality: the study's effect is taken to be exactly mu.
-        prob, first_p, second_p = at(mu)
-    else:
-        # A study's own effect is not mu, it is drawn around it with spread tau. Treating the
-        # noncentrality as exactly mu * sqrt(N) makes P(silent) fall far too steeply -- 0.41 to
-        # 4e-5 between g = 0 and g = 0.3 on real data -- so silence becomes near-proof of a null
-        # effect and the fit is driven to zero. The pointwise term it replaced carried this
-        # spread through sigma = sqrt(1/N + tau^2); dropping it was a regression, not a
-        # simplification. Integrating it back costs five evaluations for a much better-shaped
-        # likelihood.
-        prob = np.zeros_like(mu, dtype=float)
-        first_p = np.zeros_like(prob)
-        second_p = np.zeros_like(prob)
-        spread = np.sqrt(2.0) * tau
-        for node, weight in zip(_GH_NODES, _GH_WEIGHTS):
-            p_i, d1_i, d2_i = at(mu + spread * node)
-            prob += weight * p_i
-            first_p += weight * d1_i
-            second_p += weight * d2_i
-
-    prob = np.clip(prob, 1e-12, 1.0)
-    return {"prob": prob, "score": first_p / prob, "d2_over_prob": second_p / prob}
 
 
 def _censoring_terms(mu, cutoff_scaled, twice_cutoff_scaled, inv_sigma, inv_sigma_sq):
@@ -1053,7 +899,7 @@ class CBES(Estimator):
         ``n_studies`` interpretable and the fit affordable.
     max_iter : :obj:`int`, default=25
         Maximum Newton iterations for the censored likelihood.
-    null_method : {"montecarlo", "approximate", "none"}, default="montecarlo"
+    null_method : {"approximate", "montecarlo", "none"}, default="approximate"
         How uncorrected p-values are obtained.
 
         ``"approximate"``
@@ -1068,14 +914,21 @@ class CBES(Estimator):
             1e-4, and to r = 0.999 on the p-values themselves. ``n_iters`` sets the draws, at
             1000 each.
 
+            The default, because it matches the relocation null's calibration at a quarter of
+            the cost: over 15 global-null simulations the two return the same uncorrected
+            rejection rates, 0.042 and 0.041 at a nominal .05 and 0.0010 apiece at a nominal
+            .001, for 14.0 s/fit against 53.7.
+
         ``"montecarlo"``
             Relocate every focus to a random in-mask voxel ``n_iters`` times, keeping its
             effect size and study membership, and read p off the resulting null distribution
             of ``|z|``. This is the null the convergence-based estimators use -- that reported
-            coordinates fall at random within the mask -- and it is the only one validated
-            here. It is also what makes :class:`~nimare.correct.FDRCorrector` and
-            ``FWECorrector(method="bonferroni")`` meaningful, since both simply operate on
-            these p-values.
+            coordinates fall at random within the mask -- and it is what ``"approximate"`` is
+            validated against, so it remains the reference when the two could disagree: a mask
+            small enough that relocation is cheap anyway, or a studyset whose kernel weights
+            make the per-voxel independence assumption doubtful. It is also what makes
+            :class:`~nimare.correct.FDRCorrector` and ``FWECorrector(method="bonferroni")``
+            meaningful, since both simply operate on these p-values.
         ``"none"``
             No uncorrected p-values at all: ``p`` comes back as 1 everywhere and the effect
             size, prevalence and ``z`` maps are produced without a null. For inspecting the
@@ -1094,9 +947,11 @@ class CBES(Estimator):
         makes :meth:`correct_fwe_montecarlo` pay for a second pass over the permutations if
         cluster correction is then requested.
     n_iters : :obj:`int`, default=1000
-        Monte Carlo iterations for the null. Each is a full refit, so this is the dominant
-        cost of the estimator -- far more so than for ALE, whose per-iteration statistic is
-        much cheaper. Reduce it, or use ``null_method="approximate"``, when exploring.
+        Iterations for the null, read differently by the two methods. Under
+        ``null_method="approximate"`` it sets the draws per voxel, at 1000 each, and costs
+        little. Under ``"montecarlo"`` each iteration is a full refit and this becomes the
+        dominant cost of the estimator -- far more so than for ALE, whose per-iteration
+        statistic is much cheaper -- so reduce it when exploring with that null.
     n_cores : :obj:`int`, default=1
         Processes used for the Monte Carlo null, which is where nearly all the time goes.
         ``-1`` uses every available core and is close to linear, since the relocations are
@@ -1174,13 +1029,11 @@ class CBES(Estimator):
         design="one-sample",
         tau2_method="dl",
         selection_model="zero-inflated",
-        censoring="pointwise",
-        smoothness_fwhm=8.0,
         threshold="pooled-min",
         coverage_radius=None,
         kernel_min_weight=0.01,
         max_iter=25,
-        null_method="montecarlo",
+        null_method="approximate",
         cluster_threshold=0.001,
         n_iters=1000,
         n_cores=1,
@@ -1199,10 +1052,6 @@ class CBES(Estimator):
             raise ValueError(f"design must be one of {DESIGNS}; got {design!r}.")
         if tau2_method not in ("dl", "none"):
             raise ValueError(f"tau2_method must be 'dl' or 'none'; got {tau2_method!r}.")
-        if censoring not in CENSORING_MODELS:
-            raise ValueError(f"censoring must be one of {CENSORING_MODELS}; got {censoring!r}.")
-        if not float(smoothness_fwhm) > 0:
-            raise ValueError(f"smoothness_fwhm must be positive; got {smoothness_fwhm!r}.")
         if selection_model not in SELECTION_MODELS:
             raise ValueError(
                 f"selection_model must be one of {SELECTION_MODELS}; got {selection_model!r}."
@@ -1252,8 +1101,6 @@ class CBES(Estimator):
         self.design = design
         self.tau2_method = tau2_method
         self.selection_model = selection_model
-        self.censoring = censoring
-        self.smoothness_fwhm = float(smoothness_fwhm)
         self.threshold = threshold
         self.coverage_radius = coverage_radius
         self.kernel_min_weight = kernel_min_weight
@@ -2143,8 +1990,6 @@ class CBES(Estimator):
             # takes each study's own rho -- not one shared factor.
             null_var = null_var * peak_bias.loc[study_ids].values[:, None] ** 2
         cutoffs = np.abs(thresholds.loc[study_ids].values)[:, None]
-        rft = self._rft_arrays(study_ids, sample_sizes)
-
         value_order = np.argsort(values["col"], kind="mergesort")
         values = {name: array[value_order] for name, array in values.items()}
         cov_order = np.argsort(cov_col, kind="mergesort")
@@ -2186,7 +2031,6 @@ class CBES(Estimator):
                 null_var=null_var,
                 cutoffs=cutoffs,
                 start=fit["g"][active[lo:hi]],
-                rft=rft,
             )
             mu_out[lo:hi], pi_out[lo:hi], se_out[lo:hi] = mu, pi, se
 
@@ -2196,33 +2040,7 @@ class CBES(Estimator):
         fit["se"] = np.full(n_voxels, np.inf, dtype=float)
         fit["se"][active] = se_out
 
-    def _rft_arrays(self, study_ids, sample_sizes):
-        """Per-study pieces the regional censoring term needs, or None when it is off.
-
-        ``mu`` must be on the true effect-size scale for this to mean anything, since the
-        noncentrality is ``mu * sqrt(N)``. That holds when ``peak_bias`` puts the reported
-        values on that scale, and does not when ``peak_bias`` is None -- there ``mu`` still
-        carries the peak inflation and the noncentrality is overstated.
-        """
-        if self.censoring != "rft":
-            return None
-        if getattr(self, "_cutoffs_z_", None) is None:
-            return None
-
-        radius = self.coverage_radius
-        if radius is None:
-            radius = 2.0 * (self.fwhm if self.fwhm is not None else 10.0)
-        resels = _coverage_resels(radius, self.smoothness_fwhm)
-        return {
-            "cutoff_z": np.abs(self._cutoffs_z_.loc[study_ids].to_numpy())[:, None],
-            "sqrt_n": np.sqrt(sample_sizes.loc[study_ids].to_numpy())[:, None],
-            "resels": resels,
-            "ec_peak": _ec_peak(resels),
-        }
-
-    def _fit_chunk(
-        self, *, weights, g_obs, var_obs, covered, tau2, null_var, cutoffs, start, rft=None
-    ):
+    def _fit_chunk(self, *, weights, g_obs, var_obs, covered, tau2, null_var, cutoffs, start):
         """EM for one block of voxels. Returns ``(mu, prevalence, se)``, one value per voxel.
 
         Works on the ``(study, voxel)`` pairs that carry weight rather than on the dense
@@ -2259,26 +2077,14 @@ class CBES(Estimator):
         cutoff_scaled_sil = cutoff_sil * inv_sigma_sil
         twice_cutoff_scaled_sil = cutoff_scaled_sil * 2.0
 
-        # The regional form needs the threshold on the z scale and the square root of the
-        # sample size, since its noncentrality is g * sqrt(N) rather than a standardized gap.
-        cutoff_z_sil = rft["cutoff_z"].ravel()[sil_study] if rft is not None else None
-        sqrt_n_sil = rft["sqrt_n"].ravel()[sil_study] if rft is not None else None
-        # Between-study spread of the effect this study actually has, which the regional term
-        # integrates over rather than assuming away.
-        tau_sil = np.sqrt(np.maximum(tau2[sil_voxel], 0.0)) if rft is not None else None
-
         def censoring_at(values):
-            """P(silent) and its derivatives, under whichever censoring model is in force."""
-            if rft is None:
-                return _censoring_terms(
-                    values,
-                    cutoff_scaled_sil,
-                    twice_cutoff_scaled_sil,
-                    inv_sigma_sil,
-                    inv_sigma_sq_sil,
-                )
-            return _rft_censoring_terms(
-                values, cutoff_z_sil, sqrt_n_sil, rft["resels"], rft["ec_peak"], tau=tau_sil
+            """P(silent) and its derivatives for a set of silent observations at ``values``."""
+            return _censoring_terms(
+                values,
+                cutoff_scaled_sil,
+                twice_cutoff_scaled_sil,
+                inv_sigma_sil,
+                inv_sigma_sq_sil,
             )
 
         # A reporting study's log-likelihood is discounted by the spatial kernel, so a silent
@@ -2296,10 +2102,8 @@ class CBES(Estimator):
         # Probability a silent study stays silent when it has no effect at all. Fixed across
         # iterations, and close to one whenever the threshold is the usual several sigma.
         null_sd_sil = np.sqrt(null_var_sil)
-        prob_silent_null = (
-            np.clip(ndtr(cutoff_sil / null_sd_sil) - ndtr(-cutoff_sil / null_sd_sil), 1e-12, None)
-            if rft is None
-            else censoring_at(np.zeros_like(cutoff_z_sil))["prob"]
+        prob_silent_null = np.clip(
+            ndtr(cutoff_sil / null_sd_sil) - ndtr(-cutoff_sil / null_sd_sil), 1e-12, None
         )
         density_null = _normal_pdf(g_rep / np.sqrt(var_rep)) / np.sqrt(var_rep)
 
@@ -2404,10 +2208,6 @@ class CBES(Estimator):
             inv_sigma_sq_sil = inv_sigma_sq_sil[kept_pairs]
             cutoff_scaled_sil = cutoff_scaled_sil[kept_pairs]
             twice_cutoff_scaled_sil = twice_cutoff_scaled_sil[kept_pairs]
-            if rft is not None:
-                cutoff_z_sil = cutoff_z_sil[kept_pairs]
-                sqrt_n_sil = sqrt_n_sil[kept_pairs]
-                tau_sil = tau_sil[kept_pairs]
             resp_sil = resp_sil[kept_pairs]
 
             mu, pi = mu[keep], pi[keep]

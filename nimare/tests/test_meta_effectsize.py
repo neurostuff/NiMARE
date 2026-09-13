@@ -373,9 +373,10 @@ def test_no_null_reports_no_p_values(studyset, small_mask):
 def test_montecarlo_null_calibrates_uncorrected_p(null_studyset, small_mask):
     """Under a global null the spatial null returns roughly the nominal rate.
 
-    This is the reason ``null_method`` defaults to ``"montecarlo"``: ``g / se`` is not a
-    null-referenced statistic, since the standard error treats tau-squared as known and ignores
-    that the peaks being pooled were selected for being large.
+    This is the reason a spatial null is used at all: ``g / se`` is not a null-referenced
+    statistic, since the standard error treats tau-squared as known and ignores that the peaks
+    being pooled were selected for being large. The relocation null is also what the default
+    ``"approximate"`` null is validated against, so its own calibration has to hold first.
     """
     montecarlo = CBES(
         fwhm=12.0, mask=small_mask, selection_model="none", null_method="montecarlo", n_iters=50
@@ -1150,144 +1151,22 @@ def test_approximate_null_rejects_unknown_methods():
         CBES(null_method="factorised")
 
 
-def test_expected_ec_derivatives_are_exact():
-    """The Newton step in the EM uses these, so they have to be the real derivatives."""
-    from nimare.meta.cbma.effectsize import _coverage_resels, _expected_ec
+def test_the_default_null_is_the_approximate_one_and_rft_censoring_is_gone():
+    """Benchmarked head to head, one configuration won on every axis, so it is the only one.
 
-    resels = _coverage_resels(20.0, 8.0)
-    z = np.linspace(1.2, 6.0, 25)
-    step = 1e-6
-    _, first, second = _expected_ec(z, resels)
-
-    numeric_first = (_expected_ec(z + step, resels)[0] - _expected_ec(z - step, resels)[0]) / (
-        2 * step
-    )
-    numeric_second = (_expected_ec(z + step, resels)[1] - _expected_ec(z - step, resels)[1]) / (
-        2 * step
-    )
-    assert np.abs(first - numeric_first).max() < 1e-7
-    assert np.abs(second - numeric_second).max() < 1e-7
-
-    # Above its turning point the expansion is in range: positive and falling, as an expected
-    # Euler characteristic must be. Below it the approximation is simply invalid -- it counts
-    # handles and holes rather than clusters -- which is why the censoring term clamps there
-    # rather than trusting it.
-    from nimare.meta.cbma.effectsize import _ec_peak
-
-    peak = _ec_peak(resels)
-    above = np.linspace(peak, 8.0, 300)
-    values = _expected_ec(above, resels)[0]
-    assert (values > 0).all()
-    assert np.all(np.diff(values) <= 1e-12)
-
-
-def test_rft_censoring_score_matches_the_log_probability():
-    """score must be d log P / d mu, or the EM optimizes a function it is not evaluating.
-
-    Clipping the Euler characteristic at zero -- the obvious way to keep it positive -- breaks
-    exactly this: it flattens the numerical derivative while leaving the analytic score
-    untouched, so the Newton step walks a gradient belonging to no function.
+    The approximate null matches the relocation null's calibration under a global null (0.042
+    against 0.041 at a nominal .05, 0.0010 apiece at .001 over 15 simulations) at 14.0 s/fit
+    against 53.7, so it is the default. The RFT regional censoring term cost 2.9x for the same
+    null calibration, was conservative when paired with the approximate null, and recovered a
+    known g = 0.6 as 0.882 where the pointwise form gave 0.665 -- so it is gone, and passing it
+    should fail loudly rather than be silently ignored.
     """
-    from nimare.meta.cbma.effectsize import _coverage_resels, _rft_censoring_terms
+    assert CBES().null_method == "approximate"
 
-    resels = _coverage_resels(20.0, 8.0)
-    mu = np.linspace(0.0, 1.2, 25)
-    cutoff = np.full(mu.shape, 3.2905)
-    sqrt_n = np.full(mu.shape, 4.0)
-    step = 1e-6
-
-    terms = _rft_censoring_terms(mu, cutoff, sqrt_n, resels)
-
-    def log_prob(value):
-        return np.log(_rft_censoring_terms(value, cutoff, sqrt_n, resels)["prob"])
-
-    numeric = (log_prob(mu + step) - log_prob(mu - step)) / (2 * step)
-    assert np.abs(terms["score"] - numeric).max() < 1e-5
-
-
-def test_rft_censoring_reaches_rates_the_pointwise_form_cannot():
-    """Why the term exists: silence is a maximum over a region, not a single voxel.
-
-    A 20 mm sphere holds thousands of voxels, so the chance of clearing a threshold *somewhere*
-    inside it far exceeds the chance at any one voxel. The pointwise form therefore predicts
-    far less reporting than really happens, which is harmless for a relative map and fatal for
-    anything that needs absolute reporting rates.
-    """
-    from nimare.meta.cbma.effectsize import (
-        _censoring_terms,
-        _coverage_resels,
-        _rft_censoring_terms,
-    )
-
-    resels = _coverage_resels(20.0, 8.0)
-    sample_size, cutoff_z = 16.0, 3.2905
-    effect = np.array([0.3])
-    sqrt_n = np.array([np.sqrt(sample_size)])
-
-    regional = _rft_censoring_terms(effect, np.array([cutoff_z]), sqrt_n, resels)["prob"][0]
-
-    cutoff_g = np.array([cutoff_z / np.sqrt(sample_size)])
-    sigma = np.array([np.sqrt(1.0 / sample_size)])
-    inverse = 1.0 / sigma
-    pointwise = _censoring_terms(
-        effect, cutoff_g * inverse, 2.0 * cutoff_g * inverse, inverse, inverse**2
-    )["prob"][0]
-
-    assert regional < pointwise  # reporting somewhere beats reporting here
-    assert regional < 0.25 < pointwise
-
-    # The measurement behind this: on the 21 NIDM pain studies the observed coverage rate is
-    # 0.677, and the pointwise form cannot reach it at any effect size -- it gives 0.44 even at
-    # g = 0.8 -- which is why matching reporting rates ran to the top of its search range.
-
-    # And it has to be monotone in the effect: a larger effect cannot make silence likelier.
-    grid = np.linspace(0.0, 1.0, 20)
-    probs = _rft_censoring_terms(
-        grid, np.full(20, cutoff_z), np.full(20, np.sqrt(sample_size)), resels
-    )["prob"]
-    assert np.all(np.diff(probs) <= 1e-12)
-
-
-def test_rft_quadrature_softens_silence_and_keeps_exact_derivatives():
-    """A study's own effect is drawn around mu, not equal to it, and that shape matters.
-
-    Treating the noncentrality as exactly ``mu * sqrt(N)`` makes P(silent) collapse so steeply
-    that silence becomes near-proof of a null effect, which drives the fitted effect to zero.
-    The pointwise term this replaced carried the spread through ``sqrt(1/N + tau^2)``; dropping
-    it was a regression introduced while fixing a different error. Integrating it back has to
-    soften the curve without costing the exactness the Newton step depends on.
-    """
-    from nimare.meta.cbma.effectsize import (
-        _coverage_resels,
-        _ec_peak,
-        _rft_censoring_terms,
-    )
-
-    resels = _coverage_resels(20.0, 12.0)
-    peak = _ec_peak(resels)
-    grid = np.linspace(0.0, 1.0, 15)
-    cutoff = np.full(grid.shape, 3.2905)
-    sqrt_n = np.full(grid.shape, 4.0)
-    tau = np.full(grid.shape, 0.15)
-
-    sharp = _rft_censoring_terms(grid, cutoff, sqrt_n, resels, peak)["prob"]
-    smooth = _rft_censoring_terms(grid, cutoff, sqrt_n, resels, peak, tau=tau)["prob"]
-
-    # Softer means silence stays more plausible as the effect grows.
-    assert smooth[4] > sharp[4]
-    assert (sharp[0] / sharp[4]) > 3.0 * (smooth[0] / smooth[4])
-
-    for spread in (None, tau):
-        terms = _rft_censoring_terms(grid, cutoff, sqrt_n, resels, peak, tau=spread)
-        step = 1e-6
-
-        def prob_at(value, spread=spread):
-            return _rft_censoring_terms(value, cutoff, sqrt_n, resels, peak, tau=spread)["prob"]
-
-        numeric = (prob_at(grid + step) - prob_at(grid - step)) / (2 * step)
-        # score is P'/P, so compare P' itself against the finite difference.
-        assert np.abs(terms["score"] * terms["prob"] - numeric).max() < 1e-6
-        assert np.all(np.diff(terms["prob"]) <= 1e-12)
+    with pytest.raises(TypeError):
+        CBES(censoring="rft")
+    with pytest.raises(TypeError):
+        CBES(smoothness_fwhm=12.0)
 
 
 def test_reference_magnitude_falls_with_sample_size():
