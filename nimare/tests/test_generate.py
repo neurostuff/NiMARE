@@ -278,3 +278,50 @@ def test_create_neurovault_studyset():
     expected_columns = {"beta", "t", "varcope", "z"}
     assert isinstance(studyset, Studyset)
     assert expected_columns.issubset(studyset.images.columns)
+
+
+def test_simulate_field_produces_real_peak_height_inflation():
+    """The point simulator cannot validate a peak-height correction; the field one can.
+
+    Drawing a value at the ground-truth location makes the reported statistic an unbiased
+    estimate of the effect there, so the true inflation is exactly 1 and there is nothing for
+    such a correction to recover. Selecting local maxima of a noisy field instead makes the
+    reported height overstate the effect where it was found, which is the thing being
+    corrected. Each peak carries the true effect at its own voxel, so it is measurable.
+    """
+    import numpy as np
+
+    from nimare.generate import create_effect_size_coordinate_studyset
+    from nimare.meta.cbma.effectsize import peak_stat_to_hedges_g
+
+    sample_size = 25
+    studyset = create_effect_size_coordinate_studyset(
+        [(0, 0, 0)],
+        effect_sizes=0.8,
+        n_studies=25,
+        sample_size=sample_size,
+        seed=2,
+        simulate_field=True,
+        noise_extent=40.0,
+        threshold_z=3.2905,
+    )
+    coordinates = studyset.coordinates
+    assert len(coordinates) > 50
+    assert "value_trueg" in coordinates.columns
+
+    distance = np.sqrt((coordinates[["x", "y", "z"]].astype(float).to_numpy() ** 2).sum(axis=1))
+    on_signal = distance <= 15.0
+    assert on_signal.sum() >= 5
+
+    z_values = np.abs(coordinates["z_stat"].astype(float).to_numpy())[on_signal]
+    implied, _ = peak_stat_to_hedges_g(
+        z_values, np.full(len(z_values), float(sample_size)), stat_type="z"
+    )
+    truth = np.abs(coordinates["value_trueg"].astype(float).to_numpy())[on_signal]
+
+    # The reported statistic overstates the effect where its peak was found.
+    inflation = truth.mean() / np.abs(implied).mean()
+    assert 0.3 < inflation < 0.95
+
+    # And most of what gets reported is noise, which is why peak magnitudes carry so little.
+    assert on_signal.mean() < 0.3

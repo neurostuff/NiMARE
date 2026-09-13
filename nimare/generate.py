@@ -291,6 +291,79 @@ def _create_source(foci, sample_sizes, space="MNI"):
     return source
 
 
+def _simulate_reported_peaks(
+    ground_truth_foci,
+    effect_sizes,
+    n_subjects,
+    threshold,
+    smoothness_fwhm,
+    blob_fwhm,
+    field_zooms,
+    field_extent,
+    design,
+    rng,
+):
+    """Simulate a study's statistic field and report the local maxima that clear its threshold.
+
+    This is what makes peak-height inflation appear. Drawing a value at the ground-truth
+    location and thresholding it, as the point simulator does, produces a reported statistic
+    that is an unbiased estimate of the effect there -- so there is nothing for a peak-height
+    correction to correct, and no simulator built that way can validate one.
+
+    Here a smooth Gaussian noise field is added to the signal, and what gets reported is the
+    position and height of a *local maximum* that cleared the threshold. Those maxima are
+    selected for being large, and sit where the noise happened to help, so the reported height
+    overstates the effect at that location and the reported position is displaced from the
+    truth. Both fall out of the simulation rather than being imposed.
+
+    Each peak carries the true effect at the voxel it was found in, so the inflation is a
+    measurable quantity rather than something to be assumed.
+    """
+    from scipy.ndimage import gaussian_filter, maximum_filter
+
+    zooms = np.full(3, float(field_zooms))
+    half = int(np.ceil(field_extent / zooms[0]))
+    shape = tuple(np.full(3, 2 * half + 1, dtype=int))
+    origin = -zooms * half
+
+    # Unit-variance smooth Gaussian noise: the field a null study would have.
+    sigma = smoothness_fwhm / (2.0 * np.sqrt(2.0 * np.log(2.0))) / zooms
+    noise = gaussian_filter(rng.normal(size=shape), sigma)
+    spread = noise.std()
+    if spread <= 0:
+        return []
+    noise /= spread
+
+    # Signal: a blob at each ground-truth focus, on the effect-size scale.
+    grid = np.stack(np.indices(shape), axis=-1) * zooms + origin
+    signal = np.zeros(shape, dtype=float)
+    blob_sigma = blob_fwhm / (2.0 * np.sqrt(2.0 * np.log(2.0)))
+    for focus, effect in zip(ground_truth_foci, effect_sizes):
+        squared = ((grid - np.asarray(focus, dtype=float)) ** 2).sum(axis=-1)
+        signal += float(effect) * np.exp(-squared / (2.0 * blob_sigma**2))
+
+    scale = np.sqrt(n_subjects) if design == "one-sample" else np.sqrt(n_subjects / 4.0)
+    observed = signal * scale + noise
+
+    # Local maxima of |observed| that clear the threshold, which is what a paper tabulates.
+    magnitude = np.abs(observed)
+    is_peak = (magnitude == maximum_filter(magnitude, size=3)) & (magnitude >= threshold)
+    peaks = np.argwhere(is_peak)
+
+    reported = []
+    for index in peaks:
+        position = tuple(index)
+        reported.append(
+            {
+                "coordinates": [float(c) for c in grid[position]],
+                "z": float(observed[position]),
+                # The effect actually present where the peak was found, on the g scale.
+                "true_g": float(signal[position]),
+            }
+        )
+    return reported
+
+
 def create_effect_size_coordinate_studyset(
     ground_truth_foci,
     effect_sizes=0.5,
@@ -305,6 +378,10 @@ def create_effect_size_coordinate_studyset(
     design="one-sample",
     seed=None,
     space="MNI",
+    simulate_field=False,
+    smoothness_fwhm=10.0,
+    blob_fwhm=10.0,
+    field_zooms=4.0,
 ):
     """Simulate a studyset whose coordinates carry reported z statistics.
 
@@ -336,6 +413,28 @@ def create_effect_size_coordinate_studyset(
         exactly zero. This is the situation a plain censored model cannot represent -- it has
         to explain a study's silence as a small common effect rather than as no effect -- and
         is what ``CBES(selection_model="zero-inflated")`` is built to recover.
+    simulate_field : :obj:`bool`, default=False
+        Simulate each study's whole statistic field and report the local maxima that clear its
+        threshold, instead of drawing a value at each ground-truth location.
+
+        This is the difference between a simulator that can validate a peak-height correction
+        and one that cannot. The default draws a value *at* the focus, so the reported statistic
+        is an unbiased estimate of the effect there and the true inflation is exactly 1 -- there
+        is nothing for such a correction to recover. With a field, what gets reported is a local
+        maximum selected for being large, sitting where the noise happened to help, so its
+        height overstates the effect at its location and its position is displaced from the
+        truth. Both emerge from the simulation rather than being imposed, and ``spatial_sd`` is
+        then unused.
+
+        Each reported point carries the true effect at the voxel it was found in, under the
+        ``TRUEG`` value kind, so the inflation is measurable rather than assumed.
+    smoothness_fwhm : :obj:`float`, default=10.0
+        FWHM, in mm, of the simulated noise field. Only used when ``simulate_field`` is set.
+    blob_fwhm : :obj:`float`, default=10.0
+        FWHM, in mm, of the signal blob at each ground-truth focus. Only used when
+        ``simulate_field`` is set.
+    field_zooms : :obj:`float`, default=4.0
+        Voxel size, in mm, of the simulated field. Only used when ``simulate_field`` is set.
     threshold_z : :obj:`float` or sequence of :obj:`float`, default=3.29
         Two-tailed reporting threshold on the z scale (p < .001 by default). A study reports a
         peak only where its observed statistic clears this. A sequence is drawn from at random,
@@ -400,6 +499,61 @@ def create_effect_size_coordinate_studyset(
         )
 
         points = []
+        if simulate_field:
+            present = [
+                effect if prevalence >= 1.0 or rng.random() < prevalence else 0.0
+                for effect in effect_sizes
+            ]
+            study_effects = [
+                rng.normal(effect, tau) if tau and effect else effect for effect in present
+            ]
+            for peak in _simulate_reported_peaks(
+                ground_truth_foci,
+                study_effects,
+                n_subjects,
+                threshold,
+                smoothness_fwhm,
+                blob_fwhm,
+                field_zooms,
+                noise_extent if n_noise_foci or noise_extent else 60.0,
+                design,
+                rng,
+            ):
+                points.append(
+                    {
+                        "space": space,
+                        "coordinates": peak["coordinates"],
+                        "values": [
+                            {"kind": "Z", "value": peak["z"]},
+                            # The effect where the peak was found, so the inflation a
+                            # peak-height correction targets is measurable rather than assumed.
+                            {"kind": "TRUEG", "value": peak["true_g"]},
+                        ],
+                    }
+                )
+            studies.append(
+                {
+                    "id": f"study-{i_study}",
+                    "name": f"study-{i_study}",
+                    "metadata": {
+                        "sample_sizes": [int(n_subjects)],
+                        "reporting_threshold": float(threshold),
+                    },
+                    "analyses": [
+                        {
+                            "id": f"study-{i_study}-1",
+                            "name": "1",
+                            "metadata": {
+                                "sample_sizes": [int(n_subjects)],
+                                "reporting_threshold": float(threshold),
+                            },
+                            "points": points,
+                        }
+                    ],
+                }
+            )
+            continue
+
         for focus, true_g in zip(ground_truth_foci, effect_sizes):
             if prevalence < 1.0 and rng.random() >= prevalence:
                 continue  # this study simply has no effect here
