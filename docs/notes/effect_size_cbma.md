@@ -632,9 +632,41 @@ coordinates do not carry. Use images to fix the scale when you have them, and re
 relative when you do not -- remembering that `z`, the p-values, every corrected map and the
 prevalence are unaffected by the constant (§12), so only the magnitude is lost.
 
-A template resels-per-voxel map borrowed from a reference dataset is the one untried route. It
-would replace an unknown with a data-driven assumption rather than eliminate it, and would need
-validating against a collection whose scale is independently known.
+### Would a template resels-per-voxel map rescue it?
+
+No canonical one exists to download. SPM and FSL compute resels per voxel *per analysis*, from
+that analysis's own residuals, because it reflects acquisition resolution, applied smoothing and
+registration rather than anatomy alone. TemplateFlow ships anatomical templates, not smoothness.
+
+There is a close precedent, though for a different quantity. SDM ships **correlation templates**
+for grey matter/BOLD, white matter, CSF and fractional anisotropy, built from reference data and
+freely available (Radua et al., 2014; sdmproject.com). Those describe how the *signal* covaries
+across voxels, which shapes their imputation kernel; what the censoring term here needs is how
+the *noise* is smoothed, which sets how many effectively independent tests a region holds. The
+two are related but not interchangeable.
+
+A template would only help if local smoothness factorises into a per-study level times a shared
+spatial pattern. Measured on the 21 pain studies, stripping each study's own level and comparing
+what remains:
+
+| | |
+|---|---|
+| pairwise correlation of the normalized pattern | median +0.218 (-0.106 to +0.911) |
+| leave-one-out template from the other 20 | median r +0.456 (+0.004 to +0.779) |
+| variance of the held-out pattern explained | 20.7% |
+
+So a template captures about a fifth of the pattern in a study it has not seen. That is
+meaningfully better than a global constant, which captures none of it by construction, and far
+from sufficient given resels scale as `FWHM^-3`. The figure is a *lower* bound: it is attenuated
+by noise in the held-out study's own local estimate, which is why the leave-one-out correlation
+so far exceeds the median pairwise one, and a larger reference dataset would give a cleaner
+template.
+
+The more promising lead is not a template at all. Radua et al. report that their recreation
+"did not depend on FWHM when full anisotropy was used" -- modelling the spatial structure
+properly made the nuisance parameter stop mattering, rather than demanding it be estimated well.
+If that carries over, it would dissolve the problem rather than relocate it. It is the one route
+worth taking if this is reopened.
 
 ## 14. Status and open questions
 
