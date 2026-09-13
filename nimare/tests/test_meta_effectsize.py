@@ -1288,3 +1288,52 @@ def test_rft_quadrature_softens_silence_and_keeps_exact_derivatives():
         # score is P'/P, so compare P' itself against the finite difference.
         assert np.abs(terms["score"] * terms["prob"] - numeric).max() < 1e-6
         assert np.all(np.diff(terms["prob"]) <= 1e-12)
+
+
+def test_reference_magnitude_falls_with_sample_size():
+    """Studies powered for subtle effects are large, so the reference has to fall with N.
+
+    Measured across 258 NeuroVault group maps: corr(log N, log magnitude) = -0.395. The table
+    is binned rather than a fitted line because the relationship is not log-linear.
+    """
+    from nimare.meta.cbma.effectsize import reference_magnitude
+
+    small = reference_magnitude([16] * 10)
+    medium = reference_magnitude([50] * 10)
+    large = reference_magnitude([200] * 10)
+    assert small > medium > large
+    assert 0.5 < small < 1.2
+    assert 0.1 < large < 0.4
+
+    # Mixed collections interpolate rather than taking an extreme.
+    mixed = reference_magnitude([16, 200])
+    assert large < mixed < small
+    assert reference_magnitude([]) is None
+    assert reference_magnitude([np.nan, -5]) is None
+
+
+def test_reference_scale_is_opt_in_and_not_chosen_by_auto(studyset, small_mask, caplog):
+    """It made a known truth worse by up to 2x, so it must never be selected implicitly."""
+    estimator = CBES(
+        fwhm=8.0,
+        mask=small_mask,
+        null_method="none",
+        peak_bias="per-study",
+        peak_bias_scale="auto",
+    )
+    with caplog.at_level("WARNING"):
+        estimator.fit(studyset)
+    # No images here, so "auto" falls back to a relative map rather than reaching for the
+    # reference corpus.
+    assert estimator._peak_bias_scale_ == 1.0
+    assert "reference" in caplog.text  # but it does point at the option
+
+    explicit = CBES(
+        fwhm=8.0,
+        mask=small_mask,
+        null_method="none",
+        peak_bias="per-study",
+        peak_bias_scale="reference",
+    )
+    explicit.fit(studyset)
+    assert explicit._peak_bias_scale_ != 1.0

@@ -127,6 +127,50 @@ __version__ = _version.get_versions()["version"]
 #: against division by zero for implausibly large sample sizes.
 _MIN_VARIANCE = 1e-8
 
+#: Typical effect magnitude by sample size, from 258 unthresholded group T/Z maps on
+#: NeuroVault (134 collections, 85 cognitive paradigms, N from 10 to 1369). Each entry is
+#: ``(representative N, median mean |g| in that map's top decile)``.
+#:
+#: Studies with a large N investigate smaller effects, because that is what they are powered
+#: for: ``corr(log N, log magnitude) = -0.395``. Matching on sample size cuts the error in
+#: predicting a held-out map's magnitude by 28% against using the corpus median, where matching
+#: on *spatial* similarity does not help at all -- it explains 0.26% of the variance and the
+#: fifteen most similar maps predict worse than ignoring similarity. Binned medians rather than
+#: a fitted line because the relationship is not log-linear: the line recovers only 0.91 of the
+#: baseline error where these bins recover 0.72.
+REFERENCE_MAGNITUDE_BY_N = (
+    (17.1, 0.761),
+    (21.9, 0.564),
+    (28.6, 0.578),
+    (38.3, 0.399),
+    (50.9, 0.408),
+    (74.3, 0.338),
+    (117.1, 0.223),
+    (264.6, 0.283),
+)
+
+#: Spread of the reference relationship, in log units: predictions are good to about a factor
+#: of two, and no scale derived from it should be quoted more precisely than that.
+REFERENCE_MAGNITUDE_LOG_SD = 0.673
+
+
+def reference_magnitude(sample_sizes):
+    """Effect magnitude a collection of this size would typically show, from the reference corpus.
+
+    Returns the geometric mean over studies of the typical ``|g|`` for each study's sample size,
+    interpolated in log-log space between :data:`REFERENCE_MAGNITUDE_BY_N`. This is an external
+    prior, not a measurement of the collection: it says researchers who ran this many subjects
+    were usually studying effects of about this size.
+    """
+    sizes = np.asarray(sample_sizes, dtype=float)
+    sizes = sizes[np.isfinite(sizes) & (sizes > 0)]
+    if not sizes.size:
+        return None
+    grid = np.log([entry[0] for entry in REFERENCE_MAGNITUDE_BY_N])
+    values = np.log([entry[1] for entry in REFERENCE_MAGNITUDE_BY_N])
+    return float(np.exp(np.mean(np.interp(np.log(sizes), grid, values))))
+
+
 #: Keywords ``threshold`` understands; any other string names a metadata field.
 THRESHOLD_KEYWORDS = ("pooled-min", "study-min")
 
@@ -1165,15 +1209,19 @@ class CBES(Estimator):
             )
         if null_method not in NULL_METHODS:
             raise ValueError(f"null_method must be one of {NULL_METHODS}; got {null_method!r}.")
-        if isinstance(peak_bias_scale, str) and peak_bias_scale not in ("auto", "images"):
+        if isinstance(peak_bias_scale, str) and peak_bias_scale not in (
+            "auto",
+            "images",
+            "reference",
+        ):
             raise ValueError(
-                "peak_bias_scale must be 'auto', 'images', or a positive number; got "
-                f"{peak_bias_scale!r}."
+                "peak_bias_scale must be 'auto', 'images', 'reference', or a positive "
+                f"number; got {peak_bias_scale!r}."
             )
         if not isinstance(peak_bias_scale, str) and not float(peak_bias_scale) > 0:
             raise ValueError(
-                "peak_bias_scale must be 'auto', 'images', or a positive number; got "
-                f"{peak_bias_scale!r}."
+                "peak_bias_scale must be 'auto', 'images', 'reference', or a positive "
+                f"number; got {peak_bias_scale!r}."
             )
         if isinstance(peak_bias, str):
             if peak_bias != "per-study":
@@ -1552,7 +1600,7 @@ class CBES(Estimator):
         """
         if self.peak_bias is None:
             return 1.0
-        if self.peak_bias_scale not in ("auto", "images"):
+        if self.peak_bias_scale not in ("auto", "images", "reference"):
             if self._image_studies_ and self.peak_bias_scale == 1.0:
                 LGR.warning(  # noqa: E501
                     "This fit mixes images with coordinates but leaves peak_bias_scale at "
@@ -1570,18 +1618,81 @@ class CBES(Estimator):
             table, self._cutoffs_z_, sample_sizes, provisional
         )
 
+        if self.peak_bias_scale == "reference":
+            return self._calibrate_scale_from_reference(scaled, sample_sizes)
+
         if not self._image_studies_:
             LGR.warning(
                 "peak_bias_scale needs images to calibrate against, and this collection "
                 "supplies none. Falling back to 1.0, which leaves the effect-size map correct "
-                "up to one multiplicative constant. peak_bias_scale='rates' fixes the scale "
-                "from the reporting rates instead and needs no images, but is experimental."
+                "up to one multiplicative constant. peak_bias_scale='reference' sets the scale "
+                "from an external corpus instead, to within about a factor of two."
             )
             return 1.0
 
         return self._calibrate_peak_bias_scale(
             scaled, sample_sizes, thresholds, self._image_studies_
         )
+
+    def _calibrate_scale_from_reference(self, table, sample_sizes):
+        """Set the overall scale from what studies of this size typically find.
+
+        No route from the coordinates' own reporting behaviour recovers the scale; seven were
+        tried and section 15 records why. This takes it from outside instead. Sample size
+        predicts effect magnitude across a reference corpus of 258 group maps, because studies
+        are powered for the effects they set out to find, and matching on it cuts the error in
+        predicting a held-out magnitude by 28%. Spatial similarity, which looks like the more
+        natural key, does not work at all.
+
+        What this assumes is a fact about how research is designed, not about the brain:
+        researchers who ran this many subjects were usually studying effects of about this size.
+        It would be wrong for a collection unusually over- or under-powered for its effect, and
+        it is good to about a factor of two either way -- so the resulting magnitudes should be
+        read as an order of scale, not a calibrated value.
+
+        .. warning::
+            On field-simulated collections with a known truth this made the estimate *worse*,
+            by 1.5 to 2.0x, in every case tried. The reason is the assumption failing as
+            advertised: those collections had true effects of 0.5 to 1.2 where the reference
+            expects about 0.57 at their sample sizes, so the prior pulled them down. A
+            collection atypical of the reference is penalised for it.
+
+            Those same runs raise a question this option cannot settle. Uncalibrated, the
+            estimator landed within 1.04 to 1.44x of the truth -- which contradicts the 2.65x
+            inflation measured against the image reference on the NIDM pain collection. The two
+            instruments disagree about the size of the problem, and until that is explained
+            neither figure should be quoted as settled. Hence opt-in, and never chosen by
+            ``"auto"``.
+        """
+        expected = reference_magnitude(sample_sizes.values)
+        if expected is None:
+            LGR.warning("No usable sample sizes; cannot set the scale from the reference.")
+            return 1.0
+
+        fit = self._pool(table, None)
+        covered = fit["covered"]
+        if not covered.any():
+            return 1.0
+        magnitude = np.abs(fit["g"][covered])
+        if not magnitude.size or magnitude.max() <= 0:
+            return 1.0
+        # Matched to how the reference was summarised: the mean over each map's own top decile,
+        # since a whole-brain mean measures how much of the brain is active rather than how
+        # strong the effect is where it is present.
+        top = magnitude[magnitude >= np.percentile(magnitude, 90)]
+        observed = float(top.mean())
+        if observed <= 0:
+            return 1.0
+
+        scale = expected / observed
+        spread = float(np.exp(REFERENCE_MAGNITUDE_LOG_SD))
+        LGR.info(
+            f"Reference calibration: studies of this size typically show |g| ~ {expected:.3f}, "
+            f"this fit shows {observed:.3f}, so peak_bias_scale = {scale:.3f}. The reference "
+            f"is good to about a factor of {spread:.1f}, so read the magnitudes as an order of "
+            "scale rather than a calibrated value."
+        )
+        return scale
 
     def _calibrate_peak_bias_scale(self, table, sample_sizes, thresholds, image_studies):
         """Read the overall peak-to-field ratio off the studies that supplied images.
