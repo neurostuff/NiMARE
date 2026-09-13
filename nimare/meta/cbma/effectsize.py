@@ -975,15 +975,16 @@ class CBES(Estimator):
             "auto",
             "rates",
             "images",
+            "mle",
         ):
             raise ValueError(
-                "peak_bias_scale must be 'auto', 'rates', 'images', or a positive number; got "
-                f"{peak_bias_scale!r}."
+                "peak_bias_scale must be 'auto', 'mle', 'rates', 'images', or a positive "
+                f"number; got {peak_bias_scale!r}."
             )
         if not isinstance(peak_bias_scale, str) and not float(peak_bias_scale) > 0:
             raise ValueError(
-                "peak_bias_scale must be 'auto', 'rates', 'images', or a positive number; got "
-                f"{peak_bias_scale!r}."
+                "peak_bias_scale must be 'auto', 'mle', 'rates', 'images', or a positive "
+                f"number; got {peak_bias_scale!r}."
             )
         if isinstance(peak_bias, str):
             if peak_bias != "per-study":
@@ -1369,7 +1370,7 @@ class CBES(Estimator):
         """
         if self.peak_bias is None:
             return 1.0
-        if self.peak_bias_scale not in ("auto", "rates", "images"):
+        if self.peak_bias_scale not in ("auto", "rates", "images", "mle"):
             if self._image_studies_ and self.peak_bias_scale == 1.0:
                 LGR.warning(  # noqa: E501
                     "This fit mixes images with coordinates but leaves peak_bias_scale at "
@@ -1386,6 +1387,13 @@ class CBES(Estimator):
         scaled, thresholds = self._apply_peak_bias(
             table, self._cutoffs_z_, sample_sizes, provisional
         )
+
+        if self.peak_bias_scale == "mle":
+            scale = self._calibrate_scale_by_likelihood(
+                table, self._cutoffs_z_, sample_sizes, reporting_ids
+            )
+            self._peak_bias_scale_ = scale
+            return scale
 
         if self.peak_bias_scale == "rates":
             # No images needed: the rates identify the scale on their own. Opt-in only --
@@ -1406,6 +1414,157 @@ class CBES(Estimator):
         return self._calibrate_peak_bias_scale(
             scaled, sample_sizes, thresholds, self._image_studies_
         )
+
+    def _model_loglik(self, fit, table, cutoffs_g, sample_sizes, image_ids=()):
+        """Weighted log-likelihood of the fitted model, summed over every voxel.
+
+        Evaluated at the fitted ``mu`` and ``pi`` rather than during the EM, so the active-set
+        compaction does not have to be unwound. ``cutoffs_g`` are on whatever scale the
+        censoring term is meant to live on -- for calibration that is the *true* one.
+        """
+        active = np.flatnonzero(fit["covered"])
+        if not active.size:
+            return -np.inf
+
+        study_ids = list(sample_sizes.index)
+        n_studies = len(study_ids)
+        null_var = null_effect_variance(sample_sizes.values, design=self.design)[:, None]
+        cutoffs = np.abs(np.asarray(cutoffs_g))[:, None]
+        zero_inflated = self.selection_model == "zero-inflated"
+
+        cov_col, cov_pos = self._coverage_entries(
+            table, study_ids, active, fit["n_voxels"], image_ids=tuple(image_ids or ())
+        )
+        values = self._value_entries(fit, study_ids, active, fit["n_voxels"])
+
+        total = 0.0
+        chunk = max(1, int(2e6 // max(n_studies, 1)))
+        value_order = np.argsort(values["col"], kind="mergesort")
+        values = {name: array[value_order] for name, array in values.items()}
+        cov_order = np.argsort(cov_col, kind="mergesort")
+        cov_col, cov_pos = cov_col[cov_order], cov_pos[cov_order]
+
+        for lo in range(0, active.size, chunk):
+            hi = min(lo + chunk, active.size)
+            width = hi - lo
+            weights = np.zeros((n_studies, width))
+            g_obs = np.zeros((n_studies, width))
+            var_obs = np.ones((n_studies, width))
+            v_lo, v_hi = np.searchsorted(values["col"], [lo, hi])
+            if v_hi > v_lo:
+                rows, cols = values["pos"][v_lo:v_hi], values["col"][v_lo:v_hi] - lo
+                weights[rows, cols] = values["w"][v_lo:v_hi]
+                g_obs[rows, cols] = values["g"][v_lo:v_hi]
+                var_obs[rows, cols] = values["var"][v_lo:v_hi]
+
+            covered = np.zeros((n_studies, width), dtype=bool)
+            c_lo, c_hi = np.searchsorted(cov_col, [lo, hi])
+            if c_hi > c_lo:
+                covered[cov_pos[c_lo:c_hi], cov_col[c_lo:c_hi] - lo] = True
+
+            tau2 = fit["tau2"][active[lo:hi]][None, :]
+            mu = fit["g"][active[lo:hi]][None, :]
+            pi = (
+                fit["prevalence"][active[lo:hi]][None, :]
+                if zero_inflated and "prevalence" in fit
+                else np.ones((1, width))
+            )
+
+            sigma = np.sqrt(var_obs + tau2)
+            density_effect = _normal_pdf((g_obs - mu) / sigma) / sigma
+            density_null = _normal_pdf(g_obs / sigma) / sigma
+            mixed = pi * density_effect + (1.0 - pi) * density_null
+            reporting = weights > 0
+            total += float(
+                np.sum(weights[reporting] * np.log(np.clip(mixed[reporting], 1e-300, None)))
+            )
+
+            sigma_null = np.sqrt(null_var + tau2)
+            silent_effect = np.clip(
+                ndtr((cutoffs - mu) / sigma_null) - ndtr((-cutoffs - mu) / sigma_null), 1e-12, None
+            )
+            silent_null = np.clip(
+                ndtr(cutoffs / sigma_null) - ndtr(-cutoffs / sigma_null), 1e-12, None
+            )
+            mixed_silent = pi * silent_effect + (1.0 - pi) * silent_null
+            silent = ~covered
+            if silent.any():
+                # Silent studies enter at the mean reporting weight, as they do in the fit.
+                w_silent = float(np.mean(weights[reporting])) if reporting.any() else 1.0
+                total += float(
+                    w_silent * np.sum(np.log(np.clip(mixed_silent[silent], 1e-300, None)))
+                )
+        return total
+
+    def _calibrate_scale_by_likelihood(self, table, cutoff_z, sample_sizes, reporting_ids):
+        """Maximum-likelihood estimate of the overall scale, profiling over it.
+
+        Every earlier attempt compared two separate fits and took a ratio, and that is what
+        kept failing: a ratio of means lets a voxel with no effect vote as loudly as one
+        carrying the signal, and the rate-only fit it was compared against is meaningless
+        wherever almost nobody or almost everybody reported. Both failure modes came from
+        pooling a per-voxel quantity by hand.
+
+        The profile likelihood does not pool anything by hand. For a candidate scale ``c`` the
+        reported values are rescaled, the model is refitted, and the whole log-likelihood is
+        evaluated -- so every voxel contributes exactly as much as its own information about
+        ``c`` warrants, and voxels that say nothing say nothing.
+
+        Two details make the comparison across ``c`` legitimate:
+
+        * The censoring term stays on the **true** scale, with cutoffs ``u_k / sqrt(N_k)`` and
+          dispersions pinned by ``N_k``. That is the whole source of identification -- rescaling
+          it too, as the first version did, floats quantities the sample size had fixed and
+          makes the likelihood flat in ``c``.
+        * Rescaling the data needs its Jacobian. Transforming ``p -> c p`` changes the density
+          by ``c`` per observation, so ``sum(w) * log(c)`` is added back. Without it the
+          likelihood is maximized by ``c -> 0``, which merely squeezes the data onto a point
+          and fits it perfectly.
+        """
+        grid = np.geomspace(0.05, 1.5, 24)
+        best_scale, best_loglik = 1.0, -np.inf
+
+        cutoff_g, _ = peak_stat_to_hedges_g(
+            cutoff_z.values, sample_sizes.values, stat_type="z", design=self.design
+        )
+        cutoff_g = np.abs(cutoff_g)  # true scale; deliberately never rescaled by c
+
+        for candidate in grid:
+            factors = pd.Series(np.full(len(sample_sizes), 1.0), index=sample_sizes.index)
+            self._peak_bias_scale_ = float(candidate)
+            factors = self._peak_bias_factors(cutoff_z, sample_sizes, reporting_ids)
+            scaled, _ = self._apply_peak_bias(table, cutoff_z, sample_sizes, factors)
+            if not len(scaled):
+                continue
+
+            fit = self._pool(scaled, None)
+            if not fit["covered"].any():
+                continue
+            thresholds_true = pd.Series(cutoff_g, index=sample_sizes.index)
+            self._apply_selection_model(fit, scaled, thresholds_true, sample_sizes)
+            loglik = self._model_loglik(fit, scaled, cutoff_g, sample_sizes)
+
+            # Jacobian of p -> rho_k p, so densities at different scales are comparable.
+            jacobian = float(
+                np.sum(
+                    np.log(
+                        np.clip(
+                            factors.reindex(np.asarray(scaled["id"].values, dtype=object))
+                            .astype(float)
+                            .fillna(candidate)
+                            .values,
+                            1e-300,
+                            None,
+                        )
+                    )
+                )
+            )
+            loglik += jacobian
+            if np.isfinite(loglik) and loglik > best_loglik:
+                best_loglik, best_scale = loglik, float(candidate)
+
+        LGR.info(f"Profile-likelihood peak_bias_scale = {best_scale:.3f}")
+        return best_scale
 
     def _calibrate_scale_from_rates(self, fit, table, cutoff_z, sample_sizes):
         """Fix the overall scale from how *often* studies reported, using no images.
