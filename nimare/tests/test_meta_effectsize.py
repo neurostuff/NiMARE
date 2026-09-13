@@ -286,18 +286,28 @@ def test_fixed_effects_option_zeroes_tau2(studyset, small_mask):
 
 
 def test_correct_fwe_montecarlo(studyset, small_mask):
-    estimator = CBES(fwhm=12.0, mask=small_mask, selection_model="none", null_method="none")
+    """Correcting for the family can only make a p-value larger, never smaller.
+
+    Needs a real uncorrected null to compare against: with ``null_method="none"`` the
+    uncorrected p is 1 everywhere by construction and the comparison says nothing.
+    """
+    estimator = CBES(
+        fwhm=12.0,
+        mask=small_mask,
+        selection_model="none",
+        null_method="montecarlo",
+        n_iters=20,
+        seed=0,
+    )
     result = estimator.fit(studyset)
     maps, tables, description = estimator.correct_fwe_montecarlo(
-        result, n_iters=5, seed=0, vfwe_only=True
+        result, n_iters=20, seed=0, vfwe_only=True
     )
 
     assert tables == {}
     assert "Monte Carlo" in description
-    logp = maps["logp_level-voxel"]
-    p_corrected = 10.0**-logp
+    p_corrected = 10.0 ** -maps["logp_level-voxel"]
     assert np.all((p_corrected > 0) & (p_corrected <= 1))
-    # Correction can only make p-values larger.
     assert np.all(p_corrected >= result.get_map("p", return_type="array") - 1e-6)
 
 
