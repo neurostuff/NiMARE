@@ -482,10 +482,11 @@ def infer_threshold_from_minimum(min_stat_z, n_peaks):
     above ``u`` exceeds ``u`` by a computable amount, so that bias can be inverted rather than
     absorbed. With many reported peaks the correction vanishes, as it should.
 
-    This assumes ``n_peaks`` is what the study's threshold admitted, not a table cut down to
-    its strongest entries -- such a table is indistinguishable from a stricter threshold, and
-    this would return the cut rather than the threshold. Ordinary reporting conventions are
-    fine; a deliberately abridged table is not.
+    This assumes ``n_peaks`` is what the study's *height* threshold admitted. Any filter that
+    removes low peaks for another reason is indistinguishable from a stricter height threshold,
+    and this will return the filter rather than the threshold. Reporting one local maximum per
+    cluster is fine; a cluster-extent threshold is not, and biases the result high by 0.19 z at
+    k >= 10 voxels, rising to 0.57 z at k >= 50.
 
     Parameters
     ----------
@@ -684,11 +685,19 @@ class CBES(Estimator):
             literature search.
 
             Both per-study rules assume the reported peaks are whatever cleared the study's
-            threshold, which the usual reporting conventions satisfy: one local maximum per
-            cluster, or several separated by 8 mm, with or without an extent threshold. What
-            would break them is a table truncated to its strongest peaks, which is
-            indistinguishable from a stricter threshold -- but that is not how tables are
-            built, so it is not a reason to avoid these rules.
+            height threshold. Reporting one local maximum per cluster, the common convention,
+            satisfies that: on the 21 NIDM pain studies it recovers every imposed threshold to
+            within 0.02 z. A **cluster-extent threshold does not**, and it is just as common.
+            Requiring k >= 10, 20 or 50 voxels lifts the smallest reported statistic by 0.19,
+            0.32 and 0.57 z respectively, and the order-statistic correction removes only about
+            a tenth of that -- an extent threshold preferentially drops small clusters, which
+            are the ones with low peaks, so it acts like a stricter height threshold and is
+            indistinguishable from one.
+
+            The consequence is an inferred threshold biased high, which makes silence look less
+            surprising than it was and under-corrects the selection. Prefer the metadata field
+            when the papers state their extent threshold, and treat ``"study-min-corrected"``
+            as a lower bound on the bias when they do not.
         any other string
             The name of a metadata field holding each study's threshold on the z scale, for
             collections where the papers state it. Studies missing the field take the median
