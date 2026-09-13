@@ -921,6 +921,15 @@ class CBES(Estimator):
         the voxels both cover; expect it to need five or more image studies to be stable (two
         gives +-145%, five +-17%, sixteen +-6%). Mixing images with the default 1.0 warns.
 
+        ``"rates"``, ``"mle"`` and ``"rate-match"`` all try to fix the scale without images, and
+        none of them works. Seven attempts are recorded in ``docs/notes/effect_size_cbma.md``
+        section 15; the short version is that converting reporting rates into an absolute effect
+        size needs a local resels-per-voxel map, which is computed from images. Within-brain
+        smoothness varies more than between-study smoothness (95/5 ratio 1.99x against 1.6x, an
+        8x spread in resels), so a global value mis-predicts reporting in a spatial pattern no
+        single scale can absorb. They are kept as documented negative results, warn when they
+        rail, and are never selected by ``"auto"``.
+
         ``"rates"`` fixes the scale from how *often* studies reported, needing no images at all
         -- see :meth:`_calibrate_scale_from_rates`. **Experimental, opt-in only.** The
         identification is established: fitting the effect size from reporting indicators alone

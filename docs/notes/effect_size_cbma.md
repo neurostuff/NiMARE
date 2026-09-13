@@ -573,6 +573,69 @@ Caveats: the truth here includes the studies added as coordinates, so some movem
 structural — the comparison against "15 images only" is the trustworthy one — and `rho = 0.479`
 was calibrated on this collection at one threshold.
 
+## 15. Seven attempts at the absolute scale, and why it is not recoverable
+
+The magnitude of a coordinate-only map is correct only up to one constant (§12). This section
+records seven attempts to pin that constant down without images, because each failed for a
+different and identifiable reason, and the sequence is more informative than any one failure.
+
+**The identification is real.** Silence is a probit in the effect size whose slope is fixed by
+the sample size, so across studies differing in `N` the pattern of who reported traces a
+dose-response curve. Fitting the effect from reporting *indicators* alone, using no peak
+heights at all, recovers a simulated truth of 0.50 as 0.496 and 0.80 as 0.810. The information
+exists. Every failure below is about extracting it, not about whether it is there.
+
+| # | approach | result against an image-calibrated rho | why |
+|---|---|---|---|
+| 1 | ratio of means, rate fit vs value fit | 0.5 whatever the truth | no-effect voxels vote equally |
+| 2 | same, on real data | 1.0 vs 0.380 | complete separation where every study reports |
+| 3 | restricted to informative voxels | 1.0 vs 0.380 | restriction did not remove the separation |
+| 4 | profile likelihood over the scale | 0.050, a grid edge | the value term is *exactly* scale-invariant |
+| 5 | reporting rates as a moment condition | 2.0, a grid edge | pointwise censoring cannot reach the observed rate |
+| 6 | with an RFT regional censoring term | 0.020 at 8 mm, 2.0 at 12 mm | smoothness assumed, and it decides the answer |
+| 7 | plus quadrature over study effects | 2.0, a grid edge | local smoothness varies more than the global value |
+
+Four findings worth keeping.
+
+**The censored likelihood cannot see the rate.** Rescaling the reported values rescales the
+re-estimated `tau^2` with them, and the Jacobian cancels what is left, so its value term is
+exactly invariant to the scale. The only term that moves is the censoring one, which is
+maximised by an effect of zero wherever most studies are silent. Profiling it was never going
+to work. The identifying information lives in the indicator `1 - P(silent)`, not the value
+density the likelihood substitutes for reporters.
+
+**Silence is a regional event, not a pointwise one.** A study is silent when the maximum of its
+field over the region fails to clear the threshold. A 20 mm sphere is 4169 voxels at 2 mm, so
+the two differ enormously: the observed coverage rate on the NIDM pain studies is 0.677, and
+the pointwise form reaches only 0.440 even at g = 0.8. It cannot produce the observed rate at
+any effect size. `censoring="rft"` fixes this, and is worth having on its own merits.
+
+**Smoothness then decides the answer.** The regional term needs the FWHM of the studies'
+statistic maps, which coordinates do not carry. Assuming 8 mm makes the search rail low;
+measuring 12.16 mm from the images makes it rail high. Estimating it from the peak counts would
+be circular, since those counts also set the reporting rate being matched -- it would
+manufacture an interior solution that merely looks like success.
+
+**And smoothness is not one number.** Measured on the pain images, within-brain variation (95/5
+ratio 1.99x, range 1.66-2.46) *exceeds* between-study variation (1.6x). Resels scale as
+`FWHM^-3`, so that is an 8x spread in resels across locations against 4x across studies. A
+global value therefore over-predicts reporting in rough regions and under-predicts in smooth
+ones -- a spatially structured error, fixed by anatomy, that no single global scale parameter
+can absorb. That is the likely reason per-study reporting rates were unmatchable at *every*
+smoothness tried.
+
+**The conclusion.** Converting reporting rates into an absolute effect size requires a local
+resels-per-voxel map. That is computed from images, and a coordinate-only meta-analysis has
+none. The obstacle is not the estimator of rho, nor the search, nor any of the seven
+implementations: it is that the model needed for the conversion requires spatial information
+coordinates do not carry. Use images to fix the scale when you have them, and read the map as
+relative when you do not -- remembering that `z`, the p-values, every corrected map and the
+prevalence are unaffected by the constant (§12), so only the magnitude is lost.
+
+A template resels-per-voxel map borrowed from a reference dataset is the one untried route. It
+would replace an unknown with a data-driven assumption rather than eliminate it, and would need
+validating against a collection whose scale is independently known.
+
 ## 14. Status and open questions
 
 Implemented and working:
