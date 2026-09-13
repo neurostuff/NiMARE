@@ -355,6 +355,128 @@ def _observed_cluster_measures(volume, threshold):
     return sizes, masses
 
 
+#: Euler-characteristic density coefficients for a Gaussian field, dimensions 1 to 3.
+_EC_COEFFS = (
+    np.sqrt(4.0 * np.log(2.0)) / (2.0 * np.pi),
+    (4.0 * np.log(2.0)) / (2.0 * np.pi) ** 1.5,
+    (4.0 * np.log(2.0)) ** 1.5 / (2.0 * np.pi) ** 2,
+)
+
+
+def _expected_ec(z, resels):
+    """Expected Euler characteristic above ``z``, and its first two derivatives in ``z``.
+
+    For a smooth Gaussian field over a region with resel counts ``resels = (R1, R2, R3)``:
+
+    .. math::
+        E[EC](z) = \\bar\\Phi(z) + R_1 \\rho_1(z) + R_2 \\rho_2(z) + R_3 \\rho_3(z)
+
+    All four terms are kept, and that is not fussiness. The three-dimensional density alone
+    *rises* between :math:`z = 1` and :math:`z = \\sqrt3`, so a truncation that keeps only it
+    and the Gaussian tail is not monotone in ``z`` -- which in this model means a larger effect
+    could make a study *more* likely to stay silent. The full sum is monotone over the range
+    that matters, because the one- and two-dimensional terms dominate exactly where the
+    three-dimensional one misbehaves.
+
+    Both derivatives are wanted by the Newton step in the EM and both are closed form.
+    """
+    z = np.asarray(z, dtype=float)
+    c1, c2, c3 = _EC_COEFFS
+    r1, r2, r3 = resels
+    bulk = np.exp(-0.5 * z * z)
+    gauss = _normal_pdf(z)
+    z2 = z * z
+
+    value = (1.0 - ndtr(z)) + bulk * (r1 * c1 + r2 * c2 * z + r3 * c3 * (z2 - 1.0))
+    first = -gauss + bulk * (-r1 * c1 * z + r2 * c2 * (1.0 - z2) + r3 * c3 * z * (3.0 - z2))
+    second = z * gauss + bulk * (
+        r1 * c1 * (z2 - 1.0) + r2 * c2 * z * (z2 - 3.0) + r3 * c3 * (z2 * z2 - 6.0 * z2 + 3.0)
+    )
+    return value, first, second
+
+
+def _coverage_resels(radius_mm, smoothness_fwhm):
+    """Resel counts ``(R1, R2, R3)`` of the sphere a study's silence is judged over."""
+    radius = float(radius_mm)
+    fwhm = float(smoothness_fwhm)
+    return (
+        4.0 * radius / fwhm,
+        2.0 * np.pi * radius**2 / fwhm**2,
+        4.0 / 3.0 * np.pi * radius**3 / fwhm**3,
+    )
+
+
+def _ec_peak(resels):
+    """Where ``E[EC]`` stops rising, so it can be held non-increasing below that.
+
+    The expected Euler characteristic of a real field can only fall as the threshold rises --
+    raising the bar cannot produce more clusters. The RFT expansion does not respect that at
+    low thresholds, where the Euler characteristic counts handles and holes rather than
+    clusters and the approximation is simply out of its range: with a 20 mm sphere it rises up
+    to about z = 1.35 before turning over, and goes negative below zero.
+
+    Clamping the argument at the turning point replaces the invalid branch with the smallest
+    non-increasing envelope of the valid one. Below it the term saturates -- an effect that
+    large is reported essentially always -- which is the right behaviour and, unlike the raw
+    expansion, a monotone one.
+    """
+
+    def slope(z):
+        return float(_expected_ec(np.array([z]), resels)[1][0])
+
+    # Solved rather than scanned: a grid returns the last point still *rising*, which sits just
+    # short of the turning point and leaves a sliver of the rising branch inside the supposedly
+    # non-increasing envelope.
+    low, high = 0.5, 6.0
+    if slope(low) <= 0.0:
+        return low
+    if slope(high) > 0.0:
+        return high
+    return float(brentq(slope, low, high, xtol=1e-8))
+
+
+def _rft_censoring_terms(mu, cutoff_z, sqrt_n, resels, ec_peak=None):
+    """P(a study stayed silent over its whole neighbourhood), and its derivatives in ``mu``.
+
+    The pointwise censoring term asks whether *this voxel* cleared the threshold. The event
+    that actually happened is whether the study's statistic field reached the threshold
+    anywhere in the region its silence is scored over -- a maximum over a neighbourhood, not a
+    point. Random field theory gives that directly:
+
+    .. math::
+        P(\\text{reach } u) = 1 - e^{-2 E[EC](u - g\\sqrt{N})}
+
+    two-sided, the noncentrality :math:`g\\sqrt{N}` shifting the threshold.
+
+    The difference is not cosmetic. A 20 mm sphere holds 4169 voxels at 2 mm, 1.8% of the
+    brain, so the chance of reaching a threshold *somewhere* inside it is far above the chance
+    at any one voxel, and the pointwise form predicts far less reporting than actually occurs.
+    That is tolerable for a relative map, where the same understatement applies everywhere, and
+    fatal as soon as absolute reporting rates matter -- which is what fixing the effect-size
+    scale requires, and why five attempts at it failed.
+
+    Returned in the same form as :func:`_censoring_terms` so the EM can take either: ``prob`` is
+    P(silent), ``score`` is ``d log prob / d mu``, and ``d2_over_prob`` is ``prob'' / prob``,
+    which :func:`_mu_derivatives` turns into the curvature.
+    """
+    peak = _ec_peak(resels) if ec_peak is None else float(ec_peak)
+    shifted = cutoff_z - mu * sqrt_n
+    clamped = shifted <= peak
+    value, first, second = _expected_ec(np.where(clamped, peak, shifted), resels)
+
+    prob = np.clip(np.exp(-2.0 * value), 1e-12, 1.0)
+    # Held flat past the turning point, so the derivatives are zero there too -- otherwise the
+    # Newton step would follow a gradient the function no longer has.
+    first = np.where(clamped, 0.0, first)
+    second = np.where(clamped, 0.0, second)
+
+    # d log P / d mu = -2 E'(w) dw/dmu, with dw/dmu = -sqrt(N).
+    score = 2.0 * sqrt_n * first
+    # P'' / P = d^2 log P / d mu^2 + (d log P / d mu)^2.
+    d2_over_prob = -2.0 * sqrt_n * sqrt_n * second + score * score
+    return {"prob": prob, "score": score, "d2_over_prob": d2_over_prob}
+
+
 def _censoring_terms(mu, cutoff_scaled, twice_cutoff_scaled, inv_sigma, inv_sigma_sq):
     """P(|g| < c | mu) and the pieces of its derivatives, for a set of silent observations.
 

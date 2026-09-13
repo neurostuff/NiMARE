@@ -1135,3 +1135,101 @@ def test_approximate_null_is_recorded_and_does_not_depend_on_mask_size(small_mas
 def test_approximate_null_rejects_unknown_methods():
     with pytest.raises(ValueError, match="null_method must be"):
         CBES(null_method="factorised")
+
+
+def test_expected_ec_derivatives_are_exact():
+    """The Newton step in the EM uses these, so they have to be the real derivatives."""
+    from nimare.meta.cbma.effectsize import _coverage_resels, _expected_ec
+
+    resels = _coverage_resels(20.0, 8.0)
+    z = np.linspace(1.2, 6.0, 25)
+    step = 1e-6
+    _, first, second = _expected_ec(z, resels)
+
+    numeric_first = (_expected_ec(z + step, resels)[0] - _expected_ec(z - step, resels)[0]) / (
+        2 * step
+    )
+    numeric_second = (_expected_ec(z + step, resels)[1] - _expected_ec(z - step, resels)[1]) / (
+        2 * step
+    )
+    assert np.abs(first - numeric_first).max() < 1e-7
+    assert np.abs(second - numeric_second).max() < 1e-7
+
+    # Above its turning point the expansion is in range: positive and falling, as an expected
+    # Euler characteristic must be. Below it the approximation is simply invalid -- it counts
+    # handles and holes rather than clusters -- which is why the censoring term clamps there
+    # rather than trusting it.
+    from nimare.meta.cbma.effectsize import _ec_peak
+
+    peak = _ec_peak(resels)
+    above = np.linspace(peak, 8.0, 300)
+    values = _expected_ec(above, resels)[0]
+    assert (values > 0).all()
+    assert np.all(np.diff(values) <= 1e-12)
+
+
+def test_rft_censoring_score_matches_the_log_probability():
+    """score must be d log P / d mu, or the EM optimizes a function it is not evaluating.
+
+    Clipping the Euler characteristic at zero -- the obvious way to keep it positive -- breaks
+    exactly this: it flattens the numerical derivative while leaving the analytic score
+    untouched, so the Newton step walks a gradient belonging to no function.
+    """
+    from nimare.meta.cbma.effectsize import _coverage_resels, _rft_censoring_terms
+
+    resels = _coverage_resels(20.0, 8.0)
+    mu = np.linspace(0.0, 1.2, 25)
+    cutoff = np.full(mu.shape, 3.2905)
+    sqrt_n = np.full(mu.shape, 4.0)
+    step = 1e-6
+
+    terms = _rft_censoring_terms(mu, cutoff, sqrt_n, resels)
+
+    def log_prob(value):
+        return np.log(_rft_censoring_terms(value, cutoff, sqrt_n, resels)["prob"])
+
+    numeric = (log_prob(mu + step) - log_prob(mu - step)) / (2 * step)
+    assert np.abs(terms["score"] - numeric).max() < 1e-5
+
+
+def test_rft_censoring_reaches_rates_the_pointwise_form_cannot():
+    """Why the term exists: silence is a maximum over a region, not a single voxel.
+
+    A 20 mm sphere holds thousands of voxels, so the chance of clearing a threshold *somewhere*
+    inside it far exceeds the chance at any one voxel. The pointwise form therefore predicts
+    far less reporting than really happens, which is harmless for a relative map and fatal for
+    anything that needs absolute reporting rates.
+    """
+    from nimare.meta.cbma.effectsize import (
+        _censoring_terms,
+        _coverage_resels,
+        _rft_censoring_terms,
+    )
+
+    resels = _coverage_resels(20.0, 8.0)
+    sample_size, cutoff_z = 16.0, 3.2905
+    effect = np.array([0.3])
+    sqrt_n = np.array([np.sqrt(sample_size)])
+
+    regional = _rft_censoring_terms(effect, np.array([cutoff_z]), sqrt_n, resels)["prob"][0]
+
+    cutoff_g = np.array([cutoff_z / np.sqrt(sample_size)])
+    sigma = np.array([np.sqrt(1.0 / sample_size)])
+    inverse = 1.0 / sigma
+    pointwise = _censoring_terms(
+        effect, cutoff_g * inverse, 2.0 * cutoff_g * inverse, inverse, inverse**2
+    )["prob"][0]
+
+    assert regional < pointwise  # reporting somewhere beats reporting here
+    assert regional < 0.25 < pointwise
+
+    # The measurement behind this: on the 21 NIDM pain studies the observed coverage rate is
+    # 0.677, and the pointwise form cannot reach it at any effect size -- it gives 0.44 even at
+    # g = 0.8 -- which is why matching reporting rates ran to the top of its search range.
+
+    # And it has to be monotone in the effect: a larger effect cannot make silence likelier.
+    grid = np.linspace(0.0, 1.0, 20)
+    probs = _rft_censoring_terms(
+        grid, np.full(20, cutoff_z), np.full(20, np.sqrt(sample_size)), resels
+    )["prob"]
+    assert np.all(np.diff(probs) <= 1e-12)
