@@ -134,6 +134,9 @@ DESIGNS = ("one-sample", "two-sample")
 
 SELECTION_MODELS = ("zero-inflated", "tobit", "none")
 
+#: How a study's silence is modelled: at the voxel, or over its neighbourhood.
+CENSORING_MODELS = ("pointwise", "rft")
+
 NULL_METHODS = ("montecarlo", "approximate", "parametric")
 
 #: Resolution of the Monte Carlo null histogram for |z|, and where its upper tail is clipped.
@@ -1080,6 +1083,8 @@ class CBES(Estimator):
         design="one-sample",
         tau2_method="dl",
         selection_model="zero-inflated",
+        censoring="pointwise",
+        smoothness_fwhm=8.0,
         threshold="pooled-min",
         coverage_radius=None,
         kernel_min_weight=0.01,
@@ -1103,6 +1108,10 @@ class CBES(Estimator):
             raise ValueError(f"design must be one of {DESIGNS}; got {design!r}.")
         if tau2_method not in ("dl", "none"):
             raise ValueError(f"tau2_method must be 'dl' or 'none'; got {tau2_method!r}.")
+        if censoring not in CENSORING_MODELS:
+            raise ValueError(f"censoring must be one of {CENSORING_MODELS}; got {censoring!r}.")
+        if not float(smoothness_fwhm) > 0:
+            raise ValueError(f"smoothness_fwhm must be positive; got {smoothness_fwhm!r}.")
         if selection_model not in SELECTION_MODELS:
             raise ValueError(
                 f"selection_model must be one of {SELECTION_MODELS}; got {selection_model!r}."
@@ -1165,6 +1174,8 @@ class CBES(Estimator):
         self.design = design
         self.tau2_method = tau2_method
         self.selection_model = selection_model
+        self.censoring = censoring
+        self.smoothness_fwhm = float(smoothness_fwhm)
         self.threshold = threshold
         self.coverage_radius = coverage_radius
         self.kernel_min_weight = kernel_min_weight
@@ -1710,6 +1721,7 @@ class CBES(Estimator):
         )
         cutoff_g = np.abs(cutoff_g)[:, None]
         null_var = null_effect_variance(sample_sizes.values, design=self.design)[:, None]
+        rft = self._rft_arrays(study_ids, sample_sizes)
 
         def predicted(candidate):
             self._peak_bias_scale_ = float(candidate)
@@ -1747,14 +1759,32 @@ class CBES(Estimator):
                 null_var=null_var,
                 cutoffs=cutoff_g,
                 start=start,
+                rft=rft,
             )
-            sigma = np.sqrt(null_var + tau2[None, :])
-            silent_effect = np.clip(
-                ndtr((cutoff_g - mu[None, :]) / sigma) - ndtr((-cutoff_g - mu[None, :]) / sigma),
-                1e-12,
-                1.0,
-            )
-            silent_null = np.clip(ndtr(cutoff_g / sigma) - ndtr(-cutoff_g / sigma), 1e-12, 1.0)
+            if rft is None:
+                sigma = np.sqrt(null_var + tau2[None, :])
+                silent_effect = np.clip(
+                    ndtr((cutoff_g - mu[None, :]) / sigma)
+                    - ndtr((-cutoff_g - mu[None, :]) / sigma),
+                    1e-12,
+                    1.0,
+                )
+                silent_null = np.clip(ndtr(cutoff_g / sigma) - ndtr(-cutoff_g / sigma), 1e-12, 1.0)
+            else:
+                # The predicted rate must come from the model the fit used, or this compares a
+                # regional event against a pointwise probability -- the very mismatch that sent
+                # every earlier calibration attempt to a search boundary.
+                spread = np.broadcast_to(mu[None, :], (n_studies, size))
+                silent_effect = _rft_censoring_terms(
+                    spread, rft["cutoff_z"], rft["sqrt_n"], rft["resels"], rft["ec_peak"]
+                )["prob"]
+                silent_null = _rft_censoring_terms(
+                    np.zeros_like(spread),
+                    rft["cutoff_z"],
+                    rft["sqrt_n"],
+                    rft["resels"],
+                    rft["ec_peak"],
+                )["prob"]
             weight_pi = pi[None, :] if self.selection_model == "zero-inflated" else 1.0
             silent = weight_pi * silent_effect + (1.0 - weight_pi) * silent_null
             return (1.0 - silent).mean(axis=1)
@@ -2442,6 +2472,7 @@ class CBES(Estimator):
             # takes each study's own rho -- not one shared factor.
             null_var = null_var * peak_bias.loc[study_ids].values[:, None] ** 2
         cutoffs = np.abs(thresholds.loc[study_ids].values)[:, None]
+        rft = self._rft_arrays(study_ids, sample_sizes)
 
         value_order = np.argsort(values["col"], kind="mergesort")
         values = {name: array[value_order] for name, array in values.items()}
@@ -2484,6 +2515,7 @@ class CBES(Estimator):
                 null_var=null_var,
                 cutoffs=cutoffs,
                 start=fit["g"][active[lo:hi]],
+                rft=rft,
             )
             mu_out[lo:hi], pi_out[lo:hi], se_out[lo:hi] = mu, pi, se
 
@@ -2493,7 +2525,33 @@ class CBES(Estimator):
         fit["se"] = np.full(n_voxels, np.inf, dtype=float)
         fit["se"][active] = se_out
 
-    def _fit_chunk(self, *, weights, g_obs, var_obs, covered, tau2, null_var, cutoffs, start):
+    def _rft_arrays(self, study_ids, sample_sizes):
+        """Per-study pieces the regional censoring term needs, or None when it is off.
+
+        ``mu`` must be on the true effect-size scale for this to mean anything, since the
+        noncentrality is ``mu * sqrt(N)``. That holds when ``peak_bias`` puts the reported
+        values on that scale, and does not when ``peak_bias`` is None -- there ``mu`` still
+        carries the peak inflation and the noncentrality is overstated.
+        """
+        if self.censoring != "rft":
+            return None
+        if getattr(self, "_cutoffs_z_", None) is None:
+            return None
+
+        radius = self.coverage_radius
+        if radius is None:
+            radius = 2.0 * (self.fwhm if self.fwhm is not None else 10.0)
+        resels = _coverage_resels(radius, self.smoothness_fwhm)
+        return {
+            "cutoff_z": np.abs(self._cutoffs_z_.loc[study_ids].to_numpy())[:, None],
+            "sqrt_n": np.sqrt(sample_sizes.loc[study_ids].to_numpy())[:, None],
+            "resels": resels,
+            "ec_peak": _ec_peak(resels),
+        }
+
+    def _fit_chunk(
+        self, *, weights, g_obs, var_obs, covered, tau2, null_var, cutoffs, start, rft=None
+    ):
         """EM for one block of voxels. Returns ``(mu, prevalence, se)``, one value per voxel.
 
         Works on the ``(study, voxel)`` pairs that carry weight rather than on the dense
@@ -2530,6 +2588,25 @@ class CBES(Estimator):
         cutoff_scaled_sil = cutoff_sil * inv_sigma_sil
         twice_cutoff_scaled_sil = cutoff_scaled_sil * 2.0
 
+        # The regional form needs the threshold on the z scale and the square root of the
+        # sample size, since its noncentrality is g * sqrt(N) rather than a standardized gap.
+        cutoff_z_sil = rft["cutoff_z"].ravel()[sil_study] if rft is not None else None
+        sqrt_n_sil = rft["sqrt_n"].ravel()[sil_study] if rft is not None else None
+
+        def censoring_at(values):
+            """P(silent) and its derivatives, under whichever censoring model is in force."""
+            if rft is None:
+                return _censoring_terms(
+                    values,
+                    cutoff_scaled_sil,
+                    twice_cutoff_scaled_sil,
+                    inv_sigma_sil,
+                    inv_sigma_sq_sil,
+                )
+            return _rft_censoring_terms(
+                values, cutoff_z_sil, sqrt_n_sil, rft["resels"], rft["ec_peak"]
+            )
+
         # A reporting study's log-likelihood is discounted by the spatial kernel, so a silent
         # study entering at full weight would count for more than a study that actually
         # measured something -- silence would outvote evidence, and the estimate would sit well
@@ -2545,8 +2622,10 @@ class CBES(Estimator):
         # Probability a silent study stays silent when it has no effect at all. Fixed across
         # iterations, and close to one whenever the threshold is the usual several sigma.
         null_sd_sil = np.sqrt(null_var_sil)
-        prob_silent_null = np.clip(
-            ndtr(cutoff_sil / null_sd_sil) - ndtr(-cutoff_sil / null_sd_sil), 1e-12, None
+        prob_silent_null = (
+            np.clip(ndtr(cutoff_sil / null_sd_sil) - ndtr(-cutoff_sil / null_sd_sil), 1e-12, None)
+            if rft is None
+            else censoring_at(np.zeros_like(cutoff_z_sil))["prob"]
         )
         density_null = _normal_pdf(g_rep / np.sqrt(var_rep)) / np.sqrt(var_rep)
 
@@ -2581,13 +2660,7 @@ class CBES(Estimator):
         for _ in range(self.max_iter):
             if not mu.size:
                 break
-            censoring = _censoring_terms(
-                mu[sil_voxel],
-                cutoff_scaled_sil,
-                twice_cutoff_scaled_sil,
-                inv_sigma_sil,
-                inv_sigma_sq_sil,
-            )
+            censoring = censoring_at(mu[sil_voxel])
             pi_shift = np.zeros(mu.size)
             if zero_inflated:
                 pi_rep, pi_sil = pi[rep_voxel], pi[sil_voxel]
@@ -2657,6 +2730,9 @@ class CBES(Estimator):
             inv_sigma_sq_sil = inv_sigma_sq_sil[kept_pairs]
             cutoff_scaled_sil = cutoff_scaled_sil[kept_pairs]
             twice_cutoff_scaled_sil = twice_cutoff_scaled_sil[kept_pairs]
+            if rft is not None:
+                cutoff_z_sil = cutoff_z_sil[kept_pairs]
+                sqrt_n_sil = sqrt_n_sil[kept_pairs]
             resp_sil = resp_sil[kept_pairs]
 
             mu, pi = mu[keep], pi[keep]
@@ -2673,13 +2749,7 @@ class CBES(Estimator):
                 weight_rep=w_rep * resp_rep,
                 sil_voxel=sil_voxel,
                 weight_sil=w_sil * resp_sil,
-                censoring=_censoring_terms(
-                    mu[sil_voxel],
-                    cutoff_scaled_sil,
-                    twice_cutoff_scaled_sil,
-                    inv_sigma_sil,
-                    inv_sigma_sq_sil,
-                ),
+                censoring=censoring_at(mu[sil_voxel]),
             )
             _retire(np.arange(mu.size), curvature)
 
