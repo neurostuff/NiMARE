@@ -1,5 +1,6 @@
 """Tests for nimare.meta.cbma.effectsize (coordinate-based effect-size meta-analysis)."""
 
+import copy
 import nibabel as nib
 import numpy as np
 import pandas as pd
@@ -68,6 +69,20 @@ def mixed_studyset():
         noise_extent=30.0,
         spatial_sd=5.0,
     )
+
+
+@pytest.fixture(scope="module")
+def montecarlo_fit(studyset, small_mask):
+    """One relocation fit at ``n_iters=20``, shared by the tests that all wanted the same one.
+
+    Five tests fitted this identical configuration at ~8.6 s each, which was a fifth of the
+    suite's runtime spent recomputing the same relocations. Tests that touch the estimator take
+    a deepcopy, so they stay order-independent even though ``correct_fwe_montecarlo`` can write
+    back into ``null_distributions_`` when its cache does not match.
+    """
+    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="montecarlo", n_iters=20)
+    result = estimator.fit(studyset)
+    return estimator, result
 
 
 def value_at(result, name, xyz=TRUTH):
@@ -392,9 +407,9 @@ def test_montecarlo_null_calibrates_uncorrected_p(null_studyset, small_mask):
         (FWECorrector(method="bonferroni"), "p_corr-FWE_method-bonferroni"),
     ],
 )
-def test_stock_correctors_work(studyset, small_mask, corrector, map_name):
+def test_stock_correctors_work(montecarlo_fit, corrector, map_name):
     """The generic correctors need only a p map, which CBES provides."""
-    result = CBES(fwhm=12.0, mask=small_mask, null_method="montecarlo", n_iters=20).fit(studyset)
+    _, result = montecarlo_fit
     corrected = corrector.transform(result)
 
     p_corr = corrected.get_map(map_name, return_type="array")
@@ -431,23 +446,21 @@ def test_fwe_montecarlo_reports_voxel_and_cluster_levels(studyset, small_mask):
     assert "corresponds to |z|" in description
 
 
-def test_fwe_montecarlo_vfwe_only_returns_only_voxel_maps(studyset, small_mask):
-    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="montecarlo", n_iters=20)
-    result = estimator.fit(studyset)
+def test_fwe_montecarlo_vfwe_only_returns_only_voxel_maps(montecarlo_fit):
+    estimator, result = copy.deepcopy(montecarlo_fit)
     maps, _, description = estimator.correct_fwe_montecarlo(result, vfwe_only=True)
 
     assert set(maps) == {"logp_level-voxel", "z_level-voxel"}
     assert "voxel-level" in description
 
 
-def test_cluster_null_is_built_during_fit(studyset, small_mask):
+def test_cluster_null_is_built_during_fit(montecarlo_fit):
     """The permutations fit() runs already record cluster measures, so correcting is free.
 
     The forming threshold comes from a pilot run rather than from a second pass over the
     permutations, which is what it would otherwise cost.
     """
-    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="montecarlo", n_iters=20)
-    estimator.fit(studyset)
+    estimator, _ = montecarlo_fit
 
     assert "cluster_forming_stat" in estimator.null_distributions_
     for key in (
@@ -491,10 +504,9 @@ def test_stat_from_histogram_inverts_p_from_histogram():
         assert below > target
 
 
-def test_fwe_montecarlo_reuses_the_null_from_fit(studyset, small_mask):
+def test_fwe_montecarlo_reuses_the_null_from_fit(montecarlo_fit):
     """Fitting with the Monte Carlo null already paid for the max-statistic distribution."""
-    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="montecarlo", n_iters=20)
-    result = estimator.fit(studyset)
+    estimator, result = copy.deepcopy(montecarlo_fit)
     assert "values_level-voxel_corr-fwe_method-montecarlo" in estimator.null_distributions_
 
     cached = estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]
