@@ -662,11 +662,30 @@ by noise in the held-out study's own local estimate, which is why the leave-one-
 so far exceeds the median pairwise one, and a larger reference dataset would give a cleaner
 template.
 
-The more promising lead is not a template at all. Radua et al. report that their recreation
-"did not depend on FWHM when full anisotropy was used" -- modelling the spatial structure
-properly made the nuisance parameter stop mattering, rather than demanding it be estimated well.
-If that carries over, it would dissolve the problem rather than relocate it. It is the one route
-worth taking if this is reopened.
+Could SDM's own templates stand in? For the *pooling* kernel, yes: they describe how signal
+spreads between voxels, which is exactly what an isotropic Gaussian around a peak approximates
+badly, and substituting them is principled and self-contained. For the *resel count*, no.
+Measured on the pain images, the across-study signal correlation and the local noise smoothness
+are unrelated:
+
+| lag | median signal r | 5-95 pct | corr. with log noise smoothness | variance explained |
+|---|---|---|---|---|
+| 2 mm | 0.958 | +0.878 to +0.985 | -0.081 | 0.7% |
+| 6 mm | 0.758 | +0.515 to +0.904 | +0.037 | 0.1% |
+| 12 mm | 0.506 | +0.217 to +0.757 | +0.053 | 0.3% |
+| 18 mm | 0.353 | +0.086 to +0.634 | +0.042 | 0.2% |
+
+The lag matters: at 2 mm against ~12 mm smoothness the signal measure is saturated and could not
+correlate with anything. By 6-18 mm it has a spread of 0.4 to 0.55 and the relationship is still
+nil. So a signal-covariance template cannot supply the noise smoothness the censoring term needs
+-- these are different quantities empirically, not only conceptually.
+
+That closes the route which looked most promising after the seven attempts. What remains of the
+lead is narrower: Radua et al. report their recreation "did not depend on FWHM when full
+anisotropy was used", so modelling spatial structure properly may make the nuisance parameter
+stop mattering rather than demanding a good estimate of it. That claim is about *their*
+imputation accuracy, and extending it to resel counts is an extrapolation across methods, not a
+plan. It is the one thing left worth trying if this is reopened.
 
 ## 14. Status and open questions
 
