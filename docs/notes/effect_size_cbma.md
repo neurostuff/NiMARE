@@ -502,7 +502,78 @@ For collections of well-powered studies the excess would be substantial and the 
 would have something to work on. The machinery is in `docs/notes/` rather than the estimator
 because nothing on hand could demonstrate it working.
 
-## 13. Status and open questions
+## 13. Practical questions: how many images, and are coordinates worth adding?
+
+### How many studies with images does calibrating `peak_bias` need?
+
+Because the fitted map scales exactly linearly in `rho`, the relative sampling error of `rho`
+*is* the relative error of the reported effect sizes. Twelve independent draws per point, on the
+pain collection:
+
+| images used to calibrate | mean `rho` | relative SD = error in `g` |
+|---|---|---|
+| 2 | 0.389 | ±145% |
+| 3 | 0.504 | ±26% |
+| 4 | 0.461 | ±24% |
+| 5 | 0.441 | ±17% |
+| 8 | 0.439 | ±12% |
+| 12 | 0.470 | ±13% |
+| 16 | 0.490 | ±6% |
+
+Below five images the calibration is too noisy to be worth applying; eight gives ±12%, sixteen
+±6%. This is also why NeuroVault failed at three (§11) — that sits in the ±26% band, on top of
+degenerate splits.
+
+### Reported magnitudes track the reporting threshold, not the brain
+
+Thresholding the same 21 studies at different levels, against what a model with **no effect in
+it** predicts from the threshold and sample size alone:
+
+| threshold used | mean reported \|g\| | null-peak prediction |
+|---|---|---|
+| p < .001 two-tailed (z = 3.29) | 1.259 | 1.233 |
+| FWE-ish (z = 4.26) | 1.650 | 1.825 |
+
+Predicted to within 2% and 10% by pure noise. A paper using FWE correction contributes
+\|g\| ~ 1.65 where a paper using p < .001 contributes ~1.26, for the same brain.
+
+**Consequences for a mixed-threshold literature**, which is the normal case when pulling from
+published papers: a single scalar `rho` is *not* valid, because it assumes a common threshold.
+`threshold="pooled-min"` is also wrong there — it applies the most lenient study's threshold to
+everyone. Use each paper's stated threshold (the parameter accepts a metadata field name), or
+`"study-min"` as a fallback. The correction such a collection actually needs is per-study,
+`rho(u_k, N_k)`, which is computable from the paper alone and is not implemented.
+
+### Do coordinate studies add anything on top of images?
+
+Truth is the 21-study image pooling; five random splits.
+
+| configuration | r with truth | mean g (truth 0.412) |
+|---|---|---|
+| 10 images only | 0.893 | 0.473 |
+| 10 images + 11 coordinate studies, uncorrected | 0.903 | 0.490 |
+| 10 images + 11 coordinate studies, `peak_bias` | **0.930** | **0.417** |
+| 15 images only | 0.932 | 0.469 |
+| 21 images only | 0.956 | 0.447 |
+| 0 images, 21 coordinate studies | 0.780 | 0.406 |
+
+Yes, modestly: **the exchange rate is about two coordinate studies per image.** Eleven
+coordinate papers bought roughly five images' worth (0.930 against 0.932 for 15 images).
+
+But the gain is unlocked by the bias correction. Uncorrected, the coordinates add +0.01 of
+correlation and push the mean *away* from the truth (0.473 to 0.490). Corrected, they add +0.037
+and land the mean on 0.417 against 0.412.
+
+Given the ablation of §12 — reported magnitudes are worth 0.026 of correlation — the split is
+that **the spatial gain is robust** (it comes from where the peaks are and the sample sizes,
+neither threshold-dependent) while **the magnitude gain is not**. For a mixed-threshold
+collection: add the coordinates for localization and inference, take the scale from the images.
+
+Caveats: the truth here includes the studies added as coordinates, so some movement toward it is
+structural — the comparison against "15 images only" is the trustworthy one — and `rho = 0.479`
+was calibrated on this collection at one threshold.
+
+## 14. Status and open questions
 
 Implemented and working:
 
