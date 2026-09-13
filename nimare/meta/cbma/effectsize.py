@@ -158,6 +158,18 @@ _CLUSTER_CONNECTIVITY = ndimage.generate_binary_structure(rank=3, connectivity=1
 _INV_SQRT_2PI = 1.0 / np.sqrt(2.0 * np.pi)
 
 
+def _trapezoid(y, x):
+    """Integrate ``y`` over ``x`` by the trapezoidal rule.
+
+    NumPy renamed ``trapz`` to ``trapezoid`` in 2.0 and dropped the old name, while the oldest
+    NumPy this package supports (1.22) has only ``trapz``. Neither name works everywhere, and
+    the rule is one line, so it is written out rather than branched on a version.
+    """
+    y = np.asarray(y, dtype=float)
+    x = np.asarray(x, dtype=float)
+    return float(np.sum(0.5 * (y[1:] + y[:-1]) * np.diff(x)))
+
+
 def _normal_pdf(x):
     """Evaluate the standard normal density in place.
 
@@ -523,8 +535,8 @@ def null_peak_overshoot(threshold_z):
     grid = np.linspace(u, u + 12.0, 4000)
     density = grid * (grid**2 - 3.0) * np.exp(-0.5 * grid**2)
     density = np.clip(density, 0.0, None)
-    mass = np.trapezoid(density, grid)
-    return float(np.trapezoid(grid * density, grid) / mass) if mass > 0 else u
+    mass = _trapezoid(density, grid)
+    return float(_trapezoid(grid * density, grid) / mass) if mass > 0 else u
 
 
 def peak_information(stats_z, threshold_z):
@@ -562,15 +574,15 @@ def null_peak_mean_g(threshold_z, sample_size, design="one-sample"):
     u = float(threshold_z)
     grid = np.linspace(u, u + 12.0, 2000)
     density = np.clip(grid * (grid**2 - 3.0) * np.exp(-0.5 * grid**2), 0.0, None)
-    mass = np.trapezoid(density, grid)
+    mass = _trapezoid(density, grid)
     if mass <= 0:  # threshold below sqrt(3): fall back to the exponential overshoot
         grid = np.linspace(u, u + 12.0, 2000)
         density = u * np.exp(-u * (grid - u))
-        mass = np.trapezoid(density, grid)
+        mass = _trapezoid(density, grid)
 
     sizes = np.full(grid.shape, float(sample_size))
     g_of_z, _ = peak_stat_to_hedges_g(grid, sizes, stat_type="z", design=design)
-    return float(np.trapezoid(np.abs(g_of_z) * density, grid) / mass)
+    return float(_trapezoid(np.abs(g_of_z) * density, grid) / mass)
 
 
 def _expected_min_peak(u, n_peaks, span=10.0, n_grid=500):
@@ -579,7 +591,7 @@ def _expected_min_peak(u, n_peaks, span=10.0, n_grid=500):
     survival = np.clip(
         (grid**2 - 1.0) * np.exp(-0.5 * grid**2) / ((u**2 - 1.0) * np.exp(-0.5 * u**2)), 0.0, 1.0
     )
-    return u + np.trapezoid(survival**n_peaks, grid)
+    return u + _trapezoid(survival**n_peaks, grid)
 
 
 def infer_threshold_from_minimum(min_stat_z, n_peaks):
