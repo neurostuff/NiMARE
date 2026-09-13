@@ -731,6 +731,50 @@ than about the brain.
 
 Cognitive paradigm also helps (0.89), less than sample size and available for far fewer studies.
 
+## 17. The inflation figures were inflated: a metric that divides by near-zero
+
+Most of this work quotes the coordinate-only magnitude as 2.65x the image reference, and
+earlier sections say "about 2x" and "roughly fivefold". Those figures come from a ratio of mean
+`|g|` over every covered voxel to the reference over the same voxels, and that metric is
+unsound: its denominator collapses wherever the truth is near zero, which is most of a covered
+brain.
+
+The field simulator, where the truth is known exactly, shows how badly. Scoring the *same*
+fits two ways:
+
+| true g | at the true focus | mean over covered voxels | coverage |
+|---|---|---|---|
+| 0.50 | 1.27 | 182.34 | 0.27 |
+| 0.80 | 1.22 | 116.91 | 0.27 |
+| 1.20 | 1.52 | 80.94 | 0.27 |
+
+The simulated truth is a Gaussian blob decaying to nothing, so the mean truth over covered
+voxels is tiny and the ratio explodes. Real brains have weak effects everywhere, so the same
+metric lands at a plausible-looking 3 rather than 180 -- which is why it went unnoticed. The
+number measures how much true-zero is in the covered set, not how inflated the estimate is.
+
+Re-scored on the pain collection where the reference says there is something to estimate:
+
+| scored over | voxels | estimate | reference | ratio |
+|---|---|---|---|---|
+| every covered voxel (the quoted metric) | 228198 | 0.659 | 0.218 | 3.02 |
+| reference above its median | 114099 | 0.849 | 0.357 | 2.38 |
+| reference in its top quartile | 57050 | 0.973 | 0.483 | 2.02 |
+| reference in its top decile | 22820 | 1.097 | 0.639 | 1.72 |
+
+with a paired median ratio over the top quartile of 2.11.
+
+**The corrected figure is about 1.7 to 2x where signal exists**, not 2.65x and not fivefold.
+The two instruments then broadly agree: 1.72 on pain at the top decile against 1.22 to 1.52 on
+the simulator at the focus. The residual gap is modest and plausibly real -- the simulator has
+stationary smoothness, one source and no anatomy.
+
+Two lessons worth keeping. A ratio of means is the wrong summary whenever the denominator can
+approach zero, and a paired median ratio or a restriction to where the truth is substantial
+says something the ratio of means does not. And the error was invisible on real data precisely
+because it produced a believable number; it took a simulator with a known truth, which did not
+exist until section 16's work, to expose it.
+
 ## 14. Status and open questions
 
 Implemented and working:
