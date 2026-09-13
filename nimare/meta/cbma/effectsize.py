@@ -992,14 +992,17 @@ class CBES(Estimator):
             "rates",
             "images",
             "mle",
+            "rate-match",
         ):
             raise ValueError(
-                "peak_bias_scale must be 'auto', 'mle', 'rates', 'images', or a positive "
+                "peak_bias_scale must be 'auto', 'rate-match', 'mle', 'rates', 'images', "
+                "or a positive "
                 f"number; got {peak_bias_scale!r}."
             )
         if not isinstance(peak_bias_scale, str) and not float(peak_bias_scale) > 0:
             raise ValueError(
-                "peak_bias_scale must be 'auto', 'mle', 'rates', 'images', or a positive "
+                "peak_bias_scale must be 'auto', 'rate-match', 'mle', 'rates', 'images', "
+                "or a positive "
                 f"number; got {peak_bias_scale!r}."
             )
         if isinstance(peak_bias, str):
@@ -1386,7 +1389,7 @@ class CBES(Estimator):
         """
         if self.peak_bias is None:
             return 1.0
-        if self.peak_bias_scale not in ("auto", "rates", "images", "mle"):
+        if self.peak_bias_scale not in ("auto", "rates", "images", "mle", "rate-match"):
             if self._image_studies_ and self.peak_bias_scale == 1.0:
                 LGR.warning(  # noqa: E501
                     "This fit mixes images with coordinates but leaves peak_bias_scale at "
@@ -1403,6 +1406,13 @@ class CBES(Estimator):
         scaled, thresholds = self._apply_peak_bias(
             table, self._cutoffs_z_, sample_sizes, provisional
         )
+
+        if self.peak_bias_scale == "rate-match":
+            scale = self._calibrate_scale_by_moments(
+                table, self._cutoffs_z_, sample_sizes, reporting_ids
+            )
+            self._peak_bias_scale_ = scale
+            return scale
 
         if self.peak_bias_scale == "mle":
             scale = self._calibrate_scale_by_likelihood(
@@ -1511,6 +1521,154 @@ class CBES(Estimator):
                     w_silent * np.sum(np.log(np.clip(mixed_silent[silent], 1e-300, None)))
                 )
         return total
+
+    def _calibrate_scale_by_moments(
+        self, table, cutoff_z, sample_sizes, reporting_ids, n_voxels_used=5000
+    ):
+        """Fix the overall scale by matching how often each study reported.
+
+        Profiling the likelihood cannot do this, and the reason is structural: its value term
+        is exactly scale-invariant, so the only term that moves with the scale is the censoring
+        one, which is maximized by an effect of zero wherever most studies are silent. The
+        likelihood runs to zero and stays there.
+
+        The information that does identify the scale is the reporting *rate*, which lives in
+        the indicator ``1 - P_silent`` rather than in the value density. So it is used as a
+        moment condition instead: pick the scale whose predicted reporting rate matches the
+        observed one. Predicted rates rise with the scale, because a larger effect clears the
+        threshold more often, and the observed rate is a fixed target, so the match is unique.
+
+        Matching the *overall* rate would not be enough. The prevalence is free to absorb an
+        overall shift -- more studies having an effect and each effect being larger both raise
+        the rate -- so the two are not separable from one number. They separate by sample size:
+        a larger effect raises the reporting rate more for a well-powered study than a small
+        one, while a larger prevalence raises it uniformly. So the moments matched here are the
+        *per-study* rates, one per study, which carry that gradient. The sample size is doing
+        the same work it does throughout this estimator: moving selection without moving the
+        effect.
+
+        Evaluated on a random subsample of covered voxels, since these are aggregate rates and
+        a few thousand voxels pin them; that keeps the search to seconds rather than one
+        whole-brain fit per candidate.
+        """
+        study_ids = list(sample_sizes.index)
+        n_studies = len(study_ids)
+
+        base = self._pool(table, None)
+        covered_all = np.flatnonzero(base["covered"])
+        if covered_all.size < 50:
+            LGR.warning("Too few covered voxels to calibrate the scale from reporting rates.")
+            return 1.0
+
+        rng = np.random.default_rng(self.seed)
+        size = int(min(covered_all.size, n_voxels_used))
+        active = np.sort(rng.choice(covered_all, size=size, replace=False))
+
+        cov_col, cov_pos = self._coverage_entries(table, study_ids, active, base["n_voxels"])
+        values = self._value_entries(base, study_ids, active, base["n_voxels"])
+
+        weights = np.zeros((n_studies, size))
+        g_unit = np.zeros((n_studies, size))
+        var_unit = np.ones((n_studies, size))
+        weights[values["pos"], values["col"]] = values["w"]
+        g_unit[values["pos"], values["col"]] = values["g"]
+        var_unit[values["pos"], values["col"]] = values["var"]
+        covered = np.zeros((n_studies, size), dtype=bool)
+        covered[cov_pos, cov_col] = True
+
+        observed_rate = covered.mean(axis=1)
+        if not (0 < observed_rate.mean() < 1):
+            LGR.warning("Reporting rates carry no gradient; cannot calibrate the scale.")
+            return 1.0
+
+        # True scale throughout: the cutoffs and dispersions are pinned by the sample size and
+        # are exactly what makes the rate informative. Rescaling them is what floats them.
+        cutoff_g, _ = peak_stat_to_hedges_g(
+            cutoff_z.values, sample_sizes.values, stat_type="z", design=self.design
+        )
+        cutoff_g = np.abs(cutoff_g)[:, None]
+        null_var = null_effect_variance(sample_sizes.values, design=self.design)[:, None]
+
+        def predicted(candidate):
+            self._peak_bias_scale_ = float(candidate)
+            factors = self._peak_bias_factors(cutoff_z, sample_sizes, reporting_ids)
+            scale = factors.loc[study_ids].to_numpy()[:, None]
+            g_obs = g_unit * scale
+            var_obs = np.where(weights > 0, var_unit * scale**2, 1.0)
+
+            safe = np.where(var_obs > 0, var_obs, 1.0)
+            a = weights / safe
+            tau2 = (
+                _local_dersimonian_laird(
+                    weights.sum(0),
+                    a.sum(0),
+                    (a**2).sum(0),
+                    (a * g_obs).sum(0),
+                    (a * g_obs**2).sum(0),
+                    (weights**2 / safe).sum(0),
+                    (weights > 0).sum(0).astype(float),
+                )
+                if self.tau2_method == "dl"
+                else np.zeros(size)
+            )
+            pooling = np.where(weights > 0, weights / (var_obs + tau2), 0.0)
+            denominator = pooling.sum(0)
+            start = np.divide(
+                (pooling * g_obs).sum(0), denominator, out=np.zeros(size), where=denominator > 0
+            )
+            mu, pi, _ = self._fit_chunk(
+                weights=weights,
+                g_obs=g_obs,
+                var_obs=var_obs,
+                covered=covered,
+                tau2=tau2,
+                null_var=null_var,
+                cutoffs=cutoff_g,
+                start=start,
+            )
+            sigma = np.sqrt(null_var + tau2[None, :])
+            silent_effect = np.clip(
+                ndtr((cutoff_g - mu[None, :]) / sigma) - ndtr((-cutoff_g - mu[None, :]) / sigma),
+                1e-12,
+                1.0,
+            )
+            silent_null = np.clip(ndtr(cutoff_g / sigma) - ndtr(-cutoff_g / sigma), 1e-12, 1.0)
+            weight_pi = pi[None, :] if self.selection_model == "zero-inflated" else 1.0
+            silent = weight_pi * silent_effect + (1.0 - weight_pi) * silent_null
+            return (1.0 - silent).mean(axis=1)
+
+        grid = np.geomspace(0.02, 2.0, 18)
+        losses = []
+        for candidate in grid:
+            try:
+                loss = float(np.sum((predicted(candidate) - observed_rate) ** 2))
+            except Exception:  # noqa: BLE001
+                loss = np.inf
+            losses.append(loss)
+        losses = np.asarray(losses)
+        if not np.isfinite(losses).any():
+            return 1.0
+
+        best = int(np.argmin(losses))
+        if best in (0, len(grid) - 1):
+            LGR.warning(
+                f"Reporting-rate moment matching ran to {grid[best]:.3f}, an end of its search "
+                "range, so the observed rates are not reachable by any scale in it. Falling "
+                "back to a relative map."
+            )
+            return 1.0
+
+        # Parabolic interpolation through the three points around the minimum.
+        lo, mid, hi = np.log(grid[best - 1 : best + 2])
+        a_, b_, c_ = losses[best - 1 : best + 2]
+        denominator = a_ - 2 * b_ + c_
+        offset = 0.5 * (a_ - c_) / denominator if abs(denominator) > 1e-300 else 0.0
+        scale = float(np.exp(mid + offset * (hi - lo) / 2.0))
+        LGR.info(
+            f"Reporting-rate moment matching gives peak_bias_scale = {scale:.3f} "
+            f"(observed mean rate {observed_rate.mean():.3f})"
+        )
+        return scale
 
     def _calibrate_scale_by_likelihood(self, table, cutoff_z, sample_sizes, reporting_ids):
         """Maximum-likelihood estimate of the overall scale, profiling over it.
