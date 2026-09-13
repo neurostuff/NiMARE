@@ -1733,10 +1733,24 @@ class CBES(Estimator):
             )
             return 1.0
 
-        scale = float(from_images.mean() / from_coordinates.mean())
+        # Scored where the images say there is something to estimate, and by a paired median
+        # rather than a ratio of means. This version divided the two means over every shared
+        # voxel, and a covered brain is mostly voxels holding no effect, so the image mean
+        # collapsed toward zero and the scale came out far too small -- 0.16 against a true 0.8
+        # on simulated data, which made adding images *worse* the more of them there were. The
+        # same unsound summary is described at length in section 17 of the design note.
+        strong = from_images >= np.percentile(from_images, 75)
+        if strong.sum() < 50:
+            strong = np.ones_like(from_images, dtype=bool)
+        ratios = from_images[strong] / np.clip(from_coordinates[strong], 1e-12, None)
+        ratios = ratios[np.isfinite(ratios) & (ratios > 0)]
+        if not ratios.size:
+            return 1.0
+
+        scale = float(np.median(ratios))
         LGR.info(
-            f"Calibrated peak_bias_scale = {scale:.3f} from {int(both.sum())} voxels covered "
-            f"by both the {len(image_studies)} image studies and the coordinates."
+            f"Calibrated peak_bias_scale = {scale:.3f} from {int(strong.sum())} voxels where "
+            f"the {len(image_studies)} image studies show a substantial effect."
         )
         return scale
 
