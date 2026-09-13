@@ -1067,3 +1067,71 @@ def test_only_the_magnitude_depends_on_the_uncalibrated_scale(small_mask):
         assert np.allclose(scaled[name][covered], 0.4 * full[name][covered], rtol=1e-3)
     for name in ("z", "p", "prevalence"):
         assert np.allclose(scaled[name][covered], full[name][covered], atol=1e-3)
+
+
+def test_approximate_null_agrees_with_the_relocation_null(small_mask):
+    """The factorised null has to reproduce the null it replaces, in the tail especially.
+
+    Relocation moves every focus and refits the brain; the approximate null samples each
+    study's local configuration and fits one voxel at a time. They are only interchangeable if
+    the p-values agree, so that is what is checked -- not merely that both run.
+    """
+    studyset = create_effect_size_coordinate_studyset(
+        [TRUTH],
+        effect_sizes=0.5,
+        n_studies=30,
+        sample_size=(15, 45),
+        seed=3,
+        n_noise_foci=4,
+        noise_extent=30.0,
+        threshold_z=[2.3263, 3.0902, 3.2905, 4.2649],
+    )
+    common = dict(
+        fwhm=10.0, mask=small_mask, threshold="study-min-corrected", peak_bias="per-study", seed=0
+    )
+    exact = CBES(null_method="montecarlo", n_iters=150, **common).fit(studyset)
+    approximate = CBES(null_method="approximate", n_iters=300, **common).fit(studyset)
+
+    z_values = exact.get_map("z", return_type="array").ravel()
+    covered = z_values != 0
+    assert covered.sum() > 100
+
+    p_exact = exact.get_map("p", return_type="array").ravel()[covered]
+    p_approx = approximate.get_map("p", return_type="array").ravel()[covered]
+    assert np.all((p_approx >= 0) & (p_approx <= 1))
+    assert np.corrcoef(p_exact, p_approx)[0, 1] > 0.97
+    for alpha in (0.05, 0.01):
+        assert abs(np.mean(p_exact < alpha) - np.mean(p_approx < alpha)) < 0.02
+
+
+def test_approximate_null_is_recorded_and_does_not_depend_on_mask_size(small_mask):
+    """Its cost is n_draws x n_studies, with no dependence on the number of voxels.
+
+    That independence is the whole point -- it is what turns a null that scales with the brain
+    into one that does not -- so the same draws must serve a mask of any size.
+    """
+    import nibabel as nib
+
+    studyset = create_effect_size_coordinate_studyset(
+        [TRUTH], effect_sizes=0.6, n_studies=20, sample_size=25, seed=4, n_noise_foci=2
+    )
+    shape = small_mask.shape
+    bigger = nib.Nifti1Image(np.ones(tuple(s + 6 for s in shape), np.int32), small_mask.affine)
+
+    histograms = []
+    for mask in (small_mask, bigger):
+        estimator = CBES(fwhm=8.0, mask=mask, null_method="approximate", n_iters=200, seed=0)
+        estimator.fit(studyset)
+        histograms.append(
+            estimator.null_distributions_["histweights_corr-none_method-approximate"]
+        )
+
+    for histogram in histograms:
+        assert histogram.sum() > 0
+    # Same studies and the same draws, so the sampled configurations cost the same either way.
+    assert histograms[0].sum() == histograms[1].sum()
+
+
+def test_approximate_null_rejects_unknown_methods():
+    with pytest.raises(ValueError, match="null_method must be"):
+        CBES(null_method="factorised")
