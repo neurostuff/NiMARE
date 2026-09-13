@@ -167,9 +167,11 @@ most defensible response to "should this be separate from, or an extension of, c
 
 Simulated recovery of a known `g` at the focus, 30 studies, `N ∈ [20, 40]`, `τ = 0.1`, threshold
 `p < .001`, 8 seeds per cell. `prev` is the fraction of studies that genuinely have the effect.
-Bias in parentheses.
+Bias in parentheses. The `tobit` column is kept as the evidence for a decision, not as an
+option: it was dominated by `zero-inflated` in every cell where the two differ and has since
+been removed, so `selection_model` is now `{"zero-inflated", "none"}` (§14).
 
-| true `g` | prev | reporting | `none` | `tobit` | `zero-inflated` | est. `π` |
+| true `g` | prev | reporting | `none` | `tobit` (removed) | `zero-inflated` | est. `π` |
 |---|---|---|---|---|---|---|
 | 0.3 | 1.0 | 6.4/30 | 0.339 (+0.039) | 0.232 (−0.068) | 0.229 (−0.071) | 0.73 |
 | 0.3 | 0.5 | 7.1/30 | 0.272 (−0.028) | 0.122 (−0.178) | **0.162 (−0.138)** | 0.75 |
@@ -201,12 +203,13 @@ images voxelwise (random effects, DerSimonian–Laird). Then throw the images aw
 at `p < .001`, keep only the peak coordinates and their `z` values — 2,725 foci, about 1.2% of
 voxels — and run CBES on that. Whatever it recovers, it recovers from ~1% of the data.
 
-Reproduce with `python docs/notes/validate_cbes.py images`.
+Reproduce with `python docs/notes/validate_cbes.py images`. The script no longer emits the
+`tobit` row, which is kept here as a record: that option has been removed (§14).
 
 | estimator | r | rho | calibration slope | mean where reference > 0.2 |
 |---|---|---|---|---|
 | CBES, `none` | 0.735 | 0.770 | 0.21 | 1.056 |
-| CBES, `tobit` | 0.797 | 0.839 | 0.34 | 0.798 |
+| CBES, `tobit` (removed) | 0.797 | 0.839 | 0.34 | 0.798 |
 | CBES, `zero-inflated` | 0.780 | 0.822 | 0.31 | 0.848 |
 | CBES, `zero-inflated` (`g_marginal`) | **0.802** | **0.840** | 0.35 | 0.792 |
 | ALE (`z`) | 0.198 | 0.192 | 0.07 | 0.656 |
@@ -240,11 +243,14 @@ and produces *any* surviving voxel in <=5% of whole simulations after correction
 Reproduce with `python docs/notes/validate_cbes.py fpr 20 100`. 20 simulations, so each
 rejection rate has a resolution of 0.05.
 
+The `parametric` rows are why that option no longer exists; the script now compares
+`approximate` against `montecarlo` instead, so it will not reproduce them.
+
 | selection model | null | `p<.05` | `p<.01` | bonf | FDR | vFWE | cFWE size | cFWE mass |
 |---|---|---|---|---|---|---|---|---|
-| `none` | parametric | **0.407** | **0.394** | **1.00** | **1.00** | — | — | — |
+| `none` | parametric (removed) | **0.407** | **0.394** | **1.00** | **1.00** | — | — | — |
 | `none` | montecarlo | 0.052 | 0.013 | 0.05 | 0.05 | 0.05 | 0.05 | 0.05 |
-| `zero-inflated` | parametric | **0.106** | **0.051** | **1.00** | **1.00** | — | — | — |
+| `zero-inflated` | parametric (removed) | **0.106** | **0.051** | **1.00** | **1.00** | — | — | — |
 | `zero-inflated` | montecarlo | 0.042 | 0.009 | 0.10 | 0.10 | 0.10 | 0.05 | 0.05 |
 
 The first two columns should read 0.05 and 0.01. The parametric rows do not, and the failure is

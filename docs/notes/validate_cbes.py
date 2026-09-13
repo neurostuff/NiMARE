@@ -93,17 +93,19 @@ def run_images():
     n_foci = len(coords.coordinates)
     print(f"{n_foci} peaks survive thresholding ({n_foci / reference.size * 100:.2f}% of voxels)")
 
+    # This comparison is about the effect-size map, not about p-values, so no null is built:
+    # null_method="none" is the cheap, valid choice. ``selection_model="tobit"`` and
+    # ``null_method="parametric"``, which earlier versions of this script used, no longer exist.
     estimators = [
-        ("CBES none", CBES(fwhm=10.0, selection_model="none", null_method="parametric"), "g"),
-        ("CBES tobit", CBES(fwhm=10.0, selection_model="tobit", null_method="parametric"), "g"),
+        ("CBES none", CBES(fwhm=10.0, selection_model="none", null_method="none"), "g"),
         (
             "CBES zero-inflated",
-            CBES(fwhm=10.0, selection_model="zero-inflated", null_method="parametric"),
+            CBES(fwhm=10.0, selection_model="zero-inflated", null_method="none"),
             "g",
         ),
         (
             "CBES zero-inf (marginal)",
-            CBES(fwhm=10.0, selection_model="zero-inflated", null_method="parametric"),
+            CBES(fwhm=10.0, selection_model="zero-inflated", null_method="none"),
             "g_marginal",
         ),
         ("ALE", ALE(), "z"),
@@ -136,7 +138,7 @@ def run_fpr(n_sims=10, n_iters=100):
     print(header)
 
     for model in ("none", "zero-inflated"):
-        for null_method in ("parametric", "montecarlo"):
+        for null_method in ("approximate", "montecarlo"):
             rates01, rates05 = [], []
             bonferroni, fdr, voxel, size, mass = [], [], [], [], []
             for seed in range(n_sims):
@@ -181,7 +183,7 @@ def run_fpr(n_sims=10, n_iters=100):
                         < 0.05
                     )
                 )
-                if null_method == "montecarlo":
+                if null_method == "montecarlo":  # reuses the relocations fit() already ran
                     maps, _, _ = estimator.correct_fwe_montecarlo(
                         result, voxel_thresh=CLUSTER_FORMING_P, n_iters=n_iters
                     )

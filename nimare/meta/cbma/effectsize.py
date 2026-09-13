@@ -781,7 +781,11 @@ class CBES(Estimator):
             rescaling ``g``, its variance and the censoring threshold together leaves the
             likelihood unchanged, so the constant is exactly non-identified. With
             ``peak_bias_scale=1.0`` the ``g`` and ``se`` maps are therefore readable only up
-            to that constant -- on the NIDM pain collection they run about 2.65x high. It is a
+            to that constant -- on the NIDM pain collection they run about 2x high where the
+            reference says there is something to estimate. (An earlier 2.65x came from a ratio
+            of means over every covered voxel, whose denominator collapses wherever the truth
+            is near zero; scored where the signal is, it is 2.02 at the top quartile and 1.72
+            at the top decile.) It is a
             limit of the data rather than of the model: the deconvolution that would identify
             the scale needs peak heights that carry signal, and in the usual underpowered
             regime they do not (see :func:`peak_information`).
@@ -793,7 +797,10 @@ class CBES(Estimator):
             fit still gives valid inference and a valid prevalence map, with ``g`` read as a
             relative quantity.
         ``None``
-            No correction, which overstates the effect roughly fivefold.
+            No correction. A reported peak overstates the *local* effect about fivefold -- the
+            pooled truth at a peak is 0.22-0.27 where the reporting study says 1.22 -- but the
+            pooled map runs about 2x high rather than fivefold, because the kernel and the
+            selection model already absorb most of it.
 
         The size of the overall correction is not a modelling choice, it is measurable. On the
         NIDM pain collection, the leave-one-out pooled effect at a reported peak is 0.22-0.27
@@ -1504,12 +1511,15 @@ class CBES(Estimator):
             expects about 0.57 at their sample sizes, so the prior pulled them down. A
             collection atypical of the reference is penalised for it.
 
-            Those same runs raise a question this option cannot settle. Uncalibrated, the
-            estimator landed within 1.04 to 1.44x of the truth -- which contradicts the 2.65x
-            inflation measured against the image reference on the NIDM pain collection. The two
-            instruments disagree about the size of the problem, and until that is explained
-            neither figure should be quoted as settled. Hence opt-in, and never chosen by
-            ``"auto"``.
+            Those same runs once looked like they contradicted the inflation measured against
+            the image reference. They no longer do: the 2.65x they were compared against was an
+            artefact of a ratio of means over near-zero truth, and scored where the signal is,
+            the two instruments broadly agree -- 1.72 on pain at the top decile against 1.22 to
+            1.52 on the simulator at its focus. What gap remains is explained by how much the
+            peaks carry: simulated peaks hold real signal, while the pain peaks average z =
+            3.639 against 3.625 for peaks of pure noise, so on real data the scale is being
+            reconstructed from thresholds and sample sizes rather than read off the values.
+            Hence opt-in, and never chosen by ``"auto"``.
         """
         expected = reference_magnitude(sample_sizes.values)
         if expected is None:
