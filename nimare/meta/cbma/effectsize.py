@@ -443,6 +443,23 @@ def infer_threshold_from_minimum(min_stat_z, n_peaks):
     above the cut. The minimum of ``n_peaks`` draws from the null peak-height distribution
     above ``u`` exceeds ``u`` by a computable amount, so that bias can be inverted rather than
     absorbed. With many reported peaks the correction vanishes, as it should.
+
+    This assumes ``n_peaks`` is every peak the study had above its threshold. A paper that
+    tabulates only its strongest peaks looks exactly like one that thresholded at the bottom
+    of that table -- truncation and threshold are not separable from peak heights -- and this
+    will then return the truncation point, not the threshold.
+
+    Parameters
+    ----------
+    min_stat_z : :obj:`float`
+        The study's smallest reported statistic, on the z scale, in absolute value.
+    n_peaks : :obj:`int`
+        How many peaks the study reported.
+
+    Returns
+    -------
+    :obj:`float`
+        The inferred threshold, never above ``min_stat_z``.
     """
     z_min = float(min_stat_z)
     n_peaks = int(n_peaks)
@@ -604,6 +621,14 @@ class CBES(Estimator):
             expected minimum is what the study actually reported. Use this when studies
             plainly thresholded differently and none of them says how -- the usual case in a
             literature search.
+
+            Both per-study rules assume a study listed *every* peak that cleared its
+            threshold. A paper that tabulates only its strongest peaks is indistinguishable,
+            from the peak heights alone, from one that thresholded at the bottom of that
+            table: truncating the 21 NIDM pain studies to their top 3 peaks moves the
+            apparent threshold from 2.33 to 4.45, and no correction recovers it, because the
+            information is not there. Prefer ``"pooled-min"`` or the metadata field when the
+            tables may be truncated.
         any other string
             The name of a metadata field holding each study's threshold on the z scale, for
             collections where the papers state it. Studies missing the field take the median
@@ -1166,9 +1191,11 @@ class CBES(Estimator):
                 f"{excess:+.3f}. Their magnitudes are therefore close to uninformative about "
                 "the effect size -- they are largely a function of the reporting threshold and "
                 "the sample size. The estimated scale will be far too large and no correction "
-                "computed from the peak values can repair it; see `peak_bias`, which needs "
-                "images to calibrate. The spatial pattern is still driven by where the peaks "
-                "are, which is unaffected."
+                "computed from the peak values can repair it. Because the bias is a function "
+                "of (threshold, sample size), peak_bias='per-study' removes the part of it "
+                "that varies between studies without needing images; fixing the common scale "
+                "still needs images, via peak_bias_scale or a scalar peak_bias. The spatial "
+                "pattern is driven by where the peaks are, which none of this touches."
             )
 
     # ------------------------------------------------------- spatial machinery
