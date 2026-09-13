@@ -687,6 +687,50 @@ stop mattering rather than demanding a good estimate of it. That claim is about 
 imputation accuracy, and extending it to resel counts is an extrapolation across methods, not a
 plan. It is the one thing left worth trying if this is reopened.
 
+## 16. Borrowing the scale from a reference corpus: what predicts magnitude
+
+Section 15 closes the routes that derive the scale from the coordinates' own reporting
+behaviour. A different family remains: borrow it from a corpus of images, conditioned on
+something observable. The question is what to condition on.
+
+Tested on 258 unthresholded group T/Z maps from NeuroVault, resolved through NeuroStore,
+spanning 134 collections and 85 cognitive paradigms, sample sizes 10 to 1369. Each map is put
+on the Hedges' g scale and summarised by the mean `|g|` in its own top decile -- a whole-brain
+mean would mostly measure how much of the brain a contrast lights up. Magnitudes span 0.188 to
+1.591, so there is an eightfold range to predict.
+
+Leave-one-out, predicting a held-out map's magnitude:
+
+| matching key | median \|log error\| | vs corpus average |
+|---|---|---|
+| corpus median (nothing) | 0.3921 | 1.00 |
+| spatial similarity, 15 nearest | 0.4385 | 1.12 |
+| spatial similarity, kernel weighted | 0.3954 | 1.01 |
+| same cognitive paradigm | 0.2815 | 0.89 |
+| **15 nearest sample sizes** | **0.2812** | **0.72** |
+
+**Spatial similarity does not work.** Its correlation with the magnitude gap is in the
+predicted direction and highly significant over 33000 pairs (r = -0.051, p = 1e-20), and
+explains 0.26% of the variance. Taking the fifteen most similar maps is *worse* than taking the
+corpus median. A similarity-weighted mixture over a reference corpus therefore collapses to the
+corpus average -- which is a useful thing to know, since it bounds the downside of the simpler
+approach at nothing.
+
+**Sample size works.** `corr(log N, log magnitude) = -0.395`: studies with large N investigate
+smaller effects, because that is what they are powered for. A study of 500 subjects is chasing
+something subtle and a study of 15 is not, so N encodes the magnitude a study was designed to
+find. It cuts the prediction error by 28%, and it is an observable every coordinate study
+already supplies -- the estimator requires it for the g conversion regardless.
+
+The assumption this rests on should be stated plainly, because it is not a biological one. It
+says researchers who ran N subjects were typically studying effects of about this size, which is
+a regularity of how studies get designed. It would be wrong for a collection that is unusually
+over- or under-powered for its effect. That is a mild assumption next to imputation, and next to
+the alternative of reporting no scale at all, but it is an assumption about the literature rather
+than about the brain.
+
+Cognitive paradigm also helps (0.89), less than sample size and available for far fewer studies.
+
 ## 14. Status and open questions
 
 Implemented and working:
