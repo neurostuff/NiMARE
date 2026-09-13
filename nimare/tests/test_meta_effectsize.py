@@ -1,13 +1,13 @@
 """Tests for nimare.meta.cbma.effectsize (coordinate-based effect-size meta-analysis)."""
 
 import copy
+
 import nibabel as nib
 import numpy as np
 import pandas as pd
 import pytest
 
 from nimare.correct import FDRCorrector, FWECorrector
-
 from nimare.generate import create_effect_size_coordinate_studyset
 from nimare.meta.cbma.effectsize import (
     CBES,
@@ -24,7 +24,7 @@ TRUTH = (0, 0, 0)
 
 @pytest.fixture(scope="module")
 def small_mask():
-    """A small 4mm box around the origin, so the fits in these tests stay quick."""
+    """Build a small 4mm box around the origin, so the fits in these tests stay quick."""
     shape = (21, 21, 21)
     affine = np.array([[4.0, 0, 0, -40.0], [0, 4.0, 0, -40.0], [0, 0, 4.0, -40.0], [0, 0, 0, 1.0]])
     return nib.Nifti1Image(np.ones(shape, dtype=np.int32), affine)
@@ -125,11 +125,13 @@ def test_peak_stat_to_hedges_g_z_and_t_agree_in_large_samples():
 
 
 def test_peak_stat_to_hedges_g_rejects_tiny_studies():
+    """A study too small for the Hedges correction is refused rather than silently converted."""
     with pytest.raises(ValueError, match="at least 4 subjects"):
         peak_stat_to_hedges_g([3.0], [3], stat_type="t")
 
 
 def test_null_effect_variance_shrinks_with_sample_size():
+    """A silent study still carries precision, and a larger one carries more."""
     variances = null_effect_variance(np.array([20.0, 80.0]))
     assert variances[0] > variances[1]
     assert np.allclose(variances, 1.0 / np.array([20.0, 80.0]), rtol=0.15)
@@ -161,6 +163,7 @@ def test_local_dl_reduces_to_dersimonian_laird():
 
 
 def test_local_dl_is_zero_without_two_studies():
+    """Heterogeneity is not estimable from a single study, so it is reported as zero."""
     zeros = np.zeros(1)
     tau2 = _local_dersimonian_laird(
         zeros, np.ones(1), np.ones(1), np.ones(1), np.ones(1), np.ones(1), np.ones(1)
@@ -181,6 +184,7 @@ def test_local_dl_is_zero_without_two_studies():
     ],
 )
 def test_cbes_rejects_bad_parameters(kwargs, match):
+    """Every option is validated at construction, before any fitting is paid for."""
     with pytest.raises(ValueError, match=match):
         CBES(**kwargs)
 
@@ -195,6 +199,7 @@ def test_cbes_requires_a_reported_statistic(small_mask):
 
 
 def test_cbes_produces_expected_maps(studyset, small_mask):
+    """Every advertised map is present and in range, and the effect lands where simulated."""
     result = CBES(fwhm=12.0, mask=small_mask, null_method="none").fit(studyset)
 
     expected = {"g", "se", "z", "p", "logp", "tau2", "n_studies", "n_eff", "prevalence"}
@@ -226,6 +231,7 @@ def test_cbes_produces_expected_maps(studyset, small_mask):
 
 
 def test_cbes_description_mentions_the_model(studyset, small_mask):
+    """The generated description names the model actually fitted."""
     result = CBES(fwhm=12.0, mask=small_mask, null_method="none").fit(studyset)
     assert "Hedges" in result.description_
     assert "censor" in result.description_.lower()
@@ -296,6 +302,7 @@ def test_prevalence_tracks_the_simulated_fraction(small_mask):
 
 
 def test_fixed_effects_option_zeroes_tau2(studyset, small_mask):
+    """``tau2_method='none'`` is a fixed-effects fit, so heterogeneity is identically zero."""
     result = CBES(fwhm=12.0, mask=small_mask, tau2_method="none", null_method="none").fit(studyset)
     assert np.all(result.get_map("tau2", return_type="array") == 0)
 
@@ -327,6 +334,7 @@ def test_correct_fwe_montecarlo(studyset, small_mask):
 
 
 def test_correct_fwe_montecarlo_needs_a_fit(small_mask):
+    """Correcting before fitting is an error rather than an empty result."""
     with pytest.raises(ValueError, match="requires a fitted estimator"):
         CBES(mask=small_mask, null_method="none").correct_fwe_montecarlo(None, n_iters=2)
 
@@ -447,6 +455,7 @@ def test_fwe_montecarlo_reports_voxel_and_cluster_levels(studyset, small_mask):
 
 
 def test_fwe_montecarlo_vfwe_only_returns_only_voxel_maps(montecarlo_fit):
+    """``vfwe_only`` skips the cluster measures and says so in its description."""
     estimator, result = copy.deepcopy(montecarlo_fit)
     maps, _, description = estimator.correct_fwe_montecarlo(result, vfwe_only=True)
 
@@ -471,6 +480,7 @@ def test_cluster_null_is_built_during_fit(montecarlo_fit):
 
 
 def test_cluster_threshold_none_skips_the_cluster_null(studyset, small_mask):
+    """Opting out of cluster inference avoids recording the cluster nulls at all."""
     estimator = CBES(
         fwhm=12.0,
         mask=small_mask,
@@ -707,6 +717,7 @@ def test_images_recover_the_truth_better_than_coordinates(image_studyset):
 
 
 def test_use_images_false_ignores_them(image_studyset):
+    """``use_images=False`` falls back to the coordinates even when images are available."""
     studyset, _ = image_studyset
     estimator = CBES(fwhm=8.0, null_method="none", use_images=False)
     estimator.fit(studyset)
@@ -715,7 +726,7 @@ def test_use_images_false_ignores_them(image_studyset):
 
 
 def test_peak_bias_rescales_the_estimate_exactly(image_studyset):
-    """rho rescales g, its variance and the threshold together, so the fit scales with it.
+    """Rho rescales g, its variance and the threshold together, so the fit scales with it.
 
     That exactness is what makes rho calibratable: a single ratio of summaries recovers it.
     """
@@ -738,6 +749,7 @@ def test_peak_bias_rescales_the_estimate_exactly(image_studyset):
 
 @pytest.mark.parametrize("bad", [0.0, -0.5, 1.5])
 def test_peak_bias_rejects_out_of_range_values(bad):
+    """A rho outside (0, 1] would inflate rather than discount the reported peaks."""
     with pytest.raises(ValueError, match="peak_bias must be None"):
         CBES(peak_bias=bad)
 
@@ -753,6 +765,7 @@ def test_null_peak_overshoot_matches_the_rft_expectation():
 
 
 def test_peak_information_separates_signal_from_the_null_floor():
+    """Peaks carrying real effect sit above the height pure noise reaches at the same threshold."""
     from nimare.meta.cbma.effectsize import peak_information
 
     u = 3.2905
@@ -861,6 +874,7 @@ def test_threshold_can_name_a_metadata_field(small_mask):
 
 
 def test_threshold_metadata_field_must_exist(studyset, small_mask):
+    """Naming a missing metadata field fails loudly instead of falling back to a default."""
     estimator = CBES(fwhm=8.0, null_method="none", threshold="nope", mask=small_mask)
     with pytest.raises(ValueError, match="metadata field"):
         estimator.fit(studyset)
@@ -944,7 +958,7 @@ def test_per_study_peak_bias_equalizes_a_mixed_threshold_collection(small_mask):
 
 @pytest.fixture(scope="module")
 def half_image_studyset(image_studyset):
-    """The same ten studies, but only the first five supply images.
+    """Build ten studies where only the first five supply images.
 
     A collection that actually mixes the two kinds of evidence, which is what makes the
     overall scale identifiable: the coordinate studies have to be put on the images' scale.
@@ -1047,6 +1061,7 @@ def test_auto_peak_bias_scale_falls_back_without_images(studyset, small_mask, ca
 
 @pytest.mark.parametrize("bad", ["biggest", 0.0, -1.0])
 def test_peak_bias_scale_rejects_bad_values(bad):
+    """Only the documented keywords and positive floats set the scale."""
     with pytest.raises(ValueError, match="peak_bias_scale must be"):
         CBES(peak_bias_scale=bad)
 
@@ -1159,6 +1174,7 @@ def test_approximate_null_is_recorded_and_does_not_depend_on_mask_size(small_mas
 
 
 def test_approximate_null_rejects_unknown_methods():
+    """An unrecognised null method is refused at construction."""
     with pytest.raises(ValueError, match="null_method must be"):
         CBES(null_method="factorised")
 

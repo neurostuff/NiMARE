@@ -1,4 +1,4 @@
-"""Coordinate-based effect-size meta-analysis (CBES).
+r"""Coordinate-based effect-size meta-analysis (CBES).
 
 Where ALE and (M)KDA ask *where do studies agree something happened*, this module asks *how big
 is the effect there*. Each reported peak's statistic and its study's sample size give Hedges'
@@ -54,9 +54,9 @@ from nimare.meta.utils import (
 from nimare.transforms import d_to_g, t_to_d, t_to_z, z_to_t
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
-    _mask_img_to_bool,
     _add_metadata_to_dataframe,
     _check_ncores,
+    _mask_img_to_bool,
     _nlogp_to_logp_values,
     get_masker,
     get_masker_mask_image,
@@ -159,8 +159,10 @@ _INV_SQRT_2PI = 1.0 / np.sqrt(2.0 * np.pi)
 
 
 def _normal_pdf(x):
-    """Standard normal density. ``scipy.stats.norm.pdf`` is ~3x slower on large arrays, and
-    the EM below evaluates it on an (n_studies, n_voxels) block on every iteration.
+    """Evaluate the standard normal density in place.
+
+    ``scipy.stats.norm.pdf`` is ~3x slower on large arrays, and the EM below evaluates this on
+    an (n_studies, n_voxels) block on every iteration.
 
     Written in place: on the arrays this sees, the three temporaries the naive expression
     allocates cost more than the exponential.
@@ -622,7 +624,7 @@ def infer_threshold_from_minimum(min_stat_z, n_peaks):
 
 
 def null_effect_variance(sample_size, design="one-sample"):
-    """Sampling variance of Hedges' g under a null effect, for a study that reported nothing.
+    """Return the sampling variance of Hedges' g under a null effect, for a silent study.
 
     A study that did not report a peak supplies no effect size, but its *precision* is still
     known from its sample size. That precision is what makes the censoring term in the Tobit
@@ -667,7 +669,7 @@ def _local_dersimonian_laird(sum_w, sum_a, sum_a2, sum_ag, sum_ag2, sum_w2_over_
 
 
 class CBES(Estimator):
-    """Coordinate-based effect-size meta-analysis.
+    r"""Coordinate-based effect-size meta-analysis.
 
     .. versionadded:: 0.13.0
 
@@ -1132,7 +1134,7 @@ class CBES(Estimator):
         return series[~series.index.duplicated()]
 
     def _reported_z(self, table):
-        """Reported statistics on the z scale, where studies are comparable to one another.
+        """Put reported statistics on the z scale, where studies are comparable.
 
         A t of 3.5 means something different in a study of 15 than in one of 80, so every
         threshold inference and every peak-height correction happens here, not on the raw
@@ -1685,7 +1687,7 @@ class CBES(Estimator):
         }
 
     def _coverage_entries(self, table, study_ids, active, n_voxels, image_ids=()):
-        """``(local_voxel, study_position)`` pairs: did this study report anything near here?
+        """Pair each voxel with the studies that reported anything near it.
 
         Separate from the pooling kernel on purpose. The kernel answers "how much does this
         study's reported value tell me about this voxel", and falls off quickly with distance.
@@ -2391,7 +2393,7 @@ class CBES(Estimator):
         vfwe_only=False,
         tail_approximation=True,
     ):
-        """FWE correction from maximum-statistic nulls, at voxel and cluster level.
+        r"""FWE correction from maximum-statistic nulls, at voxel and cluster level.
 
         Each iteration moves every focus to a uniformly drawn in-mask voxel, carrying its
         effect size and study membership with it, and refits. Three null distributions come out
