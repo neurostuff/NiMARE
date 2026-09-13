@@ -160,7 +160,8 @@ def test_local_dl_is_zero_without_two_studies():
         ({"selection_model": "heckman"}, "selection_model must be"),
         ({"null_method": "bootstrap"}, "null_method must be"),
         ({"threshold": object()}, "threshold must be"),
-        ({"threshold": "global-min"}, "threshold must be"),
+        ({"peak_bias": "shrink"}, "peak_bias must be"),
+        ({"peak_bias": 1.5}, "peak_bias must be"),
     ],
 )
 def test_cbes_rejects_bad_parameters(kwargs, match):
@@ -710,7 +711,7 @@ def test_peak_bias_rescales_the_estimate_exactly(image_studyset):
 
 @pytest.mark.parametrize("bad", [0.0, -0.5, 1.5])
 def test_peak_bias_rejects_out_of_range_values(bad):
-    with pytest.raises(ValueError, match="peak_bias must be None or in"):
+    with pytest.raises(ValueError, match="peak_bias must be None"):
         CBES(peak_bias=bad)
 
 
@@ -754,3 +755,154 @@ def test_uninformative_peaks_are_flagged(small_mask, caplog):
 
     assert "uninformative" in caplog.text or "close to uninformative" in caplog.text
     assert estimator.peak_information_["excess_z"] < 0.25
+
+
+def test_null_peak_mean_g_grows_with_threshold_and_shrinks_with_n():
+    """The artefact in a reported effect size is a function of (u, N), and a strong one.
+
+    A study that only reports above z = 4.3, on 15 subjects, would report g near 1 from pure
+    noise; one reporting above z = 2.3 on 60 subjects would report a third of that. Pooling the
+    two without correction compares numbers that are not on the same scale.
+    """
+    from nimare.meta.cbma.effectsize import null_peak_mean_g
+
+    at_n20 = [null_peak_mean_g(u, 20) for u in (2.3, 3.29, 4.3)]
+    assert at_n20[0] < at_n20[1] < at_n20[2]
+
+    at_u33 = [null_peak_mean_g(3.29, n) for n in (15, 30, 60)]
+    assert at_u33[0] > at_u33[1] > at_u33[2]
+
+
+def test_infer_threshold_from_minimum_recovers_a_known_threshold():
+    """Simulate the RFT peak-height null, take the minimum of m draws, recover u."""
+    from nimare.meta.cbma.effectsize import infer_threshold_from_minimum
+
+    rng = np.random.default_rng(0)
+    for true_u in (2.3, 3.2905, 4.0):
+        for n_peaks in (3, 8, 20):
+            # Inverse-transform sampling from S(z|u) = (z^2-1)exp(-z^2/2) / (u^2-1)exp(-u^2/2).
+            grid = np.linspace(true_u, true_u + 8.0, 4000)
+            survival = (grid**2 - 1) * np.exp(-0.5 * grid**2)
+            survival = survival / survival[0]
+            minima = [
+                np.interp(rng.random(n_peaks), survival[::-1], grid[::-1]).min()
+                for _ in range(400)
+            ]
+            raw = float(np.mean(minima))
+            fixed = float(np.mean([infer_threshold_from_minimum(m, n_peaks) for m in minima]))
+            assert raw > true_u  # the minimum of m peaks always overshoots
+            assert abs(fixed - true_u) < abs(raw - true_u)
+            assert abs(fixed - true_u) < 0.15
+
+
+def test_study_min_corrected_sits_below_study_min(studyset, small_mask):
+    """Undoing the order statistic can only lower a study's inferred threshold."""
+    cutoffs = {}
+    for keyword in ("study-min", "study-min-corrected"):
+        estimator = CBES(fwhm=8.0, null_method="parametric", threshold=keyword, mask=small_mask)
+        estimator.fit(studyset)
+        cutoffs[keyword] = estimator._cutoffs_z_
+
+    raw, fixed = cutoffs["study-min"], cutoffs["study-min-corrected"]
+    assert (fixed <= raw + 1e-8).all()
+    assert (fixed < raw - 1e-3).any()
+
+
+def test_threshold_can_name_a_metadata_field(small_mask):
+    """Papers that state their threshold should not be put through an inference."""
+    studyset = create_effect_size_coordinate_studyset(
+        [TRUTH], effect_sizes=0.9, n_studies=20, sample_size=25, threshold_z=3.0, seed=11
+    )
+    from_metadata = CBES(
+        fwhm=8.0, null_method="parametric", threshold="reporting_threshold", mask=small_mask
+    ).fit(studyset)
+    from_float = CBES(fwhm=8.0, null_method="parametric", threshold=3.0, mask=small_mask).fit(
+        studyset
+    )
+
+    assert np.allclose(
+        from_metadata.get_map("g", return_type="array"),
+        from_float.get_map("g", return_type="array"),
+    )
+
+
+def test_threshold_metadata_field_must_exist(studyset, small_mask):
+    estimator = CBES(fwhm=8.0, null_method="parametric", threshold="nope", mask=small_mask)
+    with pytest.raises(ValueError, match="metadata field"):
+        estimator.fit(studyset)
+
+
+def test_per_study_peak_bias_discounts_strict_thresholds_and_small_samples():
+    """rho_k is the inverse of the artefact, so it falls as u rises and as N falls."""
+    import pandas as pd
+
+    estimator = CBES(peak_bias="per-study")
+    ids = ["a", "b", "c"]
+
+    sizes = pd.Series([20.0, 20.0, 20.0], index=ids)
+    by_threshold = estimator._peak_bias_factors(pd.Series([2.3, 3.29, 4.3], index=ids), sizes, ids)
+    assert by_threshold["a"] > by_threshold["b"] > by_threshold["c"]
+    assert by_threshold["b"] == pytest.approx(1.0)  # the median study anchors the scale
+
+    cutoffs = pd.Series([3.29, 3.29, 3.29], index=ids)
+    by_size = estimator._peak_bias_factors(cutoffs, pd.Series([15.0, 30.0, 60.0], index=ids), ids)
+    assert by_size["a"] < by_size["b"] < by_size["c"]
+
+
+def test_per_study_peak_bias_reduces_to_the_scalar_when_studies_agree(small_mask):
+    """With one threshold and one sample size there is nothing between studies to correct.
+
+    The per-study factor then has to collapse to exactly ``peak_bias_scale``, which is what
+    makes the two options comparable: ``"per-study"`` only ever redistributes around it.
+    """
+    studyset = create_effect_size_coordinate_studyset(
+        [TRUTH], effect_sizes=0.9, n_studies=20, sample_size=25, threshold_z=3.0, seed=12
+    )
+    common = dict(fwhm=8.0, null_method="parametric", threshold=3.0, mask=small_mask)
+    per_study = CBES(peak_bias="per-study", peak_bias_scale=0.4, **common).fit(studyset)
+    scalar = CBES(peak_bias=0.4, **common).fit(studyset)
+
+    assert np.allclose(
+        per_study.get_map("g", return_type="array"),
+        scalar.get_map("g", return_type="array"),
+    )
+
+
+def test_per_study_peak_bias_equalizes_a_mixed_threshold_collection(small_mask):
+    """The point of the correction: studies that thresholded differently stop disagreeing.
+
+    Two halves of one collection, identical truth, differing only in how strictly they
+    thresholded. Uncorrected, the strict half reports much larger effect sizes than the lenient
+    half. The per-study factor should shrink that gap.
+    """
+    from nimare.meta.cbma.effectsize import null_peak_mean_g
+
+    def gap(peak_bias):
+        estimator = CBES(
+            fwhm=8.0,
+            null_method="parametric",
+            threshold="reporting_threshold",
+            peak_bias=peak_bias,
+            mask=small_mask,
+        )
+        estimator.fit(studyset)
+        table = estimator._focus_table_
+        cutoffs = estimator._cutoffs_z_.reindex(table["id"].values).values
+        strict = np.abs(table["g"].values[cutoffs > 3.5])
+        lenient = np.abs(table["g"].values[cutoffs < 3.5])
+        return strict.mean() / lenient.mean()
+
+    studyset = create_effect_size_coordinate_studyset(
+        [TRUTH],
+        effect_sizes=0.6,
+        n_studies=40,
+        sample_size=25,
+        threshold_z=[2.3263, 4.2649],
+        seed=13,
+        n_noise_foci=2,
+        noise_extent=30.0,
+    )
+    assert null_peak_mean_g(4.2649, 25) > null_peak_mean_g(2.3263, 25)
+    uncorrected, corrected = gap(None), gap("per-study")
+    assert uncorrected > 1.2
+    assert abs(corrected - 1.0) < abs(uncorrected - 1.0)

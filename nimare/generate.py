@@ -336,9 +336,12 @@ def create_effect_size_coordinate_studyset(
         exactly zero. This is the situation a plain censored model cannot represent -- it has
         to explain a study's silence as a small common effect rather than as no effect -- and
         is what ``CBES(selection_model="zero-inflated")`` is built to recover.
-    threshold_z : :obj:`float`, default=3.29
+    threshold_z : :obj:`float` or sequence of :obj:`float`, default=3.29
         Two-tailed reporting threshold on the z scale (p < .001 by default). A study reports a
-        peak only where its observed statistic clears this.
+        peak only where its observed statistic clears this. A sequence is drawn from at random,
+        one threshold per study, which simulates a literature search over papers that did not
+        agree on a threshold; each study then records its own under the ``reporting_threshold``
+        metadata field, so estimators can be tested with and without knowing it.
     spatial_sd : :obj:`float`, default=6.0
         Standard deviation, in mm, of the localization error on a reported peak.
     n_noise_foci : :obj:`int`, default=0
@@ -382,8 +385,13 @@ def create_effect_size_coordinate_studyset(
         low, high = sample_size
         sample_sizes = rng.integers(int(low), int(high) + 1, size=n_studies)
 
+    if np.ndim(threshold_z) == 0:
+        thresholds = np.full(n_studies, float(threshold_z))
+    else:
+        thresholds = rng.choice(np.asarray(threshold_z, dtype=float), size=n_studies)
+
     studies = []
-    for i_study, n_subjects in enumerate(sample_sizes):
+    for i_study, (n_subjects, threshold) in enumerate(zip(sample_sizes, thresholds)):
         dof = n_subjects - 1 if design == "one-sample" else n_subjects - 2
         scale = (
             np.sqrt(1.0 / n_subjects)
@@ -399,7 +407,7 @@ def create_effect_size_coordinate_studyset(
             sampling_sd = np.sqrt(scale**2 + study_effect**2 / (2.0 * n_subjects))
             observed_d = rng.normal(study_effect, sampling_sd)
             observed_z = t_to_z(np.array([observed_d / scale]), dof)[0]
-            if np.abs(observed_z) < threshold_z:
+            if np.abs(observed_z) < threshold:
                 continue
             reported = focus + rng.normal(0, spatial_sd, size=3)
             points.append(
@@ -412,8 +420,8 @@ def create_effect_size_coordinate_studyset(
 
         for _ in range(n_noise_foci):
             # Height of a null suprathreshold local maximum: P(Z > z | Z > u) ~= exp(-u(z - u)).
-            overshoot = rng.exponential(1.0 / threshold_z)
-            noise_z = (threshold_z + overshoot) * rng.choice([-1.0, 1.0])
+            overshoot = rng.exponential(1.0 / threshold)
+            noise_z = (threshold + overshoot) * rng.choice([-1.0, 1.0])
             points.append(
                 {
                     "space": space,
@@ -428,12 +436,18 @@ def create_effect_size_coordinate_studyset(
             {
                 "id": f"study-{i_study}",
                 "name": f"study-{i_study}",
-                "metadata": {"sample_sizes": [int(n_subjects)]},
+                "metadata": {
+                    "sample_sizes": [int(n_subjects)],
+                    "reporting_threshold": float(threshold),
+                },
                 "analyses": [
                     {
                         "id": f"study-{i_study}-1",
                         "name": "1",
-                        "metadata": {"sample_sizes": [int(n_subjects)]},
+                        "metadata": {
+                            "sample_sizes": [int(n_subjects)],
+                            "reporting_threshold": float(threshold),
+                        },
                         "points": points,
                     }
                 ],

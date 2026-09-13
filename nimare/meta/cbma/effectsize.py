@@ -90,6 +90,7 @@ import pandas as pd
 from joblib import Memory, Parallel, delayed
 from nilearn.maskers import NiftiMasker
 from scipy import ndimage, stats
+from scipy.optimize import brentq
 from scipy.special import ndtr
 from tqdm.auto import tqdm
 
@@ -121,6 +122,9 @@ __version__ = _version.get_versions()["version"]
 #: Smallest sampling variance we will attribute to a reported peak. Guards the pooling weights
 #: against division by zero for implausibly large sample sizes.
 _MIN_VARIANCE = 1e-8
+
+#: Keywords ``threshold`` understands; any other string names a metadata field.
+THRESHOLD_KEYWORDS = ("pooled-min", "study-min", "study-min-corrected")
 
 #: Default two-tailed reporting threshold, on the z scale, when a study gives no better
 #: information. p < .001 uncorrected, the most common screening threshold in the literature.
@@ -395,6 +399,65 @@ def peak_information(stats_z, threshold_z):
     return observed, expected, observed - expected
 
 
+def null_peak_mean_g(threshold_z, sample_size, design="one-sample"):
+    """Effect size a study would report from a *pure noise* peak above its threshold.
+
+    A reported peak is a local maximum that cleared the study's threshold, and on
+    underpowered data its height is set almost entirely by that threshold rather than by any
+    effect (see :func:`peak_information`). This is the expected ``|g|`` of such a peak, taken
+    over the RFT null peak-height distribution above ``threshold_z`` and converted with the
+    study's own sample size.
+
+    It is the scale a study contributes *by construction*, so dividing by it removes the part
+    of a reported effect size that is an artefact of how strictly the paper thresholded and how
+    many subjects it had -- neither of which is a fact about the brain.
+    """
+    u = float(threshold_z)
+    grid = np.linspace(u, u + 12.0, 2000)
+    density = np.clip(grid * (grid**2 - 3.0) * np.exp(-0.5 * grid**2), 0.0, None)
+    mass = np.trapezoid(density, grid)
+    if mass <= 0:  # threshold below sqrt(3): fall back to the exponential overshoot
+        grid = np.linspace(u, u + 12.0, 2000)
+        density = u * np.exp(-u * (grid - u))
+        mass = np.trapezoid(density, grid)
+
+    sizes = np.full(grid.shape, float(sample_size))
+    g_of_z, _ = peak_stat_to_hedges_g(grid, sizes, stat_type="z", design=design)
+    return float(np.trapezoid(np.abs(g_of_z) * density, grid) / mass)
+
+
+def _expected_min_peak(u, n_peaks, span=10.0, n_grid=500):
+    """E[smallest of ``n_peaks`` heights drawn above ``u``] under the RFT null."""
+    grid = np.linspace(u, u + span, n_grid)
+    survival = np.clip(
+        (grid**2 - 1.0) * np.exp(-0.5 * grid**2) / ((u**2 - 1.0) * np.exp(-0.5 * u**2)), 0.0, 1.0
+    )
+    return u + np.trapezoid(survival**n_peaks, grid)
+
+
+def infer_threshold_from_minimum(min_stat_z, n_peaks):
+    """Recover a study's reporting threshold from its smallest reported statistic.
+
+    Papers often do not state the threshold, and the smallest statistic they report is an
+    *upper* bound on it: with only a handful of peaks the smallest of them still sits well
+    above the cut. The minimum of ``n_peaks`` draws from the null peak-height distribution
+    above ``u`` exceeds ``u`` by a computable amount, so that bias can be inverted rather than
+    absorbed. With many reported peaks the correction vanishes, as it should.
+    """
+    z_min = float(min_stat_z)
+    n_peaks = int(n_peaks)
+    if n_peaks <= 0 or not np.isfinite(z_min) or z_min <= 1.95:
+        return z_min
+    if _expected_min_peak(z_min, n_peaks) <= z_min:  # already consistent
+        return z_min
+    try:
+        return float(
+            brentq(lambda u: _expected_min_peak(u, n_peaks) - z_min, 1.95, z_min, xtol=1e-4)
+        )
+    except ValueError:
+        return z_min
+
+
 def null_effect_variance(sample_size, design="one-sample"):
     """Sampling variance of Hedges' g under a null effect, for a study that reported nothing.
 
@@ -473,18 +536,40 @@ class CBES(Estimator):
             pain images -- so an uncorrected coordinate study and an image study disagree about
             the same region by roughly a factor of two, and the pooled estimate then depends on
             how many studies of each kind the collection happens to contain.
-    peak_bias : :obj:`float` or None, optional
-        Multiplicative correction for the fact that a reported peak is a local maximum. A
-        reported statistic is treated as measuring ``g_true / peak_bias``, so the effect size,
-        its standard deviation and the study's reporting threshold are all scaled by this
-        factor -- a rescaling of the effect-size axis for coordinate studies, which leaves the
-        censored likelihood coherent. Images are never rescaled; they are already unbiased.
+    peak_bias : :obj:`float`, "per-study", or None, optional
+        Correction for the fact that a reported peak is a local maximum that cleared a
+        threshold. A reported statistic is treated as measuring ``g_true / rho_k``, so the
+        effect size, its standard deviation and the study's reporting threshold are all scaled
+        by ``rho_k`` -- a rescaling of the effect-size axis for coordinate studies, which
+        leaves the censored likelihood coherent. Images are never rescaled; they are already
+        unbiased.
 
-        The size of the correction is not a modelling choice, it is measurable. On the NIDM
-        pain collection, the leave-one-out pooled effect at a reported peak is 0.22-0.27 where
-        the reporting study says 1.22, giving ``peak_bias`` near 0.2. Calibrate it on your own
-        data with the procedure in ``docs/notes/validate_cbes.py``; ``None`` leaves reported
-        peaks uncorrected, which overstates the effect roughly fivefold.
+        ``float``
+            One ``rho`` for every study. Corrects the overall scale but assumes every study
+            thresholded alike, which a literature search cannot guarantee.
+        ``"per-study"``
+            ``rho_k`` proportional to ``1 / null_peak_mean_g(u_k, N_k)``, normalized so the
+            median reporting study sits at ``peak_bias_scale``. This divides out the part of
+            the inflation that is a function of *how strictly study k thresholded and how many
+            subjects it had*, which is the part that varies across a heterogeneous collection
+            and the part coordinates can identify on their own. A study that reported at
+            z > 4.3 with n = 12 is then discounted harder than one that reported at z > 2.3
+            with n = 40, as it should be. What it cannot fix is the common scale: with
+            ``peak_bias_scale=1.0`` the map is *relative*, correct in shape and in the
+            comparison between studies, still inflated overall.
+        ``None``
+            No correction, which overstates the effect roughly fivefold.
+
+        The size of the overall correction is not a modelling choice, it is measurable. On the
+        NIDM pain collection, the leave-one-out pooled effect at a reported peak is 0.22-0.27
+        where the reporting study says 1.22, giving a scale near 0.2. Calibrate it on your own
+        data with the procedure in ``docs/notes/validate_cbes.py``.
+    peak_bias_scale : :obj:`float`, default=1.0
+        Overall scale of the ``"per-study"`` correction: the ``rho_k`` given to the median
+        reporting study. Ignored unless ``peak_bias="per-study"``. Between-study differences
+        in threshold and sample size are identified from the coordinates; this one number is
+        not, and needs images (five or more) or an external calibration to pin down. Leaving it
+        at 1.0 gives a map that is right up to a single multiplicative constant.
     stat_column : :obj:`str` or None, optional
         Column of the coordinates table holding the reported statistic. When None, ``z_stat``
         is used if present, otherwise ``t_stat``.
@@ -500,21 +585,32 @@ class CBES(Estimator):
         Tobit log-likelihood. ``"none"`` pools only the reported peaks, and is biased away from
         zero by the within-study thresholding that produced them. Nothing is imputed under
         either option.
-    threshold : :obj:`float`, "pooled-min", "study-min", or None, default="pooled-min"
-        Reporting threshold, on the z scale, assumed for each study. Coordinates alone never
-        state it, so it has to be inferred, and the estimate matters: too high a threshold makes
-        silence unsurprising and the selection correction does nothing.
+    threshold : :obj:`float`, :obj:`str`, or None, default="pooled-min"
+        Reporting threshold, on the z scale, assumed for each study. It enters twice: it
+        decides how surprising a study's silence is, and with ``peak_bias="per-study"`` it sets
+        how far that study's reported peaks are discounted.
 
         ``"pooled-min"``
-            The smallest absolute statistic reported anywhere in the collection. The tightest
-            bound available, and the recommended default.
+            The smallest absolute statistic reported anywhere in the collection. One threshold
+            for everyone, and the tightest bound available if that assumption holds.
         ``"study-min"``
             The smallest absolute statistic each study reported. Biased upward for studies that
             reported few peaks -- a study with one focus has no information about its own
-            threshold at all -- but appropriate when studies plainly used different thresholds.
+            threshold at all.
+        ``"study-min-corrected"``
+            The same per-study minimum, with the order statistic undone. The smallest of
+            ``m_k`` peaks above ``u_k`` sits above ``u_k`` by an amount that grows with
+            ``m_k``, so :func:`infer_threshold_from_minimum` solves for the ``u_k`` whose
+            expected minimum is what the study actually reported. Use this when studies
+            plainly thresholded differently and none of them says how -- the usual case in a
+            literature search.
+        any other string
+            The name of a metadata field holding each study's threshold on the z scale, for
+            collections where the papers state it. Studies missing the field take the median
+            of those that have it.
 
         A float applies one z threshold to every study; None falls back to
-        ``DEFAULT_REPORTING_THRESHOLD_Z``. Unused when ``selection_model="none"``.
+        ``DEFAULT_REPORTING_THRESHOLD_Z``.
     coverage_radius : :obj:`float` or None, optional
         Radius, in mm, within which a reported peak counts as this study having reported
         *something* about this location. A study with no focus inside that radius is treated as
@@ -621,6 +717,7 @@ class CBES(Estimator):
         fwhm=10.0,
         use_images=True,
         peak_bias=None,
+        peak_bias_scale=1.0,
         stat_column=None,
         design="one-sample",
         tau2_method="dl",
@@ -654,8 +751,17 @@ class CBES(Estimator):
             )
         if null_method not in NULL_METHODS:
             raise ValueError(f"null_method must be one of {NULL_METHODS}; got {null_method!r}.")
-        if peak_bias is not None and not 0.0 < float(peak_bias) <= 1.0:
-            raise ValueError(f"peak_bias must be None or in (0, 1]; got {peak_bias!r}.")
+        if isinstance(peak_bias, str):
+            if peak_bias != "per-study":
+                raise ValueError(
+                    f"peak_bias must be None, 'per-study', or a number in (0, 1]; got "
+                    f"{peak_bias!r}."
+                )
+        elif peak_bias is not None and not 0.0 < float(peak_bias) <= 1.0:
+            raise ValueError(
+                f"peak_bias must be None, 'per-study', or a number in (0, 1]; got "
+                f"{peak_bias!r}."
+            )
         if null_method == "parametric":
             LGR.warning(
                 "null_method='parametric' produces anticonservative p-values: the standard "
@@ -666,20 +772,17 @@ class CBES(Estimator):
                 "null simulation. Use null_method='montecarlo' for inference."
             )
         if isinstance(threshold, str):
-            if threshold not in ("pooled-min", "study-min"):
-                raise ValueError(
-                    "threshold must be 'pooled-min', 'study-min', a number, or None; got "
-                    f"{threshold!r}."
-                )
+            pass  # a keyword, or the name of a metadata field holding per-study thresholds
         elif threshold is not None and not np.isscalar(threshold):
             raise ValueError(
-                f"threshold must be 'pooled-min', 'study-min', a number, or None; got "
-                f"{threshold!r}."
+                f"threshold must be one of {list(THRESHOLD_KEYWORDS)}, a metadata field name, "
+                f"a number, or None; got {threshold!r}."
             )
 
         self.fwhm = fwhm
         self.use_images = use_images
         self.peak_bias = peak_bias
+        self.peak_bias_scale = float(peak_bias_scale)
         self.stat_column = stat_column
         self.design = design
         self.tau2_method = tau2_method
@@ -724,6 +827,46 @@ class CBES(Estimator):
             target_column="sample_size",
             filter_func=np.mean,
         )
+        self._reported_thresholds_ = self._threshold_metadata(dataset)
+
+    def _threshold_metadata(self, dataset):
+        """Per-study reporting thresholds, when ``threshold`` names a metadata field.
+
+        Papers that state their threshold are the easy case, and they should not be forced
+        through an inference that exists only for the ones that do not. Values are read on the
+        z scale, the same convention as a float ``threshold``; studies missing the field fall
+        back to the median of those that have it.
+        """
+        if not isinstance(self.threshold, str) or self.threshold in THRESHOLD_KEYWORDS:
+            return None
+
+        available = set(dataset.get_metadata())
+        if self.threshold not in available:
+            raise ValueError(
+                f"threshold={self.threshold!r} is neither one of "
+                f"{list(THRESHOLD_KEYWORDS)} nor a metadata field of the collection. "
+                f"Available fields: {sorted(available)}."
+            )
+
+        ids = np.asarray(dataset.ids, dtype=object)
+        values = dataset.get_metadata(field=self.threshold, ids=list(ids))
+        cleaned = []
+        for value in values:
+            if isinstance(value, (list, tuple, np.ndarray)):
+                value = float(np.mean(value)) if len(value) else np.nan
+            try:
+                cleaned.append(float(value))
+            except (TypeError, ValueError):
+                cleaned.append(np.nan)
+
+        series = pd.Series(cleaned, index=ids, dtype=float)
+        series = series[~series.index.duplicated()]
+        if not np.isfinite(series.values).any():
+            raise ValueError(
+                f"Metadata field {self.threshold!r} holds no usable numeric threshold for any "
+                "study."
+            )
+        return series
 
     def _resolve_stat_column(self, coords):
         """Pick the column holding the reported statistic, and say what scale it is on."""
@@ -827,12 +970,6 @@ class CBES(Estimator):
             stat_type=stat_type,
             design=self.design,
         )
-        if self.peak_bias is not None:
-            # g_reported measures g_true / peak_bias, so the true-effect scale is a
-            # multiplicative rescaling: the effect by rho, its variance by rho squared.
-            g = g * float(self.peak_bias)
-            var_g = var_g * float(self.peak_bias) ** 2
-
         table["g"] = g
         table["var_g"] = var_g
         table["stat_type"] = stat_type
@@ -860,53 +997,156 @@ class CBES(Estimator):
             )
         return series[~series.index.duplicated()]
 
-    def _study_thresholds(self, table, sample_sizes):
-        """Per-study reporting threshold, expressed on the Hedges' g scale.
+    def _reported_z(self, table):
+        """Reported statistics on the z scale, where studies are comparable to one another.
 
-        Studies that reported nothing anywhere still need a threshold -- it is what makes their
-        silence quantitative. Since they reported no statistic to infer one from, they are
-        given the median threshold of the studies that did report.
+        A t of 3.5 means something different in a study of 15 than in one of 80, so every
+        threshold inference and every peak-height correction happens here, not on the raw
+        reported scale.
         """
         if not len(table):
-            # Every study supplied an image, so there are no reported peaks and nothing is
-            # censored. The thresholds are unused but must still line up with the roster.
-            return pd.Series(np.zeros(len(sample_sizes)), index=sample_sizes.index)
+            return np.array([], dtype=float)
 
         stat_type = table["stat_type"].iloc[0]
-
-        # Thresholds are inferred on the z scale, where they are comparable across studies;
-        # a t of 3.5 means something different in a study of 15 than in a study of 80.
-        reported_z = np.abs(
+        return np.abs(
             table["stat"].values
             if stat_type == "z"
             else t_to_z(table["stat"].values, table["sample_size"].values - 1)
         )
 
+    def _study_cutoffs_z(self, table, sample_sizes):
+        """Per-study reporting threshold on the z scale, one entry per study on the roster.
+
+        Studies that reported nothing anywhere still need a threshold -- it is what makes their
+        silence quantitative. Since they reported no statistic to infer one from, they are
+        given the median threshold of the studies that did report.
+        """
+        index = sample_sizes.index
+        if not len(table):
+            # Every study supplied an image, so there are no reported peaks and nothing is
+            # censored. The cutoffs are unused but must still line up with the roster.
+            return pd.Series(np.zeros(len(index)), index=index)
+
+        reported_z = self._reported_z(table)
+        study_ids = np.asarray(table["id"].values, dtype=object)
+
         if self.threshold == "pooled-min":
             # The smallest statistic reported anywhere is the tightest available upper bound on
-            # the common threshold. Per-study minima look tempting but are badly biased upward
-            # whenever a study reports only a handful of peaks -- with one peak, a study's
-            # minimum *is* its single reported value, which says nothing about its threshold.
+            # a threshold shared by every study.
             cutoff_z = np.full(
-                len(sample_sizes), float(np.nanmin(reported_z)) if reported_z.size else np.nan
+                len(index), float(np.nanmin(reported_z)) if reported_z.size else np.nan
             )
-        elif self.threshold == "study-min":
-            per_study = pd.Series(reported_z, index=table["id"].values).groupby(level=0).min()
+        elif self.threshold in ("study-min", "study-min-corrected"):
+            grouped = pd.Series(reported_z, index=study_ids).groupby(level=0)
+            per_study = grouped.min().astype(float)
+            if self.threshold == "study-min-corrected":
+                # A study's smallest reported peak is the minimum of however many peaks it
+                # reported, so it sits above the threshold by an amount that depends on that
+                # count. Undo the order statistic instead of taking the minimum at face value.
+                per_study = pd.Series(
+                    [
+                        infer_threshold_from_minimum(minimum, count)
+                        for minimum, count in zip(per_study.values, grouped.size().values)
+                    ],
+                    index=per_study.index,
+                    dtype=float,
+                )
             fallback = float(np.nanmedian(per_study.values)) if len(per_study) else np.nan
-            cutoff_z = per_study.reindex(sample_sizes.index).fillna(fallback).values
+            cutoff_z = per_study.reindex(index).astype(float).fillna(fallback).values
+        elif isinstance(self.threshold, str):
+            supplied = getattr(self, "_reported_thresholds_", None)
+            if supplied is None:
+                raise ValueError(
+                    f"threshold={self.threshold!r} names a metadata field, but no per-study "
+                    "thresholds were read from the collection."
+                )
+            fallback = (
+                float(np.nanmedian(supplied.values[np.isfinite(supplied.values)]))
+                if np.isfinite(supplied.values).any()
+                else np.nan
+            )
+            cutoff_z = supplied.reindex(index).astype(float).fillna(fallback).values
         else:
             value = DEFAULT_REPORTING_THRESHOLD_Z if self.threshold is None else self.threshold
-            cutoff_z = np.full(len(sample_sizes), float(value))
+            cutoff_z = np.full(len(index), float(value))
 
-        cutoff_z = np.where(np.isfinite(cutoff_z), cutoff_z, DEFAULT_REPORTING_THRESHOLD_Z)
-        self._check_peak_information(reported_z, cutoff_z)
-        threshold_g, _ = peak_stat_to_hedges_g(
-            cutoff_z, sample_sizes.values, stat_type="z", design=self.design
+        cutoff_z = np.asarray(cutoff_z, dtype=float)
+        cutoff_z = np.where(
+            np.isfinite(cutoff_z) & (cutoff_z > 0), cutoff_z, DEFAULT_REPORTING_THRESHOLD_Z
         )
-        if self.peak_bias is not None:
-            # The threshold lives on the same axis as the reported values, so it rescales too.
-            threshold_g = threshold_g * float(self.peak_bias)
-        return pd.Series(threshold_g, index=sample_sizes.index)
+        self._check_peak_information(reported_z, cutoff_z)
+        return pd.Series(cutoff_z, index=index)
+
+    def _peak_bias_factors(self, cutoff_z, sample_sizes, reporting_ids):
+        """Per-study shrinkage ``rho_k`` for the peak-height bias, one entry per study.
+
+        A reported peak is a local maximum that cleared the study's own threshold, so its
+        height is set partly by the effect and partly by ``(u_k, N_k)``: the stricter the
+        threshold and the smaller the sample, the larger the effect size a study reports for
+        the same underlying truth. :func:`null_peak_mean_g` says exactly how large that
+        artefact is -- the effect size a study would report from a peak of *pure noise*.
+
+        ``peak_bias="per-study"`` divides it out. ``rho_k`` is inversely proportional to
+        ``null_peak_mean_g(u_k, N_k)``, normalized so that the median reporting study is left
+        at ``peak_bias_scale``. That removes the *between-study* artefact, which is what
+        coordinates alone can identify; the one remaining number, the overall scale, is
+        ``peak_bias_scale`` and still needs images (or a willingness to read the map as
+        relative). A scalar ``peak_bias`` sets every ``rho_k`` to the same value instead,
+        correcting the scale but not the heterogeneity.
+        """
+        index = sample_sizes.index
+        if self.peak_bias is None:
+            return pd.Series(np.ones(len(index)), index=index)
+        if not isinstance(self.peak_bias, str):
+            return pd.Series(np.full(len(index), float(self.peak_bias)), index=index)
+
+        null_g = np.array(
+            [
+                null_peak_mean_g(cutoff, size, design=self.design)
+                for cutoff, size in zip(cutoff_z.values, sample_sizes.values)
+            ],
+            dtype=float,
+        )
+        # Only studies that actually reported peaks carry the artefact, so they set the anchor;
+        # silent studies contribute nothing to rescale.
+        reporting = np.isin(
+            np.asarray(index, dtype=object), np.asarray(reporting_ids, dtype=object)
+        )
+        reference = null_g[reporting] if reporting.any() else null_g
+        finite = reference[np.isfinite(reference) & (reference > 0)]
+        anchor = float(np.median(finite)) if finite.size else 1.0
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            rho = self.peak_bias_scale * anchor / null_g
+        rho = np.where(np.isfinite(rho) & (rho > 0), rho, self.peak_bias_scale)
+        return pd.Series(rho, index=index)
+
+    def _apply_peak_bias(self, table, cutoff_z, sample_sizes, peak_bias):
+        """Rescale reported effect sizes by ``rho_k``, and put the cutoffs on the g scale.
+
+        The threshold lives on the same axis as the values it censored, so it takes the same
+        factor -- otherwise the censored likelihood would be comparing a rescaled observation
+        against an unrescaled bound.
+        """
+        threshold_g, _ = peak_stat_to_hedges_g(
+            cutoff_z.values, sample_sizes.values, stat_type="z", design=self.design
+        )
+        thresholds = pd.Series(threshold_g * peak_bias.values, index=sample_sizes.index)
+
+        if len(table) and not np.allclose(peak_bias.values, 1.0):
+            default = float(np.median(peak_bias.values)) if len(peak_bias) else 1.0
+            factor = (
+                peak_bias.reindex(np.asarray(table["id"].values, dtype=object))
+                .astype(float)
+                .fillna(default)
+                .values
+            )
+            table = table.copy()
+            table["g"] = table["g"].values * factor
+            table["var_g"] = table["var_g"].values * factor**2
+            table["peak_bias"] = factor
+
+        return table, thresholds
 
     def _check_peak_information(self, reported_z, cutoff_z):
         """Warn when the reported peak heights say nothing about the size of the effect."""
@@ -1263,8 +1503,11 @@ class CBES(Estimator):
         n_studies = len(study_ids)
 
         null_var = null_effect_variance(sample_sizes.values, design=self.design)[:, None]
-        if self.peak_bias is not None:
-            null_var = null_var * float(self.peak_bias) ** 2
+        peak_bias = getattr(self, "_peak_bias_", None)
+        if peak_bias is not None:
+            # The null component lives on the same rescaled axis as the observations, so it
+            # takes each study's own rho -- not one shared factor.
+            null_var = null_var * peak_bias.loc[study_ids].values[:, None] ** 2
         cutoffs = np.abs(thresholds.loc[study_ids].values)[:, None]
 
         value_order = np.argsort(values["col"], kind="mergesort")
@@ -1629,16 +1872,25 @@ class CBES(Estimator):
         # uncertainty or the selection.
         if self._image_studies_:
             table = table[~table["id"].isin(self._image_studies_)].copy()
-        self._focus_table_ = table
+        # The roster, the thresholds and the peak-height correction have to be resolved in
+        # that order: rho_k is a function of a study's threshold, and the threshold itself is
+        # rescaled by rho_k so the censored likelihood stays on one scale.
+        if self.selection_model != "none" or self.peak_bias is not None:
+            roster = self._all_sample_sizes(dataset)
+            self._cutoffs_z_ = self._study_cutoffs_z(table, roster)
+            self._peak_bias_ = self._peak_bias_factors(
+                self._cutoffs_z_, roster, table["id"].unique() if len(table) else []
+            )
+            table, thresholds = self._apply_peak_bias(
+                table, self._cutoffs_z_, roster, self._peak_bias_
+            )
+        else:
+            roster, thresholds = None, None
+            self._cutoffs_z_, self._peak_bias_ = None, None
 
-        self._sample_sizes_ = (
-            self._all_sample_sizes(dataset) if self.selection_model != "none" else None
-        )
-        self._thresholds_ = (
-            self._study_thresholds(table, self._sample_sizes_)
-            if self.selection_model != "none"
-            else None
-        )
+        self._focus_table_ = table
+        self._sample_sizes_ = roster if self.selection_model != "none" else None
+        self._thresholds_ = thresholds if self.selection_model != "none" else None
 
         fit, z_values = self._statistic(
             table, self._sample_sizes_, self._thresholds_, self._image_studies_
@@ -1819,6 +2071,26 @@ class CBES(Estimator):
                 " Only reported peaks were pooled, so the estimate is biased away from zero by "
                 "the within-study thresholding that generated them."
             )
+        if self.peak_bias == "per-study":
+            bias = (
+                " Because a reported peak is a local maximum that cleared the reporting study's "
+                "own threshold, each study's effect sizes were rescaled by a factor inversely "
+                "proportional to the effect size a peak of pure noise would have produced at "
+                "that study's threshold and sample size, normalized to "
+                f"{self.peak_bias_scale} at the median reporting study."
+            )
+        elif self.peak_bias is not None:
+            bias = (
+                " Reported effect sizes were rescaled by a factor of "
+                f"{self.peak_bias} to correct for the inflation of a reported local maximum "
+                "relative to the effect in the surrounding region."
+            )
+        else:
+            bias = (
+                " Reported peaks were not corrected for the inflation of a local maximum "
+                "relative to the effect in the surrounding region, so the magnitudes are "
+                "overestimates."
+            )
         n_foci = len(getattr(self, "_focus_table_", []))
         n_studies = (
             self._focus_table_["id"].nunique() if hasattr(self, "_focus_table_") else "an unknown"
@@ -1841,7 +2113,7 @@ class CBES(Estimator):
             f"statistic was converted to Hedges' g using the study's sample size and a "
             f"{self.design} design, and peaks were assigned spatial uncertainty with "
             f"{kernel_description}. Voxel-wise pooling used {heterogeneity}.{selection}"
-            f"{inference} "
+            f"{bias}{inference} "
             f"The input dataset included {n_foci} foci with reported statistics from "
             f"{n_studies} experiments."
         )
