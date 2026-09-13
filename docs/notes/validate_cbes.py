@@ -199,6 +199,44 @@ def run_fpr(n_sims=10, n_iters=100):
             )
 
 
+# --------------------------------------------------------------- random-field simulation
+#
+# ``nimare.generate.create_effect_size_coordinate_studyset`` draws one value at the
+# ground-truth location and thresholds it. That models the reporting threshold but not the
+# selection of a *location*, so it cannot produce peak-height bias and cannot be used to test a
+# correction for it. These helpers report genuine local maxima of a smooth field instead.
+
+FIELD_SHAPE = (30, 30, 30)
+
+
+def true_field(peak_g=0.6, radius_vox=4.0, shape=FIELD_SHAPE):
+    """A single Gaussian blob of true effect at the centre of the volume."""
+    from scipy import ndimage  # noqa: F401  (kept local; only the simulation needs scipy.ndimage)
+
+    grid = np.indices(shape).astype(float)
+    centre = (np.array(shape) - 1) / 2.0
+    squared = sum((grid[i] - centre[i]) ** 2 for i in range(3))
+    return peak_g * np.exp(-squared / (2 * radius_vox**2))
+
+
+def study_image(truth, n_subjects, smooth_vox, rng):
+    """One study's observed Hedges' g map: the truth plus smooth noise of the right scale."""
+    from scipy import ndimage
+
+    noise = ndimage.gaussian_filter(rng.standard_normal(truth.shape), smooth_vox)
+    noise /= np.std(noise) + 1e-12  # smoothing shrinks the variance; put it back
+    return truth + noise / np.sqrt(n_subjects)
+
+
+def report_peaks(image, n_subjects, threshold_z=THRESHOLD_Z):
+    """Local maxima clearing the reporting threshold, as a paper would list them."""
+    from scipy import ndimage
+
+    local_max = ndimage.maximum_filter(image, size=3) == image
+    hits = np.argwhere(local_max & (image > threshold_z / np.sqrt(n_subjects)))
+    return hits, (image[tuple(hits.T)] if len(hits) else np.array([]))
+
+
 if __name__ == "__main__":
     what = sys.argv[1] if len(sys.argv) > 1 else "images"
     if what == "images":

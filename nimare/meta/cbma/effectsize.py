@@ -83,6 +83,7 @@ References
 """
 
 import logging
+import os
 
 import numpy as np
 import pandas as pd
@@ -413,6 +414,35 @@ class CBES(Estimator):
         Full width at half maximum, in mm, of the Gaussian kernel expressing spatial
         uncertainty about each reported peak. If None, an ALE-style sample-size-dependent
         kernel is used instead, so that larger studies localize their peaks more tightly.
+    use_images : :obj:`bool`, default=True
+        Use per-study ``g`` and ``g_var`` images for any study that has them, in place of that
+        study's coordinates. An image is the limiting case of a coordinate: it gives the effect
+        at a voxel with no localization uncertainty and no reporting threshold, so it enters
+        with kernel weight 1 everywhere and never contributes a censoring term. Studies without
+        images are unaffected, so a collection may mix the two freely.
+
+        Supply the images with ``ImageTransformer(target=["g", "g_var"])``, which derives them
+        from ``t`` maps and sample sizes on the same scale
+        :func:`peak_stat_to_hedges_g` puts the coordinates on.
+
+        .. warning::
+            Mixing is only sound once ``peak_bias`` is set. A reported peak is a local maximum
+            and is inflated relative to the field around it -- measured at 2.05x on the NIDM
+            pain images -- so an uncorrected coordinate study and an image study disagree about
+            the same region by roughly a factor of two, and the pooled estimate then depends on
+            how many studies of each kind the collection happens to contain.
+    peak_bias : :obj:`float` or None, optional
+        Multiplicative correction for the fact that a reported peak is a local maximum. A
+        reported statistic is treated as measuring ``g_true / peak_bias``, so the effect size,
+        its standard deviation and the study's reporting threshold are all scaled by this
+        factor -- a rescaling of the effect-size axis for coordinate studies, which leaves the
+        censored likelihood coherent. Images are never rescaled; they are already unbiased.
+
+        The size of the correction is not a modelling choice, it is measurable. On the NIDM
+        pain collection, the leave-one-out pooled effect at a reported peak is 0.22-0.27 where
+        the reporting study says 1.22, giving ``peak_bias`` near 0.2. Calibrate it on your own
+        data with the procedure in ``docs/notes/validate_cbes.py``; ``None`` leaves reported
+        peaks uncorrected, which overstates the effect roughly fivefold.
     stat_column : :obj:`str` or None, optional
         Column of the coordinates table holding the reported statistic. When None, ``z_stat``
         is used if present, otherwise ``t_stat``.
@@ -547,6 +577,8 @@ class CBES(Estimator):
     def __init__(
         self,
         fwhm=10.0,
+        use_images=True,
+        peak_bias=None,
         stat_column=None,
         design="one-sample",
         tau2_method="dl",
@@ -580,6 +612,8 @@ class CBES(Estimator):
             )
         if null_method not in NULL_METHODS:
             raise ValueError(f"null_method must be one of {NULL_METHODS}; got {null_method!r}.")
+        if peak_bias is not None and not 0.0 < float(peak_bias) <= 1.0:
+            raise ValueError(f"peak_bias must be None or in (0, 1]; got {peak_bias!r}.")
         if null_method == "parametric":
             LGR.warning(
                 "null_method='parametric' produces anticonservative p-values: the standard "
@@ -602,6 +636,8 @@ class CBES(Estimator):
             )
 
         self.fwhm = fwhm
+        self.use_images = use_images
+        self.peak_bias = peak_bias
         self.stat_column = stat_column
         self.design = design
         self.tau2_method = tau2_method
@@ -660,6 +696,8 @@ class CBES(Estimator):
             column = "z_stat"
         elif "t_stat" in coords.columns and coords["t_stat"].notna().any():
             column = "t_stat"
+        elif getattr(self, "_image_studies_", None):
+            return None, "z"  # images carry the fit; the coordinates are unused
         else:
             raise ValueError(
                 "CBES needs a reported test statistic for each peak, but the input "
@@ -670,10 +708,53 @@ class CBES(Estimator):
 
         return column, "t" if column.startswith("t") else "z"
 
+    def _load_image_studies(self, dataset):
+        """Return ``{study_id: (g, var_g)}`` for studies supplying both images.
+
+        Masked to the analysis volume, so the vectors line up with every other per-voxel array
+        in the estimator.
+        """
+        if not self.use_images:
+            return {}
+
+        images = getattr(dataset, "images", None)
+        if images is None or "g" not in images.columns or "g_var" not in images.columns:
+            return {}
+
+        loaded = {}
+        for study_id, g_path, var_path in zip(
+            images["id"].astype(str), images["g"], images["g_var"]
+        ):
+            if g_path is None or var_path is None:
+                continue
+            if not (os.path.isfile(str(g_path)) and os.path.isfile(str(var_path))):
+                LGR.warning(f"Study {study_id} names g images that are missing on disk.")
+                continue
+            g = self.masker.transform(str(g_path)).ravel().astype(float)
+            var_g = self.masker.transform(str(var_path)).ravel().astype(float)
+            usable = np.isfinite(g) & np.isfinite(var_g) & (var_g > 0)
+            if not usable.any():
+                LGR.warning(f"Study {study_id} has no usable g image voxels.")
+                continue
+            g = np.where(usable, g, 0.0)
+            var_g = np.where(usable, var_g, np.inf)
+            loaded[study_id] = (g, var_g, usable)
+
+        if loaded:
+            LGR.info(f"Using images for {len(loaded)} studies; coordinates for the rest.")
+        return loaded
+
     def _build_focus_table(self):
         """Reduce the coordinates table to the per-focus quantities the model consumes."""
         coords = self.inputs_["coordinates"]
         column, stat_type = self._resolve_stat_column(coords)
+        if column is None:
+            return coords.iloc[:0].assign(
+                stat=np.array([], dtype=float),
+                g=np.array([], dtype=float),
+                var_g=np.array([], dtype=float),
+                stat_type=np.array([], dtype=object),
+            )
 
         if "sample_size" not in coords.columns:
             raise ValueError(
@@ -690,7 +771,7 @@ class CBES(Estimator):
                 f"Dropping {dropped} of {len(coords)} foci with no reported {column} or no "
                 "sample size."
             )
-        if not usable.any():
+        if not usable.any() and not getattr(self, "_image_studies_", None):
             raise ValueError(
                 f"No focus has both a reported {column} and a sample size; nothing to pool."
             )
@@ -704,6 +785,12 @@ class CBES(Estimator):
             stat_type=stat_type,
             design=self.design,
         )
+        if self.peak_bias is not None:
+            # g_reported measures g_true / peak_bias, so the true-effect scale is a
+            # multiplicative rescaling: the effect by rho, its variance by rho squared.
+            g = g * float(self.peak_bias)
+            var_g = var_g * float(self.peak_bias) ** 2
+
         table["g"] = g
         table["var_g"] = var_g
         table["stat_type"] = stat_type
@@ -738,6 +825,11 @@ class CBES(Estimator):
         silence quantitative. Since they reported no statistic to infer one from, they are
         given the median threshold of the studies that did report.
         """
+        if not len(table):
+            # Every study supplied an image, so there are no reported peaks and nothing is
+            # censored. The thresholds are unused but must still line up with the roster.
+            return pd.Series(np.zeros(len(sample_sizes)), index=sample_sizes.index)
+
         stat_type = table["stat_type"].iloc[0]
 
         # Thresholds are inferred on the z scale, where they are comparable across studies;
@@ -768,6 +860,9 @@ class CBES(Estimator):
         threshold_g, _ = peak_stat_to_hedges_g(
             cutoff_z, sample_sizes.values, stat_type="z", design=self.design
         )
+        if self.peak_bias is not None:
+            # The threshold lives on the same axis as the reported values, so it rescales too.
+            threshold_g = threshold_g * float(self.peak_bias)
         return pd.Series(threshold_g, index=sample_sizes.index)
 
     # ------------------------------------------------------- spatial machinery
@@ -842,8 +937,14 @@ class CBES(Estimator):
             study_table["var_g"].values[focus_idx],
         )
 
-    def _accumulate(self, table):
-        """Walk the studies once, returning per-study voxel contributions and voxel sums."""
+    def _accumulate(self, table, image_studies=None):
+        """Walk the studies once, returning per-study voxel contributions and voxel sums.
+
+        An image study is appended as a contribution covering every voxel at weight 1.
+        Everything downstream -- the moment sums, the second pooling pass, the selection
+        model -- then treats it exactly like a very well localized reported peak, which is
+        what it is.
+        """
         mask_img = self.masker.mask_img
         # ``shape[:3]``: a mask image may carry a trailing singleton volume axis.
         shape = np.asarray(mask_img.shape[:3], dtype=np.int64)
@@ -888,6 +989,26 @@ class CBES(Estimator):
             ):
                 sums[name] += np.bincount(cols, weights=value, minlength=n_voxels)
 
+        for study_id, (g, var_g, usable) in (image_studies or {}).items():
+            cols = np.flatnonzero(usable).astype(np.int64)
+            if not cols.size:
+                continue
+            weights = np.ones(cols.size, dtype=float)
+            contributions.append((study_id, cols, weights, g[cols], var_g[cols]))
+
+            a = weights / var_g[cols]
+            for name, value in (
+                ("w", weights),
+                ("w2", weights),
+                ("a", a),
+                ("a2", a**2),
+                ("ag", a * g[cols]),
+                ("ag2", a * g[cols] ** 2),
+                ("w2_over_s2", a),
+                ("n", weights),
+            ):
+                sums[name][cols] += value
+
         if not contributions:
             raise ValueError("No study contributed any in-mask voxels.")
 
@@ -895,9 +1016,9 @@ class CBES(Estimator):
 
     # ------------------------------------------------------------------ fitting
 
-    def _pool(self, table):
+    def _pool(self, table, image_studies=None):
         """Run the two-pass local random-effects fit. Returns a dict of masked-voxel arrays."""
-        contributions, sums, n_voxels = self._accumulate(table)
+        contributions, sums, n_voxels = self._accumulate(table, image_studies)
 
         if self.tau2_method == "dl":
             tau2 = _local_dersimonian_laird(
@@ -950,7 +1071,7 @@ class CBES(Estimator):
             "sum_w": sums["w"],
         }
 
-    def _coverage_entries(self, table, study_ids, active, n_voxels):
+    def _coverage_entries(self, table, study_ids, active, n_voxels, image_ids=()):
         """``(local_voxel, study_position)`` pairs: did this study report anything near here?
 
         Separate from the pooling kernel on purpose. The kernel answers "how much does this
@@ -977,8 +1098,15 @@ class CBES(Estimator):
         # a 20 mm sphere per focus there are a great many hits.
         seen = np.zeros(active.size, dtype=bool)
 
+        image_ids = set(image_ids)
         cols, positions = [], []
         for position, study_id in enumerate(study_ids):
+            if study_id in image_ids:
+                # An image reports everywhere, so it is silent nowhere and contributes no
+                # censoring term. Marking it covered at every active voxel says exactly that.
+                cols.append(np.arange(active.size, dtype=np.int64))
+                positions.append(np.full(active.size, position, dtype=np.int64))
+                continue
             ijk = table.loc[table["id"] == study_id, ["i", "j", "k"]].values.astype(np.int64)
             if not ijk.size:
                 continue  # reported nothing anywhere: silent at every voxel
@@ -1033,7 +1161,7 @@ class CBES(Estimator):
 
         return {name: np.concatenate(values) for name, values in parts.items()}
 
-    def _apply_selection_model(self, fit, table, thresholds, sample_sizes):
+    def _apply_selection_model(self, fit, table, thresholds, sample_sizes, image_ids=()):
         r"""Refit each voxel under the selection model, replacing the naive weighted mean.
 
         Two quantities come out, and keeping them apart is the point of the model:
@@ -1062,11 +1190,15 @@ class CBES(Estimator):
             return
 
         study_ids = list(sample_sizes.index)
-        cov_col, cov_pos = self._coverage_entries(table, study_ids, active, n_voxels)
+        cov_col, cov_pos = self._coverage_entries(
+            table, study_ids, active, n_voxels, image_ids=image_ids
+        )
         values = self._value_entries(fit, study_ids, active, n_voxels)
         n_studies = len(study_ids)
 
         null_var = null_effect_variance(sample_sizes.values, design=self.design)[:, None]
+        if self.peak_bias is not None:
+            null_var = null_var * float(self.peak_bias) ** 2
         cutoffs = np.abs(thresholds.loc[study_ids].values)[:, None]
 
         value_order = np.argsort(values["col"], kind="mergesort")
@@ -1290,7 +1422,7 @@ class CBES(Estimator):
 
         return mu_out, pi_out, se_out
 
-    def _statistic(self, table, sample_sizes, thresholds):
+    def _statistic(self, table, sample_sizes, thresholds, image_studies=None):
         """Fit one configuration of foci and return ``(fit, z)``.
 
         The observed map and every Monte Carlo relocation go through this, so the null is
@@ -1298,9 +1430,11 @@ class CBES(Estimator):
         weighted mean while the observed map came from the selection model would compare two
         different quantities.
         """
-        fit = self._pool(table)
+        fit = self._pool(table, image_studies)
         if self.selection_model != "none":
-            self._apply_selection_model(fit, table, thresholds, sample_sizes)
+            self._apply_selection_model(
+                fit, table, thresholds, sample_sizes, image_ids=tuple(image_studies or ())
+            )
 
         z_values = np.divide(
             fit["g"], fit["se"], out=np.zeros_like(fit["g"]), where=np.isfinite(fit["se"])
@@ -1336,7 +1470,9 @@ class CBES(Estimator):
         permuted[["i", "j", "k"]] = in_mask_ijk[
             rng.integers(0, len(in_mask_ijk), size=len(permuted))
         ]
-        _, z_null = self._statistic(permuted, sample_sizes, thresholds)
+        _, z_null = self._statistic(
+            permuted, sample_sizes, thresholds, getattr(self, "_image_studies_", None)
+        )
 
         absolute = np.abs(z_null)
         counts, _ = np.histogram(np.clip(absolute, 0, _NULL_MAX_Z), bins=_null_bin_edges())
@@ -1420,7 +1556,13 @@ class CBES(Estimator):
 
         self.null_distributions_ = {}
         self._mask_bool_ = None
+        self._image_studies_ = self._load_image_studies(dataset)
         table = self._build_focus_table()
+        # A study that supplies an image has nothing to gain from its own coordinates: the
+        # image gives the effect everywhere its peaks do and more, without the localization
+        # uncertainty or the selection.
+        if self._image_studies_:
+            table = table[~table["id"].isin(self._image_studies_)].copy()
         self._focus_table_ = table
 
         self._sample_sizes_ = (
@@ -1432,7 +1574,9 @@ class CBES(Estimator):
             else None
         )
 
-        fit, z_values = self._statistic(table, self._sample_sizes_, self._thresholds_)
+        fit, z_values = self._statistic(
+            table, self._sample_sizes_, self._thresholds_, self._image_studies_
+        )
 
         if self.null_method == "montecarlo":
             histogram, _ = self._compute_montecarlo_null(

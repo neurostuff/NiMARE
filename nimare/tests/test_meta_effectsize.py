@@ -557,3 +557,158 @@ def test_fit_chunk_ignores_studies_that_say_nothing_here():
         finite = np.isfinite(before)
         assert np.array_equal(finite, np.isfinite(after)), name
         assert np.allclose(before[finite], after[finite], rtol=1e-12), name
+
+
+# ------------------------------------------------------------- images alongside coordinates
+
+
+@pytest.fixture(scope="module")
+def image_studyset(tmp_path_factory):
+    """Ten studies supplying both g images and the peaks thresholded out of them."""
+    directory = tmp_path_factory.mktemp("cbes_images")
+    shape = (10, 10, 10)
+    affine = np.diag([4.0, 4.0, 4.0, 1.0])
+    affine[:3, 3] = -18.0
+
+    grid = np.indices(shape).astype(float)
+    centre = (np.array(shape) - 1) / 2.0
+    truth = 0.8 * np.exp(-sum((grid[i] - centre[i]) ** 2 for i in range(3)) / 8.0)
+
+    rng = np.random.default_rng(0)
+    nib.save(nib.Nifti1Image(np.ones(shape, np.int32), affine), directory / "mask.nii.gz")
+    studies = []
+    for k in range(10):
+        n_subjects = int(rng.integers(20, 40))
+        observed = truth + rng.normal(0, 1 / np.sqrt(n_subjects), shape)
+        nib.save(nib.Nifti1Image(observed.astype(np.float32), affine), directory / f"{k}_g.nii.gz")
+        nib.save(
+            nib.Nifti1Image(np.full(shape, 1.0 / n_subjects, np.float32), affine),
+            directory / f"{k}_var.nii.gz",
+        )
+        # One reported peak at the true centre, with the statistic implied by the image.
+        value = float(observed[tuple(int(c) for c in centre)])
+        bias = 1.0 - 3.0 / (4.0 * (n_subjects - 1) - 1)
+        from nimare.transforms import t_to_z
+
+        z = float(t_to_z(np.array([value / bias * np.sqrt(n_subjects)]), n_subjects - 1)[0])
+        studies.append(
+            {
+                "id": f"s{k}",
+                "name": f"s{k}",
+                "metadata": {"sample_sizes": [n_subjects]},
+                "analyses": [
+                    {
+                        "id": f"s{k}-1",
+                        "name": "1",
+                        "metadata": {"sample_sizes": [n_subjects]},
+                        "points": [
+                            {
+                                "space": "MNI",
+                                "coordinates": [0.0, 0.0, 0.0],
+                                "values": [{"kind": "Z", "value": z}],
+                            }
+                        ],
+                        "images": [
+                            {
+                                "url": str(directory / f"{k}_g.nii.gz"),
+                                "filename": f"{k}_g.nii.gz",
+                                "space": "MNI",
+                                "value_type": "g",
+                            },
+                            {
+                                "url": str(directory / f"{k}_var.nii.gz"),
+                                "filename": f"{k}_var.nii.gz",
+                                "space": "MNI",
+                                "value_type": "g_var",
+                            },
+                        ],
+                    }
+                ],
+            }
+        )
+
+    from nimare.studyset import Studyset
+
+    studyset = Studyset(
+        {"id": "img", "name": "img", "studies": studies},
+        target=None,
+        mask=str(directory / "mask.nii.gz"),
+    )
+    return studyset, truth
+
+
+def test_images_are_used_in_place_of_coordinates(image_studyset):
+    """An image supersedes that study's own peaks: it says more, with no selection."""
+    studyset, _ = image_studyset
+    estimator = CBES(fwhm=8.0, null_method="parametric", use_images=True)
+    estimator.fit(studyset)
+
+    assert len(estimator._image_studies_) == 10
+    # Every study had an image, so no coordinate survives into the focus table.
+    assert len(estimator._focus_table_) == 0
+
+
+def test_images_recover_the_truth_better_than_coordinates(image_studyset):
+    """The point of admitting images: they are unbiased where reported peaks are not."""
+    studyset, truth = image_studyset
+    truth_vector = studyset.masker.transform(
+        nib.Nifti1Image(truth.astype(np.float32), studyset.masker.mask_img.affine)
+    ).ravel()
+
+    from_images = (
+        CBES(fwhm=8.0, null_method="parametric", use_images=True)
+        .fit(studyset)
+        .get_map("g", return_type="array")
+        .ravel()
+    )
+    from_coords = (
+        CBES(fwhm=8.0, null_method="parametric", use_images=False)
+        .fit(studyset)
+        .get_map("g", return_type="array")
+        .ravel()
+    )
+    hot = truth_vector > 0.2
+    assert abs(from_images[hot].mean() - truth_vector[hot].mean()) < 0.15
+
+    # Compare only where both produced an estimate: a voxel no kernel reaches is reported as
+    # zero by the coordinate fit, which would drag its mean down for reasons unrelated to bias.
+    both = hot & (from_coords != 0) & (from_images != 0)
+    assert both.sum() > 10
+    # Reported peaks are local maxima, so they overstate the same effect.
+    assert from_coords[both].mean() > from_images[both].mean()
+
+
+def test_use_images_false_ignores_them(image_studyset):
+    studyset, _ = image_studyset
+    estimator = CBES(fwhm=8.0, null_method="parametric", use_images=False)
+    estimator.fit(studyset)
+    assert estimator._image_studies_ == {}
+    assert len(estimator._focus_table_) == 10
+
+
+def test_peak_bias_rescales_the_estimate_exactly(image_studyset):
+    """rho rescales g, its variance and the threshold together, so the fit scales with it.
+
+    That exactness is what makes rho calibratable: a single ratio of summaries recovers it.
+    """
+    studyset, _ = image_studyset
+    plain = (
+        CBES(fwhm=8.0, null_method="parametric", use_images=False)
+        .fit(studyset)
+        .get_map("g", return_type="array")
+        .ravel()
+    )
+    scaled = (
+        CBES(fwhm=8.0, null_method="parametric", use_images=False, peak_bias=0.4)
+        .fit(studyset)
+        .get_map("g", return_type="array")
+        .ravel()
+    )
+    covered = plain != 0
+    assert np.allclose(scaled[covered], 0.4 * plain[covered], rtol=1e-6)
+
+
+@pytest.mark.parametrize("bad", [0.0, -0.5, 1.5])
+def test_peak_bias_rejects_out_of_range_values(bad):
+    with pytest.raises(ValueError, match="peak_bias must be None or in"):
+        CBES(peak_bias=bad)

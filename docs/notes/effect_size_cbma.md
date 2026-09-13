@@ -344,7 +344,104 @@ compaction threshold below 0.05 (the working set does not shrink fast enough for
 and active-set shrinking on the *observed* fit (neutral at the default iteration budget — it
 earns its place on the null iterations, where fewer studies reach each voxel).
 
-## 10. Status and open questions
+## 10. Mixing images with coordinates, and the peak-height bias
+
+An image study is the limiting case of a coordinate study: it gives the effect at a voxel with
+no localization uncertainty and no reporting threshold. So it enters the same likelihood with
+kernel weight 1 everywhere and never contributes a censoring term — `use_images=True`, and a
+collection may mix the two freely. Nothing about the mixture or the EM changes.
+
+### How big is the peak-height bias really?
+
+Not the 2x reported in §7. That figure compared a reported peak to its *own study's*
+neighbourhood, which still contains that study's noise — and the noise is what put the peak
+there. Comparing instead against a **leave-one-out** pooling of the other 20 pain studies:
+
+| distance from reported peak | reported \|g\| | true \|g\| (leave-one-out) | ratio |
+|---|---|---|---|
+| 2 mm | 1.246 | 0.267 | 0.214 |
+| 8 mm | 1.216 | 0.241 | 0.198 |
+| 20 mm | 1.215 | 0.224 | 0.184 |
+
+A reported peak overstates the true local effect roughly **fivefold**. The selection model
+already removes about half of that, leaving the ~2x residual §7 measured against the reference.
+
+### The correction, and why the obvious calibration is wrong
+
+`peak_bias=rho` treats a reported statistic as measuring `g_true / rho` and rescales the effect
+by `rho`, its variance by `rho**2` and the study's reporting threshold by `rho` — a rescaling of
+the effect-size axis for coordinate studies, which leaves the censored likelihood coherent.
+Images are never rescaled. Because it is an exact rescaling, the fitted map scales *exactly*
+linearly in `rho`, which is what makes `rho` calibratable from a single ratio.
+
+Two calibrations that do **not** work:
+
+- **The raw peak-to-truth ratio (0.21).** It corrects twice: the selection model has already
+  removed part of the bias. Applying it drove the estimate to 0.18 against a reference of 0.41.
+- **A regression slope of image map on coordinate map (0.31).** Attenuated by the many voxels
+  where one study peaked and the images say nothing. It over-corrected to 0.61x.
+
+What works is the ratio of the summaries being compared, calibrated on studies that supply
+*both*: fit them from their images, fit the same studies from their coordinates, take the ratio.
+Split-half on the pain collection, applied to held-out studies:
+
+```
+rho = 0.479 +- 0.056       coordinate/image ratio: 1.96x before -> 0.94x after
+```
+
+### Does it make the estimator coherent?
+
+The test that matters is invariance: an estimator whose answer depends on how many studies
+happened to share images is incoherent, whatever its correlation with the truth. Sweeping the
+number of studies supplied as images, on the pain collection:
+
+| images used | uncorrected | `peak_bias=0.479` |
+|---|---|---|
+| 0 | 0.848 | 0.406 |
+| 5 | 0.540 | 0.404 |
+| 10 | 0.478 | 0.409 |
+| 21 | 0.447 | 0.447 |
+| **spread** | **0.401** | **0.045** |
+
+A ninefold reduction in provenance dependence, landing on the reference value of 0.412.
+Correlation still climbs with more images (0.78 to 0.96), as it should — images carry more
+information, they just no longer carry a *different answer*.
+
+### Validated against a known truth
+
+The generator in `nimare.generate` draws one value at the ground-truth location and thresholds
+it. That models the reporting threshold but never the *selection of a location*, so it cannot
+produce the peak-height bias and could not be used to test a correction for it. A random-field
+generator (`docs/notes/validate_cbes.py`) that reports genuine local maxima of a smooth field
+does, and there the truth is known exactly:
+
+| | mean g over the true blob | r with truth |
+|---|---|---|
+| true field | 0.227 | |
+| coordinates, uncorrected | 0.583 | 0.039 |
+| coordinates, `peak_bias` calibrated on held-out images | **0.191** | 0.039 |
+| images | 0.225 | 0.499 |
+
+The level is recovered. **The spatial pattern is not**: r = 0.04 against the truth in this
+regime, against 0.50 for images. With 20 studies reporting ~5 peaks each into a 27,000-voxel
+volume, most reported peaks are noise, and no rescaling can fix where they are. The pain
+collection is far kinder (2,725 peaks, r = 0.78) because real papers report many more foci.
+
+## 11. Where this fails: NeuroVault
+
+The same protocol on NiMARE's default 11-collection NeuroVault studyset does not work, and the
+reason is not subtle. Thresholding those images at p < .001 leaves **3 studies with any peak at
+all** (35 foci); relaxing to p < .05 reaches only 4 studies. Out-of-sample calibration on such a
+collection is degenerate — the splits repeat — and the corrected coordinate/image ratio was
+2.03x rather than the 0.94x seen on the pain data.
+
+`rho` is also not a transferable constant. In-sample it ranged from 0.62 to 0.27 across
+reporting thresholds on the same NeuroVault studies, against 0.479 on the pain collection. It
+depends on the threshold, the smoothness and the study sizes, so **it has to be calibrated on
+the collection being analysed**, which requires enough studies supplying images *and*
+coordinates. A default value would be worse than none.
+
+## 12. Status and open questions
 
 Implemented and working:
 
