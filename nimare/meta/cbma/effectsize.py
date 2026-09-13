@@ -202,11 +202,107 @@ def _stat_from_histogram(p_value, histogram):
     return float(reached[0] * _NULL_Z_STEP)
 
 
-def _max_statistic_maps(observed, null_maxima, sign):
+def _gpd_goodness_of_fit(excess, shape, scale, n_boot=200, seed=0):
+    """p-value for "these exceedances are generalized Pareto", by parametric bootstrap.
+
+    The parameters were estimated from the same data, so the textbook Cramer-von Mises null
+    distribution does not apply -- using it accepts fits it should reject, which is how a tail
+    approximation ends up anticonservative. Simulating from the fitted distribution and
+    refitting each replicate gives the right reference.
+    """
+    rng = np.random.default_rng(seed)
+    observed_stat = stats.cramervonmises(
+        excess, stats.genpareto(shape, loc=0.0, scale=scale).cdf
+    ).statistic
+    n = excess.size
+
+    worse = 0
+    for _ in range(n_boot):
+        sample = stats.genpareto.rvs(shape, loc=0.0, scale=scale, size=n, random_state=rng)
+        try:
+            boot_shape, _, boot_scale = stats.genpareto.fit(sample, floc=0.0)
+            if not np.isfinite(boot_shape) or boot_scale <= 0:
+                continue
+            statistic = stats.cramervonmises(
+                sample, stats.genpareto(boot_shape, loc=0.0, scale=boot_scale).cdf
+            ).statistic
+        except Exception:  # noqa: BLE001
+            continue
+        worse += statistic >= observed_stat
+    return (1 + worse) / (1 + n_boot)
+
+
+def _gpd_tail_p(observed, null_maxima, min_exceedances=30, alpha=0.05):
+    """Corrected p-values from a generalized Pareto fit to the tail of the null maxima.
+
+    A permutation p-value cannot go below ``1 / (1 + n_iters)``, so resolving a corrected p of
+    1e-4 needs ten thousand relocations however uninteresting the other 9999 are. Extreme value
+    theory says the exceedances of a high threshold converge to a generalized Pareto
+    distribution whatever the parent, so the tail can be *modelled* from a few hundred
+    permutations and evaluated beyond the last one. This is the tail approximation of Winkler
+    et al. (2016), which they recommend specifically for familywise error.
+
+    The threshold is chosen the way they choose it: start with the largest tenth of the null
+    maxima, test the fit, and if it is rejected drop the smallest exceedance and refit, until
+    the fit is acceptable or too few points remain. Falling back to the empirical tail when no
+    fit is accepted is what keeps this safe -- it can only ever refine a p-value it would
+    otherwise have quantized, never invent one on a tail that is not Pareto.
+
+    Returns ``None`` when no acceptable fit exists, leaving the caller on the empirical tail.
+    """
+    maxima = np.sort(np.asarray(null_maxima, dtype=float))
+    n_total = maxima.size
+    if n_total < 100:
+        return None  # too few to say anything about a tail
+
+    n_exceed = max(int(round(0.10 * n_total)), min_exceedances)
+    while n_exceed >= min_exceedances:
+        threshold = maxima[n_total - n_exceed - 1]
+        excess = maxima[n_total - n_exceed :] - threshold
+        if not np.all(np.isfinite(excess)) or excess.max() <= 0:
+            n_exceed -= max(1, n_exceed // 20)
+            continue
+        try:
+            shape, _, scale = stats.genpareto.fit(excess, floc=0.0)
+            if not np.isfinite(shape) or not np.isfinite(scale) or scale <= 0:
+                raise ValueError
+            fitted = stats.genpareto(shape, loc=0.0, scale=scale)
+            goodness = _gpd_goodness_of_fit(excess, shape, scale, seed=n_exceed)
+        except Exception:  # noqa: BLE001 -- any failure just means try a shorter tail
+            n_exceed -= max(1, n_exceed // 20)
+            continue
+
+        if goodness > alpha:
+            rate = n_exceed / n_total
+            observed = np.asarray(observed, dtype=float)
+            in_tail = observed > threshold
+            p_corrected = np.empty(observed.shape, dtype=float)
+            # Below the threshold the empirical tail is well resolved, so keep it there.
+            p_corrected[~in_tail] = (
+                1 + np.sum(maxima[None, :] >= observed[~in_tail][:, None], axis=1)
+            ) / (1 + n_total)
+            p_corrected[in_tail] = rate * fitted.sf(observed[in_tail] - threshold)
+            # Extrapolating a shape parameter fitted to a few hundred points far past the data
+            # is where this method goes wrong, and it goes wrong anticonservatively: measured
+            # against a 20000-permutation reference, an unbounded fit returned 1.9e-6 where the
+            # truth was 5e-4. Two orders of magnitude below the empirical floor is as far as
+            # the fit is trusted; past that the floor itself is reported, which is conservative.
+            floor = 1.0 / (100.0 * (1.0 + n_total))
+            return np.clip(p_corrected, floor, 1.0)
+        n_exceed -= max(1, n_exceed // 20)
+
+    return None
+
+
+def _max_statistic_maps(observed, null_maxima, sign, tail_approximation=False):
     """Corrected ``-log10(p)`` and signed z for a statistic against its maximum-statistic null."""
-    p_corrected = (1 + np.sum(null_maxima[None, :] >= observed[:, None], axis=1)) / (
-        1 + len(null_maxima)
-    )
+    p_corrected = None
+    if tail_approximation:
+        p_corrected = _gpd_tail_p(observed, null_maxima)
+    if p_corrected is None:
+        p_corrected = (1 + np.sum(null_maxima[None, :] >= observed[:, None], axis=1)) / (
+            1 + len(null_maxima)
+        )
     logp = _nlogp_to_logp_values(np.log(np.clip(p_corrected, 1e-300, None)))
     z_corrected = stats.norm.isf(np.clip(p_corrected, 1e-16, 1.0) / 2.0) * sign
     return (
@@ -637,7 +733,7 @@ class CBES(Estimator):
         NIDM pain collection, the leave-one-out pooled effect at a reported peak is 0.22-0.27
         where the reporting study says 1.22, giving a scale near 0.2. Calibrate it on your own
         data with the procedure in ``docs/notes/validate_cbes.py``.
-    peak_bias_scale : :obj:`float` or "auto", default=1.0
+    peak_bias_scale : :obj:`float`, "auto", "images", or "rates", default=1.0
         Overall scale of the ``"per-study"`` correction: the ``rho_k`` given to the median
         reporting study. Ignored unless ``peak_bias="per-study"``. Between-study differences in
         threshold and sample size are identified from the coordinates; this one number is not,
@@ -648,10 +744,19 @@ class CBES(Estimator):
         multiplicative constant, which is what a relative effect-size map is. Once images are
         in the same fit it stops being harmless, because images are on the true ``g`` scale and
         a mismatched constant makes the two kinds of study disagree about the same voxel.
-        ``"auto"`` then reads the constant off the studies that supplied images, by fitting
-        images and coordinates separately and taking the ratio over the voxels both cover;
-        expect it to need five or more image studies to be stable (two gives +-145%, five
-        +-17%, sixteen +-6%). Mixing images with the default 1.0 warns.
+        ``"auto"`` (equivalently ``"images"``) then reads the constant off the studies that
+        supplied images, by fitting images and coordinates separately and taking the ratio over
+        the voxels both cover; expect it to need five or more image studies to be stable (two
+        gives +-145%, five +-17%, sixteen +-6%). Mixing images with the default 1.0 warns.
+
+        ``"rates"`` fixes the scale from how *often* studies reported, needing no images at all
+        -- see :meth:`_calibrate_scale_from_rates`. **Experimental, opt-in only.** The
+        identification is established: fitting the effect size from reporting indicators alone
+        recovers a simulated truth of 0.50 as 0.496 and 0.80 as 0.810, using no peak heights.
+        The estimator built on it is not: pooling one global constant as a ratio of means is
+        dragged down by voxels holding no effect, where the rates correctly say zero but a
+        reported noise peak still converts to a positive ``g``. Until that is fixed ``"auto"``
+        will not select it.
     stat_column : :obj:`str` or None, optional
         Column of the coordinates table holding the reported statistic. When None, ``z_stat``
         is used if present, otherwise ``t_stat``.
@@ -866,13 +971,19 @@ class CBES(Estimator):
             )
         if null_method not in NULL_METHODS:
             raise ValueError(f"null_method must be one of {NULL_METHODS}; got {null_method!r}.")
-        if isinstance(peak_bias_scale, str) and peak_bias_scale != "auto":
+        if isinstance(peak_bias_scale, str) and peak_bias_scale not in (
+            "auto",
+            "rates",
+            "images",
+        ):
             raise ValueError(
-                f"peak_bias_scale must be 'auto' or a positive number; got {peak_bias_scale!r}."
+                "peak_bias_scale must be 'auto', 'rates', 'images', or a positive number; got "
+                f"{peak_bias_scale!r}."
             )
         if not isinstance(peak_bias_scale, str) and not float(peak_bias_scale) > 0:
             raise ValueError(
-                f"peak_bias_scale must be 'auto' or a positive number; got {peak_bias_scale!r}."
+                "peak_bias_scale must be 'auto', 'rates', 'images', or a positive number; got "
+                f"{peak_bias_scale!r}."
             )
         if isinstance(peak_bias, str):
             if peak_bias != "per-study":
@@ -1258,9 +1369,9 @@ class CBES(Estimator):
         """
         if self.peak_bias is None:
             return 1.0
-        if self.peak_bias_scale != "auto":
+        if self.peak_bias_scale not in ("auto", "rates", "images"):
             if self._image_studies_ and self.peak_bias_scale == 1.0:
-                LGR.warning(
+                LGR.warning(  # noqa: E501
                     "This fit mixes images with coordinates but leaves peak_bias_scale at "
                     "1.0, so the coordinate studies are on a relative scale while the images "
                     "are on the true Hedges' g scale. The two then disagree about the same "
@@ -1270,22 +1381,114 @@ class CBES(Estimator):
                 )
             return float(self.peak_bias_scale)
 
-        if not self._image_studies_:
-            LGR.warning(
-                "peak_bias_scale='auto' needs images to calibrate against, and this "
-                "collection supplies none. Falling back to 1.0, which leaves the effect-size "
-                "map correct up to one multiplicative constant."
-            )
-            return 1.0
-
         self._peak_bias_scale_ = 1.0
         provisional = self._peak_bias_factors(self._cutoffs_z_, sample_sizes, reporting_ids)
         scaled, thresholds = self._apply_peak_bias(
             table, self._cutoffs_z_, sample_sizes, provisional
         )
+
+        if self.peak_bias_scale == "rates":
+            # No images needed: the rates identify the scale on their own. Opt-in only --
+            # "auto" does not reach here, because the estimator built on that identification
+            # is not yet validated against a collection whose scale is known independently.
+            fit = self._pool(scaled, None)
+            return self._calibrate_scale_from_rates(fit, scaled, self._cutoffs_z_, sample_sizes)
+
+        if not self._image_studies_:
+            LGR.warning(
+                "peak_bias_scale needs images to calibrate against, and this collection "
+                "supplies none. Falling back to 1.0, which leaves the effect-size map correct "
+                "up to one multiplicative constant. peak_bias_scale='rates' fixes the scale "
+                "from the reporting rates instead and needs no images, but is experimental."
+            )
+            return 1.0
+
         return self._calibrate_peak_bias_scale(
             scaled, sample_sizes, thresholds, self._image_studies_
         )
+
+    def _calibrate_scale_from_rates(self, fit, table, cutoff_z, sample_sizes):
+        """Fix the overall scale from how *often* studies reported, using no images.
+
+        The peak heights carry almost no magnitude information in the usual underpowered
+        regime, but whether a study reported at all carries a great deal. Silence is a probit
+        in the effect size whose slope is fixed by the sample size:
+
+            P(study k silent at v) = Phi((c_k - g) / s_k) - Phi((-c_k - g) / s_k)
+
+        with ``c_k = u_k / sqrt(N_k)`` and ``s_k = sqrt(1 / N_k + tau^2)``. Neither is a free
+        parameter -- both are pinned by ``N_k`` -- so across studies that differ in sample size
+        the pattern of who reported traces out a dose-response curve and identifies ``g`` on an
+        absolute scale. In Heckman's terms the sample size is an exclusion restriction: it
+        moves selection without moving the effect. Fitting ``g`` from the reporting indicators
+        alone recovers a simulated truth of 0.50 as 0.496 and 0.80 as 0.810, with the heights
+        never used.
+
+        So the reported values do not have to supply the scale, and should not: they identify
+        ``g / rho``, while the rates identify ``g``. The ratio is ``rho``. This is the same
+        shape as :meth:`_calibrate_peak_bias_scale` with silence as the anchor instead of
+        images, which matters because most collections have no images at all.
+
+        Rescaling the censoring threshold and the null variance by ``rho`` -- as an earlier
+        version did -- is exactly what destroys this, because it floats two quantities that
+        ``N_k`` had pinned. They are deliberately left alone here.
+        """
+        active = np.flatnonzero(fit["covered"])
+        if not active.size:
+            return 1.0
+
+        study_ids = list(sample_sizes.index)
+        # True-scale cutoffs and dispersions: no rho anywhere, which is the whole point.
+        cutoff_g, _ = peak_stat_to_hedges_g(
+            cutoff_z.values, sample_sizes.values, stat_type="z", design=self.design
+        )
+        cutoff_g = np.abs(cutoff_g)[:, None]
+        null_var = null_effect_variance(sample_sizes.values, design=self.design)[:, None]
+
+        cov_col, cov_pos = self._coverage_entries(
+            table, study_ids, active, fit["n_voxels"], image_ids=()
+        )
+        reported = np.zeros((len(study_ids), active.size), dtype=bool)
+        reported[cov_pos, cov_col] = True
+        if not reported.any() or reported.all():
+            LGR.warning(
+                "Cannot calibrate the scale from reporting rates: every study is either "
+                "silent everywhere or reporting everywhere, so the rates carry no gradient. "
+                "Falling back to a relative map."
+            )
+            return 1.0
+
+        sigma = np.sqrt(null_var + fit["tau2"][active][None, :])
+        # One-dimensional and smooth in g, and only a single global ratio is wanted, so a grid
+        # is both sufficient and cheaper than iterating a Newton step per voxel.
+        grid = np.linspace(0.0, 3.0, 121)
+        best_ll = np.full(active.size, -np.inf)
+        g_rate = np.zeros(active.size)
+        for value in grid:
+            silent_p = np.clip(
+                ndtr((cutoff_g - value) / sigma) - ndtr((-cutoff_g - value) / sigma),
+                1e-12,
+                1 - 1e-12,
+            )
+            loglik = np.where(reported, np.log1p(-silent_p), np.log(silent_p)).sum(axis=0)
+            better = loglik > best_ll
+            best_ll[better] = loglik[better]
+            g_rate[better] = value
+
+        from_values = np.abs(fit["g"][active])
+        usable = from_values > 0
+        if not usable.any() or from_values[usable].mean() <= 0:
+            return 1.0
+
+        scale = float(np.abs(g_rate[usable]).mean() / from_values[usable].mean())
+        if not np.isfinite(scale) or scale <= 0:
+            LGR.warning("Reporting-rate calibration gave no usable scale; falling back to 1.0.")
+            return 1.0
+        LGR.info(
+            f"Calibrated peak_bias_scale = {scale:.3f} from reporting rates over "
+            f"{int(usable.sum())} voxels, using no images."
+        )
+        return min(scale, 1.0)
 
     def _calibrate_peak_bias_scale(self, table, sample_sizes, thresholds, image_studies):
         """Read the overall peak-to-field ratio off the studies that supplied images.
@@ -2297,6 +2500,7 @@ class CBES(Estimator):
         n_cores=None,
         seed=None,
         vfwe_only=False,
+        tail_approximation=True,
     ):
         """FWE correction from maximum-statistic nulls, at voxel and cluster level.
 
@@ -2320,6 +2524,15 @@ class CBES(Estimator):
             Cluster-forming threshold, as an uncorrected p-value.
         n_iters, n_cores, seed : optional
             Override the estimator's own settings for this correction.
+        tail_approximation : :obj:`bool`, default=True
+            Fit a generalized Pareto distribution to the tail of the maximum-statistic null
+            and read corrected p-values off it, rather than off the empirical tail alone. A
+            permutation p cannot fall below ``1 / (1 + n_iters)``, so without this a corrected
+            p of 1e-4 needs ten thousand relocations; extreme value theory says the exceedances
+            of a high threshold are generalized Pareto whatever the parent distribution, so the
+            tail can be modelled from far fewer \\citep{Winkler2016}. The fit is tested and
+            the tail shortened until it is acceptable; if no fit passes, the empirical tail is
+            used unchanged, so this can refine a quantized p-value but never manufacture one.
         vfwe_only : :obj:`bool`, default=False
             Only compute voxel-level correction.
 
@@ -2369,7 +2582,7 @@ class CBES(Estimator):
         sign = np.sign(result.maps["z"])
         maps = {}
         maps["logp_level-voxel"], maps["z_level-voxel"] = _max_statistic_maps(
-            observed, cached, sign
+            observed, cached, sign, tail_approximation=tail_approximation
         )
 
         if not vfwe_only:
@@ -2382,7 +2595,9 @@ class CBES(Estimator):
                 ("mass", masses, "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"),
             ):
                 null = self.null_distributions_[key]
-                logp, z_corrected = _max_statistic_maps(observed_measure[mask_bool], null, sign)
+                logp, z_corrected = _max_statistic_maps(
+                    observed_measure[mask_bool], null, sign, tail_approximation=tail_approximation
+                )
                 maps[f"logp_desc-{label}_level-cluster"] = logp
                 maps[f"z_desc-{label}_level-cluster"] = z_corrected
 
@@ -2398,6 +2613,14 @@ class CBES(Estimator):
                 f" Clusters were formed at an uncorrected p of {voxel_thresh}, which "
                 f"corresponds to |z| > {cluster_stat:.2f} under that null, and were compared "
                 "against the null distributions of maximum cluster size and mass."
+            )
+        if tail_approximation:
+            description += (
+                " Corrected p-values in the tail were obtained by fitting a generalized Pareto "
+                "distribution to the exceedances of the maximum-statistic null "
+                "\\citep{Winkler2016}, which resolves p-values below the "
+                f"{1 / (1 + n_iters):.2g} floor that {n_iters} relocations would otherwise "
+                "impose; where no acceptable fit was found the empirical tail was retained."
             )
         return maps, {}, description
 
