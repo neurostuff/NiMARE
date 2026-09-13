@@ -906,3 +906,118 @@ def test_per_study_peak_bias_equalizes_a_mixed_threshold_collection(small_mask):
     uncorrected, corrected = gap(None), gap("per-study")
     assert uncorrected > 1.2
     assert abs(corrected - 1.0) < abs(uncorrected - 1.0)
+
+
+@pytest.fixture(scope="module")
+def half_image_studyset(image_studyset):
+    """The same ten studies, but only the first five supply images.
+
+    A collection that actually mixes the two kinds of evidence, which is what makes the
+    overall scale identifiable: the coordinate studies have to be put on the images' scale.
+    """
+    from nimare.studyset import Studyset
+
+    studyset, truth = image_studyset
+    paths = {
+        str(row.id): (row.g, row.g_var)
+        for row in studyset.images.itertuples()
+        if row.g is not None
+    }
+    coords = studyset.coordinates
+    sizes = dict(zip([str(i) for i in studyset.ids], studyset.sample_sizes()))
+
+    studies = []
+    for position, (analysis_id, sub) in enumerate(coords.groupby("id")):
+        analysis_id = str(analysis_id)
+        study_id = analysis_id.split("-")[0]
+        meta = {"sample_sizes": [int(sizes[analysis_id])]}
+        analysis = {
+            "id": analysis_id,
+            "name": "1",
+            "metadata": meta,
+            "points": [
+                {
+                    "space": "MNI",
+                    "coordinates": [float(row.x), float(row.y), float(row.z)],
+                    "values": [{"kind": "Z", "value": float(row.z_stat)}],
+                }
+                for row in sub.itertuples()
+            ],
+        }
+        if position < 5 and analysis_id in paths:
+            g_path, var_path = paths[analysis_id]
+            analysis["images"] = [
+                {"url": str(g_path), "filename": "g", "space": "MNI", "value_type": "g"},
+                {
+                    "url": str(var_path),
+                    "filename": "g_var",
+                    "space": "MNI",
+                    "value_type": "g_var",
+                },
+            ]
+        studies.append(
+            {"id": study_id, "name": study_id, "metadata": meta, "analyses": [analysis]}
+        )
+
+    mixed = Studyset(
+        {"id": "half", "name": "half", "studies": studies},
+        target=None,
+        mask=studyset.masker.mask_img,
+    )
+    return mixed, truth
+
+
+def test_mixing_images_with_an_uncalibrated_scale_warns(half_image_studyset, caplog):
+    """The default scale is the wrong one as soon as images are in the fit, so say so."""
+    studyset, _ = half_image_studyset
+    estimator = CBES(
+        fwhm=8.0, null_method="parametric", peak_bias="per-study", peak_bias_scale=1.0
+    )
+    with caplog.at_level("WARNING"):
+        estimator.fit(studyset)
+    assert "peak_bias_scale" in caplog.text
+
+
+def test_auto_peak_bias_scale_puts_coordinates_on_the_images_scale(half_image_studyset):
+    """'auto' reads the constant off the images, and it has to be the ratio it corrects.
+
+    The fit is exactly linear in the scale, so the calibrated coordinate-only estimate must
+    land on the image-only one -- that is the whole content of the calibration.
+    """
+    studyset, _ = half_image_studyset
+    estimator = CBES(
+        fwhm=8.0, null_method="parametric", peak_bias="per-study", peak_bias_scale="auto"
+    )
+    estimator.fit(studyset)
+    scale = estimator._peak_bias_scale_
+
+    assert 0.0 < scale < 1.0  # a reported peak overstates the field around it
+
+    uncalibrated = CBES(
+        fwhm=8.0, null_method="parametric", peak_bias="per-study", peak_bias_scale=1.0
+    )
+    uncalibrated.fit(studyset)
+    assert np.allclose(
+        estimator._peak_bias_.values, scale * uncalibrated._peak_bias_.values, rtol=1e-8
+    )
+
+
+def test_auto_peak_bias_scale_falls_back_without_images(studyset, small_mask, caplog):
+    """Nothing to calibrate against is a warning and a relative map, not a failure."""
+    estimator = CBES(
+        fwhm=8.0,
+        null_method="parametric",
+        peak_bias="per-study",
+        peak_bias_scale="auto",
+        mask=small_mask,
+    )
+    with caplog.at_level("WARNING"):
+        estimator.fit(studyset)
+    assert "needs images" in caplog.text
+    assert estimator._peak_bias_scale_ == 1.0
+
+
+@pytest.mark.parametrize("bad", ["biggest", 0.0, -1.0])
+def test_peak_bias_scale_rejects_bad_values(bad):
+    with pytest.raises(ValueError, match="peak_bias_scale must be"):
+        CBES(peak_bias_scale=bad)

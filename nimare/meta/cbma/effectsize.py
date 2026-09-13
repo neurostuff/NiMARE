@@ -581,12 +581,21 @@ class CBES(Estimator):
         NIDM pain collection, the leave-one-out pooled effect at a reported peak is 0.22-0.27
         where the reporting study says 1.22, giving a scale near 0.2. Calibrate it on your own
         data with the procedure in ``docs/notes/validate_cbes.py``.
-    peak_bias_scale : :obj:`float`, default=1.0
+    peak_bias_scale : :obj:`float` or "auto", default=1.0
         Overall scale of the ``"per-study"`` correction: the ``rho_k`` given to the median
-        reporting study. Ignored unless ``peak_bias="per-study"``. Between-study differences
-        in threshold and sample size are identified from the coordinates; this one number is
-        not, and needs images (five or more) or an external calibration to pin down. Leaving it
-        at 1.0 gives a map that is right up to a single multiplicative constant.
+        reporting study. Ignored unless ``peak_bias="per-study"``. Between-study differences in
+        threshold and sample size are identified from the coordinates; this one number is not,
+        because rescaling every coordinate study by the same constant leaves the
+        coordinate-only likelihood unchanged.
+
+        For a coordinate-only fit that is harmless: 1.0 gives a map correct up to a single
+        multiplicative constant, which is what a relative effect-size map is. Once images are
+        in the same fit it stops being harmless, because images are on the true ``g`` scale and
+        a mismatched constant makes the two kinds of study disagree about the same voxel.
+        ``"auto"`` then reads the constant off the studies that supplied images, by fitting
+        images and coordinates separately and taking the ratio over the voxels both cover;
+        expect it to need five or more image studies to be stable (two gives +-145%, five
+        +-17%, sixteen +-6%). Mixing images with the default 1.0 warns.
     stat_column : :obj:`str` or None, optional
         Column of the coordinates table holding the reported statistic. When None, ``z_stat``
         is used if present, otherwise ``t_stat``.
@@ -775,6 +784,14 @@ class CBES(Estimator):
             )
         if null_method not in NULL_METHODS:
             raise ValueError(f"null_method must be one of {NULL_METHODS}; got {null_method!r}.")
+        if isinstance(peak_bias_scale, str) and peak_bias_scale != "auto":
+            raise ValueError(
+                f"peak_bias_scale must be 'auto' or a positive number; got {peak_bias_scale!r}."
+            )
+        if not isinstance(peak_bias_scale, str) and not float(peak_bias_scale) > 0:
+            raise ValueError(
+                f"peak_bias_scale must be 'auto' or a positive number; got {peak_bias_scale!r}."
+            )
         if isinstance(peak_bias, str):
             if peak_bias != "per-study":
                 raise ValueError(
@@ -806,7 +823,9 @@ class CBES(Estimator):
         self.fwhm = fwhm
         self.use_images = use_images
         self.peak_bias = peak_bias
-        self.peak_bias_scale = float(peak_bias_scale)
+        self.peak_bias_scale = (
+            peak_bias_scale if isinstance(peak_bias_scale, str) else float(peak_bias_scale)
+        )
         self.stat_column = stat_column
         self.design = design
         self.tau2_method = tau2_method
@@ -1124,6 +1143,8 @@ class CBES(Estimator):
         if not isinstance(self.peak_bias, str):
             return pd.Series(np.full(len(index), float(self.peak_bias)), index=index)
 
+        scale = float(getattr(self, "_peak_bias_scale_", 1.0))
+
         null_g = np.array(
             [
                 null_peak_mean_g(cutoff, size, design=self.design)
@@ -1141,9 +1162,94 @@ class CBES(Estimator):
         anchor = float(np.median(finite)) if finite.size else 1.0
 
         with np.errstate(divide="ignore", invalid="ignore"):
-            rho = self.peak_bias_scale * anchor / null_g
-        rho = np.where(np.isfinite(rho) & (rho > 0), rho, self.peak_bias_scale)
+            rho = scale * anchor / null_g
+        rho = np.where(np.isfinite(rho) & (rho > 0), rho, scale)
         return pd.Series(rho, index=index)
+
+    def _resolve_peak_bias_scale(self, table, sample_sizes, reporting_ids):
+        """Settle ``peak_bias_scale`` before it is used, calibrating it if asked and able.
+
+        Calibration needs a provisional fit, which needs a ``rho``, so the scale is resolved
+        at 1.0 first and the answer applied afterwards. That is exact rather than iterative:
+        the fit is linear in the scale, so a fit at 1.0 times the calibrated scale *is* the
+        fit at the calibrated scale.
+        """
+        if self.peak_bias is None:
+            return 1.0
+        if self.peak_bias_scale != "auto":
+            if self._image_studies_ and self.peak_bias_scale == 1.0:
+                LGR.warning(
+                    "This fit mixes images with coordinates but leaves peak_bias_scale at "
+                    "1.0, so the coordinate studies are on a relative scale while the images "
+                    "are on the true Hedges' g scale. The two then disagree about the same "
+                    "voxel -- by a factor of about two on the NIDM pain images -- and the "
+                    "pooled value depends on how many studies of each kind the collection "
+                    "holds. Use peak_bias_scale='auto' to read the constant off the images."
+                )
+            return float(self.peak_bias_scale)
+
+        if not self._image_studies_:
+            LGR.warning(
+                "peak_bias_scale='auto' needs images to calibrate against, and this "
+                "collection supplies none. Falling back to 1.0, which leaves the effect-size "
+                "map correct up to one multiplicative constant."
+            )
+            return 1.0
+
+        self._peak_bias_scale_ = 1.0
+        provisional = self._peak_bias_factors(self._cutoffs_z_, sample_sizes, reporting_ids)
+        scaled, thresholds = self._apply_peak_bias(
+            table, self._cutoffs_z_, sample_sizes, provisional
+        )
+        return self._calibrate_peak_bias_scale(
+            scaled, sample_sizes, thresholds, self._image_studies_
+        )
+
+    def _calibrate_peak_bias_scale(self, table, sample_sizes, thresholds, image_studies):
+        """Read the overall peak-to-field ratio off the studies that supplied images.
+
+        Between-study differences in the peak-height bias are identified from the coordinates
+        alone (:meth:`_peak_bias_factors`), but the one common scale is not: rescaling every
+        coordinate study by the same constant leaves the coordinate-only likelihood unchanged.
+        That is harmless for a coordinate-only map, which is then correct up to a constant, and
+        *not* harmless once images are in the same fit -- images sit on the true ``g`` scale, so
+        a mismatched constant makes the two kinds of study disagree about the same voxel and
+        the pooled value depends on how many of each the collection happens to hold. On the
+        NIDM pain images that disagreement is a factor of 2.05.
+
+        So when images are present the constant is no longer free, and they are what fixes it:
+        fit the images alone and the coordinates alone, and take the ratio of the two over the
+        voxels both cover. The fit is exactly linear in the scale, so a ratio of summaries
+        recovers it -- a regression slope would be attenuated by the many voxels where a study
+        peaked and the images say nothing.
+        """
+        coordinate_only = self._statistic(table, sample_sizes, thresholds, image_studies=None)[0]
+        image_only = self._statistic(
+            table.iloc[:0], sample_sizes, thresholds, image_studies=image_studies
+        )[0]
+
+        both = (
+            coordinate_only["covered"]
+            & image_only["covered"]
+            & np.isfinite(coordinate_only["g"])
+            & np.isfinite(image_only["g"])
+        )
+        from_coordinates = np.abs(coordinate_only["g"][both])
+        from_images = np.abs(image_only["g"][both])
+        if not both.any() or from_coordinates.mean() <= 0:
+            LGR.warning(
+                "Cannot calibrate peak_bias_scale: the image studies and the coordinate "
+                "studies share no voxel. Falling back to 1.0, which leaves the two kinds of "
+                "study on different scales."
+            )
+            return 1.0
+
+        scale = float(from_images.mean() / from_coordinates.mean())
+        LGR.info(
+            f"Calibrated peak_bias_scale = {scale:.3f} from {int(both.sum())} voxels covered "
+            f"by both the {len(image_studies)} image studies and the coordinates."
+        )
+        return scale
 
     def _apply_peak_bias(self, table, cutoff_z, sample_sizes, peak_bias):
         """Rescale reported effect sizes by ``rho_k``, and put the cutoffs on the g scale.
@@ -1904,9 +2010,10 @@ class CBES(Estimator):
         if self.selection_model != "none" or self.peak_bias is not None:
             roster = self._all_sample_sizes(dataset)
             self._cutoffs_z_ = self._study_cutoffs_z(table, roster)
-            self._peak_bias_ = self._peak_bias_factors(
-                self._cutoffs_z_, roster, table["id"].unique() if len(table) else []
-            )
+            reporting_ids = table["id"].unique() if len(table) else []
+
+            self._peak_bias_scale_ = self._resolve_peak_bias_scale(table, roster, reporting_ids)
+            self._peak_bias_ = self._peak_bias_factors(self._cutoffs_z_, roster, reporting_ids)
             table, thresholds = self._apply_peak_bias(
                 table, self._cutoffs_z_, roster, self._peak_bias_
             )
