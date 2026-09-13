@@ -508,6 +508,11 @@ because nothing on hand could demonstrate it working.
 
 ### How many studies with images does calibrating `peak_bias` need?
 
+Superseded in part by §19, which measures the end-to-end answer rather than the
+calibration constant alone: five images out of twenty-one are enough to recover the
+full-image map at r = 0.91 with a magnitude ratio of 0.98.
+
+
 Because the fitted map scales exactly linearly in `rho`, the relative sampling error of `rho`
 *is* the relative error of the reported effect sizes. Twelve independent draws per point, on the
 pain collection:
@@ -835,6 +840,67 @@ next thing for anyone reading section 15 to try, and the reason it fails is not 
 is wrong -- it is that the model needs a smoothness that coordinates do not carry and that is
 not constant over a brain even when images do carry it.
 
+## 19. Mixed image and coordinate weighting: the under-weighting is the estimator being right
+
+An image study enters at weight 1 at every voxel; a coordinate study enters at the kernel weight
+`w(d)`, and precision is `w / var` for both. So a coordinate's effective variance is `var / w(d)`
+against an image's `var`, and the whole mixed-weighting question is whether `1 / w(d)` is the
+right variance inflation.
+
+Measured on the 21 pain studies -- both kinds scored on the *same* voxels, against the same
+leave-one-out truth, with `rho` applied to the value and `rho^2` to the variance as
+`_apply_peak_bias` does -- it is not:
+
+| d (mm) | w(d) | claimed | actual | c ratio | image ratio | mis-weight |
+|---|---|---|---|---|---|---|
+| 0-2 | 1.000 | 0.0899 | 0.0627 | 0.698 | 1.047 | 0.67 |
+| 4-6 | 0.529 | 0.1418 | 0.0647 | 0.457 | 1.131 | 0.40 |
+| 8-10 | 0.116 | 0.6171 | 0.0731 | 0.119 | 1.153 | 0.10 |
+| 10-13 | 0.029 | 3.0996 | 0.0823 | 0.027 | 1.156 | 0.02 |
+
+Images land at 1.05-1.16, which is the control that makes the rest believable: if the truth or
+the `tau^2` were wrong, images would be miscalibrated too. Coordinates are near-correct at the
+peak and fall away as `1/w`, because their actual error is nearly flat (0.063 to 0.082 over
+13 mm) while the claimed variance grows 34x. Overall they get 0.035x the weight the criterion
+says they earn.
+
+**And correcting that makes the estimator worse.** Giving CBES the real images for 5 of the 21
+studies and coordinates for the other 16, scored against the truth built from all 21:
+
+| configuration | r all | r top | magnitude |
+|---|---|---|---|
+| 5 images alone | 0.756 | 0.756 | 0.76 |
+| + coordinates, weight x1 | **0.896** | **0.908** | **0.98** |
+| + coordinates, weight x5 | 0.849 | 0.858 | 1.45 |
+| + coordinates, weight x29 | 0.790 | 0.802 | 2.05 |
+
+(All 21 images give 0.995 / 0.993 / 1.03, so the harness has the ceiling it should.)
+
+Up-weighting degrades every measure monotonically, and drags the magnitude from 0.98 back to
+2.05 -- the coordinate-only bias of §15, leaking into a pool that had been protected from it.
+
+The diagnostic asked the wrong question. It compares *variance* against claimed variance, having
+calibrated `rho` against the truth first, so it measures residual scatter with the bias removed.
+A real fit has no such calibration, and the coordinates carry the full 2x inflation. Weight
+controls how much of an input's **bias** reaches the pooled estimate, not only how efficiently
+its noise is averaged, and a low-variance biased input is exactly the thing a variance criterion
+will say is under-weighted while it should be held down. The 0.035x is the estimator correctly
+distrusting an input it cannot de-bias.
+
+So there is nothing to fix here, and two things worth stating in the documentation instead:
+mixing images with coordinates is *safe* -- the coordinate bias does not contaminate the
+result -- and it is worth doing, because **five images out of twenty-one recover the full-image
+answer to r = 0.91 and a magnitude ratio of 0.98**, against 0.76 for those five images alone.
+That is the practical answer to "how many images does this need": a handful, not most of them.
+
+A related negative: reshaping the distance profile with `w -> w**alpha` changes nothing that
+matters. On simulation with a known `g = 0.6`, recovery at the focus is 0.707, 0.706, 0.706 for
+alpha = 1, 0.5, 0.25, and the null rate is 0.040/0.0012 against 0.041/0.0015 -- flat. The
+badly-weighted contributions are the far ones, which carry little weight either way. Alpha does
+lift the whole-map correlation on the pain data (0.767 to 0.797), but a flatter kernel produces a
+smoother map and the reference is smooth, so that gain is not separable from blur. The default
+stays at `alpha = 1`.
+
 ## 14. Status and open questions
 
 The option surface, after the cuts in §18 and the ones before it:
@@ -887,9 +953,11 @@ Known gaps, roughly in priority order:
    because it confounds the shape of the reference with its scale. §17 traces this to a metric
    with a collapsing denominator; the calibration was fixed to use a top-quartile paired median,
    but the end-to-end behaviour has not been re-validated since.
-3. **Mixed image + coordinate weighting is unresolved.** Coordinates come out under-weighted
-   relative to images by roughly 43x against their actual squared error. The direction of the
-   combined estimate is sound; its magnitude should be read as an upper bound.
+3. **Mixed image + coordinate weighting is settled, and needed no change** (§19). Coordinates
+   look 29x under-weighted against a variance criterion, but correcting that degrades every
+   measure: the weight is holding their bias out of the pool, which a variance criterion cannot
+   see. Mixing is safe and worth doing -- five images out of twenty-one recover the full-image
+   answer to r = 0.91 and a magnitude ratio of 0.98.
 4. **`π` is weakly identified.** It is identified only through the *count* of reporting studies
    given `µ`; a prior on `π`, or borrowing strength spatially, should sharpen it.
 5. **"Silent" assumes whole-brain coverage.** An ROI study that never examined a voxel is not
