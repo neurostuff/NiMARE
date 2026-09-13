@@ -571,9 +571,23 @@ class CBES(Estimator):
             subjects it had*, which is the part that varies across a heterogeneous collection
             and the part coordinates can identify on their own. A study that reported at
             z > 4.3 with n = 12 is then discounted harder than one that reported at z > 2.3
-            with n = 40, as it should be. What it cannot fix is the common scale: with
-            ``peak_bias_scale=1.0`` the map is *relative*, correct in shape and in the
-            comparison between studies, still inflated overall.
+            with n = 40, as it should be.
+
+            What it cannot fix is the common scale, which no coordinate-only model can:
+            rescaling ``g``, its variance and the censoring threshold together leaves the
+            likelihood unchanged, so the constant is exactly non-identified. With
+            ``peak_bias_scale=1.0`` the ``g`` and ``se`` maps are therefore readable only up
+            to that constant -- on the NIDM pain collection they run about 2.65x high. It is a
+            limit of the data rather than of the model: the deconvolution that would identify
+            the scale needs peak heights that carry signal, and in the usual underpowered
+            regime they do not (see :func:`peak_information`).
+
+            This costs less than it sounds, because the constant divides out of everything
+            except the magnitude. ``z``, the p-values and every corrected map are unchanged by
+            it, since ``z = g / se`` scales top and bottom alike; so is ``prevalence``, which
+            is a probability and cancels from the mixture responsibilities. An uncalibrated
+            fit still gives valid inference and a valid prevalence map, with ``g`` read as a
+            relative quantity.
         ``None``
             No correction, which overstates the effect roughly fivefold.
 

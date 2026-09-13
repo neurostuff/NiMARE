@@ -1021,3 +1021,49 @@ def test_auto_peak_bias_scale_falls_back_without_images(studyset, small_mask, ca
 def test_peak_bias_scale_rejects_bad_values(bad):
     with pytest.raises(ValueError, match="peak_bias_scale must be"):
         CBES(peak_bias_scale=bad)
+
+
+def test_only_the_magnitude_depends_on_the_uncalibrated_scale(small_mask):
+    """What "relative map" costs, and what it does not.
+
+    The common scale is exactly non-identified from coordinates: rescaling g, its variance and
+    the censoring threshold together leaves the likelihood unchanged. So ``g`` and ``se`` move
+    with it and are readable only up to a constant -- but ``z = g/se`` divides it out, and the
+    prevalence is a probability that cancels from the mixture responsibilities. Inference and
+    prevalence are therefore on an absolute scale even when the magnitude is not, which is what
+    makes an uncalibrated coordinate-only fit worth reporting at all.
+    """
+    studyset = create_effect_size_coordinate_studyset(
+        [TRUTH],
+        effect_sizes=0.7,
+        n_studies=30,
+        sample_size=25,
+        threshold_z=[2.3263, 3.2905, 4.2649],
+        seed=5,
+        n_noise_foci=1,
+        noise_extent=30.0,
+    )
+
+    maps = {}
+    for scale in (1.0, 0.4):
+        result = CBES(
+            fwhm=8.0,
+            mask=small_mask,
+            null_method="parametric",
+            threshold="study-min-corrected",
+            peak_bias="per-study",
+            peak_bias_scale=scale,
+        ).fit(studyset)
+        maps[scale] = {
+            name: result.get_map(name, return_type="array").ravel()
+            for name in ("g", "se", "z", "p", "prevalence", "g_marginal")
+        }
+
+    full, scaled = maps[1.0], maps[0.4]
+    covered = full["g"] != 0
+    assert covered.any()
+
+    for name in ("g", "se", "g_marginal"):
+        assert np.allclose(scaled[name][covered], 0.4 * full[name][covered], rtol=1e-3)
+    for name in ("z", "p", "prevalence"):
+        assert np.allclose(scaled[name][covered], full[name][covered], atol=1e-3)
