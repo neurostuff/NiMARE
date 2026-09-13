@@ -145,6 +145,10 @@ _EM_COMPACTION_FRACTION = 0.05
 #: Minimum relocations used to fix the cluster-forming threshold before the main null loop.
 _NULL_PILOT_ITERS = 20
 
+#: Excess of the mean reported peak height over the null peak height, in z units, below which
+#: the reported magnitudes are treated as carrying no usable effect-size information.
+_MIN_PEAK_EXCESS_Z = 0.25
+
 #: Faces-only connectivity for cluster labelling, matching Nilearn and the other CBMA
 #: estimators.
 _CLUSTER_CONNECTIVITY = ndimage.generate_binary_structure(rank=3, connectivity=1)
@@ -351,6 +355,44 @@ def peak_stat_to_hedges_g(stat, sample_size, stat_type="z", design="one-sample")
         var_g = (bias**2) * ((n1 + n2) / (n1 * n2) + d**2 / (2.0 * (n1 + n2)))
 
     return g, np.maximum(var_g, _MIN_VARIANCE)
+
+
+def null_peak_overshoot(threshold_z):
+    """Mean height of a suprathreshold local maximum of a smooth null field, in z units.
+
+    For a smooth 3D Gaussian field the survival function of a peak above ``u`` is
+    :math:`S(z) = (z^2-1)e^{-z^2/2} / [(u^2-1)e^{-u^2/2}]`
+    :footcite:p:`chumbley2009false`, from which the mean follows by quadrature. A peak drawn
+    from pure noise sits about ``1/u`` above the threshold -- roughly 0.3 z units at the usual
+    p < .001.
+    """
+    u = float(threshold_z)
+    if u <= 1.9:  # the high-threshold form is not positive below sqrt(3)
+        return u + 1.0 / max(u, 1e-6)
+    grid = np.linspace(u, u + 12.0, 4000)
+    density = grid * (grid**2 - 3.0) * np.exp(-0.5 * grid**2)
+    density = np.clip(density, 0.0, None)
+    mass = np.trapezoid(density, grid)
+    return float(np.trapezoid(grid * density, grid) / mass) if mass > 0 else u
+
+
+def peak_information(stats_z, threshold_z):
+    """How much effect-size information the reported peak heights actually carry.
+
+    Returns ``(observed_mean, null_mean, excess)`` on the z scale. ``excess`` is what is left
+    once the height a pure-noise peak would have reached is accounted for, and it is the only
+    part of a reported peak height that speaks to the size of the effect.
+
+    On real collections this is often indistinguishable from zero. Measured on the 21 NIDM
+    pain studies: reported peaks average z = 3.639 against a null-peak expectation of 3.63, an
+    excess of +0.009, where the effect actually present at those locations would have produced
+    +1.10. When that happens the reported *magnitudes* are uninformative -- they are a function
+    of the reporting threshold and the sample size, not of the effect -- and no correction
+    computed from them can recover the effect size, because the information is not there.
+    """
+    observed = float(np.mean(np.abs(np.asarray(stats_z, dtype=float))))
+    expected = null_peak_overshoot(threshold_z)
+    return observed, expected, observed - expected
 
 
 def null_effect_variance(sample_size, design="one-sample"):
@@ -857,6 +899,7 @@ class CBES(Estimator):
             cutoff_z = np.full(len(sample_sizes), float(value))
 
         cutoff_z = np.where(np.isfinite(cutoff_z), cutoff_z, DEFAULT_REPORTING_THRESHOLD_Z)
+        self._check_peak_information(reported_z, cutoff_z)
         threshold_g, _ = peak_stat_to_hedges_g(
             cutoff_z, sample_sizes.values, stat_type="z", design=self.design
         )
@@ -864,6 +907,29 @@ class CBES(Estimator):
             # The threshold lives on the same axis as the reported values, so it rescales too.
             threshold_g = threshold_g * float(self.peak_bias)
         return pd.Series(threshold_g, index=sample_sizes.index)
+
+    def _check_peak_information(self, reported_z, cutoff_z):
+        """Warn when the reported peak heights say nothing about the size of the effect."""
+        if not len(reported_z):
+            return
+        threshold = float(np.nanmedian(cutoff_z))
+        observed, expected, excess = peak_information(reported_z, threshold)
+        self.peak_information_ = {
+            "observed_mean_z": observed,
+            "null_peak_mean_z": expected,
+            "excess_z": excess,
+        }
+        if excess < _MIN_PEAK_EXCESS_Z:
+            LGR.warning(
+                f"Reported peak heights average z = {observed:.3f} against {expected:.3f} for "
+                "peaks of pure noise at the same threshold, an excess of "
+                f"{excess:+.3f}. Their magnitudes are therefore close to uninformative about "
+                "the effect size -- they are largely a function of the reporting threshold and "
+                "the sample size. The estimated scale will be far too large and no correction "
+                "computed from the peak values can repair it; see `peak_bias`, which needs "
+                "images to calibrate. The spatial pattern is still driven by where the peaks "
+                "are, which is unaffected."
+            )
 
     # ------------------------------------------------------- spatial machinery
 

@@ -712,3 +712,45 @@ def test_peak_bias_rescales_the_estimate_exactly(image_studyset):
 def test_peak_bias_rejects_out_of_range_values(bad):
     with pytest.raises(ValueError, match="peak_bias must be None or in"):
         CBES(peak_bias=bad)
+
+
+def test_null_peak_overshoot_matches_the_rft_expectation():
+    """A pure-noise peak sits about 1/u above the threshold."""
+    from nimare.meta.cbma.effectsize import null_peak_overshoot
+
+    for u in (2.5, 3.2905, 4.0):
+        mean_height = null_peak_overshoot(u)
+        assert u < mean_height < u + 1.0
+        assert abs((mean_height - u) - 1.0 / u) < 0.15
+
+
+def test_peak_information_separates_signal_from_the_null_floor():
+    from nimare.meta.cbma.effectsize import peak_information
+
+    u = 3.2905
+    # Heights indistinguishable from null peaks carry no effect-size information.
+    observed, expected, excess = peak_information(np.full(500, 3.63), u)
+    assert abs(excess) < 0.1
+    # Heights well above the null floor do.
+    _, _, excess_signal = peak_information(np.full(500, 5.5), u)
+    assert excess_signal > 1.5
+
+
+def test_uninformative_peaks_are_flagged(small_mask, caplog):
+    """The estimator says so when the reported magnitudes cannot identify the effect size."""
+    studyset = create_effect_size_coordinate_studyset(
+        [TRUTH],
+        effect_sizes=0.0,
+        n_studies=20,
+        sample_size=(20, 40),
+        prevalence=0.0,
+        n_noise_foci=6,
+        noise_extent=30.0,
+        seed=5,
+    )
+    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="parametric")
+    with caplog.at_level("WARNING"):
+        estimator.fit(studyset)
+
+    assert "uninformative" in caplog.text or "close to uninformative" in caplog.text
+    assert estimator.peak_information_["excess_z"] < 0.25

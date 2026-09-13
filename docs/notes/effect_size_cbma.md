@@ -441,7 +441,68 @@ depends on the threshold, the smoothness and the study sizes, so **it has to be 
 the collection being analysed**, which requires enough studies supplying images *and*
 coordinates. A default value would be worse than none.
 
-## 12. Status and open questions
+## 12. The peak-height correction that needs no images, and why it cannot work
+
+The obvious objection to §10 is that calibrating `peak_bias` needs images, and if you had
+images you would not be doing coordinate-based meta-analysis. The principled alternative is to
+get the correction from random field theory instead: a reported peak is a local maximum of a
+smooth field, and RFT gives its height distribution, so the true effect could in principle be
+deconvolved from the reported statistic alone.
+
+That was implemented and it does not work. The reason is worth recording, because it is a fact
+about the data rather than about the implementation.
+
+**The machinery is sound.** A mixture of null peaks (RFT density) and signal peaks recovers its
+own parameters on synthetic data (`pi0` 0.70/0.50/0.90 recovered as 0.71/0.49/0.90). The null
+density checks out against simulated pure-noise fields to within +0.17 z units at fMRI-like
+smoothness. Modelling a signal peak correctly — as *noncentrality plus peak overshoot*, since a
+local maximum of a smooth field sits above its mean even with no selection, not as
+`N(lambda, 1)` — took the simulated bias from 0.81 to 0.21 against a truth of 0.07.
+
+**But there is nothing to deconvolve.** On the 21 NIDM pain studies:
+
+| | z units |
+|---|---|
+| mean reported peak height | 3.639 |
+| mean height of a *pure noise* peak at the same threshold | 3.625 |
+| **excess** | **+0.009** |
+| what the effect actually present at those locations would give | +1.104 |
+
+The reported peaks are statistically indistinguishable from peaks of pure noise. With N ~ 16 and
+a true effect near 0.27, no voxel has an appreciable chance of clearing z = 3.29 on signal, so
+the peaks that get reported are wherever the noise happened to be largest, and their heights are
+set by the threshold, not by the effect.
+
+**An ablation confirms it.** Replacing every reported statistic with a constant, or with a draw
+from the null peak distribution, barely moves the result:
+
+| coordinate statistics | r with image truth |
+|---|---|
+| reported, as published | 0.780 |
+| all set to a constant | 0.754 |
+| redrawn from the null | 0.755 |
+| ALE (uses no statistics) | 0.198 |
+
+The reported magnitudes are worth 0.026 of correlation. What carries the signal is *where* the
+peaks are, and the sample sizes attached to them.
+
+**So the honest conclusion is a negative one.** No correction computed from peak values can
+recover the effect size in this regime, because the values do not contain it. The
+image-calibrated `peak_bias` of §10 works precisely *because* it does not try: the bias is a
+near-deterministic function of the reporting threshold and the sample size, so a single scalar
+removes it. That also explains why it is not transferable — it is a property of the collection's
+thresholds and study sizes, not of the brain.
+
+`peak_information()` reports this for any collection, using nothing but the reported statistics
+and the threshold, and :class:`CBES` warns on `fit` when the excess falls below 0.25 z units.
+When it does, read the effect-size map as a relative one: its spatial pattern is still driven by
+where the peaks are, which this finding does not touch.
+
+For collections of well-powered studies the excess would be substantial and the deconvolution
+would have something to work on. The machinery is in `docs/notes/` rather than the estimator
+because nothing on hand could demonstrate it working.
+
+## 13. Status and open questions
 
 Implemented and working:
 
