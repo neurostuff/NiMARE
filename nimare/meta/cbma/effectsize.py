@@ -1536,6 +1536,26 @@ class CBES(Estimator):
           by ``c`` per observation, so ``sum(w) * log(c)`` is added back. Without it the
           likelihood is maximized by ``c -> 0``, which merely squeezes the data onto a point
           and fits it perfectly.
+
+        .. warning::
+            Measured against an image calibration of 0.380 on the NIDM pain collection, this
+            returns the bottom of its search range. The reason is structural rather than a bug
+            in the search, and it is worth stating because it also explains why every
+            ratio-based attempt failed:
+
+            The value term here is *exactly* scale-invariant. Rescaling the reported values
+            rescales the re-estimated ``tau^2`` with them, so the log-density gains ``-log c``
+            and the Jacobian adds back ``+log c``; they cancel. The only term left that moves
+            with the scale is the censoring one, and since most study-voxel pairs are silent
+            that term is maximized by an effect of zero. Nothing opposes it, because the
+            reported peak heights carry no scale information in this regime.
+
+            The information that *does* identify the scale is the reporting **rate**, and it
+            lives in the indicator likelihood ``prod (1 - P_silent)`` over reporters, not in the
+            value density this likelihood uses for them. Recovering it needs the rate treated as
+            a moment condition -- choose the scale whose predicted reporting rate matches the
+            observed one -- rather than profiling a likelihood that cannot see it. Until then
+            this returns 1.0 and warns.
         """
         grid = np.geomspace(0.05, 1.5, 24)
         best_scale, best_loglik = 1.0, -np.inf
@@ -1578,6 +1598,19 @@ class CBES(Estimator):
             loglik += jacobian
             if np.isfinite(loglik) and loglik > best_loglik:
                 best_loglik, best_scale = loglik, float(candidate)
+
+        if best_scale <= grid[0] * 1.001 or best_scale >= grid[-1] * 0.999:
+            LGR.warning(
+                f"The scale profile has no interior maximum -- it ran to {best_scale:.3f}, an "
+                "end of the search range. That is expected: the value term of a censored "
+                "likelihood is exactly scale-invariant (rescaling the data rescales tau-squared "
+                "with it, and the Jacobian cancels what is left), so the only term that moves "
+                "with the scale is the censoring one, which is maximized by an effect of zero "
+                "wherever most studies are silent. Reported peak heights carry no scale "
+                "information to oppose it. Falling back to a relative map; use images, or a "
+                "scale you trust, to fix the magnitude."
+            )
+            return 1.0
 
         LGR.info(f"Profile-likelihood peak_bias_scale = {best_scale:.3f}")
         return best_scale
