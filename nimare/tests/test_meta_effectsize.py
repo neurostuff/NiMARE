@@ -1233,3 +1233,45 @@ def test_rft_censoring_reaches_rates_the_pointwise_form_cannot():
         grid, np.full(20, cutoff_z), np.full(20, np.sqrt(sample_size)), resels
     )["prob"]
     assert np.all(np.diff(probs) <= 1e-12)
+
+
+def test_rft_quadrature_softens_silence_and_keeps_exact_derivatives():
+    """A study's own effect is drawn around mu, not equal to it, and that shape matters.
+
+    Treating the noncentrality as exactly ``mu * sqrt(N)`` makes P(silent) collapse so steeply
+    that silence becomes near-proof of a null effect, which drives the fitted effect to zero.
+    The pointwise term this replaced carried the spread through ``sqrt(1/N + tau^2)``; dropping
+    it was a regression introduced while fixing a different error. Integrating it back has to
+    soften the curve without costing the exactness the Newton step depends on.
+    """
+    from nimare.meta.cbma.effectsize import (
+        _coverage_resels,
+        _ec_peak,
+        _rft_censoring_terms,
+    )
+
+    resels = _coverage_resels(20.0, 12.0)
+    peak = _ec_peak(resels)
+    grid = np.linspace(0.0, 1.0, 15)
+    cutoff = np.full(grid.shape, 3.2905)
+    sqrt_n = np.full(grid.shape, 4.0)
+    tau = np.full(grid.shape, 0.15)
+
+    sharp = _rft_censoring_terms(grid, cutoff, sqrt_n, resels, peak)["prob"]
+    smooth = _rft_censoring_terms(grid, cutoff, sqrt_n, resels, peak, tau=tau)["prob"]
+
+    # Softer means silence stays more plausible as the effect grows.
+    assert smooth[4] > sharp[4]
+    assert (sharp[0] / sharp[4]) > 3.0 * (smooth[0] / smooth[4])
+
+    for spread in (None, tau):
+        terms = _rft_censoring_terms(grid, cutoff, sqrt_n, resels, peak, tau=spread)
+        step = 1e-6
+
+        def prob_at(value, spread=spread):
+            return _rft_censoring_terms(value, cutoff, sqrt_n, resels, peak, tau=spread)["prob"]
+
+        numeric = (prob_at(grid + step) - prob_at(grid - step)) / (2 * step)
+        # score is P'/P, so compare P' itself against the finite difference.
+        assert np.abs(terms["score"] * terms["prob"] - numeric).max() < 1e-6
+        assert np.all(np.diff(terms["prob"]) <= 1e-12)

@@ -438,7 +438,12 @@ def _ec_peak(resels):
     return float(brentq(slope, low, high, xtol=1e-8))
 
 
-def _rft_censoring_terms(mu, cutoff_z, sqrt_n, resels, ec_peak=None):
+#: Gauss-Hermite nodes and weights for integrating the regional term over study effects.
+_GH_NODES, _GH_WEIGHTS = np.polynomial.hermite.hermgauss(5)
+_GH_WEIGHTS = _GH_WEIGHTS / np.sqrt(np.pi)
+
+
+def _rft_censoring_terms(mu, cutoff_z, sqrt_n, resels, ec_peak=None, tau=None):
     """P(a study stayed silent over its whole neighbourhood), and its derivatives in ``mu``.
 
     The pointwise censoring term asks whether *this voxel* cleared the threshold. The event
@@ -463,21 +468,47 @@ def _rft_censoring_terms(mu, cutoff_z, sqrt_n, resels, ec_peak=None):
     which :func:`_mu_derivatives` turns into the curvature.
     """
     peak = _ec_peak(resels) if ec_peak is None else float(ec_peak)
-    shifted = cutoff_z - mu * sqrt_n
-    clamped = shifted <= peak
-    value, first, second = _expected_ec(np.where(clamped, peak, shifted), resels)
 
-    prob = np.clip(np.exp(-2.0 * value), 1e-12, 1.0)
-    # Held flat past the turning point, so the derivatives are zero there too -- otherwise the
-    # Newton step would follow a gradient the function no longer has.
-    first = np.where(clamped, 0.0, first)
-    second = np.where(clamped, 0.0, second)
+    def at(effect):
+        """P(silent), dP/d effect and d2P/d effect^2 at a *given* study-level effect."""
+        shifted = cutoff_z - effect * sqrt_n
+        clamped = shifted <= peak
+        value, first, second = _expected_ec(np.where(clamped, peak, shifted), resels)
+        # Held flat past the turning point, so the derivatives are zero there too -- otherwise
+        # the Newton step would follow a gradient the function no longer has.
+        first = np.where(clamped, 0.0, first)
+        second = np.where(clamped, 0.0, second)
 
-    # d log P / d mu = -2 E'(w) dw/dmu, with dw/dmu = -sqrt(N).
-    score = 2.0 * sqrt_n * first
-    # P'' / P = d^2 log P / d mu^2 + (d log P / d mu)^2.
-    d2_over_prob = -2.0 * sqrt_n * sqrt_n * second + score * score
-    return {"prob": prob, "score": score, "d2_over_prob": d2_over_prob}
+        prob = np.exp(-2.0 * value)
+        # w = u - theta sqrt(N), so dP/dtheta = 2 sqrt(N) E'(w) P, and differentiating again
+        # gives dP2 = 2 N P (2 E'(w)^2 - E''(w)).
+        first_p = 2.0 * sqrt_n * first * prob
+        second_p = 2.0 * sqrt_n * sqrt_n * prob * (2.0 * first * first - second)
+        return prob, first_p, second_p
+
+    if tau is None:
+        # Deterministic noncentrality: the study's effect is taken to be exactly mu.
+        prob, first_p, second_p = at(mu)
+    else:
+        # A study's own effect is not mu, it is drawn around it with spread tau. Treating the
+        # noncentrality as exactly mu * sqrt(N) makes P(silent) fall far too steeply -- 0.41 to
+        # 4e-5 between g = 0 and g = 0.3 on real data -- so silence becomes near-proof of a null
+        # effect and the fit is driven to zero. The pointwise term it replaced carried this
+        # spread through sigma = sqrt(1/N + tau^2); dropping it was a regression, not a
+        # simplification. Integrating it back costs five evaluations for a much better-shaped
+        # likelihood.
+        prob = np.zeros_like(mu, dtype=float)
+        first_p = np.zeros_like(prob)
+        second_p = np.zeros_like(prob)
+        spread = np.sqrt(2.0) * tau
+        for node, weight in zip(_GH_NODES, _GH_WEIGHTS):
+            p_i, d1_i, d2_i = at(mu + spread * node)
+            prob += weight * p_i
+            first_p += weight * d1_i
+            second_p += weight * d2_i
+
+    prob = np.clip(prob, 1e-12, 1.0)
+    return {"prob": prob, "score": first_p / prob, "d2_over_prob": second_p / prob}
 
 
 def _censoring_terms(mu, cutoff_scaled, twice_cutoff_scaled, inv_sigma, inv_sigma_sq):
@@ -2592,6 +2623,9 @@ class CBES(Estimator):
         # sample size, since its noncentrality is g * sqrt(N) rather than a standardized gap.
         cutoff_z_sil = rft["cutoff_z"].ravel()[sil_study] if rft is not None else None
         sqrt_n_sil = rft["sqrt_n"].ravel()[sil_study] if rft is not None else None
+        # Between-study spread of the effect this study actually has, which the regional term
+        # integrates over rather than assuming away.
+        tau_sil = np.sqrt(np.maximum(tau2[sil_voxel], 0.0)) if rft is not None else None
 
         def censoring_at(values):
             """P(silent) and its derivatives, under whichever censoring model is in force."""
@@ -2604,7 +2638,7 @@ class CBES(Estimator):
                     inv_sigma_sq_sil,
                 )
             return _rft_censoring_terms(
-                values, cutoff_z_sil, sqrt_n_sil, rft["resels"], rft["ec_peak"]
+                values, cutoff_z_sil, sqrt_n_sil, rft["resels"], rft["ec_peak"], tau=tau_sil
             )
 
         # A reporting study's log-likelihood is discounted by the spatial kernel, so a silent
@@ -2733,6 +2767,7 @@ class CBES(Estimator):
             if rft is not None:
                 cutoff_z_sil = cutoff_z_sil[kept_pairs]
                 sqrt_n_sil = sqrt_n_sil[kept_pairs]
+                tau_sil = tau_sil[kept_pairs]
             resp_sil = resp_sil[kept_pairs]
 
             mu, pi = mu[keep], pi[keep]
