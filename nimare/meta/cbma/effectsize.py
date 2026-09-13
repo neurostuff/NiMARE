@@ -1,87 +1,29 @@
 """Coordinate-based effect-size meta-analysis (CBES).
 
-Where ALE, (M)KDA and CBMR ask *where do studies agree that something happened*, this module
-asks *how big is the effect there*. The unit of analysis is not the density of reported foci
-but the standardized effect size (Hedges' :math:`g`) implied by each reported peak's test
-statistic and the study's sample size.
-
-The model
----------
-A study :math:`k` reports a peak at :math:`x_{ki}` with statistic :math:`T_{ki}`. Two
-transformations turn that into a meta-analytic observation:
-
-1. **Statistic to effect size.** :math:`T_{ki}` and :math:`N_k` give Hedges'
-   :math:`g_{ki}` and its sampling variance :math:`s^2_{ki}`
-   (:func:`peak_stat_to_hedges_g`). This is the same conversion NiMARE's image-based
-   estimators use; nothing here is specific to coordinates.
-
-2. **Peak to field.** A reported peak is a point observation of a spatially continuous effect,
-   localized only up to spatial uncertainty. Each focus is therefore given a kernel weight
-   :math:`w_{ki}(v) = K_h(\\|v - x_{ki}\\|)`, equal to 1 at the peak and decaying with
-   distance. This is the Nadaraya-Watson smoother applied to the *marks* of a marked spatial
-   point process -- the standard estimator for "what is the average mark near here".
-
-At voxel :math:`v` the estimator then solves a **local random-effects meta-analysis**, using
-:math:`w_{ki}(v)` as local-likelihood weights:
+Where ALE and (M)KDA ask *where do studies agree something happened*, this module asks *how big
+is the effect there*. Each reported peak's statistic and its study's sample size give Hedges'
+:math:`g` (:func:`peak_stat_to_hedges_g`); each focus is given a kernel weight
+:math:`w_{ki}(v)`, equal to 1 at the peak and decaying with distance; and each voxel solves a
+local random-effects meta-analysis weighted by it:
 
 .. math::
 
     \\hat{g}(v) = \\frac{\\sum_k W_k(v) g_k}{\\sum_k W_k(v)},
     \\qquad W_k(v) = \\frac{w_k(v)}{s^2_k + \\tau^2(v)}
 
-with :math:`\\tau^2(v)` a locally estimated between-study heterogeneity (a kernel-weighted
-generalization of DerSimonian-Laird; see :func:`_local_dersimonian_laird`). With all
-:math:`w = 1` this reduces exactly to a textbook random-effects meta-analysis, which is the
-sense in which the spatial model is a *weighting scheme* rather than a separate algorithm.
+with :math:`\\tau^2(v)` a kernel-weighted DerSimonian-Laird estimate. With every
+:math:`w = 1` this reduces to a textbook random-effects meta-analysis, which is the sense in
+which the spatial part is a weighting scheme rather than a separate algorithm.
 
-Selection
----------
-Reported peaks are not a random sample of the effect-size field: they are the values that
-survived a within-study threshold, so pooling them naively is a spatial winner's curse. But a
-study that reported nothing near :math:`v` usually has *no effect there*, not a small one, and
-a plain censored model cannot say so -- with one shared :math:`\\mu` per voxel, silence can only
-be read as evidence that :math:`\\mu` is small, which drags the estimate below the truth.
-
-``selection_model="zero-inflated"`` (the default) therefore fits a mixture at each voxel. With
-probability :math:`\\pi(v)` a study has a real effect :math:`\\delta_k \\sim N(\\mu(v),
-\\tau^2(v))`; otherwise it has none. Either way it reports a peak only if
-:math:`|\\hat{g}_k| > c_k`. A study that reported nothing contributes the *probability of that
-silence* under both components, so the data decide which explanation it supports:
-
-.. math::
-
-    \\ell(\\mu, \\pi; v) = \\sum_{k \\in R} w_k(v)\\, \\log\\big[
-            \\pi \\phi_{\\sigma_k}(g_k - \\mu) + (1 - \\pi) \\phi_{s_k}(g_k) \\big]
-        + \\sum_{k \\notin R} m_k(v)\\, \\log\\big[
-            \\pi P(|\\hat{g}| < c_k \\mid \\mu) + (1 - \\pi) P(|\\hat{g}| < c_k \\mid 0)
-            \\big],
-
-maximized by EM with :math:`\\tau^2` held at its moment estimate. No effect-size images are
-imputed at any point; non-reporting enters only through those probabilities, as in
-:footcite:t:`tench2017coordinate`. ``selection_model="none"`` pools only the reported peaks.
-
-A plain Tobit -- the same censoring without the zero component -- was tried and dropped. It has
-to explain every silence as a small common effect rather than as no effect, which drags the
-estimate to -0.16 and -0.34 where the truth is positive. Zero inflation is what fixes that, so
-there is no regime in which the plain version is the right choice.
-
-Two details that matter more than the choice of likelihood. Membership of :math:`R`, the set of
-studies that reported *something* near :math:`v`, is judged over a wider radius than the kernel
-:math:`w_k` that weights their values -- a study whose peak landed 6 mm away should have its
-value discounted but has plainly not been silent. And :math:`m_k`, the weight on a silent
-study, is the average :math:`w` of the reporting studies at that voxel rather than 1: reporting
-studies are kernel-discounted, so giving silence full weight lets it outvote evidence.
-
-Inference
----------
-``g / se`` is not a null-referenced statistic -- the peaks being pooled were selected for being
-large, so under a global null the pooled effect at a focus is large by construction. Uncorrected
-p-values therefore come from a spatial null: the same null the convergence-based estimators
-use, that reported coordinates fall at random within the mask. By default
-(``null_method="approximate"``) a voxel's null is drawn directly from the studies' foci counts
-and kernel geometry, which costs nothing in the size of the mask; ``"montecarlo"`` relocates
-every focus and refits, and is what the approximation is validated against. See the
-:class:`CBES` notes for what a normal-theory alternative does to the false positive rate.
+Reported peaks are not a random sample of that field -- they are the values that cleared a
+within-study threshold -- so pooling them naively is a spatial winner's curse. The default
+``selection_model="zero-inflated"`` fits a mixture at each voxel: with probability
+:math:`\\pi(v)` a study has a real effect, otherwise none, and either way it reports only if
+:math:`|\\hat{g}_k| > c_k`. A silent study contributes the probability of that silence under
+both components, so the data decide which explains it; a plain Tobit has to read every silence
+as a small common effect and is dragged below zero where the truth is positive. No effect-size
+images are imputed anywhere -- non-reporting enters only through those probabilities, as in
+:footcite:t:`tench2017coordinate`.
 
 References
 ----------
@@ -741,104 +683,30 @@ class CBES(Estimator):
         uncertainty about each reported peak. If None, an ALE-style sample-size-dependent
         kernel is used instead, so that larger studies localize their peaks more tightly.
     use_images : :obj:`bool`, default=True
-        Use per-study ``g`` and ``g_var`` images for any study that has them, in place of that
+        Use per-study ``g``/``g_var`` images for any study that has them, in place of that
         study's coordinates. An image is the limiting case of a coordinate: it gives the effect
-        at a voxel with no localization uncertainty and no reporting threshold, so it enters
-        with kernel weight 1 everywhere and never contributes a censoring term. Studies without
-        images are unaffected, so a collection may mix the two freely.
-
-        Supply the images with ``ImageTransformer(target=["g", "g_var"])``, which derives them
-        from ``t`` maps and sample sizes on the same scale
-        :func:`peak_stat_to_hedges_g` puts the coordinates on.
-
-        .. warning::
-            Mixing is only sound once ``peak_bias`` is set. A reported peak is a local maximum
-            and is inflated relative to the field around it -- measured at 2.05x on the NIDM
-            pain images -- so an uncorrected coordinate study and an image study disagree about
-            the same region by roughly a factor of two, and the pooled estimate then depends on
-            how many studies of each kind the collection happens to contain.
+        at a voxel with no localization uncertainty and no reporting threshold, so it enters at
+        kernel weight 1 and contributes no censoring term. Supply them with
+        ``ImageTransformer(target=["g", "g_var"])``; a collection may mix the two freely.
     peak_bias : :obj:`float`, "per-study", or None, optional
-        Correction for the fact that a reported peak is a local maximum that cleared a
-        threshold. A reported statistic is treated as measuring ``g_true / rho_k``, so the
-        effect size, its standard deviation and the study's reporting threshold are all scaled
-        by ``rho_k`` -- a rescaling of the effect-size axis for coordinate studies, which
-        leaves the censored likelihood coherent. Images are never rescaled; they are already
-        unbiased.
+        Divide reported effect sizes by ``rho_k`` before pooling, to undo the inflation of a
+        reported peak. A peak is a local maximum that cleared a threshold, so its height
+        overstates the local effect about fivefold; the pooled map runs about 2x high.
 
-        ``float``
-            One ``rho`` for every study. Corrects the overall scale but assumes every study
-            thresholded alike, which a literature search cannot guarantee.
-        ``"per-study"``
-            ``rho_k`` proportional to ``1 / null_peak_mean_g(u_k, N_k)``, normalized so the
-            median reporting study sits at ``peak_bias_scale``. This divides out the part of
-            the inflation that is a function of *how strictly study k thresholded and how many
-            subjects it had*, which is the part that varies across a heterogeneous collection
-            and the part coordinates can identify on their own. A study that reported at
-            z > 4.3 with n = 12 is then discounted harder than one that reported at z > 2.3
-            with n = 40, as it should be.
-
-            What it cannot fix is the common scale, which no coordinate-only model can:
-            rescaling ``g``, its variance and the censoring threshold together leaves the
-            likelihood unchanged, so the constant is exactly non-identified. With
-            ``peak_bias_scale=1.0`` the ``g`` and ``se`` maps are therefore readable only up
-            to that constant -- on the NIDM pain collection they run about 2x high where the
-            reference says there is something to estimate. (An earlier 2.65x came from a ratio
-            of means over every covered voxel, whose denominator collapses wherever the truth
-            is near zero; scored where the signal is, it is 2.02 at the top quartile and 1.72
-            at the top decile.) It is a
-            limit of the data rather than of the model: the deconvolution that would identify
-            the scale needs peak heights that carry signal, and in the usual underpowered
-            regime they do not (see :func:`peak_information`).
-
-            This costs less than it sounds, because the constant divides out of everything
-            except the magnitude. ``z``, the p-values and every corrected map are unchanged by
-            it, since ``z = g / se`` scales top and bottom alike; so is ``prevalence``, which
-            is a probability and cancels from the mixture responsibilities. An uncalibrated
-            fit still gives valid inference and a valid prevalence map, with ``g`` read as a
-            relative quantity.
-        ``None``
-            No correction. A reported peak overstates the *local* effect about fivefold -- the
-            pooled truth at a peak is 0.22-0.27 where the reporting study says 1.22 -- but the
-            pooled map runs about 2x high rather than fivefold, because the kernel and the
-            selection model already absorb most of it.
-
-        The size of the overall correction is not a modelling choice, it is measurable. On the
-        NIDM pain collection, the leave-one-out pooled effect at a reported peak is 0.22-0.27
-        where the reporting study says 1.22, giving a scale near 0.2. Calibrate it on your own
-        data with the procedure in ``docs/notes/validate_cbes.py``.
-    peak_bias_scale : :obj:`float`, "auto", "images", or "rates", default=1.0
-        Overall scale of the ``"per-study"`` correction: the ``rho_k`` given to the median
-        reporting study. Ignored unless ``peak_bias="per-study"``. Between-study differences in
-        threshold and sample size are identified from the coordinates; this one number is not,
-        because rescaling every coordinate study by the same constant leaves the
-        coordinate-only likelihood unchanged.
-
-        For a coordinate-only fit that is harmless: 1.0 gives a map correct up to a single
-        multiplicative constant, which is what a relative effect-size map is. Once images are
-        in the same fit it stops being harmless, because images are on the true ``g`` scale and
-        a mismatched constant makes the two kinds of study disagree about the same voxel.
-        ``"auto"`` (equivalently ``"images"``) then reads the constant off the studies that
-        supplied images, by fitting images and coordinates separately and taking the ratio over
-        the voxels both cover; expect it to need five or more image studies to be stable (two
-        gives +-145%, five +-17%, sixteen +-6%). Mixing images with the default 1.0 warns.
-
-        ``"rates"``, ``"mle"`` and ``"rate-match"`` all try to fix the scale without images, and
-        none of them works. Seven attempts are recorded in ``docs/notes/effect_size_cbma.md``
-        section 15; the short version is that converting reporting rates into an absolute effect
-        size needs a local resels-per-voxel map, which is computed from images. Within-brain
-        smoothness varies more than between-study smoothness (95/5 ratio 1.99x against 1.6x, an
-        8x spread in resels), so a global value mis-predicts reporting in a spatial pattern no
-        single scale can absorb. They are kept as documented negative results, warn when they
-        rail, and are never selected by ``"auto"``.
-
-        ``"rates"`` fixes the scale from how *often* studies reported, needing no images at all
-        -- see :meth:`_calibrate_scale_from_rates`. **Experimental, opt-in only.** The
-        identification is established: fitting the effect size from reporting indicators alone
-        recovers a simulated truth of 0.50 as 0.496 and 0.80 as 0.810, using no peak heights.
-        The estimator built on it is not: pooling one global constant as a ratio of means is
-        dragged down by voxels holding no effect, where the rates correctly say zero but a
-        reported noise peak still converts to a positive ``g``. Until that is fixed ``"auto"``
-        will not select it.
+        ``"per-study"`` sets ``rho_k`` from each study's own threshold and sample size, which
+        removes the part of the bias that varies between studies -- the part coordinates can
+        identify. The common scale is *not* identified: rescaling ``g``, its variance and the
+        censoring threshold together leaves the likelihood unchanged, so it must come from
+        ``peak_bias_scale`` or be accepted, leaving ``g`` readable as a relative map. That costs
+        less than it sounds: ``z``, the p-values, every corrected map and ``prevalence`` are all
+        unchanged by the constant. A float sets every ``rho_k`` to the same value.
+    peak_bias_scale : :obj:`float`, "auto", "images", or "reference", default=1.0
+        The overall scale of the ``"per-study"`` correction, which coordinates cannot identify.
+        ``"images"`` reads it off any studies in the collection that supply images, ``"auto"``
+        does the same when images are present and leaves it at 1.0 otherwise, and
+        ``"reference"`` borrows it from a corpus of NeuroVault maps matched on sample size --
+        opt-in, because it assumes the collection is typical of that corpus and made known
+        truth worse by 1.5 to 2x when it was not. Ignored unless ``peak_bias="per-study"``.
     stat_column : :obj:`str` or None, optional
         Column of the coordinates table holding the reported statistic. When None, ``z_stat``
         is used if present, otherwise ``t_stat``.
@@ -855,43 +723,17 @@ class CBES(Estimator):
         zero by the within-study thresholding that produced them. Nothing is imputed under
         either option.
     threshold : :obj:`float`, :obj:`str`, or None, default="pooled-min"
-        Reporting threshold, on the z scale, assumed for each study. It enters twice: it
-        decides how surprising a study's silence is, and with ``peak_bias="per-study"`` it sets
-        how far that study's reported peaks are discounted.
+        Reporting threshold assumed for each study, on the z scale. It decides how surprising a
+        study's silence is and, with ``peak_bias="per-study"``, how far its peaks are
+        discounted. ``"pooled-min"`` takes the smallest absolute statistic reported anywhere in
+        the collection; ``"study-min"`` takes each study's own, with the order statistic undone
+        by :func:`infer_threshold_from_minimum`, and is the right choice when studies plainly
+        thresholded differently. Any other string names a metadata field holding the real
+        thresholds, which is better than either. A float applies one threshold to every study.
 
-        ``"pooled-min"``
-            The smallest absolute statistic reported anywhere in the collection. One threshold
-            for everyone, and the tightest bound available if that assumption holds.
-        ``"study-min"``
-            Each study's own smallest reported statistic, with the order statistic undone. The
-            smallest of ``m_k`` peaks above ``u_k`` sits above ``u_k`` by an amount that grows
-            as ``m_k`` shrinks, so :func:`infer_threshold_from_minimum` solves for the ``u_k``
-            whose expected minimum is what the study actually reported -- never worse than the
-            raw minimum, and reducing to it once a study reports enough peaks. Use this when
-            studies plainly thresholded differently and none of them says how, which is the
-            usual case in a literature search.
-
-            Both per-study rules assume the reported peaks are whatever cleared the study's
-            height threshold. Reporting one local maximum per cluster, the common convention,
-            satisfies that: on the 21 NIDM pain studies it recovers every imposed threshold to
-            within 0.02 z. A **cluster-extent threshold does not**, and it is just as common.
-            Requiring k >= 10, 20 or 50 voxels lifts the smallest reported statistic by 0.19,
-            0.32 and 0.57 z respectively, and the order-statistic correction removes only about
-            a tenth of that -- an extent threshold preferentially drops small clusters, which
-            are the ones with low peaks, so it acts like a stricter height threshold and is
-            indistinguishable from one.
-
-            The consequence is an inferred threshold biased high, which makes silence look less
-            surprising than it was and under-corrects the selection. Prefer the metadata field
-            when the papers state their extent threshold, and treat ``"study-min"`` as a
-            lower bound on the bias when they do not.
-        any other string
-            The name of a metadata field holding each study's threshold on the z scale, for
-            collections where the papers state it. Studies missing the field take the median
-            of those that have it.
-
-        A float applies one z threshold to every study; None falls back to
-        ``DEFAULT_REPORTING_THRESHOLD_Z``.
+        Both per-study rules assume the reported peaks are whatever cleared a height threshold.
+        One local maximum per cluster satisfies that; a **cluster-extent threshold does not**,
+        and lifts the inferred threshold by 0.19 to 0.57 z.
     coverage_radius : :obj:`float` or None, optional
         Radius, in mm, within which a reported peak counts as this study having reported
         *something* about this location. A study with no focus inside that radius is treated as
@@ -907,47 +749,17 @@ class CBES(Estimator):
     max_iter : :obj:`int`, default=25
         Maximum Newton iterations for the censored likelihood.
     null_method : {"approximate", "montecarlo", "none"}, default="approximate"
-        How uncorrected p-values are obtained.
+        How uncorrected p-values are obtained. ``g / se`` is not null-referenced, so they come
+        from a spatial null rather than from the standard error.
 
-        ``"approximate"``
-            Sample each study's *local configuration* instead of refitting the brain. At one
-            voxel the studies are independent under relocation, and each study's contribution
-            follows from its foci count and the kernel geometry alone, so a voxel's null can be
-            drawn directly. Costs ``n_draws x n_studies`` with no dependence on the size of the
-            mask, where relocation costs ``n_voxels x n_studies x n_iters``; on a whole brain
-            with 40 studies that is 4e7 study-voxel pairs against 9.1e9. The draws are also
-            independent, where neighbouring voxels of a relocation share studies. Agrees with
-            the relocation null to within 2% of the ``|z|`` threshold at every p from .05 to
-            1e-4, and to r = 0.999 on the p-values themselves. ``n_iters`` sets the draws, at
-            1000 each.
-
-            The default, because it matches the relocation null's calibration at a quarter of
-            the cost: over 15 global-null simulations the two return the same uncorrected
-            rejection rates, 0.042 and 0.041 at a nominal .05 and 0.0010 apiece at a nominal
-            .001, for 14.0 s/fit against 53.7.
-
-        ``"montecarlo"``
-            Relocate every focus to a random in-mask voxel ``n_iters`` times, keeping its
-            effect size and study membership, and read p off the resulting null distribution
-            of ``|z|``. This is the null the convergence-based estimators use -- that reported
-            coordinates fall at random within the mask -- and it is what ``"approximate"`` is
-            validated against, so it remains the reference when the two could disagree: a mask
-            small enough that relocation is cheap anyway, or a studyset whose kernel weights
-            make the per-voxel independence assumption doubtful. It is also what makes
-            :class:`~nimare.correct.FDRCorrector` and ``FWECorrector(method="bonferroni")``
-            meaningful, since both simply operate on these p-values.
-        ``"none"``
-            No uncorrected p-values at all: ``p`` comes back as 1 everywhere and the effect
-            size, prevalence and ``z`` maps are produced without a null. For inspecting the
-            estimates when inference is not wanted, at no cost.
-
-            This replaces a former ``"parametric"`` option, which referred ``g / se`` to a
-            normal distribution. That was fast and wrong: on a global null it returned
-            uncorrected ``p < .05`` for 41% of voxels with ``selection_model="none"`` and 11%
-            with ``"zero-inflated"`` against a nominal 5%, and FDR and Bonferroni built on it
-            rejected somewhere in every null simulation. Returning no p-value is the honest
-            version of being fast.
-
+        ``"approximate"`` draws each voxel's null directly from the studies' foci counts and
+        kernel geometry, which costs nothing in the size of the mask. It agrees with the
+        relocation null to r = 0.999 on the p-values and matches its calibration at a quarter
+        of the cost, which is why it is the default. ``"montecarlo"`` relocates every focus
+        ``n_iters`` times and refits; it is what ``"approximate"`` is validated against, and
+        what :class:`~nimare.correct.FDRCorrector` and ``FWECorrector(method="bonferroni")``
+        are meaningful on top of. ``"none"`` returns ``p = 1`` everywhere, for inspecting the
+        estimates at no cost.
     cluster_threshold : :obj:`float` or None, default=0.001
         Cluster-forming threshold, as an uncorrected p-value, for the cluster-level FWE null
         that :meth:`fit` builds alongside the voxel-level one. Set to None to skip it, which
@@ -1012,12 +824,13 @@ class CBES(Estimator):
     20 simulations -- consistent with a nominal 0.05, though 20 simulations cannot resolve a
     rate more finely than that.
 
-    The effect-size maps are well ranked but poorly calibrated in magnitude. Against a
-    random-effects pooling of the 21 NIDM pain studies' full t images, CBES run on peaks
-    thresholded out of those same images reached rho = 0.84 (ALE, 0.18) but overestimated the
-    effect roughly twofold (0.80 against 0.41 where the reference exceeded 0.2). Reported
-    peaks are local maxima, and that inflation is not yet modelled. Treat ``g`` as a relative
-    map until it is.
+    The effect-size maps are well ranked but not calibrated in magnitude. Against the 21 NIDM
+    pain studies' full ``t`` images, CBES run on peaks thresholded out of those same images
+    reaches rho = 0.84 (ALE, 0.18) but overestimates the effect about twofold. ``peak_bias``
+    corrects the part of that which varies between studies; the common scale is not identified
+    from coordinates and needs ``peak_bias_scale``. **Treat ``g`` as a relative map unless you
+    supply that scale.** Five of twenty-one studies supplying images was enough to bring the
+    magnitude ratio to 0.98 in one test.
 
     References
     ----------
@@ -1491,8 +1304,10 @@ class CBES(Estimator):
     def _calibrate_scale_from_reference(self, table, sample_sizes):
         """Set the overall scale from what studies of this size typically find.
 
-        No route from the coordinates' own reporting behaviour recovers the scale; seven were
-        tried and section 15 records why. This takes it from outside instead. Sample size
+        No route from the coordinates' own reporting behaviour recovers the scale: the censored
+        likelihood's value term is exactly invariant to it, so only the reporting rate carries
+        any information and that needs a smoothness coordinates do not have. This takes the
+        scale from outside instead. Sample size
         predicts effect magnitude across a reference corpus of 258 group maps, because studies
         are powered for the effects they set out to find, and matching on it cuts the error in
         predicting a held-out magnitude by 28%. Spatial similarity, which looks like the more
@@ -1595,7 +1410,7 @@ class CBES(Estimator):
         # voxel, and a covered brain is mostly voxels holding no effect, so the image mean
         # collapsed toward zero and the scale came out far too small -- 0.16 against a true 0.8
         # on simulated data, which made adding images *worse* the more of them there were. The
-        # same unsound summary is described at length in section 17 of the design note.
+        # metric flatters nothing: it measures how much true zero is in the covered set.
         strong = from_images >= np.percentile(from_images, 75)
         if strong.sum() < 50:
             strong = np.ones_like(from_images, dtype=bool)
