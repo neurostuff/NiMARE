@@ -78,7 +78,7 @@ Inference
 large, so under a global null the pooled effect at a focus is large by construction. Uncorrected
 p-values therefore come from a spatial null by default (``null_method="montecarlo"``), which
 relocates every focus within the mask and refits, exactly as the convergence-based estimators
-do. See the :class:`CBES` warnings for what the parametric alternative does to the false
+do. See the :class:`CBES` notes for what a normal-theory alternative does to the false
 positive rate.
 
 References
@@ -141,7 +141,7 @@ SELECTION_MODELS = ("zero-inflated", "none")
 #: How a study's silence is modelled: at the voxel, or over its neighbourhood.
 CENSORING_MODELS = ("pointwise", "rft")
 
-NULL_METHODS = ("montecarlo", "approximate", "parametric")
+NULL_METHODS = ("montecarlo", "approximate", "none")
 
 #: Resolution of the Monte Carlo null histogram for |z|, and where its upper tail is clipped.
 _NULL_Z_STEP = 0.01
@@ -1009,7 +1009,7 @@ class CBES(Estimator):
         ``n_studies`` interpretable and the fit affordable.
     max_iter : :obj:`int`, default=25
         Maximum Newton iterations for the censored likelihood.
-    null_method : {"montecarlo", "approximate", "parametric"}, default="montecarlo"
+    null_method : {"montecarlo", "approximate", "none"}, default="montecarlo"
         How uncorrected p-values are obtained.
 
         ``"approximate"``
@@ -1032,9 +1032,17 @@ class CBES(Estimator):
             here. It is also what makes :class:`~nimare.correct.FDRCorrector` and
             ``FWECorrector(method="bonferroni")`` meaningful, since both simply operate on
             these p-values.
-        ``"parametric"``
-            ``g / se`` referred to a normal distribution. Fast, and **anticonservative**: see
-            the warning below. Useful for inspecting the effect-size maps, not for inference.
+        ``"none"``
+            No uncorrected p-values at all: ``p`` comes back as 1 everywhere and the effect
+            size, prevalence and ``z`` maps are produced without a null. For inspecting the
+            estimates when inference is not wanted, at no cost.
+
+            This replaces a former ``"parametric"`` option, which referred ``g / se`` to a
+            normal distribution. That was fast and wrong: on a global null it returned
+            uncorrected ``p < .05`` for 41% of voxels with ``selection_model="none"`` and 11%
+            with ``"zero-inflated"`` against a nominal 5%, and FDR and Bonferroni built on it
+            rejected somewhere in every null simulation. Returning no p-value is the honest
+            version of being fast.
 
     cluster_threshold : :obj:`float` or None, default=0.001
         Cluster-forming threshold, as an uncorrected p-value, for the cluster-level FWE null
@@ -1044,7 +1052,7 @@ class CBES(Estimator):
     n_iters : :obj:`int`, default=1000
         Monte Carlo iterations for the null. Each is a full refit, so this is the dominant
         cost of the estimator -- far more so than for ALE, whose per-iteration statistic is
-        much cheaper. Reduce it, or use ``null_method="parametric"``, when exploring.
+        much cheaper. Reduce it, or use ``null_method="approximate"``, when exploring.
     n_cores : :obj:`int`, default=1
         Processes used for the Monte Carlo null, which is where nearly all the time goes.
         ``-1`` uses every available core and is close to linear, since the relocations are
@@ -1092,13 +1100,11 @@ class CBES(Estimator):
     --------
     This estimator is new and has not been validated against a reference implementation.
 
-    Do not use ``null_method="parametric"`` for inference. Measured on a global null (30
-    studies of pure noise foci, 20 simulations), it returned uncorrected ``p < .05`` for 41% of
-    voxels with ``selection_model="none"`` and 11% with ``"zero-inflated"``, against a nominal
-    5%, and FDR and Bonferroni built on those p-values rejected somewhere in 100% of null
-    simulations. The Monte Carlo null returned 0.052 and 0.042 respectively, and every
-    correction built on it rejected in 1 or 2 of the 20 simulations -- consistent with a
-    nominal 0.05, though 20 simulations cannot resolve a rate more finely than that.
+    On a global null (30 studies of pure noise foci, 20 simulations) the Monte Carlo null
+    returned uncorrected ``p < .05`` for 5.2% of voxels with ``selection_model="none"`` and
+    4.2% with ``"zero-inflated"``, and every correction built on it rejected in 1 or 2 of the
+    20 simulations -- consistent with a nominal 0.05, though 20 simulations cannot resolve a
+    rate more finely than that.
 
     The effect-size maps are well ranked but poorly calibrated in magnitude. Against a
     random-effects pooling of the 21 NIDM pain studies' full t images, CBES run on peaks
@@ -1179,15 +1185,6 @@ class CBES(Estimator):
             raise ValueError(
                 f"peak_bias must be None, 'per-study', or a number in (0, 1]; got "
                 f"{peak_bias!r}."
-            )
-        if null_method == "parametric":
-            LGR.warning(
-                "null_method='parametric' produces anticonservative p-values: the standard "
-                "error treats tau-squared and the mixture weights as known, and the reported "
-                "peaks it pools were selected for being large. Under a global null it flags "
-                "roughly 40% of voxels at p < .05 (10% with selection_model='zero-inflated') "
-                "instead of 5%, and FDR and Bonferroni built on top of it reject in every "
-                "null simulation. Use null_method='montecarlo' for inference."
             )
         if isinstance(threshold, str):
             pass  # a keyword, or the name of a metadata field holding per-study thresholds
@@ -2611,7 +2608,10 @@ class CBES(Estimator):
             self.null_distributions_["histweights_corr-none_method-approximate"] = histogram
             p_values = _p_from_histogram(np.abs(z_values), histogram)
         else:
-            p_values = stats.norm.sf(np.abs(z_values)) * 2.0
+            # No null was built, so there is nothing to refer z to. Returning 1 rather than a
+            # normal-theory p-value keeps a caller from mistaking the absence of inference for
+            # inference: the former parametric option was anticonservative by a factor of eight.
+            p_values = np.ones_like(z_values)
         p_values[~fit["covered"]] = 1.0
 
         maps = {
@@ -2653,7 +2653,7 @@ class CBES(Estimator):
         When :meth:`fit` ran the same relocations for ``null_method="montecarlo"`` at the same
         cluster-forming threshold, all three nulls are reused and this is nearly free. Asking
         for a different ``voxel_thresh`` than the estimator's ``cluster_threshold``, or fitting
-        with ``null_method="parametric"``, means permuting again here.
+        without a Monte Carlo null, means permuting again here.
 
         Parameters
         ----------
@@ -2824,12 +2824,15 @@ class CBES(Estimator):
                 f"which every focus was relocated to a random voxel within the analysis mask "
                 f"{self.n_iters} times while retaining its effect size and study membership."
             )
-        else:
+        elif self.null_method == "approximate":
             inference = (
-                " Uncorrected p-values were obtained by referring the pooled estimate to a "
-                "normal distribution; these are anticonservative and should not be used for "
-                "inference."
+                " Uncorrected p-values were obtained from a null distribution in which each "
+                "study's local configuration of foci was sampled directly from its focus count "
+                "and the kernel geometry, rather than by refitting the brain for every "
+                "relocation."
             )
+        else:
+            inference = " No null distribution was computed, so no p-values are reported."
         return (
             "A coordinate-based effect-size meta-analysis was performed with NiMARE "
             f"{__version__} (RRID:SCR_017398; \\citealt{{Salo2023}}). Each reported peak "

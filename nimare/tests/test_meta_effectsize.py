@@ -176,11 +176,11 @@ def test_cbes_requires_a_reported_statistic(small_mask):
 
     _, plain = create_coordinate_studyset(foci=1, n_studies=5, sample_size=20, seed=1)
     with pytest.raises(ValueError, match="no usable 'z_stat' or 't_stat'"):
-        CBES(mask=small_mask, selection_model="none", null_method="parametric").fit(plain)
+        CBES(mask=small_mask, selection_model="none", null_method="none").fit(plain)
 
 
 def test_cbes_produces_expected_maps(studyset, small_mask):
-    result = CBES(fwhm=12.0, mask=small_mask, null_method="parametric").fit(studyset)
+    result = CBES(fwhm=12.0, mask=small_mask, null_method="none").fit(studyset)
 
     expected = {"g", "se", "z", "p", "logp", "tau2", "n_studies", "n_eff", "prevalence"}
     assert expected <= set(result.maps)
@@ -211,23 +211,23 @@ def test_cbes_produces_expected_maps(studyset, small_mask):
 
 
 def test_cbes_description_mentions_the_model(studyset, small_mask):
-    result = CBES(fwhm=12.0, mask=small_mask, null_method="parametric").fit(studyset)
+    result = CBES(fwhm=12.0, mask=small_mask, null_method="none").fit(studyset)
     assert "Hedges" in result.description_
     assert "censor" in result.description_.lower()
 
-    quiet = CBES(
-        fwhm=12.0, mask=small_mask, generate_description=False, null_method="parametric"
-    ).fit(studyset)
+    quiet = CBES(fwhm=12.0, mask=small_mask, generate_description=False, null_method="none").fit(
+        studyset
+    )
     assert quiet.description_ == ""
 
 
 def test_selection_model_reduces_the_winners_curse(studyset, small_mask):
     """Pooling reported peaks alone overestimates; modelling the silence pulls it back."""
-    naive = CBES(fwhm=12.0, mask=small_mask, selection_model="none", null_method="parametric").fit(
+    naive = CBES(fwhm=12.0, mask=small_mask, selection_model="none", null_method="none").fit(
         studyset
     )
     corrected = CBES(
-        fwhm=12.0, mask=small_mask, selection_model="zero-inflated", null_method="parametric"
+        fwhm=12.0, mask=small_mask, selection_model="zero-inflated", null_method="none"
     ).fit(studyset)
 
     naive_g = value_at(naive, "g")
@@ -250,7 +250,7 @@ def test_zero_component_keeps_silence_from_reading_as_a_small_common_effect(
     zero component and the effect among the studies that have one is recovered.
     """
     result = CBES(
-        fwhm=12.0, mask=small_mask, selection_model="zero-inflated", null_method="parametric"
+        fwhm=12.0, mask=small_mask, selection_model="zero-inflated", null_method="none"
     ).fit(mixed_studyset)
 
     assert 0.0 < value_at(result, "prevalence") < 1.0  # some studies null, some not
@@ -274,21 +274,19 @@ def test_prevalence_tracks_the_simulated_fraction(small_mask):
             noise_extent=30.0,
             spatial_sd=4.0,
         )
-        result = CBES(fwhm=12.0, mask=small_mask, null_method="parametric").fit(studyset)
+        result = CBES(fwhm=12.0, mask=small_mask, null_method="none").fit(studyset)
         estimates[prevalence] = value_at(result, "prevalence")
 
     assert estimates[1.0] > estimates[0.4]
 
 
 def test_fixed_effects_option_zeroes_tau2(studyset, small_mask):
-    result = CBES(fwhm=12.0, mask=small_mask, tau2_method="none", null_method="parametric").fit(
-        studyset
-    )
+    result = CBES(fwhm=12.0, mask=small_mask, tau2_method="none", null_method="none").fit(studyset)
     assert np.all(result.get_map("tau2", return_type="array") == 0)
 
 
 def test_correct_fwe_montecarlo(studyset, small_mask):
-    estimator = CBES(fwhm=12.0, mask=small_mask, selection_model="none", null_method="parametric")
+    estimator = CBES(fwhm=12.0, mask=small_mask, selection_model="none", null_method="none")
     result = estimator.fit(studyset)
     maps, tables, description = estimator.correct_fwe_montecarlo(
         result, n_iters=5, seed=0, vfwe_only=True
@@ -305,7 +303,7 @@ def test_correct_fwe_montecarlo(studyset, small_mask):
 
 def test_correct_fwe_montecarlo_needs_a_fit(small_mask):
     with pytest.raises(ValueError, match="requires a fitted estimator"):
-        CBES(mask=small_mask, null_method="parametric").correct_fwe_montecarlo(None, n_iters=2)
+        CBES(mask=small_mask, null_method="none").correct_fwe_montecarlo(None, n_iters=2)
 
 
 def test_simulator_respects_the_reporting_threshold():
@@ -346,32 +344,34 @@ def null_studyset():
     )
 
 
-def test_parametric_null_warns_that_it_is_anticonservative(small_mask, caplog):
-    with caplog.at_level("WARNING"):
-        CBES(mask=small_mask, null_method="parametric")
-    assert "anticonservative" in caplog.text
+def test_no_null_reports_no_p_values(studyset, small_mask):
+    """Absence of inference must not be mistakable for inference.
+
+    ``null_method="none"`` exists for inspecting the estimates cheaply. It replaced a parametric
+    option that referred ``g / se`` to a normal distribution, which was anticonservative by a
+    factor of eight under a global null. Returning 1 everywhere makes the absence explicit,
+    where a plausible-looking p-value would not.
+    """
+    result = CBES(fwhm=8.0, mask=small_mask, null_method="none").fit(studyset)
+
+    assert np.all(result.get_map("p", return_type="array") == 1.0)
+    # The estimates themselves are still produced.
+    assert np.any(result.get_map("g", return_type="array") != 0)
+    assert "No null distribution" in result.description_
 
 
 def test_montecarlo_null_calibrates_uncorrected_p(null_studyset, small_mask):
-    """Under a global null the parametric p-values are far too liberal; the spatial null is not.
+    """Under a global null the spatial null returns roughly the nominal rate.
 
-    This is the reason ``null_method`` defaults to ``"montecarlo"``. The parametric standard
-    error treats tau-squared as known and ignores that the peaks being pooled were selected for
-    being large, so ``g / se`` is not a null-referenced statistic at all.
+    This is the reason ``null_method`` defaults to ``"montecarlo"``: ``g / se`` is not a
+    null-referenced statistic, since the standard error treats tau-squared as known and ignores
+    that the peaks being pooled were selected for being large.
     """
-    parametric = CBES(
-        fwhm=12.0, mask=small_mask, selection_model="none", null_method="parametric"
-    ).fit(null_studyset)
     montecarlo = CBES(
         fwhm=12.0, mask=small_mask, selection_model="none", null_method="montecarlo", n_iters=50
     ).fit(null_studyset)
 
-    parametric_rate = np.mean(parametric.get_map("p", return_type="array") < 0.05)
-    montecarlo_rate = np.mean(montecarlo.get_map("p", return_type="array") < 0.05)
-
-    assert parametric_rate > 0.20  # measured around 0.40
-    assert montecarlo_rate < 0.15
-    assert montecarlo_rate < parametric_rate
+    assert np.mean(montecarlo.get_map("p", return_type="array") < 0.05) < 0.15
 
 
 @pytest.mark.parametrize(
@@ -510,12 +510,12 @@ def test_null_is_built_from_the_selected_statistic(studyset, small_mask):
 
 def test_kernel_truncation_bounds_the_support(studyset, small_mask):
     """A tighter truncation lets each focus reach fewer voxels."""
-    wide = CBES(fwhm=12.0, mask=small_mask, kernel_min_weight=1e-6, null_method="parametric").fit(
+    wide = CBES(fwhm=12.0, mask=small_mask, kernel_min_weight=1e-6, null_method="none").fit(
         studyset
     )
-    narrow = CBES(
-        fwhm=12.0, mask=small_mask, kernel_min_weight=0.25, null_method="parametric"
-    ).fit(studyset)
+    narrow = CBES(fwhm=12.0, mask=small_mask, kernel_min_weight=0.25, null_method="none").fit(
+        studyset
+    )
 
     reached_wide = np.sum(wide.get_map("n_studies", return_type="array") > 0)
     reached_narrow = np.sum(narrow.get_map("n_studies", return_type="array") > 0)
@@ -544,7 +544,7 @@ def test_fit_chunk_ignores_studies_that_say_nothing_here():
         cutoffs=rng.uniform(0.3, 0.8, (n_studies, 1)),
         start=rng.normal(0.5, 0.2, n_voxels),
     )
-    estimator = CBES(max_iter=8, null_method="parametric")
+    estimator = CBES(max_iter=8, null_method="none")
     baseline = estimator._fit_chunk(**kwargs)
 
     # Three extra studies that are covered everywhere and reach no voxel.
@@ -645,7 +645,7 @@ def image_studyset(tmp_path_factory):
 def test_images_are_used_in_place_of_coordinates(image_studyset):
     """An image supersedes that study's own peaks: it says more, with no selection."""
     studyset, _ = image_studyset
-    estimator = CBES(fwhm=8.0, null_method="parametric", use_images=True)
+    estimator = CBES(fwhm=8.0, null_method="none", use_images=True)
     estimator.fit(studyset)
 
     assert len(estimator._image_studies_) == 10
@@ -661,13 +661,13 @@ def test_images_recover_the_truth_better_than_coordinates(image_studyset):
     ).ravel()
 
     from_images = (
-        CBES(fwhm=8.0, null_method="parametric", use_images=True)
+        CBES(fwhm=8.0, null_method="none", use_images=True)
         .fit(studyset)
         .get_map("g", return_type="array")
         .ravel()
     )
     from_coords = (
-        CBES(fwhm=8.0, null_method="parametric", use_images=False)
+        CBES(fwhm=8.0, null_method="none", use_images=False)
         .fit(studyset)
         .get_map("g", return_type="array")
         .ravel()
@@ -685,7 +685,7 @@ def test_images_recover_the_truth_better_than_coordinates(image_studyset):
 
 def test_use_images_false_ignores_them(image_studyset):
     studyset, _ = image_studyset
-    estimator = CBES(fwhm=8.0, null_method="parametric", use_images=False)
+    estimator = CBES(fwhm=8.0, null_method="none", use_images=False)
     estimator.fit(studyset)
     assert estimator._image_studies_ == {}
     assert len(estimator._focus_table_) == 10
@@ -698,13 +698,13 @@ def test_peak_bias_rescales_the_estimate_exactly(image_studyset):
     """
     studyset, _ = image_studyset
     plain = (
-        CBES(fwhm=8.0, null_method="parametric", use_images=False)
+        CBES(fwhm=8.0, null_method="none", use_images=False)
         .fit(studyset)
         .get_map("g", return_type="array")
         .ravel()
     )
     scaled = (
-        CBES(fwhm=8.0, null_method="parametric", use_images=False, peak_bias=0.4)
+        CBES(fwhm=8.0, null_method="none", use_images=False, peak_bias=0.4)
         .fit(studyset)
         .get_map("g", return_type="array")
         .ravel()
@@ -753,7 +753,7 @@ def test_uninformative_peaks_are_flagged(small_mask, caplog):
         noise_extent=30.0,
         seed=5,
     )
-    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="parametric")
+    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="none")
     with caplog.at_level("WARNING"):
         estimator.fit(studyset)
 
@@ -806,7 +806,7 @@ def test_study_min_undoes_the_order_statistic(studyset, small_mask):
     the study reports fewer of them, so the inferred cutoff must land below the raw minimum --
     never above it, and by more when there are fewer peaks to draw from.
     """
-    estimator = CBES(fwhm=8.0, null_method="parametric", threshold="study-min", mask=small_mask)
+    estimator = CBES(fwhm=8.0, null_method="none", threshold="study-min", mask=small_mask)
     estimator.fit(studyset)
 
     table = estimator._focus_table_
@@ -827,11 +827,9 @@ def test_threshold_can_name_a_metadata_field(small_mask):
         [TRUTH], effect_sizes=0.9, n_studies=20, sample_size=25, threshold_z=3.0, seed=11
     )
     from_metadata = CBES(
-        fwhm=8.0, null_method="parametric", threshold="reporting_threshold", mask=small_mask
+        fwhm=8.0, null_method="none", threshold="reporting_threshold", mask=small_mask
     ).fit(studyset)
-    from_float = CBES(fwhm=8.0, null_method="parametric", threshold=3.0, mask=small_mask).fit(
-        studyset
-    )
+    from_float = CBES(fwhm=8.0, null_method="none", threshold=3.0, mask=small_mask).fit(studyset)
 
     assert np.allclose(
         from_metadata.get_map("g", return_type="array"),
@@ -840,7 +838,7 @@ def test_threshold_can_name_a_metadata_field(small_mask):
 
 
 def test_threshold_metadata_field_must_exist(studyset, small_mask):
-    estimator = CBES(fwhm=8.0, null_method="parametric", threshold="nope", mask=small_mask)
+    estimator = CBES(fwhm=8.0, null_method="none", threshold="nope", mask=small_mask)
     with pytest.raises(ValueError, match="metadata field"):
         estimator.fit(studyset)
 
@@ -871,7 +869,7 @@ def test_per_study_peak_bias_reduces_to_the_scalar_when_studies_agree(small_mask
     studyset = create_effect_size_coordinate_studyset(
         [TRUTH], effect_sizes=0.9, n_studies=20, sample_size=25, threshold_z=3.0, seed=12
     )
-    common = dict(fwhm=8.0, null_method="parametric", threshold=3.0, mask=small_mask)
+    common = dict(fwhm=8.0, null_method="none", threshold=3.0, mask=small_mask)
     per_study = CBES(peak_bias="per-study", peak_bias_scale=0.4, **common).fit(studyset)
     scalar = CBES(peak_bias=0.4, **common).fit(studyset)
 
@@ -893,7 +891,7 @@ def test_per_study_peak_bias_equalizes_a_mixed_threshold_collection(small_mask):
     def gap(peak_bias):
         estimator = CBES(
             fwhm=8.0,
-            null_method="parametric",
+            null_method="none",
             threshold="reporting_threshold",
             peak_bias=peak_bias,
             mask=small_mask,
@@ -983,9 +981,7 @@ def half_image_studyset(image_studyset):
 def test_mixing_images_with_an_uncalibrated_scale_warns(half_image_studyset, caplog):
     """The default scale is the wrong one as soon as images are in the fit, so say so."""
     studyset, _ = half_image_studyset
-    estimator = CBES(
-        fwhm=8.0, null_method="parametric", peak_bias="per-study", peak_bias_scale=1.0
-    )
+    estimator = CBES(fwhm=8.0, null_method="none", peak_bias="per-study", peak_bias_scale=1.0)
     with caplog.at_level("WARNING"):
         estimator.fit(studyset)
     assert "peak_bias_scale" in caplog.text
@@ -998,17 +994,13 @@ def test_auto_peak_bias_scale_puts_coordinates_on_the_images_scale(half_image_st
     land on the image-only one -- that is the whole content of the calibration.
     """
     studyset, _ = half_image_studyset
-    estimator = CBES(
-        fwhm=8.0, null_method="parametric", peak_bias="per-study", peak_bias_scale="auto"
-    )
+    estimator = CBES(fwhm=8.0, null_method="none", peak_bias="per-study", peak_bias_scale="auto")
     estimator.fit(studyset)
     scale = estimator._peak_bias_scale_
 
     assert 0.0 < scale < 1.0  # a reported peak overstates the field around it
 
-    uncalibrated = CBES(
-        fwhm=8.0, null_method="parametric", peak_bias="per-study", peak_bias_scale=1.0
-    )
+    uncalibrated = CBES(fwhm=8.0, null_method="none", peak_bias="per-study", peak_bias_scale=1.0)
     uncalibrated.fit(studyset)
     assert np.allclose(
         estimator._peak_bias_.values, scale * uncalibrated._peak_bias_.values, rtol=1e-8
@@ -1019,7 +1011,7 @@ def test_auto_peak_bias_scale_falls_back_without_images(studyset, small_mask, ca
     """Nothing to calibrate against is a warning and a relative map, not a failure."""
     estimator = CBES(
         fwhm=8.0,
-        null_method="parametric",
+        null_method="none",
         peak_bias="per-study",
         peak_bias_scale="auto",
         mask=small_mask,
@@ -1062,7 +1054,7 @@ def test_only_the_magnitude_depends_on_the_uncalibrated_scale(small_mask):
         result = CBES(
             fwhm=8.0,
             mask=small_mask,
-            null_method="parametric",
+            null_method="none",
             threshold="study-min",
             peak_bias="per-study",
             peak_bias_scale=scale,
