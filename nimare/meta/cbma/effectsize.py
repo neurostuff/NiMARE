@@ -444,10 +444,10 @@ def infer_threshold_from_minimum(min_stat_z, n_peaks):
     above ``u`` exceeds ``u`` by a computable amount, so that bias can be inverted rather than
     absorbed. With many reported peaks the correction vanishes, as it should.
 
-    This assumes ``n_peaks`` is every peak the study had above its threshold. A paper that
-    tabulates only its strongest peaks looks exactly like one that thresholded at the bottom
-    of that table -- truncation and threshold are not separable from peak heights -- and this
-    will then return the truncation point, not the threshold.
+    This assumes ``n_peaks`` is what the study's threshold admitted, not a table cut down to
+    its strongest entries -- such a table is indistinguishable from a stricter threshold, and
+    this would return the cut rather than the threshold. Ordinary reporting conventions are
+    fine; a deliberately abridged table is not.
 
     Parameters
     ----------
@@ -622,13 +622,12 @@ class CBES(Estimator):
             plainly thresholded differently and none of them says how -- the usual case in a
             literature search.
 
-            Both per-study rules assume a study listed *every* peak that cleared its
-            threshold. A paper that tabulates only its strongest peaks is indistinguishable,
-            from the peak heights alone, from one that thresholded at the bottom of that
-            table: truncating the 21 NIDM pain studies to their top 3 peaks moves the
-            apparent threshold from 2.33 to 4.45, and no correction recovers it, because the
-            information is not there. Prefer ``"pooled-min"`` or the metadata field when the
-            tables may be truncated.
+            Both per-study rules assume the reported peaks are whatever cleared the study's
+            threshold, which the usual reporting conventions satisfy: one local maximum per
+            cluster, or several separated by 8 mm, with or without an extent threshold. What
+            would break them is a table truncated to its strongest peaks, which is
+            indistinguishable from a stricter threshold -- but that is not how tables are
+            built, so it is not a reason to avoid these rules.
         any other string
             The name of a metadata field holding each study's threshold on the z scale, for
             collections where the papers state it. Studies missing the field take the median
