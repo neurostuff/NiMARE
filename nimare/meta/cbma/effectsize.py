@@ -2,12 +2,13 @@
 
 import logging
 import os
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 from joblib import Memory, Parallel, delayed
 from nilearn.maskers import NiftiMasker
-from scipy import ndimage, stats
+from scipy import ndimage
 from scipy.optimize import brentq
 from scipy.special import ndtr
 from tqdm.auto import tqdm
@@ -18,6 +19,7 @@ from nimare.meta.utils import (
     _calculate_cluster_measures,
     _get_mask_flat_to_masked,
     _kernel_to_sparse_support,
+    _max_statistic_maps,
     get_ale_kernel,
     sphere_kernel_offsets,
 )
@@ -68,6 +70,9 @@ REFERENCE_MAGNITUDE_BY_N = (
 REFERENCE_MAGNITUDE_LOG_SD = 0.673
 
 
+# -------------------------------------------------------- reference magnitudes
+
+
 def reference_magnitude(sample_sizes):
     """Effect magnitude a collection of this size would typically show, from the reference corpus.
 
@@ -84,6 +89,9 @@ def reference_magnitude(sample_sizes):
     values = np.log([entry[1] for entry in REFERENCE_MAGNITUDE_BY_N])
     return float(np.exp(np.mean(np.interp(np.log(sizes), grid, values))))
 
+
+#: Keywords ``peak_bias_scale`` understands; anything else must be a positive number.
+PEAK_BIAS_SCALE_KEYWORDS = ("auto", "images", "reference")
 
 #: Keywords ``threshold`` understands; any other string names a metadata field.
 THRESHOLD_KEYWORDS = ("pooled-min", "study-min")
@@ -117,18 +125,8 @@ _EM_COMPACTION_FRACTION = 0.05
 _NULL_PILOT_ITERS = 20
 _NULL_PILOT_DIVISOR = 20
 
-#: Share of the maximum-statistic null taken as exceedances for the generalized Pareto fit,
-#: and the fraction of them dropped on each retry when the fit is rejected.
-_GPD_TAIL_FRACTION = 0.10
-_GPD_SHRINK_DIVISOR = 20
-#: The fit is trusted only this many times above the empirical p floor. Below that it was
-#: measured to run about twice anticonservative, so the empirical tail is kept instead.
-_GPD_FLOOR_MULTIPLE = 5.0
-
-#: Clamps before a logarithm and before inverting the normal survival function. Only guard
-#: against a p of exactly zero; both sit far below any p these permutation counts can produce.
+#: Clamp before a logarithm: guards only against a p of exactly zero.
 _LOGP_FLOOR = 1e-300
-_Z_FROM_P_FLOOR = 1e-16
 #: Floor on a probability used as a denominator or a mixture responsibility.
 _PROBABILITY_FLOOR = 1e-12
 
@@ -173,6 +171,9 @@ _CLUSTER_CONNECTIVITY = ndimage.generate_binary_structure(rank=3, connectivity=1
 _INV_SQRT_2PI = 1.0 / np.sqrt(2.0 * np.pi)
 
 
+# ----------------------------------------------------------- numerical helpers
+
+
 def _trapezoid(y, x):
     """Integrate ``y`` over ``x`` by the trapezoidal rule.
 
@@ -201,6 +202,9 @@ def _normal_pdf(x):
     return out
 
 
+# ---------------------------------------- null histograms and cluster measures
+
+
 def _null_bin_edges():
     """Bin edges for the permutation null histogram of |z|."""
     return np.arange(0.0, _NULL_MAX_Z + _NULL_Z_STEP, _NULL_Z_STEP)
@@ -223,131 +227,6 @@ def _stat_from_histogram(p_value, histogram):
     if not reached.size:
         return np.inf
     return float(reached[0] * _NULL_Z_STEP)
-
-
-def _gpd_goodness_of_fit(excess, shape, scale, n_boot=200, seed=0):
-    """p-value for "these exceedances are generalized Pareto", by parametric bootstrap.
-
-    The parameters were estimated from the same data, so the textbook Cramer-von Mises null
-    distribution does not apply -- using it accepts fits it should reject, which is how a tail
-    approximation ends up anticonservative. Simulating from the fitted distribution and
-    refitting each replicate gives the right reference.
-    """
-    rng = np.random.default_rng(seed)
-    observed_stat = stats.cramervonmises(
-        excess, stats.genpareto(shape, loc=0.0, scale=scale).cdf
-    ).statistic
-    n = excess.size
-
-    worse = 0
-    for _ in range(n_boot):
-        sample = stats.genpareto.rvs(shape, loc=0.0, scale=scale, size=n, random_state=rng)
-        try:
-            boot_shape, _, boot_scale = stats.genpareto.fit(sample, floc=0.0)
-            if not np.isfinite(boot_shape) or boot_scale <= 0:
-                continue
-            statistic = stats.cramervonmises(
-                sample, stats.genpareto(boot_shape, loc=0.0, scale=boot_scale).cdf
-            ).statistic
-        except Exception:  # noqa: BLE001
-            continue
-        worse += statistic >= observed_stat
-    return (1 + worse) / (1 + n_boot)
-
-
-def _gpd_tail_p(observed, null_maxima, min_exceedances=30, alpha=0.05):
-    """Corrected p-values from a generalized Pareto fit to the tail of the null maxima.
-
-    A permutation p-value cannot go below ``1 / (1 + n_iters)``, so resolving a corrected p of
-    1e-4 needs ten thousand permutations however uninteresting the other 9999 are. Extreme value
-    theory says the exceedances of a high threshold converge to a generalized Pareto
-    distribution whatever the parent, so the tail can be *modelled* rather than counted. This
-    is the tail approximation of Winkler et al. (2016), which they recommend specifically for
-    familywise error.
-
-    Validated here rather than taken on faith, and the result bounds what it may do. Above five
-    times the empirical floor the fitted p is 0.85-1.00 of a 40000-permutation truth; at and
-    below the floor it runs about twice anticonservative in 36-60% of runs, on every parent
-    distribution tried. So it refines p-values only in the range where it was shown to work and
-    defers to the empirical tail below -- which gives up the extrapolation past the floor that
-    the published method is prized for. With a few hundred exceedances this implementation did
-    not earn it.
-
-    The threshold is chosen the way they choose it: start with the largest tenth of the null
-    maxima, test the fit, and if it is rejected drop the smallest exceedance and refit, until
-    the fit is acceptable or too few points remain. Falling back to the empirical tail when no
-    fit is accepted is what keeps this safe -- it can only ever refine a p-value it would
-    otherwise have quantized, never invent one on a tail that is not Pareto.
-
-    Returns ``None`` when no acceptable fit exists, leaving the caller on the empirical tail.
-    """
-    maxima = np.sort(np.asarray(null_maxima, dtype=float))
-    n_total = maxima.size
-    if n_total < 100:
-        return None  # too few to say anything about a tail
-
-    n_exceed = max(int(round(_GPD_TAIL_FRACTION * n_total)), min_exceedances)
-    while n_exceed >= min_exceedances:
-        threshold = maxima[n_total - n_exceed - 1]
-        excess = maxima[n_total - n_exceed :] - threshold
-        if not np.all(np.isfinite(excess)) or excess.max() <= 0:
-            n_exceed -= max(1, n_exceed // _GPD_SHRINK_DIVISOR)
-            continue
-        try:
-            shape, _, scale = stats.genpareto.fit(excess, floc=0.0)
-            if not np.isfinite(shape) or not np.isfinite(scale) or scale <= 0:
-                raise ValueError
-            fitted = stats.genpareto(shape, loc=0.0, scale=scale)
-            goodness = _gpd_goodness_of_fit(excess, shape, scale, seed=n_exceed)
-        except Exception:  # noqa: BLE001 -- any failure just means try a shorter tail
-            n_exceed -= max(1, n_exceed // _GPD_SHRINK_DIVISOR)
-            continue
-
-        if goodness > alpha:
-            rate = n_exceed / n_total
-            observed = np.asarray(observed, dtype=float)
-            in_tail = observed > threshold
-            p_corrected = np.empty(observed.shape, dtype=float)
-            # Below the threshold the empirical tail is well resolved, so keep it there.
-            p_corrected[~in_tail] = (
-                1 + np.sum(maxima[None, :] >= observed[~in_tail][:, None], axis=1)
-            ) / (1 + n_total)
-            p_corrected[in_tail] = rate * fitted.sf(observed[in_tail] - threshold)
-            # How far this can be trusted was measured, not assumed: against a
-            # 40000-permutation reference, across three parent distributions, 25 repetitions
-            # each. Comfortably above the empirical floor it is accurate -- at p = .05 and .01
-            # the fitted value is 0.85-1.00 of the truth and essentially never more than twice
-            # too small. At and below the floor (1/501 for a 500-permutation run) it runs about
-            # twice anticonservative in 36-60% of runs, on every parent tried.
-            #
-            # So the fit is used only where it was shown to work, five times the floor and
-            # above, and the empirical tail is kept below that. That forgoes the extrapolation
-            # past the floor which is the published method's main selling point; with a few
-            # hundred exceedances this implementation did not earn it, and an anticonservative
-            # familywise p is worse than a quantized one.
-            floor = _GPD_FLOOR_MULTIPLE / (1.0 + n_total)
-            p_corrected[in_tail] = np.maximum(p_corrected[in_tail], floor)
-            return np.clip(p_corrected, 0.0, 1.0)
-        n_exceed -= max(1, n_exceed // _GPD_SHRINK_DIVISOR)
-
-    return None
-
-
-def _max_statistic_maps(observed, null_maxima, sign, tail_approximation=False):
-    """Corrected ``-log10(p)`` and signed z for a statistic against its maximum-statistic null."""
-    p_corrected = None
-    if tail_approximation:
-        p_corrected = _gpd_tail_p(observed, null_maxima)
-    if p_corrected is None:
-        p_corrected = (1 + np.sum(null_maxima[None, :] >= observed[:, None], axis=1)) / (
-            1 + len(null_maxima)
-        )
-    logp = _nlogp_to_logp_values(np.log(np.clip(p_corrected, _LOGP_FLOOR, None)))
-    z_corrected = stats.norm.isf(np.clip(p_corrected, _Z_FROM_P_FLOOR, 1.0) / 2.0) * sign
-    return (
-        logp.astype(DEFAULT_FLOAT_DTYPE),
-        z_corrected.astype(DEFAULT_FLOAT_DTYPE),
-    )
 
 
 def _observed_cluster_measures(volume, threshold):
@@ -376,6 +255,9 @@ def _observed_cluster_measures(volume, threshold):
         sizes[inside] = cluster_sizes[labels[inside] - 1]
         masses[inside] = cluster_masses[labels[inside] - 1]
     return sizes, masses
+
+
+# -------------------------------------------------- selection-model likelihood
 
 
 def _censoring_terms(mu, cutoff_scaled, twice_cutoff_scaled, inv_sigma, inv_sigma_sq):
@@ -453,6 +335,9 @@ def _mu_derivatives(
         minlength=width,
     )
     return score, curvature
+
+
+# -------------------------------------------------------- reported-peak theory
 
 
 def peak_stat_to_hedges_g(stat, sample_size, stat_type="z", design="one-sample"):
@@ -650,6 +535,9 @@ def null_effect_variance(sample_size, design="one-sample"):
     return var_g
 
 
+# --------------------------------------------------------------- heterogeneity
+
+
 def _local_dersimonian_laird(sum_w, sum_a, sum_a2, sum_ag, sum_ag2, sum_w2_over_s2, n_studies):
     r"""Kernel-weighted DerSimonian-Laird estimate of between-study heterogeneity.
 
@@ -681,6 +569,130 @@ def _local_dersimonian_laird(sum_w, sum_a, sum_a2, sum_ag, sum_ag2, sum_w2_over_
     out[positive] = (q_stat[positive] - expected_q[positive]) / scale[positive]
     tau2[usable] = np.maximum(out, 0.0)
     return tau2
+
+
+# ----------------------------------------------------------- estimator support
+
+
+def _validate_options(
+    *, design, tau2_method, selection_model, null_method, peak_bias, peak_bias_scale, threshold
+):
+    """Reject unusable option combinations at construction, not at fit time.
+
+    Kept out of ``__init__`` so that reads as the list of what the estimator stores. Everything
+    here is a membership or range check on a single argument; anything needing the data belongs
+    in :meth:`CBES._fit`.
+    """
+    if design not in DESIGNS:
+        raise ValueError(f"design must be one of {DESIGNS}; got {design!r}.")
+    if tau2_method not in ("dl", "none"):
+        raise ValueError(f"tau2_method must be 'dl' or 'none'; got {tau2_method!r}.")
+    if selection_model not in SELECTION_MODELS:
+        raise ValueError(
+            f"selection_model must be one of {SELECTION_MODELS}; got {selection_model!r}."
+        )
+    if null_method not in NULL_METHODS:
+        raise ValueError(f"null_method must be one of {NULL_METHODS}; got {null_method!r}.")
+
+    scale_is_keyword = isinstance(peak_bias_scale, str)
+    if (scale_is_keyword and peak_bias_scale not in PEAK_BIAS_SCALE_KEYWORDS) or (
+        not scale_is_keyword and not float(peak_bias_scale) > 0
+    ):
+        raise ValueError(
+            f"peak_bias_scale must be one of {list(PEAK_BIAS_SCALE_KEYWORDS)} or a positive "
+            f"number; got {peak_bias_scale!r}."
+        )
+
+    bias_is_keyword = isinstance(peak_bias, str)
+    if (bias_is_keyword and peak_bias != "per-study") or (
+        not bias_is_keyword and peak_bias is not None and not 0.0 < float(peak_bias) <= 1.0
+    ):
+        raise ValueError(
+            f"peak_bias must be None, 'per-study', or a number in (0, 1]; got {peak_bias!r}."
+        )
+
+    # A string is a keyword or the name of a metadata field holding per-study thresholds, and
+    # which one it is cannot be known until the collection is in hand.
+    if not isinstance(threshold, str) and threshold is not None and not np.isscalar(threshold):
+        raise ValueError(
+            f"threshold must be one of {list(THRESHOLD_KEYWORDS)}, a metadata field name, a "
+            f"number, or None; got {threshold!r}."
+        )
+
+
+@dataclass
+class _ReportingPairs:
+    """The ``(study, voxel)`` pairs where a study's kernel reaches the voxel.
+
+    A bag of parallel arrays, but a named one: the EM retires converged voxels and has to drop
+    the pairs that pointed at them, which means reindexing every array in step. Doing that by
+    hand for a dozen locals is where this loop was easiest to get wrong.
+    """
+
+    voxel: np.ndarray
+    weight: np.ndarray
+    g: np.ndarray
+    sigma: np.ndarray
+    precision: np.ndarray
+    density_null: np.ndarray
+    responsibility: np.ndarray
+
+    def compact(self, position):
+        """Drop pairs whose voxel has retired, and renumber the rest onto ``position``."""
+        moved = position[self.voxel]
+        keep = moved >= 0
+        return _ReportingPairs(
+            voxel=moved[keep],
+            weight=self.weight[keep],
+            g=self.g[keep],
+            sigma=self.sigma[keep],
+            precision=self.precision[keep],
+            density_null=self.density_null[keep],
+            responsibility=self.responsibility[keep],
+        )
+
+
+@dataclass
+class _SilentPairs:
+    """The ``(study, voxel)`` pairs where a study reported in the region but not at the voxel.
+
+    ``inv_sigma`` and the scaled cutoffs are precomputed because only ``mu`` moves between EM
+    iterations, so every division by them is paid once rather than once per iteration.
+    """
+
+    voxel: np.ndarray
+    weight: np.ndarray
+    inv_sigma: np.ndarray
+    inv_sigma_sq: np.ndarray
+    cutoff_scaled: np.ndarray
+    twice_cutoff_scaled: np.ndarray
+    prob_silent_null: np.ndarray
+    responsibility: np.ndarray
+
+    def compact(self, position):
+        """Drop pairs whose voxel has retired, and renumber the rest onto ``position``."""
+        moved = position[self.voxel]
+        keep = moved >= 0
+        return _SilentPairs(
+            voxel=moved[keep],
+            weight=self.weight[keep],
+            inv_sigma=self.inv_sigma[keep],
+            inv_sigma_sq=self.inv_sigma_sq[keep],
+            cutoff_scaled=self.cutoff_scaled[keep],
+            twice_cutoff_scaled=self.twice_cutoff_scaled[keep],
+            prob_silent_null=self.prob_silent_null[keep],
+            responsibility=self.responsibility[keep],
+        )
+
+    def censoring(self, mu):
+        """P(silent) and its derivatives at the current ``mu``."""
+        return _censoring_terms(
+            mu[self.voxel],
+            self.cutoff_scaled,
+            self.twice_cutoff_scaled,
+            self.inv_sigma,
+            self.inv_sigma_sq,
+        )
 
 
 class CBES(Estimator):
@@ -936,48 +948,15 @@ class CBES(Estimator):
             memory=memory, memory_level=memory_level, generate_description=generate_description
         )
 
-        if design not in DESIGNS:
-            raise ValueError(f"design must be one of {DESIGNS}; got {design!r}.")
-        if tau2_method not in ("dl", "none"):
-            raise ValueError(f"tau2_method must be 'dl' or 'none'; got {tau2_method!r}.")
-        if selection_model not in SELECTION_MODELS:
-            raise ValueError(
-                f"selection_model must be one of {SELECTION_MODELS}; got {selection_model!r}."
-            )
-        if null_method not in NULL_METHODS:
-            raise ValueError(f"null_method must be one of {NULL_METHODS}; got {null_method!r}.")
-        if isinstance(peak_bias_scale, str) and peak_bias_scale not in (
-            "auto",
-            "images",
-            "reference",
-        ):
-            raise ValueError(
-                "peak_bias_scale must be 'auto', 'images', 'reference', or a positive "
-                f"number; got {peak_bias_scale!r}."
-            )
-        if not isinstance(peak_bias_scale, str) and not float(peak_bias_scale) > 0:
-            raise ValueError(
-                "peak_bias_scale must be 'auto', 'images', 'reference', or a positive "
-                f"number; got {peak_bias_scale!r}."
-            )
-        if isinstance(peak_bias, str):
-            if peak_bias != "per-study":
-                raise ValueError(
-                    f"peak_bias must be None, 'per-study', or a number in (0, 1]; got "
-                    f"{peak_bias!r}."
-                )
-        elif peak_bias is not None and not 0.0 < float(peak_bias) <= 1.0:
-            raise ValueError(
-                f"peak_bias must be None, 'per-study', or a number in (0, 1]; got "
-                f"{peak_bias!r}."
-            )
-        if isinstance(threshold, str):
-            pass  # a keyword, or the name of a metadata field holding per-study thresholds
-        elif threshold is not None and not np.isscalar(threshold):
-            raise ValueError(
-                f"threshold must be one of {list(THRESHOLD_KEYWORDS)}, a metadata field name, "
-                f"a number, or None; got {threshold!r}."
-            )
+        _validate_options(
+            design=design,
+            tau2_method=tau2_method,
+            selection_model=selection_model,
+            null_method=null_method,
+            peak_bias=peak_bias,
+            peak_bias_scale=peak_bias_scale,
+            threshold=threshold,
+        )
 
         self.fwhm = fwhm
         self.use_images = use_images
@@ -1736,7 +1715,7 @@ class CBES(Estimator):
 
         return contributions, sums, n_voxels
 
-    # ------------------------------------------------------------------ fitting
+    # ----------------------------------------- pooling and the selection model
 
     def _pool(self, table, image_studies=None):
         """Run the two-pass local random-effects fit. Returns a dict of masked-voxel arrays."""
@@ -1974,52 +1953,29 @@ class CBES(Estimator):
         fit["se"] = np.full(n_voxels, np.inf, dtype=float)
         fit["se"][active] = se_out
 
-    def _fit_chunk(self, *, weights, g_obs, var_obs, covered, tau2, null_var, cutoffs, start):
-        """EM for one block of voxels. Returns ``(mu, prevalence, se)``, one value per voxel.
+    def _working_sets(self, *, weights, g_obs, var_obs, covered, tau2, null_var, cutoffs):
+        """Split the block into the reporting and silent ``(study, voxel)`` pairs the EM uses.
 
-        Works on the ``(study, voxel)`` pairs that carry weight rather than on the dense
-        study-by-voxel block. At any given voxel a study either reported nearby or was silent
-        there, and in a real studyset most studies are neither -- they reported in the region
-        but outside this voxel's kernel, so they inform neither term. Evaluating normal CDFs
-        across the full block and then multiplying most of them by zero was 97% of the runtime.
-        The arithmetic is unchanged; only the entries that contribute are visited.
+        Works on the pairs that carry weight rather than on the dense study-by-voxel block. At
+        any given voxel a study either reported nearby or was silent there, and in a real
+        studyset most studies are neither -- they reported in the region but outside this
+        voxel's kernel, so they inform neither term. Evaluating normal CDFs across the full
+        block and then multiplying most of them by zero was 97% of the runtime.
         """
-        zero_inflated = self.selection_model == "zero-inflated"
         width = weights.shape[1]
-
         reporting = np.flatnonzero(weights > 0)
-        # Covered but out of kernel range: the study said something about this region but
-        # nothing about this voxel. It informs neither term, and is in neither index.
         silence = np.flatnonzero(~covered)
-        rep_voxel, rep_study = reporting % width, reporting // width
+        rep_voxel = reporting % width
         sil_voxel, sil_study = silence % width, silence // width
-        del rep_study
 
-        w_rep = weights.ravel()[reporting]
-        g_rep = g_obs.ravel()[reporting]
         var_rep = var_obs.ravel()[reporting]
         sigma_rep = np.sqrt(var_rep + tau2[rep_voxel])
-        precision_rep = 1.0 / sigma_rep**2
+        g_rep = g_obs.ravel()[reporting]
+        w_rep = weights.ravel()[reporting]
 
         cutoff_sil = cutoffs.ravel()[sil_study]
         null_var_sil = null_var.ravel()[sil_study]
-        sigma_sil = np.sqrt(null_var_sil + tau2[sil_voxel])
-        # Hoisted out of the EM loop: sigma and the cutoffs do not move between iterations,
-        # only mu does, so every division by them is paid once instead of tens of times.
-        inv_sigma_sil = 1.0 / sigma_sil
-        inv_sigma_sq_sil = inv_sigma_sil * inv_sigma_sil
-        cutoff_scaled_sil = cutoff_sil * inv_sigma_sil
-        twice_cutoff_scaled_sil = cutoff_scaled_sil * 2.0
-
-        def censoring_at(values):
-            """P(silent) and its derivatives for a set of silent observations at ``values``."""
-            return _censoring_terms(
-                values,
-                cutoff_scaled_sil,
-                twice_cutoff_scaled_sil,
-                inv_sigma_sil,
-                inv_sigma_sq_sil,
-            )
+        inv_sigma_sil = 1.0 / np.sqrt(null_var_sil + tau2[sil_voxel])
 
         # A reporting study's log-likelihood is discounted by the spatial kernel, so a silent
         # study entering at full weight would count for more than a study that actually
@@ -2031,37 +1987,91 @@ class CBES(Estimator):
         reporter_scale = np.divide(
             sum_reported, n_reporting, out=np.ones(width), where=n_reporting > 0
         )
-        w_sil = reporter_scale[sil_voxel]
 
-        # Probability a silent study stays silent when it has no effect at all. Fixed across
-        # iterations, and close to one whenever the threshold is the usual several sigma.
-        null_sd_sil = np.sqrt(null_var_sil)
-        prob_silent_null = np.clip(
-            ndtr(cutoff_sil / null_sd_sil) - ndtr(-cutoff_sil / null_sd_sil),
-            _PROBABILITY_FLOOR,
-            None,
+        reporting_pairs = _ReportingPairs(
+            voxel=rep_voxel,
+            weight=w_rep,
+            g=g_rep,
+            sigma=sigma_rep,
+            precision=1.0 / sigma_rep**2,
+            density_null=_normal_pdf(g_rep / np.sqrt(var_rep)) / np.sqrt(var_rep),
+            responsibility=np.ones(reporting.size),
         )
-        density_null = _normal_pdf(g_rep / np.sqrt(var_rep)) / np.sqrt(var_rep)
+        silent_pairs = _SilentPairs(
+            voxel=sil_voxel,
+            weight=reporter_scale[sil_voxel],
+            inv_sigma=inv_sigma_sil,
+            inv_sigma_sq=inv_sigma_sil * inv_sigma_sil,
+            cutoff_scaled=cutoff_sil * inv_sigma_sil,
+            twice_cutoff_scaled=cutoff_sil * inv_sigma_sil * 2.0,
+            # Probability a silent study stays silent when it has no effect at all. Fixed
+            # across iterations, and close to one whenever the threshold is several sigma.
+            prob_silent_null=np.clip(
+                ndtr(cutoff_sil / np.sqrt(null_var_sil))
+                - ndtr(-cutoff_sil / np.sqrt(null_var_sil)),
+                _PROBABILITY_FLOOR,
+                None,
+            ),
+            responsibility=np.ones(silence.size),
+        )
+        return reporting_pairs, silent_pairs
+
+    @staticmethod
+    def _update_prevalence(reporting, silent, mu, pi, total_weight, censoring):
+        """One E-step: the mixture responsibilities, and the prevalence they imply."""
+        pi_rep, pi_sil = pi[reporting.voxel], pi[silent.voxel]
+
+        density_effect = (
+            _normal_pdf((reporting.g - mu[reporting.voxel]) / reporting.sigma) / reporting.sigma
+        )
+        resp_rep = pi_rep * density_effect
+        resp_rep /= resp_rep + (1.0 - pi_rep) * reporting.density_null + _LOGP_FLOOR
+        resp_sil = pi_sil * censoring["prob"]
+        resp_sil /= resp_sil + (1.0 - pi_sil) * silent.prob_silent_null + _LOGP_FLOOR
+
+        claimed = np.bincount(
+            reporting.voxel, weights=reporting.weight * resp_rep, minlength=mu.size
+        ) + np.bincount(silent.voxel, weights=silent.weight * resp_sil, minlength=mu.size)
+        updated = np.clip(
+            np.divide(claimed, total_weight, out=np.zeros(mu.size), where=total_weight > 0),
+            _PREVALENCE_CLAMP,
+            1.0 - _PREVALENCE_CLAMP,
+        )
+        return resp_rep, resp_sil, updated
+
+    def _fit_chunk(self, *, weights, g_obs, var_obs, covered, tau2, null_var, cutoffs, start):
+        """EM for one block of voxels. Returns ``(mu, prevalence, se)``, one value per voxel.
+
+        Voxels converge at very different rates: most settle within a handful of iterations
+        while a few drift for dozens. Iterating the whole block until the slowest voxel is done
+        wastes nearly all of the work, and stopping on a global criterion instead leaves the
+        stragglers short of the MLE. So settled voxels are retired from the working set and the
+        rest keep going, which is what the ``compact`` calls below are doing.
+        """
+        zero_inflated = self.selection_model == "zero-inflated"
+        width = weights.shape[1]
+        reporting, silent = self._working_sets(
+            weights=weights,
+            g_obs=g_obs,
+            var_obs=var_obs,
+            covered=covered,
+            tau2=tau2,
+            null_var=null_var,
+            cutoffs=cutoffs,
+        )
+
+        total_weight = np.bincount(
+            reporting.voxel, weights=reporting.weight, minlength=width
+        ) + np.bincount(silent.voxel, weights=silent.weight, minlength=width)
 
         mu = start.copy()
         pi = np.full(width, 0.5 if zero_inflated else 1.0)
-        total_weight = np.bincount(rep_voxel, weights=w_rep, minlength=width) + np.bincount(
-            sil_voxel, weights=w_sil, minlength=width
-        )
-        resp_rep = np.ones(reporting.size)
-        resp_sil = np.ones(silence.size)
-
-        # Voxels converge at very different rates: most settle within a handful of iterations
-        # while a few drift for dozens. Iterating the whole block until the slowest voxel is
-        # done wastes nearly all of the work, and stopping on a global criterion instead leaves
-        # the stragglers short of the MLE. So settled voxels are retired from the working set
-        # and the rest keep going.
         mu_out = np.zeros(width)
         pi_out = np.zeros(width)
         se_out = np.full(width, np.inf)
         voxel_ids = np.arange(width)
 
-        def _retire(positions, curvature):
+        def retire(positions, curvature):
             """Write out voxels that have converged."""
             ids = voxel_ids[positions]
             mu_out[ids] = mu[positions]
@@ -2070,47 +2080,34 @@ class CBES(Estimator):
             informative = curv < 0
             se_out[ids[informative]] = 1.0 / np.sqrt(-curv[informative])
 
+        def derivatives(censoring):
+            """Score and curvature of the weighted log-likelihood in mu."""
+            return _mu_derivatives(
+                width=mu.size,
+                mu_rep=mu[reporting.voxel],
+                g_rep=reporting.g,
+                precision_rep=reporting.precision,
+                rep_voxel=reporting.voxel,
+                weight_rep=reporting.weight * reporting.responsibility,
+                sil_voxel=silent.voxel,
+                weight_sil=silent.weight * silent.responsibility,
+                censoring=censoring,
+            )
+
         curvature = np.zeros(width)
         for _ in range(self.max_iter):
             if not mu.size:
                 break
-            censoring = censoring_at(mu[sil_voxel])
+            censoring = silent.censoring(mu)
             pi_shift = np.zeros(mu.size)
             if zero_inflated:
-                pi_rep, pi_sil = pi[rep_voxel], pi[sil_voxel]
-                density_effect = _normal_pdf((g_rep - mu[rep_voxel]) / sigma_rep) / sigma_rep
-                resp_rep = pi_rep * density_effect
-                resp_rep /= resp_rep + (1.0 - pi_rep) * density_null + _LOGP_FLOOR
-                resp_sil = pi_sil * censoring["prob"]
-                resp_sil /= resp_sil + (1.0 - pi_sil) * prob_silent_null + _LOGP_FLOOR
-
-                numerator = np.bincount(
-                    rep_voxel, weights=w_rep * resp_rep, minlength=mu.size
-                ) + np.bincount(sil_voxel, weights=w_sil * resp_sil, minlength=mu.size)
                 previous_pi = pi
-                pi = np.clip(
-                    np.divide(
-                        numerator,
-                        total_weight,
-                        out=np.zeros(mu.size),
-                        where=total_weight > 0,
-                    ),
-                    _PREVALENCE_CLAMP,
-                    1.0 - _PREVALENCE_CLAMP,
+                reporting.responsibility, silent.responsibility, pi = self._update_prevalence(
+                    reporting, silent, mu, pi, total_weight, censoring
                 )
                 pi_shift = np.abs(pi - previous_pi)
 
-            score, curvature = _mu_derivatives(
-                width=mu.size,
-                mu_rep=mu[rep_voxel],
-                g_rep=g_rep,
-                precision_rep=precision_rep,
-                rep_voxel=rep_voxel,
-                weight_rep=w_rep * resp_rep,
-                sil_voxel=sil_voxel,
-                weight_sil=w_sil * resp_sil,
-                censoring=censoring,
-            )
+            score, curvature = derivatives(censoring)
             step = np.where(curvature < 0, -score / curvature, 0.0)
             # The likelihood is concave but flat far from the data; cap the step so a voxel
             # with almost no reporting weight cannot run away.
@@ -2118,53 +2115,30 @@ class CBES(Estimator):
 
             settled = (np.abs(step) < _EM_TOLERANCE) & (pi_shift < _EM_TOLERANCE)
             if settled.all():
-                _retire(np.flatnonzero(settled), curvature)
+                retire(np.flatnonzero(settled), curvature)
                 mu = mu[:0]
                 break
+            # Compaction touches every pair, so it is amortized rather than run every iteration.
             if settled.mean() < _EM_COMPACTION_FRACTION:
                 continue
 
-            _retire(np.flatnonzero(settled), curvature)
+            retire(np.flatnonzero(settled), curvature)
             keep = ~settled
             position = np.full(mu.size, -1, dtype=np.int64)
             position[np.flatnonzero(keep)] = np.arange(int(keep.sum()))
-
-            moved = position[rep_voxel]
-            kept_pairs = moved >= 0
-            rep_voxel = moved[kept_pairs]
-            w_rep, g_rep = w_rep[kept_pairs], g_rep[kept_pairs]
-            sigma_rep, precision_rep = sigma_rep[kept_pairs], precision_rep[kept_pairs]
-            density_null, resp_rep = density_null[kept_pairs], resp_rep[kept_pairs]
-
-            moved = position[sil_voxel]
-            kept_pairs = moved >= 0
-            sil_voxel = moved[kept_pairs]
-            w_sil, prob_silent_null = w_sil[kept_pairs], prob_silent_null[kept_pairs]
-            inv_sigma_sil = inv_sigma_sil[kept_pairs]
-            inv_sigma_sq_sil = inv_sigma_sq_sil[kept_pairs]
-            cutoff_scaled_sil = cutoff_scaled_sil[kept_pairs]
-            twice_cutoff_scaled_sil = twice_cutoff_scaled_sil[kept_pairs]
-            resp_sil = resp_sil[kept_pairs]
-
+            reporting = reporting.compact(position)
+            silent = silent.compact(position)
             mu, pi = mu[keep], pi[keep]
             total_weight = total_weight[keep]
             voxel_ids = voxel_ids[keep]
 
         if mu.size:
-            _, curvature = _mu_derivatives(
-                width=mu.size,
-                mu_rep=mu[rep_voxel],
-                g_rep=g_rep,
-                precision_rep=precision_rep,
-                rep_voxel=rep_voxel,
-                weight_rep=w_rep * resp_rep,
-                sil_voxel=sil_voxel,
-                weight_sil=w_sil * resp_sil,
-                censoring=censoring_at(mu[sil_voxel]),
-            )
-            _retire(np.arange(mu.size), curvature)
+            _, curvature = derivatives(silent.censoring(mu))
+            retire(np.arange(mu.size), curvature)
 
         return mu_out, pi_out, se_out
+
+    # ----------------------------------------------------------- the statistic
 
     def _statistic(self, table, sample_sizes, thresholds, image_studies=None):
         """Fit one configuration of foci and return ``(fit, z)``.
@@ -2184,6 +2158,8 @@ class CBES(Estimator):
         )
         z_values[~fit["covered"]] = 0.0
         return fit, z_values
+
+    # ---------------------------------------------------------------- the null
 
     def _mask_bool(self):
         """Boolean analysis mask, cached: the null loop unmasks a volume every iteration."""
@@ -2380,7 +2356,49 @@ class CBES(Estimator):
             ] = np.array([mass for _, _, _, _, masses in results for mass in masses], dtype=float)
         return p_values, max_values
 
+    # --------------------------------------------------------------------- fit
+
+    def _prepare_focus_table(self, dataset):
+        """Build the focus table and the per-study quantities the model reads off it.
+
+        The roster, the thresholds and the peak-height correction have to be resolved in that
+        order and are therefore resolved together: ``rho_k`` is a function of a study's
+        threshold, and the threshold is then rescaled by ``rho_k`` so that the censored
+        likelihood compares an observation against a bound on the same scale.
+
+        Sets ``_focus_table_``, ``_sample_sizes_`` and ``_thresholds_``, which the null reads
+        back to refit exactly the statistic that was tested.
+        """
+        table = self._build_focus_table()
+        # A study that supplies an image has nothing to gain from its own coordinates: the
+        # image gives the effect everywhere its peaks do and more, without the localization
+        # uncertainty or the selection.
+        if self._image_studies_:
+            table = table[~table["id"].isin(self._image_studies_)].copy()
+
+        needs_thresholds = self.selection_model != "none" or self.peak_bias is not None
+        if needs_thresholds:
+            roster = self._all_sample_sizes(dataset)
+            self._cutoffs_z_ = self._study_cutoffs_z(table, roster)
+            reporting_ids = table["id"].unique() if len(table) else []
+            self._peak_bias_scale_ = self._resolve_peak_bias_scale(table, roster, reporting_ids)
+            self._peak_bias_ = self._peak_bias_factors(self._cutoffs_z_, roster, reporting_ids)
+            table, thresholds = self._apply_peak_bias(
+                table, self._cutoffs_z_, roster, self._peak_bias_
+            )
+        else:
+            roster, thresholds = None, None
+            self._cutoffs_z_, self._peak_bias_ = None, None
+
+        # Without the selection model the fit never asks what a study would have reported, so
+        # the roster and the thresholds are not merely unused but meaningless, and are dropped
+        # rather than left lying around for the null to pick up.
+        self._focus_table_ = table
+        self._sample_sizes_ = roster if self.selection_model != "none" else None
+        self._thresholds_ = thresholds if self.selection_model != "none" else None
+
     def _fit(self, dataset):
+        """Estimate the effect size at every voxel, and refer it to the permutation null."""
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
         if not isinstance(self.masker, NiftiMasker):
@@ -2392,35 +2410,10 @@ class CBES(Estimator):
         self.null_distributions_ = {}
         self._mask_bool_ = None
         self._image_studies_ = self._load_image_studies(dataset)
-        table = self._build_focus_table()
-        # A study that supplies an image has nothing to gain from its own coordinates: the
-        # image gives the effect everywhere its peaks do and more, without the localization
-        # uncertainty or the selection.
-        if self._image_studies_:
-            table = table[~table["id"].isin(self._image_studies_)].copy()
-        # The roster, the thresholds and the peak-height correction have to be resolved in
-        # that order: rho_k is a function of a study's threshold, and the threshold itself is
-        # rescaled by rho_k so the censored likelihood stays on one scale.
-        if self.selection_model != "none" or self.peak_bias is not None:
-            roster = self._all_sample_sizes(dataset)
-            self._cutoffs_z_ = self._study_cutoffs_z(table, roster)
-            reporting_ids = table["id"].unique() if len(table) else []
-
-            self._peak_bias_scale_ = self._resolve_peak_bias_scale(table, roster, reporting_ids)
-            self._peak_bias_ = self._peak_bias_factors(self._cutoffs_z_, roster, reporting_ids)
-            table, thresholds = self._apply_peak_bias(
-                table, self._cutoffs_z_, roster, self._peak_bias_
-            )
-        else:
-            roster, thresholds = None, None
-            self._cutoffs_z_, self._peak_bias_ = None, None
-
-        self._focus_table_ = table
-        self._sample_sizes_ = roster if self.selection_model != "none" else None
-        self._thresholds_ = thresholds if self.selection_model != "none" else None
+        self._prepare_focus_table(dataset)
 
         fit, z_values = self._statistic(
-            table, self._sample_sizes_, self._thresholds_, self._image_studies_
+            self._focus_table_, self._sample_sizes_, self._thresholds_, self._image_studies_
         )
 
         if self.null_method == "permute-magnitudes":
@@ -2453,7 +2446,7 @@ class CBES(Estimator):
             maps["g_marginal"] = (fit["g"] * fit["prevalence"]).astype(DEFAULT_FLOAT_DTYPE)
         return maps, {}, self._description_text()
 
-    # ------------------------------------------------------------- correction
+    # -------------------------------------------------------------- correction
 
     def correct_fwe_montecarlo(
         self,
@@ -2596,7 +2589,7 @@ class CBES(Estimator):
             )
         return maps, {}, description
 
-    # ------------------------------------------------------------ description
+    # ------------------------------------------------------------- description
 
     def _generate_description(self):
         kernel_description = (

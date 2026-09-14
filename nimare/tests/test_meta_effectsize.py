@@ -141,16 +141,24 @@ def test_null_effect_variance_shrinks_with_sample_size():
 
 
 def test_local_dl_reduces_to_dersimonian_laird():
-    """With unit kernel weights the local estimator is the textbook DL estimator."""
+    """With unit kernel weights the local estimator must be the textbook DL estimator.
+
+    Checked against PyMARE's :class:`~pymare.estimators.DerSimonianLaird`, which is what
+    :mod:`nimare.meta.ibma` uses, rather than against a formula written out again here -- a
+    hand-copied reference can be wrong in the same way the implementation is. The kernel-weighted
+    form cannot be delegated to PyMARE (``fit`` takes no per-observation weight, and folding the
+    weight into the variance would scale tau-squared with it), so this pins the generalization at
+    the point where the two must agree.
+    """
+    from pymare.estimators import DerSimonianLaird
+
     rng = np.random.default_rng(0)
     g = rng.normal(0.5, 0.3, size=12)
     var_g = rng.uniform(0.02, 0.08, size=12)
 
-    weights = 1.0 / var_g
-    mean = np.sum(weights * g) / np.sum(weights)
-    q_stat = np.sum(weights * (g - mean) ** 2)
-    scale = np.sum(weights) - np.sum(weights**2) / np.sum(weights)
-    expected = max(0.0, (q_stat - (len(g) - 1)) / scale)
+    reference = DerSimonianLaird()
+    reference.fit(y=g[:, None], v=var_g[:, None], X=np.ones((len(g), 1)))
+    expected = float(np.asarray(reference.params_["tau2"]).ravel()[0])
 
     a = 1.0 / var_g
     actual = _local_dersimonian_laird(
@@ -163,6 +171,54 @@ def test_local_dl_reduces_to_dersimonian_laird():
         n_studies=np.array([float(len(g))]),
     )
     assert np.isclose(actual[0], expected)
+
+
+def test_pooling_reduces_to_weighted_least_squares(studyset, small_mask):
+    """With unit kernel weights the pooled estimate is ordinary inverse-variance weighting.
+
+    The second check that CBES is a weighting scheme over a standard random-effects model rather
+    than a separate algorithm, again against PyMARE rather than a restatement of the formula.
+    CBES cannot call :func:`~pymare.stats.weighted_least_squares` itself: it returns the
+    model-based ``(X'WX)^-1``, where a kernel weight is a design weight distinct from the
+    inverse-variance one and needs the sandwich form, and it wants dense ``(studies, voxels)``
+    arrays where the fit is sparse. At unit weight the two coincide, which is what is tested.
+    """
+    from pymare.stats import weighted_least_squares
+
+    estimator = CBES(fwhm=8.0, mask=small_mask, null_method="none", selection_model="none")
+    estimator.fit(studyset)
+    fit = estimator._pool(estimator._focus_table_)
+
+    # Rebuild one covered voxel as a dense one-voxel dataset and pool it with PyMARE.
+    voxel = int(np.argmax(fit["n_studies"]))
+    g, v, w = [], [], []
+    for _, cols, weights, g_k, var_k in fit["contributions"]:
+        hit = np.flatnonzero(cols == voxel)
+        if hit.size:
+            g.append(g_k[hit[0]])
+            v.append(var_k[hit[0]])
+            w.append(weights[hit[0]])
+    g, v = np.asarray(g), np.asarray(v)
+    assert len(g) >= 3
+
+    tau2 = float(fit["tau2"][voxel])
+    expected, cov = weighted_least_squares(
+        g[:, None], v[:, None], np.ones((len(g), 1)), tau2=tau2, return_cov=True
+    )
+    # PyMARE weights purely by inverse variance, so the comparison holds at unit kernel weight.
+    unit = 1.0 / (v + tau2)
+    mine = float(np.sum(unit * g) / np.sum(unit))
+    assert np.isclose(mine, float(np.asarray(expected).ravel()[0]))
+    assert np.isclose(1.0 / np.sqrt(np.sum(unit)), float(np.sqrt(np.asarray(cov).ravel()[0])))
+
+    # And the estimator's own pooled value is that same weighted mean once the kernel weights
+    # it actually used are put back in.
+    w = np.asarray(w)
+    pooling = w / (v + tau2)
+    assert np.isclose(fit["g"][voxel], float(np.sum(pooling * g) / np.sum(pooling)))
+    assert np.isclose(
+        fit["se"][voxel], float(np.sqrt(np.sum(w**2 / (v + tau2))) / np.sum(pooling))
+    )
 
 
 def test_local_dl_is_zero_without_two_studies():
