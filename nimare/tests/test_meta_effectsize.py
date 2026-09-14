@@ -1,6 +1,7 @@
 """Tests for nimare.meta.cbma.effectsize (coordinate-based effect-size meta-analysis)."""
 
 import copy
+import json
 
 import nibabel as nib
 import numpy as np
@@ -1177,6 +1178,110 @@ def test_approximate_null_rejects_unknown_methods():
     """An unrecognised null method is refused at construction."""
     with pytest.raises(ValueError, match="null_method must be"):
         CBES(null_method="factorised")
+
+
+@pytest.fixture(scope="module")
+def images_only_studyset(tmp_path_factory):
+    """Six studies supplying g images and no coordinates at all."""
+    from nimare.studyset import Studyset
+
+    directory = tmp_path_factory.mktemp("cbes_images_only")
+    shape = (8, 8, 8)
+    affine = np.diag([4.0, 4.0, 4.0, 1.0])
+    affine[:3, 3] = -14.0
+    nib.save(nib.Nifti1Image(np.ones(shape, np.int32), affine), directory / "mask.nii.gz")
+
+    rng = np.random.default_rng(0)
+    studies = []
+    for k in range(6):
+        n = int(rng.integers(20, 40))
+        g = (0.5 + rng.normal(0, 1 / np.sqrt(n), shape)).astype(np.float32)
+        nib.save(nib.Nifti1Image(g, affine), directory / f"{k}_g.nii.gz")
+        nib.save(
+            nib.Nifti1Image(np.full(shape, 1.0 / n, np.float32), affine),
+            directory / f"{k}_var.nii.gz",
+        )
+        studies.append(
+            {
+                "id": f"s{k}",
+                "name": f"s{k}",
+                "metadata": {"sample_sizes": [n]},
+                "analyses": [
+                    {
+                        "id": f"s{k}-1",
+                        "name": "1",
+                        "metadata": {"sample_sizes": [n]},
+                        "points": [],
+                        "images": [
+                            {
+                                "url": str(directory / f"{k}_g.nii.gz"),
+                                "filename": f"{k}_g.nii.gz",
+                                "space": "MNI",
+                                "value_type": "g",
+                            },
+                            {
+                                "url": str(directory / f"{k}_var.nii.gz"),
+                                "filename": f"{k}_var.nii.gz",
+                                "space": "MNI",
+                                "value_type": "g_var",
+                            },
+                        ],
+                    }
+                ],
+            }
+        )
+    source = directory / "studyset.json"
+    source.write_text(json.dumps({"id": "imgs", "name": "imgs", "studies": studies}))
+    return Studyset(str(source)), str(directory / "mask.nii.gz")
+
+
+def test_images_only_collection_is_redirected_to_an_image_estimator(images_only_studyset):
+    """A collection with images and no coordinates is an error, not a quiet reduction.
+
+    With no peaks there is nothing for the kernel to spread or the selection model to explain,
+    and nothing for the spatial null to relocate -- every permutation would reproduce the
+    observed map, so the p-values would look perfectly calibrated and mean nothing. The fit
+    would silently become a random-effects meta-analysis of the images, which
+    ``nimare.meta.ibma`` does directly and with valid inference, so the error says so.
+    """
+    studyset, mask = images_only_studyset
+    for null_method in ("approximate", "montecarlo", "none"):
+        with pytest.raises(ValueError, match="coordinate-based estimator") as raised:
+            CBES(fwhm=10.0, mask=mask, use_images=True, null_method=null_method).fit(studyset)
+        assert "nimare.meta.ibma" in str(raised.value)
+
+
+def test_a_collection_with_neither_coordinates_nor_images_still_raises(tmp_path):
+    """The images-only path must not swallow the genuinely empty case."""
+    from nimare.studyset import Studyset
+
+    source = tmp_path / "empty.json"
+    source.write_text(
+        json.dumps(
+            {
+                "id": "empty",
+                "name": "empty",
+                "studies": [
+                    {
+                        "id": "s0",
+                        "name": "s0",
+                        "metadata": {"sample_sizes": [20]},
+                        "analyses": [
+                            {
+                                "id": "s0-1",
+                                "name": "1",
+                                "metadata": {"sample_sizes": [20]},
+                                "points": [],
+                                "images": [],
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="no data for 'coordinates'"):
+        CBES(null_method="none").fit(Studyset(str(source)))
 
 
 def test_the_default_null_is_the_approximate_one_and_rft_censoring_is_gone():

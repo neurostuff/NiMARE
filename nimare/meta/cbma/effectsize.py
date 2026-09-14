@@ -951,6 +951,45 @@ class CBES(Estimator):
 
     # ------------------------------------------------------------------ inputs
 
+    def _collect_inputs(self, dataset, drop_invalid=True):
+        """Collect the declared inputs, redirecting a collection that has only images.
+
+        Without coordinates there is nothing for this estimator to do that an image-based one
+        does not do better. The selection model has no censored observations to explain, the
+        kernel has no peaks to spread, and the spatial null has nothing to relocate -- every
+        permutation would reproduce the observed map, so the p-values would look perfectly
+        calibrated and mean nothing. The fit would silently reduce to a random-effects
+        meta-analysis of the images, which :mod:`nimare.meta.ibma` already does directly and
+        with valid inference.
+
+        So this is an error rather than a quiet reduction, and it names the alternatives.
+        """
+        from nimare.studyset import normalize_collection
+
+        dataset = normalize_collection(dataset)
+        coordinates = getattr(dataset, "coordinates", None)
+        images = getattr(dataset, "images", None)
+        if coordinates is None or not len(coordinates):
+            usable_images = (
+                images is not None
+                and {"g", "g_var"}.issubset(images.columns)
+                and bool(images[["g", "g_var"]].notna().all(axis=1).any())
+            )
+            if usable_images:
+                raise ValueError(
+                    "This collection has images but no coordinates, and CBES is a "
+                    "coordinate-based estimator: with nothing to pool from peaks it would "
+                    "reduce to a random-effects meta-analysis of the images, and its spatial "
+                    "null would have nothing to relocate -- every permutation reproduces the "
+                    "observed map, so the p-values would be meaningless. Use an image-based "
+                    "estimator instead: nimare.meta.ibma.DerSimonianLaird or "
+                    "nimare.meta.ibma.Hedges for random effects on beta/varcope maps, "
+                    "WeightedLeastSquares for fixed effects, or Stouffers on z maps. CBES is "
+                    "for collections that have coordinates, optionally with images alongside "
+                    "them for a subset of studies."
+                )
+        super()._collect_inputs(dataset, drop_invalid=drop_invalid)
+
     def _preprocess_input(self, dataset):
         """Attach voxel indices and per-study sample sizes to the coordinates table."""
         validate_coordinate_spaces(self.inputs_["coordinates"])
@@ -1074,7 +1113,9 @@ class CBES(Estimator):
             loaded[study_id] = (g, var_g, usable)
 
         if loaded:
-            LGR.info(f"Using images for {len(loaded)} studies; coordinates for the rest.")
+            total = len(set(images["id"].astype(str)))
+            rest = "" if len(loaded) >= total else "; coordinates for the rest"
+            LGR.info(f"Using images for {len(loaded)} studies{rest}.")
         return loaded
 
     def _build_focus_table(self):
