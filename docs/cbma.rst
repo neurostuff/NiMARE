@@ -47,7 +47,7 @@ Null methods
 
 In order to accomplish the third step, the Estimator relies on a "null method".
 The null method determines the statistical significance associated with each summary statistic value.
-There are two null methods currently implemented for all CBMA Estimators: "approximate" and "montecarlo".
+Two null methods are implemented for the convergence-based Estimators: "approximate" and "montecarlo".
 
 The approximate method builds a histogram-based null distribution of summary-statistic values,
 which can then be used to determine the associated p-value for `observed` summary-statistic values.
@@ -63,6 +63,14 @@ as long as there are enough iterations.
 
 .. tip::
     In general, we recommend using the ``approximate`` method.
+
+.. note::
+    :class:`~nimare.meta.cbma.effectsize.CBES` offers neither of these, because both randomize
+    the *locations* of the coordinates and so ask whether foci converge at a voxel beyond
+    chance. CBES estimates an effect size rather than convergence, so its null holds the
+    locations fixed and permutes the reported magnitudes across them, asking instead whether
+    the effects reported near a voxel are larger than those reported elsewhere in the
+    collection. See its ``null_method`` documentation.
 
 Example: :ref:`null-method-example`
 
