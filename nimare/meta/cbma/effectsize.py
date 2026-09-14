@@ -50,6 +50,13 @@ _MIN_VARIANCE = 1e-8
 #: near-zero summary gives a map that describes its own denominator.
 _RELATIVE_NORMALIZATION_PERCENTILE = 95
 
+#: An inferred reporting threshold above this is reported as suspicious. Conventional height
+#: thresholds run from about z = 3.1 (p < .001 uncorrected) to around 5 for whole-brain FWE
+#: correction, so a value here does not prove anything is wrong -- but it is also what
+#: cluster-extent reporting looks like, which the inference cannot distinguish from strict
+#: height thresholding and which wrecks ``prevalence``. Worth saying so once.
+_SUSPICIOUS_INFERRED_THRESHOLD_Z = 4.0
+
 #: Image studies needed before an absolute-scale ``g`` map is emitted. Two, not one, because two
 #: is the fewest at which the spread of the per-donor scale estimates can be measured at all, so
 #: that the caller can see how well determined the constant is rather than taking one study's
@@ -999,6 +1006,11 @@ class CBES(Estimator):
     is sound, but the number is not a prevalence. Its map-wide median sits near 0.4 whatever the
     truth, so a map cannot be summarised by it.
 
+    ``g_marginal`` is ``g`` times ``prevalence``, the average effect over all studies rather
+    than over those that have one. It therefore inherits *both* the unidentified scale of ``g``
+    and the compression of ``prevalence``, which makes it the least interpretable map here.
+    Read it only as a relative map, and only ordinally.
+
     :meth:`correct_fwe_montecarlo` adds ``logp_level-voxel``,
     ``logp_desc-size_level-cluster`` and ``logp_desc-mass_level-cluster`` (each with a
     signed ``z_*`` companion), matching the names
@@ -1173,6 +1185,31 @@ class CBES(Estimator):
         )
         self._reported_thresholds_ = self._threshold_metadata(dataset)
         self._analysis_masks_ = self._load_analysis_masks(dataset)
+
+    def _warn_if_threshold_implausible(self, cutoff_z):
+        """Say so when an inferred threshold lands where extent-based reporting would put it.
+
+        The inference cannot tell a strict height threshold from a cluster-extent one -- both
+        leave few, high peaks -- and guesses high when reporting was by extent, by +1.1 z at a
+        fifty-voxel threshold. ``g`` tolerates that; ``prevalence`` does not, saturating toward
+        1.0. So the warning names the output at risk and the remedy, rather than pretending the
+        threshold can be recovered.
+        """
+        finite = np.asarray(cutoff_z, dtype=float)
+        finite = finite[np.isfinite(finite)]
+        if not finite.size:
+            return
+        median = float(np.median(finite))
+        if median <= _SUSPICIOUS_INFERRED_THRESHOLD_Z:
+            return
+        LGR.warning(
+            f"Inferred reporting threshold z = {median:.2f}, above the usual range for a height "
+            "threshold. Either these studies thresholded unusually strictly, or they reported "
+            "by cluster extent, which this inference cannot distinguish and which it overshoots "
+            "by about 1 z. 'g' tolerates that error to within about 10%, but 'prevalence' does "
+            "not -- it saturates toward 1.0 -- so pass the real thresholds via a metadata field "
+            "if 'prevalence' is going to be read."
+        )
 
     def _threshold_metadata(self, dataset):
         """Per-study reporting thresholds, when ``threshold`` names a metadata field.
@@ -1426,6 +1463,7 @@ class CBES(Estimator):
             cutoff_z = np.full(
                 len(index), float(np.nanmin(reported_z)) if reported_z.size else np.nan
             )
+            self._warn_if_threshold_implausible(cutoff_z)
         elif self.threshold == "study-min":
             grouped = pd.Series(reported_z, index=study_ids).groupby(level=0)
             per_study = grouped.min().astype(float)
@@ -1443,6 +1481,7 @@ class CBES(Estimator):
             )
             fallback = float(np.nanmedian(per_study.values)) if len(per_study) else np.nan
             cutoff_z = per_study.reindex(index).astype(float).fillna(fallback).values
+            self._warn_if_threshold_implausible(cutoff_z)
         elif isinstance(self.threshold, str):
             supplied = getattr(self, "_reported_thresholds_", None)
             if supplied is None:

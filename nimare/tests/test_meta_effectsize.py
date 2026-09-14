@@ -1913,3 +1913,37 @@ def test_dof_is_emitted_so_se_can_be_referred_to_a_t(studyset, small_mask):
     np.testing.assert_allclose(dof[covered], np.clip(n_eff[covered] - 1.0, 0.0, None), rtol=1e-6)
     # Somewhere has enough studies for a t interval to be usable at all.
     assert np.any(dof > 1.0)
+
+
+def test_an_implausibly_high_inferred_threshold_is_called_out(studyset, small_mask, caplog):
+    """Cluster-extent reporting is indistinguishable from strict height thresholding.
+
+    The inference overshoots by about 1 z when reporting was by extent, which leaves g intact
+    but saturates prevalence. It cannot tell the two apart, so the honest move is to say when
+    the answer lands where extent reporting would put it, and name the output at risk.
+    """
+    from nimare.meta.cbma.effectsize import _SUSPICIOUS_INFERRED_THRESHOLD_Z
+
+    quiet = CBES(fwhm=8.0, mask=small_mask, null_method="none", threshold="study-min")
+    with caplog.at_level("WARNING"):
+        quiet.fit(studyset)
+    assert "above the usual range" not in caplog.text
+    assert np.median(quiet._cutoffs_z_.values) <= _SUSPICIOUS_INFERRED_THRESHOLD_Z
+
+    # A collection whose reported peaks are all far above any plausible height cut, which is
+    # what an extent-thresholded table looks like to this inference.
+    strict = studyset.copy()
+    coords = strict.coordinates
+    caplog.clear()
+    loud = CBES(fwhm=8.0, mask=small_mask, null_method="none", threshold="study-min")
+    with caplog.at_level("WARNING"):
+        # Supplied directly rather than simulated: the point under test is the warning, not the
+        # inference that feeds it.
+        loud._warn_if_threshold_implausible(np.full(len(coords["id"].unique()), 4.6))
+    assert "above the usual range" in caplog.text
+    assert "prevalence" in caplog.text
+
+    # No threshold at all must not warn, and must not raise.
+    caplog.clear()
+    loud._warn_if_threshold_implausible(np.array([np.nan, np.nan]))
+    assert caplog.text == ""
