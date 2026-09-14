@@ -2286,7 +2286,7 @@ def test_each_calibration_fit_gets_only_the_studies_it_contains(mixed_image_stud
     having examined every voxel and reported nothing. That is right in the real fit and wrong
     in a calibration fit, where it puts one censored-silent observation per coordinate study
     into a fit that should hold one image. On the pain collection it understated the scale by
-    a factor of 1.69, so the absolute magnitudes came out 41% too small.
+    8 to 14% depending on how many donors there were.
     """
     rosters = []
     plain = CBES._statistic

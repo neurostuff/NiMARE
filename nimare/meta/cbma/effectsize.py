@@ -1785,9 +1785,11 @@ class CBES(Estimator):
         is given falls through :meth:`_coverage_entries` as having examined every voxel and
         reported nothing, which is right in the real fit and wrong here: it made every
         donor-only fit carry one censored-silent observation per coordinate study, dragging the
-        donor's magnitude down and the ratio with it. On the pain collection with three donors
-        the scale came out 0.75 against 1.26 once each fit saw only its own studies, so the
-        absolute magnitudes were 41% too small.
+        donor's magnitude down and the ratio with it. On the pain collection the scale came out
+        0.61 against 0.71 with two donors and 0.61 against 0.66 with three, so the absolute
+        magnitudes were 8 to 14% too small -- the drag partly cancels between the two fits,
+        which is why it is a modest bias rather than the factor of 1.5 a reimplementation of
+        the ratio suggested.
 
         **One ratio per donor, pooled across donors**, rather than one ratio against all the
         images pooled together: pooling the images first makes the answer depend on how many
