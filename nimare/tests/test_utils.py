@@ -525,3 +525,55 @@ def test_gpd_tail_p_shortens_the_tail_and_gives_up_cleanly():
     # Either it found a shorter acceptable tail or it gave up; both are valid, and both must
     # come back as usable probabilities rather than as an exception.
     assert result is None or np.all((result >= 0) & (result <= 1))
+
+
+def test_padded_flat_to_masked_agrees_with_the_unpadded_lookup():
+    """Padding must not change which voxel an index names, only where it is safe to add."""
+    rng = np.random.default_rng(0)
+    mask = np.zeros((9, 11, 7), dtype=np.int16)
+    mask[2:7, 3:9, 1:6] = 1
+    mask_img = nib.Nifti1Image(mask, np.eye(4))
+    offsets = utils_meta.sphere_kernel_offsets(2.0, (1.0, 1.0, 1.0))
+
+    plain = utils_meta._get_mask_flat_to_masked(mask_img)
+    padded, padded_shape, pad = utils_meta._padded_flat_to_masked(mask_img, offsets)
+
+    assert np.all(padded_shape == np.array(mask.shape) + 2 * pad)
+    assert padded.max() == plain.max()
+    # Every in-image voxel resolves to the same masked index through either lookup.
+    shape = np.array(mask.shape)
+    ijk = np.stack([rng.integers(0, n, 200) for n in shape], axis=1)
+    flat = ijk @ np.array([shape[1] * shape[2], shape[2], 1])
+    padded_flat = (ijk + pad) @ np.array([padded_shape[1] * padded_shape[2], padded_shape[2], 1])
+    assert np.array_equal(plain[flat], padded[padded_flat])
+
+
+def test_padded_dilation_matches_a_bounds_checked_one_even_from_outside_the_image():
+    """The point of the padding is that a focus near, or past, the edge needs no special case."""
+    mask = np.zeros((9, 11, 7), dtype=np.int16)
+    mask[2:7, 3:9, 1:6] = 1
+    mask_img = nib.Nifti1Image(mask, np.eye(4))
+    offsets = utils_meta.sphere_kernel_offsets(2.0, (1.0, 1.0, 1.0)).astype(np.int64)
+    shape = np.array(mask.shape, dtype=np.int64)
+
+    plain = utils_meta._get_mask_flat_to_masked(mask_img)
+    padded, padded_shape, pad = utils_meta._padded_flat_to_masked(mask_img, offsets)
+    padded_strides = np.array([padded_shape[1] * padded_shape[2], padded_shape[2], 1])
+    flat_offsets = offsets @ padded_strides
+    reach = np.abs(offsets).max(axis=0)
+
+    # On the edge, one voxel outside, and far enough out to reach nothing.
+    for focus in ([2, 3, 1], [0, 0, 0], [-1, 4, 3], [9, 4, 3], [-40, 4, 3]):
+        focus = np.array(focus, dtype=np.int64)
+        candidates = focus + offsets
+        in_bounds = np.all((candidates >= 0) & (candidates < shape), axis=-1)
+        flat = candidates @ np.array([shape[1] * shape[2], shape[2], 1])
+        expected = plain[np.where(in_bounds, flat, 0)]
+        expected = np.sort(expected[in_bounds & (expected >= 0)])
+
+        if np.all((focus >= -reach) & (focus < shape + reach)):
+            reached = padded[(focus + pad) @ padded_strides + flat_offsets]
+            reached = np.sort(reached[reached >= 0])
+        else:
+            reached = np.array([], dtype=np.int32)  # dropped, and provably reaches nothing
+        assert np.array_equal(expected, reached), focus

@@ -20,6 +20,7 @@ from nimare.meta.utils import (
     _get_mask_flat_to_masked,
     _kernel_to_sparse_support,
     _max_statistic_maps,
+    _padded_flat_to_masked,
     get_ale_kernel,
     sphere_kernel_offsets,
 )
@@ -270,9 +271,14 @@ def _observed_cluster_measures(volume, threshold):
 def _censoring_terms(mu, cutoff_scaled, twice_cutoff_scaled, inv_sigma, inv_sigma_sq):
     """P(|g| < c | mu) and the pieces of its derivatives, for a set of silent observations.
 
-    Returned together because the E step and the M step both need them at the same ``mu``, and
-    this is the single most expensive thing the estimator does -- about 63% of a whole-brain
-    fit, over an array with one entry per silent ``(study, voxel)`` pair.
+    Returned together because the E step and the M step both need them at the same ``mu``. This
+    is the most expensive single function in the estimator, over an array with one entry per
+    silent ``(study, voxel)`` pair -- but only 21% of a whole-brain fit, and the two normal CDFs
+    are 43% of that. The rest of the fit is spread across the E step (19%), building the
+    coverage sets (11%) and the derivatives (9%), so no one kernel is worth much on its own: a
+    fused single-pass rewrite of this one in numba matches it to 1e-13 and runs 1.36x faster
+    serially, which is 1.03x on the fit. Everything here is memory-bound, so what pays is
+    removing a pass, not speeding one up.
 
     Everything that does not move between EM iterations is passed in already divided: ``mu`` is
     the only argument that changes, so ``cutoffs / sigma`` and the reciprocals are hoisted to
@@ -1895,12 +1901,22 @@ class CBES(Estimator):
         mask_img = self.masker.mask_img
         # ``shape[:3]``: a mask image may carry a trailing singleton volume axis.
         shape = np.asarray(mask_img.shape[:3], dtype=np.int64)
-        mask_flat_to_masked = _get_mask_flat_to_masked(mask_img)
 
         radius = self.coverage_radius
         if radius is None:
             radius = 2.0 * (self.fwhm if self.fwhm is not None else 10.0)
         offsets = sphere_kernel_offsets(radius, mask_img.header.get_zooms()[:3])
+
+        # Dilation on a padded grid, so that a study's covered voxels come out of one add and
+        # one gather per (focus, sphere offset) pair rather than an array of candidate
+        # coordinates and six comparisons against the shape. With a 20 mm sphere that array is
+        # the largest thing this method would otherwise allocate.
+        padded_lookup, padded_shape, pad = _padded_flat_to_masked(mask_img, offsets)
+        padded_strides = np.array(
+            [padded_shape[1] * padded_shape[2], padded_shape[2], 1], dtype=np.int64
+        )
+        flat_offsets = offsets.astype(np.int64) @ padded_strides
+        reach = np.abs(offsets).max(axis=0)
 
         active_lookup = np.full(n_voxels, -1, dtype=np.int64)
         active_lookup[active] = np.arange(active.size)
@@ -1921,15 +1937,15 @@ class CBES(Estimator):
             ijk = table.loc[table["id"] == study_id, ["i", "j", "k"]].values.astype(np.int64)
             if not ijk.size:
                 continue  # reported nothing anywhere: silent at every voxel
-            candidates = ijk[:, None, :] + offsets[None, :, :].astype(np.int64)
-            in_bounds = np.all((candidates >= 0) & (candidates < shape), axis=-1)
-            flat = (
-                candidates[..., 0] * shape[1] * shape[2]
-                + candidates[..., 1] * shape[2]
-                + candidates[..., 2]
-            )
-            reached = mask_flat_to_masked[np.where(in_bounds, flat, 0)]
-            reached = reached[in_bounds & (reached >= 0)].astype(np.int64)
+            # A focus further outside the image than the sphere's own reach cannot touch an
+            # in-mask voxel, so dropping it here loses nothing and keeps every remaining index
+            # inside the padded grid.
+            ijk = ijk[np.all((ijk >= -reach) & (ijk < shape + reach), axis=1)]
+            if not ijk.size:
+                continue
+            base = (ijk + pad) @ padded_strides
+            reached = padded_lookup[(base[:, None] + flat_offsets).ravel()]
+            reached = reached[reached >= 0].astype(np.int64)
             if not reached.size:
                 continue
             local = active_lookup[reached]

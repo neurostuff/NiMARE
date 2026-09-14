@@ -336,6 +336,36 @@ def _get_mask_flat_to_masked(mask_img):
     return mask_flat_to_masked
 
 
+def _padded_flat_to_masked(mask_img, offsets):
+    """:func:`_get_mask_flat_to_masked` on a grid padded wide enough for ``offsets``.
+
+    Dilating a set of foci by a sphere means adding each sphere offset to each focus's voxel
+    index. On an unpadded grid that arithmetic has to be bounds-checked per axis, which means
+    materializing the candidate *coordinates* -- an ``(n_foci, n_sphere_voxels, 3)`` array that
+    exists only to be compared against the shape -- before any of them can be flattened. Pad
+    the grid instead and every candidate flat index is inside it by construction, with the
+    padding reading back as -1, so the bounds check collapses into the ``>= 0`` test the mask
+    lookup already needs and the coordinates never have to exist.
+
+    Padding is twice the largest offset on each axis, not once: a focus is kept when it is
+    within one offset of the image, so its own padded index can sit one offset outside the
+    unpadded block and a sphere offset can then push it one further. A focus beyond that cannot
+    reach an in-mask voxel at all, which is why dropping it is exact rather than a tolerance.
+
+    Returns the lookup, the padded shape, and the per-axis padding.
+    """
+    mask = _mask_img_to_bool(mask_img)
+    shape = np.asarray(mask_img.shape[:3], dtype=np.int64)
+    pad = 2 * np.abs(np.asarray(offsets, dtype=np.int64)).max(axis=0)
+    padded_shape = shape + 2 * pad
+    lookup = np.full(int(np.prod(padded_shape)), -1, dtype=np.int32)
+    inner = lookup.reshape(padded_shape)[
+        pad[0] : pad[0] + shape[0], pad[1] : pad[1] + shape[1], pad[2] : pad[2] + shape[2]
+    ]
+    inner[mask.reshape(shape)] = np.arange(int(mask.sum()), dtype=np.int32)
+    return lookup, padded_shape, pad
+
+
 def _coo_to_masked_csr(ma_values, mask_img, mask_flat_to_masked=None):
     """Convert legacy COO ALE MA maps to a study-by-voxel CSR matrix within the mask."""
     if sp_sparse.isspmatrix_csr(ma_values):
