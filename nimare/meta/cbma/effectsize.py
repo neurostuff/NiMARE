@@ -2293,7 +2293,14 @@ class CBES(Estimator):
         so :meth:`correct_fwe_montecarlo` still relocates.
         """
         rng = np.random.default_rng(seed)
-        study_ids = list(sample_sizes.index)
+        images = getattr(self, "_image_studies_", None) or {}
+        if sample_sizes is not None:
+            study_ids = list(sample_sizes.index)
+        else:
+            # selection_model="none" leaves the roster unset, and the null still needs to know
+            # which studies exist.
+            study_ids = list(dict.fromkeys(table["id"].astype(str))) if len(table) else []
+        study_ids = study_ids + [s for s in images if s not in set(map(str, study_ids))]
         n_studies = len(study_ids)
 
         offsets, kernel_weights = self._kernel_support()
@@ -2313,6 +2320,27 @@ class CBES(Estimator):
 
         by_study = {str(key): value for key, value in table.groupby("id")} if len(table) else {}
         for position, study_id in enumerate(study_ids):
+            image = images.get(study_id)
+            if image is not None:
+                # An image study contributes at weight 1 at every voxel, so it is covered in
+                # every draw. Its null value is its own map read at a random voxel with a random
+                # sign -- the factorised analogue of relocating a focus and sign-flipping an
+                # image, which is what the Monte Carlo null does. Leaving image studies out
+                # entirely, as this did, builds the null from a different set of studies than
+                # the observed statistic uses: on a mixed collection under a global null that
+                # made the test 50x conservative, because the pooled estimate is near zero
+                # everywhere while a coordinate-only null still carries large reported peaks.
+                g_map, var_map, usable = image
+                pool = np.flatnonzero(usable)
+                if not pool.size:
+                    continue
+                picks = rng.choice(pool, size=n_draws)
+                signs = np.where(rng.random(n_draws) < 0.5, 1.0, -1.0)
+                weights[position] = 1.0
+                g_obs[position] = signs * g_map[picks]
+                var_obs[position] = var_map[picks]
+                covered[position] = True
+                continue
             sub = by_study.get(str(study_id))
             if sub is None or not len(sub):
                 continue  # silent everywhere, so it is covered nowhere
@@ -2359,10 +2387,24 @@ class CBES(Estimator):
             )
             mu = start
         else:
-            null_var = null_effect_variance(sample_sizes.values, design=self.design)[:, None]
+            # Image studies have no reporting threshold and never contribute a censoring term,
+            # so they take a null variance of zero and an unreachable cutoff, which is how
+            # _accumulate treats them in the observed fit.
+            sizes = np.array(
+                [float(sample_sizes[s]) if s in sample_sizes.index else np.nan for s in study_ids]
+            )
+            known = np.isfinite(sizes)
+            null_var = np.zeros((n_studies, 1))
+            null_var[known, 0] = null_effect_variance(sizes[known], design=self.design)
             peak_bias = getattr(self, "_peak_bias_", None)
             if peak_bias is not None:
-                null_var = null_var * peak_bias.loc[study_ids].values[:, None] ** 2
+                factors = np.array(
+                    [float(peak_bias[s]) if s in peak_bias.index else 1.0 for s in study_ids]
+                )
+                null_var = null_var * factors[:, None] ** 2
+            cutoffs = np.array(
+                [abs(float(thresholds[s])) if s in thresholds.index else np.inf for s in study_ids]
+            )[:, None]
             mu, _, se = self._fit_chunk(
                 weights=weights,
                 g_obs=g_obs,
@@ -2370,7 +2412,7 @@ class CBES(Estimator):
                 covered=covered,
                 tau2=tau2,
                 null_var=null_var,
-                cutoffs=np.abs(thresholds.loc[study_ids].to_numpy())[:, None],
+                cutoffs=cutoffs,
                 start=start,
             )
 
