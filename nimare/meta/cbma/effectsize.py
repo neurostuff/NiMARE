@@ -1030,6 +1030,12 @@ class CBES(Estimator):
         arrangements in total the null is not built at all and ``p`` is 1.0 everywhere, with a
         warning naming how many analyses contributed; the effect-size maps are unaffected.
 
+        That floor is map-wide, and each voxel has a tighter one of its own: a voxel reached by
+        two studies of three foci draws from 36 arrangements, so its p cannot fall below 1/37
+        however many iterations are run. Such voxels simply never reach significance, which
+        costs power rather than validity, and is why sparsely covered edges of a map stay
+        non-significant no matter how large their ``g``.
+
         ``"none"`` returns ``p = 1`` everywhere, for inspecting the estimates at no cost.
     cluster_threshold : :obj:`float` or None, default=0.001
         Cluster-forming threshold, as an uncorrected p-value, for the cluster-level FWE null
@@ -2774,7 +2780,7 @@ class CBES(Estimator):
             multi = counts[counts > 1]
             contributing += int(multi.size)
             log10_states += float(np.sum(gammaln(multi + 1.0))) / np.log(10.0)
-        for _, (_, _, usable) in (getattr(self, "_image_studies_", None) or {}).items():
+        for _, _, usable in (getattr(self, "_image_studies_", None) or {}).values():
             n_usable = int(usable.sum())
             if n_usable > 1:
                 contributing += 1
@@ -2793,6 +2799,11 @@ class CBES(Estimator):
         log10_states, contributing = self._null_has_states()
         if log10_states >= _MIN_NULL_STATES_LOG10:
             return True
+        # Recomputed rather than cached, so that it cannot go stale against a focus table that
+        # changed; only the warning is remembered, because ``fit`` and the description both ask.
+        if getattr(self, "_null_refusal_logged_", False):
+            return False
+        self._null_refusal_logged_ = True
         n_analyses = (
             int(self._focus_table_["id"].nunique()) if len(self._focus_table_) else 0
         ) + len(getattr(self, "_image_studies_", None) or {})
@@ -2968,6 +2979,7 @@ class CBES(Estimator):
         self._geometry_ = None
         self._coverage_ = None
         self._permutation_groups_ = None
+        self._null_refusal_logged_ = False
         self._image_studies_ = self._load_image_studies(dataset)
         self._prepare_focus_table(dataset)
 
