@@ -44,6 +44,20 @@ __version__ = _version.get_versions()["version"]
 #: against division by zero for implausibly large sample sizes.
 _MIN_VARIANCE = 1e-8
 
+#: Percentile of ``|g|`` over covered voxels that the relative map is divided by, so that 1.0
+#: reads as "as strong as the top few percent of this collection". A high percentile rather than
+#: the median or the mean because a covered brain is mostly voxels holding no effect: dividing by
+#: a near-zero summary produces a map that describes its own denominator.
+_RELATIVE_NORMALIZATION_PERCENTILE = 95
+
+#: Image studies needed before an absolute-scale ``g`` map is emitted. Two, not one, because two
+#: is the fewest at which the spread of the per-donor scale estimates can be measured at all --
+#: with a single donor the whole scale rests on how representative that study is and there is no
+#: way for the caller to see whether it is. Measured on the pain collection, the scale from one
+#: donor (0.610) and from two (0.615) agree closely, so this is about being able to check rather
+#: than about the point estimate being wrong.
+_MIN_SCALE_DONORS = 2
+
 #: Typical effect magnitude by sample size, from 258 unthresholded group T/Z maps on
 #: NeuroVault (134 collections, 85 cognitive paradigms, N from 10 to 1369). Each entry is
 #: ``(representative N, median mean |g| in that map's top decile)``.
@@ -104,6 +118,12 @@ DEFAULT_REPORTING_THRESHOLD_Z = 3.2905267314919255
 DESIGNS = ("one-sample", "two-sample")
 
 SELECTION_MODELS = ("zero-inflated", "none")
+
+#: How the standard error of the pooled estimate is formed. ``"model"`` is the usual
+#: inverse-variance expression, which treats the estimated heterogeneity as known;
+#: ``"hksj"`` is the Hartung-Knapp-Sidik-Jonkman residual-variance form on ``n_eff - 1``
+#: degrees of freedom, which does not.
+SE_METHODS = ("model", "hksj")
 
 NULL_METHODS = ("permute-magnitudes", "none")
 
@@ -552,6 +572,69 @@ def null_effect_variance(sample_size, design="one-sample"):
 # --------------------------------------------------------------- heterogeneity
 
 
+def _relative_g(g, covered):
+    """``g`` divided by a high percentile of its own magnitude, so the units cancel.
+
+    The overall scale of a coordinate-only fit is not identified -- rescaling every reported
+    effect size, its variance and the censoring threshold together leaves the likelihood
+    unchanged -- so an absolute ``g`` map is only ever as good as an assumption about that
+    constant. Dividing by a summary of the map's own magnitude removes the constant exactly,
+    whatever it was, and leaves the part the coordinates do identify: the pattern, and the
+    ratios between voxels.
+
+    Normalized always rather than only where the scale is unknown. A map that is sometimes in
+    Hedges' g and sometimes in units of itself, depending on what the collection happened to
+    contain, cannot be compared across collections or read without checking which it is.
+    """
+    out = np.zeros_like(g, dtype=float)
+    if not np.any(covered):
+        return out
+    magnitude = np.abs(g[covered])
+    magnitude = magnitude[np.isfinite(magnitude)]
+    if not magnitude.size:
+        return out
+    reference = float(np.percentile(magnitude, _RELATIVE_NORMALIZATION_PERCENTILE))
+    if not np.isfinite(reference) or reference <= 0:
+        return out
+    out[covered] = g[covered] / reference
+    return out
+
+
+def _hartung_knapp_se(*, g_hat, sum_a, sum_a_g2, n_eff, covered, fallback):
+    r"""Hartung-Knapp-Sidik-Jonkman standard error of a kernel-weighted pooled estimate.
+
+    The model-based SE treats :math:`\hat{\tau}^2` as if it were the true heterogeneity, so its
+    intervals are too short exactly when heterogeneity is large and the studies are few. HKSJ
+    replaces it with the weighted spread of the studies about the pooled value,
+
+    .. math::
+
+        \mathrm{SE}^2 = \frac{\sum_k a_k (g_k - \hat{g})^2}{(k_{\mathrm{eff}} - 1)\sum_k a_k},
+        \qquad a_k = \frac{w_k}{s^2_k + \tau^2},
+
+    on :math:`k_{\mathrm{eff}} - 1` degrees of freedom. Measured against a known pooled effect
+    with kernel weights drawn on ``[0.2, 1]``, the model SE covers 86.4% of nominal-95%
+    intervals at three studies and :math:`\tau^2 = 0.2`, falling further as heterogeneity grows;
+    HKSJ covers 95.1% to 96.2% across every study count and heterogeneity tested.
+
+    :math:`k_{\mathrm{eff}}` is Kish's :math:`(\sum w)^2 / \sum w^2` -- the ``n_eff`` map --
+    and not :math:`\sum w`. The two agree when every weight is one, but only Kish's form is
+    invariant to rescaling the weights: at a voxel reached only by distant foci the weights sum
+    to less than one, and using that as a study count sends the degrees of freedom to zero and
+    the interval to absurdity. Voxels with no effective spread to measure
+    (:math:`k_{\mathrm{eff}} \le 1`) keep the model-based value.
+    """
+    se = np.array(fallback, dtype=float, copy=True)
+    usable = covered & (n_eff > 1.0) & (sum_a > 0)
+    if not np.any(usable):
+        return se
+    # sum a (g - ghat)^2, from the identity noted at the call site. Clipped at zero: the two
+    # terms are close where the studies agree, so rounding can make the difference negative.
+    residual = np.clip(sum_a_g2[usable] - g_hat[usable] ** 2 * sum_a[usable], 0.0, None)
+    se[usable] = np.sqrt(residual / ((n_eff[usable] - 1.0) * sum_a[usable]))
+    return se
+
+
 def _local_dersimonian_laird(sum_w, sum_a, sum_a2, sum_ag, sum_ag2, sum_w2_over_s2, n_studies):
     r"""Kernel-weighted DerSimonian-Laird estimate of between-study heterogeneity.
 
@@ -589,7 +672,15 @@ def _local_dersimonian_laird(sum_w, sum_a, sum_a2, sum_ag, sum_ag2, sum_w2_over_
 
 
 def _validate_options(
-    *, design, tau2_method, selection_model, null_method, peak_bias, peak_bias_scale, threshold
+    *,
+    design,
+    tau2_method,
+    selection_model,
+    null_method,
+    peak_bias,
+    peak_bias_scale,
+    threshold,
+    se_method,
 ):
     """Reject unusable option combinations at construction, not at fit time.
 
@@ -607,6 +698,20 @@ def _validate_options(
         )
     if null_method not in NULL_METHODS:
         raise ValueError(f"null_method must be one of {NULL_METHODS}; got {null_method!r}.")
+    if se_method not in SE_METHODS:
+        raise ValueError(f"se_method must be one of {SE_METHODS}; got {se_method!r}.")
+    if se_method == "hksj" and selection_model != "none":
+        # Refused rather than ignored. HKSJ corrects the inverse-variance SE of a weighted
+        # mean, and under the selection model that SE is discarded: the reported one comes
+        # from the curvature of the censored likelihood at the fitted mu, a different
+        # estimator that this correction does not apply to. Accepting the combination would
+        # silently return the uncorrected value.
+        raise ValueError(
+            "se_method='hksj' needs selection_model='none'. HKSJ corrects the "
+            "inverse-variance standard error of the pooled mean, but the zero-inflated "
+            "selection model reports the curvature of the censored likelihood instead, "
+            "which this correction does not apply to."
+        )
 
     scale_is_keyword = isinstance(peak_bias_scale, str)
     if (scale_is_keyword and peak_bias_scale not in PEAK_BIAS_SCALE_KEYWORDS) or (
@@ -759,6 +864,24 @@ class CBES(Estimator):
         ``"dl"`` estimates a local between-study variance with a kernel-weighted
         DerSimonian-Laird moment estimator; ``"none"`` fits a fixed-effects model
         (:math:`\\tau^2 \\equiv 0`).
+    se_method : {"model", "hksj"}, default="model"
+        Standard error of the pooled estimate. ``"model"`` is the inverse-variance expression,
+        which treats the estimated :math:`\\tau^2` as if it were known. ``"hksj"`` is the
+        Hartung-Knapp-Sidik-Jonkman residual-variance form on ``n_eff - 1`` degrees of freedom,
+        which does not, and is the better calibrated of the two: against a known pooled effect
+        with kernel weights, the model SE covers 86.4% of nominal-95% intervals at three studies
+        and :math:`\\tau^2 = 0.2` and falls further as heterogeneity grows, where HKSJ covers
+        95.1% to 96.2% at every study count and heterogeneity tested.
+
+        **Requires** ``selection_model="none"``. The zero-inflated model does not report the
+        pooled inverse-variance SE at all -- it reports the curvature of the censored likelihood
+        at the fitted :math:`\\mu`, which is a different estimator that this correction does not
+        apply to. What the right small-sample correction is for *that* SE is not established
+        here, so the default is left alone.
+
+        It changes ``se`` and therefore ``z``; p-values come from the permutation null either
+        way, so both remain valid and the choice is about power and about whether ``se`` can be
+        read as an interval.
     selection_model : {"zero-inflated", "none"}, default="zero-inflated"
         How a study that reported nothing near a voxel is handled. Nothing is imputed under
         either option.
@@ -905,14 +1028,25 @@ class CBES(Estimator):
     Available maps:
 
     ============== ===============================================================
-    "g"            Pooled Hedges' g.
-    "se"           Standard error of the pooled estimate.
-    "z"            ``g / se``. Two-tailed.
+    "g"            Pooled Hedges' g, on whatever scale the fit could identify.
+    "g_relative"   ``g`` over the 95th percentile of ``|g|``, so the unidentified
+                   scale cancels. Always emitted, and the map to read by default.
+    "g_absolute"   ``g`` on the true Hedges' g scale. **Only present when the scale
+                   is pinned**: at least two image studies in the collection, or an
+                   explicit numeric ``peak_bias_scale``. Absent otherwise, because
+                   there would be nothing to distinguish it from ``g_relative``
+                   times an unknown constant.
+    "se"           Standard error of the pooled estimate. See ``se_method``.
+    "z"            ``g / se``. Two-tailed. Unaffected by the scale.
     "p", "logp"    p-value for ``z``, and its ``-log10``.
     "tau2"         Local between-study variance.
     "n_studies"    Number of studies with a focus inside the kernel support.
     "n_eff"        Kish effective number of studies, ``(sum w)^2 / sum w^2``.
     ============== ===============================================================
+
+    ``prevalence`` and ``g_marginal`` are added under the zero-inflated selection model.
+    ``prevalence`` is worth reading in its own right: it is scale-free, so unlike ``g`` it does
+    not depend on the constant the coordinates cannot identify.
 
     :meth:`correct_fwe_montecarlo` adds ``logp_level-voxel``,
     ``logp_desc-size_level-cluster`` and ``logp_desc-mass_level-cluster`` (each with a
@@ -989,6 +1123,7 @@ class CBES(Estimator):
         design="one-sample",
         tau2_method="dl",
         selection_model="zero-inflated",
+        se_method="model",
         threshold="pooled-min",
         coverage_radius=None,
         kernel_min_weight=0.01,
@@ -1016,6 +1151,7 @@ class CBES(Estimator):
             peak_bias=peak_bias,
             peak_bias_scale=peak_bias_scale,
             threshold=threshold,
+            se_method=se_method,
         )
 
         self.fwhm = fwhm
@@ -1036,6 +1172,7 @@ class CBES(Estimator):
         self.cluster_threshold = cluster_threshold
         self.n_iters = n_iters
         self.n_cores = n_cores
+        self.se_method = se_method
         self.seed = seed
 
         if mask is not None:
@@ -1418,6 +1555,8 @@ class CBES(Estimator):
         fit at the calibrated scale.
         """
         self.scale_interval_ = None
+        self.scale_source_ = "unset"
+        self.n_scale_donors_ = 0
         if self.peak_bias is None:
             return 1.0
         if self.peak_bias_scale not in ("auto", "images", "reference"):
@@ -1430,6 +1569,10 @@ class CBES(Estimator):
                     "pooled value depends on how many studies of each kind the collection "
                     "holds. Use peak_bias_scale='auto' to read the constant off the images."
                 )
+            # An explicit number is the caller asserting the scale, which is as much
+            # identification as any collection of coordinates can offer.
+            if float(self.peak_bias_scale) != 1.0:
+                self.scale_source_ = "supplied"
             return float(self.peak_bias_scale)
 
         self._peak_bias_scale_ = 1.0
@@ -1515,6 +1658,9 @@ class CBES(Estimator):
         # than the point alone. Here the width comes from the corpus the reference was fitted
         # on; below, from the spread across image donors.
         self.scale_interval_ = (scale / spread, scale * spread)
+        # Named, but deliberately not a source an absolute map is emitted for: it comes from
+        # another corpus, not from this collection.
+        self.scale_source_ = "reference"
         LGR.info(
             f"Reference calibration: studies of this size typically show |g| ~ {expected:.3f}, "
             f"this fit shows {observed:.3f}, so peak_bias_scale = {scale:.3f}. The reference "
@@ -1597,6 +1743,8 @@ class CBES(Estimator):
         # constant, and the spread is what a caller supplying a single image is exposed to.
         scale = float(np.median(per_donor))
         spread = (max(per_donor) / min(per_donor)) if min(per_donor) > 0 else float("inf")
+        self.scale_source_ = "images"
+        self.n_scale_donors_ = len(per_donor)
         # With one donor there is no spread to measure and the interval is unknown, not zero.
         self.scale_interval_ = (min(per_donor), max(per_donor)) if len(per_donor) > 1 else None
         LGR.info(
@@ -1866,6 +2014,10 @@ class CBES(Estimator):
         numerator = np.zeros(n_voxels, dtype=float)
         denominator = np.zeros(n_voxels, dtype=float)
         variance_numerator = np.zeros(n_voxels, dtype=float)
+        # Sum of a_k g_k^2, which turns into the weighted residual sum of squares without a
+        # third pass: sum a (g - ghat)^2 = sum a g^2 - ghat^2 sum a, because ghat is itself
+        # sum(a g) / sum(a).
+        weighted_square = np.zeros(n_voxels, dtype=float)
 
         for _, cols, weights, g, var_g in contributions:
             total_var = var_g + tau2[cols]
@@ -1874,6 +2026,9 @@ class CBES(Estimator):
             denominator += np.bincount(cols, weights=pooling_weight, minlength=n_voxels)
             variance_numerator += np.bincount(
                 cols, weights=weights**2 / total_var, minlength=n_voxels
+            )
+            weighted_square += np.bincount(
+                cols, weights=pooling_weight * g * g, minlength=n_voxels
             )
 
         covered = denominator > 0
@@ -1885,6 +2040,16 @@ class CBES(Estimator):
         n_eff = np.zeros(n_voxels, dtype=float)
         positive_w = sums["w2"] > 0
         n_eff[positive_w] = sums["w"][positive_w] ** 2 / sums["w2"][positive_w]
+
+        if self.se_method == "hksj":
+            se = _hartung_knapp_se(
+                g_hat=g_hat,
+                sum_a=denominator,
+                sum_a_g2=weighted_square,
+                n_eff=n_eff,
+                covered=covered,
+                fallback=se,
+            )
 
         return {
             "contributions": contributions,
@@ -2556,6 +2721,12 @@ class CBES(Estimator):
         if self._image_studies_:
             table = table[~table["id"].isin(self._image_studies_)].copy()
 
+        # How the effect-size scale was settled, which decides whether an absolute-scale map
+        # can be emitted at all. Defaulted here so the branches below need only raise it.
+        self.scale_source_ = "unset"
+        self.n_scale_donors_ = 0
+        self.scale_interval_ = None
+
         needs_thresholds = self.selection_model != "none" or self.peak_bias is not None
         if needs_thresholds:
             roster = self._all_sample_sizes(dataset)
@@ -2615,6 +2786,7 @@ class CBES(Estimator):
 
         maps = {
             "g": fit["g"].astype(DEFAULT_FLOAT_DTYPE),
+            "g_relative": _relative_g(fit["g"], fit["covered"]).astype(DEFAULT_FLOAT_DTYPE),
             "se": np.where(np.isfinite(fit["se"]), fit["se"], 0).astype(DEFAULT_FLOAT_DTYPE),
             "z": z_values.astype(DEFAULT_FLOAT_DTYPE),
             "p": p_values.astype(DEFAULT_FLOAT_DTYPE),
@@ -2626,7 +2798,30 @@ class CBES(Estimator):
         if "prevalence" in fit:
             maps["prevalence"] = fit["prevalence"].astype(DEFAULT_FLOAT_DTYPE)
             maps["g_marginal"] = (fit["g"] * fit["prevalence"]).astype(DEFAULT_FLOAT_DTYPE)
+        if self._scale_is_pinned():
+            # Only here is "g" on the Hedges' g scale rather than on its own, so only here is
+            # there a second map to emit. It is the same array; the separate name is the claim.
+            maps["g_absolute"] = fit["g"].astype(DEFAULT_FLOAT_DTYPE)
         return maps, {}, self._description_text()
+
+    def _scale_is_pinned(self):
+        """Report whether the effect-size scale is pinned well enough for an absolute map.
+
+        Only two things pin it: image studies in this collection, or a caller supplying the
+        constant outright. ``peak_bias_scale="reference"`` does not, however sensible its value
+        looks -- it is borrowed from a different corpus on the assumption that this collection
+        resembles it, and made recovery of known truth 1.5 to 2x worse when it did not.
+
+        Images are required to number at least ``_MIN_SCALE_DONORS``, so that the spread of
+        their individual estimates is measurable and the caller can see how well determined the
+        constant is rather than taking one study's word for it.
+        """
+        if getattr(self, "scale_source_", "unset") == "supplied":
+            return True
+        return (
+            getattr(self, "scale_source_", "unset") == "images"
+            and getattr(self, "n_scale_donors_", 0) >= _MIN_SCALE_DONORS
+        )
 
     # -------------------------------------------------------------- correction
 

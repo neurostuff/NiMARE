@@ -1587,3 +1587,165 @@ def test_the_description_reports_what_the_peak_heights_carry(studyset, small_mas
         assert "carry information about the size of the effect" in description
     else:
         assert "relative map only" in description
+
+
+def test_the_relative_map_cancels_the_scale_the_coordinates_cannot_identify(studyset, small_mask):
+    """Two fits differing only by the scale constant must give the same relative map.
+
+    Rescaling every reported effect size leaves the coordinate-only likelihood unchanged, so
+    ``g`` moves and nothing that matters does. ``g_relative`` is the map that says so: it is
+    invariant to the constant by construction, which is the property that makes it comparable
+    across collections where ``g`` is not.
+    """
+    one = CBES(fwhm=8.0, mask=small_mask, null_method="none", peak_bias="per-study")
+    other = CBES(
+        fwhm=8.0,
+        mask=small_mask,
+        null_method="none",
+        peak_bias="per-study",
+        peak_bias_scale=0.5,
+    )
+    first = one.fit(studyset)
+    second = other.fit(studyset)
+
+    g_one = first.get_map("g", return_type="array").ravel()
+    g_two = second.get_map("g", return_type="array").ravel()
+    relative_one = first.get_map("g_relative", return_type="array").ravel()
+    relative_two = second.get_map("g_relative", return_type="array").ravel()
+
+    # The absolute maps differ by the constant...
+    moved = np.isfinite(g_one) & np.isfinite(g_two) & (np.abs(g_one) > 1e-6)
+    assert moved.any()
+    assert not np.allclose(g_one[moved], g_two[moved])
+    # ...and the relative maps agree to the accuracy the fit itself has. The cancellation is
+    # exact in the pooling step but only approximate through the EM, which is truncated at
+    # max_iter rather than converged (see ``max_iter``): starting from a rescaled g, the
+    # iteration stops at a slightly different point on the same plateau. One voxel in 9261
+    # moved, by 0.001 relative.
+    np.testing.assert_allclose(relative_one, relative_two, rtol=2e-3, atol=1e-6)
+    # A high percentile of the magnitude is the unit, so the map reaches about 1 and not much
+    # more, and it carries sign.
+    covered = np.abs(relative_one) > 0
+    assert 0.9 <= np.percentile(np.abs(relative_one[covered]), 95) <= 1.1
+
+
+def test_an_absolute_map_appears_only_when_something_pins_the_scale(studyset, small_mask):
+    """``g_absolute`` is a claim about units, so it must be absent when the units are unknown.
+
+    A coordinate-only fit identifies the pattern and not the scale, and borrowing the scale
+    from another corpus is an assumption about this collection rather than a measurement of it.
+    Emitting the map anyway would leave a reader unable to tell Hedges' g from Hedges' g times
+    an unknown constant.
+    """
+    shared = dict(fwhm=8.0, mask=small_mask, null_method="none", peak_bias="per-study")
+
+    coordinates_only = CBES(**shared).fit(studyset)
+    assert "g_relative" in coordinates_only.maps
+    assert "g_absolute" not in coordinates_only.maps
+
+    from_reference = CBES(**shared, peak_bias_scale="reference").fit(studyset)
+    assert "g_absolute" not in from_reference.maps
+
+    supplied = CBES(**shared, peak_bias_scale=0.6)
+    result = supplied.fit(studyset)
+    assert supplied.scale_source_ == "supplied"
+    assert "g_absolute" in result.maps
+    # Same numbers as "g"; the separate name is what carries the claim.
+    np.testing.assert_array_equal(
+        result.get_map("g_absolute", return_type="array"),
+        result.get_map("g", return_type="array"),
+    )
+
+
+def test_hartung_knapp_replaces_the_se_without_touching_the_estimate(studyset, small_mask):
+    """HKSJ is a different variance, not a different fit.
+
+    It also has to survive the voxels it cannot apply to: with one effective study there is no
+    spread about the pooled value to measure, and the degrees of freedom would be zero or less.
+    Those voxels keep the model-based value rather than producing an infinity.
+    """
+    shared = dict(
+        fwhm=8.0,
+        mask=small_mask,
+        null_method="none",
+        peak_bias="per-study",
+        selection_model="none",
+    )
+    model = CBES(**shared, se_method="model").fit(studyset)
+    hksj = CBES(**shared, se_method="hksj").fit(studyset)
+
+    np.testing.assert_allclose(
+        model.get_map("g", return_type="array"),
+        hksj.get_map("g", return_type="array"),
+        rtol=1e-10,
+    )
+    se_model = model.get_map("se", return_type="array").ravel()
+    se_hksj = hksj.get_map("se", return_type="array").ravel()
+    n_eff = model.get_map("n_eff", return_type="array").ravel()
+
+    assert np.all(np.isfinite(se_hksj))
+    # Where there is spread to measure the two disagree; where there is not, they agree.
+    spread = n_eff > 1.0
+    assert spread.any()
+    assert not np.allclose(se_model[spread], se_hksj[spread])
+    flat = (n_eff > 0) & (n_eff <= 1.0)
+    if flat.any():
+        np.testing.assert_allclose(se_model[flat], se_hksj[flat], rtol=1e-10)
+
+
+def test_hartung_knapp_uses_the_effective_study_count_not_the_weight_total():
+    """The degrees of freedom must be Kish's ``n_eff``, which small kernel weights cannot break.
+
+    ``sum(w)`` and Kish's ``(sum w)^2 / sum w^2`` agree when every weight is one, but only the
+    latter is invariant to rescaling. At a voxel reached only by distant foci the weights sum to
+    well under one, and using that as a study count sends the degrees of freedom to zero and the
+    interval to absurdity -- measured as 99.3% coverage of a nominal 95% interval before this was
+    fixed.
+    """
+    from nimare.meta.cbma.effectsize import _hartung_knapp_se
+
+    # Three studies, all weights 0.1: sum(w) = 0.3 but n_eff = 3.
+    weights = np.full(3, 0.1)
+    n_eff = np.array([weights.sum() ** 2 / (weights**2).sum()])
+    assert np.isclose(n_eff[0], 3.0)
+
+    g = np.array([0.2, 0.5, 0.8])
+    var = np.full(3, 0.1)
+    a = weights / var
+    g_hat = np.array([(a * g).sum() / a.sum()])
+    se = _hartung_knapp_se(
+        g_hat=g_hat,
+        sum_a=np.array([a.sum()]),
+        sum_a_g2=np.array([(a * g * g).sum()]),
+        n_eff=n_eff,
+        covered=np.array([True]),
+        fallback=np.array([np.inf]),
+    )
+    expected = np.sqrt((a * (g - g_hat[0]) ** 2).sum() / ((3.0 - 1.0) * a.sum()))
+    np.testing.assert_allclose(se[0], expected)
+    # Rescaling every weight leaves it untouched, which sum(w) would not.
+    rescaled = weights * 17.0
+    a2 = rescaled / var
+    se_rescaled = _hartung_knapp_se(
+        g_hat=g_hat,
+        sum_a=np.array([a2.sum()]),
+        sum_a_g2=np.array([(a2 * g * g).sum()]),
+        n_eff=np.array([rescaled.sum() ** 2 / (rescaled**2).sum()]),
+        covered=np.array([True]),
+        fallback=np.array([np.inf]),
+    )
+    np.testing.assert_allclose(se[0], se_rescaled[0], rtol=1e-10)
+
+
+def test_hksj_is_refused_rather_than_ignored_under_the_selection_model():
+    """The combination that would silently do nothing has to fail instead.
+
+    The zero-inflated model overwrites the pooled inverse-variance SE with the curvature of the
+    censored likelihood, so an HKSJ correction applied during pooling is discarded before it
+    reaches the caller. Accepting the combination would hand back an uncorrected SE while
+    reporting that a correction was requested.
+    """
+    with pytest.raises(ValueError, match="hksj.*selection_model"):
+        CBES(se_method="hksj", selection_model="zero-inflated")
+    # And the supported combination constructs.
+    CBES(se_method="hksj", selection_model="none")
