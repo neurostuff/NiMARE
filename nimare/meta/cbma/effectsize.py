@@ -896,13 +896,13 @@ class CBES(Estimator):
 
         **A float leaves the inference alone; ``"per-study"`` does not.** One shared factor
         scales every study's variance identically, so every inverse-variance weight is scaled
-        together and ``z``, the p-values, the corrected maps and ``prevalence`` come back
-        unchanged -- measured to within 1% while ``g`` scaled exactly by the factor. A
+        together: ``g`` scales exactly by the factor while ``z`` moves by at most 0.5%. A
         per-study factor scales each study's variance by its own ``rho_k**2``, which reweights
-        the studies against each other: on a 24-study collection with sample sizes from 15 to
-        400 (a 4.5-fold spread in ``rho_k``) it moved ``z`` by up to a factor of 42 and
-        ``prevalence`` by up to 8.5 at individual voxels. It is a change to the model, not a
-        rescaling of the output.
+        the studies against each other, so it is a change to the model rather than a rescaling
+        of the output. Over the voxels reaching ``|z| > 1`` on a 24-study collection it shifted
+        ``z`` by a median of 18% and by 64% at the 95th percentile with sample sizes from 15 to
+        400, and by 10% and 62% with them from 20 to 40. Narrowing the sample sizes is
+        therefore not a remedy: it shrinks the typical shift and leaves the tail.
 
         ``rho_k`` is also derived at :math:`\mu = 0`: :func:`null_peak_mean_g` is the effect
         size a *pure-noise* peak would report, so ``rho_k`` grows like :math:`\sqrt{N_k}` and
@@ -911,8 +911,9 @@ class CBES(Estimator):
         :math:`N` of 30 the factor reaches 2.8 at :math:`N = 200` and 6.4 at
         :math:`N = 1000`. The correction is therefore sound where the reported heights are
         noise-dominated, which is where :func:`peak_information` reports they carry no
-        effect-size information anyway, and is an overcorrection where they are not. Use
-        ``"per-study"`` only on collections whose sample sizes are of a similar order.
+        effect-size information anyway, and is an overcorrection where they are not. Neither
+        mode is on by default, and a shared float is the safer of the two: it cannot move the
+        inference, only the magnitude scale that was never identified to begin with.
     peak_bias_scale : :obj:`float`, "auto", or "images", default=1.0
         The overall scale of the ``"per-study"`` correction. ``"images"`` reads it off any
         studies in the collection that supply images and ``"auto"`` does the same when images

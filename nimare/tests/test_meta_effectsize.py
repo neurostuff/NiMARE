@@ -1378,7 +1378,12 @@ def test_a_shared_peak_bias_rescales_g_alone_but_a_per_study_one_reweights(small
     A shared ``rho`` scales every study's variance by the same square, so every
     inverse-variance weight is scaled together and the inference is untouched. A per-study
     ``rho`` scales each study's variance by its own, which reweights the studies against each
-    other -- so it moves ``z`` and ``prevalence``, and the docstring used to claim it did not.
+    other -- so it moves ``z``, and the docstring used to claim it did not.
+
+    Judged over the voxels reaching ``|z| > 1`` and on the median shift. An earlier version
+    took the largest relative change over every covered voxel, which reported a factor of 42
+    and was an artefact: the extremes sit where the uncorrected ``z`` is near zero, and they
+    came out *larger* on the collection with the narrower sample sizes.
     """
     studyset = create_effect_size_coordinate_studyset(
         [TRUTH],
@@ -1404,21 +1409,20 @@ def test_a_shared_peak_bias_rescales_g_alone_but_a_per_study_one_reweights(small
             assert rho.max() / rho.min() > 2.0, "fixture must make rho_k actually vary"
 
     covered = fits["none"]["n_studies"] > 0
+    strong = covered & (np.abs(fits["none"]["z"]) > 1.0)
+    assert strong.sum() > 100, "fixture must leave enough voxels worth looking at"
 
-    def compare(name, key):
-        a, b = fits["none"][key][covered], fits[name][key][covered]
-        keep = np.isfinite(a) & np.isfinite(b) & (np.abs(a) > 1e-6)
-        return np.median(b[keep] / a[keep]), np.max(np.abs(b[keep] - a[keep]) / np.abs(a[keep]))
+    def shift(name, key):
+        """Median ratio to the uncorrected map, and the median relative change."""
+        a, b = fits["none"][key][strong], fits[name][key][strong]
+        return float(np.median(b / a)), float(np.median(np.abs(b - a) / np.abs(a)))
 
-    # Shared: g scales by the factor, everything else is untouched.
-    ratio, _ = compare("shared", "g")
-    assert ratio == pytest.approx(0.5, abs=1e-3)
-    for key in ("z", "prevalence"):
-        _, worst = compare("shared", key)
-        assert worst < 0.02, (key, worst)
+    # Shared: g scales by the factor, and z does not move at all.
+    assert shift("shared", "g")[0] == pytest.approx(0.5, abs=1e-3)
+    assert shift("shared", "z")[1] < 0.01
 
-    # Per-study: the inference moves, and by much more than numerical slack.
-    assert max(compare("per-study", key)[1] for key in ("z", "prevalence")) > 1.0
+    # Per-study: z moves by more than a rounding error, in the tens of percent.
+    assert shift("per-study", "z")[1] > 0.05
 
 
 def test_a_degenerate_collection_gets_no_p_values_and_no_fwe_correction(small_mask):
