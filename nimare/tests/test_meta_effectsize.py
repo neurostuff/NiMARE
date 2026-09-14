@@ -1658,3 +1658,239 @@ def test_images_pin_the_scale_and_produce_an_absolute_map(mixed_image_studyset):
     assert one_donor.n_scale_donors_ == 1
     assert one_donor.scale_interval_ is None
     assert "g_absolute" not in sparse.maps
+
+
+def test_the_censored_mixture_em_finds_the_same_optimum_as_a_brute_force_search():
+    """No reference implementation exists, so the EM is checked against the likelihood itself.
+
+    ``_fit_chunk`` is an EM over a zero-inflated censored likelihood, and everything downstream
+    -- ``g``, ``prevalence``, ``se`` -- is whatever it returns. Writing the likelihood out a
+    second time, independently, and maximizing it on a grid is the only available oracle: if the
+    two disagree, either the EM is not climbing the likelihood the model describes or the model
+    is not the one documented.
+    """
+    from scipy import stats
+
+    from nimare.meta.cbma.effectsize import _PROBABILITY_FLOOR, null_effect_variance
+
+    n_studies, width = 6, 1
+    sample_sizes = np.array([20.0, 24.0, 30.0, 36.0, 40.0, 28.0])
+    null_var = null_effect_variance(sample_sizes, design="one-sample")[:, None]
+    cutoff = 0.55
+    cutoffs = np.full((n_studies, 1), cutoff)
+    tau2 = np.zeros(width)
+
+    # Three studies reported here, three were silent: the configuration the mixture is for.
+    weights = np.zeros((n_studies, width))
+    g_obs = np.zeros((n_studies, width))
+    var_obs = np.ones((n_studies, width))
+    covered = np.zeros((n_studies, width), dtype=bool)
+    reported = {0: 0.72, 1: 0.61, 2: 0.95}
+    for study, value in reported.items():
+        weights[study, 0] = 1.0
+        g_obs[study, 0] = value
+        var_obs[study, 0] = float(null_var[study, 0])
+        covered[study, 0] = True  # reported, so not silent
+
+    estimator = CBES(fwhm=8.0, null_method="none", max_iter=400)
+    mu, pi, _ = estimator._fit_chunk(
+        weights=weights,
+        g_obs=g_obs,
+        var_obs=var_obs,
+        covered=covered,
+        tau2=tau2,
+        null_var=null_var,
+        cutoffs=cutoffs,
+        start=np.array([float(np.mean(list(reported.values())))]),
+    )
+
+    def log_likelihood(mu_value, pi_value):
+        """Evaluate the documented model, written out again from scratch.
+
+        With probability pi a study has a real effect of size mu here, otherwise none. A
+        reporting study contributes the density of what it reported under that mixture; a silent
+        study contributes the probability that it would have stayed below its cutoff.
+        """
+        total = 0.0
+        for study, value in reported.items():
+            sd = np.sqrt(float(null_var[study, 0]))
+            present = np.exp(-0.5 * ((value - mu_value) / sd) ** 2) / (sd * np.sqrt(2 * np.pi))
+            absent = np.exp(-0.5 * (value / sd) ** 2) / (sd * np.sqrt(2 * np.pi))
+            total += np.log(max(pi_value * present + (1 - pi_value) * absent, 1e-300))
+        # Silent studies enter at the average reporting weight, which is 1.0 here.
+        for study in range(n_studies):
+            if study in reported:
+                continue
+            sd = np.sqrt(float(null_var[study, 0]))
+            silent_present = max(
+                stats.norm.cdf((cutoff - mu_value) / sd)
+                - stats.norm.cdf((-cutoff - mu_value) / sd),
+                _PROBABILITY_FLOOR,
+            )
+            silent_absent = max(
+                stats.norm.cdf(cutoff / sd) - stats.norm.cdf(-cutoff / sd), _PROBABILITY_FLOOR
+            )
+            total += np.log(
+                max(pi_value * silent_present + (1 - pi_value) * silent_absent, 1e-300)
+            )
+        return total
+
+    # Grid spacing of 0.01 in each parameter, which is finer than the tolerances asserted
+    # below and keeps this to a couple of seconds rather than a couple of minutes.
+    mu_grid = np.linspace(0.0, 1.6, 161)
+    pi_grid = np.linspace(0.01, 0.99, 99)
+    surface = np.array([[log_likelihood(m, p) for p in pi_grid] for m in mu_grid])
+    best = np.unravel_index(int(np.argmax(surface)), surface.shape)
+    brute_mu, brute_pi = mu_grid[best[0]], pi_grid[best[1]]
+
+    # The EM must not be beaten by the grid: its optimum is at least as good, to grid accuracy.
+    assert log_likelihood(mu[0], pi[0]) >= surface[best] - 1e-3
+    assert abs(mu[0] - brute_mu) < 0.05, (mu[0], brute_mu)
+    assert abs(pi[0] - brute_pi) < 0.08, (pi[0], brute_pi)
+
+
+def test_the_censored_likelihood_reads_silence_as_evidence_against_a_large_effect():
+    """The model's defining behaviour, checked on the likelihood rather than on a fitted map.
+
+    Adding silent studies must pull the optimum down: silence is improbable when the effect is
+    large, so the more studies stay quiet the smaller the effect that best explains the data.
+    This is the whole reason the censoring term exists, and it is worth pinning separately from
+    the optimizer that exploits it.
+    """
+    from nimare.meta.cbma.effectsize import null_effect_variance
+
+    fitted = []
+    for n_silent in (0, 3, 9):
+        n_studies = 3 + n_silent
+        sample_sizes = np.full(n_studies, 30.0)
+        null_var = null_effect_variance(sample_sizes, design="one-sample")[:, None]
+        weights = np.zeros((n_studies, 1))
+        g_obs = np.zeros((n_studies, 1))
+        var_obs = np.ones((n_studies, 1))
+        covered = np.zeros((n_studies, 1), dtype=bool)
+        for study, value in enumerate((0.8, 0.7, 0.9)):
+            weights[study, 0] = 1.0
+            g_obs[study, 0] = value
+            var_obs[study, 0] = float(null_var[study, 0])
+            covered[study, 0] = True
+
+        estimator = CBES(fwhm=8.0, null_method="none", max_iter=400)
+        mu, _, _ = estimator._fit_chunk(
+            weights=weights,
+            g_obs=g_obs,
+            var_obs=var_obs,
+            covered=covered,
+            tau2=np.zeros(1),
+            null_var=null_var,
+            cutoffs=np.full((n_studies, 1), 0.55),
+            start=np.array([0.8]),
+        )
+        fitted.append(float(mu[0]))
+
+    assert fitted[0] > fitted[1] > fitted[2], fitted
+
+
+@pytest.fixture(scope="module")
+def roi_studyset(tmp_path_factory):
+    """Twelve studies; four examined only a slab, and are silent everywhere else."""
+    directory = tmp_path_factory.mktemp("cbes_roi")
+    shape = (12, 12, 12)
+    affine = np.diag([4.0, 4.0, 4.0, 1.0])
+    affine[:3, 3] = -22.0
+    nib.save(nib.Nifti1Image(np.ones(shape, np.int32), affine), directory / "mask.nii.gz")
+
+    # The slab the partial-coverage studies examined: one end of the volume, away from the
+    # focus every study reports at, so their silence at the focus is uninformative.
+    slab = np.zeros(shape, np.int32)
+    slab[:3] = 1
+    nib.save(nib.Nifti1Image(slab, affine), directory / "slab.nii.gz")
+
+    from nimare.studyset import Studyset
+
+    studies = []
+    for k in range(12):
+        partial = k >= 8
+        analysis = {
+            "id": f"r{k}-1",
+            "name": "1",
+            "metadata": {"sample_sizes": [30]},
+            # Whole-brain studies report at the focus; the partial ones report inside their slab.
+            "points": [
+                {
+                    "space": "MNI",
+                    "coordinates": [-18.0, -18.0, -18.0] if partial else [0.0, 0.0, 0.0],
+                    "values": [{"kind": "Z", "value": 4.0}],
+                }
+            ],
+            "images": [],
+        }
+        if partial:
+            analysis["images"] = [
+                {
+                    "url": str(directory / "slab.nii.gz"),
+                    "filename": "slab.nii.gz",
+                    "space": "MNI",
+                    "value_type": "analysis_mask",
+                }
+            ]
+        studies.append(
+            {
+                "id": f"r{k}",
+                "name": f"r{k}",
+                "metadata": {"sample_sizes": [30]},
+                "analyses": [analysis],
+            }
+        )
+
+    return Studyset(
+        {"id": "roi", "name": "roi", "studies": studies},
+        target=None,
+        mask=str(directory / "mask.nii.gz"),
+    )
+
+
+def test_a_declared_analysis_mask_stops_silence_being_read_where_nobody_looked(roi_studyset):
+    """An ROI study never looked outside its region, so its silence there is not evidence."""
+    from nimare.utils import mm2vox
+
+    masker = roi_studyset.masker
+    ijk = mm2vox(np.array([[0.0, 0.0, 0.0]]), masker.mask_img.affine)[0]
+    mask = np.asarray(masker.mask_img.dataobj).astype(bool)
+    lookup = np.full(mask.shape, -1, dtype=np.int64)
+    lookup[mask] = np.arange(mask.sum())
+    focus = int(lookup[tuple(ijk)])
+    assert focus >= 0
+
+    shared = dict(fwhm=8.0, null_method="none", peak_bias=None)
+    ignored = CBES(**shared).fit(roi_studyset)
+    honoured = CBES(**shared, analysis_mask="analysis_mask").fit(roi_studyset)
+
+    # Reading the slab studies' silence as evidence drags the focus down; honouring the mask
+    # removes four spurious censoring terms, so the estimate there rises.
+    g_ignored = ignored.get_map("g", return_type="array").ravel()[focus]
+    g_honoured = honoured.get_map("g", return_type="array").ravel()[focus]
+    assert g_honoured > g_ignored
+
+    # Same for prevalence: silence that was never observed should not lower it.
+    pi_ignored = ignored.get_map("prevalence", return_type="array").ravel()[focus]
+    pi_honoured = honoured.get_map("prevalence", return_type="array").ravel()[focus]
+    assert pi_honoured > pi_ignored
+
+    # The studies that examined the whole volume are untouched either way.
+    assert honoured.get_map("n_studies", return_type="array").ravel()[focus] == (
+        ignored.get_map("n_studies", return_type="array").ravel()[focus]
+    )
+
+
+def test_an_absent_or_empty_analysis_mask_changes_nothing(roi_studyset, studyset, small_mask):
+    """The parameter has to be inert unless a study actually declares a mask."""
+    shared = dict(fwhm=8.0, mask=small_mask, null_method="none", peak_bias=None)
+    without = CBES(**shared).fit(studyset)
+    # This collection carries no images at all, so naming a value type finds nothing.
+    with_name = CBES(**shared, analysis_mask="analysis_mask").fit(studyset)
+    np.testing.assert_allclose(
+        without.get_map("g", return_type="array"),
+        with_name.get_map("g", return_type="array"),
+        rtol=1e-10,
+    )
+    assert CBES(fwhm=8.0, null_method="none")._load_analysis_masks(roi_studyset) == {}

@@ -812,6 +812,17 @@ class CBES(Estimator):
             studies examined only part of the brain -- an ROI study says nothing about voxels
             it never analysed, and there is no per-study coverage flag yet. Also useful as a
             diagnostic, and roughly ten times faster.
+    analysis_mask : :obj:`str` or None, optional
+        ``value_type`` of a per-study image marking the voxels that study examined, nonzero
+        meaning examined. Studies without one are taken to have examined the whole analysis
+        volume, which is what the censoring term assumes of every study by default.
+
+        This is what an ROI or partial-coverage study needs: its silence outside the region it
+        analysed is not evidence that nothing is there, and the censoring term would otherwise
+        read it as evidence against an effect. Voxels a study did not examine contribute neither
+        a value nor a silence for it. Without this the only remedy was
+        ``selection_model="none"`` for the whole collection, which also discards the correction
+        for the studies that did examine the whole brain.
     threshold : :obj:`float`, :obj:`str`, or None, default="study-min"
         Reporting threshold assumed for each study, on the z scale. It decides how surprising a
         study's silence is and, with ``peak_bias="per-study"``, how far its peaks are
@@ -996,6 +1007,7 @@ class CBES(Estimator):
         tau2_method="dl",
         selection_model="zero-inflated",
         se_method="model",
+        analysis_mask=None,
         threshold="study-min",
         coverage_radius=None,
         kernel_min_weight=0.01,
@@ -1045,6 +1057,7 @@ class CBES(Estimator):
         self.n_iters = n_iters
         self.n_cores = n_cores
         self.se_method = se_method
+        self.analysis_mask = analysis_mask
         self.seed = seed
 
         if mask is not None:
@@ -1117,6 +1130,7 @@ class CBES(Estimator):
             filter_func=np.mean,
         )
         self._reported_thresholds_ = self._threshold_metadata(dataset)
+        self._analysis_masks_ = self._load_analysis_masks(dataset)
 
     def _threshold_metadata(self, dataset):
         """Per-study reporting thresholds, when ``threshold`` names a metadata field.
@@ -1218,6 +1232,49 @@ class CBES(Estimator):
             total = len(set(images["id"].astype(str)))
             rest = "" if len(loaded) >= total else "; coordinates for the rest"
             LGR.info(f"Using images for {len(loaded)} studies{rest}.")
+        return loaded
+
+    def _load_analysis_masks(self, dataset):
+        """Return ``{study_id: examined}`` for studies declaring which voxels they analysed.
+
+        Read from an image whose ``value_type`` matches ``analysis_mask``, nonzero meaning
+        examined. Without one, a study is assumed to have examined the whole analysis volume,
+        which is what the censoring term has always assumed of every study.
+
+        This is what an ROI or partial-coverage study needs. Its silence outside the region it
+        analysed is not evidence that nothing is there -- it never looked -- and the censoring
+        term would otherwise read it as evidence against an effect. The only previous remedy was
+        ``selection_model="none"`` for the entire collection, which throws away the correction
+        for the studies that did examine the whole brain.
+        """
+        if not self.analysis_mask:
+            return {}
+
+        images = getattr(dataset, "images", None)
+        if images is None or self.analysis_mask not in images.columns:
+            return {}
+
+        loaded = {}
+        for study_id, path in zip(images["id"].astype(str), images[self.analysis_mask]):
+            if path is None or not os.path.isfile(str(path)):
+                continue
+            values = self.masker.transform(str(path)).ravel()
+            examined = np.isfinite(values) & (values != 0)
+            if not examined.any():
+                LGR.warning(
+                    f"Study {study_id} declares an analysis mask that covers no in-mask voxel; "
+                    "ignoring it and treating the study as whole-brain."
+                )
+                continue
+            if examined.all():
+                continue  # whole-brain, which is the default anyway
+            loaded[study_id] = examined
+
+        if loaded:
+            LGR.info(
+                f"{len(loaded)} studies declare a partial analysis mask; their silence outside "
+                "it is not read as evidence."
+            )
         return loaded
 
     def _build_focus_table(self):
@@ -1889,8 +1946,18 @@ class CBES(Estimator):
         seen = np.zeros(active.size, dtype=bool)
 
         image_ids = set(image_ids)
+        analysis_masks = getattr(self, "_analysis_masks_", None) or {}
         cols, positions = [], []
         for position, study_id in enumerate(study_ids):
+            # A voxel a study never examined is marked covered, which is how the model says
+            # "contributes nothing": covered suppresses the censoring term, and the kernel
+            # weight is already zero there, so neither silence nor a value is read from it.
+            examined = analysis_masks.get(study_id)
+            if examined is not None:
+                outside = np.flatnonzero(~examined[active])
+                if outside.size:
+                    cols.append(outside.astype(np.int64))
+                    positions.append(np.full(outside.size, position, dtype=np.int64))
             if study_id in image_ids:
                 # An image reports everywhere, so it is silent nowhere and contributes no
                 # censoring term. Marking it covered at every active voxel says exactly that.
