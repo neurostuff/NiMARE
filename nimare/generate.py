@@ -349,7 +349,18 @@ def _simulate_reported_peaks(
         signal += float(effect) * np.exp(-squared / (2.0 * blob_sigma**2))
 
     scale = np.sqrt(n_subjects) if design == "one-sample" else np.sqrt(n_subjects / 4.0)
-    observed = signal * scale + noise
+    # ``signal * scale`` is the noncentrality of the *t* statistic, so the field is built on
+    # the t scale and then transformed, exactly as the point-based path does. Reporting
+    # ``signal * scale + noise`` directly as a Z would label a t-scale statistic as a z: the
+    # two agree closely near the threshold and diverge hard above it, because the t's heavier
+    # tails mean a given tail probability sits at a much larger quantile. An estimator that
+    # inverts a reported Z through the t -- which is what a paper's Z came from -- then
+    # recovers a wildly inflated effect size, 8.8 against a true 1.6 at g = 1.6, and about
+    # 13% too high even at g = 0.8.
+    from nimare.transforms import t_to_z
+
+    dof = n_subjects - 1 if design == "one-sample" else n_subjects - 2
+    observed = t_to_z(signal * scale + noise, dof)
 
     # Local maxima of |observed| that clear the threshold, which is what a paper tabulates.
     magnitude = np.abs(observed)
