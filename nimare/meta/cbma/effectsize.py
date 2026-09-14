@@ -1786,10 +1786,10 @@ class CBES(Estimator):
         reported nothing, which is right in the real fit and wrong here: it made every
         donor-only fit carry one censored-silent observation per coordinate study, dragging the
         donor's magnitude down and the ratio with it. On the pain collection the scale came out
-        0.61 against 0.71 with two donors and 0.61 against 0.66 with three, so the absolute
-        magnitudes were 8 to 14% too small -- the drag partly cancels between the two fits,
-        which is why it is a modest bias rather than the factor of 1.5 a reimplementation of
-        the ratio suggested.
+        0.61 against 0.71 with two donors, 0.61 against 0.66 with three and 0.62 against 0.66
+        with five, so the absolute magnitudes were 6 to 14% too small, least with the most
+        donors. The drag partly cancels between the two fits, which is why it is a modest bias
+        rather than the factor of 1.5 a reimplementation of the ratio suggested.
 
         **One ratio per donor, pooled across donors**, rather than one ratio against all the
         images pooled together: pooling the images first makes the answer depend on how many
