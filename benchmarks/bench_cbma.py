@@ -113,14 +113,6 @@ class TimeCBMA:
         meta = MKDAChi2()
         meta.fit(self.studyset, self.studyset)
 
-    # This one benchmark does not settle under asv's defaults: across runs of identical code
-    # its spread has been 13-18% of its own value, where every other benchmark in this file
-    # sits under 3.5%, and that is enough to cross ``asv continuous --factor 1.2`` on unrelated
-    # pull requests. More samples rather than a looser factor, which would blunt regression
-    # detection for the other eleven.
-    time_mkdachi2_studyset.repeat = 10
-    time_mkdachi2_studyset.number = 3
-
     def time_mkdachi2_dense(self, data):
         """
         Time the MKDAChi2 estimator on a denser simulated dataset.
