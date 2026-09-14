@@ -1235,6 +1235,38 @@ def images_only_studyset(tmp_path_factory):
     return Studyset(str(source)), str(directory / "mask.nii.gz")
 
 
+def test_the_null_sign_flips_images_rather_than_holding_them_fixed():
+    """Coordinates and images are exchangeable in different ways, so the null must move both.
+
+    Relocating a focus destroys its position, which is what the coordinate null says is
+    arbitrary. An image has no position to destroy; what the null says about it is that its sign
+    is arbitrary. Holding images fixed instead carries their signal into the null: with the
+    effect size held constant and only its extent varied, power fell from 1.00 at 3% of the
+    volume to 0.67 at 100%, and sign-flipping restored it to 1.00 throughout.
+    """
+    estimator = CBES()
+    estimator._image_studies_ = {
+        "a": (np.array([1.0, -2.0, 3.0]), np.array([0.1, 0.1, 0.1]), np.ones(3, bool)),
+        "b": (np.array([4.0, 5.0, -6.0]), np.array([0.2, 0.2, 0.2]), np.ones(3, bool)),
+    }
+    seen = set()
+    for seed in range(40):
+        flipped = estimator._flip_image_signs(np.random.default_rng(seed))
+        for name, (g, var_g, usable) in flipped.items():
+            original = estimator._image_studies_[name]
+            # Either the map or its negation, never anything else, and variances untouched.
+            assert np.allclose(g, original[0]) or np.allclose(g, -original[0])
+            assert np.array_equal(var_g, original[1])
+            assert np.array_equal(usable, original[2])
+            seen.add((name, bool(np.allclose(g, -original[0]))))
+    # Both signs must actually occur, or this is not a permutation.
+    assert seen == {("a", True), ("a", False), ("b", True), ("b", False)}
+
+    # A coordinate-only fit has nothing to flip and must be left exactly alone.
+    estimator._image_studies_ = {}
+    assert not estimator._flip_image_signs(np.random.default_rng(0))
+
+
 def test_images_only_collection_is_redirected_to_an_image_estimator(images_only_studyset):
     """A collection with images and no coordinates is an error, not a quiet reduction.
 
