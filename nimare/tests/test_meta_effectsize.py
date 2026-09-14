@@ -2135,3 +2135,35 @@ def test_an_analysis_mask_covering_nothing_means_nothing_rather_than_everything(
     # Kept as an all-False mask rather than discarded, so the study contributes nothing.
     empty_masks = [m for m in estimator._analysis_masks_.values() if not m.any()]
     assert len(empty_masks) == 1
+
+
+def test_the_coverage_cache_rebuilds_when_the_configuration_changes(mixed_image_studyset):
+    """A cache keyed on shape alone hands one fit's censoring matrix to a different fit.
+
+    Calibration fits the coordinates alone and then each image donor alone. Those share a
+    roster and an active extent but not a focus table, so a key of (extent, analysis count)
+    matched and the donor fits silently reused the coordinate fit's coverage.
+    """
+    from nimare.meta.cbma import effectsize as module
+
+    plain = module.CBES._coverage_entries
+    calls = {"n": 0}
+
+    def counted(self, *args, **kwargs):
+        calls["n"] += 1
+        return plain(self, *args, **kwargs)
+
+    module.CBES._coverage_entries = counted
+    try:
+        estimator = CBES(
+            fwhm=8.0, null_method="none", peak_bias="per-study", peak_bias_scale="images"
+        )
+        estimator.fit(mixed_image_studyset)
+    finally:
+        module.CBES._coverage_entries = plain
+
+    # Coordinates alone, each donor alone, then the fit itself: more than one configuration.
+    assert calls["n"] > 1, calls["n"]
+    # And the key names what decides coverage, not merely its shape.
+    key = estimator._coverage_[0]
+    assert len(key) >= 8, key

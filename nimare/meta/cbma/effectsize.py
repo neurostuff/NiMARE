@@ -2169,7 +2169,24 @@ class CBES(Estimator):
         study_ids = list(sample_sizes.index)
         # Which studies were silent where is decided by the foci positions, which the
         # permutation null never moves, so this survives across refits like the geometry does.
-        coverage_key = (active.size, int(active[0]), int(active[-1]), len(study_ids))
+        #
+        # The key has to name everything that decides coverage, not just its shape. It used to
+        # be (active extent, number of analyses), which the calibration sequence defeats: that
+        # fits the coordinates alone and then each image donor alone, with the same roster and
+        # the same active voxels but an empty focus table, so a donor fit reused the coordinate
+        # fit's censoring matrix. Measured donor-only estimates of [0.2840, 0.3708] against
+        # [0.2658, 0.3421] once invalidated.
+        masks = getattr(self, "_analysis_masks_", None) or {}
+        coverage_key = (
+            active.size,
+            int(active[0]),
+            int(active[-1]),
+            tuple(study_ids),
+            tuple(sorted(image_ids)),
+            table[["i", "j", "k"]].values.astype(np.int64).tobytes() if len(table) else b"",
+            np.asarray(table["id"].values, dtype=object).tobytes() if len(table) else b"",
+            tuple(sorted((study, mask.tobytes()) for study, mask in masks.items())),
+        )
         cached = getattr(self, "_coverage_", None)
         if cached is not None and cached[0] == coverage_key:
             cov_col, cov_pos = cached[1]
