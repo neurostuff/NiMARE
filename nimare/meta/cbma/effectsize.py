@@ -850,6 +850,18 @@ class CBES(Estimator):
 
     Attributes
     ----------
+    scale_interval_ : :obj:`tuple` of :obj:`float`, or None
+        Multiplicative bounds the overall effect-size scale is identified to, or None when it
+        is not identified at all -- which is the case for any coordinate-only fit, since
+        rescaling every study by one constant leaves the coordinate likelihood unchanged.
+        Reported because a point estimate of a partially identified parameter invites being
+        read as a measurement. With images the bounds are the spread across donor studies;
+        with ``peak_bias_scale="reference"`` they come from the corpus the reference was fitted
+        on, a factor of about 1.96 either way.
+    peak_information_ : :obj:`dict`
+        ``observed_mean_z``, ``null_peak_mean_z`` and ``excess_z`` for the reported peaks. When
+        the excess is small the heights carry no information about the size of the effect and
+        only the spatial pattern is interpretable; :meth:`fit` says so in its description.
     masker : :class:`~nilearn.maskers.NiftiMasker`
         Masker object.
     inputs_ : :obj:`dict`
@@ -927,18 +939,17 @@ class CBES(Estimator):
     scale is not identified from coordinates at all and needs ``peak_bias_scale``. **Treat
     ``g`` as a relative map.**
 
-    Supplying images helps but does not calibrate, and the current calibration overshoots.
-    Holding the image-donating studies out of the target so that no image is compared against
-    itself, the pain collection gives a magnitude ratio of 1.81 on coordinates alone, 0.75 with
-    one image, 0.68 with two and 0.59 with five: the sign of the bias flips and the size of it
-    grows with the number of images. The resolved scale falls the same way (0.61, 0.59, 0.52),
-    which is the cause -- one image's own map has high peaks, averaging several flattens them
-    while the coordinate fit stays inflated, so the measured image-to-coordinate ratio shrinks.
-    **The scale therefore depends on how many images a collection happens to hold**, which it
-    should not. One image is the best-calibrated configuration measured, and more make the
-    magnitude worse.
+    Supplying images helps but does not calibrate, and it overcorrects. Holding the
+    image-donating studies out of the target so that no image is compared against itself, the
+    pain collection gives a magnitude ratio of 1.81 on coordinates alone and 0.75, 0.70, 0.64
+    with one, two and five images: the sign of the bias flips. How many images there are
+    matters less than it used to -- taking one scale per donor and pooling those holds the
+    resolved scale at 0.61, 0.62, 0.62 where pooling the images first drifted 0.61, 0.59, 0.52
+    -- but only when peaks are dense. Thinned to 20 peaks per study it still falls 0.57, 0.53,
+    0.51, so ``scale_interval_`` reports the spread across donors rather than a bare point
+    estimate.
 
-    Sparse coordinate tables cost less than that: with only three peaks per study the
+    Sparse coordinate tables cost more than that: with only three peaks per study the
     coordinates-only ratio is 2.67 rather than 1.81, and coverage falls to 19.5% of the brain.
     Any image raises coverage to 100%, since an image reports everywhere -- so a single donated
     image turns a sparse map dense, and the dense part is one study rather than a
@@ -1380,11 +1391,16 @@ class CBES(Estimator):
     def _resolve_peak_bias_scale(self, table, sample_sizes, reporting_ids):
         """Settle ``peak_bias_scale`` before it is used, calibrating it if asked and able.
 
+        Also sets ``scale_interval_``: the multiplicative bounds the scale is identified to,
+        or None when it is not identified at all. A point estimate of a partially identified
+        parameter invites being read as a measurement, which the scale is not.
+
         Calibration needs a provisional fit, which needs a ``rho``, so the scale is resolved
         at 1.0 first and the answer applied afterwards. That is exact rather than iterative:
         the fit is linear in the scale, so a fit at 1.0 times the calibrated scale *is* the
         fit at the calibrated scale.
         """
+        self.scale_interval_ = None
         if self.peak_bias is None:
             return 1.0
         if self.peak_bias_scale not in ("auto", "images", "reference"):
@@ -1478,6 +1494,10 @@ class CBES(Estimator):
 
         scale = expected / observed
         spread = float(np.exp(REFERENCE_MAGNITUDE_LOG_SD))
+        # The scale is only partially identified, so record the set it is identified to rather
+        # than the point alone. Here the width comes from the corpus the reference was fitted
+        # on; below, from the spread across image donors.
+        self.scale_interval_ = (scale / spread, scale * spread)
         LGR.info(
             f"Reference calibration: studies of this size typically show |g| ~ {expected:.3f}, "
             f"this fit shows {observed:.3f}, so peak_bias_scale = {scale:.3f}. The reference "
@@ -1499,51 +1519,80 @@ class CBES(Estimator):
         NIDM pain images that disagreement is a factor of 2.05.
 
         So when images are present the constant is no longer free, and they are what fixes it:
-        fit the images alone and the coordinates alone, and take the ratio of the two over the
-        voxels both cover. The fit is exactly linear in the scale, so a ratio of summaries
-        recovers it -- a regression slope would be attenuated by the many voxels where a study
-        peaked and the images say nothing.
+        fit the coordinates alone, fit each image study alone, and take the ratio of the two
+        over the voxels both cover. The fit is exactly linear in the scale, so a ratio of
+        summaries recovers it -- a regression slope would be attenuated by the many voxels where
+        a study peaked and the images say nothing.
+
+        **One ratio per donor, pooled across donors**, rather than one ratio against all the
+        images pooled together. Pooling the images first makes the answer depend on how many
+        there are: a single image's map keeps its own peaks, averaging several flattens them
+        while the coordinate fit stays winner's-curse inflated, so the measured ratio shrinks as
+        donors are added. Measured on the pain collection with the donors held out of the
+        target, that drift ran 0.61, 0.59, 0.52 for one, two and five images. One ratio per
+        donor holds it at 0.61, 0.62, 0.62 -- they are estimates of one constant, so adding
+        donors sharpens rather than moves it. Only with dense peak tables, though: thinned to
+        20 peaks per study the pooled median still slides 0.57, 0.53, 0.51, because each
+        donor's own ratio is then measured against a coordinate fit that covers less of the
+        brain. The spread across donors goes out in ``scale_interval_`` for that reason.
         """
         coordinate_only = self._statistic(table, sample_sizes, thresholds, image_studies=None)[0]
-        image_only = self._statistic(
-            table.iloc[:0], sample_sizes, thresholds, image_studies=image_studies
-        )[0]
 
-        both = (
-            coordinate_only["covered"]
-            & image_only["covered"]
-            & np.isfinite(coordinate_only["g"])
-            & np.isfinite(image_only["g"])
-        )
-        from_coordinates = np.abs(coordinate_only["g"][both])
-        from_images = np.abs(image_only["g"][both])
-        if not both.any() or from_coordinates.mean() <= 0:
+        per_donor = []
+        for study_id, payload in (image_studies or {}).items():
+            single = self._statistic(
+                table.iloc[:0], sample_sizes, thresholds, image_studies={study_id: payload}
+            )[0]
+            both = (
+                coordinate_only["covered"]
+                & single["covered"]
+                & np.isfinite(coordinate_only["g"])
+                & np.isfinite(single["g"])
+            )
+            if not both.any():
+                continue
+            from_coordinates = np.abs(coordinate_only["g"][both])
+            from_image = np.abs(single["g"][both])
+            # Scored where this image says there is something to estimate, and by a paired
+            # median rather than a ratio of means. An earlier version divided the two means
+            # over every shared voxel, and a covered brain is mostly voxels holding no effect,
+            # so the image mean collapsed toward zero and the scale came out far too small --
+            # 0.16 against a true 0.8 on simulated data.
+            strong = from_image >= np.percentile(from_image, _CALIBRATION_PERCENTILE)
+            if strong.sum() < _MIN_CALIBRATION_VOXELS:
+                strong = np.ones_like(from_image, dtype=bool)
+            ratios = from_image[strong] / np.clip(
+                from_coordinates[strong], _PROBABILITY_FLOOR, None
+            )
+            ratios = ratios[np.isfinite(ratios) & (ratios > 0)]
+            if ratios.size:
+                per_donor.append(float(np.median(ratios)))
+
+        if not per_donor:
             LGR.warning(
-                "Cannot calibrate peak_bias_scale: the image studies and the coordinate "
-                "studies share no voxel. Falling back to 1.0, which leaves the two kinds of "
-                "study on different scales."
+                "Cannot calibrate peak_bias_scale: no image study shares a voxel with the "
+                "coordinate studies where both carry a usable estimate. Falling back to 1.0, "
+                "which leaves the two kinds of study on different scales."
             )
             return 1.0
 
-        # Scored where the images say there is something to estimate, and by a paired median
-        # rather than a ratio of means. This version divided the two means over every shared
-        # voxel, and a covered brain is mostly voxels holding no effect, so the image mean
-        # collapsed toward zero and the scale came out far too small -- 0.16 against a true 0.8
-        # on simulated data, which made adding images *worse* the more of them there were. The
-        # metric flatters nothing: it measures how much true zero is in the covered set.
-        strong = from_images >= np.percentile(from_images, _CALIBRATION_PERCENTILE)
-        if strong.sum() < _MIN_CALIBRATION_VOXELS:
-            strong = np.ones_like(from_images, dtype=bool)
-        ratios = from_images[strong] / np.clip(from_coordinates[strong], _PROBABILITY_FLOOR, None)
-        ratios = ratios[np.isfinite(ratios) & (ratios > 0)]
-        if not ratios.size:
-            return 1.0
-
-        scale = float(np.median(ratios))
+        # Median across donors: with a handful of them one atypical study should not carry the
+        # constant, and the spread is what a caller supplying a single image is exposed to.
+        scale = float(np.median(per_donor))
+        spread = (max(per_donor) / min(per_donor)) if min(per_donor) > 0 else float("inf")
+        # With one donor there is no spread to measure and the interval is unknown, not zero.
+        self.scale_interval_ = (min(per_donor), max(per_donor)) if len(per_donor) > 1 else None
         LGR.info(
-            f"Calibrated peak_bias_scale = {scale:.3f} from {int(strong.sum())} voxels where "
-            f"the {len(image_studies)} image studies show a substantial effect."
+            f"Calibrated peak_bias_scale = {scale:.3f} from {len(per_donor)} image "
+            f"{'study' if len(per_donor) == 1 else 'studies'}, whose individual estimates span "
+            f"a factor of {spread:.2f}."
         )
+        if len(per_donor) == 1:
+            LGR.warning(
+                f"peak_bias_scale was calibrated from a single image study, so the whole "
+                f"effect-size scale rests on how representative that one study is. Its value "
+                f"is {scale:.3f}; two or three donors would show whether that is typical."
+            )
         return scale
 
     def _apply_peak_bias(self, table, cutoff_z, sample_sizes, peak_bias):
@@ -2753,13 +2802,51 @@ class CBES(Estimator):
             )
         else:
             inference = " No null distribution was computed, so no p-values are reported."
+        # The peak-height diagnostic goes in the description, not only the log. A run whose
+        # reported heights are indistinguishable from noise peaks cannot support a magnitude,
+        # and it was measured overestimating by a factor of 10.7 on one collection while
+        # logging that fact among a dozen other lines. The description is what ends up in a
+        # methods section, so that is where the caveat has to be.
+        interval = getattr(self, "scale_interval_", None)
+        if interval is None:
+            bounds = ""
+        else:
+            bounds = (
+                f" The overall effect-size scale is identified only to within the range "
+                f"{interval[0]:.2f} to {interval[1]:.2f} times the value used, so the "
+                "magnitudes should be read as an order of scale rather than a calibrated "
+                "value."
+            )
+        information = getattr(self, "peak_information_", None)
+        if information is None:
+            diagnostic = ""
+        elif information["excess_z"] < _MIN_PEAK_EXCESS_Z:
+            diagnostic = (
+                " The reported peak heights averaged z = "
+                f"{information['observed_mean_z']:.2f} against "
+                f"{information['null_peak_mean_z']:.2f} expected for peaks of pure noise at "
+                "the same reporting threshold, an excess of "
+                f"{information['excess_z']:+.2f}. Their magnitudes therefore carry little "
+                "information about the size of the effect, and **the effect-size values should "
+                "be read as a relative map only**; the spatial pattern, which is driven by "
+                "where the peaks are rather than how large they are, is unaffected."
+            )
+        else:
+            diagnostic = (
+                " The reported peak heights averaged z = "
+                f"{information['observed_mean_z']:.2f} against "
+                f"{information['null_peak_mean_z']:.2f} expected for peaks of pure noise at "
+                "the same reporting threshold, an excess of "
+                f"{information['excess_z']:+.2f}, so they carry information about the size of "
+                "the effect beyond having cleared a threshold."
+            )
         return (
             "A coordinate-based effect-size meta-analysis was performed with NiMARE "
             f"{__version__} (RRID:SCR_017398; \\citealt{{Salo2023}}). Each reported peak "
             f"statistic was converted to Hedges' g using the study's sample size and a "
             f"{self.design} design, and peaks were assigned spatial uncertainty with "
             f"{kernel_description}. Voxel-wise pooling used {heterogeneity}.{selection}"
-            f"{bias}{inference} "
+            f"{bias}{inference}{bounds}{diagnostic} "
             f"The input dataset included {n_foci} foci with reported statistics from "
             f"{n_studies} experiments."
         )

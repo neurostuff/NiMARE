@@ -1534,3 +1534,56 @@ def test_fwe_correction_permutes_even_without_a_null_from_fit(null_studyset, sma
     assert (
         len(estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]) == 30
     )
+
+
+def test_scale_is_reported_as_an_interval_or_not_at_all(studyset, small_mask):
+    """A partially identified scale must not be handed over as a bare point estimate.
+
+    Rescaling every coordinate study by one constant leaves the coordinate-only likelihood
+    unchanged, so a coordinate-only fit identifies the pattern and not the scale. Saying so in
+    ``scale_interval_`` is the difference between a caller who knows the magnitudes are
+    relative and one who reads them as Hedges' g.
+    """
+    coordinates_only = CBES(fwhm=8.0, mask=small_mask, null_method="none", peak_bias="per-study")
+    coordinates_only.fit(studyset)
+    assert coordinates_only.scale_interval_ is None
+
+    from_reference = CBES(
+        fwhm=8.0,
+        mask=small_mask,
+        null_method="none",
+        peak_bias="per-study",
+        peak_bias_scale="reference",
+    )
+    result = from_reference.fit(studyset)
+    interval = from_reference.scale_interval_
+    assert interval is not None
+    low, high = interval
+    assert 0 < low < from_reference._peak_bias_scale_ < high
+    # The corpus the reference was fitted on is good to about a factor of two either way.
+    assert 3.0 < high / low < 5.0
+    assert "order of scale" in result.description_
+
+
+def test_the_description_reports_what_the_peak_heights_carry(studyset, small_mask):
+    """The magnitude caveat belongs in the methods text, not only in the log.
+
+    A collection whose reported heights are indistinguishable from noise peaks cannot support
+    a magnitude -- measured overestimating by a factor of 10.7 on one collection -- and the
+    estimator detected that and said so among a dozen other log lines, where nobody read it.
+    """
+    estimator = CBES(fwhm=8.0, mask=small_mask, null_method="none", peak_bias="per-study")
+    result = estimator.fit(studyset)
+
+    assert set(estimator.peak_information_) == {
+        "observed_mean_z",
+        "null_peak_mean_z",
+        "excess_z",
+    }
+    description = result.description_
+    assert "peaks of pure noise" in description
+    informative = estimator.peak_information_["excess_z"] >= 0.25
+    if informative:
+        assert "carry information about the size of the effect" in description
+    else:
+        assert "relative map only" in description
