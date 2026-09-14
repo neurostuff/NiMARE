@@ -858,15 +858,25 @@ class CBES(Estimator):
             studies examined only part of the brain -- an ROI study says nothing about voxels
             it never analysed, and there is no per-study coverage flag yet. Also useful as a
             diagnostic, and roughly ten times faster.
-    threshold : :obj:`float`, :obj:`str`, or None, default="pooled-min"
+    threshold : :obj:`float`, :obj:`str`, or None, default="study-min"
         Reporting threshold assumed for each study, on the z scale. It decides how surprising a
         study's silence is and, with ``peak_bias="per-study"``, how far its peaks are
-        discounted. ``"pooled-min"`` takes the smallest absolute statistic reported anywhere;
-        ``"study-min"`` takes each study's own, with the order statistic undone by
-        :func:`infer_threshold_from_minimum`, and is right when studies plainly thresholded
-        differently. Any other string names a metadata field holding the real thresholds, which
-        is better than either. A float applies one threshold to every study. Both inference
-        rules assume a *height* threshold; a cluster-extent threshold biases them upward.
+        discounted. ``"study-min"`` takes each study's own smallest absolute statistic with the
+        order statistic undone by :func:`infer_threshold_from_minimum`; ``"pooled-min"`` takes
+        the smallest reported anywhere in the collection, which applies the most liberal
+        study's cut to every study. A string naming a metadata field holding the real
+        thresholds is better than either. A float applies one threshold to every study.
+
+        ``"study-min"`` is the default because it adapts to the threshold the table it is given
+        actually reflects. A paper reporting only its top handful of peaks has an effective cut
+        far above its nominal one, and the per-study rule recovers that where a pooled or fixed
+        threshold cannot: on peak tables thinned to ten per study it roughly triples the rank
+        correlation against known image truth, whether or not the studies really shared a
+        threshold, and on complete tables the two rules agree exactly. Note that ``prevalence``
+        moves a great deal with this choice and there is no truth to check it against.
+
+        Both inference rules assume a *height* threshold; a cluster-extent threshold biases
+        them upward.
     coverage_radius : :obj:`float` or None, optional
         Radius, in mm, within which a reported peak counts as this study having reported
         *something* about this location; a study with no focus inside it is treated as silent
@@ -1033,7 +1043,7 @@ class CBES(Estimator):
         tau2_method="dl",
         selection_model="zero-inflated",
         se_method="model",
-        threshold="pooled-min",
+        threshold="study-min",
         coverage_radius=None,
         kernel_min_weight=0.01,
         max_iter=25,

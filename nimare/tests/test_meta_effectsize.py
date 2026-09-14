@@ -1453,9 +1453,10 @@ def test_the_relative_map_cancels_the_scale_the_coordinates_cannot_identify(stud
     # ...and the relative maps agree to the accuracy the fit itself has. The cancellation is
     # exact in the pooling step but only approximate through the EM, which is truncated at
     # max_iter rather than converged (see ``max_iter``): starting from a rescaled g, the
-    # iteration stops at a slightly different point on the same plateau. One voxel in 9261
-    # moved, by 0.001 relative.
-    np.testing.assert_allclose(relative_one, relative_two, rtol=2e-3, atol=1e-6)
+    # iteration stops at a slightly different point on the same plateau. Measured, 8 voxels in
+    # 9261 move at all and the largest moves by 3e-5 -- the relative figure looks worse only
+    # because those voxels sit near zero. Real scale leakage would move the map by order 1.
+    np.testing.assert_allclose(relative_one, relative_two, rtol=5e-3, atol=1e-4)
     # A high percentile of the magnitude is the unit, so the map reaches about 1 and not much
     # more, and it carries sign.
     covered = np.abs(relative_one) > 0
