@@ -119,8 +119,9 @@ _EM_TOLERANCE = 1e-4
 #: A voxel is finished when one EM sweep raises its log-likelihood by less than this, relative
 #: to the likelihood itself. Needed alongside the step criterion because the mixture is only
 #: weakly identified where a single study reported: mu and the prevalence then trade off along
-#: a nearly flat ridge that the parameter step never leaves, so the loop would otherwise run to
-#: max_iter and report whichever point on the ridge it stopped at.
+#: a plateau that the parameter step never leaves, so the loop would otherwise run to max_iter
+#: and report whichever point on it the iteration stopped at. Stopping on the likelihood makes
+#: that choice reproducible; it does not make the magnitude estimable (see ``CBES.max_iter``).
 _EM_LOGLIK_TOLERANCE = 1e-6
 
 #: Rebuild the working set only once this fraction of it has settled, so that compaction
@@ -766,7 +767,9 @@ class CBES(Estimator):
             Silence contributes the probability of being silent, under a mixture in which the
             study either has a real effect or none at all. This is what corrects the spatial
             winner's curse, and it assumes the study *examined* the voxel -- silence is read as
-            evidence.
+            evidence. Where only one study reported, the mixture cannot separate a moderate
+            effect from a false positive and the magnitude is not estimable at all; see
+            ``max_iter``.
         ``"none"``
             Only the reported peaks are pooled, and the estimate is biased away from zero by
             the thresholding that selected them: on the NIDM pain collection it runs about 1.3x
@@ -779,8 +782,12 @@ class CBES(Estimator):
             way to stop that, since there is no per-study coverage flag yet.
 
             Also useful as a diagnostic -- fitting both shows how much of a map is the
-            selection correction rather than the data -- and it is roughly 3x faster, the
-            censoring term being most of the cost of a whole-brain fit.
+            selection correction rather than the data -- and it is 9.9x faster on a 63-study
+            whole-brain fit. Not because the censoring term is expensive on its own (it is 21%
+            of a fit) but because without silent pairs there is nothing to build coverage sets
+            for, no E step, and no plateau: the parameter step criterion fires and the EM
+            actually converges instead of running to ``max_iter`` at every voxel. The whole
+            10x is the selection correction; there is no way to have it cheaply.
     threshold : :obj:`float`, :obj:`str`, or None, default="pooled-min"
         Reporting threshold assumed for each study, on the z scale. It decides how surprising a
         study's silence is and, with ``peak_bias="per-study"``, how far its peaks are
@@ -807,7 +814,11 @@ class CBES(Estimator):
         voxels it says something about (about 13 mm for a 10 mm FWHM), which is what keeps
         ``n_studies`` interpretable and the fit affordable.
     max_iter : :obj:`int`, default=25
-        Maximum Newton iterations for the censored likelihood.
+        Maximum Newton iterations for the censored likelihood. Voxels where a single study
+        reported do not converge at any value of this, and raising it does not help: their
+        likelihood is flat in the magnitude over the whole plausible range (see
+        ``selection_model``), so the iteration count only decides which point on a plateau is
+        reported.
     null_method : {"permute-magnitudes", "none"}, default="permute-magnitudes"
         How uncorrected p-values are obtained. ``g / se`` is not null-referenced -- the standard
         error treats :math:`\\tau^2` as known and ignores that the peaks being pooled were
@@ -2261,11 +2272,15 @@ class CBES(Estimator):
                 pi_shift = np.abs(pi - previous_pi)
                 # EM increases the likelihood monotonically, so a voxel whose likelihood has
                 # stopped rising has finished, whatever its parameters are still doing. At a
-                # voxel with one reporting study the mixture is barely identified and mu and
-                # the prevalence trade off along a nearly flat ridge: the step criterion alone
-                # never fires there, the loop runs to max_iter, and the value reported is
-                # wherever it happened to stop -- g moved by up to 0.24 between 25 and 200
-                # iterations, and was still moving by 0.06 between 400 and 800.
+                # voxel with one reporting study the step criterion alone never fires: the loop
+                # runs to max_iter and reports wherever it stopped -- g moved by up to 0.24
+                # between 25 and 200 iterations, and was still moving by 0.06 between 400 and
+                # 800. This makes the answer reproducible, and that is all it makes it. The
+                # surface there is not a ridge with a peak somewhere along it but a plateau:
+                # with one reported peak and five or more silent studies, every mu in [0, 2] is
+                # within 2 log-likelihood units of the profile maximum, because a single report
+                # cannot separate a moderate effect from a false positive at mu = 0. No
+                # stopping rule and no optimizer recovers a magnitude there. See ``max_iter``.
                 gain = log_likelihood - previous_ll
                 stalled = np.isfinite(previous_ll) & (
                     gain <= _EM_LOGLIK_TOLERANCE * (np.abs(log_likelihood) + 1.0)
