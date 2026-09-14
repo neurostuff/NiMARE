@@ -849,9 +849,11 @@ class CBES(Estimator):
     global null of 30 studies reporting pure noise the uncorrected rate is 0.039 and familywise
     correction rejected in 0 of 20. With the foci confined to a region a quarter the volume of
     the analysis mask it is 0.022 -- the configuration that most exposes a null which moves the
-    foci, where the relocation null this replaced rejected at 0.134. With a single image study
-    among twenty coordinate studies, 0.035. Power, at a focal g = 0.8 across 30 studies, is 18
-    of 20 at voxel-level FWE.
+    foci, where the relocation null this replaced rejected at 0.134. Among twenty coordinate
+    studies, one, two, three and five image studies give 0.035, 0.044, 0.040 and 0.057 -- an
+    image contributes only its sign to the null, so a collection with one or two of them
+    randomizes over just two or four states, and the rate is lowest exactly there. Power, at a
+    focal g = 0.8 across 30 studies, is 18 of 20 at voxel-level FWE.
 
     The rate therefore runs conservative rather than anticonservative throughout, which is the
     safe direction but is not free. Twenty simulations cannot resolve a rate more finely than
