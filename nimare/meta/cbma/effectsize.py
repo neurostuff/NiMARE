@@ -1591,7 +1591,7 @@ class CBES(Estimator):
     def _study_voxel_weights(self, study_table, offsets, values, mask_flat_to_masked, shape):
         """Expand one study's foci onto masked voxels, keeping the nearest focus per voxel.
 
-        Returns ``(cols, w, g, var_g)``, one entry per voxel the study reaches. A study that
+        Returns ``(cols, w, focus_index)``, one entry per voxel the study reaches. A study that
         reports two peaks close together would otherwise contribute twice to the same voxel and
         be counted as two independent studies; keeping only the largest weight (i.e. the
         nearest peak) enforces one observation per study per voxel, as ALE does when it takes
@@ -1612,9 +1612,8 @@ class CBES(Estimator):
         cols = mask_flat_to_masked[flat]
         keep = in_bounds & (cols >= 0)
         if not np.any(keep):
-            empty_i = np.array([], dtype=np.int64)
-            empty_f = np.array([], dtype=float)
-            return empty_i, empty_f, empty_f, empty_f
+            empty = np.array([], dtype=np.int64)
+            return empty, np.array([], dtype=float), empty
 
         focus_idx = np.broadcast_to(np.arange(n_foci)[:, None], (n_foci, len(values)))
         cols = cols[keep].astype(np.int64)
@@ -1631,12 +1630,46 @@ class CBES(Estimator):
             focus_idx[last_of_group],
         )
 
-        return (
-            cols,
-            weights,
-            study_table["g"].values[focus_idx],
-            study_table["var_g"].values[focus_idx],
+        return cols, weights, focus_idx
+
+    def _focus_geometry(self, table, fixed_support, mask_flat_to_masked, shape):
+        """Per-study ``(study_id, voxels, weights, focus_index)``, cached across permutations.
+
+        Which voxels a study reaches, and with what kernel weight, is a function of where its
+        foci are and nothing else. The permutation null holds every position fixed and moves
+        only the reported values, so this is identical on every one of ``n_iters`` refits and is
+        computed once. What the caller gathers per refit is ``g`` and ``var_g``, via the focus
+        index returned here.
+
+        Keyed on the positions themselves rather than assumed valid, so a caller that passes a
+        differently arranged table gets a rebuild instead of a wrong answer.
+        """
+        key = (
+            table[["i", "j", "k"]].values.astype(np.int64).tobytes(),
+            np.asarray(table["id"].values, dtype=object).tobytes(),
         )
+        cached = getattr(self, "_geometry_", None)
+        if cached is not None and cached[0] == key:
+            return cached[1]
+
+        geometry = []
+        for study_id, study_table in table.groupby("id", sort=False):
+            if fixed_support is not None:
+                offsets, values = fixed_support
+            else:
+                offsets, values = self._kernel_support(
+                    sample_size=float(study_table["sample_size"].iloc[0])
+                )
+            cols, weights, focus_idx = self._study_voxel_weights(
+                study_table, offsets, values, mask_flat_to_masked, shape
+            )
+            if not cols.size:
+                LGR.info(f"Study {study_id} contributes no in-mask voxels; skipping.")
+                continue
+            geometry.append((study_id, cols, weights, focus_idx))
+
+        self._geometry_ = (key, geometry)
+        return geometry
 
     def _accumulate(self, table, image_studies=None):
         """Walk the studies once, returning per-study voxel contributions and voxel sums.
@@ -1653,6 +1686,11 @@ class CBES(Estimator):
         n_voxels = int(mask_flat_to_masked.max()) + 1 if mask_flat_to_masked.size else 0
 
         fixed_support = self._kernel_support() if self.fwhm is not None else None
+        # Only the values move between permutations; the geometry below is reused.
+        geometry_values = {
+            study_id: (group["g"].values, group["var_g"].values)
+            for study_id, group in table.groupby("id", sort=False)
+        }
 
         sums = {
             name: np.zeros(n_voxels, dtype=float)
@@ -1660,20 +1698,11 @@ class CBES(Estimator):
         }
         contributions = []
 
-        for study_id, study_table in table.groupby("id", sort=False):
-            if fixed_support is not None:
-                offsets, values = fixed_support
-            else:
-                offsets, values = self._kernel_support(
-                    sample_size=float(study_table["sample_size"].iloc[0])
-                )
-
-            cols, weights, g, var_g = self._study_voxel_weights(
-                study_table, offsets, values, mask_flat_to_masked, shape
-            )
-            if not cols.size:
-                LGR.info(f"Study {study_id} contributes no in-mask voxels; skipping.")
-                continue
+        for study_id, cols, weights, focus_idx in self._focus_geometry(
+            table, fixed_support, mask_flat_to_masked, shape
+        ):
+            values_g, values_var = geometry_values[study_id]
+            g, var_g = values_g[focus_idx], values_var[focus_idx]
 
             contributions.append((study_id, cols, weights, g, var_g))
 
@@ -1890,9 +1919,17 @@ class CBES(Estimator):
             return
 
         study_ids = list(sample_sizes.index)
-        cov_col, cov_pos = self._coverage_entries(
-            table, study_ids, active, n_voxels, image_ids=image_ids
-        )
+        # Which studies were silent where is decided by the foci positions, which the
+        # permutation null never moves, so this survives across refits like the geometry does.
+        coverage_key = (active.size, int(active[0]), int(active[-1]), len(study_ids))
+        cached = getattr(self, "_coverage_", None)
+        if cached is not None and cached[0] == coverage_key:
+            cov_col, cov_pos = cached[1]
+        else:
+            cov_col, cov_pos = self._coverage_entries(
+                table, study_ids, active, n_voxels, image_ids=image_ids
+            )
+            self._coverage_ = (coverage_key, (cov_col, cov_pos))
         values = self._value_entries(fit, study_ids, active, n_voxels)
         n_studies = len(study_ids)
 
@@ -2409,6 +2446,8 @@ class CBES(Estimator):
 
         self.null_distributions_ = {}
         self._mask_bool_ = None
+        self._geometry_ = None
+        self._coverage_ = None
         self._image_studies_ = self._load_image_studies(dataset)
         self._prepare_focus_table(dataset)
 
