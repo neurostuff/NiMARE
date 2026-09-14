@@ -925,9 +925,24 @@ class CBES(Estimator):
 
     ``peak_bias`` corrects the part of the inflation that varies between studies; the common
     scale is not identified from coordinates at all and needs ``peak_bias_scale``. **Treat
-    ``g`` as a relative map unless you supply that scale.** Five of twenty-one studies
-    supplying images was enough to bring the magnitude ratio to 0.98 in one test, which remains
-    the only reliable fix.
+    ``g`` as a relative map.**
+
+    Supplying images helps but does not calibrate, and the current calibration overshoots.
+    Holding the image-donating studies out of the target so that no image is compared against
+    itself, the pain collection gives a magnitude ratio of 1.81 on coordinates alone, 0.75 with
+    one image, 0.68 with two and 0.59 with five: the sign of the bias flips and the size of it
+    grows with the number of images. The resolved scale falls the same way (0.61, 0.59, 0.52),
+    which is the cause -- one image's own map has high peaks, averaging several flattens them
+    while the coordinate fit stays inflated, so the measured image-to-coordinate ratio shrinks.
+    **The scale therefore depends on how many images a collection happens to hold**, which it
+    should not. One image is the best-calibrated configuration measured, and more make the
+    magnitude worse.
+
+    Sparse coordinate tables cost less than that: with only three peaks per study the
+    coordinates-only ratio is 2.67 rather than 1.81, and coverage falls to 19.5% of the brain.
+    Any image raises coverage to 100%, since an image reports everywhere -- so a single donated
+    image turns a sparse map dense, and the dense part is one study rather than a
+    meta-analysis.
 
     References
     ----------
