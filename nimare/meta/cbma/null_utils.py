@@ -117,15 +117,28 @@ def _iter_group_study_values(ma_values):
 
 
 @jit(nopython=True, cache=True)
+def _nearest_bin(value, inv_step_size, n_bins):
+    """Index of the bin centre nearest ``value``, clipped to the grid.
+
+    ``histogram_bins`` holds centres, so a value belongs to the centre nearest
+    it; truncating drops it into the bin below. Ties go to the even bin, as
+    ``round`` does in numba, NumPy and Python alike, so the reference
+    implementations in ``test_meta_ale.py`` can reproduce this exactly.
+    """
+    idx = int(round(value * inv_step_size))
+    if idx < 0:
+        return 0
+    elif idx >= n_bins:
+        return n_bins - 1
+    return idx
+
+
+@jit(nopython=True, cache=True)
 def _study_ma_histogram(study_ma_values, n_zero_voxels, mask_voxel_recip, inv_step_size, n_bins):
     """Bin one study's nonzero ALE values onto the fixed approximate-null grid."""
     exp_hist = np.zeros(n_bins, dtype=np.float64)
     for i_val in range(study_ma_values.shape[0]):
-        idx = int(study_ma_values[i_val] * inv_step_size)
-        if idx < 0:
-            idx = 0
-        elif idx >= n_bins:
-            idx = n_bins - 1
+        idx = _nearest_bin(study_ma_values[i_val], inv_step_size, n_bins)
         exp_hist[idx] += 1.0
 
     exp_hist[0] += n_zero_voxels
@@ -147,11 +160,7 @@ def _update_ale_histogram(
         exp_one_minus = 1.0 - exp_center
         for i_ale in range(ale_idx.shape[0]):
             score = 1.0 - exp_one_minus * (1.0 - bin_centers[ale_idx[i_ale]])
-            score_idx = int(score * inv_step_size)
-            if score_idx < 0:
-                score_idx = 0
-            elif score_idx >= n_bins:
-                score_idx = n_bins - 1
+            score_idx = _nearest_bin(score, inv_step_size, n_bins)
             out[score_idx] += exp_prob * ale_probs[i_ale]
 
     return out
