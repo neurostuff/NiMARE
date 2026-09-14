@@ -497,6 +497,29 @@ def test_ALE_csr_approximate_null_matches_dense_reference():
     )
 
 
+def test_montecarlo_histogram_bin_edges_straddle_centres():
+    """Monte Carlo null edges sit half a step either side of each bin centre.
+
+    ``histogram_bins`` holds centres, so a summary statistic belongs to the
+    centre nearest it. Edges taken from the centres themselves floor every value
+    into the bin below -- the same half-bin bias the approximate null carried,
+    on the path meant to be free of it.
+    """
+    from nimare.meta.cbma.base import _histogram_bin_edges
+
+    bin_centers = np.arange(0, 5e-4, 1e-5)
+    step_size = bin_centers[1] - bin_centers[0]
+    bin_edges = _histogram_bin_edges(bin_centers)
+
+    assert len(bin_edges) == len(bin_centers) + 1
+    np.testing.assert_allclose(bin_edges[0], bin_centers[0] - step_size / 2)
+    np.testing.assert_allclose(bin_edges[-1], bin_centers[-1] + step_size / 2)
+
+    # A value just under a centre belongs to that centre, not the one below.
+    just_under = np.array([bin_centers[20] - step_size / 100])
+    assert np.histogram(just_under, bins=bin_edges)[0].argmax() == 20
+
+
 def test_ALE_study_ma_histogram_edge_bins():
     """Study histogram binning should match the legacy floor-based implementation at edges."""
     inv_step_size = 10.0
