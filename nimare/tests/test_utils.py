@@ -429,3 +429,99 @@ def test_nlogp_to_logp_values_converts_nlogp_to_logp():
     assert logp.dtype == np.dtype(utils.DEFAULT_FLOAT_DTYPE)
     # The same tail through the p-value instead would have been clipped at 44.85.
     assert utils._p_to_logp_values(np.array([1e-300]))[0] < 45.0
+
+
+def test_gpd_tail_p_engages_only_with_enough_exceedances():
+    """The tail fit needs a tail, and says so by declining rather than fitting noise.
+
+    ``_gpd_tail_p`` wants ``min_exceedances`` values above its threshold before it will fit
+    anything, so a short permutation run gets the empirical tail and nothing else. Pinned
+    because the caller's default is ``tail_approximation=True``: the path is on by default and
+    silently inactive below a few hundred iterations, which is not obvious from the call site.
+    """
+    from nimare.meta.utils import _gpd_tail_p
+
+    rng = np.random.default_rng(0)
+    observed = np.array([12.0, 4.0])
+    for n_iters in (20, 50):
+        maxima = np.abs(rng.standard_normal(n_iters)) * 2.0 + 3.0
+        assert _gpd_tail_p(observed, maxima) is None, n_iters
+
+    maxima = np.abs(rng.standard_normal(500)) * 2.0 + 3.0
+    fitted = _gpd_tail_p(observed, maxima)
+    assert fitted is not None
+    assert np.all((fitted >= 0) & (fitted <= 1))
+    # Monotone: a larger statistic cannot be less significant.
+    ordered = _gpd_tail_p(np.array([4.0, 8.0, 12.0]), maxima)
+    assert ordered[0] > ordered[1] >= ordered[2]
+
+
+def test_gpd_tail_p_keeps_the_empirical_tail_near_the_floor():
+    """Below five times the empirical floor the fit is not trusted, by deliberate choice.
+
+    Validation found the fit about twice anticonservative at and below the floor, so it is
+    applied only well above it. A corrected p is therefore never smaller than that boundary,
+    which is what stops the extrapolation from manufacturing significance a permutation run
+    cannot support.
+    """
+    from nimare.meta.utils import _GPD_FLOOR_MULTIPLE, _gpd_tail_p
+
+    rng = np.random.default_rng(1)
+    n_iters = 500
+    maxima = np.abs(rng.standard_normal(n_iters)) * 2.0 + 3.0
+    # An observation far past anything the permutations reached.
+    fitted = _gpd_tail_p(np.array([maxima.max() * 3.0]), maxima)
+    assert fitted is not None
+    assert fitted[0] >= _GPD_FLOOR_MULTIPLE / (1.0 + n_iters) - 1e-12
+
+    # A statistic below the fit's threshold is scored against the permutations themselves,
+    # which cannot give less than one exceedance out of n + 1.
+    modest = _gpd_tail_p(np.array([float(np.median(maxima))]), maxima)
+    assert modest[0] > 0.25
+
+
+def test_gpd_goodness_of_fit_returns_a_usable_p_value():
+    """The fit is tested before it is trusted, so its test has to behave like a test."""
+    from nimare.meta.utils import _gpd_goodness_of_fit
+
+    rng = np.random.default_rng(2)
+    from scipy import stats as sp_stats
+
+    shape, scale = 0.1, 1.5
+    genuine = sp_stats.genpareto.rvs(shape, loc=0.0, scale=scale, size=400, random_state=rng)
+    p_good = _gpd_goodness_of_fit(genuine, shape, scale, n_boot=60, seed=0)
+    assert 0.0 <= p_good <= 1.0
+    # Data that is plainly not generalized Pareto should not pass as easily as data that is.
+    wrong = np.abs(rng.standard_normal(400)) * 0.01 + 5.0
+    p_bad = _gpd_goodness_of_fit(wrong, shape, scale, n_boot=60, seed=0)
+    assert 0.0 <= p_bad <= 1.0
+    assert p_bad < p_good
+
+
+def test_gpd_tail_p_shortens_the_tail_and_gives_up_cleanly():
+    """The retry path, and the surrender at the end of it.
+
+    The documented behaviour is that an unacceptable fit shortens the tail and tries again,
+    and that exhausting the retries leaves the caller on the empirical tail rather than on a
+    fit nobody vouched for. Both branches are defensive, so neither runs in an ordinary
+    permutation and neither was exercised before -- while ``tail_approximation=True`` is the
+    caller's default, which is a poor combination.
+    """
+    from nimare.meta.utils import _gpd_tail_p
+
+    # Degenerate tail: every extreme value identical, so the excesses are all zero and no
+    # generalized Pareto can be fitted at any tail length.
+    flat_tail = np.concatenate([np.linspace(0.0, 1.0, 400), np.full(200, 1.0)])
+    assert _gpd_tail_p(np.array([5.0]), flat_tail) is None
+
+    # Below the hard minimum it declines without trying at all.
+    assert _gpd_tail_p(np.array([5.0]), np.linspace(0, 1, 99)) is None
+
+    # A tail with a kink in it: fittable somewhere, but not at the length first attempted.
+    rng = np.random.default_rng(3)
+    body = np.abs(rng.standard_normal(500)) * 2.0
+    kinked = np.sort(np.concatenate([body, body.max() + np.full(40, 4.0)]))
+    result = _gpd_tail_p(np.array([kinked.max() * 1.2, float(np.median(kinked))]), kinked)
+    # Either it found a shorter acceptable tail or it gave up; both are valid, and both must
+    # come back as usable probabilities rather than as an exception.
+    assert result is None or np.all((result >= 0) & (result <= 1))
