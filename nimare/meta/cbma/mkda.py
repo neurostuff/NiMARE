@@ -1585,9 +1585,7 @@ class KDA(CBMAEstimator):
         bin_centers = self.null_distributions_["histogram_bins"]
         step_size = bin_centers[1] - bin_centers[0]
         inv_step_size = 1 / step_size
-        bin_edges = np.append(
-            bin_centers - (step_size / 2), bin_centers[-1] + (step_size / 2)
-        )
+        bin_edges = np.append(bin_centers - (step_size / 2), bin_centers[-1] + (step_size / 2))
 
         n_exp = ma_maps.shape[0]
         n_bins = bin_centers.shape[0]
