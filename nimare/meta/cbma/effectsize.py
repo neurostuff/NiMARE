@@ -56,52 +56,8 @@ _RELATIVE_NORMALIZATION_PERCENTILE = 95
 #: word for it.
 _MIN_SCALE_DONORS = 2
 
-#: Typical effect magnitude by sample size, from 258 unthresholded group T/Z maps on
-#: NeuroVault (134 collections, 85 cognitive paradigms, N from 10 to 1369). Each entry is
-#: ``(representative N, median mean |g| in that map's top decile)``.
-#:
-#: Studies with a large N investigate smaller effects, because that is what they are powered
-#: for. Matching on sample size predicts a held-out map's magnitude appreciably better than the
-#: corpus median, where matching on *spatial* similarity does not help at all. Binned medians
-#: rather than a fitted line because the relationship is not log-linear.
-REFERENCE_MAGNITUDE_BY_N = (
-    (17.1, 0.761),
-    (21.9, 0.564),
-    (28.6, 0.578),
-    (38.3, 0.399),
-    (50.9, 0.408),
-    (74.3, 0.338),
-    (117.1, 0.223),
-    (264.6, 0.283),
-)
-
-#: Spread of the reference relationship, in log units: predictions are good to about a factor
-#: of two, and no scale derived from it should be quoted more precisely than that.
-REFERENCE_MAGNITUDE_LOG_SD = 0.673
-
-
-# -------------------------------------------------------- reference magnitudes
-
-
-def reference_magnitude(sample_sizes):
-    """Effect magnitude a collection of this size would typically show, from the reference corpus.
-
-    Returns the geometric mean over studies of the typical ``|g|`` for each study's sample size,
-    interpolated in log-log space between :data:`REFERENCE_MAGNITUDE_BY_N`. This is an external
-    prior, not a measurement of the collection: it says researchers who ran this many subjects
-    were usually studying effects of about this size.
-    """
-    sizes = np.asarray(sample_sizes, dtype=float)
-    sizes = sizes[np.isfinite(sizes) & (sizes > 0)]
-    if not sizes.size:
-        return None
-    grid = np.log([entry[0] for entry in REFERENCE_MAGNITUDE_BY_N])
-    values = np.log([entry[1] for entry in REFERENCE_MAGNITUDE_BY_N])
-    return float(np.exp(np.mean(np.interp(np.log(sizes), grid, values))))
-
-
 #: Keywords ``peak_bias_scale`` understands; anything else must be a positive number.
-PEAK_BIAS_SCALE_KEYWORDS = ("auto", "images", "reference")
+PEAK_BIAS_SCALE_KEYWORDS = ("auto", "images")
 
 #: Keywords ``threshold`` understands; any other string names a metadata field.
 THRESHOLD_KEYWORDS = ("pooled-min", "study-min")
@@ -172,10 +128,8 @@ _THRESHOLD_SEARCH_XTOL = 1e-4
 #: and the responsibilities stop being informative.
 _PREVALENCE_CLAMP = 1e-4
 
-#: Voxels used to calibrate the effect-size scale. The reference relation is defined on a map's
-#: top decile, and the image/coordinate ratio is taken over the strongest image voxels, of
-#: which there must be enough for the ratio to mean anything.
-_REFERENCE_TOP_PERCENTILE = 90
+#: Voxels used to calibrate the effect-size scale: the image/coordinate ratio is taken over
+#: the strongest image voxels, of which there must be enough for the ratio to mean anything.
 _CALIBRATION_PERCENTILE = 75
 _MIN_CALIBRATION_VOXELS = 50
 
@@ -820,12 +774,12 @@ class CBES(Estimator):
         scale is *not* identified and must come from ``peak_bias_scale`` or be accepted, which
         is why ``g_relative`` is the map to read by default; ``z``, the p-values, every
         corrected map and ``prevalence`` are unaffected by it.
-    peak_bias_scale : :obj:`float`, "auto", "images", or "reference", default=1.0
+    peak_bias_scale : :obj:`float`, "auto", or "images", default=1.0
         The overall scale of the ``"per-study"`` correction. ``"images"`` reads it off any
-        studies in the collection that supply images, ``"auto"`` does the same when images are
-        present and leaves it at 1.0 otherwise, and ``"reference"`` borrows it from a corpus of
-        NeuroVault maps matched on sample size -- opt-in, because it assumes the collection is
-        typical of that corpus. Ignored unless ``peak_bias="per-study"``.
+        studies in the collection that supply images and ``"auto"`` does the same when images
+        are present, leaving it at 1.0 otherwise. Ignored unless ``peak_bias="per-study"``.
+        Nothing recovers this constant from coordinates alone, so with none supplied read
+        ``g_relative`` rather than ``g``.
     stat_column : :obj:`str` or None, optional
         Column of the coordinates table holding the reported statistic. When None, ``z_stat``
         is used if present, otherwise ``t_stat``.
@@ -940,9 +894,8 @@ class CBES(Estimator):
         is not identified at all -- which is the case for any coordinate-only fit, since
         rescaling every study by one constant leaves the coordinate likelihood unchanged.
         Reported because a point estimate of a partially identified parameter invites being
-        read as a measurement. With images the bounds are the spread across donor studies;
-        with ``peak_bias_scale="reference"`` they come from the corpus the reference was fitted
-        on, a factor of about 1.96 either way.
+        read as a measurement. With images the bounds are the spread across the donor studies'
+        individual estimates.
     peak_information_ : :obj:`dict`
         ``observed_mean_z``, ``null_peak_mean_z`` and ``excess_z`` for the reported peaks. When
         the excess is small the heights carry no information about the size of the effect and
@@ -1478,7 +1431,7 @@ class CBES(Estimator):
         self.n_scale_donors_ = 0
         if self.peak_bias is None:
             return 1.0
-        if self.peak_bias_scale not in ("auto", "images", "reference"):
+        if self.peak_bias_scale not in ("auto", "images"):
             if self._image_studies_ and self.peak_bias_scale == 1.0:
                 LGR.warning(  # noqa: E501
                     "This fit mixes images with coordinates but leaves peak_bias_scale at "
@@ -1500,77 +1453,17 @@ class CBES(Estimator):
             table, self._cutoffs_z_, sample_sizes, provisional
         )
 
-        if self.peak_bias_scale == "reference":
-            return self._calibrate_scale_from_reference(scaled, sample_sizes)
-
         if not self._image_studies_:
             LGR.warning(
                 "peak_bias_scale needs images to calibrate against, and this collection "
                 "supplies none. Falling back to 1.0, which leaves the effect-size map correct "
-                "up to one multiplicative constant. peak_bias_scale='reference' sets the scale "
-                "from an external corpus instead, to within about a factor of two."
+                "up to one multiplicative constant -- read 'g_relative' rather than 'g'."
             )
             return 1.0
 
         return self._calibrate_peak_bias_scale(
             scaled, sample_sizes, thresholds, self._image_studies_
         )
-
-    def _calibrate_scale_from_reference(self, table, sample_sizes):
-        """Set the overall scale from what studies of this size typically find.
-
-        Nothing in the coordinates' own reporting behaviour recovers the scale -- the censored
-        likelihood's value term is exactly invariant to it -- so this takes it from outside.
-        Sample size predicts effect magnitude across a reference corpus of 258 group maps,
-        because studies are powered for the effects they set out to find. Spatial similarity,
-        the more natural-looking key, does not work at all.
-
-        The assumption is about how research is designed rather than about the brain, and it is
-        good to about a factor of two either way, so the result is an order of scale and not a
-        calibrated value.
-
-        .. warning::
-            On collections atypical of the reference this makes the estimate *worse* -- by 1.5
-            to 2x on field simulations with a known truth, whose true effects sat well above
-            what the reference expects at their sample sizes. Hence opt-in, and never chosen by
-            ``"auto"``.
-        """
-        expected = reference_magnitude(sample_sizes.values)
-        if expected is None:
-            LGR.warning("No usable sample sizes; cannot set the scale from the reference.")
-            return 1.0
-
-        fit = self._pool(table, None)
-        covered = fit["covered"]
-        if not covered.any():
-            return 1.0
-        magnitude = np.abs(fit["g"][covered])
-        if not magnitude.size or magnitude.max() <= 0:
-            return 1.0
-        # Matched to how the reference was summarised: the mean over each map's own top decile,
-        # since a whole-brain mean measures how much of the brain is active rather than how
-        # strong the effect is where it is present.
-        top = magnitude[magnitude >= np.percentile(magnitude, _REFERENCE_TOP_PERCENTILE)]
-        observed = float(top.mean())
-        if observed <= 0:
-            return 1.0
-
-        scale = expected / observed
-        spread = float(np.exp(REFERENCE_MAGNITUDE_LOG_SD))
-        # The scale is only partially identified, so record the set it is identified to rather
-        # than the point alone. Here the width comes from the corpus the reference was fitted
-        # on; below, from the spread across image donors.
-        self.scale_interval_ = (scale / spread, scale * spread)
-        # Named, but deliberately not a source an absolute map is emitted for: it comes from
-        # another corpus, not from this collection.
-        self.scale_source_ = "reference"
-        LGR.info(
-            f"Reference calibration: studies of this size typically show |g| ~ {expected:.3f}, "
-            f"this fit shows {observed:.3f}, so peak_bias_scale = {scale:.3f}. The reference "
-            f"is good to about a factor of {spread:.1f}, so read the magnitudes as an order of "
-            "scale rather than a calibrated value."
-        )
-        return scale
 
     def _calibrate_peak_bias_scale(self, table, sample_sizes, thresholds, image_studies):
         """Read the overall peak-to-field ratio off the studies that supplied images.
@@ -2656,13 +2549,9 @@ class CBES(Estimator):
         """Report whether the effect-size scale is pinned well enough for an absolute map.
 
         Only two things pin it: image studies in this collection, or a caller supplying the
-        constant outright. ``peak_bias_scale="reference"`` does not, however sensible its value
-        looks -- it is borrowed from a different corpus on the assumption that this collection
-        resembles it, and made recovery of known truth 1.5 to 2x worse when it did not.
-
-        Images are required to number at least ``_MIN_SCALE_DONORS``, so that the spread of
-        their individual estimates is measurable and the caller can see how well determined the
-        constant is rather than taking one study's word for it.
+        constant outright. Images must number at least ``_MIN_SCALE_DONORS``, so that the
+        spread of their individual estimates is measurable and the caller can see how well
+        determined the constant is rather than taking one study's word for it.
         """
         if getattr(self, "scale_source_", "unset") == "supplied":
             return True

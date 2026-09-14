@@ -672,6 +672,86 @@ def image_studyset(tmp_path_factory):
     return studyset, truth
 
 
+@pytest.fixture(scope="module")
+def mixed_image_studyset(tmp_path_factory):
+    """Eight studies, of which the first three supply g images; the rest are coordinates only.
+
+    The image calibration needs both kinds in one collection -- it compares a coordinate-only
+    fit against each donor's own fit -- so a collection where every study has an image cannot
+    exercise it.
+    """
+    directory = tmp_path_factory.mktemp("cbes_mixed_images")
+    shape = (10, 10, 10)
+    affine = np.diag([4.0, 4.0, 4.0, 1.0])
+    affine[:3, 3] = -18.0
+
+    grid = np.indices(shape).astype(float)
+    centre = (np.array(shape) - 1) / 2.0
+    truth = 0.8 * np.exp(-sum((grid[i] - centre[i]) ** 2 for i in range(3)) / 8.0)
+
+    from nimare.studyset import Studyset
+    from nimare.transforms import t_to_z
+
+    rng = np.random.default_rng(3)
+    nib.save(nib.Nifti1Image(np.ones(shape, np.int32), affine), directory / "mask.nii.gz")
+    studies = []
+    for k in range(8):
+        n_subjects = int(rng.integers(20, 40))
+        observed = truth + rng.normal(0, 1 / np.sqrt(n_subjects), shape)
+        value = float(observed[tuple(int(c) for c in centre)])
+        bias = 1.0 - 3.0 / (4.0 * (n_subjects - 1) - 1)
+        z = float(t_to_z(np.array([value / bias * np.sqrt(n_subjects)]), n_subjects - 1)[0])
+        analysis = {
+            "id": f"m{k}-1",
+            "name": "1",
+            "metadata": {"sample_sizes": [n_subjects]},
+            "points": [
+                {
+                    "space": "MNI",
+                    "coordinates": [float(c * 4.0 - 18.0) for c in centre],
+                    "values": [{"kind": "Z", "value": z}],
+                }
+            ],
+            "images": [],
+        }
+        if k < 3:
+            nib.save(
+                nib.Nifti1Image(observed.astype(np.float32), affine), directory / f"m{k}_g.nii.gz"
+            )
+            nib.save(
+                nib.Nifti1Image(np.full(shape, 1.0 / n_subjects, np.float32), affine),
+                directory / f"m{k}_var.nii.gz",
+            )
+            analysis["images"] = [
+                {
+                    "url": str(directory / f"m{k}_g.nii.gz"),
+                    "filename": f"m{k}_g.nii.gz",
+                    "space": "MNI",
+                    "value_type": "g",
+                },
+                {
+                    "url": str(directory / f"m{k}_var.nii.gz"),
+                    "filename": f"m{k}_var.nii.gz",
+                    "space": "MNI",
+                    "value_type": "g_var",
+                },
+            ]
+        studies.append(
+            {
+                "id": f"m{k}",
+                "name": f"m{k}",
+                "metadata": {"sample_sizes": [n_subjects]},
+                "analyses": [analysis],
+            }
+        )
+
+    return Studyset(
+        {"id": "mixed", "name": "mixed", "studies": studies},
+        target=None,
+        mask=str(directory / "mask.nii.gz"),
+    )
+
+
 def test_images_are_used_in_place_of_coordinates(image_studyset):
     """An image supersedes that study's own peaks: it says more, with no selection."""
     studyset, _ = image_studyset
@@ -1182,26 +1262,8 @@ def test_the_only_null_is_the_permutation_one_and_removed_options_fail_loudly():
         CBES(smoothness_fwhm=12.0)
 
 
-def test_reference_magnitude_falls_with_sample_size():
-    """Studies powered for subtle effects are large, so the reference has to fall with N."""
-    from nimare.meta.cbma.effectsize import reference_magnitude
-
-    small = reference_magnitude([16] * 10)
-    medium = reference_magnitude([50] * 10)
-    large = reference_magnitude([200] * 10)
-    assert small > medium > large
-    assert 0.5 < small < 1.2
-    assert 0.1 < large < 0.4
-
-    # Mixed collections interpolate rather than taking an extreme.
-    mixed = reference_magnitude([16, 200])
-    assert large < mixed < small
-    assert reference_magnitude([]) is None
-    assert reference_magnitude([np.nan, -5]) is None
-
-
-def test_reference_scale_is_opt_in_and_not_chosen_by_auto(studyset, small_mask, caplog):
-    """It made a known truth worse by up to 2x, so it must never be selected implicitly."""
+def test_auto_scale_falls_back_to_a_relative_map_without_images(studyset, small_mask, caplog):
+    """``"auto"`` has nothing to calibrate against here, and must say so rather than guess."""
     estimator = CBES(
         fwhm=8.0,
         mask=small_mask,
@@ -1210,21 +1272,25 @@ def test_reference_scale_is_opt_in_and_not_chosen_by_auto(studyset, small_mask, 
         peak_bias_scale="auto",
     )
     with caplog.at_level("WARNING"):
-        estimator.fit(studyset)
-    # No images here, so "auto" falls back to a relative map rather than reaching for the
-    # reference corpus.
-    assert estimator._peak_bias_scale_ == 1.0
-    assert "reference" in caplog.text  # but it does point at the option
+        result = estimator.fit(studyset)
 
-    explicit = CBES(
-        fwhm=8.0,
-        mask=small_mask,
-        null_method="none",
-        peak_bias="per-study",
-        peak_bias_scale="reference",
-    )
-    explicit.fit(studyset)
-    assert explicit._peak_bias_scale_ != 1.0
+    assert estimator._peak_bias_scale_ == 1.0
+    assert estimator.scale_source_ == "unset"
+    assert "g_absolute" not in result.maps
+    assert "g_relative" in result.maps
+    assert "needs images" in caplog.text
+
+
+def test_the_external_corpus_prior_is_gone_and_fails_loudly():
+    """Borrowing the scale from another corpus assumed this collection resembled it."""
+    from nimare.meta.cbma import effectsize as module
+
+    assert module.PEAK_BIAS_SCALE_KEYWORDS == ("auto", "images")
+    with pytest.raises(ValueError):
+        CBES(peak_bias="per-study", peak_bias_scale="reference")
+    for gone in ("reference_magnitude", "REFERENCE_MAGNITUDE_BY_N", "REFERENCE_MAGNITUDE_LOG_SD"):
+        assert not hasattr(module, gone)
+    assert not hasattr(CBES, "_calibrate_scale_from_reference")
 
 
 def test_permuting_magnitudes_leaves_the_spatial_design_untouched(small_mask):
@@ -1386,26 +1452,24 @@ def test_fwe_correction_permutes_even_without_a_null_from_fit(null_studyset, sma
     )
 
 
-def test_scale_is_reported_as_an_interval_or_not_at_all(studyset, small_mask):
+def test_scale_is_reported_as_an_interval_or_not_at_all(
+    studyset, small_mask, mixed_image_studyset
+):
     """A partially identified scale must not be handed over as a bare point estimate."""
     coordinates_only = CBES(fwhm=8.0, mask=small_mask, null_method="none", peak_bias="per-study")
     coordinates_only.fit(studyset)
     assert coordinates_only.scale_interval_ is None
 
-    from_reference = CBES(
-        fwhm=8.0,
-        mask=small_mask,
-        null_method="none",
-        peak_bias="per-study",
-        peak_bias_scale="reference",
+    from_images = CBES(
+        fwhm=8.0, null_method="none", peak_bias="per-study", peak_bias_scale="images"
     )
-    result = from_reference.fit(studyset)
-    interval = from_reference.scale_interval_
+    result = from_images.fit(mixed_image_studyset)
+    interval = from_images.scale_interval_
     assert interval is not None
     low, high = interval
-    assert 0 < low < from_reference._peak_bias_scale_ < high
-    # The corpus the reference was fitted on is good to about a factor of two either way.
-    assert 3.0 < high / low < 5.0
+    # The bounds are the spread of the donors' own estimates, so the pooled median sits inside.
+    assert 0 < low <= from_images._peak_bias_scale_ <= high
+    assert from_images.scale_source_ == "images"
     assert "order of scale" in result.description_
 
 
@@ -1470,9 +1534,6 @@ def test_an_absolute_map_appears_only_when_something_pins_the_scale(studyset, sm
     coordinates_only = CBES(**shared).fit(studyset)
     assert "g_relative" in coordinates_only.maps
     assert "g_absolute" not in coordinates_only.maps
-
-    from_reference = CBES(**shared, peak_bias_scale="reference").fit(studyset)
-    assert "g_absolute" not in from_reference.maps
 
     supplied = CBES(**shared, peak_bias_scale=0.6)
     result = supplied.fit(studyset)
@@ -1559,3 +1620,41 @@ def test_hksj_is_refused_rather_than_ignored_under_the_selection_model():
         CBES(se_method="hksj", selection_model="zero-inflated")
     # And the supported combination constructs.
     CBES(se_method="hksj", selection_model="none")
+
+
+def test_images_pin_the_scale_and_produce_an_absolute_map(mixed_image_studyset):
+    """The only remaining route to an absolute map, now that the corpus prior is gone."""
+    estimator = CBES(fwhm=8.0, null_method="none", peak_bias="per-study", peak_bias_scale="images")
+    result = estimator.fit(mixed_image_studyset)
+
+    assert estimator.scale_source_ == "images"
+    assert estimator.n_scale_donors_ >= 2
+    assert "g_absolute" in result.maps
+    assert "g_relative" in result.maps
+
+    # One donor is below the threshold for claiming an absolute scale, so the map is withheld
+    # even though a scale was still calibrated and applied.
+    one_donor = CBES(
+        fwhm=8.0,
+        null_method="none",
+        peak_bias="per-study",
+        peak_bias_scale="images",
+        use_images=True,
+    )
+    from nimare.meta.cbma.effectsize import _MIN_SCALE_DONORS
+
+    assert _MIN_SCALE_DONORS == 2
+    original = CBES._load_image_studies
+
+    def only_first(self, dataset):
+        studies = original(self, dataset)
+        return dict(list(studies.items())[:1])
+
+    CBES._load_image_studies = only_first
+    try:
+        sparse = one_donor.fit(mixed_image_studyset)
+    finally:
+        CBES._load_image_studies = original
+    assert one_donor.n_scale_donors_ == 1
+    assert one_donor.scale_interval_ is None
+    assert "g_absolute" not in sparse.maps
