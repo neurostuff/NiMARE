@@ -892,8 +892,27 @@ class CBES(Estimator):
         threshold and sample size, removing the between-study part of the bias -- the part
         coordinates can identify. A float sets every ``rho_k`` to the same value. The common
         scale is *not* identified and must come from ``peak_bias_scale`` or be accepted, which
-        is why ``g_relative`` is the map to read by default; ``z``, the p-values, every
-        corrected map and ``prevalence`` are unaffected by it.
+        is why ``g_relative`` is the map to read by default.
+
+        **A float leaves the inference alone; ``"per-study"`` does not.** One shared factor
+        scales every study's variance identically, so every inverse-variance weight is scaled
+        together and ``z``, the p-values, the corrected maps and ``prevalence`` come back
+        unchanged -- measured to within 1% while ``g`` scaled exactly by the factor. A
+        per-study factor scales each study's variance by its own ``rho_k**2``, which reweights
+        the studies against each other: on a 24-study collection with sample sizes from 15 to
+        400 (a 4.5-fold spread in ``rho_k``) it moved ``z`` by up to a factor of 42 and
+        ``prevalence`` by up to 8.5 at individual voxels. It is a change to the model, not a
+        rescaling of the output.
+
+        ``rho_k`` is also derived at :math:`\mu = 0`: :func:`null_peak_mean_g` is the effect
+        size a *pure-noise* peak would report, so ``rho_k`` grows like :math:`\sqrt{N_k}` and
+        a study whose effect is large enough to clear the threshold easily -- where there is
+        barely any winner's curse to undo -- is rescaled the hardest. Against a median
+        :math:`N` of 30 the factor reaches 2.8 at :math:`N = 200` and 6.4 at
+        :math:`N = 1000`. The correction is therefore sound where the reported heights are
+        noise-dominated, which is where :func:`peak_information` reports they carry no
+        effect-size information anyway, and is an overcorrection where they are not. Use
+        ``"per-study"`` only on collections whose sample sizes are of a similar order.
     peak_bias_scale : :obj:`float`, "auto", or "images", default=1.0
         The overall scale of the ``"per-study"`` correction. ``"images"`` reads it off any
         studies in the collection that supply images and ``"auto"`` does the same when images

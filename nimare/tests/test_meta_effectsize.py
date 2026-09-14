@@ -1372,6 +1372,55 @@ def test_the_external_corpus_prior_is_gone_and_fails_loudly():
     assert not hasattr(CBES, "_calibrate_scale_from_reference")
 
 
+def test_a_shared_peak_bias_rescales_g_alone_but_a_per_study_one_reweights(small_mask):
+    """One factor is a rescaling of the output; a per-study factor is a change to the model.
+
+    A shared ``rho`` scales every study's variance by the same square, so every
+    inverse-variance weight is scaled together and the inference is untouched. A per-study
+    ``rho`` scales each study's variance by its own, which reweights the studies against each
+    other -- so it moves ``z`` and ``prevalence``, and the docstring used to claim it did not.
+    """
+    studyset = create_effect_size_coordinate_studyset(
+        [TRUTH],
+        effect_sizes=0.8,
+        n_studies=24,
+        sample_size=(15, 400),  # wide, or rho_k barely varies and there is nothing to see
+        tau=0.1,
+        seed=11,
+        n_noise_foci=3,
+        noise_extent=30.0,
+        spatial_sd=5.0,
+    )
+    fits = {}
+    for name, peak_bias in (("none", None), ("shared", 0.5), ("per-study", "per-study")):
+        estimator = CBES(fwhm=12.0, mask=small_mask, peak_bias=peak_bias, null_method="none")
+        result = estimator.fit(studyset)
+        fits[name] = {
+            key: result.get_map(key, return_type="array").ravel()
+            for key in ("g", "z", "prevalence", "n_studies")
+        }
+        if peak_bias == "per-study":
+            rho = estimator._peak_bias_
+            assert rho.max() / rho.min() > 2.0, "fixture must make rho_k actually vary"
+
+    covered = fits["none"]["n_studies"] > 0
+
+    def compare(name, key):
+        a, b = fits["none"][key][covered], fits[name][key][covered]
+        keep = np.isfinite(a) & np.isfinite(b) & (np.abs(a) > 1e-6)
+        return np.median(b[keep] / a[keep]), np.max(np.abs(b[keep] - a[keep]) / np.abs(a[keep]))
+
+    # Shared: g scales by the factor, everything else is untouched.
+    ratio, _ = compare("shared", "g")
+    assert ratio == pytest.approx(0.5, abs=1e-3)
+    for key in ("z", "prevalence"):
+        _, worst = compare("shared", key)
+        assert worst < 0.02, (key, worst)
+
+    # Per-study: the inference moves, and by much more than numerical slack.
+    assert max(compare("per-study", key)[1] for key in ("z", "prevalence")) > 1.0
+
+
 def test_a_degenerate_collection_gets_no_p_values_and_no_fwe_correction(small_mask):
     """One focus per study leaves the null no states, and both paths have to say so.
 
