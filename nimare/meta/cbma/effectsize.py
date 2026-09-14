@@ -115,6 +115,13 @@ _NULL_MAX_Z = 50.0
 #: voxel's g by more than 0.001, while loosening to 1e-3 buys only a further 11% and starts
 #: to distort the map (max |dg| 0.031).
 _EM_TOLERANCE = 1e-4
+#: A voxel is finished when one EM sweep raises its log-likelihood by less than this, relative
+#: to the likelihood itself. Needed alongside the step criterion because the mixture is only
+#: weakly identified where a single study reported: mu and the prevalence then trade off along
+#: a nearly flat ridge that the parameter step never leaves, so the loop would otherwise run to
+#: max_iter and report whichever point on the ridge it stopped at.
+_EM_LOGLIK_TOLERANCE = 1e-6
+
 #: Rebuild the working set only once this fraction of it has settled, so that compaction
 #: (which touches every pair) is amortized rather than run every iteration.
 _EM_COMPACTION_FRACTION = 0.05
@@ -2055,16 +2062,30 @@ class CBES(Estimator):
 
     @staticmethod
     def _update_prevalence(reporting, silent, mu, pi, total_weight, censoring):
-        """One E-step: the mixture responsibilities, and the prevalence they imply."""
+        """One E-step: the responsibilities, the prevalence they imply, and the log-likelihood.
+
+        The log-likelihood comes free with the E step. Each observation's mixture density is
+        exactly the normaliser the responsibility is divided by, so summing its log onto voxels
+        costs two logarithms and two ``bincount`` calls, against the two normal CDFs per silent
+        pair that the iteration is already paying for.
+        """
         pi_rep, pi_sil = pi[reporting.voxel], pi[silent.voxel]
 
         density_effect = (
             _normal_pdf((reporting.g - mu[reporting.voxel]) / reporting.sigma) / reporting.sigma
         )
         resp_rep = pi_rep * density_effect
-        resp_rep /= resp_rep + (1.0 - pi_rep) * reporting.density_null + _LOGP_FLOOR
+        mixture_rep = resp_rep + (1.0 - pi_rep) * reporting.density_null + _LOGP_FLOOR
+        resp_rep = resp_rep / mixture_rep
         resp_sil = pi_sil * censoring["prob"]
-        resp_sil /= resp_sil + (1.0 - pi_sil) * silent.prob_silent_null + _LOGP_FLOOR
+        mixture_sil = resp_sil + (1.0 - pi_sil) * silent.prob_silent_null + _LOGP_FLOOR
+        resp_sil = resp_sil / mixture_sil
+
+        log_likelihood = np.bincount(
+            reporting.voxel, weights=reporting.weight * np.log(mixture_rep), minlength=mu.size
+        ) + np.bincount(
+            silent.voxel, weights=silent.weight * np.log(mixture_sil), minlength=mu.size
+        )
 
         claimed = np.bincount(
             reporting.voxel, weights=reporting.weight * resp_rep, minlength=mu.size
@@ -2074,7 +2095,7 @@ class CBES(Estimator):
             _PREVALENCE_CLAMP,
             1.0 - _PREVALENCE_CLAMP,
         )
-        return resp_rep, resp_sil, updated
+        return resp_rep, resp_sil, updated, log_likelihood
 
     def _fit_chunk(self, *, weights, g_obs, var_obs, covered, tau2, null_var, cutoffs, start):
         """EM for one block of voxels. Returns ``(mu, prevalence, se)``, one value per voxel.
@@ -2132,17 +2153,33 @@ class CBES(Estimator):
             )
 
         curvature = np.zeros(width)
+        log_likelihood = np.full(width, -np.inf)
         for _ in range(self.max_iter):
             if not mu.size:
                 break
             censoring = silent.censoring(mu)
             pi_shift = np.zeros(mu.size)
+            stalled = np.zeros(mu.size, dtype=bool)
             if zero_inflated:
-                previous_pi = pi
-                reporting.responsibility, silent.responsibility, pi = self._update_prevalence(
-                    reporting, silent, mu, pi, total_weight, censoring
-                )
+                previous_pi, previous_ll = pi, log_likelihood
+                (
+                    reporting.responsibility,
+                    silent.responsibility,
+                    pi,
+                    log_likelihood,
+                ) = self._update_prevalence(reporting, silent, mu, pi, total_weight, censoring)
                 pi_shift = np.abs(pi - previous_pi)
+                # EM increases the likelihood monotonically, so a voxel whose likelihood has
+                # stopped rising has finished, whatever its parameters are still doing. At a
+                # voxel with one reporting study the mixture is barely identified and mu and
+                # the prevalence trade off along a nearly flat ridge: the step criterion alone
+                # never fires there, the loop runs to max_iter, and the value reported is
+                # wherever it happened to stop -- g moved by up to 0.24 between 25 and 200
+                # iterations, and was still moving by 0.06 between 400 and 800.
+                gain = log_likelihood - previous_ll
+                stalled = np.isfinite(previous_ll) & (
+                    gain <= _EM_LOGLIK_TOLERANCE * (np.abs(log_likelihood) + 1.0)
+                )
 
             score, curvature = derivatives(censoring)
             step = np.where(curvature < 0, -score / curvature, 0.0)
@@ -2150,7 +2187,7 @@ class CBES(Estimator):
             # with almost no reporting weight cannot run away.
             mu = mu + np.clip(step, -1.0, 1.0)
 
-            settled = (np.abs(step) < _EM_TOLERANCE) & (pi_shift < _EM_TOLERANCE)
+            settled = stalled | ((np.abs(step) < _EM_TOLERANCE) & (pi_shift < _EM_TOLERANCE))
             if settled.all():
                 retire(np.flatnonzero(settled), curvature)
                 mu = mu[:0]
@@ -2166,6 +2203,7 @@ class CBES(Estimator):
             reporting = reporting.compact(position)
             silent = silent.compact(position)
             mu, pi = mu[keep], pi[keep]
+            log_likelihood = log_likelihood[keep]
             total_weight = total_weight[keep]
             voxel_ids = voxel_ids[keep]
 
