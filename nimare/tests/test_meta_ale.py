@@ -55,13 +55,15 @@ SIMULATED_ALE_REGRESSION_DATASETS = [
 
 
 def _nearest_bin_reference(values, inv_step_size, n_bins):
-    """Nearest bin centre for each value, clipped to the grid.
+    """Nearest bin centre for each value, ties away from zero, clipped to the grid.
 
-    ``np.round`` breaks ties exactly as the ``round`` in ``_nearest_bin`` does,
-    which ``np.histogram``'s left-closed edges do not.
+    Spelling the rule out keeps the references off ``np.histogram``'s
+    left-closed edges, which disagree with it for a value on a boundary.
     """
     scaled = np.asarray(values, dtype=np.float64) * inv_step_size
-    return np.clip(np.round(scaled).astype(np.int64), 0, n_bins - 1)
+    floor = np.floor(scaled)
+    idx = floor.astype(np.int64) + (scaled - floor >= 0.5)
+    return np.clip(idx, 0, n_bins - 1)
 
 
 def _dense_ale_reference(ma_values):
@@ -531,27 +533,32 @@ def test_montecarlo_histogram_bin_edges_straddle_centres():
     assert np.histogram(just_under, bins=bin_edges)[0].argmax() == 20
 
 
-def test_ALE_nearest_bin_ties_match_the_reference_rule():
-    """Implementation and reference break ties the same way.
+def test_ALE_nearest_bin_agrees_with_the_p_value_lookup():
+    """A value is counted into the bin nullhist_to_p reads it back out of.
 
-    ``np.histogram``'s left-closed edges would send every half up instead, so
-    where the two disagreed the regression test validated the wrong binning.
+    The null histogram is built with ``_nearest_bin`` and then indexed by
+    :func:`~nimare.stats.nullhist_to_p` via :func:`nimare.utils._round2`. If the
+    two broke ties differently, a statistic landing exactly between two centres
+    would be looked up one bin away from where its own mass was counted.
     """
     inv_step_size = 10.0
     n_bins = 11
 
-    halves = np.array([0.05, 0.15, 0.25, 0.35], dtype=np.float64)
-    actual = np.array([_nearest_bin(v, inv_step_size, n_bins) for v in halves])
-    np.testing.assert_array_equal(actual, _nearest_bin_reference(halves, inv_step_size, n_bins))
-    np.testing.assert_array_equal(actual, [0, 2, 2, 4])
+    # Dense sweep, ties included: every value bins where _round2 reads it.
+    values = np.arange(0, n_bins * 2, dtype=np.float64) / (2 * inv_step_size)
+    actual = np.array([_nearest_bin(v, inv_step_size, n_bins) for v in values])
+    expected = np.clip(_round2(values * inv_step_size), 0, n_bins - 1)
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(actual, _nearest_bin_reference(values, inv_step_size, n_bins))
 
-    # Ties are the only place this differs from the _round2 rule nullhist_to_p
-    # reads the same grid with, and a continuous null puts no mass on them.
-    off_tie = np.array([0.0499999, 0.0500001, 0.24, 0.26], dtype=np.float64)
+    # Exact halves go away from zero, not to the even bin as round() would.
+    halves = np.array([0.05, 0.15, 0.25, 0.35], dtype=np.float64)
     np.testing.assert_array_equal(
-        _nearest_bin_reference(off_tie, inv_step_size, n_bins),
-        _round2(off_tie * inv_step_size),
+        [_nearest_bin(v, inv_step_size, n_bins) for v in halves], [1, 2, 3, 4]
     )
+
+    # Adding 0.5 and flooring would answer 1 here: 0.49999999999999994 + 0.5 == 1.0.
+    assert _nearest_bin(0.049999999999999994, inv_step_size, n_bins) == 0
 
     # Each value goes to the nearest centre; out-of-grid values clip.
     assert _nearest_bin(0.0499999, inv_step_size, n_bins) == 0

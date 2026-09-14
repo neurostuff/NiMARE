@@ -121,11 +121,18 @@ def _nearest_bin(value, inv_step_size, n_bins):
     """Index of the bin centre nearest ``value``, clipped to the grid.
 
     ``histogram_bins`` holds centres, so a value belongs to the centre nearest
-    it; truncating drops it into the bin below. Ties go to the even bin, as
-    ``round`` does in numba, NumPy and Python alike, so the reference
-    implementations in ``test_meta_ale.py`` can reproduce this exactly.
+    it; truncating drops it into the bin below.
+
+    Ties go away from zero, matching :func:`nimare.utils._round2`, which
+    :func:`~nimare.stats.nullhist_to_p` uses to look a statistic up on this same
+    grid -- a value has to be read out of the bin it was counted into. The
+    fraction is taken by subtraction rather than by adding 0.5 and flooring,
+    because ``0.49999999999999994 + 0.5`` is exactly ``1.0`` in float64 and
+    would round a value that is below the halfway point as though it were above.
     """
-    idx = int(round(value * inv_step_size))
+    scaled = value * inv_step_size
+    floor = np.floor(scaled)
+    idx = int(floor) + int(scaled - floor >= 0.5)
     if idx < 0:
         return 0
     elif idx >= n_bins:
