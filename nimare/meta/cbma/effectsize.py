@@ -731,11 +731,28 @@ class CBES(Estimator):
         DerSimonian-Laird moment estimator; ``"none"`` fits a fixed-effects model
         (:math:`\\tau^2 \\equiv 0`).
     selection_model : {"zero-inflated", "none"}, default="zero-inflated"
-        ``"censored"`` adds, for every study that reported nothing in this region, a term for
-        the probability that it would have reported nothing, and returns the maximizer of that
-        Tobit log-likelihood. ``"none"`` pools only the reported peaks, and is biased away from
-        zero by the within-study thresholding that produced them. Nothing is imputed under
+        How a study that reported nothing near a voxel is handled. Nothing is imputed under
         either option.
+
+        ``"zero-inflated"``
+            Silence contributes the probability of being silent, under a mixture in which the
+            study either has a real effect or none at all. This is what corrects the spatial
+            winner's curse, and it assumes the study *examined* the voxel -- silence is read as
+            evidence.
+        ``"none"``
+            Only the reported peaks are pooled, and the estimate is biased away from zero by
+            the thresholding that selected them: on the NIDM pain collection it runs about 1.3x
+            the zero-inflated fit, with a worse calibration slope (0.21 against 0.31).
+
+            Worth it in one case: when silence is *not* informative, because studies examined
+            only part of the brain. An ROI study says nothing about the voxels it never
+            analysed, and the censoring term would read its silence there as evidence against
+            an effect. With a collection of ROI or partial-coverage studies, this is the only
+            way to stop that, since there is no per-study coverage flag yet.
+
+            Also useful as a diagnostic -- fitting both shows how much of a map is the
+            selection correction rather than the data -- and it is roughly 3x faster, the
+            censoring term being most of the cost of a whole-brain fit.
     threshold : :obj:`float`, :obj:`str`, or None, default="pooled-min"
         Reporting threshold assumed for each study, on the z scale. It decides how surprising a
         study's silence is and, with ``peak_bias="per-study"``, how far its peaks are
@@ -755,7 +772,8 @@ class CBES(Estimator):
         peak is downweighted by the spatial kernel. Keeping the two radii separate matters: a
         study whose peak sits 6 mm away should have its *value* discounted, but it has plainly
         not been silent. Defaults to twice the kernel FWHM (20 mm when ``fwhm`` is None). Only
-        used when ``selection_model="censored"``.
+        used when ``selection_model="zero-inflated"``, since it is the censoring term that
+        needs to know which studies were silent.
     kernel_min_weight : :obj:`float`, default=0.01
         Truncate the spatial kernel below this fraction of its peak. A focus then reaches only
         voxels it says something about (about 13 mm for a 10 mm FWHM), which is what keeps
