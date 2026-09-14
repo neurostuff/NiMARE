@@ -281,13 +281,7 @@ def test_create_neurovault_studyset():
 
 
 def test_simulate_field_reports_nothing_when_the_field_has_no_variation():
-    """A field with no room to vary reports no peaks, rather than dividing by its own zero.
-
-    The simulated field is normalised by its own standard deviation, so a degenerate extent --
-    one that leaves a single voxel -- would otherwise divide by zero and emit peaks whose
-    statistics are all NaN. Those would flow into a studyset and only fail much later, inside
-    an estimator, as an unexplained absence of results.
-    """
+    """A field with no room to vary reports no peaks, rather than dividing by its own zero."""
     from nimare.generate import create_effect_size_coordinate_studyset
 
     studyset = create_effect_size_coordinate_studyset(
@@ -310,14 +304,7 @@ def test_simulate_field_reports_nothing_when_the_field_has_no_variation():
 
 
 def test_simulate_field_produces_real_peak_height_inflation():
-    """The point simulator cannot validate a peak-height correction; the field one can.
-
-    Drawing a value at the ground-truth location makes the reported statistic an unbiased
-    estimate of the effect there, so the true inflation is exactly 1 and there is nothing for
-    such a correction to recover. Selecting local maxima of a noisy field instead makes the
-    reported height overstate the effect where it was found, which is the thing being
-    corrected. Each peak carries the true effect at its own voxel, so it is measurable.
-    """
+    """The point simulator cannot validate a peak-height correction; the field one can."""
     import numpy as np
 
     from nimare.generate import create_effect_size_coordinate_studyset

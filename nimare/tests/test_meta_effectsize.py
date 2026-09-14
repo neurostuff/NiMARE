@@ -38,12 +38,7 @@ TRUE_G = 0.5
 
 @pytest.fixture(scope="module")
 def studyset():
-    """30 studies with a true g of 0.5 at the origin, thresholded at p < .001.
-
-    Deliberately a moderate effect: at this power only about a third of the studies clear the
-    threshold, which is the regime where the selection bias is large enough to be worth
-    correcting. With a large effect nearly every study reports and the naive estimate is fine.
-    """
+    """30 studies with a true g of 0.5 at the origin, thresholded at p < .001."""
     return create_effect_size_coordinate_studyset(
         [TRUTH],
         effect_sizes=TRUE_G,
@@ -76,13 +71,7 @@ def mixed_studyset():
 
 @pytest.fixture(scope="module")
 def permutation_fit(studyset, small_mask):
-    """One permutation fit at ``n_iters=20``, shared by the tests that all wanted the same one.
-
-    Five tests fitted this identical configuration at ~8.6 s each, which was a fifth of the
-    suite's runtime spent recomputing the same permutations. Tests that touch the estimator take
-    a deepcopy, so they stay order-independent even though ``correct_fwe_montecarlo`` can write
-    back into ``null_distributions_`` when its cache does not match.
-    """
+    """One permutation fit at ``n_iters=20``, shared by the tests that all wanted the same one."""
     estimator = CBES(fwhm=12.0, mask=small_mask, null_method="permute-magnitudes", n_iters=20)
     result = estimator.fit(studyset)
     return estimator, result
@@ -141,15 +130,7 @@ def test_null_effect_variance_shrinks_with_sample_size():
 
 
 def test_local_dl_reduces_to_dersimonian_laird():
-    """With unit kernel weights the local estimator must be the textbook DL estimator.
-
-    Checked against PyMARE's :class:`~pymare.estimators.DerSimonianLaird`, which is what
-    :mod:`nimare.meta.ibma` uses, rather than against a formula written out again here -- a
-    hand-copied reference can be wrong in the same way the implementation is. The kernel-weighted
-    form cannot be delegated to PyMARE (``fit`` takes no per-observation weight, and folding the
-    weight into the variance would scale tau-squared with it), so this pins the generalization at
-    the point where the two must agree.
-    """
+    """With unit kernel weights the local estimator must be the textbook DL estimator."""
     from pymare.estimators import DerSimonianLaird
 
     rng = np.random.default_rng(0)
@@ -174,15 +155,7 @@ def test_local_dl_reduces_to_dersimonian_laird():
 
 
 def test_pooling_reduces_to_weighted_least_squares(studyset, small_mask):
-    """With unit kernel weights the pooled estimate is ordinary inverse-variance weighting.
-
-    The second check that CBES is a weighting scheme over a standard random-effects model rather
-    than a separate algorithm, again against PyMARE rather than a restatement of the formula.
-    CBES cannot call :func:`~pymare.stats.weighted_least_squares` itself: it returns the
-    model-based ``(X'WX)^-1``, where a kernel weight is a design weight distinct from the
-    inverse-variance one and needs the sandwich form, and it wants dense ``(studies, voxels)``
-    arrays where the fit is sparse. At unit weight the two coincide, which is what is tested.
-    """
+    """With unit kernel weights the pooled estimate is ordinary inverse-variance weighting."""
     from pymare.stats import weighted_least_squares
 
     estimator = CBES(fwhm=8.0, mask=small_mask, null_method="none", selection_model="none")
@@ -322,13 +295,7 @@ def test_selection_model_reduces_the_winners_curse(studyset, small_mask):
 def test_zero_component_keeps_silence_from_reading_as_a_small_common_effect(
     mixed_studyset, small_mask
 ):
-    """Half the studies are genuinely null at the focus, and the model must be able to say so.
-
-    Without a zero component the only way to explain their silence is a small shared effect,
-    which drags the estimate below the truth -- measured at -0.16 to -0.34 before the mixture
-    was added, and the reason the plain Tobit is not offered. With it, the silence goes to the
-    zero component and the effect among the studies that have one is recovered.
-    """
+    """Half the studies are genuinely null at the focus, and the model must be able to say so."""
     result = CBES(
         fwhm=12.0, mask=small_mask, selection_model="zero-inflated", null_method="none"
     ).fit(mixed_studyset)
@@ -367,11 +334,7 @@ def test_fixed_effects_option_zeroes_tau2(studyset, small_mask):
 
 
 def test_correct_fwe_montecarlo(studyset, small_mask):
-    """Correcting for the family can only make a p-value larger, never smaller.
-
-    Needs a real uncorrected null to compare against: with ``null_method="none"`` the
-    uncorrected p is 1 everywhere by construction and the comparison says nothing.
-    """
+    """Correcting for the family can only make a p-value larger, never smaller."""
     estimator = CBES(
         fwhm=12.0,
         mask=small_mask,
@@ -437,13 +400,7 @@ def null_studyset():
 
 
 def test_no_null_reports_no_p_values(studyset, small_mask):
-    """Absence of inference must not be mistakable for inference.
-
-    ``null_method="none"`` exists for inspecting the estimates cheaply. It replaced a parametric
-    option that referred ``g / se`` to a normal distribution, which was anticonservative by a
-    factor of eight under a global null. Returning 1 everywhere makes the absence explicit,
-    where a plausible-looking p-value would not.
-    """
+    """Absence of inference must not be mistakable for inference."""
     result = CBES(fwhm=8.0, mask=small_mask, null_method="none").fit(studyset)
 
     assert np.all(result.get_map("p", return_type="array") == 1.0)
@@ -508,11 +465,7 @@ def test_fwe_montecarlo_vfwe_only_returns_only_voxel_maps(permutation_fit):
 
 
 def test_cluster_null_is_built_during_fit(permutation_fit):
-    """The permutations fit() runs already record cluster measures, so correcting is free.
-
-    The forming threshold comes from a pilot run rather than from a second pass over the
-    permutations, which is what it would otherwise cost.
-    """
+    """The permutations fit() runs already record cluster measures, so correcting is free."""
     estimator, _ = permutation_fit
 
     assert "cluster_forming_stat" in estimator.null_distributions_
@@ -541,13 +494,7 @@ def test_cluster_threshold_none_skips_the_cluster_null(studyset, small_mask):
 
 
 def test_stat_from_histogram_finds_the_threshold_for_a_target_p():
-    """The cluster-forming threshold is read off the null rather than assumed.
-
-    CBES's ``z`` is not standard normal, so a nominal 3.29 is not a p of .001 and the cutoff has
-    to come from the null actually observed. This is the one place a histogram pooled over
-    voxels is still used -- a cluster-forming threshold has to be a single number -- so it is
-    checked directly rather than through the p-values, which are per voxel.
-    """
+    """The cluster-forming threshold is read off the null rather than assumed."""
     from nimare.meta.cbma.effectsize import _stat_from_histogram
 
     rng = np.random.default_rng(3)
@@ -611,12 +558,7 @@ def test_kernel_truncation_bounds_the_support(studyset, small_mask):
 
 
 def test_fit_chunk_ignores_studies_that_say_nothing_here():
-    """The EM visits only weighted (study, voxel) pairs; padding must not change the answer.
-
-    A study that covers the region but whose peak is outside this voxel's kernel informs
-    neither the density term nor the censoring term. Adding such studies is the case the
-    sparse-pair EM has to get right, since they are exactly the entries it skips.
-    """
+    """The EM visits only weighted (study, voxel) pairs; padding must not change the answer."""
     rng = np.random.default_rng(0)
     n_studies, n_voxels = 6, 40
     weights = np.where(
@@ -781,10 +723,7 @@ def test_use_images_false_ignores_them(image_studyset):
 
 
 def test_peak_bias_rescales_the_estimate_exactly(image_studyset):
-    """Rho rescales g, its variance and the threshold together, so the fit scales with it.
-
-    That exactness is what makes rho calibratable: a single ratio of summaries recovers it.
-    """
+    """Rho rescales g, its variance and the threshold together, so the fit scales with it."""
     studyset, _ = image_studyset
     plain = (
         CBES(fwhm=8.0, null_method="none", use_images=False)
@@ -853,12 +792,7 @@ def test_uninformative_peaks_are_flagged(small_mask, caplog):
 
 
 def test_null_peak_mean_g_grows_with_threshold_and_shrinks_with_n():
-    """The artefact in a reported effect size is a function of (u, N), and a strong one.
-
-    A study that only reports above z = 4.3, on 15 subjects, would report g near 1 from pure
-    noise; one reporting above z = 2.3 on 60 subjects would report a third of that. Pooling the
-    two without correction compares numbers that are not on the same scale.
-    """
+    """The artefact in a reported effect size is a function of (u, N), and a strong one."""
     from nimare.meta.cbma.effectsize import null_peak_mean_g
 
     at_n20 = [null_peak_mean_g(u, 20) for u in (2.3, 3.29, 4.3)]
@@ -891,12 +825,7 @@ def test_infer_threshold_from_minimum_recovers_a_known_threshold():
 
 
 def test_study_min_undoes_the_order_statistic(studyset, small_mask):
-    """``"study-min"`` infers each study's threshold, it does not take the minimum at face value.
-
-    The smallest of a study's reported peaks sits above its threshold by an amount that grows as
-    the study reports fewer of them, so the inferred cutoff must land below the raw minimum --
-    never above it, and by more when there are fewer peaks to draw from.
-    """
+    """``"study-min"`` infers each study's threshold rather than believing the minimum."""
     estimator = CBES(fwhm=8.0, null_method="none", threshold="study-min", mask=small_mask)
     estimator.fit(studyset)
 
@@ -953,11 +882,7 @@ def test_per_study_peak_bias_discounts_strict_thresholds_and_small_samples():
 
 
 def test_per_study_peak_bias_reduces_to_the_scalar_when_studies_agree(small_mask):
-    """With one threshold and one sample size there is nothing between studies to correct.
-
-    The per-study factor then has to collapse to exactly ``peak_bias_scale``, which is what
-    makes the two options comparable: ``"per-study"`` only ever redistributes around it.
-    """
+    """With one threshold and one sample size there is nothing between studies to correct."""
     studyset = create_effect_size_coordinate_studyset(
         [TRUTH], effect_sizes=0.9, n_studies=20, sample_size=25, threshold_z=3.0, seed=12
     )
@@ -972,12 +897,7 @@ def test_per_study_peak_bias_reduces_to_the_scalar_when_studies_agree(small_mask
 
 
 def test_per_study_peak_bias_equalizes_a_mixed_threshold_collection(small_mask):
-    """The point of the correction: studies that thresholded differently stop disagreeing.
-
-    Two halves of one collection, identical truth, differing only in how strictly they
-    thresholded. Uncorrected, the strict half reports much larger effect sizes than the lenient
-    half. The per-study factor should shrink that gap.
-    """
+    """The point of the correction: studies that thresholded differently stop disagreeing."""
     from nimare.meta.cbma.effectsize import null_peak_mean_g
 
     def gap(peak_bias):
@@ -1013,11 +933,7 @@ def test_per_study_peak_bias_equalizes_a_mixed_threshold_collection(small_mask):
 
 @pytest.fixture(scope="module")
 def half_image_studyset(image_studyset):
-    """Build ten studies where only the first five supply images.
-
-    A collection that actually mixes the two kinds of evidence, which is what makes the
-    overall scale identifiable: the coordinate studies have to be put on the images' scale.
-    """
+    """Build ten studies where only the first five supply images."""
     from nimare.studyset import Studyset
 
     studyset, truth = image_studyset
@@ -1080,11 +996,7 @@ def test_mixing_images_with_an_uncalibrated_scale_warns(half_image_studyset, cap
 
 
 def test_auto_peak_bias_scale_puts_coordinates_on_the_images_scale(half_image_studyset):
-    """'auto' reads the constant off the images, and it has to be the ratio it corrects.
-
-    The fit is exactly linear in the scale, so the calibrated coordinate-only estimate must
-    land on the image-only one -- that is the whole content of the calibration.
-    """
+    """'auto' reads the constant off the images, and it has to be the ratio it corrects."""
     studyset, _ = half_image_studyset
     estimator = CBES(fwhm=8.0, null_method="none", peak_bias="per-study", peak_bias_scale="auto")
     estimator.fit(studyset)
@@ -1187,14 +1099,7 @@ def images_only_studyset(tmp_path_factory):
 
 
 def test_the_null_sign_flips_images_rather_than_holding_them_fixed():
-    """Coordinates and images are exchangeable in different ways, so the null must move both.
-
-    Relocating a focus destroys its position, which is what the coordinate null says is
-    arbitrary. An image has no position to destroy; what the null says about it is that its sign
-    is arbitrary. Holding images fixed instead carries their signal into the null: with the
-    effect size held constant and only its extent varied, power fell from 1.00 at 3% of the
-    volume to 0.67 at 100%, and sign-flipping restored it to 1.00 throughout.
-    """
+    """Coordinates and images are exchangeable in different ways, so the null must move both."""
     estimator = CBES()
     estimator._image_studies_ = {
         "a": (np.array([1.0, -2.0, 3.0]), np.array([0.1, 0.1, 0.1]), np.ones(3, bool)),
@@ -1219,14 +1124,7 @@ def test_the_null_sign_flips_images_rather_than_holding_them_fixed():
 
 
 def test_images_only_collection_is_redirected_to_an_image_estimator(images_only_studyset):
-    """A collection with images and no coordinates is an error, not a quiet reduction.
-
-    With no peaks there is nothing for the kernel to spread or the selection model to explain,
-    and nothing for the null to permute -- an empty focus table is invariant under every
-    permutation, so the p-values would look perfectly calibrated and mean nothing. The fit
-    would silently become a random-effects meta-analysis of the images, which
-    ``nimare.meta.ibma`` does directly and with valid inference, so the error says so.
-    """
+    """A collection with images and no coordinates is an error, not a quiet reduction."""
     studyset, mask = images_only_studyset
     for null_method in ("permute-magnitudes", "none"):
         with pytest.raises(ValueError, match="coordinate-based estimator") as raised:
@@ -1268,17 +1166,7 @@ def test_a_collection_with_neither_coordinates_nor_images_still_raises(tmp_path)
 
 
 def test_the_only_null_is_the_permutation_one_and_removed_options_fail_loudly():
-    """CBES estimates effect size, so its null randomizes magnitudes, not positions.
-
-    A relocation null -- move every focus to a random in-mask voxel, keep its effect size --
-    asks whether foci pile up at a voxel. That is the question ALE and MKDA exist to answer and
-    it is not this one, so it was removed rather than offered alongside: leaving it in would
-    have let a caller obtain a convergence result from an estimator whose output is an effect
-    size. The RFT regional censoring term went earlier, for cost and calibration.
-
-    Removed options fail at construction rather than being silently ignored, so a script written
-    against an earlier version stops instead of quietly answering a different question.
-    """
+    """CBES estimates effect size, so its null randomizes magnitudes, not positions."""
     assert CBES().null_method == "permute-magnitudes"
     assert set(NULL_METHODS) == {"permute-magnitudes", "none"}
 
@@ -1295,11 +1183,7 @@ def test_the_only_null_is_the_permutation_one_and_removed_options_fail_loudly():
 
 
 def test_reference_magnitude_falls_with_sample_size():
-    """Studies powered for subtle effects are large, so the reference has to fall with N.
-
-    Measured across 258 NeuroVault group maps: corr(log N, log magnitude) = -0.395. The table
-    is binned rather than a fitted line because the relationship is not log-linear.
-    """
+    """Studies powered for subtle effects are large, so the reference has to fall with N."""
     from nimare.meta.cbma.effectsize import reference_magnitude
 
     small = reference_magnitude([16] * 10)
@@ -1344,19 +1228,7 @@ def test_reference_scale_is_opt_in_and_not_chosen_by_auto(studyset, small_mask, 
 
 
 def test_permuting_magnitudes_leaves_the_spatial_design_untouched(small_mask):
-    """The invariant the null depends on, tested where it is easiest to break.
-
-    Only the reported value and its variance move; position, study and sample size stay put. So
-    the set of covered voxels and the number of studies reaching each one must be bit-identical
-    to the observed fit, in every iteration. If they are not, the null's standard errors differ
-    from the observed map's for reasons that have nothing to do with effect size, and voxels
-    become significant on how many studies happen to reach them.
-
-    The collection here gives every study several foci close together, which is the arrangement
-    that breaks a permutation that also moves the study label: a voxel keeps one observation per
-    study, so relabelling can put two foci of one study on the same voxel and lose a count.
-    Moving values alone cannot, however the foci are arranged.
-    """
+    """The invariant the null depends on, tested where it is easiest to break."""
     rng = np.random.default_rng(11)
     studies = []
     for k in range(12):
@@ -1421,20 +1293,7 @@ def test_permuting_magnitudes_leaves_the_spatial_design_untouched(small_mask):
 
 
 def test_convergence_alone_does_not_make_a_voxel_significant(small_mask):
-    """The property that decides the null was worth changing for.
-
-    Every study reports a peak at the same place, and every peak in the collection -- there and
-    in the scatter around it -- is drawn from one distribution. So the site has overwhelming
-    spatial convergence and an entirely unremarkable magnitude. An estimator that reports effect
-    size should be unmoved by it: nothing about those thirty studies says the effect there is
-    any larger than the effects reported elsewhere, only that more studies happened to report
-    there. A relocation null would call this significant, which is why it is not the null here.
-
-    The guard is against regressing to a null pooled over voxels. Pooling would refer this
-    voxel's thirty studies to a distribution made mostly of voxels carrying two; the standard
-    error falls with the number of contributing studies, so the site would come out significant
-    on study count alone even though the magnitudes are permuted.
-    """
+    """The property that decides the null was worth changing for."""
     rng = np.random.default_rng(5)
     studies = []
     for k in range(30):
@@ -1494,11 +1353,7 @@ def test_convergence_alone_does_not_make_a_voxel_significant(small_mask):
 
 
 def test_permutation_null_calibrates_uncorrected_p(null_studyset, small_mask):
-    """Under a global null the permutation null must also return roughly the nominal rate.
-
-    Its immunity to the multiplicity mismatch is worth nothing if the rate is wrong for some
-    other reason, so it is held to the same standard as the relocation null beside it.
-    """
+    """Under a global null the permutation null must also return roughly the nominal rate."""
     permutation = CBES(
         fwhm=12.0,
         mask=small_mask,
@@ -1511,12 +1366,7 @@ def test_permutation_null_calibrates_uncorrected_p(null_studyset, small_mask):
 
 
 def test_fwe_correction_permutes_even_without_a_null_from_fit(null_studyset, small_mask):
-    """A maximum statistic has to come from somewhere, so the correction permutes on demand.
-
-    Fitting with ``null_method="none"`` skips the null to save the refits, which leaves nothing
-    cached for familywise correction to reuse. It must then build one rather than fail or, worse,
-    correct against an empty distribution.
-    """
+    """A maximum statistic has to come from somewhere, so the correction permutes on demand."""
     estimator = CBES(
         fwhm=12.0,
         mask=small_mask,
@@ -1537,13 +1387,7 @@ def test_fwe_correction_permutes_even_without_a_null_from_fit(null_studyset, sma
 
 
 def test_scale_is_reported_as_an_interval_or_not_at_all(studyset, small_mask):
-    """A partially identified scale must not be handed over as a bare point estimate.
-
-    Rescaling every coordinate study by one constant leaves the coordinate-only likelihood
-    unchanged, so a coordinate-only fit identifies the pattern and not the scale. Saying so in
-    ``scale_interval_`` is the difference between a caller who knows the magnitudes are
-    relative and one who reads them as Hedges' g.
-    """
+    """A partially identified scale must not be handed over as a bare point estimate."""
     coordinates_only = CBES(fwhm=8.0, mask=small_mask, null_method="none", peak_bias="per-study")
     coordinates_only.fit(studyset)
     assert coordinates_only.scale_interval_ is None
@@ -1566,12 +1410,7 @@ def test_scale_is_reported_as_an_interval_or_not_at_all(studyset, small_mask):
 
 
 def test_the_description_reports_what_the_peak_heights_carry(studyset, small_mask):
-    """The magnitude caveat belongs in the methods text, not only in the log.
-
-    A collection whose reported heights are indistinguishable from noise peaks cannot support
-    a magnitude -- measured overestimating by a factor of 10.7 on one collection -- and the
-    estimator detected that and said so among a dozen other log lines, where nobody read it.
-    """
+    """The magnitude caveat belongs in the methods text, not only in the log."""
     estimator = CBES(fwhm=8.0, mask=small_mask, null_method="none", peak_bias="per-study")
     result = estimator.fit(studyset)
 
@@ -1590,13 +1429,7 @@ def test_the_description_reports_what_the_peak_heights_carry(studyset, small_mas
 
 
 def test_the_relative_map_cancels_the_scale_the_coordinates_cannot_identify(studyset, small_mask):
-    """Two fits differing only by the scale constant must give the same relative map.
-
-    Rescaling every reported effect size leaves the coordinate-only likelihood unchanged, so
-    ``g`` moves and nothing that matters does. ``g_relative`` is the map that says so: it is
-    invariant to the constant by construction, which is the property that makes it comparable
-    across collections where ``g`` is not.
-    """
+    """Two fits differing only by the scale constant must give the same relative map."""
     one = CBES(fwhm=8.0, mask=small_mask, null_method="none", peak_bias="per-study")
     other = CBES(
         fwhm=8.0,
@@ -1630,13 +1463,7 @@ def test_the_relative_map_cancels_the_scale_the_coordinates_cannot_identify(stud
 
 
 def test_an_absolute_map_appears_only_when_something_pins_the_scale(studyset, small_mask):
-    """``g_absolute`` is a claim about units, so it must be absent when the units are unknown.
-
-    A coordinate-only fit identifies the pattern and not the scale, and borrowing the scale
-    from another corpus is an assumption about this collection rather than a measurement of it.
-    Emitting the map anyway would leave a reader unable to tell Hedges' g from Hedges' g times
-    an unknown constant.
-    """
+    """``g_absolute`` is a claim about units, so it must be absent when the units are unknown."""
     shared = dict(fwhm=8.0, mask=small_mask, null_method="none", peak_bias="per-study")
 
     coordinates_only = CBES(**shared).fit(studyset)
@@ -1658,12 +1485,7 @@ def test_an_absolute_map_appears_only_when_something_pins_the_scale(studyset, sm
 
 
 def test_hartung_knapp_replaces_the_se_without_touching_the_estimate(studyset, small_mask):
-    """HKSJ is a different variance, not a different fit.
-
-    It also has to survive the voxels it cannot apply to: with one effective study there is no
-    spread about the pooled value to measure, and the degrees of freedom would be zero or less.
-    Those voxels keep the model-based value rather than producing an infinity.
-    """
+    """HKSJ is a different variance, not a different fit."""
     shared = dict(
         fwhm=8.0,
         mask=small_mask,
@@ -1694,14 +1516,7 @@ def test_hartung_knapp_replaces_the_se_without_touching_the_estimate(studyset, s
 
 
 def test_hartung_knapp_uses_the_effective_study_count_not_the_weight_total():
-    """The degrees of freedom must be Kish's ``n_eff``, which small kernel weights cannot break.
-
-    ``sum(w)`` and Kish's ``(sum w)^2 / sum w^2`` agree when every weight is one, but only the
-    latter is invariant to rescaling. At a voxel reached only by distant foci the weights sum to
-    well under one, and using that as a study count sends the degrees of freedom to zero and the
-    interval to absurdity -- measured as 99.3% coverage of a nominal 95% interval before this was
-    fixed.
-    """
+    """The degrees of freedom must be Kish's ``n_eff``, which small kernel weights cannot break."""
     from nimare.meta.cbma.effectsize import _hartung_knapp_se
 
     # Three studies, all weights 0.1: sum(w) = 0.3 but n_eff = 3.
@@ -1738,13 +1553,7 @@ def test_hartung_knapp_uses_the_effective_study_count_not_the_weight_total():
 
 
 def test_hksj_is_refused_rather_than_ignored_under_the_selection_model():
-    """The combination that would silently do nothing has to fail instead.
-
-    The zero-inflated model overwrites the pooled inverse-variance SE with the curvature of the
-    censored likelihood, so an HKSJ correction applied during pooling is discarded before it
-    reaches the caller. Accepting the combination would hand back an uncorrected SE while
-    reporting that a correction was requested.
-    """
+    """The combination that would silently do nothing has to fail instead."""
     with pytest.raises(ValueError, match="hksj.*selection_model"):
         CBES(se_method="hksj", selection_model="zero-inflated")
     # And the supported combination constructs.

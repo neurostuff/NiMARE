@@ -290,11 +290,7 @@ def test_apply_liberal_mask():
 
 
 def test_apply_liberal_mask_groups_voxels_that_are_not_adjacent():
-    """Voxels sharing a coverage pattern belong in one bag, however they are ordered.
-
-    Voxels 0 and 2 are covered by the same studies but are separated by a voxel with a
-    different pattern, so a grouping that only compares neighbours would split them.
-    """
+    """Voxels sharing a coverage pattern belong in one bag, however they are ordered."""
     data = np.array(
         [
             [1.0, np.nan, 2.0],
@@ -349,12 +345,7 @@ def test_apply_liberal_mask_partitions_every_covered_voxel():
 
 
 def test_liberal_mask_bags_and_values_compose_to_apply_liberal_mask():
-    """The split entry points must cut the data exactly as the combined one does.
-
-    ``IBMAEstimator`` groups once and slices each image input with the result, which is
-    roughly 40% cheaper for a beta/varcope estimator than regrouping per input. That is only
-    safe while the two paths agree.
-    """
+    """The split entry points must cut the data exactly as the combined one does."""
     rng = np.random.default_rng(0)
     data = rng.normal(size=(8, 300))
     data[rng.random(data.shape) < 0.3] = np.nan
@@ -396,12 +387,7 @@ def test_bibtex_reference_list_is_cached():
 
 
 def test_clip_logp_values_keeps_values_a_p_value_could_not_hold():
-    """A -log10(p) must not be clipped to the range of the p-value it came from.
-
-    Storing p itself bottoms out around 1.4e-45 in float32, i.e. -log10(p) of 44.85 or a z of
-    14.1. Clipping the logarithm there would discard anything computed in log space, which is
-    the whole reason for computing in log space.
-    """
+    """A -log10(p) must not be clipped to the range of the p-value it came from."""
     values = np.array([0.0, 44.85, 100.0, 1000.0, 5000.0])
 
     clipped = utils._clip_logp_values(values)
@@ -432,13 +418,7 @@ def test_nlogp_to_logp_values_converts_nlogp_to_logp():
 
 
 def test_gpd_tail_p_engages_only_with_enough_exceedances():
-    """The tail fit needs a tail, and says so by declining rather than fitting noise.
-
-    ``_gpd_tail_p`` wants ``min_exceedances`` values above its threshold before it will fit
-    anything, so a short permutation run gets the empirical tail and nothing else. Pinned
-    because the caller's default is ``tail_approximation=True``: the path is on by default and
-    silently inactive below a few hundred iterations, which is not obvious from the call site.
-    """
+    """The tail fit needs a tail, and says so by declining rather than fitting noise."""
     from nimare.meta.utils import _gpd_tail_p
 
     rng = np.random.default_rng(0)
@@ -457,13 +437,7 @@ def test_gpd_tail_p_engages_only_with_enough_exceedances():
 
 
 def test_gpd_tail_p_keeps_the_empirical_tail_near_the_floor():
-    """Below five times the empirical floor the fit is not trusted, by deliberate choice.
-
-    Validation found the fit about twice anticonservative at and below the floor, so it is
-    applied only well above it. A corrected p is therefore never smaller than that boundary,
-    which is what stops the extrapolation from manufacturing significance a permutation run
-    cannot support.
-    """
+    """Below five times the empirical floor the fit is not trusted, by deliberate choice."""
     from nimare.meta.utils import _GPD_FLOOR_MULTIPLE, _gpd_tail_p
 
     rng = np.random.default_rng(1)
@@ -499,14 +473,7 @@ def test_gpd_goodness_of_fit_returns_a_usable_p_value():
 
 
 def test_gpd_tail_p_shortens_the_tail_and_gives_up_cleanly():
-    """The retry path, and the surrender at the end of it.
-
-    The documented behaviour is that an unacceptable fit shortens the tail and tries again,
-    and that exhausting the retries leaves the caller on the empirical tail rather than on a
-    fit nobody vouched for. Both branches are defensive, so neither runs in an ordinary
-    permutation and neither was exercised before -- while ``tail_approximation=True`` is the
-    caller's default, which is a poor combination.
-    """
+    """The retry path, and the surrender at the end of it."""
     from nimare.meta.utils import _gpd_tail_p
 
     # Degenerate tail: every extreme value identical, so the excesses are all zero and no
@@ -580,14 +547,7 @@ def test_padded_dilation_matches_a_bounds_checked_one_even_from_outside_the_imag
 
 
 def test_gpd_tail_p_gives_up_when_the_fitter_raises_or_returns_nonsense(monkeypatch):
-    """A fitter that fails, or succeeds with a degenerate answer, must not be trusted.
-
-    ``stats.genpareto.fit`` is an optimizer and can both raise and return non-finite or
-    non-positive parameters. Either has to shorten the tail and eventually leave the caller on
-    the empirical p-values, because the alternative -- extrapolating from a fit nobody checked
-    -- manufactures significance the permutations never supported. Neither branch fires on data
-    a permutation run produces, so only a substituted fitter reaches them.
-    """
+    """A fitter that fails, or succeeds with a degenerate answer, must not be trusted."""
     from nimare.meta.utils import _gpd_tail_p
 
     rng = np.random.default_rng(3)
@@ -612,13 +572,7 @@ def test_gpd_tail_p_gives_up_when_the_fitter_raises_or_returns_nonsense(monkeypa
 
 
 def test_gpd_goodness_of_fit_discards_replicates_it_cannot_refit(monkeypatch):
-    """A bootstrap replicate that will not refit is dropped, not counted as agreement.
-
-    The reference distribution is built by refitting each simulated replicate, and counting an
-    unfittable one as "no worse than observed" would bias the test toward accepting. When every
-    replicate is unusable the p-value collapses to its floor, which fails the caller's
-    ``goodness > alpha`` check and so declines the fit -- the safe direction.
-    """
+    """A bootstrap replicate that will not refit is dropped, not counted as agreement."""
     from nimare.meta.utils import _gpd_goodness_of_fit
 
     rng = np.random.default_rng(4)
