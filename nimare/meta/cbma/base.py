@@ -54,6 +54,32 @@ def _histogram_bin_edges(bin_centers):
 _UNSET = object()
 
 
+def _nullhist_to_summarystat(hist_weights, bin_centers, p):
+    """Return the summary-statistic value whose upper-tail probability first falls to ``p``.
+
+    ``hist_weights`` is an unnormalised histogram over ``bin_centers``: analytic masses
+    from the approximate null, or voxel counts from the Monte Carlo null. Both have to be
+    accumulated into an upper-tail probability before they can be compared against ``p``.
+    The chosen bin is the last one whose tail probability still exceeds ``p``, so the
+    threshold is conservative with respect to the requested rate.
+    """
+    weights = np.asarray(hist_weights, dtype=np.float64)
+    total = np.sum(weights)
+    if total <= 0:
+        return bin_centers[0]
+
+    tail = weights / total
+    tail = np.cumsum(tail[::-1])[::-1]
+    tail /= np.max(tail)
+    tail = np.squeeze(tail)
+
+    below = np.flatnonzero(tail <= p)
+    if below.size == 0:
+        # Even the largest attainable statistic is more likely than p.
+        return bin_centers[-1]
+    return bin_centers[np.maximum(0, below[0] - 1)]
+
+
 class CBMAEstimator(Estimator):
     """Base class for coordinate-based meta-analysis methods.
 
@@ -618,29 +644,21 @@ class CBMAEstimator(Estimator):
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histweights_corr-none_method-approximate" in self.null_distributions_.keys()
 
-            # Convert unnormalized histogram weights to null distribution
-            histogram_weights = self.null_distributions_[
-                "histweights_corr-none_method-approximate"
-            ]
-            null_distribution = histogram_weights / np.sum(histogram_weights)
-            null_distribution = np.cumsum(null_distribution[::-1])[::-1]
-            null_distribution /= np.max(null_distribution)
-            null_distribution = np.squeeze(null_distribution)
-
-            # Desired bin is the first one _before_ the target p-value (for uniformity
-            # with the montecarlo null).
-            ss_idx = np.maximum(0, np.where(null_distribution <= p)[0][0] - 1)
-            ss = self.null_distributions_["histogram_bins"][ss_idx]
+            ss = _nullhist_to_summarystat(
+                self.null_distributions_["histweights_corr-none_method-approximate"],
+                self.null_distributions_["histogram_bins"],
+                p,
+            )
 
         elif null_method == "montecarlo":
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histweights_corr-none_method-montecarlo" in self.null_distributions_.keys()
 
-            hist_weights = self.null_distributions_["histweights_corr-none_method-montecarlo"]
-            # Desired bin is the first one _before_ the target p-value (for uniformity
-            # with the montecarlo null).
-            ss_idx = np.maximum(0, np.where(hist_weights <= p)[0][0] - 1)
-            ss = self.null_distributions_["histogram_bins"][ss_idx]
+            ss = _nullhist_to_summarystat(
+                self.null_distributions_["histweights_corr-none_method-montecarlo"],
+                self.null_distributions_["histogram_bins"],
+                p,
+            )
 
         elif null_method == "reduced_montecarlo":
             assert "values_corr-none_method-reducedMontecarlo" in self.null_distributions_.keys()

@@ -420,3 +420,292 @@ def test_MKDAChi2_z_maps_are_unchanged_by_the_log_space_tail(testdata_cbma_full)
         signed = z_values != 0
         assert signed.any(), name
         assert np.allclose(np.abs(z_values[signed]), np.sqrt(chi2_values[signed]), rtol=1e-6), name
+
+
+def test_nullhist_to_summarystat_accumulates_tail():
+    """A null-histogram threshold must respond to p, not to the first empty bin."""
+    from nimare.meta.cbma.base import _nullhist_to_summarystat
+
+    # Upper-tail probabilities are [1, .35, .069, .0092, .00088, .00006, 0, 0].
+    counts = np.array([7435009, 3197643, 686419, 95013, 9392, 651, 23, 0], dtype=np.int64)
+    bins = np.arange(counts.size)
+
+    assert _nullhist_to_summarystat(counts, bins, 0.05) == 2
+    assert _nullhist_to_summarystat(counts, bins, 0.01) == 2
+    assert _nullhist_to_summarystat(counts, bins, 0.001) == 3
+    assert _nullhist_to_summarystat(counts, bins, 0.0001) == 4
+
+    # Degenerate inputs resolve to an end of the range rather than raising.
+    assert _nullhist_to_summarystat(np.zeros(4), np.arange(4), 0.001) == 0
+    assert _nullhist_to_summarystat(np.array([1.0, 1.0]), np.arange(2), 1.0) == 0
+
+
+def test_p_to_summarystat_is_monotone_in_p(testdata_cbma):
+    """Lowering p must never lower the cluster-forming threshold, for either null."""
+    approximate = MKDADensity(null_method="approximate", generate_description=False)
+    approximate.fit(testdata_cbma)
+    montecarlo = MKDADensity(null_method="montecarlo", n_iters=50, generate_description=False)
+    montecarlo.fit(testdata_cbma)
+
+    p_values = [0.05, 0.01, 0.005, 0.001]
+    for estimator, null_method in ((approximate, "approximate"), (montecarlo, "montecarlo")):
+        thresholds = [estimator._p_to_summarystat(p, null_method=null_method) for p in p_values]
+        assert np.all(np.diff(thresholds) >= 0), (null_method, thresholds)
+        # A threshold pinned at the first never-observed bin would sit at the top of
+        # the range and be flat in p; this is the regression that guards it.
+        assert thresholds[0] < len(estimator.inputs_["id"])
+        assert thresholds[0] < thresholds[-1]
+
+
+def _sample_size_studyset(sample_sizes):
+    """Build a Studyset whose analyses carry the given sample sizes."""
+    from nimare.studyset import Studyset
+
+    rng = np.random.RandomState(7)
+    studies = []
+    for i_study, n in enumerate(sample_sizes):
+        points = [
+            {"space": "MNI", "coordinates": list(rng.randint(-40, 40, size=3).astype(float))}
+            for _ in range(3)
+        ]
+        studies.append(
+            {
+                "id": f"S{i_study}",
+                "name": f"study {i_study}",
+                "analyses": [
+                    {
+                        "id": f"A{i_study}",
+                        "metadata": {"sample_sizes": [n]},
+                        "points": points,
+                    }
+                ],
+            }
+        )
+    return Studyset({"id": "mkda-weighting", "studies": studies})
+
+
+def test_MKDADensity_weighting_matches_published_formula(testdata_cbma):
+    """Weights are delta * sqrt(N), renormalised to sum to the number of contrasts."""
+    meta = MKDADensity(weighting="sample_size", generate_description=False)
+    meta.fit(testdata_cbma)
+
+    study_ids = np.unique(meta.inputs_["coordinates"]["id"].values)
+    sample_sizes = np.array(
+        [np.mean(n) for n in testdata_cbma.get_metadata(field="sample_sizes", ids=study_ids)],
+        dtype=float,
+    )
+    expected = np.sqrt(sample_sizes)
+    expected = len(study_ids) * expected / expected.sum()
+
+    np.testing.assert_allclose(meta.weight_vec_.ravel(), expected)
+    assert meta.weight_vec_.sum() == pytest.approx(len(study_ids))
+
+
+def test_MKDADensity_weighting_is_off_by_default(testdata_cbma):
+    """Weighting must be opt-in, so existing analyses do not silently change."""
+    meta = MKDADensity(generate_description=False)
+    meta.fit(testdata_cbma)
+    np.testing.assert_array_equal(meta.weight_vec_.ravel(), np.ones(len(meta.inputs_["id"])))
+
+
+def test_MKDADensity_equal_sample_sizes_match_unweighted():
+    """With constant N, a weighted fit is identical to an unweighted one, bit for bit."""
+    studyset = _sample_size_studyset([20] * 8)
+
+    unweighted = MKDADensity(generate_description=False).fit(studyset)
+    weighted = MKDADensity(weighting="sample_size", generate_description=False).fit(studyset)
+
+    for key in ("stat", "p", "z"):
+        np.testing.assert_array_equal(unweighted.maps[key], weighted.maps[key])
+    np.testing.assert_array_equal(
+        unweighted.estimator.null_distributions_["histogram_bins"],
+        weighted.estimator.null_distributions_["histogram_bins"],
+    )
+
+
+def test_MKDADensity_weighted_null_matches_independent_computation():
+    """The fitted null is the weighted Poisson binomial of the fitted weights."""
+    from nimare.meta.cbma.mkda import _weighted_histogram_bins, _weighted_null_histogram
+
+    studyset = _sample_size_studyset([8, 12, 20, 45, 90, 150])
+    meta = MKDADensity(weighting="sample_size", generate_description=False)
+    meta.fit(studyset)
+
+    weights = meta.weight_vec_.ravel()
+    prop_active = meta.null_distributions_["histogram_means"]
+    bins = _weighted_histogram_bins(weights, meta.n_histogram_bins)
+    expected = _weighted_null_histogram(weights, prop_active, bins)
+
+    np.testing.assert_allclose(meta.null_distributions_["histogram_bins"], bins)
+    np.testing.assert_allclose(
+        meta.null_distributions_["histweights_corr-none_method-approximate"], expected
+    )
+    # The null is a probability distribution over the grid, and the grid spans the
+    # attainable range of the statistic.
+    assert expected.sum() == pytest.approx(1.0)
+    assert bins[-1] >= weights.sum()
+    assert bins[-1] == pytest.approx(weights.sum(), rel=1e-4)
+
+
+def test_MKDADensity_weighted_null_is_not_the_unweighted_one():
+    """Guards the actual defect: a weighted statistic scored on a unit-weight null."""
+    studyset = _sample_size_studyset([8, 12, 20, 45, 90, 150])
+    weighted = MKDADensity(weighting="sample_size", generate_description=False).fit(studyset)
+    unweighted = MKDADensity(generate_description=False).fit(studyset)
+
+    weighted_bins = weighted.estimator.null_distributions_["histogram_bins"]
+    unweighted_bins = unweighted.estimator.null_distributions_["histogram_bins"]
+    assert weighted_bins.size > unweighted_bins.size
+    assert not np.array_equal(weighted.maps["z"], unweighted.maps["z"])
+
+
+def test_MKDADensity_weights_align_by_id_not_position():
+    """A weight must follow its own contrast, whatever order the ids arrive in."""
+    sample_sizes = [8, 12, 20, 45, 90, 150]
+    studyset = _sample_size_studyset(sample_sizes)
+
+    meta = MKDADensity(weighting="sample_size", generate_description=False)
+    meta.fit(studyset)
+
+    row_ids = np.unique(meta.inputs_["coordinates"]["id"].values)
+    by_id = dict(zip(studyset.ids, sample_sizes))
+    expected = np.sqrt([by_id[study_id] for study_id in row_ids])
+    expected = len(row_ids) * expected / expected.sum()
+    np.testing.assert_allclose(meta.weight_vec_.ravel(), expected)
+
+    # Reversing the caller's id order must not permute the weights off their contrasts.
+    reversed_meta = MKDADensity(weighting="sample_size", generate_description=False)
+    reversed_meta.fit(studyset.filter_ids(list(studyset.ids)[::-1]))
+    np.testing.assert_allclose(reversed_meta.weight_vec_.ravel(), meta.weight_vec_.ravel())
+
+
+def test_MKDADensity_weights_renormalise_over_a_subset():
+    """Leave-one-out renormalises, as CANlab's Meta_Select_Contrasts does."""
+    sample_sizes = [8, 12, 20, 45, 90, 150]
+    studyset = _sample_size_studyset(sample_sizes)
+
+    meta = MKDADensity(weighting="sample_size", generate_description=False)
+    meta.fit(studyset)
+    ma_maps = meta._collect_ma_maps()
+
+    row_ids = list(np.unique(meta.inputs_["coordinates"]["id"].values))
+    kept = row_ids[1:]
+    meta._prepare_subsample_null(ma_maps[1:, :], subset_study_ids=np.array(kept))
+
+    by_id = dict(zip(studyset.ids, sample_sizes))
+    expected = np.sqrt([by_id[study_id] for study_id in kept])
+    expected = len(kept) * expected / expected.sum()
+    np.testing.assert_allclose(meta.weight_vec_.ravel(), expected)
+    assert meta.weight_vec_.sum() == pytest.approx(len(kept))
+
+
+def test_MKDADensity_weighted_montecarlo_null(testdata_cbma):
+    """The Monte Carlo null bins onto the weighted grid and still sums to n_iters * voxels."""
+    meta = MKDADensity(
+        null_method="montecarlo",
+        n_iters=20,
+        weighting="sample_size",
+        generate_description=False,
+    )
+    result = meta.fit(testdata_cbma)
+
+    bins = meta.null_distributions_["histogram_bins"]
+    counts = meta.null_distributions_["histweights_corr-none_method-montecarlo"]
+    assert counts.shape == bins.shape
+    assert counts.sum() == 20 * len(result.maps["stat"])
+    assert np.all(np.isfinite(result.maps["z"]))
+
+
+def test_MKDADensity_weighted_description_reports_the_scheme(testdata_cbma):
+    """A weighted analysis has to say so, and say how concentrated the weights are."""
+    meta = MKDADensity(weighting="sample_size")
+    result = meta.fit(testdata_cbma)
+    description = result.description_
+
+    assert "square root of the sample size" in description
+    assert "effective sample size" in description
+    assert "wager2009evaluating" in description
+
+
+def test_MKDADensity_unweighted_description_is_silent_about_weights(testdata_cbma):
+    """An unweighted analysis should not advertise a weighting scheme."""
+    meta = MKDADensity()
+    result = meta.fit(testdata_cbma)
+    assert "square root of the sample size" not in result.description_
+
+
+@pytest.mark.parametrize(
+    "weights",
+    [
+        [1e-9, 5.0],  # a negligible weight must not set the resolution for the whole grid
+        [1.0, 1.0],
+        [0.001, 5.0],
+        list(np.sqrt(np.arange(4, 400.0))),
+    ],
+)
+def test_weighted_null_grid_is_bounded_and_normalised(weights):
+    """The grid stays within n_bins + k bins and the null stays a distribution."""
+    from nimare.meta.cbma.mkda import _weighted_histogram_bins, _weighted_null_histogram
+
+    weights = np.asarray(weights, dtype=float)
+    n_bins = 100_000
+    bins = _weighted_histogram_bins(weights, n_bins)
+
+    assert bins.size <= n_bins + weights.size
+    assert bins[0] == 0
+    assert bins[-1] >= weights.sum()
+    np.testing.assert_allclose(np.diff(bins), bins[1] - bins[0])
+
+    hist = _weighted_null_histogram(weights, np.full(weights.size, 0.01), bins)
+    assert hist.shape == bins.shape
+    assert hist.sum() == pytest.approx(1.0)
+    assert np.all(hist >= 0)
+
+
+def test_weighted_null_matches_brute_force_enumeration():
+    """The weighted Poisson binomial must agree with enumerating all 2**k outcomes."""
+    import itertools
+
+    from nimare.meta.cbma.mkda import _weighted_histogram_bins, _weighted_null_histogram
+
+    rng = np.random.RandomState(7)
+    k = 12
+    sample_sizes = rng.randint(6, 300, size=k).astype(float)
+    weights = np.sqrt(sample_sizes)
+    weights = k * weights / weights.sum()
+    prop_active = rng.uniform(0.002, 0.10, size=k)
+
+    bins = _weighted_histogram_bins(weights, 100_000)
+    hist = _weighted_null_histogram(weights, prop_active, bins)
+
+    values, probabilities = [], []
+    for bits in itertools.product([0, 1], repeat=k):
+        indicator = np.array(bits)
+        values.append(weights @ indicator)
+        probabilities.append(np.prod(np.where(indicator == 1, prop_active, 1 - prop_active)))
+    values, probabilities = np.array(values), np.array(probabilities)
+
+    for quantile in (0.5, 0.9, 0.99, 0.999):
+        threshold = np.quantile(values, quantile)
+        exact = probabilities[values >= threshold - 1e-12].sum()
+        approximate = hist[bins >= threshold - 1e-12].sum()
+        assert approximate == pytest.approx(exact, abs=1e-6)
+
+    # The mean is an independent check that the mass sits in the right place.
+    assert (hist * bins).sum() == pytest.approx((weights * prop_active).sum(), abs=1e-3)
+
+
+def test_uniform_bin_counts_matches_rounding_used_for_observed_map():
+    """Permuted maps must land in the same bin the observed map would."""
+    from nimare.meta.cbma.mkda import _uniform_bin_counts
+
+    step = 0.25
+    n_bins = 9
+    values = np.array([0.0, 0.12, 0.13, 0.24, 0.26, 1.99, 2.0, 5.0, -1.0])
+    counts = _uniform_bin_counts(values, n_bins=n_bins, step=step)
+
+    expected = np.zeros(n_bins, dtype=int)
+    for value in values:
+        expected[int(np.clip(np.rint(value / step), 0, n_bins - 1))] += 1
+    np.testing.assert_array_equal(counts, expected)
+    assert counts.sum() == values.size
