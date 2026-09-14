@@ -911,13 +911,23 @@ class CBES(Estimator):
     null to find -- though neither would any method built on reported peaks, since a peak is
     only reported where the effect is locally large.
 
-    The effect-size maps are well ranked but not calibrated in magnitude. Against the 21 NIDM
-    pain studies' full ``t`` images, CBES run on peaks thresholded out of those same images
-    reaches rho = 0.84 (ALE, 0.18) but overestimates the effect about twofold. ``peak_bias``
-    corrects the part of that which varies between studies; the common scale is not identified
-    from coordinates and needs ``peak_bias_scale``. **Treat ``g`` as a relative map unless you
-    supply that scale.** Five of twenty-one studies supplying images was enough to bring the
-    magnitude ratio to 0.98 in one test.
+    The effect-size maps are not calibrated in magnitude, and how badly depends on the
+    collection. Against the 21 NIDM pain studies' full ``t`` images, CBES run on peaks
+    thresholded out of those same images reaches rho = 0.84 (ALE, 0.18) and overestimates the
+    effect about twofold. On an 11-study NeuroVault collection of a weak contrast, yielding 35
+    peaks that reach 11% of the brain, the same procedure overestimates by **10.7x** and the
+    rank correlation falls to 0.13. Twofold is the friendly case, not the typical one.
+
+    The estimator says so in advance: :func:`peak_information` warned on that collection that
+    the reported heights averaged *below* pure-noise peaks at the same threshold, and that the
+    scale would come out far too large. Heed that warning -- when it fires, the magnitudes
+    carry no effect-size information and only the spatial pattern is worth reading.
+
+    ``peak_bias`` corrects the part of the inflation that varies between studies; the common
+    scale is not identified from coordinates at all and needs ``peak_bias_scale``. **Treat
+    ``g`` as a relative map unless you supply that scale.** Five of twenty-one studies
+    supplying images was enough to bring the magnitude ratio to 0.98 in one test, which remains
+    the only reliable fix.
 
     References
     ----------
