@@ -1355,11 +1355,13 @@ class CBES(Estimator):
             values = self.masker.transform(str(path)).ravel()
             examined = np.isfinite(values) & (values != 0)
             if not examined.any():
+                # Kept, not dropped. Dropping it fell back to whole-brain, which inverts what
+                # the mask says: a study that examined nothing outside the analysis volume
+                # contributes no value and no silence, rather than everything.
                 LGR.warning(
-                    f"Study {study_id} declares an analysis mask that covers no in-mask voxel; "
-                    "ignoring it and treating the study as whole-brain."
+                    f"Study {study_id} declares an analysis mask covering no in-mask voxel, so "
+                    "it contributes neither a value nor a silence anywhere."
                 )
-                continue
             if examined.all():
                 continue  # whole-brain, which is the default anyway
             loaded[study_id] = examined
@@ -1844,9 +1846,13 @@ class CBES(Estimator):
         Keyed on the positions themselves rather than assumed valid, so a caller that passes a
         differently arranged table gets a rebuild instead of a wrong answer.
         """
+        masks = getattr(self, "_analysis_masks_", None) or {}
         key = (
             table[["i", "j", "k"]].values.astype(np.int64).tobytes(),
             np.asarray(table["id"].values, dtype=object).tobytes(),
+            # The masks clip the geometry below, so two fits under different masks must not
+            # share a cache entry.
+            tuple(sorted((study, mask.tobytes()) for study, mask in masks.items())),
         )
         cached = getattr(self, "_geometry_", None)
         if cached is not None and cached[0] == key:
@@ -1863,6 +1869,15 @@ class CBES(Estimator):
             cols, weights, focus_idx = self._study_voxel_weights(
                 study_table, offsets, values, mask_flat_to_masked, shape
             )
+            # A kernel reaches about 13 mm for a 10 mm FWHM, so a peak just inside a declared
+            # region spills outside it. Suppressing that study's *silence* out there while
+            # still letting its *value* be pooled there is the worst of both: the voxel gets a
+            # number from a study that never examined it. Clip the geometry to what was
+            # examined, which is where every later sum is built from.
+            examined = masks.get(study_id)
+            if examined is not None and cols.size:
+                inside = examined[cols]
+                cols, weights, focus_idx = cols[inside], weights[inside], focus_idx[inside]
             if not cols.size:
                 LGR.info(f"Study {study_id} contributes no in-mask voxels; skipping.")
                 continue

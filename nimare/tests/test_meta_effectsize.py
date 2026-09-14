@@ -1815,10 +1815,13 @@ def roi_studyset(tmp_path_factory):
             "name": "1",
             "metadata": {"sample_sizes": [30]},
             # Whole-brain studies report at the focus; the partial ones report inside their slab.
+            # The partial studies report on the last plane they examined (voxel i = 2), so
+            # their kernel reaches i = 3 just outside it -- which is where a value must not
+            # leak. The whole-brain studies report at the centre.
             "points": [
                 {
                     "space": "MNI",
-                    "coordinates": [-18.0, -18.0, -18.0] if partial else [0.0, 0.0, 0.0],
+                    "coordinates": [-14.0, -18.0, -18.0] if partial else [0.0, 0.0, 0.0],
                     "values": [{"kind": "Z", "value": 4.0}],
                 }
             ],
@@ -2041,3 +2044,94 @@ def test_a_two_sample_design_gets_the_total_sample_size(two_group_studyset):
     expected, _ = peak_stat_to_hedges_g([3.0], [60.0], stat_type="t", design="two-sample")
     got = two_sample._focus_table_["g"].abs().max()
     assert np.isclose(got, expected[0], rtol=1e-6), (got, expected[0])
+
+
+def test_a_declared_analysis_mask_also_stops_the_value_leaking_outside_it(roi_studyset):
+    """Suppressing silence outside a region but still pooling the value there is the worst case.
+
+    A kernel reaches about 13 mm for a 10 mm FWHM, so a peak just inside a declared region
+    spills outside it. Honouring the mask for censoring while ignoring it for contributions
+    would hand an unexamined voxel a number from a study that never looked there -- measured at
+    g = 0.31 with two contributing studies where the correct answer was 0.20 from one.
+    """
+    masker = roi_studyset.masker
+    mask = np.asarray(masker.mask_img.dataobj).astype(bool)
+    lookup = np.full(mask.shape, -1, dtype=np.int64)
+    lookup[mask] = np.arange(mask.sum())
+    # The partial studies report at voxel (2, 1, 1) and examined only i < 3, so (3, 1, 1) is
+    # one voxel away -- inside the kernel's support -- and outside the slab. That is exactly
+    # where the value used to leak.
+    outside = int(lookup[3, 1, 1])
+    assert outside >= 0
+
+    shared = dict(fwhm=8.0, null_method="none", peak_bias=None, selection_model="none")
+    ignored = CBES(**shared).fit(roi_studyset)
+    honoured = CBES(**shared, analysis_mask="analysis_mask").fit(roi_studyset)
+
+    n_ignored = ignored.get_map("n_studies", return_type="array").ravel()[outside]
+    n_honoured = honoured.get_map("n_studies", return_type="array").ravel()[outside]
+    # The slab studies' kernels reach this voxel, and must stop counting once the mask is read.
+    assert n_ignored > n_honoured, (n_ignored, n_honoured)
+
+
+def test_an_analysis_mask_covering_nothing_means_nothing_rather_than_everything(
+    roi_studyset, tmp_path, caplog
+):
+    """An empty declared mask must not fall back to whole-brain, which inverts its meaning.
+
+    Dropping it used to do exactly that: a study saying "I examined nothing in this volume"
+    would be restored to contributing everywhere, instead of contributing neither a value nor
+    a silence.
+    """
+    from nimare.studyset import Studyset
+
+    affine = roi_studyset.masker.mask_img.affine
+    shape = roi_studyset.masker.mask_img.shape[:3]
+    empty = tmp_path / "empty.nii.gz"
+    nib.save(nib.Nifti1Image(np.zeros(shape, np.int32), affine), empty)
+    brain = tmp_path / "brain.nii.gz"
+    nib.save(nib.Nifti1Image(np.ones(shape, np.int32), affine), brain)
+
+    studies = [
+        {
+            "id": f"e{k}",
+            "name": f"e{k}",
+            "metadata": {"sample_sizes": [30]},
+            "analyses": [
+                {
+                    "id": f"e{k}-1",
+                    "name": "1",
+                    "metadata": {"sample_sizes": [30]},
+                    "points": [
+                        {
+                            "space": "MNI",
+                            "coordinates": [0.0, 0.0, 0.0],
+                            "values": [{"kind": "Z", "value": 4.0}],
+                        }
+                    ],
+                    "images": [
+                        {
+                            "url": str(empty if k == 0 else brain),
+                            "filename": "m.nii.gz",
+                            "space": "MNI",
+                            "value_type": "analysis_mask",
+                        }
+                    ],
+                }
+            ],
+        }
+        for k in range(6)
+    ]
+    studyset = Studyset(
+        {"id": "empty_mask", "name": "empty_mask", "studies": studies},
+        target=None,
+        mask=str(roi_studyset.masker.mask_img.get_filename() or brain),
+    )
+
+    estimator = CBES(fwhm=8.0, null_method="none", analysis_mask="analysis_mask")
+    with caplog.at_level("WARNING"):
+        estimator.fit(studyset)
+    assert "covering no in-mask voxel" in caplog.text
+    # Kept as an all-False mask rather than discarded, so the study contributes nothing.
+    empty_masks = [m for m in estimator._analysis_masks_.values() if not m.any()]
+    assert len(empty_masks) == 1
