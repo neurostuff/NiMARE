@@ -1534,3 +1534,60 @@ def test_fwe_correction_permutes_even_without_a_null_from_fit(null_studyset, sma
     assert (
         len(estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]) == 30
     )
+
+
+def test_prevalence_prior_reduces_to_the_unpenalised_update_when_zero(studyset, small_mask):
+    """The default must be exactly the old behaviour, so it cannot change anyone's results."""
+    shared = dict(fwhm=8.0, mask=small_mask, null_method="none", max_iter=15)
+    free = CBES(prevalence_prior=0.0, **shared).fit(studyset)
+    default = CBES(**shared).fit(studyset)
+    none_given = CBES(prevalence_prior=None, **shared).fit(studyset)
+
+    for other in (default, none_given):
+        for name in ("g", "prevalence", "se"):
+            assert np.array_equal(
+                free.get_map(name, return_type="array"),
+                other.get_map(name, return_type="array"),
+            ), name
+
+
+def test_prevalence_prior_shrinks_toward_zero_by_its_weight(studyset, small_mask):
+    """A prior worth k studies must pull prevalence down, and more so as k grows.
+
+    Prevalence is the parameter the data support worst: estimated freely it is recovered
+    almost exactly where studies converge and is noise where they do not, and because ``g`` is
+    the effect *among* studies that have an effect, a spurious prevalence inflates ``g`` too.
+    The prior is a Beta prior on "no effect here", so the ordering below is the whole contract.
+    """
+    shared = dict(fwhm=8.0, mask=small_mask, null_method="none", max_iter=25)
+    maps = {k: CBES(prevalence_prior=k, **shared).fit(studyset) for k in (0.0, 1.0, 5.0)}
+    covered = maps[0.0].get_map("n_studies", return_type="array") > 0
+    assert covered.sum() > 50
+
+    medians = [
+        float(np.median(maps[k].get_map("prevalence", return_type="array")[covered]))
+        for k in (0.0, 1.0, 5.0)
+    ]
+    assert medians[0] > medians[1] > medians[2], medians
+    # It shrinks rather than zeroes: a voxel with real support keeps a prevalence.
+    assert medians[2] > 0.0
+
+    # The penalty enters every sweep, so it compounds: the fixed point moves much further
+    # than the one-shot k / (m + k) share would. Even the best-supported voxels feel a prior
+    # of one study strongly -- 0.350 to 0.091 in one measurement -- which is why the
+    # documentation points callers below one rather than at it. Pinned here so the next reader
+    # does not re-derive the share and conclude the implementation is wrong.
+    n_studies = maps[0.0].get_map("n_studies", return_type="array")
+    rich = covered & (n_studies >= np.percentile(n_studies[covered], 90))
+    assert rich.sum() > 5
+    free_rich = float(np.median(maps[0.0].get_map("prevalence", return_type="array")[rich]))
+    shrunk_rich = float(np.median(maps[1.0].get_map("prevalence", return_type="array")[rich]))
+    assert shrunk_rich < free_rich
+    naive_share = free_rich * np.median(n_studies[rich]) / (np.median(n_studies[rich]) + 1.0)
+    assert shrunk_rich < naive_share
+
+
+def test_prevalence_prior_rejects_negative_weights():
+    """A negative pseudo-count is not a prior."""
+    with pytest.raises(ValueError, match="prevalence_prior must be"):
+        CBES(prevalence_prior=-0.5)
