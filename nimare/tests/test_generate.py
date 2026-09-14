@@ -280,6 +280,35 @@ def test_create_neurovault_studyset():
     assert expected_columns.issubset(studyset.images.columns)
 
 
+def test_simulate_field_reports_nothing_when_the_field_has_no_variation():
+    """A field with no room to vary reports no peaks, rather than dividing by its own zero.
+
+    The simulated field is normalised by its own standard deviation, so a degenerate extent --
+    one that leaves a single voxel -- would otherwise divide by zero and emit peaks whose
+    statistics are all NaN. Those would flow into a studyset and only fail much later, inside
+    an estimator, as an unexplained absence of results.
+    """
+    from nimare.generate import create_effect_size_coordinate_studyset
+
+    studyset = create_effect_size_coordinate_studyset(
+        [(0, 0, 0)],
+        effect_sizes=0.8,
+        n_studies=3,
+        sample_size=25,
+        seed=0,
+        simulate_field=True,
+        # reaches the field simulator, but leaves it a single voxel to work with
+        n_noise_foci=2,
+        noise_extent=0.0,
+    )
+
+    # Nothing is reported at all, and in particular nothing is reported as NaN.
+    coordinates = studyset.coordinates
+    assert coordinates is None or len(coordinates) == 0
+    # The studyset is still well formed, with its studies present and simply empty-handed.
+    assert len(studyset.studies) == 3
+
+
 def test_simulate_field_produces_real_peak_height_inflation():
     """The point simulator cannot validate a peak-height correction; the field one can.
 
