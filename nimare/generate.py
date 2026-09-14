@@ -291,6 +291,12 @@ def _create_source(foci, sample_sizes, space="MNI"):
     return source
 
 
+#: Half-width, in mm, of the cube noise foci are drawn from, and the extent of the simulated
+#: field when a caller asks for one without asking for noise. Named because the field simulator
+#: takes it as its own extent, so the two must not drift apart.
+DEFAULT_NOISE_EXTENT = 60.0
+
+
 def _simulate_reported_peaks(
     ground_truth_foci,
     effect_sizes,
@@ -374,7 +380,7 @@ def create_effect_size_coordinate_studyset(
     threshold_z=3.2905267314919255,
     spatial_sd=6.0,
     n_noise_foci=0,
-    noise_extent=60.0,
+    noise_extent=DEFAULT_NOISE_EXTENT,
     design="one-sample",
     seed=None,
     space="MNI",
@@ -515,7 +521,7 @@ def create_effect_size_coordinate_studyset(
                 smoothness_fwhm,
                 blob_fwhm,
                 field_zooms,
-                noise_extent if n_noise_foci or noise_extent else 60.0,
+                noise_extent if n_noise_foci or noise_extent else DEFAULT_NOISE_EXTENT,
                 design,
                 rng,
             ):

@@ -1,34 +1,4 @@
-r"""Coordinate-based effect-size meta-analysis (CBES).
-
-Where ALE and (M)KDA ask *where do studies agree something happened*, this module asks *how big
-is the effect there*. Each reported peak's statistic and its study's sample size give Hedges'
-:math:`g` (:func:`peak_stat_to_hedges_g`); each focus is given a kernel weight
-:math:`w_{ki}(v)`, equal to 1 at the peak and decaying with distance; and each voxel solves a
-local random-effects meta-analysis weighted by it:
-
-.. math::
-
-    \\hat{g}(v) = \\frac{\\sum_k W_k(v) g_k}{\\sum_k W_k(v)},
-    \\qquad W_k(v) = \\frac{w_k(v)}{s^2_k + \\tau^2(v)}
-
-with :math:`\\tau^2(v)` a kernel-weighted DerSimonian-Laird estimate. With every
-:math:`w = 1` this reduces to a textbook random-effects meta-analysis, which is the sense in
-which the spatial part is a weighting scheme rather than a separate algorithm.
-
-Reported peaks are not a random sample of that field -- they are the values that cleared a
-within-study threshold -- so pooling them naively is a spatial winner's curse. The default
-``selection_model="zero-inflated"`` fits a mixture at each voxel: with probability
-:math:`\\pi(v)` a study has a real effect, otherwise none, and either way it reports only if
-:math:`|\\hat{g}_k| > c_k`. A silent study contributes the probability of that silence under
-both components, so the data decide which explains it; a plain Tobit has to read every silence
-as a small common effect and is dragged below zero where the truth is positive. No effect-size
-images are imputed anywhere -- non-reporting enters only through those probabilities, as in
-:footcite:t:`tench2017coordinate`.
-
-References
-----------
-.. footbibliography::
-"""
+"""Coordinate-based effect-size meta-analysis."""
 
 import logging
 import os
@@ -141,8 +111,55 @@ _EM_TOLERANCE = 1e-4
 #: (which touches every pair) is amortized rather than run every iteration.
 _EM_COMPACTION_FRACTION = 0.05
 
-#: Minimum permutations used to fix the cluster-forming threshold before the main null loop.
+#: Permutations used to fix the cluster-forming threshold before the main null loop: this
+#: fraction of the run, but never fewer than the minimum. The pilot costs a few percent of the
+#: main loop where a second full pass would cost 100%.
 _NULL_PILOT_ITERS = 20
+_NULL_PILOT_DIVISOR = 20
+
+#: Share of the maximum-statistic null taken as exceedances for the generalized Pareto fit,
+#: and the fraction of them dropped on each retry when the fit is rejected.
+_GPD_TAIL_FRACTION = 0.10
+_GPD_SHRINK_DIVISOR = 20
+#: The fit is trusted only this many times above the empirical p floor. Below that it was
+#: measured to run about twice anticonservative, so the empirical tail is kept instead.
+_GPD_FLOOR_MULTIPLE = 5.0
+
+#: Clamps before a logarithm and before inverting the normal survival function. Only guard
+#: against a p of exactly zero; both sit far below any p these permutation counts can produce.
+_LOGP_FLOOR = 1e-300
+_Z_FROM_P_FLOOR = 1e-16
+#: Floor on a probability used as a denominator or a mixture responsibility.
+_PROBABILITY_FLOOR = 1e-12
+
+#: Quadrature for the RFT null peak-height integrals. The density is negligible more than this
+#: far above the threshold, and the grids are sized so the integral is stable to 1e-4.
+_PEAK_GRID_SPAN_Z = 12.0
+_PEAK_OVERSHOOT_GRID = 4000
+_PEAK_MEAN_GRID = 2000
+#: Below this the high-threshold peak-height form is not positive (it fails under sqrt(3)),
+#: so the 1/u approximation is used instead.
+_PEAK_OVERSHOOT_MIN_Z = 1.9
+
+#: Bracket and tolerance for inverting the minimum reported peak back to a study's threshold.
+#: A threshold below this is not a plausible reporting cut and the minimum is returned as is.
+_MIN_INFERRED_THRESHOLD_Z = 1.95
+_THRESHOLD_SEARCH_XTOL = 1e-4
+
+#: Prevalence is held inside (0, 1) by this margin: at exactly 0 or 1 the mixture degenerates
+#: and the responsibilities stop being informative.
+_PREVALENCE_CLAMP = 1e-4
+
+#: Voxels used to calibrate the effect-size scale. The reference relation is defined on a map's
+#: top decile, and the image/coordinate ratio is taken over the strongest image voxels, of
+#: which there must be enough for the ratio to mean anything.
+_REFERENCE_TOP_PERCENTILE = 90
+_CALIBRATION_PERCENTILE = 75
+_MIN_CALIBRATION_VOXELS = 50
+
+#: Voxels x studies held in memory at once by the selection-model fit, which allocates several
+#: arrays of this size per iteration.
+_SELECTION_CHUNK_ELEMENTS = 2_000_000
 
 
 #: Excess of the mean reported peak height over the null peak height, in z units, below which
@@ -269,12 +286,12 @@ def _gpd_tail_p(observed, null_maxima, min_exceedances=30, alpha=0.05):
     if n_total < 100:
         return None  # too few to say anything about a tail
 
-    n_exceed = max(int(round(0.10 * n_total)), min_exceedances)
+    n_exceed = max(int(round(_GPD_TAIL_FRACTION * n_total)), min_exceedances)
     while n_exceed >= min_exceedances:
         threshold = maxima[n_total - n_exceed - 1]
         excess = maxima[n_total - n_exceed :] - threshold
         if not np.all(np.isfinite(excess)) or excess.max() <= 0:
-            n_exceed -= max(1, n_exceed // 20)
+            n_exceed -= max(1, n_exceed // _GPD_SHRINK_DIVISOR)
             continue
         try:
             shape, _, scale = stats.genpareto.fit(excess, floc=0.0)
@@ -283,7 +300,7 @@ def _gpd_tail_p(observed, null_maxima, min_exceedances=30, alpha=0.05):
             fitted = stats.genpareto(shape, loc=0.0, scale=scale)
             goodness = _gpd_goodness_of_fit(excess, shape, scale, seed=n_exceed)
         except Exception:  # noqa: BLE001 -- any failure just means try a shorter tail
-            n_exceed -= max(1, n_exceed // 20)
+            n_exceed -= max(1, n_exceed // _GPD_SHRINK_DIVISOR)
             continue
 
         if goodness > alpha:
@@ -308,10 +325,10 @@ def _gpd_tail_p(observed, null_maxima, min_exceedances=30, alpha=0.05):
             # past the floor which is the published method's main selling point; with a few
             # hundred exceedances this implementation did not earn it, and an anticonservative
             # familywise p is worse than a quantized one.
-            floor = 5.0 / (1.0 + n_total)
+            floor = _GPD_FLOOR_MULTIPLE / (1.0 + n_total)
             p_corrected[in_tail] = np.maximum(p_corrected[in_tail], floor)
             return np.clip(p_corrected, 0.0, 1.0)
-        n_exceed -= max(1, n_exceed // 20)
+        n_exceed -= max(1, n_exceed // _GPD_SHRINK_DIVISOR)
 
     return None
 
@@ -325,8 +342,8 @@ def _max_statistic_maps(observed, null_maxima, sign, tail_approximation=False):
         p_corrected = (1 + np.sum(null_maxima[None, :] >= observed[:, None], axis=1)) / (
             1 + len(null_maxima)
         )
-    logp = _nlogp_to_logp_values(np.log(np.clip(p_corrected, 1e-300, None)))
-    z_corrected = stats.norm.isf(np.clip(p_corrected, 1e-16, 1.0) / 2.0) * sign
+    logp = _nlogp_to_logp_values(np.log(np.clip(p_corrected, _LOGP_FLOOR, None)))
+    z_corrected = stats.norm.isf(np.clip(p_corrected, _Z_FROM_P_FLOOR, 1.0) / 2.0) * sign
     return (
         logp.astype(DEFAULT_FLOAT_DTYPE),
         z_corrected.astype(DEFAULT_FLOAT_DTYPE),
@@ -386,7 +403,7 @@ def _censoring_terms(mu, cutoff_scaled, twice_cutoff_scaled, inv_sigma, inv_sigm
 
     prob = ndtr(upper)
     prob -= ndtr(lower)
-    np.clip(prob, 1e-12, None, out=prob)
+    np.clip(prob, _PROBABILITY_FLOOR, None, out=prob)
 
     pdf_upper = _normal_pdf(upper)
     pdf_lower = _normal_pdf(lower)
@@ -511,9 +528,9 @@ def null_peak_overshoot(threshold_z):
     p < .001.
     """
     u = float(threshold_z)
-    if u <= 1.9:  # the high-threshold form is not positive below sqrt(3)
+    if u <= _PEAK_OVERSHOOT_MIN_Z:
         return u + 1.0 / max(u, 1e-6)
-    grid = np.linspace(u, u + 12.0, 4000)
+    grid = np.linspace(u, u + _PEAK_GRID_SPAN_Z, _PEAK_OVERSHOOT_GRID)
     density = grid * (grid**2 - 3.0) * np.exp(-0.5 * grid**2)
     density = np.clip(density, 0.0, None)
     mass = _trapezoid(density, grid)
@@ -553,11 +570,11 @@ def null_peak_mean_g(threshold_z, sample_size, design="one-sample"):
     many subjects it had -- neither of which is a fact about the brain.
     """
     u = float(threshold_z)
-    grid = np.linspace(u, u + 12.0, 2000)
+    grid = np.linspace(u, u + _PEAK_GRID_SPAN_Z, _PEAK_MEAN_GRID)
     density = np.clip(grid * (grid**2 - 3.0) * np.exp(-0.5 * grid**2), 0.0, None)
     mass = _trapezoid(density, grid)
     if mass <= 0:  # threshold below sqrt(3): fall back to the exponential overshoot
-        grid = np.linspace(u, u + 12.0, 2000)
+        grid = np.linspace(u, u + _PEAK_GRID_SPAN_Z, _PEAK_MEAN_GRID)
         density = u * np.exp(-u * (grid - u))
         mass = _trapezoid(density, grid)
 
@@ -604,13 +621,18 @@ def infer_threshold_from_minimum(min_stat_z, n_peaks):
     """
     z_min = float(min_stat_z)
     n_peaks = int(n_peaks)
-    if n_peaks <= 0 or not np.isfinite(z_min) or z_min <= 1.95:
+    if n_peaks <= 0 or not np.isfinite(z_min) or z_min <= _MIN_INFERRED_THRESHOLD_Z:
         return z_min
     if _expected_min_peak(z_min, n_peaks) <= z_min:  # already consistent
         return z_min
     try:
         return float(
-            brentq(lambda u: _expected_min_peak(u, n_peaks) - z_min, 1.95, z_min, xtol=1e-4)
+            brentq(
+                lambda u: _expected_min_peak(u, n_peaks) - z_min,
+                _MIN_INFERRED_THRESHOLD_Z,
+                z_min,
+                xtol=_THRESHOLD_SEARCH_XTOL,
+            )
         )
     except ValueError:
         return z_min
@@ -781,14 +803,8 @@ class CBES(Estimator):
         floor unless ``n_iters`` is raised past 1000. Familywise correction has no such floor,
         being read off the maximum statistic.
 
-        This is deliberately **not** a test of spatial convergence. An earlier version offered
-        a relocation null -- move every focus to a random in-mask voxel, keeping its effect
-        size -- which is the null ALE and MKDA use, and it was removed: its hypothesis is that
-        a focus could have been anywhere, so it answers whether foci pile up at a voxel, with
-        the magnitudes entering only as a multiplier. That is a different question from the one
-        an effect-size estimator exists to ask, and it also made the test sensitive to how much
-        of the analysis mask the foci happen to occupy, which is a property of the mask rather
-        than of the data.
+        This is deliberately **not** a test of spatial convergence, which is what a null that
+        relocates the foci -- ALE's and MKDA's -- would give instead.
 
         ``"none"`` returns ``p = 1`` everywhere, for inspecting the estimates at no cost.
     cluster_threshold : :obj:`float` or None, default=0.001
@@ -822,6 +838,22 @@ class CBES(Estimator):
 
     Notes
     -----
+    Where ALE and (M)KDA ask *where do studies agree something happened*, this asks *how big is
+    the effect there*. A peak's statistic and its study's sample size give Hedges' :math:`g`
+    (:func:`peak_stat_to_hedges_g`), and each voxel solves a local random-effects meta-analysis
+    over the foci whose kernels reach it:
+
+    .. math::
+
+        \\hat{g}(v) = \\frac{\\sum_k W_k(v) g_k}{\\sum_k W_k(v)},
+        \\qquad W_k(v) = \\frac{w_k(v)}{s^2_k + \\tau^2(v)}
+
+    for a kernel weight :math:`w_k(v)` and a kernel-weighted DerSimonian-Laird
+    :math:`\\tau^2(v)`. With every :math:`w = 1` it reduces to a textbook random-effects
+    meta-analysis, so the spatial part is a weighting scheme rather than a separate algorithm.
+    Nothing is imputed; non-reporting enters only through the selection model
+    :footcite:p:`tench2017coordinate`.
+
     Available maps:
 
     ============== ===============================================================
@@ -845,19 +877,12 @@ class CBES(Estimator):
     --------
     This estimator is new and has not been validated against a reference implementation.
 
-    Calibration, from 20 simulations apiece at 200 permutations, against a nominal .05. On a
-    global null of 30 studies reporting pure noise the uncorrected rate is 0.039 and familywise
-    correction rejected in 0 of 20. With the foci confined to a region a quarter the volume of
-    the analysis mask it is 0.022 -- the configuration that most exposes a null which moves the
-    foci, where the relocation null this replaced rejected at 0.134. Among twenty coordinate
-    studies, one, two, three and five image studies give 0.035, 0.044, 0.040 and 0.057 -- an
-    image contributes only its sign to the null, so a collection with one or two of them
-    randomizes over just two or four states, and the rate is lowest exactly there. Power, at a
-    focal g = 0.8 across 30 studies, is 18 of 20 at voxel-level FWE.
-
-    The rate therefore runs conservative rather than anticonservative throughout, which is the
-    safe direction but is not free. Twenty simulations cannot resolve a rate more finely than
-    this, and none of it substitutes for validation against a reference implementation.
+    Against a nominal .05, from 20 simulations apiece at 200 permutations, the uncorrected rate
+    ran 0.022 to 0.057 across global nulls, foci confined to a quarter of the mask, and one to
+    five image studies; power at a focal g = 0.8 across 30 studies was 18 of 20 at voxel-level
+    FWE. It is therefore conservative rather than anticonservative throughout, lowest where an
+    image study's sign flip gives the null only two or four states to randomize over. Twenty
+    simulations cannot resolve a rate more finely than that.
 
     What the null tests is worth being explicit about, because it is not what a reader of a
     coordinate-based meta-analysis may expect. A voxel is significant when the effects reported
@@ -1435,7 +1460,7 @@ class CBES(Estimator):
         # Matched to how the reference was summarised: the mean over each map's own top decile,
         # since a whole-brain mean measures how much of the brain is active rather than how
         # strong the effect is where it is present.
-        top = magnitude[magnitude >= np.percentile(magnitude, 90)]
+        top = magnitude[magnitude >= np.percentile(magnitude, _REFERENCE_TOP_PERCENTILE)]
         observed = float(top.mean())
         if observed <= 0:
             return 1.0
@@ -1495,10 +1520,10 @@ class CBES(Estimator):
         # collapsed toward zero and the scale came out far too small -- 0.16 against a true 0.8
         # on simulated data, which made adding images *worse* the more of them there were. The
         # metric flatters nothing: it measures how much true zero is in the covered set.
-        strong = from_images >= np.percentile(from_images, 75)
-        if strong.sum() < 50:
+        strong = from_images >= np.percentile(from_images, _CALIBRATION_PERCENTILE)
+        if strong.sum() < _MIN_CALIBRATION_VOXELS:
             strong = np.ones_like(from_images, dtype=bool)
-        ratios = from_images[strong] / np.clip(from_coordinates[strong], 1e-12, None)
+        ratios = from_images[strong] / np.clip(from_coordinates[strong], _PROBABILITY_FLOOR, None)
         ratios = ratios[np.isfinite(ratios) & (ratios > 0)]
         if not ratios.size:
             return 1.0
@@ -1910,7 +1935,7 @@ class CBES(Estimator):
 
         # Dense blocks are (n_studies, chunk); cap their element count rather than their width
         # so that a studyset with many experiments simply takes more, smaller chunks.
-        chunk = max(1, int(2e6 // max(n_studies, 1)))
+        chunk = max(1, int(_SELECTION_CHUNK_ELEMENTS // max(n_studies, 1)))
         for lo in range(0, active.size, chunk):
             hi = min(lo + chunk, active.size)
             width = hi - lo
@@ -2012,7 +2037,9 @@ class CBES(Estimator):
         # iterations, and close to one whenever the threshold is the usual several sigma.
         null_sd_sil = np.sqrt(null_var_sil)
         prob_silent_null = np.clip(
-            ndtr(cutoff_sil / null_sd_sil) - ndtr(-cutoff_sil / null_sd_sil), 1e-12, None
+            ndtr(cutoff_sil / null_sd_sil) - ndtr(-cutoff_sil / null_sd_sil),
+            _PROBABILITY_FLOOR,
+            None,
         )
         density_null = _normal_pdf(g_rep / np.sqrt(var_rep)) / np.sqrt(var_rep)
 
@@ -2053,9 +2080,9 @@ class CBES(Estimator):
                 pi_rep, pi_sil = pi[rep_voxel], pi[sil_voxel]
                 density_effect = _normal_pdf((g_rep - mu[rep_voxel]) / sigma_rep) / sigma_rep
                 resp_rep = pi_rep * density_effect
-                resp_rep /= resp_rep + (1.0 - pi_rep) * density_null + 1e-300
+                resp_rep /= resp_rep + (1.0 - pi_rep) * density_null + _LOGP_FLOOR
                 resp_sil = pi_sil * censoring["prob"]
-                resp_sil /= resp_sil + (1.0 - pi_sil) * prob_silent_null + 1e-300
+                resp_sil /= resp_sil + (1.0 - pi_sil) * prob_silent_null + _LOGP_FLOOR
 
                 numerator = np.bincount(
                     rep_voxel, weights=w_rep * resp_rep, minlength=mu.size
@@ -2068,8 +2095,8 @@ class CBES(Estimator):
                         out=np.zeros(mu.size),
                         where=total_weight > 0,
                     ),
-                    1e-4,
-                    1.0 - 1e-4,
+                    _PREVALENCE_CLAMP,
+                    1.0 - _PREVALENCE_CLAMP,
                 )
                 pi_shift = np.abs(pi - previous_pi)
 
@@ -2312,7 +2339,7 @@ class CBES(Estimator):
         observed = np.asarray(observed, dtype=float)
 
         if cluster_stat is None and cluster_threshold is not None:
-            n_pilot = int(min(max(_NULL_PILOT_ITERS, n_iters // 20), n_iters))
+            n_pilot = int(min(max(_NULL_PILOT_ITERS, n_iters // _NULL_PILOT_DIVISOR), n_iters))
             _, pilot_histogram, _, _, _ = self._permutation_chunk(
                 range(seed + n_iters, seed + n_iters + n_pilot),
                 sample_sizes,
@@ -2416,7 +2443,7 @@ class CBES(Estimator):
             "se": np.where(np.isfinite(fit["se"]), fit["se"], 0).astype(DEFAULT_FLOAT_DTYPE),
             "z": z_values.astype(DEFAULT_FLOAT_DTYPE),
             "p": p_values.astype(DEFAULT_FLOAT_DTYPE),
-            "logp": _nlogp_to_logp_values(np.log(np.clip(p_values, 1e-300, None))),
+            "logp": _nlogp_to_logp_values(np.log(np.clip(p_values, _LOGP_FLOOR, None))),
             "tau2": fit["tau2"].astype(DEFAULT_FLOAT_DTYPE),
             "n_studies": fit["n_studies"].astype(DEFAULT_FLOAT_DTYPE),
             "n_eff": fit["n_eff"].astype(DEFAULT_FLOAT_DTYPE),
