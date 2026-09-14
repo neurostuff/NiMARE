@@ -1381,3 +1381,157 @@ def test_reference_scale_is_opt_in_and_not_chosen_by_auto(studyset, small_mask, 
     )
     explicit.fit(studyset)
     assert explicit._peak_bias_scale_ != 1.0
+
+
+def test_permuting_magnitudes_leaves_the_spatial_design_untouched(studyset, small_mask):
+    """The invariant that is the whole point of the permutation null.
+
+    Relocation randomizes where the foci are, so the number of studies reaching a voxel is a
+    random quantity whose distribution need not match the observed one. It does not: with the
+    foci confined to part of the mask the relocation null put 1.95 studies on a covered voxel
+    against the observed 3.81, the standard error came out correspondingly too large, and the
+    test rejected at 0.13 instead of 0.05. Permuting the magnitudes over fixed positions cannot
+    do that, because the positions -- and hence the coverage and the multiplicity -- are the
+    ones that were observed, in every iteration.
+    """
+    estimator = CBES(fwhm=8.0, mask=small_mask, null_method="none")
+    estimator.fit(studyset)
+    table = estimator._focus_table_
+
+    permuted = estimator._permute_magnitudes(np.random.default_rng(0))
+
+    # Positions are untouched, as multisets and row by row.
+    assert np.array_equal(permuted[["i", "j", "k"]].values, table[["i", "j", "k"]].values)
+    # Everything else has moved, but only by reordering: the multiset of rows is preserved.
+    moved = [c for c in table.columns if c not in ("i", "j", "k")]
+    assert not np.array_equal(permuted["g"].values, table["g"].values)
+    for column in moved:
+        assert sorted(map(str, permuted[column].values)) == sorted(map(str, table[column].values))
+    # Whole rows travel together: a focus keeps its own study, sample size and variance beside
+    # its effect size, or it would be tested against another study's censoring bound.
+    original = {tuple(map(str, row)) for row in table[moved].values}
+    assert {tuple(map(str, row)) for row in permuted[moved].values} == original
+
+    # The consequence: identical coverage and identical studies per voxel.
+    args = (estimator._sample_sizes_, estimator._thresholds_, estimator._image_studies_)
+    observed_fit, _ = estimator._statistic(table, *args)
+    permuted_fit, _ = estimator._statistic(permuted, *args)
+    assert np.array_equal(observed_fit["covered"], permuted_fit["covered"])
+    assert np.array_equal(observed_fit["n_studies"], permuted_fit["n_studies"])
+
+
+def test_the_two_nulls_test_different_hypotheses(small_mask):
+    """Convergence and magnitude are separate questions, and the nulls separate them.
+
+    Every study reports a peak at the same place, and every peak in the collection -- there and
+    in the scatter around it -- is drawn from one distribution. So the site has overwhelming
+    spatial convergence and an entirely unremarkable magnitude, which is exactly the
+    configuration on which the two hypotheses disagree.
+
+    Relocation, whose hypothesis is that the positions were arbitrary, should call it
+    significant: thirty studies do not land on one voxel by chance. Permutation, whose
+    hypothesis is that effect size is unrelated to location, should not: the effects reported
+    there are the same size as the effects reported everywhere else. A user choosing between
+    these nulls is choosing between those two claims, and the test fixes that they are not
+    interchangeable.
+    """
+    rng = np.random.default_rng(5)
+    studies = []
+    for k in range(30):
+        n_subjects = int(rng.integers(20, 40))
+        # one peak on the convergence site, three scattered; all heights from one distribution
+        positions = [(0.0, 0.0, 0.0)] + [
+            tuple(float(v) for v in rng.uniform(-30, 30, 3)) for _ in range(3)
+        ]
+        points = [
+            {
+                "space": "MNI",
+                "coordinates": list(position),
+                "values": [{"kind": "Z", "value": float(rng.uniform(3.4, 4.2))}],
+            }
+            for position in positions
+        ]
+        studies.append(
+            {
+                "id": f"s{k}",
+                "name": f"s{k}",
+                "metadata": {"sample_sizes": [n_subjects]},
+                "analyses": [
+                    {
+                        "id": f"s{k}-1",
+                        "name": "1",
+                        "metadata": {"sample_sizes": [n_subjects]},
+                        "points": points,
+                        "images": [],
+                    }
+                ],
+            }
+        )
+    from nimare.studyset import Studyset
+
+    convergent = Studyset({"id": "conv", "name": "conv", "studies": studies})
+
+    shared = dict(fwhm=12.0, mask=small_mask, selection_model="none", n_iters=100, seed=0)
+    relocation_estimator = CBES(null_method="montecarlo", **shared)
+    permutation_estimator = CBES(null_method="permute-magnitudes", **shared)
+    relocation = relocation_estimator.fit(convergent)
+    permutation = permutation_estimator.fit(convergent)
+
+    ijk = relocation_estimator._in_mask_ijk()
+    centre = int(np.argmin(np.abs(ijk - np.array([10, 10, 10])).sum(axis=1)))
+    relocation_p = float(relocation.get_map("p", return_type="array")[centre])
+    permutation_p = float(permutation.get_map("p", return_type="array")[centre])
+
+    # Thirty studies converging is unmissable to the null that says positions are arbitrary.
+    assert relocation_p < 0.05
+    # It is unremarkable to the null that says magnitude is unrelated to position.
+    assert permutation_p > relocation_p * 5
+
+    # The estimates are the same map either way; only the reference distribution differs.
+    assert np.allclose(
+        relocation.get_map("g", return_type="array"),
+        permutation.get_map("g", return_type="array"),
+    )
+    assert "permutation null" in permutation.description_
+    assert "converge" in relocation.description_
+
+
+def test_permutation_null_calibrates_uncorrected_p(null_studyset, small_mask):
+    """Under a global null the permutation null must also return roughly the nominal rate.
+
+    Its immunity to the multiplicity mismatch is worth nothing if the rate is wrong for some
+    other reason, so it is held to the same standard as the relocation null beside it.
+    """
+    permutation = CBES(
+        fwhm=12.0,
+        mask=small_mask,
+        selection_model="none",
+        null_method="permute-magnitudes",
+        n_iters=50,
+    ).fit(null_studyset)
+
+    assert np.mean(permutation.get_map("p", return_type="array") < 0.05) < 0.15
+
+
+def test_fwe_correction_follows_the_null_the_estimator_was_given(null_studyset, small_mask):
+    """FWE has to randomize the same way the uncorrected map did.
+
+    Correcting a permutation-null map against a maximum statistic built by relocation would
+    test one hypothesis at the voxel level and a different one familywise.
+    """
+    estimator = CBES(
+        fwhm=12.0,
+        mask=small_mask,
+        selection_model="none",
+        null_method="permute-magnitudes",
+        n_iters=30,
+    )
+    result = estimator.fit(null_studyset)
+    assert estimator._null_scheme() == "permute-magnitudes"
+
+    maps, _, _ = estimator.correct_fwe_montecarlo(result, vfwe_only=True)
+    assert np.all(np.isfinite(maps["logp_level-voxel"]))
+    # Relocation stays the scheme for every other setting, including the ones that do not
+    # permute during fit but still have to for the correction.
+    for method in ("montecarlo", "approximate", "none"):
+        assert CBES(null_method=method)._null_scheme() == "relocate"

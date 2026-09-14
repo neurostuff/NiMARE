@@ -126,7 +126,7 @@ DESIGNS = ("one-sample", "two-sample")
 
 SELECTION_MODELS = ("zero-inflated", "none")
 
-NULL_METHODS = ("montecarlo", "approximate", "none")
+NULL_METHODS = ("montecarlo", "approximate", "permute-magnitudes", "none")
 
 #: Resolution of the Monte Carlo null histogram for |z|, and where its upper tail is clipped.
 _NULL_Z_STEP = 0.01
@@ -780,29 +780,53 @@ class CBES(Estimator):
         ``n_studies`` interpretable and the fit affordable.
     max_iter : :obj:`int`, default=25
         Maximum Newton iterations for the censored likelihood.
-    null_method : {"approximate", "montecarlo", "none"}, default="approximate"
+    null_method : {"approximate", "montecarlo", "permute-magnitudes", "none"}, \
+default="approximate"
         How uncorrected p-values are obtained. ``g / se`` is not null-referenced, so they come
-        from a spatial null rather than from the standard error.
+        from a randomization null rather than from the standard error -- and the two available
+        randomizations test **different hypotheses**, so this choice is not only about cost.
 
-        ``"approximate"`` draws each voxel's null directly from the studies' foci counts and
-        kernel geometry, which costs nothing in the size of the mask. It agrees with the
-        relocation null to r = 0.999 on the p-values and matches its calibration at a quarter
-        of the cost, which is why it is the default. ``"montecarlo"`` relocates every focus
-        ``n_iters`` times and refits; it is what ``"approximate"`` is validated against, and
-        what :class:`~nimare.correct.FDRCorrector` and ``FWECorrector(method="bonferroni")``
-        are meaningful on top of. ``"none"`` returns ``p = 1`` everywhere, for inspecting the
-        estimates at no cost.
+        Relocating a focus asserts that its position was arbitrary; permuting the magnitudes
+        over fixed positions asserts that effect size is unrelated to location. A voxel where
+        every study agrees on a modest effect is significant under the first and not under the
+        second. Neither answers "is the pooled effect here different from zero" in absolute
+        terms, which is what the selection bias in reported peaks costs and why ``g / se``
+        cannot simply be referred to a normal.
+
+        ``"approximate"`` and ``"montecarlo"`` both ask the **convergence** question.
+        ``"approximate"``, the default, draws each voxel's null directly from the studies' foci
+        counts and kernel geometry, which costs nothing in the size of the mask; it agrees with
+        the relocation null to r = 0.999 on the p-values at a quarter of the cost.
+        ``"montecarlo"`` relocates every focus ``n_iters`` times and refits; it is what
+        ``"approximate"`` is validated against, and what :class:`~nimare.correct.FDRCorrector`
+        and ``FWECorrector(method="bonferroni")`` are meaningful on top of.
+
+        ``"permute-magnitudes"`` asks the **relative magnitude** question, reassigning the foci
+        to each other's locations with the locations held fixed. Because nothing moves, each
+        voxel keeps its own studies in every iteration and gets its own null, and the p-value is
+        the usual randomization estimate against that -- where relocation, whose configurations
+        are not tied to any voxel, must pool ``|z|`` over the brain and so refers a voxel
+        carrying many studies to a distribution made mostly of voxels carrying few. That is what
+        separates the two questions in practice: under relocation a site where thirty studies
+        agree on an unremarkable effect is significant, and here it is not. Being per-voxel also
+        makes this null immune to the mask-fill mismatch that makes relocation anticonservative
+        when the analysis mask is much larger than the region the foci occupy. It costs a refit
+        per iteration, as ``"montecarlo"`` does, and its p cannot fall below
+        ``1 / (1 + n_iters)``.
+
+        ``"none"`` returns ``p = 1`` everywhere, for inspecting the estimates at no cost.
     cluster_threshold : :obj:`float` or None, default=0.001
         Cluster-forming threshold, as an uncorrected p-value, for the cluster-level FWE null
         that :meth:`fit` builds alongside the voxel-level one. Set to None to skip it, which
         makes :meth:`correct_fwe_montecarlo` pay for a second pass over the permutations if
         cluster correction is then requested.
     n_iters : :obj:`int`, default=1000
-        Iterations for the null, read differently by the two methods. Under
+        Iterations for the null, read differently by the different methods. Under
         ``null_method="approximate"`` it sets the draws per voxel, at 1000 each, and costs
-        little. Under ``"montecarlo"`` each iteration is a full refit and this becomes the
-        dominant cost of the estimator -- far more so than for ALE, whose per-iteration
-        statistic is much cheaper -- so reduce it when exploring with that null.
+        little. Under ``"montecarlo"`` or ``"permute-magnitudes"`` each iteration is a full
+        refit and this becomes the dominant cost of the estimator -- far more so than for ALE,
+        whose per-iteration statistic is much cheaper -- so reduce it when exploring with
+        either of those nulls.
     n_cores : :obj:`int`, default=1
         Processes used for the Monte Carlo null, which is where nearly all the time goes.
         ``-1`` uses every available core and is close to linear, since the relocations are
@@ -2190,8 +2214,52 @@ class CBES(Estimator):
             for study_id, (g, var_g, usable) in images.items()
         }
 
-    def _null_iteration(self, seed, in_mask_ijk, sample_sizes, thresholds, cluster_stat=None):
-        """One relocation of every focus.
+    def _permute_magnitudes(self, rng):
+        """Reassign the reported foci to each other's locations, positions held fixed.
+
+        The other null transformation the data admit, and a different hypothesis. Relocation
+        holds the magnitudes and randomizes the positions, so it asks whether the foci pile up
+        here more than uniform scattering would explain -- a convergence question, which the
+        magnitudes only scale. This holds the positions and randomizes what sits on them, so it
+        asks whether the effects reported near here are large for this collection.
+
+        Permuting is only half of what makes that a different test. Because nothing moves, each
+        voxel keeps its own studies in every iteration, so it has a null of its own and is
+        compared only against itself -- see :meth:`_compute_permutation_null`. Referring the
+        permuted ``|z|`` to a histogram pooled over the brain instead would put a voxel carrying
+        thirty studies beside voxels carrying two, and convergence would drive significance here
+        exactly as it does under relocation, permutation or no permutation.
+
+        Held that way, the two nulls separate cleanly. A location where every study agrees on a
+        modest effect is unremarkable here, because a modest effect is unremarkable in the pool
+        being permuted; under relocation it is significant, because thirty studies do not land
+        on one voxel by chance. Neither is wrong, and :meth:`fit` runs whichever
+        ``null_method`` names.
+
+        The fixed positions also make the null immune to a mis-scaling that relocation is not.
+        Covered voxels and studies per voxel match the observed fit exactly, where uniform
+        relocation gives them whatever the mask fill implies: on the NIDM pain peaks relocation
+        puts 8.86 studies on a covered voxel against the observed 7.06.
+
+        Whole rows move together, so a focus keeps its study membership, sample size and
+        reporting threshold alongside its effect size -- permuting the value alone would test it
+        against another study's censoring bound. Images have no location to hold fixed, so they
+        take the same sign flip they take under relocation.
+        """
+        table = self._focus_table_
+        permuted = table.copy()
+        order = rng.permutation(len(table))
+        # column by column rather than as one block: a mixed-dtype ``.values`` would come back
+        # as object and quietly cost more than the permutation itself
+        for column in table.columns:
+            if column not in ("i", "j", "k"):
+                permuted[column] = table[column].values[order]
+        return permuted
+
+    def _null_iteration(
+        self, seed, in_mask_ijk, sample_sizes, thresholds, cluster_stat=None, scheme="relocate"
+    ):
+        """One iteration of the null named by ``scheme``.
 
         Returns ``(histogram of |z|, max |z|, max cluster size, max cluster mass)``; the two
         cluster measures are zero unless ``cluster_stat`` gives a cluster-forming threshold.
@@ -2201,10 +2269,13 @@ class CBES(Estimator):
         within the mask -- but evaluated with a statistic that is sensitive to magnitude.
         """
         rng = np.random.default_rng(seed)
-        permuted = self._focus_table_.copy()
-        permuted[["i", "j", "k"]] = in_mask_ijk[
-            rng.integers(0, len(in_mask_ijk), size=len(permuted))
-        ]
+        if scheme == "permute-magnitudes":
+            permuted = self._permute_magnitudes(rng)
+        else:
+            permuted = self._focus_table_.copy()
+            permuted[["i", "j", "k"]] = in_mask_ijk[
+                rng.integers(0, len(in_mask_ijk), size=len(permuted))
+            ]
         _, z_null = self._statistic(
             permuted, sample_sizes, thresholds, self._flip_image_signs(rng)
         )
@@ -2223,8 +2294,17 @@ class CBES(Estimator):
             )
         return counts, peak, float(max_size), float(max_mass)
 
+    def _null_scheme(self):
+        """Which randomization the estimator's ``null_method`` asks for.
+
+        Only ``"permute-magnitudes"`` permutes; every other setting relocates, including
+        ``"approximate"`` and ``"none"``, whose FWE correction still has to permute something
+        and for which relocation is the null the estimator was validated on.
+        """
+        return "permute-magnitudes" if self.null_method == "permute-magnitudes" else "relocate"
+
     def _compute_montecarlo_null(
-        self, n_iters, n_cores, seed, cluster_stat=None, cluster_threshold=None
+        self, n_iters, n_cores, seed, cluster_stat=None, cluster_threshold=None, scheme=None
     ):
         """Accumulate the null distributions in one pass over the relocations.
 
@@ -2242,6 +2322,7 @@ class CBES(Estimator):
         sample_sizes = getattr(self, "_sample_sizes_", None)
         thresholds = getattr(self, "_thresholds_", None)
         n_cores = _check_ncores(n_cores)
+        scheme = self._null_scheme() if scheme is None else scheme
 
         if cluster_stat is None and cluster_threshold is not None:
             n_pilot = int(min(max(_NULL_PILOT_ITERS, n_iters // 20), n_iters))
@@ -2249,7 +2330,7 @@ class CBES(Estimator):
                 # Seeded past the main loop's range so the pilot draws are disjoint from
                 # it, and never negative, which ``default_rng`` rejects.
                 delayed(self._null_iteration)(
-                    seed + n_iters + i, in_mask_ijk, sample_sizes, thresholds
+                    seed + n_iters + i, in_mask_ijk, sample_sizes, thresholds, None, scheme
                 )
                 for i in range(n_pilot)
             )
@@ -2261,7 +2342,7 @@ class CBES(Estimator):
 
         results = Parallel(n_jobs=n_cores)(
             delayed(self._null_iteration)(
-                seed + i, in_mask_ijk, sample_sizes, thresholds, cluster_stat
+                seed + i, in_mask_ijk, sample_sizes, thresholds, cluster_stat, scheme
             )
             for i in tqdm(range(n_iters), disable=n_iters < 50, desc="CBES null")
         )
@@ -2279,6 +2360,110 @@ class CBES(Estimator):
                 "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
             ] = np.array([mass for _, _, _, mass in results], dtype=float)
         return histogram, max_values
+
+    def _permutation_chunk(self, seeds, sample_sizes, thresholds, observed, cluster_stat):
+        """Run a block of permutations, reducing as it goes.
+
+        Chunked rather than one iteration per task because the per-voxel null is accumulated,
+        not stored: returning each iteration's whole ``|z|`` map would cost ``n_voxels x
+        n_iters`` floats, which on a whole brain at the default ``n_iters`` is gigabytes. A
+        chunk keeps one counter per voxel instead, and the counters sum across chunks.
+        """
+        exceedances = np.zeros(observed.size, dtype=np.int64)
+        histogram = np.zeros(len(_null_bin_edges()) - 1, dtype=float)
+        peaks, sizes, masses = [], [], []
+        mask_bool = self._mask_bool() if cluster_stat is not None else None
+        for seed in seeds:
+            rng = np.random.default_rng(seed)
+            _, z_null = self._statistic(
+                self._permute_magnitudes(rng),
+                sample_sizes,
+                thresholds,
+                self._flip_image_signs(rng),
+            )
+            absolute = np.abs(z_null)
+            exceedances += absolute >= observed
+            counts, _ = np.histogram(np.clip(absolute, 0, _NULL_MAX_Z), bins=_null_bin_edges())
+            histogram += counts
+            peaks.append(float(absolute.max()) if absolute.size else 0.0)
+            if cluster_stat is not None and np.isfinite(cluster_stat):
+                volume = np.zeros(mask_bool.shape, dtype=float)
+                volume[mask_bool] = z_null
+                size, mass = _calculate_cluster_measures(
+                    volume, cluster_stat, _CLUSTER_CONNECTIVITY, tail="two"
+                )
+                sizes.append(float(size))
+                masses.append(float(mass))
+        return exceedances, histogram, peaks, sizes, masses
+
+    def _compute_permutation_null(
+        self, n_iters, n_cores, seed, observed, cluster_stat=None, cluster_threshold=None
+    ):
+        """Per-voxel null from permuting the magnitudes over fixed positions.
+
+        Unlike relocation, this null is *per voxel*. A relocated configuration is not tied to
+        any particular voxel, so the relocation null has to pool ``|z|`` over the brain to have
+        enough draws, and a voxel carrying many studies is then referred to a distribution made
+        mostly of voxels carrying few -- which is why convergence drives significance under that
+        null even though its statistic is a magnitude. Here the positions never move, so each
+        voxel keeps its own studies in every iteration and has its own null. Comparing a voxel
+        only against itself is what isolates the magnitude question from the convergence one.
+
+        The uncorrected p is the usual randomization estimate, ``(1 + #{null >= observed}) /
+        (1 + n_iters)``, which is why it cannot fall below ``1 / (1 + n_iters)``; the default
+        ``cluster_threshold`` of .001 therefore sits at the floor unless ``n_iters`` is raised
+        past 1000. Familywise correction still comes from the maximum statistic, which has no
+        such floor once ``tail_approximation`` is applied.
+
+        The pooled histogram is still accumulated, but only to resolve the cluster-forming
+        threshold, which needs a single ``|z|`` cutoff rather than a per-voxel one.
+        """
+        sample_sizes = getattr(self, "_sample_sizes_", None)
+        thresholds = getattr(self, "_thresholds_", None)
+        n_cores = _check_ncores(n_cores)
+        observed = np.asarray(observed, dtype=float)
+
+        if cluster_stat is None and cluster_threshold is not None:
+            n_pilot = int(min(max(_NULL_PILOT_ITERS, n_iters // 20), n_iters))
+            _, pilot_histogram, _, _, _ = self._permutation_chunk(
+                range(seed + n_iters, seed + n_iters + n_pilot),
+                sample_sizes,
+                thresholds,
+                observed,
+                None,
+            )
+            cluster_stat = _stat_from_histogram(cluster_threshold, pilot_histogram)
+            self.null_distributions_["cluster_forming_stat"] = cluster_stat
+
+        chunks = [
+            range(seed + start, seed + min(start + -(-n_iters // n_cores), n_iters))
+            for start in range(0, n_iters, -(-n_iters // n_cores))
+        ]
+        results = Parallel(n_jobs=n_cores)(
+            delayed(self._permutation_chunk)(
+                chunk, sample_sizes, thresholds, observed, cluster_stat
+            )
+            for chunk in tqdm(chunks, disable=len(chunks) < 2, desc="CBES permutation null")
+        )
+
+        exceedances = np.sum([counts for counts, _, _, _, _ in results], axis=0)
+        histogram = np.sum([hist for _, hist, _, _, _ in results], axis=0).astype(np.float64)
+        max_values = np.array(
+            [peak for _, _, peaks, _, _ in results for peak in peaks], dtype=float
+        )
+        p_values = (1.0 + exceedances) / (1.0 + n_iters)
+
+        self.null_distributions_["histogram_bins"] = _null_bin_edges()
+        self.null_distributions_["histweights_corr-none_method-montecarlo"] = histogram
+        self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = max_values
+        if cluster_stat is not None and np.isfinite(cluster_stat):
+            self.null_distributions_[
+                "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+            ] = np.array([size for _, _, _, sizes, _ in results for size in sizes], dtype=float)
+            self.null_distributions_[
+                "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+            ] = np.array([mass for _, _, _, _, masses in results for mass in masses], dtype=float)
+        return p_values, max_values
 
     def _approximate_null(self, table, sample_sizes, thresholds, n_draws, seed):
         """Null distribution of ``|z|`` from factorised per-voxel draws, not brain refits.
@@ -2486,7 +2671,15 @@ class CBES(Estimator):
             table, self._sample_sizes_, self._thresholds_, self._image_studies_
         )
 
-        if self.null_method == "montecarlo":
+        if self.null_method == "permute-magnitudes":
+            p_values, _ = self._compute_permutation_null(
+                self.n_iters,
+                self.n_cores,
+                self.seed,
+                np.abs(z_values),
+                cluster_threshold=self.cluster_threshold,
+            )
+        elif self.null_method == "montecarlo":
             histogram, _ = self._compute_montecarlo_null(
                 self.n_iters,
                 self.n_cores,
@@ -2537,17 +2730,23 @@ class CBES(Estimator):
     ):
         r"""FWE correction from maximum-statistic nulls, at voxel and cluster level.
 
-        Each iteration moves every focus to a uniformly drawn in-mask voxel, carrying its
-        effect size and study membership with it, and refits. Three null distributions come out
-        of the same refits: the maximum ``|z|``, the maximum cluster size, and the maximum
-        cluster mass. Clusters are formed on ``|z|`` at the statistic corresponding to
-        ``voxel_thresh``, read off the uncorrected null rather than assumed -- CBES's ``z`` is
-        not standard normal, so a nominal 3.29 would not be a p of .001.
+        Each iteration randomizes the foci and refits, under whichever null ``null_method``
+        names, so the correction tests the same hypothesis the uncorrected map does. With
+        ``"permute-magnitudes"`` that means reassigning the foci to each other's locations;
+        with every other setting, including ``"approximate"`` and ``"none"``, it means moving
+        each focus to a uniformly drawn in-mask voxel, carrying its effect size and study
+        membership with it.
 
-        When :meth:`fit` ran the same relocations for ``null_method="montecarlo"`` at the same
-        cluster-forming threshold, all three nulls are reused and this is nearly free. Asking
-        for a different ``voxel_thresh`` than the estimator's ``cluster_threshold``, or fitting
-        without a Monte Carlo null, means permuting again here.
+        Three null distributions come out of the same refits: the maximum ``|z|``, the maximum
+        cluster size, and the maximum cluster mass. Clusters are formed on ``|z|`` at the
+        statistic corresponding to ``voxel_thresh``, read off the uncorrected null rather than
+        assumed -- CBES's ``z`` is not standard normal, so a nominal 3.29 would not be a p of
+        .001.
+
+        When :meth:`fit` ran the same iterations at the same cluster-forming threshold, all
+        three nulls are reused and this is nearly free. Asking for a different ``voxel_thresh``
+        than the estimator's ``cluster_threshold``, or fitting without a Monte Carlo null,
+        means permuting again here.
 
         Parameters
         ----------
@@ -2596,15 +2795,27 @@ class CBES(Estimator):
             in self.null_distributions_
         )
 
+        permuting = self._null_scheme() == "permute-magnitudes"
+        observed_abs = np.abs(result.maps["z"]) if permuting else None
         if vfwe_only:
             if not reusable:
-                _, cached = self._compute_montecarlo_null(n_iters, n_cores, seed)
+                if permuting:
+                    _, cached = self._compute_permutation_null(
+                        n_iters, n_cores, seed, observed_abs
+                    )
+                else:
+                    _, cached = self._compute_montecarlo_null(n_iters, n_cores, seed)
         elif not already_clustered:
             # fit() either did not permute, or did so at a different cluster-forming
             # threshold, so the cluster nulls have to be built here.
-            _, cached = self._compute_montecarlo_null(
-                n_iters, n_cores, seed, cluster_threshold=voxel_thresh
-            )
+            if permuting:
+                _, cached = self._compute_permutation_null(
+                    n_iters, n_cores, seed, observed_abs, cluster_threshold=voxel_thresh
+                )
+            else:
+                _, cached = self._compute_montecarlo_null(
+                    n_iters, n_cores, seed, cluster_threshold=voxel_thresh
+                )
             cluster_stat = self.null_distributions_.get("cluster_forming_stat")
 
         if not vfwe_only and (cluster_stat is None or not np.isfinite(cluster_stat)):
@@ -2716,7 +2927,16 @@ class CBES(Estimator):
             inference = (
                 " Uncorrected p-values were obtained from a Monte Carlo null distribution, in "
                 f"which every focus was relocated to a random voxel within the analysis mask "
-                f"{self.n_iters} times while retaining its effect size and study membership."
+                f"{self.n_iters} times while retaining its effect size and study membership, "
+                "testing whether the foci converge at each voxel beyond chance."
+            )
+        elif self.null_method == "permute-magnitudes":
+            inference = (
+                " Uncorrected p-values were obtained from a permutation null distribution, in "
+                f"which the reported foci were reassigned to each other's locations "
+                f"{self.n_iters} times with the locations themselves held fixed, testing "
+                "whether the effects reported near each voxel are larger than those reported "
+                "elsewhere in the collection rather than whether the foci converge there."
             )
         elif self.null_method == "approximate":
             inference = (
