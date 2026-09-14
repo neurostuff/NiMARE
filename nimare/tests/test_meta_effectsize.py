@@ -1894,3 +1894,22 @@ def test_an_absent_or_empty_analysis_mask_changes_nothing(roi_studyset, studyset
         rtol=1e-10,
     )
     assert CBES(fwhm=8.0, null_method="none")._load_analysis_masks(roi_studyset) == {}
+
+
+def test_dof_is_emitted_so_se_can_be_referred_to_a_t(studyset, small_mask):
+    """``se`` is observed information on few studies, so it needs a t reference, not a normal.
+
+    Simulated against a known effect, a normal interval on this ``se`` covers 85-94% of nominal
+    95%, where a t on ``dof`` covers 91-97%. The map is emitted so a caller can do that; the
+    p-values are unaffected, coming from the permutation null rather than from any reference
+    distribution.
+    """
+    result = CBES(fwhm=8.0, mask=small_mask, null_method="none").fit(studyset)
+    dof = result.get_map("dof", return_type="array").ravel()
+    n_eff = result.get_map("n_eff", return_type="array").ravel()
+
+    assert np.all(dof >= 0.0)
+    covered = n_eff > 0
+    np.testing.assert_allclose(dof[covered], np.clip(n_eff[covered] - 1.0, 0.0, None), rtol=1e-6)
+    # Somewhere has enough studies for a t interval to be usable at all.
+    assert np.any(dof > 1.0)

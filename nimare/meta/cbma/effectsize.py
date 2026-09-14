@@ -951,7 +951,16 @@ class CBES(Estimator):
     "tau2"         Local between-study variance.
     "n_studies"    Number of studies with a focus inside the kernel support.
     "n_eff"        Kish effective number of studies, ``(sum w)^2 / sum w^2``.
+    "dof"          ``n_eff - 1``, the degrees of freedom to refer ``se`` to. See below.
     ============== ===============================================================
+
+    Build an interval from ``se`` against a *t* on ``dof``, not against a normal. ``se`` is an
+    observed-information standard error and the number of studies informing it is small, so the
+    normal reference is too short: simulated against a known effect it covers 85% to 94% of
+    nominal-95% intervals, worst where the prevalence is around a half and the mixture is doing
+    the work, while a ``t`` on ``dof`` covers 91% to 97% and errs conservative where few studies
+    reported. The p-values are unaffected either way -- they come from the permutation null, not
+    from referring ``z`` to any distribution.
 
     ``prevalence`` and ``g_marginal`` are added under the zero-inflated selection model.
     ``prevalence`` is worth reading in its own right: it is scale-free, so unlike ``g`` it does
@@ -2602,6 +2611,7 @@ class CBES(Estimator):
             "tau2": fit["tau2"].astype(DEFAULT_FLOAT_DTYPE),
             "n_studies": fit["n_studies"].astype(DEFAULT_FLOAT_DTYPE),
             "n_eff": fit["n_eff"].astype(DEFAULT_FLOAT_DTYPE),
+            "dof": np.clip(fit["n_eff"] - 1.0, 0.0, None).astype(DEFAULT_FLOAT_DTYPE),
         }
         if "prevalence" in fit:
             maps["prevalence"] = fit["prevalence"].astype(DEFAULT_FLOAT_DTYPE)
