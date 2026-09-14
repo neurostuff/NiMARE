@@ -38,7 +38,13 @@ TRUE_G = 0.5
 
 @pytest.fixture(scope="module")
 def studyset():
-    """30 studies with a true g of 0.5 at the origin, thresholded at p < .001."""
+    """30 studies with a true g of 0.5 at the origin, thresholded at p < .001.
+
+    Three noise foci per study, at the low end of the 3-to-20 range a real coordinate table
+    covers. Not one: the null shuffles values within an analysis, so a study reporting a single
+    focus has one arrangement and contributes no randomness -- at one noise focus this
+    collection admitted 63 arrangements in total and could not be tested at all.
+    """
     return create_effect_size_coordinate_studyset(
         [TRUTH],
         effect_sizes=TRUE_G,
@@ -46,7 +52,7 @@ def studyset():
         sample_size=(20, 40),
         tau=0.1,
         seed=7,
-        n_noise_foci=1,
+        n_noise_foci=3,
         noise_extent=30.0,
         spatial_sd=5.0,
     )
@@ -236,7 +242,9 @@ def test_cbes_produces_expected_maps(studyset, small_mask):
 
     expected = {"g", "se", "z", "p", "logp", "tau2", "n_studies", "n_eff", "prevalence"}
     assert expected <= set(result.maps)
-    assert "g_marginal" in result.maps
+    # The prevalence-weighted marginal is deliberately not emitted: it multiplies an
+    # unidentified scale by a compressed prevalence, and neither factor is recoverable from it.
+    assert "g_marginal" not in result.maps
 
     p_values = result.get_map("p", return_type="array")
     assert np.all((p_values >= 0) & (p_values <= 1))
@@ -253,13 +261,6 @@ def test_cbes_produces_expected_maps(studyset, small_mask):
 
     # And the estimate at the truth is close to the simulated value.
     assert abs(value_at(result, "g") - TRUE_G) < 0.15
-
-    # g_marginal is the population-average effect: prevalence times the conditional effect.
-    assert np.allclose(
-        result.get_map("g_marginal", return_type="array"),
-        result.get_map("g", return_type="array") * prevalence,
-        atol=1e-6,
-    )
 
 
 def test_cbes_description_mentions_the_model(studyset, small_mask):
@@ -302,8 +303,6 @@ def test_zero_component_keeps_silence_from_reading_as_a_small_common_effect(
 
     assert 0.0 < value_at(result, "prevalence") < 1.0  # some studies null, some not
     assert value_at(result, "g") > 0.0  # and the effect among the rest is positive
-    # The marginal is the product, and is what a convergence method would be approximating.
-    assert value_at(result, "g_marginal") < value_at(result, "g")
 
 
 def test_prevalence_tracks_the_simulated_fraction(small_mask):
@@ -1178,29 +1177,112 @@ def images_only_studyset(tmp_path_factory):
     return Studyset(str(source)), str(directory / "mask.nii.gz")
 
 
-def test_the_null_sign_flips_images_rather_than_holding_them_fixed():
-    """Coordinates and images are exchangeable in different ways, so the null must move both."""
+def test_the_null_rearranges_each_image_within_itself_rather_than_flipping_its_sign():
+    """Images take the coordinate side's action, so both randomize one hypothesis, not two."""
     estimator = CBES()
+    usable = np.array([True, True, True, False])
     estimator._image_studies_ = {
-        "a": (np.array([1.0, -2.0, 3.0]), np.array([0.1, 0.1, 0.1]), np.ones(3, bool)),
-        "b": (np.array([4.0, 5.0, -6.0]), np.array([0.2, 0.2, 0.2]), np.ones(3, bool)),
+        "a": (np.array([1.0, -2.0, 3.0, 0.0]), np.array([0.1, 0.2, 0.3, np.inf]), usable),
+        "b": (np.array([4.0, 5.0, -6.0, 0.0]), np.array([0.4, 0.5, 0.6, np.inf]), usable),
     }
-    seen = set()
+    seen = {"a": set(), "b": set()}
     for seed in range(40):
-        flipped = estimator._flip_image_signs(np.random.default_rng(seed))
-        for name, (g, var_g, usable) in flipped.items():
-            original = estimator._image_studies_[name]
-            # Either the map or its negation, never anything else, and variances untouched.
-            assert np.allclose(g, original[0]) or np.allclose(g, -original[0])
-            assert np.array_equal(var_g, original[1])
-            assert np.array_equal(usable, original[2])
-            seen.add((name, bool(np.allclose(g, -original[0]))))
-    # Both signs must actually occur, or this is not a permutation.
-    assert seen == {("a", True), ("a", False), ("b", True), ("b", False)}
+        permuted = estimator._permute_image_values(np.random.default_rng(seed))
+        for name, (g, var_g, flags) in permuted.items():
+            g_0, var_0, _ = estimator._image_studies_[name]
+            # The same multiset of values, so the study's own distribution is preserved and
+            # only which voxel holds which value has changed. A sign flip would not be here.
+            assert sorted(g[usable]) == sorted(g_0[usable])
+            # The variance travels with the value it belongs to: the pair is one observation,
+            # and separating them would invent a precision the study never reported.
+            for value, variance in zip(g[usable], var_g[usable]):
+                assert variance == pytest.approx(var_0[g_0 == value][0])
+            # Unusable voxels are untouched, and the flags themselves never move.
+            assert g[~usable] == pytest.approx(g_0[~usable])
+            assert np.array_equal(flags, usable)
+            seen[name].add(tuple(g[usable]))
+    # Several arrangements must actually occur, or this is not a permutation. Three usable
+    # voxels admit six, and 40 draws should find all of them.
+    assert len(seen["a"]) == 6 and len(seen["b"]) == 6
 
-    # A coordinate-only fit has nothing to flip and must be left exactly alone.
+    # A coordinate-only fit has nothing to rearrange and must be left exactly alone.
     estimator._image_studies_ = {}
-    assert not estimator._flip_image_signs(np.random.default_rng(0))
+    assert not estimator._permute_image_values(np.random.default_rng(0))
+
+
+def test_the_null_shuffles_values_within_an_analysis_and_never_between_them():
+    """A value carries its study's sample size and threshold, so it may only move within it."""
+    estimator = CBES()
+    estimator._permutation_groups_ = None
+    estimator._focus_table_ = pd.DataFrame(
+        {
+            "id": ["a", "a", "a", "b", "b", "c"],
+            "i": [0, 1, 2, 3, 4, 5],
+            "j": [0, 0, 0, 0, 0, 0],
+            "k": [0, 0, 0, 0, 0, 0],
+            "g": [1.0, 2.0, 3.0, 10.0, 20.0, 100.0],
+            "var_g": [0.1, 0.2, 0.3, 1.0, 2.0, 10.0],
+        }
+    )
+    table = estimator._focus_table_
+    seen = set()
+    for seed in range(60):
+        permuted = estimator._permute_magnitudes(np.random.default_rng(seed))
+        # Positions and study membership are exactly invariant: the spatial design cannot move.
+        for column in ("id", "i", "j", "k"):
+            assert list(permuted[column]) == list(table[column])
+        for study, values in (("a", {1.0, 2.0, 3.0}), ("b", {10.0, 20.0}), ("c", {100.0})):
+            rows = permuted[permuted["id"] == study]
+            # Each study keeps its own multiset of values -- nothing arrives from another
+            # study, which is what the across-table shuffle used to allow.
+            assert set(rows["g"]) == values
+            # And the variance moved with the value it belongs to.
+            for g, var_g in zip(rows["g"], rows["var_g"]):
+                assert var_g == pytest.approx(table.loc[table["g"] == g, "var_g"].iloc[0])
+        seen.add(tuple(permuted["g"]))
+    # 3! * 2! * 1! = 12 arrangements, and the single-focus study contributes none of them.
+    assert len(seen) == 12
+
+
+def test_a_collection_of_single_focus_studies_is_refused_rather_than_given_p_values():
+    """With one focus per study the within-analysis null has no states, and says so."""
+    estimator = CBES()
+    estimator._permutation_groups_ = None
+    estimator._image_studies_ = {}
+    estimator._focus_table_ = pd.DataFrame(
+        {
+            "id": [str(i) for i in range(30)],
+            "i": list(range(30)),
+            "j": [0] * 30,
+            "k": [0] * 30,
+            "g": np.linspace(0.2, 1.0, 30),
+            "var_g": np.full(30, 0.1),
+        }
+    )
+    log10_states, contributing = estimator._null_has_states()
+    assert log10_states == 0.0 and contributing == 0
+    assert not estimator._null_is_usable()
+
+    # Every permutation reproduces the observed table, which is why p would come back at 1.0.
+    permuted = estimator._permute_magnitudes(np.random.default_rng(0))
+    assert list(permuted["g"]) == list(estimator._focus_table_["g"])
+
+    # Three foci each is enough: 30 studies * log10(6) clears the threshold comfortably.
+    estimator._permutation_groups_ = None
+    estimator._focus_table_ = pd.DataFrame(
+        {
+            "id": [str(i // 3) for i in range(90)],
+            "i": list(range(90)),
+            "j": [0] * 90,
+            "k": [0] * 90,
+            "g": np.linspace(0.2, 1.0, 90),
+            "var_g": np.full(90, 0.1),
+        }
+    )
+    log10_states, contributing = estimator._null_has_states()
+    assert contributing == 30
+    assert log10_states == pytest.approx(30 * np.log10(6), rel=1e-6)
+    assert estimator._null_is_usable()
 
 
 def test_images_only_collection_is_redirected_to_an_image_estimator(images_only_studyset):
@@ -2167,6 +2249,54 @@ def test_the_coverage_cache_rebuilds_when_the_configuration_changes(mixed_image_
     # And the key names what decides coverage, not merely its shape.
     key = estimator._coverage_[0]
     assert len(key) >= 8, key
+
+
+def test_each_calibration_fit_gets_only_the_studies_it_contains(mixed_image_studyset):
+    """A donor-only fit handed the whole roster reads every other study as silent everywhere.
+
+    A study with no foci in the table a fit receives falls through ``_coverage_entries`` as
+    having examined every voxel and reported nothing. That is right in the real fit and wrong
+    in a calibration fit, where it puts one censored-silent observation per coordinate study
+    into a fit that should hold one image. On the pain collection it understated the scale by
+    a factor of 1.69, so the absolute magnitudes came out 41% too small.
+    """
+    rosters = []
+    plain = CBES._statistic
+
+    def recording(self, table, sample_sizes, thresholds, image_studies=None):
+        if sample_sizes is not None:
+            rosters.append((tuple(sample_sizes.index), tuple(image_studies or ()), len(table)))
+        return plain(self, table, sample_sizes, thresholds, image_studies)
+
+    CBES._statistic = recording
+    try:
+        estimator = CBES(
+            fwhm=8.0, null_method="none", peak_bias="per-study", peak_bias_scale="images"
+        )
+        estimator.fit(mixed_image_studyset)
+    finally:
+        CBES._statistic = plain
+
+    donors = set(estimator._image_studies_)
+    assert donors, "fixture must supply image donors for this to test anything"
+
+    donor_fits = [r for r in rosters if len(r[1]) == 1]
+    assert len(donor_fits) == len(donors)
+    for roster, images, n_foci in donor_fits:
+        # One study in the roster, and it is the donor being calibrated. Nothing else can
+        # contribute silence.
+        assert roster == images
+        assert n_foci == 0
+
+    # And the coordinate-only fit holds the coordinate studies, never the donors.
+    coordinate_fits = [r for r in rosters if not r[1] and r[2]]
+    assert coordinate_fits
+    for roster, _, _ in coordinate_fits:
+        assert not (set(roster) & donors)
+
+    # The thresholds have to be narrowed alongside the sample sizes, or the fit would index a
+    # roster of one against a threshold series of many.
+    assert estimator.scale_source_ == "images"
 
 
 def test_the_reported_error_exceeds_the_em_curvature_it_used_to_be():

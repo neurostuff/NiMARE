@@ -10,7 +10,7 @@ from joblib import Memory, Parallel, delayed
 from nilearn.maskers import NiftiMasker
 from scipy import ndimage
 from scipy.optimize import brentq
-from scipy.special import ndtr
+from scipy.special import gammaln, ndtr
 from tqdm.auto import tqdm
 
 from nimare import _version
@@ -62,6 +62,13 @@ _SUSPICIOUS_INFERRED_THRESHOLD_Z = 4.0
 #: that the caller can see how well determined the constant is rather than taking one study's
 #: word for it.
 _MIN_SCALE_DONORS = 2
+
+#: Distinct arrangements the within-analysis null needs before its p-values mean anything,
+#: as a base-10 log. Ten thousand states is where the coarsest attainable p-value, 1e-4, stops
+#: being the thing that limits the test; below it the null has too few states for the
+#: exceedance count to separate voxels, and a map of p-values would read as inference that was
+#: never done.
+_MIN_NULL_STATES_LOG10 = 4.0
 
 #: Keywords ``peak_bias_scale`` understands; anything else must be a positive number.
 PEAK_BIAS_SCALE_KEYWORDS = ("auto", "images")
@@ -1003,18 +1010,25 @@ class CBES(Estimator):
         error treats :math:`\\tau^2` as known and ignores that the peaks being pooled were
         selected for being large -- so p comes from a randomization null instead.
 
-        ``"permute-magnitudes"`` reassigns the reported effect sizes to each other's locations,
-        holding the positions and study membership fixed, and refits; the hypothesis is that
-        effect size is unrelated to location. Study images, having no location to hold fixed,
-        take the sign flip that is their own exchangeable action, as in
-        :class:`~nimare.meta.ibma.PermutedOLS` and FSL's randomise. Because nothing moves, each
-        voxel keeps its own studies in every iteration and is referred to a null of its own.
+        ``"permute-magnitudes"`` reassigns each analysis's reported effect sizes among **its
+        own** reported locations, holding the positions and study membership fixed, and refits;
+        the hypothesis is that within a study, effect size is unrelated to location. An image
+        study takes the same action over its own voxels. Because nothing moves between studies,
+        each voxel keeps its own studies in every iteration and is referred to a null of its
+        own, and a study's sample size, threshold and ``rho_k`` stay attached to its values --
+        the exchangeability the test needs (:footcite:t:`winkler2014permutation`).
 
         The p-value is ``(1 + #{null >= observed}) / (1 + n_iters)`` and so cannot fall below
         ``1 / (1 + n_iters)``, which is where the default ``cluster_threshold`` of .001 sits
         unless ``n_iters`` is raised past 1000; familywise correction has no such floor. This is
         deliberately **not** a test of spatial convergence, which is what a null that relocates
-        the foci -- ALE's and MKDA's -- would give instead.
+        the foci -- ALE's and MKDA's -- would give instead, nor a test of whether the effect is
+        zero, which is what sign-flipping the images would give.
+
+        The price is that an analysis reporting a single focus has one arrangement and
+        contributes no randomness. Where the collection admits fewer than about ``1e4``
+        arrangements in total the null is not built at all and ``p`` is 1.0 everywhere, with a
+        warning naming how many analyses contributed; the effect-size maps are unaffected.
 
         ``"none"`` returns ``p = 1`` everywhere, for inspecting the estimates at no cost.
     cluster_threshold : :obj:`float` or None, default=0.001
@@ -1105,7 +1119,7 @@ class CBES(Estimator):
     and did not improve with more studies. The p-values are unaffected either way -- they come
     from the permutation null, not from referring ``z`` to any distribution.
 
-    ``prevalence`` and ``g_marginal`` are added under the zero-inflated selection model.
+    ``prevalence`` is added under the zero-inflated selection model.
     ``prevalence`` is scale-free, so unlike ``g`` it does not depend on the constant the
     coordinates cannot identify -- but **read it ordinally, not as a fraction**. Against a
     simulator drawing a known prevalence it is compressed toward the middle of the range: a true
@@ -1113,11 +1127,6 @@ class CBES(Estimator):
     0.81, a true 1.00 as 0.74 to 0.94. The ordering survives, so comparing voxels within one map
     is sound, but the number is not a prevalence. Its map-wide median sits near 0.4 whatever the
     truth, so a map cannot be summarised by it.
-
-    ``g_marginal`` is ``g`` times ``prevalence``, the average effect over all studies rather
-    than over those that have one. It therefore inherits *both* the unidentified scale of ``g``
-    and the compression of ``prevalence``, which makes it the least interpretable map here.
-    Read it only as a relative map, and only ordinally.
 
     :meth:`correct_fwe_montecarlo` adds ``logp_level-voxel``,
     ``logp_desc-size_level-cluster`` and ``logp_desc-mass_level-cluster`` (each with a
@@ -1139,17 +1148,28 @@ class CBES(Estimator):
     when images or an explicit ``peak_bias_scale`` pin the scale, and even then
     ``scale_interval_`` reports how well.
 
-    What the null tests is not what a reader of a coordinate-based meta-analysis may expect. A
-    voxel is significant when the effects reported near it are large *relative to the effects
-    reported elsewhere in this collection* -- not when the pooled effect differs from zero in
-    absolute terms, and not when studies converge there. A collection with a genuine effect of
-    the same size everywhere has nothing for this null to find, though neither would any method
-    built on reported peaks, since a peak is only reported where the effect is locally large.
+    What the null tests is not what a reader of a coordinate-based meta-analysis may expect. The
+    estimand is :math:`\mu(v)`, the effect size at a voxel among the studies that have an
+    effect there, on a scale the coordinates do not identify; the null is that **within a
+    study, effect size is unrelated to location**. A voxel is significant when the effects
+    reported near it are large relative to what *the same studies* reported elsewhere -- not
+    when the pooled effect differs from zero, and not when studies converge there.
 
-    Against a nominal .05 the uncorrected rate ran 0.022 to 0.057 across global nulls, confined
-    foci and one to five image studies, and power at a focal ``g`` = 0.8 across 30 studies was
-    18 of 20 at voxel-level FWE: conservative rather than anticonservative, and lowest where an
-    image study's sign flip leaves the null only a few states to randomize over.
+    That has two consequences worth stating plainly. A collection with a genuine effect of the
+    same size everywhere has nothing for this null to find, though neither would any method
+    built on reported peaks, since a peak is only reported where the effect is locally large.
+    And a study reporting a single focus admits one arrangement, so it contributes no
+    randomness: where the whole collection admits too few, ``p`` comes back at 1.0 with a
+    warning rather than as inference that was never done.
+
+    The zero-effect null is not available here. A reported peak exists only because it cleared
+    a threshold, so "no effect anywhere" predicts no coordinates at all and the observed table
+    falsifies it before any voxel is examined; testing it needs subject-level images, which is
+    what :footcite:t:`albajes2019meta` imputes in order to permute. Sign-flipping the image
+    studies while shuffling the coordinates would test it for part of the collection only, and
+    the two hypotheses then combine into a rejection either can cause -- with 20 coordinate and
+    5 image analyses the sign flips alone floored the p-value at 1/32 whatever the locations
+    said, which is why the images now take the same within-study shuffle as the coordinates.
 
     References
     ----------
@@ -1755,6 +1775,14 @@ class CBES(Estimator):
         of summaries recovers it -- a regression slope would be attenuated by the many voxels
         where a study peaked and the images say nothing.
 
+        **Each fit receives only the studies it contains.** A study absent from the table a fit
+        is given falls through :meth:`_coverage_entries` as having examined every voxel and
+        reported nothing, which is right in the real fit and wrong here: it made every
+        donor-only fit carry one censored-silent observation per coordinate study, dragging the
+        donor's magnitude down and the ratio with it. On the pain collection with three donors
+        the scale came out 0.75 against 1.26 once each fit saw only its own studies, so the
+        absolute magnitudes were 41% too small.
+
         **One ratio per donor, pooled across donors**, rather than one ratio against all the
         images pooled together: pooling the images first makes the answer depend on how many
         there are, because a single image's map keeps its own peaks while averaging several
@@ -1763,12 +1791,25 @@ class CBES(Estimator):
         dense peak tables. On sparse ones the pooled median still slides, which is what
         ``scale_interval_`` reports.
         """
-        coordinate_only = self._statistic(table, sample_sizes, thresholds, image_studies=None)[0]
+        donor_ids = list(image_studies or {})
+        # The coordinate fit is every study that speaks through coordinates, which is the whole
+        # roster less the donors -- a coordinate study that reported nothing anywhere is
+        # genuinely silent and belongs here, unlike a donor, which speaks through its image.
+        coordinate_ids = [study for study in sample_sizes.index if study not in set(donor_ids)]
+        coordinate_only = self._statistic(
+            table[table["id"].isin(coordinate_ids)],
+            sample_sizes.loc[coordinate_ids],
+            thresholds.loc[coordinate_ids],
+            image_studies=None,
+        )[0]
 
         per_donor = []
         for study_id, payload in (image_studies or {}).items():
             single = self._statistic(
-                table.iloc[:0], sample_sizes, thresholds, image_studies={study_id: payload}
+                table.iloc[:0],
+                sample_sizes.loc[[study_id]],
+                thresholds.loc[[study_id]],
+                image_studies={study_id: payload},
             )[0]
             both = (
                 coordinate_only["covered"]
@@ -2626,30 +2667,36 @@ class CBES(Estimator):
             self._mask_bool_ = cached
         return cached
 
-    def _flip_image_signs(self, rng):
-        """Randomly sign-flip each image study, the null transformation images admit.
+    def _permute_image_values(self, rng):
+        """Reassign each image study's own values among its own voxels.
 
-        Coordinates and images are exchangeable in different ways, so a null that moves only
-        one of them is not a null for the other. Relocating a focus destroys its position, which
-        is what the coordinate null asserts is arbitrary; an image has no position to destroy,
-        and what the null asserts about it is that its sign is arbitrary -- the standard
-        one-sample permutation, as in :class:`~nimare.meta.ibma.PermutedOLS` and FSL's
-        randomise.
+        The same action the coordinate side takes, applied to the one other kind of study, so
+        that both are randomized under one hypothesis. An image has values everywhere rather
+        than at a handful of peaks, so "its arrangement over its own locations is arbitrary"
+        is a shuffle of its voxels; the variance travels with the value it belongs to, because
+        the pair is one observation.
 
-        Leaving the images fixed instead carries their signal into the null and costs power
-        against a widespread effect. Variances are untouched: flipping a sign does not change a
-        squared quantity.
+        Sign-flipping is what an image admits on its own, and is what this used to do. It is a
+        null for a different hypothesis -- that the effect is zero -- and mixing the two makes
+        the combined test reject for either reason: with 20 coordinate analyses and 5 image
+        analyses all carrying the same real effect, the sign flips alone put a floor of 1/32 on
+        the p-value, which was read as evidence about location.
         """
         images = getattr(self, "_image_studies_", None)
         if not images:
             return images
-        return {
-            study_id: (g if rng.random() < 0.5 else -g, var_g, usable)
-            for study_id, (g, var_g, usable) in images.items()
-        }
+        out = {}
+        for study_id, (g, var_g, usable) in images.items():
+            where = np.flatnonzero(usable)
+            donor = rng.permutation(where)
+            g_null, var_null = g.copy(), var_g.copy()
+            g_null[where] = g[donor]
+            var_null[where] = var_g[donor]
+            out[study_id] = (g_null, var_null, usable)
+        return out
 
     def _permute_magnitudes(self, rng):
-        """Reassign the reported foci to each other's locations, positions held fixed.
+        """Reassign each analysis's reported values among its own reported locations.
 
         The randomization an effect-size estimate admits: each focus keeps where it is and
         gives up what it said, so the hypothesis is that effect size is unrelated to location.
@@ -2659,21 +2706,105 @@ class CBES(Estimator):
         relabelling can land two foci of one study on a voxel and quietly drop its count, which
         makes a site significant on multiplicity alone.
 
+        **Within an analysis, not across the table.** A value is exchangeable only with values
+        drawn from the same distribution, and a study's reported magnitudes carry its sample
+        size, its reporting threshold and its ``rho_k`` -- so a large-N study's peak landing on
+        a small-N study's voxel is an arrangement the null should never have contained. The
+        across-table shuffle this used to do rejected at 96.7% where the nominal rate is 5%
+        once precision varied across studies, because the null's spread came from the roster's
+        heterogeneity rather than from the observed map. Restricting the shuffle to within an
+        analysis is the standard remedy for exchangeability under nuisance structure
+        (:footcite:t:`winkler2014permutation`); it also costs power, since a study reporting a
+        single focus has one arrangement and contributes nothing.
+
         Sign-flipping, the natural randomization for a one-sample effect, cannot be applied to
         reported peaks: a peak is in the table only because it cleared a threshold, so the
-        coordinate side is not sign-symmetric under the null. Images have no location to hold
-        fixed and take the sign flip instead.
+        coordinate side is not sign-symmetric under the null.
         """
         table = self._focus_table_
         permuted = table.copy()
-        order = rng.permutation(len(table))
+        groups = self._permutation_groups()
+        if groups is None:
+            return permuted
+        positions, labels = groups
+        # One sort rather than a loop over studies: keyed on (analysis, random), both arrays
+        # come out grouped by analysis in the same order, so assigning one onto the other is a
+        # permutation within each analysis and nothing crosses between them.
+        donor = np.lexsort((rng.random(len(table)), labels))
         # ``peak_bias`` is present only when the rescaling was applied, and travels with the
         # value it rescaled. Column by column rather than as one block: a mixed-dtype
         # ``.values`` would come back as object and cost more than the permutation itself.
         for column in ("g", "var_g", "stat", "peak_bias"):
             if column in table.columns:
-                permuted[column] = table[column].values[order]
+                values = table[column].values
+                shuffled = values.copy()
+                shuffled[positions] = values[donor]
+                permuted[column] = shuffled
         return permuted
+
+    def _permutation_groups(self):
+        """Return cached ``(positions, labels)`` for the within-analysis shuffle.
+
+        ``labels`` is an integer per row naming its analysis; ``positions`` orders the rows by
+        that label, so the two sorts line up group for group. Built once because the focus
+        table does not change across permutations -- only which value sits at which row.
+        """
+        cached = getattr(self, "_permutation_groups_", None)
+        if cached is None:
+            table = self._focus_table_
+            if not len(table):
+                return None
+            ids = np.asarray(table["id"].values, dtype=object)
+            _, labels = np.unique(ids, return_inverse=True)
+            cached = (np.argsort(labels, kind="stable"), labels)
+            self._permutation_groups_ = cached
+        return cached
+
+    def _null_has_states(self):
+        """Report ``(n_arrangements_log10, n_contributing)`` for the within-analysis null.
+
+        An analysis reporting one focus has exactly one arrangement, so it contributes no
+        randomness; an image contributes as many as it has usable voxels. The count is returned
+        as a log because a handful of ordinary studies already overflows a float.
+        """
+        log10_states, contributing = 0.0, 0
+        table = getattr(self, "_focus_table_", None)
+        if table is not None and len(table):
+            _, counts = np.unique(np.asarray(table["id"].values, dtype=object), return_counts=True)
+            multi = counts[counts > 1]
+            contributing += int(multi.size)
+            log10_states += float(np.sum(gammaln(multi + 1.0))) / np.log(10.0)
+        for _, (_, _, usable) in (getattr(self, "_image_studies_", None) or {}).items():
+            n_usable = int(usable.sum())
+            if n_usable > 1:
+                contributing += 1
+                log10_states += float(gammaln(n_usable + 1.0)) / np.log(10.0)
+        return log10_states, contributing
+
+    def _null_is_usable(self):
+        """Refuse to build the null when the collection admits too few arrangements.
+
+        The within-analysis shuffle has states only where an analysis reported more than one
+        focus. A collection of single-peak studies has exactly one arrangement, so every
+        permutation reproduces the observed map and every p-value comes back at 1.0 -- which
+        looks like a null result rather than like a test that could not be run. Saying so is
+        the difference between the two.
+        """
+        log10_states, contributing = self._null_has_states()
+        if log10_states >= _MIN_NULL_STATES_LOG10:
+            return True
+        n_analyses = (
+            int(self._focus_table_["id"].nunique()) if len(self._focus_table_) else 0
+        ) + len(getattr(self, "_image_studies_", None) or {})
+        LGR.warning(
+            f"No p-values were computed: the within-analysis null admits about "
+            f"1e{log10_states:.1f} arrangements, from {contributing} of {n_analyses} analyses. "
+            "An analysis reporting a single focus has one arrangement and contributes no "
+            "randomness, so a collection of them cannot be tested for whether effect size is "
+            "related to location -- the effect-size maps are still estimated, and 'p' is 1.0 "
+            "everywhere to say that nothing was tested."
+        )
+        return False
 
     def _permutation_chunk(self, seeds, sample_sizes, thresholds, observed, cluster_stat):
         """Run a block of permutations, reducing as it goes.
@@ -2693,7 +2824,7 @@ class CBES(Estimator):
                 self._permute_magnitudes(rng),
                 sample_sizes,
                 thresholds,
-                self._flip_image_signs(rng),
+                self._permute_image_values(rng),
             )
             absolute = np.abs(z_null)
             exceedances += absolute >= observed
@@ -2836,6 +2967,7 @@ class CBES(Estimator):
         self._mask_bool_ = None
         self._geometry_ = None
         self._coverage_ = None
+        self._permutation_groups_ = None
         self._image_studies_ = self._load_image_studies(dataset)
         self._prepare_focus_table(dataset)
 
@@ -2843,7 +2975,7 @@ class CBES(Estimator):
             self._focus_table_, self._sample_sizes_, self._thresholds_, self._image_studies_
         )
 
-        if self.null_method == "permute-magnitudes":
+        if self.null_method == "permute-magnitudes" and self._null_is_usable():
             p_values, _ = self._compute_permutation_null(
                 self.n_iters,
                 self.n_cores,
@@ -2872,7 +3004,6 @@ class CBES(Estimator):
         }
         if "prevalence" in fit:
             maps["prevalence"] = fit["prevalence"].astype(DEFAULT_FLOAT_DTYPE)
-            maps["g_marginal"] = (fit["g"] * fit["prevalence"]).astype(DEFAULT_FLOAT_DTYPE)
         if self._scale_is_pinned():
             # Only here is "g" on the Hedges' g scale rather than on its own, so only here is
             # there a second map to emit. It is the same array; the separate name is the claim.
@@ -2908,10 +3039,12 @@ class CBES(Estimator):
     ):
         r"""FWE correction from maximum-statistic nulls, at voxel and cluster level.
 
-        Each iteration reassigns the foci to each other's locations and refits, the same
-        randomization the uncorrected map came from, so voxel-level and familywise inference
-        test the same hypothesis. This runs even when the estimator was fitted with
-        ``null_method="none"``, since a maximum statistic has to come from somewhere.
+        Each iteration reassigns each analysis's reported values among its own locations and
+        refits, the same randomization the uncorrected map came from, so voxel-level and
+        familywise inference test the same hypothesis. This runs even when the estimator was
+        fitted with ``null_method="none"``, since a maximum statistic has to come from
+        somewhere -- but not when the collection admits too few arrangements to permute, since
+        then there is no null to build at either level.
 
         Three nulls come out of the same refits: the maximum ``|z|``, the maximum cluster size
         and the maximum cluster mass. Clusters are formed on ``|z|`` at the statistic
@@ -2947,6 +3080,14 @@ class CBES(Estimator):
         """
         if getattr(self, "_focus_table_", None) is None:
             raise ValueError("correct_fwe_montecarlo requires a fitted estimator.")
+        if not self._null_is_usable():
+            # Refusing here and not only in ``fit`` because this path builds its own null: with
+            # too few arrangements the maximum statistic is the observed one in almost every
+            # iteration, which reads as a corrected p far below the uncorrected one.
+            raise ValueError(
+                "correct_fwe_montecarlo has no null to build: the reported foci admit too few "
+                "within-analysis arrangements to permute. See the warning from fit()."
+            )
 
         n_iters = self.n_iters if n_iters is None else n_iters
         n_cores = self.n_cores if n_cores is None else n_cores
@@ -3080,14 +3221,20 @@ class CBES(Estimator):
         n_studies = (
             self._focus_table_["id"].nunique() if hasattr(self, "_focus_table_") else "an unknown"
         )
-        if self.null_method == "permute-magnitudes":
+        if self.null_method == "permute-magnitudes" and self._null_is_usable():
             inference = (
                 " Uncorrected p-values were obtained from a permutation null distribution, in "
-                f"which the reported foci were reassigned to each other's locations "
-                f"{self.n_iters} times with the locations themselves held fixed, each voxel "
-                "being referred to its own null. The test is therefore of whether the effects "
-                "reported near a voxel are larger than those reported elsewhere in the "
-                "collection, not of whether the foci converge there."
+                "which each analysis's reported effect sizes were reassigned among its own "
+                f"reported locations {self.n_iters} times with the locations themselves held "
+                "fixed, each voxel being referred to its own null. The test is therefore of "
+                "whether the effects reported near a voxel are larger than those the same "
+                "studies reported elsewhere, not of whether the foci converge there and not "
+                "of whether the effect is zero."
+            )
+        elif self.null_method == "permute-magnitudes":
+            inference = (
+                " No null distribution was computed, because the reported foci admit too few "
+                "within-analysis arrangements to test, so no p-values are reported."
             )
         else:
             inference = " No null distribution was computed, so no p-values are reported."
