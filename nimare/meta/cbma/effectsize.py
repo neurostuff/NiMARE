@@ -582,15 +582,7 @@ def _local_dersimonian_laird(sum_w, sum_a, sum_a2, sum_ag, sum_ag2, sum_w2_over_
 
 
 def _validate_options(
-    *,
-    design,
-    tau2_method,
-    selection_model,
-    prevalence_prior,
-    null_method,
-    peak_bias,
-    peak_bias_scale,
-    threshold,
+    *, design, tau2_method, selection_model, null_method, peak_bias, peak_bias_scale, threshold
 ):
     """Reject unusable option combinations at construction, not at fit time.
 
@@ -608,11 +600,6 @@ def _validate_options(
         )
     if null_method not in NULL_METHODS:
         raise ValueError(f"null_method must be one of {NULL_METHODS}; got {null_method!r}.")
-    if prevalence_prior is not None and float(prevalence_prior) < 0:
-        raise ValueError(
-            f"prevalence_prior must be None or a non-negative number of studies; got "
-            f"{prevalence_prior!r}."
-        )
 
     scale_is_keyword = isinstance(peak_bias_scale, str)
     if (scale_is_keyword and peak_bias_scale not in PEAK_BIAS_SCALE_KEYWORDS) or (
@@ -788,41 +775,6 @@ class CBES(Estimator):
             Also useful as a diagnostic -- fitting both shows how much of a map is the
             selection correction rather than the data -- and it is roughly 3x faster, the
             censoring term being most of the cost of a whole-brain fit.
-    prevalence_prior : :obj:`float` or None, default=0.0
-        Strength, in pseudo-studies, of a Beta prior pulling the prevalence
-        :math:`\\pi(v)` toward zero. Only used when ``selection_model="zero-inflated"``, which
-        is the only option that has a prevalence.
-
-        Prevalence is the parameter the data support worst. Estimated freely per voxel it is
-        recovered almost exactly where studies converge -- 0.490 against a true 0.5 in one
-        simulation -- and is noise everywhere else, sitting at 0.287 where the truth is zero,
-        with an interquartile range of [0.19, 0.74] at the voxels where a single study
-        reported. Those are the majority: the median covered voxel has one reporting study, and
-        two free parameters cannot be had from one observation.
-
-        The weight is in pseudo-studies, but it is **not** a simple share of the update:
-        because the penalty enters every EM sweep, a lower prevalence lowers the
-        responsibilities, which lowers the prevalence again, so the fixed point moves much
-        further than the one-shot ``k / (m + k)`` would suggest. Measured on a 30-study
-        simulation, a prior of 1 took the median prevalence from 0.397 to 0.077, and even
-        voxels in the top decile of reporting studies went from 0.350 to 0.091. Useful values
-        are therefore well below one; start at 0.1 to 0.5 and inspect the ``prevalence`` map.
-
-        Zero is the target rather than the collection average, because most of a brain has no
-        effect and the average of the unpenalised estimates is itself inflated -- shrinking
-        toward it moved the voxels that were already right and left the rest alone.
-
-        Because ``g`` is the effect *among* studies that have an effect, a spurious prevalence
-        also inflates ``g``; shrinking the first shrinks the second.
-
-        Off by default pending validation against a reference collection. In one simulation a
-        prior of 0.5 brought the marginal effect at the true peak from 1.42x its value to
-        0.87x, cut the mean marginal magnitude where no effect exists from 0.083 to 0.030, and
-        made the fit about four times faster by removing the flat ridge the EM was crawling
-        along -- while leaving the z map almost untouched (peak z 4.40 against 4.37), so it
-        changes the estimates far more than the inference. One simulation is not enough to set
-        a default on, and the magnitude figures in the Warnings section below were measured
-        without it.
     threshold : :obj:`float`, :obj:`str`, or None, default="pooled-min"
         Reporting threshold assumed for each study, on the z scale. It decides how surprising a
         study's silence is and, with ``peak_bias="per-study"``, how far its peaks are
@@ -984,7 +936,6 @@ class CBES(Estimator):
         design="one-sample",
         tau2_method="dl",
         selection_model="zero-inflated",
-        prevalence_prior=0.0,
         threshold="pooled-min",
         coverage_radius=None,
         kernel_min_weight=0.01,
@@ -1008,7 +959,6 @@ class CBES(Estimator):
             design=design,
             tau2_method=tau2_method,
             selection_model=selection_model,
-            prevalence_prior=prevalence_prior,
             null_method=null_method,
             peak_bias=peak_bias,
             peak_bias_scale=peak_bias_scale,
@@ -1025,7 +975,6 @@ class CBES(Estimator):
         self.design = design
         self.tau2_method = tau2_method
         self.selection_model = selection_model
-        self.prevalence_prior = float(prevalence_prior or 0.0)
         self.threshold = threshold
         self.coverage_radius = coverage_radius
         self.kernel_min_weight = kernel_min_weight
@@ -2112,7 +2061,7 @@ class CBES(Estimator):
         return reporting_pairs, silent_pairs
 
     @staticmethod
-    def _update_prevalence(reporting, silent, mu, pi, total_weight, censoring, prior_weight=0.0):
+    def _update_prevalence(reporting, silent, mu, pi, total_weight, censoring):
         """One E-step: the responsibilities, the prevalence they imply, and the log-likelihood.
 
         The log-likelihood comes free with the E step. Each observation's mixture density is
@@ -2141,13 +2090,8 @@ class CBES(Estimator):
         claimed = np.bincount(
             reporting.voxel, weights=reporting.weight * resp_rep, minlength=mu.size
         ) + np.bincount(silent.voxel, weights=silent.weight * resp_sil, minlength=mu.size)
-        # Beta prior worth ``prior_weight`` studies of "no effect here", so the prior bites
-        # hardest where the voxel's own weight is smallest. It compounds across sweeps rather
-        # than acting once -- see the class docstring -- so the fixed point moves further than
-        # this single division does. At ``prior_weight = 0`` this is the unpenalised update.
-        denominator = total_weight + prior_weight
         updated = np.clip(
-            np.divide(claimed, denominator, out=np.zeros(mu.size), where=denominator > 0),
+            np.divide(claimed, total_weight, out=np.zeros(mu.size), where=total_weight > 0),
             _PREVALENCE_CLAMP,
             1.0 - _PREVALENCE_CLAMP,
         )
@@ -2208,14 +2152,6 @@ class CBES(Estimator):
                 censoring=censoring,
             )
 
-        # Shrunk toward zero rather than toward the collection's average prevalence. The
-        # average is not a neutral target: most of a brain has no effect, so the unpenalised
-        # per-voxel estimates put it at 0.286 in one simulation where the population value is
-        # near zero, and shrinking toward that pulled the voxels that were right (0.490 against
-        # a true 0.5) down to 0.315 while leaving the wrong ones where they were. Zero is the
-        # conservative target: the prior can only ever withdraw a claimed effect, never invent
-        # one.
-        prior_weight = float(self.prevalence_prior or 0.0)
         curvature = np.zeros(width)
         log_likelihood = np.full(width, -np.inf)
         for _ in range(self.max_iter):
@@ -2231,15 +2167,7 @@ class CBES(Estimator):
                     silent.responsibility,
                     pi,
                     log_likelihood,
-                ) = self._update_prevalence(
-                    reporting,
-                    silent,
-                    mu,
-                    pi,
-                    total_weight,
-                    censoring,
-                    prior_weight=prior_weight,
-                )
+                ) = self._update_prevalence(reporting, silent, mu, pi, total_weight, censoring)
                 pi_shift = np.abs(pi - previous_pi)
                 # EM increases the likelihood monotonically, so a voxel whose likelihood has
                 # stopped rising has finished, whatever its parameters are still doing. At a
