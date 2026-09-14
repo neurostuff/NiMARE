@@ -932,6 +932,21 @@ class CBES(Estimator):
         not been silent. Defaults to twice the kernel FWHM (20 mm when ``fwhm`` is None). Only
         used when ``selection_model="zero-inflated"``, since it is the censoring term that
         needs to know which studies were silent.
+
+        Swept from 8 to 34 mm against known image truth, this barely moves the effect-size map
+        at realistic peak counts -- at ten peaks per study the rank correlation stays within
+        0.108 to 0.109 and the magnitude ratio within 3.74 to 3.78 -- and matters more as the
+        tables get denser, where a wider radius trades magnitude for pattern (on the full pain
+        tables, the correlation rises 0.39 to 0.51 while the magnitude ratio worsens 1.70 to
+        2.51).
+
+        ``prevalence`` is the output that really depends on it, and the dependence is strong:
+        0.165 to 0.438 across that range at twenty peaks per study. On dense tables it
+        **saturates** -- 0.997 at the 20 mm default and exactly 1.0 by 26 mm, meaning every
+        study is judged to have a real effect at every voxel, which is no longer informative.
+        Read ``prevalence`` with that in mind, and treat it as trustworthy at the sparse peak
+        counts a real collection has (0.08 to 0.21) rather than on tables thresholded out of
+        whole images.
     kernel_min_weight : :obj:`float`, default=0.01
         Truncate the spatial kernel below this fraction of its peak. A focus then reaches only
         voxels it says something about (about 13 mm for a 10 mm FWHM), which is what keeps
