@@ -852,9 +852,8 @@ def _gpd_tail_p(observed, null_maxima, min_exceedances=30, alpha=0.05):
             # randomization estimator. The difference matters for a maximum-statistic null,
             # where the smallest attainable p is the whole point -- the clamped form can report
             # ``1/n`` for a statistic no permutation reached, which is anticonservative.
-            p_corrected[~in_tail] = (
-                1 + np.sum(maxima[None, :] >= observed[~in_tail][:, None], axis=1)
-            ) / (1 + n_total)
+            empirical = (1 + np.sum(maxima[None, :] >= observed[:, None], axis=1)) / (1 + n_total)
+            p_corrected[~in_tail] = empirical[~in_tail]
             p_corrected[in_tail] = rate * fitted.sf(observed[in_tail] - threshold)
             # How far this can be trusted was measured, not assumed: against a
             # 40000-permutation reference, across three parent distributions, 25 repetitions
@@ -868,8 +867,15 @@ def _gpd_tail_p(observed, null_maxima, min_exceedances=30, alpha=0.05):
             # past the floor which is the published method's main selling point; with a few
             # hundred exceedances this implementation did not earn it, and an anticonservative
             # familywise p is worse than a quantized one.
+            # Fall back to the empirical p there, rather than clamping the fitted one up to the
+            # floor. Clamping was the bug: for a statistic beyond every null maximum the fit
+            # returns something tiny, gets raised to 5/(1 + n), and the caller is handed
+            # 0.009980 where the empirical value is 0.001996 -- five times too conservative, and
+            # worse than not fitting a tail at all. The intent was always to prefer the
+            # empirical tail where the fit is not trusted; this does that.
             floor = _GPD_FLOOR_MULTIPLE / (1.0 + n_total)
-            p_corrected[in_tail] = np.maximum(p_corrected[in_tail], floor)
+            untrusted = in_tail & (p_corrected < floor)
+            p_corrected[untrusted] = empirical[untrusted]
             return np.clip(p_corrected, 0.0, 1.0)
         n_exceed -= max(1, n_exceed // _GPD_SHRINK_DIVISOR)
 

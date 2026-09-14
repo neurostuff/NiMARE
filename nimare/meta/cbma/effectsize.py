@@ -1181,7 +1181,7 @@ class CBES(Estimator):
             self.inputs_["coordinates"],
             metadata_field=("sample_sizes", "sample_size"),
             target_column="sample_size",
-            filter_func=np.mean,
+            filter_func=np.sum if self.design == "two-sample" else np.mean,
         )
         self._reported_thresholds_ = self._threshold_metadata(dataset)
         self._analysis_masks_ = self._load_analysis_masks(dataset)
@@ -1417,6 +1417,20 @@ class CBES(Estimator):
         table["stat_type"] = stat_type
         return table
 
+    def _size_reduction(self):
+        """How a study's per-group sample sizes collapse to the number the model wants.
+
+        ``peak_stat_to_hedges_g`` takes a *total* N for a two-sample design and splits it into
+        equal groups, so the reduction has to be a sum: metadata of ``[30, 30]`` means sixty
+        subjects, and reducing it by mean gave thirty, which the converter then read as two
+        groups of fifteen. That inflated ``g`` by 39% at ``t = 3`` (1.066 against 0.765) and the
+        same error reached the sampling variances, the cutoff conversion and the null variances.
+        A lone value is already a total either way, so summing is right in both cases.
+
+        One-sample designs want the mean, which is what a single number or a repeated one gives.
+        """
+        return "sum" if self.design == "two-sample" else "mean"
+
     def _all_sample_sizes(self, dataset):
         """Sample size of every analysis in the collection, reporting foci or not.
 
@@ -1428,7 +1442,7 @@ class CBES(Estimator):
         the coordinates table.
         """
         ids = np.asarray(dataset.ids, dtype=object)
-        sample_sizes = np.asarray(dataset.sample_sizes(), dtype=float)
+        sample_sizes = np.asarray(dataset.sample_sizes(reduce=self._size_reduction()), dtype=float)
         series = pd.Series(sample_sizes, index=ids)
         series = series[series.notna()]
         if series.empty:

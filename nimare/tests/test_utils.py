@@ -437,16 +437,30 @@ def test_gpd_tail_p_engages_only_with_enough_exceedances():
 
 
 def test_gpd_tail_p_keeps_the_empirical_tail_near_the_floor():
-    """Below five times the empirical floor the fit is not trusted, by deliberate choice."""
+    """Below five times the empirical floor the fit is not trusted, so the empirical p is used.
+
+    This test previously asserted that no corrected p could fall below five times the
+    permutation floor, which encoded a bug rather than a policy: it conflated "do not trust the
+    fitted tail here" with "never report a small p", and the empirical ``1 / (1 + n)`` is not
+    manufactured significance -- it is exactly what the permutations support. What must never
+    happen is a value *below* the empirical tail.
+    """
     from nimare.meta.utils import _GPD_FLOOR_MULTIPLE, _gpd_tail_p
 
     rng = np.random.default_rng(1)
     n_iters = 500
     maxima = np.abs(rng.standard_normal(n_iters)) * 2.0 + 3.0
-    # An observation far past anything the permutations reached.
-    fitted = _gpd_tail_p(np.array([maxima.max() * 3.0]), maxima)
+    floor = _GPD_FLOOR_MULTIPLE / (1.0 + n_iters)
+
+    # An observation far past anything the permutations reached: the fit is not trusted this
+    # far out, so the answer is the permutation tail itself.
+    extreme = np.array([maxima.max() * 3.0])
+    fitted = _gpd_tail_p(extreme, maxima)
     assert fitted is not None
-    assert fitted[0] >= _GPD_FLOOR_MULTIPLE / (1.0 + n_iters) - 1e-12
+    empirical = (1 + int((maxima >= extreme[0]).sum())) / (1.0 + n_iters)
+    assert np.isclose(fitted[0], empirical)
+    assert fitted[0] >= 1.0 / (1.0 + n_iters) - 1e-12
+    assert fitted[0] < floor
 
     # A statistic below the fit's threshold is scored against the permutations themselves,
     # which cannot give less than one exceedance out of n + 1.
@@ -587,3 +601,35 @@ def test_gpd_goodness_of_fit_discards_replicates_it_cannot_refit(monkeypatch):
     for bad in ((np.nan, 0.0, 1.0), (0.1, 0.0, -1.0), (0.1, 0.0, 0.0)):
         monkeypatch.setattr(utils_meta.stats.genpareto, "fit", lambda *a, **k: bad)
         assert _gpd_goodness_of_fit(excess, 0.1, 1.5, n_boot=n_boot) == 1 / (1 + n_boot), bad
+
+
+def test_the_gpd_tail_falls_back_to_the_empirical_p_rather_than_clamping_up():
+    """Below the range the fit is trusted in, the empirical p is the answer, not a floor.
+
+    The code applies the fit only well above the permutation floor, having measured it
+    anticonservative below that. It used to enforce that by raising the fitted value *up* to
+    five times the floor, which for a statistic beyond every null maximum handed back 0.009980
+    where the empirical p was 0.001996 -- five times too conservative, and worse than not
+    fitting a tail at all.
+    """
+    from nimare.meta.utils import _GPD_FLOOR_MULTIPLE, _gpd_tail_p
+
+    rng = np.random.default_rng(0)
+    maxima = np.abs(rng.standard_normal(500)) * 2.0 + 3.0
+    floor = _GPD_FLOOR_MULTIPLE / (1.0 + maxima.size)
+
+    extreme = np.array([maxima.max() * 3.0])
+    fitted = _gpd_tail_p(extreme, maxima)
+    assert fitted is not None
+    empirical = (1 + int((maxima >= extreme[0]).sum())) / (1 + maxima.size)
+    assert np.isclose(fitted[0], empirical), (fitted[0], empirical)
+    assert fitted[0] < floor  # i.e. it is no longer clamped up to the floor
+
+    # Well above the floor the fit is still used, and still differs from the empirical tail.
+    moderate = np.array([float(np.percentile(maxima, 90))])
+    above = _gpd_tail_p(moderate, maxima)
+    assert above is not None
+    assert above[0] > 5 * floor
+    assert not np.isclose(
+        above[0], (1 + int((maxima >= moderate[0]).sum())) / (1 + maxima.size), rtol=1e-6
+    )

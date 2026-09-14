@@ -1976,3 +1976,68 @@ def test_the_analysis_mask_is_keyed_per_contrast_not_per_study(roi_studyset):
     assert set(masks).issubset(roster)
     # The ids are analysis-level, carrying a contrast suffix rather than a bare study id.
     assert all(key.rsplit("-", 1)[-1].isdigit() for key in masks), sorted(masks)
+
+
+@pytest.fixture(scope="module")
+def two_group_studyset(tmp_path_factory):
+    """Eight analyses whose metadata declares two groups of 30, i.e. sixty subjects each."""
+    directory = tmp_path_factory.mktemp("cbes_two_group")
+    shape = (8, 8, 8)
+    affine = np.diag([6.0, 6.0, 6.0, 1.0])
+    affine[:3, 3] = -21.0
+    nib.save(nib.Nifti1Image(np.ones(shape, np.int32), affine), directory / "mask.nii.gz")
+
+    from nimare.studyset import Studyset
+
+    studies = [
+        {
+            "id": f"t{k}",
+            "name": f"t{k}",
+            "metadata": {"sample_sizes": [30, 30]},
+            "analyses": [
+                {
+                    "id": f"t{k}-1",
+                    "name": "1",
+                    "metadata": {"sample_sizes": [30, 30]},
+                    "points": [
+                        {
+                            "space": "MNI",
+                            "coordinates": [0.0, 0.0, 0.0],
+                            "values": [{"kind": "T", "value": 3.0}],
+                        }
+                    ],
+                    "images": [],
+                }
+            ],
+        }
+        for k in range(8)
+    ]
+    return Studyset(
+        {"id": "two_group", "name": "two_group", "studies": studies},
+        target=None,
+        mask=str(directory / "mask.nii.gz"),
+    )
+
+
+def test_a_two_sample_design_gets_the_total_sample_size(two_group_studyset):
+    """``design="two-sample"`` splits its argument into equal groups, so it needs the total.
+
+    Metadata of ``[30, 30]`` means sixty subjects. Reducing it by mean handed the converter
+    thirty, which it read as two groups of fifteen -- inflating ``g`` by 39% at ``t = 3``
+    (1.066 against 0.765) and carrying the same error into the sampling variances, the cutoff
+    conversion and the null variances.
+    """
+    two_sample = CBES(fwhm=10.0, null_method="none", design="two-sample", peak_bias="per-study")
+    two_sample.fit(two_group_studyset)
+    assert set(two_sample._sample_sizes_.values) == {60.0}
+    assert set(two_sample._focus_table_["sample_size"]) == {60}
+
+    # One-sample keeps the mean, which is what a single or repeated value means there.
+    one_sample = CBES(fwhm=10.0, null_method="none", design="one-sample", peak_bias="per-study")
+    one_sample.fit(two_group_studyset)
+    assert set(one_sample._sample_sizes_.values) == {30.0}
+
+    # And the resulting g is the textbook value for two balanced groups of thirty.
+    expected, _ = peak_stat_to_hedges_g([3.0], [60.0], stat_type="t", design="two-sample")
+    got = two_sample._focus_table_["g"].abs().max()
+    assert np.isclose(got, expected[0], rtol=1e-6), (got, expected[0])
