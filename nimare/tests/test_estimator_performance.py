@@ -241,34 +241,16 @@ def test_meta_fit_performance(meta_res, signal_masks, simulatedata_cbma):
     p_array = meta_res.get_map("p", return_type="array")
 
     # poor performer(s)
-    if (
-        isinstance(meta_res.estimator, ale.ALE)
-        and isinstance(meta_res.estimator.kernel_transformer, kernel.KDAKernel)
-        and meta_res.estimator.get_params().get("null_method") == "approximate"
+    if isinstance(meta_res.estimator, ale.ALE) and isinstance(
+        meta_res.estimator.kernel_transformer, kernel.KDAKernel
     ):
-        good_sensitivity = True
-        good_specificity = False
-    elif (
-        isinstance(meta_res.estimator, ale.ALE)
-        and isinstance(meta_res.estimator.kernel_transformer, kernel.KDAKernel)
-        and "montecarlo" in meta_res.estimator.get_params().get("null_method")
-    ):
+        # A KDA/MKDA kernel gives ALE an MA value of 1, so the summary statistic
+        # saturates at 1.0 wherever any study reports a focus and the foci cannot
+        # be told from their surroundings. Every null method agrees they are not
+        # detected; the approximate one used to disagree only because truncation
+        # walked its null a bin further down per study.
         good_sensitivity = False
         good_specificity = True
-    elif (
-        isinstance(meta_res.estimator, ale.ALE)
-        and isinstance(meta_res.estimator.kernel_transformer, kernel.KDAKernel)
-        and "montecarlo" in meta_res.estimator.get_params().get("null_method")
-    ):
-        good_sensitivity = False
-        good_specificity = True
-    elif (
-        isinstance(meta_res.estimator, ale.ALE)
-        and isinstance(meta_res.estimator.kernel_transformer, kernel.KDAKernel)
-        and meta_res.estimator.get_params().get("null_method") == "approximate"
-    ):
-        good_sensitivity = True
-        good_specificity = False
     elif (
         isinstance(meta_res.estimator, mkda.MKDADensity)
         and isinstance(meta_res.estimator.kernel_transformer, kernel.ALEKernel)
@@ -324,48 +306,16 @@ def test_corr_transform_performance(meta_cres, corr, signal_masks, simulatedata_
     n_iters = corr.parameters.get("n_iters")
     null_method = meta_cres.estimator.get_params().get("null_method", "")
 
-    # ALE with MKDA kernel with montecarlo correction
-    # combination gives poor performance
-    if (
-        isinstance(meta_cres.estimator, ale.ALE)
-        and isinstance(meta_cres.estimator.kernel_transformer, kernel.MKDAKernel)
-        and null_method == "approximate"
-        and corr.method != "montecarlo"
-    ):
-        good_sensitivity = True
-        good_specificity = False
-    elif (
-        isinstance(meta_cres.estimator, ale.ALE)
-        and isinstance(meta_cres.estimator.kernel_transformer, kernel.MKDAKernel)
-        and "montecarlo" in null_method
+    # ALE with a KDA/MKDA kernel gives poor performance whatever the null
+    # method: the MA value is 1, so the summary statistic saturates at 1.0
+    # wherever any study reports a focus and the foci cannot be told from their
+    # surroundings. The approximate null used to look sensitive here only
+    # because truncation walked it a bin further down per study.
+    if isinstance(meta_cres.estimator, ale.ALE) and isinstance(
+        meta_cres.estimator.kernel_transformer, kernel.KDAKernel
     ):
         good_sensitivity = False
         good_specificity = True
-    elif (
-        isinstance(meta_cres.estimator, ale.ALE)
-        and isinstance(meta_cres.estimator.kernel_transformer, kernel.MKDAKernel)
-        and null_method == "approximate"
-        and corr.method == "montecarlo"
-    ):
-        good_sensitivity = False
-        good_specificity = True
-    elif (
-        isinstance(meta_cres.estimator, ale.ALE)
-        and isinstance(meta_cres.estimator.kernel_transformer, kernel.KDAKernel)
-        and (
-            "montecarlo" in null_method
-            or (null_method == "approximate" and corr.method == "montecarlo")
-        )
-    ):
-        good_sensitivity = False
-        good_specificity = True
-    elif (
-        isinstance(meta_cres.estimator, ale.ALE)
-        and isinstance(meta_cres.estimator.kernel_transformer, kernel.KDAKernel)
-        and null_method == "approximate"
-    ):
-        good_sensitivity = True
-        good_specificity = False
     elif (
         isinstance(meta_cres.estimator, mkda.MKDADensity)
         and isinstance(meta_cres.estimator.kernel_transformer, kernel.ALEKernel)

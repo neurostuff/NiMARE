@@ -16,12 +16,13 @@ from nimare.correct import FDRCorrector, FWECorrector
 from nimare.generate import create_coordinate_dataset
 from nimare.meta import ale
 from nimare.meta.cbma import io_utils, pairwise_utils
+from nimare.meta.cbma.null_utils import _nearest_bin
 from nimare.meta.utils import _calculate_cluster_measures
 from nimare.results import MetaResult
 from nimare.stats import null_to_p, nullhist_to_p
 from nimare.tests.utils import get_test_data_path
 from nimare.transforms import p_to_z
-from nimare.utils import mm2vox, vox2mm
+from nimare.utils import _round2, mm2vox, vox2mm
 
 SIMULATED_ALE_REGRESSION_DATASETS = [
     pytest.param(
@@ -53,6 +54,18 @@ SIMULATED_ALE_REGRESSION_DATASETS = [
 ]
 
 
+def _nearest_bin_reference(values, inv_step_size, n_bins):
+    """Nearest bin centre for each value, ties away from zero, clipped to the grid.
+
+    Spelling the rule out keeps the references off ``np.histogram``'s
+    left-closed edges, which disagree with it for a value on a boundary.
+    """
+    scaled = np.asarray(values, dtype=np.float64) * inv_step_size
+    floor = np.floor(scaled)
+    idx = floor.astype(np.int64) + (scaled - floor >= 0.5)
+    return np.clip(idx, 0, n_bins - 1)
+
+
 def _dense_ale_reference(ma_values):
     """Reference ALE approximate-null implementation using dense masked arrays."""
     stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
@@ -65,7 +78,7 @@ def _dense_ale_reference(ma_values):
     hist_bins = np.round(np.arange(0, max_poss_ale + (1.5 * step_size), step_size), 5)
 
     bin_centers = hist_bins
-    bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
+    n_bins = bin_centers.shape[0]
     n_mask_voxels = ma_values.shape[1]
 
     ale_hist = None
@@ -73,9 +86,11 @@ def _dense_ale_reference(ma_values):
         n_nonzero_voxels = np.count_nonzero(study_ma_values)
         n_zero_voxels = n_mask_voxels - n_nonzero_voxels
 
-        exp_hist = np.histogram(
-            study_ma_values[study_ma_values > 0], bins=bin_edges, density=False
-        )[0].astype(float)
+        nonzero_values = study_ma_values[study_ma_values > 0]
+        exp_hist = np.bincount(
+            _nearest_bin_reference(nonzero_values, inv_step_size, n_bins),
+            minlength=n_bins,
+        ).astype(float)
         exp_hist[0] += n_zero_voxels
         exp_hist /= exp_hist.sum()
 
@@ -86,7 +101,7 @@ def _dense_ale_reference(ma_values):
         ale_idx = np.where(ale_hist > 0)[0]
         exp_idx = np.where(exp_hist > 0)[0]
         ale_scores = 1 - np.outer((1 - bin_centers[exp_idx]), (1 - bin_centers[ale_idx])).ravel()
-        score_idx = np.floor(ale_scores * inv_step_size).astype(int)
+        score_idx = _nearest_bin_reference(ale_scores, inv_step_size, n_bins)
         probabilities = np.outer(exp_hist[exp_idx], ale_hist[ale_idx]).ravel()
         ale_hist = np.zeros(ale_hist.shape)
         np.add.at(ale_hist, score_idx, probabilities)
@@ -121,8 +136,7 @@ def _study_ma_histogram_reference(
     """Reference implementation for ALE study-histogram binning."""
     exp_hist = np.zeros(n_bins, dtype=np.float64)
     for value in study_ma_values:
-        idx = int(np.floor(value * inv_step_size))
-        idx = min(max(idx, 0), n_bins - 1)
+        idx = int(_nearest_bin_reference(value, inv_step_size, n_bins))
         exp_hist[idx] += 1.0
 
     exp_hist[0] += n_zero_voxels
@@ -229,8 +243,7 @@ def _update_ale_histogram_reference(
         exp_one_minus = 1.0 - exp_center
         for i_ale in range(ale_idx.shape[0]):
             score = 1.0 - exp_one_minus * (1.0 - bin_centers[ale_idx[i_ale]])
-            score_idx = int(np.floor(score * inv_step_size))
-            score_idx = min(max(score_idx, 0), n_bins - 1)
+            score_idx = int(_nearest_bin_reference(score, inv_step_size, n_bins))
             out[score_idx] += exp_prob * ale_probs[i_ale]
     return out
 
@@ -520,8 +533,42 @@ def test_montecarlo_histogram_bin_edges_straddle_centres():
     assert np.histogram(just_under, bins=bin_edges)[0].argmax() == 20
 
 
+def test_ALE_nearest_bin_agrees_with_the_p_value_lookup():
+    """A value is counted into the bin nullhist_to_p reads it back out of.
+
+    The null histogram is built with ``_nearest_bin`` and then indexed by
+    :func:`~nimare.stats.nullhist_to_p` via :func:`nimare.utils._round2`. If the
+    two broke ties differently, a statistic landing exactly between two centres
+    would be looked up one bin away from where its own mass was counted.
+    """
+    inv_step_size = 10.0
+    n_bins = 11
+
+    # Dense sweep, ties included: every value bins where _round2 reads it.
+    values = np.arange(0, n_bins * 2, dtype=np.float64) / (2 * inv_step_size)
+    actual = np.array([_nearest_bin(v, inv_step_size, n_bins) for v in values])
+    expected = np.clip(_round2(values * inv_step_size), 0, n_bins - 1)
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(actual, _nearest_bin_reference(values, inv_step_size, n_bins))
+
+    # Exact halves go away from zero, not to the even bin as round() would.
+    halves = np.array([0.05, 0.15, 0.25, 0.35], dtype=np.float64)
+    np.testing.assert_array_equal(
+        [_nearest_bin(v, inv_step_size, n_bins) for v in halves], [1, 2, 3, 4]
+    )
+
+    # Adding 0.5 and flooring would answer 1 here: 0.49999999999999994 + 0.5 == 1.0.
+    assert _nearest_bin(0.049999999999999994, inv_step_size, n_bins) == 0
+
+    # Each value goes to the nearest centre; out-of-grid values clip.
+    assert _nearest_bin(0.0499999, inv_step_size, n_bins) == 0
+    assert _nearest_bin(0.0500001, inv_step_size, n_bins) == 1
+    assert _nearest_bin(-1.0, inv_step_size, n_bins) == 0
+    assert _nearest_bin(99.0, inv_step_size, n_bins) == n_bins - 1
+
+
 def test_ALE_study_ma_histogram_edge_bins():
-    """Study histogram binning should match the legacy floor-based implementation at edges."""
+    """Study histogram binning sends each value to its nearest bin centre."""
     inv_step_size = 10.0
     n_bins = 11
     n_zero_voxels = 3
@@ -547,10 +594,12 @@ def test_ALE_study_ma_histogram_edge_bins():
     )
 
     np.testing.assert_allclose(actual, expected)
+    # 0.099999999 belongs with the bin centred at 0.1, not the one at 0.0.
+    assert actual[1] > 0.0
 
 
 def test_ALE_update_histogram_edge_bins():
-    """Histogram updates should match the legacy floor-based implementation at bin edges."""
+    """Histogram updates should match the reference implementation at bin edges."""
     bin_centers = np.linspace(0.0, 1.0, 11, dtype=np.float64)
     inv_step_size = 10.0
     n_bins = bin_centers.shape[0]
