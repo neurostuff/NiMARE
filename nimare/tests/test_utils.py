@@ -577,3 +577,59 @@ def test_padded_dilation_matches_a_bounds_checked_one_even_from_outside_the_imag
         else:
             reached = np.array([], dtype=np.int32)  # dropped, and provably reaches nothing
         assert np.array_equal(expected, reached), focus
+
+
+def test_gpd_tail_p_gives_up_when_the_fitter_raises_or_returns_nonsense(monkeypatch):
+    """A fitter that fails, or succeeds with a degenerate answer, must not be trusted.
+
+    ``stats.genpareto.fit`` is an optimizer and can both raise and return non-finite or
+    non-positive parameters. Either has to shorten the tail and eventually leave the caller on
+    the empirical p-values, because the alternative -- extrapolating from a fit nobody checked
+    -- manufactures significance the permutations never supported. Neither branch fires on data
+    a permutation run produces, so only a substituted fitter reaches them.
+    """
+    from nimare.meta.utils import _gpd_tail_p
+
+    rng = np.random.default_rng(3)
+    maxima = np.abs(rng.standard_normal(500)) * 2.0 + 3.0
+    observed = np.array([maxima.max() * 2.0])
+    assert _gpd_tail_p(observed, maxima) is not None  # fittable before it is sabotaged
+
+    attempts = []
+
+    def raising(*args, **kwargs):
+        attempts.append("raise")
+        raise RuntimeError("optimizer gave up")
+
+    monkeypatch.setattr(utils_meta.stats.genpareto, "fit", raising)
+    assert _gpd_tail_p(observed, maxima) is None
+    # It shortened the tail and retried rather than surrendering on the first failure.
+    assert len(attempts) > 1
+
+    for bad in ((np.nan, 0.0, 1.0), (0.1, 0.0, np.inf), (0.1, 0.0, -1.0), (0.1, 0.0, 0.0)):
+        monkeypatch.setattr(utils_meta.stats.genpareto, "fit", lambda *a, **k: bad)
+        assert _gpd_tail_p(observed, maxima) is None, bad
+
+
+def test_gpd_goodness_of_fit_discards_replicates_it_cannot_refit(monkeypatch):
+    """A bootstrap replicate that will not refit is dropped, not counted as agreement.
+
+    The reference distribution is built by refitting each simulated replicate, and counting an
+    unfittable one as "no worse than observed" would bias the test toward accepting. When every
+    replicate is unusable the p-value collapses to its floor, which fails the caller's
+    ``goodness > alpha`` check and so declines the fit -- the safe direction.
+    """
+    from nimare.meta.utils import _gpd_goodness_of_fit
+
+    rng = np.random.default_rng(4)
+    excess = utils_meta.stats.genpareto.rvs(0.1, loc=0.0, scale=1.5, size=200, random_state=rng)
+    n_boot = 25
+
+    monkeypatch.setattr(
+        utils_meta.stats.genpareto, "fit", lambda *a, **k: (_ for _ in ()).throw(RuntimeError())
+    )
+    assert _gpd_goodness_of_fit(excess, 0.1, 1.5, n_boot=n_boot) == 1 / (1 + n_boot)
+
+    for bad in ((np.nan, 0.0, 1.0), (0.1, 0.0, -1.0), (0.1, 0.0, 0.0)):
+        monkeypatch.setattr(utils_meta.stats.genpareto, "fit", lambda *a, **k: bad)
+        assert _gpd_goodness_of_fit(excess, 0.1, 1.5, n_boot=n_boot) == 1 / (1 + n_boot), bad
