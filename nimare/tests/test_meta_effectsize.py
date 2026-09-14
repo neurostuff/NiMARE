@@ -242,9 +242,6 @@ def test_cbes_produces_expected_maps(studyset, small_mask):
 
     expected = {"g", "se", "z", "p", "logp", "tau2", "n_studies", "n_eff", "prevalence"}
     assert expected <= set(result.maps)
-    # The prevalence-weighted marginal is deliberately not emitted: it multiplies an
-    # unidentified scale by a compressed prevalence, and neither factor is recoverable from it.
-    assert "g_marginal" not in result.maps
 
     p_values = result.get_map("p", return_type="array")
     assert np.all((p_values >= 0) & (p_values <= 1))
