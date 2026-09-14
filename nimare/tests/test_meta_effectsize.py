@@ -1882,12 +1882,21 @@ def test_a_declared_analysis_mask_stops_silence_being_read_where_nobody_looked(r
     )
 
 
-def test_an_absent_or_empty_analysis_mask_changes_nothing(roi_studyset, studyset, small_mask):
-    """The parameter has to be inert unless a study actually declares a mask."""
+def test_an_absent_analysis_mask_changes_nothing_but_says_so(
+    roi_studyset, studyset, small_mask, caplog
+):
+    """Inert unless a study declares a mask -- but not silently, since that is a trap.
+
+    Requesting a value type that is not there leaves every study's silence read as evidence,
+    which is the behaviour the caller asked to switch off. A typo does it, and so does a loader
+    skipping the value type because it is not one NiMARE recognises.
+    """
     shared = dict(fwhm=8.0, mask=small_mask, null_method="none", peak_bias=None)
     without = CBES(**shared).fit(studyset)
     # This collection carries no images at all, so naming a value type finds nothing.
-    with_name = CBES(**shared, analysis_mask="analysis_mask").fit(studyset)
+    with caplog.at_level("WARNING"):
+        with_name = CBES(**shared, analysis_mask="analysis_mask").fit(studyset)
+    assert "matches no image value type" in caplog.text
     np.testing.assert_allclose(
         without.get_map("g", return_type="array"),
         with_name.get_map("g", return_type="array"),
@@ -1947,3 +1956,23 @@ def test_an_implausibly_high_inferred_threshold_is_called_out(studyset, small_ma
     caplog.clear()
     loud._warn_if_threshold_implausible(np.array([np.nan, np.nan]))
     assert caplog.text == ""
+
+
+def test_the_analysis_mask_is_keyed_per_contrast_not_per_study(roi_studyset):
+    """The key is the analysis id, which is what the censoring roster is indexed by.
+
+    Per-contrast subsumes per-study, but it means a paper contributing several contrasts has to
+    declare the mask on each one it applies to. If the two were keyed differently the lookup
+    would silently miss and the feature would never fire, so the agreement is worth pinning.
+    """
+    estimator = CBES(fwhm=8.0, null_method="none", analysis_mask="analysis_mask")
+    estimator.fit(roi_studyset)
+
+    masks = estimator._analysis_masks_
+    roster = set(estimator._sample_sizes_.index)
+    # Four studies declare a slab; whole-brain ones are skipped rather than stored.
+    assert len(masks) == 4
+    # Whatever was found must be addressable by the roster the coverage pass iterates over.
+    assert set(masks).issubset(roster)
+    # The ids are analysis-level, carrying a contrast suffix rather than a bare study id.
+    assert all(key.rsplit("-", 1)[-1].isdigit() for key in masks), sorted(masks)

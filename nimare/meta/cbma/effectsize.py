@@ -1320,6 +1320,11 @@ class CBES(Estimator):
         examined. Without one, a study is assumed to have examined the whole analysis volume,
         which is what the censoring term has always assumed of every study.
 
+        Keyed per *analysis*, not per study, matching the unit the rest of the estimator uses
+        for ``n_studies`` and for the censoring roster. A paper contributing several contrasts
+        therefore has to declare the mask on each one it applies to; declaring it on some and
+        not others leaves the others' silence read as evidence.
+
         This is what an ROI or partial-coverage study needs. Its silence outside the region it
         analysed is not evidence that nothing is there -- it never looked -- and the censoring
         term would otherwise read it as evidence against an effect. The only previous remedy was
@@ -1330,7 +1335,17 @@ class CBES(Estimator):
             return {}
 
         images = getattr(dataset, "images", None)
+        available = [] if images is None else [c for c in images.columns if c != "id"]
         if images is None or self.analysis_mask not in images.columns:
+            # Requested and not found is a silent no-op otherwise, and the ways to land here are
+            # easy: a typo, or a loader that skipped the value type because it is not one of the
+            # ones NiMARE recognises. Both leave every study's silence read as evidence, which
+            # is the behaviour the caller asked to switch off.
+            LGR.warning(
+                f"analysis_mask={self.analysis_mask!r} matches no image value type in this "
+                f"collection, so every study is treated as whole-brain and partial coverage is "
+                f"not honoured. Value types present: {sorted(available)}."
+            )
             return {}
 
         loaded = {}
