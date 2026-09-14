@@ -1372,6 +1372,37 @@ def test_the_external_corpus_prior_is_gone_and_fails_loudly():
     assert not hasattr(CBES, "_calibrate_scale_from_reference")
 
 
+def test_a_degenerate_collection_gets_no_p_values_and_no_fwe_correction(small_mask):
+    """One focus per study leaves the null no states, and both paths have to say so.
+
+    The correction builds its own null, so it cannot lean on ``fit``'s refusal. Left to run,
+    almost every iteration reproduces the observed map, and the maximum statistic is the
+    observed one -- which comes back as a corrected p far *below* the uncorrected one.
+    """
+    studyset = create_effect_size_coordinate_studyset(
+        [TRUTH],
+        effect_sizes=0.9,
+        n_studies=25,
+        sample_size=(20, 40),
+        tau=0.1,
+        seed=3,
+        n_noise_foci=0,
+        spatial_sd=6.0,
+    )
+    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="permute-magnitudes", n_iters=20)
+    result = estimator.fit(studyset)
+
+    # The magnitudes are still estimated; only the inference is withheld.
+    assert np.isfinite(result.get_map("g", return_type="array")).all()
+    assert np.all(result.get_map("p", return_type="array") == 1.0)
+
+    with pytest.raises(ValueError, match="too few"):
+        estimator.correct_fwe_montecarlo(result, vfwe_only=True)
+
+    # And the description says inference was not done, rather than describing a null.
+    assert "too few" in result.description_
+
+
 def test_permuting_magnitudes_leaves_the_spatial_design_untouched(small_mask):
     """The invariant the null depends on, tested where it is easiest to break."""
     rng = np.random.default_rng(11)
