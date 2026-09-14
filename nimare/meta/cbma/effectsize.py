@@ -845,10 +845,17 @@ class CBES(Estimator):
     --------
     This estimator is new and has not been validated against a reference implementation.
 
-    On a global null (30 studies of pure noise foci) the permutation null returns roughly the
-    nominal uncorrected rate, and familywise correction rejects at roughly the nominal rate,
-    but the simulations behind those figures number in the tens and cannot resolve a rate more
-    finely than that.
+    Calibration, from 20 simulations apiece at 200 permutations, against a nominal .05. On a
+    global null of 30 studies reporting pure noise the uncorrected rate is 0.039 and familywise
+    correction rejected in 0 of 20. With the foci confined to a region a quarter the volume of
+    the analysis mask it is 0.022 -- the configuration that most exposes a null which moves the
+    foci, where the relocation null this replaced rejected at 0.134. With a single image study
+    among twenty coordinate studies, 0.035. Power, at a focal g = 0.8 across 30 studies, is 18
+    of 20 at voxel-level FWE.
+
+    The rate therefore runs conservative rather than anticonservative throughout, which is the
+    safe direction but is not free. Twenty simulations cannot resolve a rate more finely than
+    this, and none of it substitutes for validation against a reference implementation.
 
     What the null tests is worth being explicit about, because it is not what a reader of a
     coordinate-based meta-analysis may expect. A voxel is significant when the effects reported
