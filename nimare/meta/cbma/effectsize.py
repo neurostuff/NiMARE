@@ -458,8 +458,11 @@ def infer_threshold_from_minimum(min_stat_z, n_peaks):
     This assumes ``n_peaks`` is what the study's *height* threshold admitted. Any filter that
     removes low peaks for another reason is indistinguishable from a stricter height threshold,
     and this will return the filter rather than the threshold. Reporting one local maximum per
-    cluster is fine; a cluster-extent threshold is not, and biases the result high by 0.19 z at
-    k >= 10 voxels, rising to 0.57 z at k >= 50.
+    cluster is fine. A cluster-extent threshold is not: measured on smooth fields, this recovers
+    a true height threshold to +0.06 z, but comes out +0.41 z high when clusters of at least ten
+    voxels are kept and +1.10 z at fifty, because extent thresholding keeps the broad clusters
+    whose peaks run higher and drops isolated low ones. See ``CBES.threshold`` for what that
+    costs downstream.
 
     Parameters
     ----------
@@ -789,6 +792,17 @@ class CBES(Estimator):
         ``"dl"`` estimates a local between-study variance with a kernel-weighted
         DerSimonian-Laird moment estimator; ``"none"`` fits a fixed-effects model
         (:math:`\\tau^2 \\equiv 0`).
+
+        ``"dl"`` is estimated once, about the naive weighted mean, and then held fixed while the
+        selection model fits :math:`\\mu` -- which keeps each EM iteration one-dimensional and
+        concave, at a known cost. Because the weighted mean is by construction the centre that
+        *minimises* the moment estimator's ``Q``, taking ``Q`` about the value finally reported
+        can only raise :math:`\\tau^2`, and the shipped estimate is therefore biased low.
+        Measured against a known :math:`\\tau = 0.35`, alternating the two recovers
+        :math:`\\tau^2` of 0.067, 0.083, 0.093, 0.100 over three extra rounds against a true
+        0.1225, and moves ``g`` at the focus from 0.883 to 0.822 against a true 0.8. No spurious
+        heterogeneity appears where there is none. Not done, because each round is a full refit
+        and a principled joint estimate is a larger change than alternation.
     se_method : {"model", "hksj"}, default="model"
         Standard error of the pooled estimate. ``"model"`` is the inverse-variance expression,
         which treats the estimated :math:`\\tau^2` as known; ``"hksj"`` is the
@@ -840,8 +854,18 @@ class CBES(Estimator):
         threshold, and on complete tables the two rules agree exactly. Note that ``prevalence``
         moves a great deal with this choice and there is no truth to check it against.
 
-        Both inference rules assume a *height* threshold; a cluster-extent threshold biases
-        them upward.
+        Both inference rules assume a *height* threshold, one local maximum per cluster. A
+        cluster-extent threshold biases them upward by more than is comfortable: on smooth
+        simulated fields the inversion recovers a true height threshold to +0.06 z but
+        overshoots by +0.41 z when clusters of at least ten voxels are kept, and +1.10 z at
+        fifty, because extent thresholding keeps broad clusters, whose peaks are higher, and
+        discards isolated low ones.
+
+        What that costs divides sharply. ``g`` barely notices -- across a +1.1 z error it stays
+        within 10% of its value at the correct threshold, non-monotonically. ``prevalence`` does
+        not survive it: 0.73, 0.96, 0.99, 1.00 as the threshold given is inflated by 0, 0.4, 0.8
+        and 1.1 z, against a true 0.60. Supplying the real threshold from metadata therefore
+        matters far more for ``prevalence`` than for the effect-size map.
     coverage_radius : :obj:`float` or None, optional
         Radius, in mm, within which a reported peak counts as this study having reported
         *something* about this location; a study with no focus inside it is treated as silent
@@ -849,8 +873,12 @@ class CBES(Estimator):
         study whose peak sits 6 mm away should have its *value* discounted, but it has plainly
         not been silent. Defaults to twice the kernel FWHM (20 mm when ``fwhm`` is None), and
         is used only when ``selection_model="zero-inflated"``. ``g`` is insensitive to it at
-        realistic peak counts; ``prevalence`` is not, and saturates at 1.0 near the default on
-        dense peak tables.
+        realistic peak counts; ``prevalence`` is not. Against a known prevalence the estimate
+        rises monotonically with this radius at every true value (a true 0.50 reads 0.65, 0.73,
+        0.76, 0.81 at 8, 14, 20 and 28 mm) and no radius recovers the truth: mean absolute error
+        runs 0.17 to 0.21 over that range, 14 mm marginally best and the 20 mm default close
+        behind. Left at 20 mm because the differences are small beside the bias itself. On dense
+        peak tables ``prevalence`` saturates at 1.0 here.
     kernel_min_weight : :obj:`float`, default=0.01
         Truncate the spatial kernel below this fraction of its peak. A focus then reaches only
         voxels it says something about (about 13 mm for a 10 mm FWHM), which is what keeps
@@ -963,8 +991,13 @@ class CBES(Estimator):
     from referring ``z`` to any distribution.
 
     ``prevalence`` and ``g_marginal`` are added under the zero-inflated selection model.
-    ``prevalence`` is worth reading in its own right: it is scale-free, so unlike ``g`` it does
-    not depend on the constant the coordinates cannot identify.
+    ``prevalence`` is scale-free, so unlike ``g`` it does not depend on the constant the
+    coordinates cannot identify -- but **read it ordinally, not as a fraction**. Against a
+    simulator drawing a known prevalence it is compressed toward the middle of the range: a true
+    0.25 comes back as 0.49 to 0.60 depending on ``coverage_radius``, a true 0.50 as 0.65 to
+    0.81, a true 1.00 as 0.74 to 0.94. The ordering survives, so comparing voxels within one map
+    is sound, but the number is not a prevalence. Its map-wide median sits near 0.4 whatever the
+    truth, so a map cannot be summarised by it.
 
     :meth:`correct_fwe_montecarlo` adds ``logp_level-voxel``,
     ``logp_desc-size_level-cluster`` and ``logp_desc-mass_level-cluster`` (each with a
