@@ -2167,3 +2167,80 @@ def test_the_coverage_cache_rebuilds_when_the_configuration_changes(mixed_image_
     # And the key names what decides coverage, not merely its shape.
     key = estimator._coverage_[0]
     assert len(key) >= 8, key
+
+
+def test_the_reported_error_exceeds_the_em_curvature_it_used_to_be():
+    """The EM's curvature is not the observed information, and is always more optimistic.
+
+    Per observation the Q function keeps ``r * h`` and drops ``r(1 - r) s^2``, the part
+    attributable to not knowing which mixture component the observation came from. Dropping a
+    positive term from a negative curvature overstates the information, so using it as an error
+    understated the uncertainty -- 62.5% to 89.8% coverage of nominal-95% intervals, against
+    94.5% to 98.4% for the observed information. It also ignored the jointly estimated
+    prevalence, which the Schur complement now accounts for.
+    """
+    from nimare.meta.cbma.effectsize import (
+        _mu_derivatives,
+        _observed_information,
+        null_effect_variance,
+    )
+
+    k = 12
+    sizes = np.full(k, 30.0)
+    null_var = null_effect_variance(sizes, design="one-sample")[:, None]
+    cutoff = 0.55
+    weights = np.zeros((k, 1))
+    g_obs = np.zeros((k, 1))
+    var_obs = np.ones((k, 1))
+    covered = np.zeros((k, 1), dtype=bool)
+    for study, value in enumerate((0.72, 0.61, 0.95, 0.80, 0.68, 0.91)):
+        weights[study, 0] = 1.0
+        g_obs[study, 0] = value
+        var_obs[study, 0] = float(null_var[study, 0])
+        covered[study, 0] = True
+
+    estimator = CBES(fwhm=8.0, null_method="none", max_iter=400)
+    shared = dict(
+        weights=weights,
+        g_obs=g_obs,
+        var_obs=var_obs,
+        covered=covered,
+        tau2=np.zeros(1),
+        null_var=null_var,
+        cutoffs=np.full((k, 1), cutoff),
+        start=np.array([0.75]),
+    )
+    mu, pi, se = estimator._fit_chunk(**shared)
+    assert np.isfinite(se[0]) and se[0] > 0
+
+    # Rebuild the working sets at the fitted point and compare the two quantities directly.
+    reporting, silent = estimator._working_sets(
+        weights=weights,
+        g_obs=g_obs,
+        var_obs=var_obs,
+        covered=covered,
+        tau2=np.zeros(1),
+        null_var=null_var,
+        cutoffs=np.full((k, 1), cutoff),
+    )
+    censoring = silent.censoring(mu)
+    _, curvature = _mu_derivatives(
+        width=1,
+        mu_rep=mu[reporting.voxel],
+        g_rep=reporting.g,
+        precision_rep=reporting.precision,
+        rep_voxel=reporting.voxel,
+        weight_rep=reporting.weight * reporting.responsibility,
+        sil_voxel=silent.voxel,
+        weight_sil=silent.weight * silent.responsibility,
+        censoring=censoring,
+    )
+    information = _observed_information(
+        width=1, pi=pi, reporting=reporting, silent=silent, mu=mu, censoring=censoring
+    )
+    assert curvature[0] < 0
+    q_curvature_se = 1.0 / np.sqrt(-curvature[0])
+    assert information[0] > 0
+    assert se[0] > q_curvature_se, (se[0], q_curvature_se)
+    # And the reported error is the observed-information one, not the curvature one.
+    assert np.isclose(se[0], 1.0 / np.sqrt(information[0]))

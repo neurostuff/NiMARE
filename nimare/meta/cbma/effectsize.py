@@ -287,6 +287,109 @@ def _censoring_terms(mu, cutoff_scaled, twice_cutoff_scaled, inv_sigma, inv_sigm
     return {"prob": prob, "score": score, "d2_over_prob": d2_over_prob}
 
 
+def _observed_information(
+    *,
+    width,
+    pi,
+    reporting,
+    silent,
+    mu,
+    censoring,
+):
+    r"""Observed information for :math:`\mu`, after profiling out the prevalence.
+
+    The EM's own curvature is not this. ``_mu_derivatives`` differentiates the *Q function*,
+    with the responsibilities held fixed, so for one observation it keeps :math:`r h` and drops
+    the :math:`r(1-r)s^2` that appears when the responsibility is allowed to move with
+    :math:`\mu`:
+
+    .. math::
+
+        \frac{\partial^2 \ell}{\partial \mu^2} = r h + r(1-r) s^2,
+
+    where :math:`r` is the posterior probability that the observation came from the active
+    component, :math:`s` that component's score in :math:`\mu` and :math:`h` its second
+    derivative. Dropping a positive term from a negative curvature overstates the information,
+    so the reported error was too small -- measured at 62.5% to 89.8% coverage of nominal-95%
+    intervals, and not improving with more studies. This is the missing-information problem of
+    :footcite:t:`louis1982finding`, not a degrees-of-freedom adjustment, which is why referring
+    ``se`` to a ``t`` could not repair it.
+
+    The prevalence is estimated too, so its uncertainty belongs in :math:`\mu`'s. Writing
+    :math:`f_1, f_0` for the two component densities and :math:`f` for the mixture, the cross
+    and prevalence blocks reduce to functions of :math:`r` and :math:`\pi` alone, because
+    :math:`f_1/f = r/\pi` and :math:`f_0/f = (1-r)/(1-\pi)`:
+
+    .. math::
+
+        \frac{\partial^2\ell}{\partial\mu\,\partial\pi} = \frac{s\,r(1-r)}{\pi(1-\pi)},
+        \qquad
+        \frac{\partial\ell}{\partial\pi} = \frac{r}{\pi} - \frac{1-r}{1-\pi}.
+
+    What is returned is the Schur complement :math:`I_{\mu\mu} - I_{\mu\pi}^2 / I_{\pi\pi}`, so
+    the caller inverts a scalar. Voxels where that is not positive are left to the caller as
+    having no usable information.
+
+    References
+    ----------
+    .. footbibliography::
+    """
+    safe_pi = np.clip(pi, _PREVALENCE_CLAMP, 1.0 - _PREVALENCE_CLAMP)
+
+    def responsibility_of(voxel, active_density, null_density):
+        """Posterior probability of the active component at the ``(mu, pi)`` being reported.
+
+        Recomputed rather than taken from the last E step: the loop takes its step after that
+        step, so the stored responsibilities belong to a different ``mu`` than the one being
+        written out, and at ``max_iter`` that gap is not small.
+        """
+        pi_voxel = safe_pi[voxel]
+        active = pi_voxel * active_density
+        return active / (active + (1.0 - pi_voxel) * null_density + _LOGP_FLOOR)
+
+    def blocks(voxel, weight, responsibility, score, hessian):
+        """Accumulate the three information blocks for one kind of observation."""
+        r = responsibility
+        spread = r * (1.0 - r)
+        pi_voxel = safe_pi[voxel]
+        i_mu = -np.bincount(
+            voxel, weights=weight * (r * hessian + spread * score**2), minlength=width
+        )
+        cross = -np.bincount(
+            voxel,
+            weights=weight * score * spread / (pi_voxel * (1.0 - pi_voxel)),
+            minlength=width,
+        )
+        pi_score = r / pi_voxel - (1.0 - r) / (1.0 - pi_voxel)
+        i_pi = np.bincount(voxel, weights=weight * pi_score**2, minlength=width)
+        return i_mu, cross, i_pi
+
+    density_effect = (
+        _normal_pdf((reporting.g - mu[reporting.voxel]) / reporting.sigma) / reporting.sigma
+    )
+    i_mu, cross, i_pi = blocks(
+        reporting.voxel,
+        reporting.weight,
+        responsibility_of(reporting.voxel, density_effect, reporting.density_null),
+        (reporting.g - mu[reporting.voxel]) * reporting.precision,
+        -reporting.precision,
+    )
+    censor_score = censoring["score"]
+    add_mu, add_cross, add_pi = blocks(
+        silent.voxel,
+        silent.weight,
+        responsibility_of(silent.voxel, censoring["prob"], silent.prob_silent_null),
+        censor_score,
+        censoring["d2_over_prob"] - censor_score**2,
+    )
+    i_mu += add_mu
+    cross += add_cross
+    i_pi += add_pi
+
+    profiled = np.where(i_pi > 0, i_mu - cross**2 / np.where(i_pi > 0, i_pi, 1.0), i_mu)
+    return profiled
+
+
 def _mu_derivatives(
     *,
     width,
@@ -989,13 +1092,18 @@ class CBES(Estimator):
     "dof"          ``n_eff - 1``, the degrees of freedom to refer ``se`` to. See below.
     ============== ===============================================================
 
-    Build an interval from ``se`` against a *t* on ``dof``, not against a normal. ``se`` is an
-    observed-information standard error and the number of studies informing it is small, so the
-    normal reference is too short: simulated against a known effect it covers 85% to 94% of
-    nominal-95% intervals, worst where the prevalence is around a half and the mixture is doing
-    the work, while a ``t`` on ``dof`` covers 91% to 97% and errs conservative where few studies
-    reported. The p-values are unaffected either way -- they come from the permutation null, not
-    from referring ``z`` to any distribution.
+    Build an interval from ``se`` against a *t* on ``dof``, not against a normal. Under the
+    selection model ``se`` is the observed information of the censored mixture likelihood at the
+    fitted point, with the prevalence profiled out by a Schur complement -- so it carries both
+    the uncertainty about which component an observation came from and the cost of not knowing
+    the prevalence. On the estimator's own censored mixture with known variances it covers 94.5%
+    to 98.4% of nominal-95% intervals across prevalences, cutoffs and study counts, erring
+    conservative.
+
+    An earlier version reported the curvature of the EM's *Q function* instead, which holds the
+    responsibilities fixed and therefore overstates the information; that covered 62.5% to 89.8%
+    and did not improve with more studies. The p-values are unaffected either way -- they come
+    from the permutation null, not from referring ``z`` to any distribution.
 
     ``prevalence`` and ``g_marginal`` are added under the zero-inflated selection model.
     ``prevalence`` is scale-free, so unlike ``g`` it does not depend on the constant the
@@ -2387,14 +2495,31 @@ class CBES(Estimator):
         se_out = np.full(width, np.inf)
         voxel_ids = np.arange(width)
 
-        def retire(positions, curvature):
-            """Write out voxels that have converged."""
+        def retire(positions):
+            """Write out voxels that have converged.
+
+            The error comes from the *observed* information at the point being written out, not
+            from the EM's own curvature. They are different quantities: the EM differentiates
+            the Q function with responsibilities fixed, which overstates the information by the
+            part attributable to not knowing which component an observation came from, and says
+            nothing about the jointly estimated prevalence. Using it as an error understated the
+            uncertainty enough to cover 62.5% to 89.8% of nominal-95% intervals.
+
+            The EM's curvature still drives the *step*; only what is reported changes.
+            """
             ids = voxel_ids[positions]
             mu_out[ids] = mu[positions]
             pi_out[ids] = pi[positions]
-            curv = curvature[positions]
-            informative = curv < 0
-            se_out[ids[informative]] = 1.0 / np.sqrt(-curv[informative])
+            information = _observed_information(
+                width=mu.size,
+                pi=pi,
+                reporting=reporting,
+                silent=silent,
+                mu=mu,
+                censoring=silent.censoring(mu),
+            )[positions]
+            informative = information > 0
+            se_out[ids[informative]] = 1.0 / np.sqrt(information[informative])
 
         def derivatives(censoring):
             """Score and curvature of the weighted log-likelihood in mu."""
@@ -2447,14 +2572,14 @@ class CBES(Estimator):
 
             settled = stalled | ((np.abs(step) < _EM_TOLERANCE) & (pi_shift < _EM_TOLERANCE))
             if settled.all():
-                retire(np.flatnonzero(settled), curvature)
+                retire(np.flatnonzero(settled))
                 mu = mu[:0]
                 break
             # Compaction touches every pair, so it is amortized rather than run every iteration.
             if settled.mean() < _EM_COMPACTION_FRACTION:
                 continue
 
-            retire(np.flatnonzero(settled), curvature)
+            retire(np.flatnonzero(settled))
             keep = ~settled
             position = np.full(mu.size, -1, dtype=np.int64)
             position[np.flatnonzero(keep)] = np.arange(int(keep.sum()))
@@ -2466,8 +2591,7 @@ class CBES(Estimator):
             voxel_ids = voxel_ids[keep]
 
         if mu.size:
-            _, curvature = derivatives(silent.censoring(mu))
-            retire(np.arange(mu.size), curvature)
+            retire(np.arange(mu.size))
 
         return mu_out, pi_out, se_out
 
