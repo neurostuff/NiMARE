@@ -11,7 +11,9 @@ import pytest
 from nimare.correct import FDRCorrector, FWECorrector
 from nimare.generate import create_effect_size_coordinate_studyset
 from nimare.meta.cbma.effectsize import (
+    _NULL_Z_STEP,
     CBES,
+    NULL_METHODS,
     _local_dersimonian_laird,
     _null_bin_edges,
     null_effect_variance,
@@ -73,15 +75,15 @@ def mixed_studyset():
 
 
 @pytest.fixture(scope="module")
-def montecarlo_fit(studyset, small_mask):
-    """One relocation fit at ``n_iters=20``, shared by the tests that all wanted the same one.
+def permutation_fit(studyset, small_mask):
+    """One permutation fit at ``n_iters=20``, shared by the tests that all wanted the same one.
 
     Five tests fitted this identical configuration at ~8.6 s each, which was a fifth of the
-    suite's runtime spent recomputing the same relocations. Tests that touch the estimator take
+    suite's runtime spent recomputing the same permutations. Tests that touch the estimator take
     a deepcopy, so they stay order-independent even though ``correct_fwe_montecarlo`` can write
     back into ``null_distributions_`` when its cache does not match.
     """
-    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="montecarlo", n_iters=20)
+    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="permute-magnitudes", n_iters=20)
     result = estimator.fit(studyset)
     return estimator, result
 
@@ -318,7 +320,7 @@ def test_correct_fwe_montecarlo(studyset, small_mask):
         fwhm=12.0,
         mask=small_mask,
         selection_model="none",
-        null_method="montecarlo",
+        null_method="permute-magnitudes",
         n_iters=20,
         seed=0,
     )
@@ -328,7 +330,7 @@ def test_correct_fwe_montecarlo(studyset, small_mask):
     )
 
     assert tables == {}
-    assert "Monte Carlo" in description
+    assert "permutation" in description
     p_corrected = 10.0 ** -maps["logp_level-voxel"]
     assert np.all((p_corrected > 0) & (p_corrected <= 1))
     assert np.all(p_corrected >= result.get_map("p", return_type="array") - 1e-6)
@@ -394,21 +396,6 @@ def test_no_null_reports_no_p_values(studyset, small_mask):
     assert "No null distribution" in result.description_
 
 
-def test_montecarlo_null_calibrates_uncorrected_p(null_studyset, small_mask):
-    """Under a global null the spatial null returns roughly the nominal rate.
-
-    This is the reason a spatial null is used at all: ``g / se`` is not a null-referenced
-    statistic, since the standard error treats tau-squared as known and ignores that the peaks
-    being pooled were selected for being large. The relocation null is also what the default
-    ``"approximate"`` null is validated against, so its own calibration has to hold first.
-    """
-    montecarlo = CBES(
-        fwhm=12.0, mask=small_mask, selection_model="none", null_method="montecarlo", n_iters=50
-    ).fit(null_studyset)
-
-    assert np.mean(montecarlo.get_map("p", return_type="array") < 0.05) < 0.15
-
-
 @pytest.mark.parametrize(
     "corrector,map_name",
     [
@@ -416,9 +403,9 @@ def test_montecarlo_null_calibrates_uncorrected_p(null_studyset, small_mask):
         (FWECorrector(method="bonferroni"), "p_corr-FWE_method-bonferroni"),
     ],
 )
-def test_stock_correctors_work(montecarlo_fit, corrector, map_name):
+def test_stock_correctors_work(permutation_fit, corrector, map_name):
     """The generic correctors need only a p map, which CBES provides."""
-    _, result = montecarlo_fit
+    _, result = permutation_fit
     corrected = corrector.transform(result)
 
     p_corr = corrected.get_map(map_name, return_type="array")
@@ -429,7 +416,7 @@ def test_stock_correctors_work(montecarlo_fit, corrector, map_name):
 
 def test_fwe_montecarlo_reports_voxel_and_cluster_levels(studyset, small_mask):
     """Voxel-level, cluster-size and cluster-mass corrections all come from one permutation."""
-    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="montecarlo", n_iters=25)
+    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="permute-magnitudes", n_iters=25)
     result = estimator.fit(studyset)
     maps, tables, description = estimator.correct_fwe_montecarlo(result, voxel_thresh=0.01)
 
@@ -455,22 +442,22 @@ def test_fwe_montecarlo_reports_voxel_and_cluster_levels(studyset, small_mask):
     assert "corresponds to |z|" in description
 
 
-def test_fwe_montecarlo_vfwe_only_returns_only_voxel_maps(montecarlo_fit):
+def test_fwe_montecarlo_vfwe_only_returns_only_voxel_maps(permutation_fit):
     """``vfwe_only`` skips the cluster measures and says so in its description."""
-    estimator, result = copy.deepcopy(montecarlo_fit)
+    estimator, result = copy.deepcopy(permutation_fit)
     maps, _, description = estimator.correct_fwe_montecarlo(result, vfwe_only=True)
 
     assert set(maps) == {"logp_level-voxel", "z_level-voxel"}
     assert "voxel-level" in description
 
 
-def test_cluster_null_is_built_during_fit(montecarlo_fit):
+def test_cluster_null_is_built_during_fit(permutation_fit):
     """The permutations fit() runs already record cluster measures, so correcting is free.
 
     The forming threshold comes from a pilot run rather than from a second pass over the
     permutations, which is what it would otherwise cost.
     """
-    estimator, _ = montecarlo_fit
+    estimator, _ = permutation_fit
 
     assert "cluster_forming_stat" in estimator.null_distributions_
     for key in (
@@ -485,7 +472,7 @@ def test_cluster_threshold_none_skips_the_cluster_null(studyset, small_mask):
     estimator = CBES(
         fwhm=12.0,
         mask=small_mask,
-        null_method="montecarlo",
+        null_method="permute-magnitudes",
         n_iters=20,
         cluster_threshold=None,
     )
@@ -497,27 +484,38 @@ def test_cluster_threshold_none_skips_the_cluster_null(studyset, small_mask):
     )
 
 
-def test_stat_from_histogram_inverts_p_from_histogram():
-    """The cluster-forming threshold is read off the same null the p-values come from."""
-    from nimare.meta.cbma.effectsize import _p_from_histogram, _stat_from_histogram
+def test_stat_from_histogram_finds_the_threshold_for_a_target_p():
+    """The cluster-forming threshold is read off the null rather than assumed.
+
+    CBES's ``z`` is not standard normal, so a nominal 3.29 is not a p of .001 and the cutoff has
+    to come from the null actually observed. This is the one place a histogram pooled over
+    voxels is still used -- a cluster-forming threshold has to be a single number -- so it is
+    checked directly rather than through the p-values, which are per voxel.
+    """
+    from nimare.meta.cbma.effectsize import _stat_from_histogram
 
     rng = np.random.default_rng(3)
-    histogram, _ = np.histogram(
-        np.clip(np.abs(rng.standard_normal(500_000)), 0, 50.0), bins=_null_bin_edges()
-    )
+    draws = np.clip(np.abs(rng.standard_normal(500_000)), 0, 50.0)
+    histogram, _ = np.histogram(draws, bins=_null_bin_edges())
     histogram = histogram.astype(float)
 
+    previous = 0.0
     for target in (0.05, 0.01, 0.001):
         stat = _stat_from_histogram(target, histogram)
-        assert _p_from_histogram(np.array([stat]), histogram)[0] <= target
-        # And the bin just below it does not reach the threshold.
-        below = _p_from_histogram(np.array([stat - 0.01]), histogram)[0]
-        assert below > target
+        # No more than the target share of the null sits at or above it ...
+        assert np.mean(draws >= stat) <= target
+        # ... and it is not needlessly high: one bin lower overshoots.
+        assert np.mean(draws >= stat - _NULL_Z_STEP) > target
+        assert stat > previous  # a smaller p demands a larger statistic
+        previous = stat
+
+    # An empty null cannot name a threshold, and says so rather than guessing.
+    assert not np.isfinite(_stat_from_histogram(0.05, np.zeros_like(histogram)))
 
 
-def test_fwe_montecarlo_reuses_the_null_from_fit(montecarlo_fit):
+def test_fwe_montecarlo_reuses_the_null_from_fit(permutation_fit):
     """Fitting with the Monte Carlo null already paid for the max-statistic distribution."""
-    estimator, result = copy.deepcopy(montecarlo_fit)
+    estimator, result = copy.deepcopy(permutation_fit)
     assert "values_level-voxel_corr-fwe_method-montecarlo" in estimator.null_distributions_
 
     cached = estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]
@@ -534,7 +532,7 @@ def test_null_is_built_from_the_selected_statistic(studyset, small_mask):
         fwhm=12.0,
         mask=small_mask,
         selection_model="zero-inflated",
-        null_method="montecarlo",
+        null_method="permute-magnitudes",
         n_iters=10,
     )
     estimator.fit(studyset)
@@ -1067,117 +1065,14 @@ def test_peak_bias_scale_rejects_bad_values(bad):
         CBES(peak_bias_scale=bad)
 
 
-def test_only_the_magnitude_depends_on_the_uncalibrated_scale(small_mask):
-    """What "relative map" costs, and what it does not.
-
-    The common scale is exactly non-identified from coordinates: rescaling g, its variance and
-    the censoring threshold together leaves the likelihood unchanged. So ``g`` and ``se`` move
-    with it and are readable only up to a constant -- but ``z = g/se`` divides it out, and the
-    prevalence is a probability that cancels from the mixture responsibilities. Inference and
-    prevalence are therefore on an absolute scale even when the magnitude is not, which is what
-    makes an uncalibrated coordinate-only fit worth reporting at all.
-    """
-    studyset = create_effect_size_coordinate_studyset(
-        [TRUTH],
-        effect_sizes=0.7,
-        n_studies=30,
-        sample_size=25,
-        threshold_z=[2.3263, 3.2905, 4.2649],
-        seed=5,
-        n_noise_foci=1,
-        noise_extent=30.0,
-    )
-
-    maps = {}
-    for scale in (1.0, 0.4):
-        result = CBES(
-            fwhm=8.0,
-            mask=small_mask,
-            null_method="none",
-            threshold="study-min",
-            peak_bias="per-study",
-            peak_bias_scale=scale,
-        ).fit(studyset)
-        maps[scale] = {
-            name: result.get_map(name, return_type="array").ravel()
-            for name in ("g", "se", "z", "p", "prevalence", "g_marginal")
-        }
-
-    full, scaled = maps[1.0], maps[0.4]
-    covered = full["g"] != 0
-    assert covered.any()
-
-    for name in ("g", "se", "g_marginal"):
-        assert np.allclose(scaled[name][covered], 0.4 * full[name][covered], rtol=1e-3)
-    for name in ("z", "p", "prevalence"):
-        assert np.allclose(scaled[name][covered], full[name][covered], atol=1e-3)
-
-
-def test_approximate_null_agrees_with_the_relocation_null(small_mask):
-    """The factorised null has to reproduce the null it replaces, in the tail especially.
-
-    Relocation moves every focus and refits the brain; the approximate null samples each
-    study's local configuration and fits one voxel at a time. They are only interchangeable if
-    the p-values agree, so that is what is checked -- not merely that both run.
-    """
-    studyset = create_effect_size_coordinate_studyset(
-        [TRUTH],
-        effect_sizes=0.5,
-        n_studies=30,
-        sample_size=(15, 45),
-        seed=3,
-        n_noise_foci=4,
-        noise_extent=30.0,
-        threshold_z=[2.3263, 3.0902, 3.2905, 4.2649],
-    )
-    common = dict(fwhm=10.0, mask=small_mask, threshold="study-min", peak_bias="per-study", seed=0)
-    exact = CBES(null_method="montecarlo", n_iters=150, **common).fit(studyset)
-    approximate = CBES(null_method="approximate", n_iters=300, **common).fit(studyset)
-
-    z_values = exact.get_map("z", return_type="array").ravel()
-    covered = z_values != 0
-    assert covered.sum() > 100
-
-    p_exact = exact.get_map("p", return_type="array").ravel()[covered]
-    p_approx = approximate.get_map("p", return_type="array").ravel()[covered]
-    assert np.all((p_approx >= 0) & (p_approx <= 1))
-    assert np.corrcoef(p_exact, p_approx)[0, 1] > 0.97
-    for alpha in (0.05, 0.01):
-        assert abs(np.mean(p_exact < alpha) - np.mean(p_approx < alpha)) < 0.02
-
-
-def test_approximate_null_is_recorded_and_does_not_depend_on_mask_size(small_mask):
-    """Its cost is n_draws x n_studies, with no dependence on the number of voxels.
-
-    That independence is the whole point -- it is what turns a null that scales with the brain
-    into one that does not -- so the same draws must serve a mask of any size.
-    """
-    import nibabel as nib
-
-    studyset = create_effect_size_coordinate_studyset(
-        [TRUTH], effect_sizes=0.6, n_studies=20, sample_size=25, seed=4, n_noise_foci=2
-    )
-    shape = small_mask.shape
-    bigger = nib.Nifti1Image(np.ones(tuple(s + 6 for s in shape), np.int32), small_mask.affine)
-
-    histograms = []
-    for mask in (small_mask, bigger):
-        estimator = CBES(fwhm=8.0, mask=mask, null_method="approximate", n_iters=200, seed=0)
-        estimator.fit(studyset)
-        histograms.append(
-            estimator.null_distributions_["histweights_corr-none_method-approximate"]
-        )
-
-    for histogram in histograms:
-        assert histogram.sum() > 0
-    # Same studies and the same draws, so the sampled configurations cost the same either way.
-    assert histograms[0].sum() == histograms[1].sum()
-
-
-def test_approximate_null_rejects_unknown_methods():
+def test_unknown_null_methods_are_rejected():
     """An unrecognised null method is refused at construction."""
     with pytest.raises(ValueError, match="null_method must be"):
         CBES(null_method="factorised")
+    # The relocation nulls were removed, not renamed; asking for one is an error.
+    for removed in ("montecarlo", "approximate"):
+        with pytest.raises(ValueError, match="null_method must be"):
+            CBES(null_method=removed)
 
 
 @pytest.fixture(scope="module")
@@ -1271,13 +1166,13 @@ def test_images_only_collection_is_redirected_to_an_image_estimator(images_only_
     """A collection with images and no coordinates is an error, not a quiet reduction.
 
     With no peaks there is nothing for the kernel to spread or the selection model to explain,
-    and nothing for the spatial null to relocate -- every permutation would reproduce the
-    observed map, so the p-values would look perfectly calibrated and mean nothing. The fit
+    and nothing for the null to permute -- an empty focus table is invariant under every
+    permutation, so the p-values would look perfectly calibrated and mean nothing. The fit
     would silently become a random-effects meta-analysis of the images, which
     ``nimare.meta.ibma`` does directly and with valid inference, so the error says so.
     """
     studyset, mask = images_only_studyset
-    for null_method in ("approximate", "montecarlo", "none"):
+    for null_method in ("permute-magnitudes", "none"):
         with pytest.raises(ValueError, match="coordinate-based estimator") as raised:
             CBES(fwhm=10.0, mask=mask, use_images=True, null_method=null_method).fit(studyset)
         assert "nimare.meta.ibma" in str(raised.value)
@@ -1316,17 +1211,26 @@ def test_a_collection_with_neither_coordinates_nor_images_still_raises(tmp_path)
         CBES(null_method="none").fit(Studyset(str(source)))
 
 
-def test_the_default_null_is_the_approximate_one_and_rft_censoring_is_gone():
-    """Benchmarked head to head, one configuration won on every axis, so it is the only one.
+def test_the_only_null_is_the_permutation_one_and_removed_options_fail_loudly():
+    """CBES estimates effect size, so its null randomizes magnitudes, not positions.
 
-    The approximate null matches the relocation null's calibration under a global null (0.042
-    against 0.041 at a nominal .05, 0.0010 apiece at .001 over 15 simulations) at 14.0 s/fit
-    against 53.7, so it is the default. The RFT regional censoring term cost 2.9x for the same
-    null calibration, was conservative when paired with the approximate null, and recovered a
-    known g = 0.6 as 0.882 where the pointwise form gave 0.665 -- so it is gone, and passing it
-    should fail loudly rather than be silently ignored.
+    A relocation null -- move every focus to a random in-mask voxel, keep its effect size --
+    asks whether foci pile up at a voxel. That is the question ALE and MKDA exist to answer and
+    it is not this one, so it was removed rather than offered alongside: leaving it in would
+    have let a caller obtain a convergence result from an estimator whose output is an effect
+    size. The RFT regional censoring term went earlier, for cost and calibration.
+
+    Removed options fail at construction rather than being silently ignored, so a script written
+    against an earlier version stops instead of quietly answering a different question.
     """
-    assert CBES().null_method == "approximate"
+    assert CBES().null_method == "permute-magnitudes"
+    assert set(NULL_METHODS) == {"permute-magnitudes", "none"}
+
+    for removed in ("montecarlo", "approximate"):
+        with pytest.raises(ValueError, match="null_method must be"):
+            CBES(null_method=removed)
+    for gone in ("_null_iteration", "_compute_montecarlo_null", "_approximate_null"):
+        assert not hasattr(CBES, gone)
 
     with pytest.raises(TypeError):
         CBES(censoring="rft")
@@ -1383,57 +1287,97 @@ def test_reference_scale_is_opt_in_and_not_chosen_by_auto(studyset, small_mask, 
     assert explicit._peak_bias_scale_ != 1.0
 
 
-def test_permuting_magnitudes_leaves_the_spatial_design_untouched(studyset, small_mask):
-    """The invariant that is the whole point of the permutation null.
+def test_permuting_magnitudes_leaves_the_spatial_design_untouched(small_mask):
+    """The invariant the null depends on, tested where it is easiest to break.
 
-    Relocation randomizes where the foci are, so the number of studies reaching a voxel is a
-    random quantity whose distribution need not match the observed one. It does not: with the
-    foci confined to part of the mask the relocation null put 1.95 studies on a covered voxel
-    against the observed 3.81, the standard error came out correspondingly too large, and the
-    test rejected at 0.13 instead of 0.05. Permuting the magnitudes over fixed positions cannot
-    do that, because the positions -- and hence the coverage and the multiplicity -- are the
-    ones that were observed, in every iteration.
+    Only the reported value and its variance move; position, study and sample size stay put. So
+    the set of covered voxels and the number of studies reaching each one must be bit-identical
+    to the observed fit, in every iteration. If they are not, the null's standard errors differ
+    from the observed map's for reasons that have nothing to do with effect size, and voxels
+    become significant on how many studies happen to reach them.
+
+    The collection here gives every study several foci close together, which is the arrangement
+    that breaks a permutation that also moves the study label: a voxel keeps one observation per
+    study, so relabelling can put two foci of one study on the same voxel and lose a count.
+    Moving values alone cannot, however the foci are arranged.
     """
-    estimator = CBES(fwhm=8.0, mask=small_mask, null_method="none")
-    estimator.fit(studyset)
+    rng = np.random.default_rng(11)
+    studies = []
+    for k in range(12):
+        n_subjects = int(rng.integers(20, 40))
+        anchor = rng.uniform(-20, 20, 3)
+        points = [
+            {
+                "space": "MNI",
+                # deliberately tight: within one kernel width of each other
+                "coordinates": [float(v) for v in anchor + rng.normal(0, 3, 3)],
+                "values": [{"kind": "Z", "value": float(rng.uniform(3.3, 5.0))}],
+            }
+            for _ in range(4)
+        ]
+        studies.append(
+            {
+                "id": f"s{k}",
+                "name": f"s{k}",
+                "metadata": {"sample_sizes": [n_subjects]},
+                "analyses": [
+                    {
+                        "id": f"s{k}-1",
+                        "name": "1",
+                        "metadata": {"sample_sizes": [n_subjects]},
+                        "points": points,
+                        "images": [],
+                    }
+                ],
+            }
+        )
+
+    from nimare.studyset import Studyset
+
+    clustered = Studyset({"id": "clus", "name": "clus", "studies": studies})
+    estimator = CBES(fwhm=10.0, mask=small_mask, null_method="none")
+    estimator.fit(clustered)
     table = estimator._focus_table_
-
-    permuted = estimator._permute_magnitudes(np.random.default_rng(0))
-
-    # Positions are untouched, as multisets and row by row.
-    assert np.array_equal(permuted[["i", "j", "k"]].values, table[["i", "j", "k"]].values)
-    # Everything else has moved, but only by reordering: the multiset of rows is preserved.
-    moved = [c for c in table.columns if c not in ("i", "j", "k")]
-    assert not np.array_equal(permuted["g"].values, table["g"].values)
-    for column in moved:
-        assert sorted(map(str, permuted[column].values)) == sorted(map(str, table[column].values))
-    # Whole rows travel together: a focus keeps its own study, sample size and variance beside
-    # its effect size, or it would be tested against another study's censoring bound.
-    original = {tuple(map(str, row)) for row in table[moved].values}
-    assert {tuple(map(str, row)) for row in permuted[moved].values} == original
-
-    # The consequence: identical coverage and identical studies per voxel.
     args = (estimator._sample_sizes_, estimator._thresholds_, estimator._image_studies_)
     observed_fit, _ = estimator._statistic(table, *args)
-    permuted_fit, _ = estimator._statistic(permuted, *args)
-    assert np.array_equal(observed_fit["covered"], permuted_fit["covered"])
-    assert np.array_equal(observed_fit["n_studies"], permuted_fit["n_studies"])
+
+    for seed in range(5):
+        permuted = estimator._permute_magnitudes(np.random.default_rng(seed))
+
+        # The spatial design is untouched, column by column rather than in aggregate.
+        for column in ("i", "j", "k", "id", "sample_size"):
+            assert np.array_equal(permuted[column].values, table[column].values), column
+        # The values moved, and only by reordering.
+        assert not np.array_equal(permuted["g"].values, table["g"].values)
+        assert sorted(permuted["g"].values) == sorted(table["g"].values)
+        # A value keeps its own variance, or the pooling weights would be nonsense.
+        pairs = {(g, v) for g, v in zip(table["g"].values, table["var_g"].values)}
+        assert {(g, v) for g, v in zip(permuted["g"].values, permuted["var_g"].values)} == pairs
+
+        # The consequence, and the reason for all of the above.
+        permuted_fit, _ = estimator._statistic(permuted, *args)
+        assert np.array_equal(observed_fit["covered"], permuted_fit["covered"])
+        assert np.array_equal(observed_fit["n_studies"], permuted_fit["n_studies"])
+
+    # The arrangement really does put several foci of one study within reach of one voxel,
+    # so the guard above is testing something.
+    assert observed_fit["n_studies"].max() < len(table)
 
 
-def test_the_two_nulls_test_different_hypotheses(small_mask):
-    """Convergence and magnitude are separate questions, and the nulls separate them.
+def test_convergence_alone_does_not_make_a_voxel_significant(small_mask):
+    """The property that decides the null was worth changing for.
 
     Every study reports a peak at the same place, and every peak in the collection -- there and
     in the scatter around it -- is drawn from one distribution. So the site has overwhelming
-    spatial convergence and an entirely unremarkable magnitude, which is exactly the
-    configuration on which the two hypotheses disagree.
+    spatial convergence and an entirely unremarkable magnitude. An estimator that reports effect
+    size should be unmoved by it: nothing about those thirty studies says the effect there is
+    any larger than the effects reported elsewhere, only that more studies happened to report
+    there. A relocation null would call this significant, which is why it is not the null here.
 
-    Relocation, whose hypothesis is that the positions were arbitrary, should call it
-    significant: thirty studies do not land on one voxel by chance. Permutation, whose
-    hypothesis is that effect size is unrelated to location, should not: the effects reported
-    there are the same size as the effects reported everywhere else. A user choosing between
-    these nulls is choosing between those two claims, and the test fixes that they are not
-    interchangeable.
+    The guard is against regressing to a null pooled over voxels. Pooling would refer this
+    voxel's thirty studies to a distribution made mostly of voxels carrying two; the standard
+    error falls with the number of contributing studies, so the site would come out significant
+    on study count alone even though the magnitudes are permuted.
     """
     rng = np.random.default_rng(5)
     studies = []
@@ -1467,33 +1411,30 @@ def test_the_two_nulls_test_different_hypotheses(small_mask):
                 ],
             }
         )
+
     from nimare.studyset import Studyset
 
     convergent = Studyset({"id": "conv", "name": "conv", "studies": studies})
 
-    shared = dict(fwhm=12.0, mask=small_mask, selection_model="none", n_iters=100, seed=0)
-    relocation_estimator = CBES(null_method="montecarlo", **shared)
-    permutation_estimator = CBES(null_method="permute-magnitudes", **shared)
-    relocation = relocation_estimator.fit(convergent)
-    permutation = permutation_estimator.fit(convergent)
-
-    ijk = relocation_estimator._in_mask_ijk()
-    centre = int(np.argmin(np.abs(ijk - np.array([10, 10, 10])).sum(axis=1)))
-    relocation_p = float(relocation.get_map("p", return_type="array")[centre])
-    permutation_p = float(permutation.get_map("p", return_type="array")[centre])
-
-    # Thirty studies converging is unmissable to the null that says positions are arbitrary.
-    assert relocation_p < 0.05
-    # It is unremarkable to the null that says magnitude is unrelated to position.
-    assert permutation_p > relocation_p * 5
-
-    # The estimates are the same map either way; only the reference distribution differs.
-    assert np.allclose(
-        relocation.get_map("g", return_type="array"),
-        permutation.get_map("g", return_type="array"),
+    estimator = CBES(
+        fwhm=12.0,
+        mask=small_mask,
+        selection_model="none",
+        null_method="permute-magnitudes",
+        n_iters=100,
+        seed=0,
     )
-    assert "permutation null" in permutation.description_
-    assert "converge" in relocation.description_
+    result = estimator.fit(convergent)
+
+    centre = int(np.ravel_multi_index((10, 10, 10), small_mask.shape))
+    p_values = result.get_map("p", return_type="array")
+    z_values = result.get_map("z", return_type="array")
+
+    # The site really is the one every study reported at, and the statistic really is large
+    # there -- thirty studies make the standard error small. The p-value is still not small.
+    assert result.get_map("n_studies", return_type="array")[centre] == 30
+    assert abs(z_values[centre]) > 3
+    assert p_values[centre] > 0.05
 
 
 def test_permutation_null_calibrates_uncorrected_p(null_studyset, small_mask):
@@ -1513,25 +1454,27 @@ def test_permutation_null_calibrates_uncorrected_p(null_studyset, small_mask):
     assert np.mean(permutation.get_map("p", return_type="array") < 0.05) < 0.15
 
 
-def test_fwe_correction_follows_the_null_the_estimator_was_given(null_studyset, small_mask):
-    """FWE has to randomize the same way the uncorrected map did.
+def test_fwe_correction_permutes_even_without_a_null_from_fit(null_studyset, small_mask):
+    """A maximum statistic has to come from somewhere, so the correction permutes on demand.
 
-    Correcting a permutation-null map against a maximum statistic built by relocation would
-    test one hypothesis at the voxel level and a different one familywise.
+    Fitting with ``null_method="none"`` skips the null to save the refits, which leaves nothing
+    cached for familywise correction to reuse. It must then build one rather than fail or, worse,
+    correct against an empty distribution.
     """
     estimator = CBES(
         fwhm=12.0,
         mask=small_mask,
         selection_model="none",
-        null_method="permute-magnitudes",
+        null_method="none",
         n_iters=30,
     )
     result = estimator.fit(null_studyset)
-    assert estimator._null_scheme() == "permute-magnitudes"
+    assert "values_level-voxel_corr-fwe_method-montecarlo" not in estimator.null_distributions_
 
-    maps, _, _ = estimator.correct_fwe_montecarlo(result, vfwe_only=True)
+    maps, _, description = estimator.correct_fwe_montecarlo(result, vfwe_only=True)
+
     assert np.all(np.isfinite(maps["logp_level-voxel"]))
-    # Relocation stays the scheme for every other setting, including the ones that do not
-    # permute during fit but still have to for the correction.
-    for method in ("montecarlo", "approximate", "none"):
-        assert CBES(null_method=method)._null_scheme() == "relocate"
+    assert "permutation" in description
+    assert (
+        len(estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]) == 30
+    )

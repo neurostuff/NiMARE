@@ -126,9 +126,9 @@ DESIGNS = ("one-sample", "two-sample")
 
 SELECTION_MODELS = ("zero-inflated", "none")
 
-NULL_METHODS = ("montecarlo", "approximate", "permute-magnitudes", "none")
+NULL_METHODS = ("permute-magnitudes", "none")
 
-#: Resolution of the Monte Carlo null histogram for |z|, and where its upper tail is clipped.
+#: Resolution of the permutation null histogram for |z|, and where its upper tail is clipped.
 _NULL_Z_STEP = 0.01
 _NULL_MAX_Z = 50.0
 
@@ -141,11 +141,9 @@ _EM_TOLERANCE = 1e-4
 #: (which touches every pair) is amortized rather than run every iteration.
 _EM_COMPACTION_FRACTION = 0.05
 
-#: Minimum relocations used to fix the cluster-forming threshold before the main null loop.
+#: Minimum permutations used to fix the cluster-forming threshold before the main null loop.
 _NULL_PILOT_ITERS = 20
 
-#: Independent draws used by ``null_method='approximate'`` when ``n_iters`` is small.
-_MIN_APPROXIMATE_DRAWS = 200_000
 
 #: Excess of the mean reported peak height over the null peak height, in z units, below which
 #: the reported magnitudes are treated as carrying no usable effect-size information.
@@ -187,15 +185,17 @@ def _normal_pdf(x):
 
 
 def _null_bin_edges():
-    """Bin edges for the Monte Carlo null histogram of |z|."""
+    """Bin edges for the permutation null histogram of |z|."""
     return np.arange(0.0, _NULL_MAX_Z + _NULL_Z_STEP, _NULL_Z_STEP)
 
 
 def _stat_from_histogram(p_value, histogram):
     """Smallest ``|z|`` whose null p-value is at or below ``p_value``.
 
-    The inverse of :func:`_p_from_histogram`, used to turn a cluster-forming p threshold into
-    the statistic threshold the clusters are actually defined on.
+    Used to turn a cluster-forming p threshold into the statistic threshold the clusters are
+    actually defined on. Pooling every voxel of every iteration into one histogram assumes the
+    voxels share a null, which they do not exactly -- but a cluster-forming threshold has to be
+    a single number, so it is the one place that assumption is unavoidable.
     """
     total = histogram.sum()
     if total <= 0:
@@ -242,7 +242,7 @@ def _gpd_tail_p(observed, null_maxima, min_exceedances=30, alpha=0.05):
     """Corrected p-values from a generalized Pareto fit to the tail of the null maxima.
 
     A permutation p-value cannot go below ``1 / (1 + n_iters)``, so resolving a corrected p of
-    1e-4 needs ten thousand relocations however uninteresting the other 9999 are. Extreme value
+    1e-4 needs ten thousand permutations however uninteresting the other 9999 are. Extreme value
     theory says the exceedances of a high threshold converge to a generalized Pareto
     distribution whatever the parent, so the tail can be *modelled* rather than counted. This
     is the tail approximation of Winkler et al. (2016), which they recommend specifically for
@@ -300,7 +300,7 @@ def _gpd_tail_p(observed, null_maxima, min_exceedances=30, alpha=0.05):
             # 40000-permutation reference, across three parent distributions, 25 repetitions
             # each. Comfortably above the empirical floor it is accurate -- at p = .05 and .01
             # the fitted value is 0.85-1.00 of the truth and essentially never more than twice
-            # too small. At and below the floor (1/501 for a 500-relocation run) it runs about
+            # too small. At and below the floor (1/501 for a 500-permutation run) it runs about
             # twice anticonservative in 36-60% of runs, on every parent tried.
             #
             # So the fit is used only where it was shown to work, five times the floor and
@@ -377,7 +377,7 @@ def _censoring_terms(mu, cutoff_scaled, twice_cutoff_scaled, inv_sigma, inv_sigm
 
     The arithmetic writes into its own temporaries wherever numpy allows it. At tens of
     millions of pairs each avoided temporary is hundreds of megabytes of traffic, and this runs
-    tens of times per fit and once per Monte Carlo relocation.
+    tens of times per fit and once per permutation.
     """
     # upper = (c - mu) / sigma;  lower = (-c - mu) / sigma = upper - 2c/sigma
     upper = mu * -inv_sigma
@@ -436,25 +436,6 @@ def _mu_derivatives(
         minlength=width,
     )
     return score, curvature
-
-
-def _p_from_histogram(values, histogram):
-    """Two-tailed p for ``|z|`` against a histogram of null ``|z|`` values.
-
-    Pooling every voxel of every iteration into one histogram is what ALE and MKDA do for
-    their uncorrected nulls; it assumes voxels share a null distribution, which is only
-    approximately true here because coverage varies across the brain.
-    """
-    total = histogram.sum()
-    if total <= 0:
-        return np.ones_like(values, dtype=float)
-
-    # Survival counts: how many null values land at or above each bin's lower edge.
-    survival = np.concatenate([np.cumsum(histogram[::-1])[::-1], [0.0]])
-    index = np.clip(
-        np.floor(np.asarray(values) / _NULL_Z_STEP).astype(np.int64), 0, len(histogram)
-    )
-    return (survival[index] + 1.0) / (total + 1.0)
 
 
 def peak_stat_to_hedges_g(stat, sample_size, stat_type="z", design="one-sample"):
@@ -780,39 +761,34 @@ class CBES(Estimator):
         ``n_studies`` interpretable and the fit affordable.
     max_iter : :obj:`int`, default=25
         Maximum Newton iterations for the censored likelihood.
-    null_method : {"approximate", "montecarlo", "permute-magnitudes", "none"}, \
-default="approximate"
-        How uncorrected p-values are obtained. ``g / se`` is not null-referenced, so they come
-        from a randomization null rather than from the standard error -- and the two available
-        randomizations test **different hypotheses**, so this choice is not only about cost.
+    null_method : {"permute-magnitudes", "none"}, default="permute-magnitudes"
+        How uncorrected p-values are obtained. ``g / se`` is not null-referenced -- the standard
+        error treats :math:`\\tau^2` as known and ignores that the peaks being pooled were
+        selected for being large -- so p comes from a randomization null instead.
 
-        Relocating a focus asserts that its position was arbitrary; permuting the magnitudes
-        over fixed positions asserts that effect size is unrelated to location. A voxel where
-        every study agrees on a modest effect is significant under the first and not under the
-        second. Neither answers "is the pooled effect here different from zero" in absolute
-        terms, which is what the selection bias in reported peaks costs and why ``g / se``
-        cannot simply be referred to a normal.
+        ``"permute-magnitudes"`` reassigns the reported effect sizes to each other's locations,
+        with the locations, the studies that reported at them and everything else about the
+        spatial design held fixed, and refits. Study images, which have no location to hold
+        fixed, take the sign flip that is their own exchangeable action, as in
+        :class:`~nimare.meta.ibma.PermutedOLS` and FSL's randomise. The hypothesis is that
+        effect size is unrelated to location.
 
-        ``"approximate"`` and ``"montecarlo"`` both ask the **convergence** question.
-        ``"approximate"``, the default, draws each voxel's null directly from the studies' foci
-        counts and kernel geometry, which costs nothing in the size of the mask; it agrees with
-        the relocation null to r = 0.999 on the p-values at a quarter of the cost.
-        ``"montecarlo"`` relocates every focus ``n_iters`` times and refits; it is what
-        ``"approximate"`` is validated against, and what :class:`~nimare.correct.FDRCorrector`
-        and ``FWECorrector(method="bonferroni")`` are meaningful on top of.
+        Because nothing moves, each voxel keeps its own studies in every iteration and is
+        referred to a null of its own, rather than to one pooled over a brain in which most
+        voxels carry a different number of studies. The p-value is the usual randomization
+        estimate, ``(1 + #{null >= observed}) / (1 + n_iters)``, and so cannot fall below
+        ``1 / (1 + n_iters)``; the default ``cluster_threshold`` of .001 therefore sits at that
+        floor unless ``n_iters`` is raised past 1000. Familywise correction has no such floor,
+        being read off the maximum statistic.
 
-        ``"permute-magnitudes"`` asks the **relative magnitude** question, reassigning the foci
-        to each other's locations with the locations held fixed. Because nothing moves, each
-        voxel keeps its own studies in every iteration and gets its own null, and the p-value is
-        the usual randomization estimate against that -- where relocation, whose configurations
-        are not tied to any voxel, must pool ``|z|`` over the brain and so refers a voxel
-        carrying many studies to a distribution made mostly of voxels carrying few. That is what
-        separates the two questions in practice: under relocation a site where thirty studies
-        agree on an unremarkable effect is significant, and here it is not. Being per-voxel also
-        makes this null immune to the mask-fill mismatch that makes relocation anticonservative
-        when the analysis mask is much larger than the region the foci occupy. It costs a refit
-        per iteration, as ``"montecarlo"`` does, and its p cannot fall below
-        ``1 / (1 + n_iters)``.
+        This is deliberately **not** a test of spatial convergence. An earlier version offered
+        a relocation null -- move every focus to a random in-mask voxel, keeping its effect
+        size -- which is the null ALE and MKDA use, and it was removed: its hypothesis is that
+        a focus could have been anywhere, so it answers whether foci pile up at a voxel, with
+        the magnitudes entering only as a multiplier. That is a different question from the one
+        an effect-size estimator exists to ask, and it also made the test sensitive to how much
+        of the analysis mask the foci happen to occupy, which is a property of the mask rather
+        than of the data.
 
         ``"none"`` returns ``p = 1`` everywhere, for inspecting the estimates at no cost.
     cluster_threshold : :obj:`float` or None, default=0.001
@@ -821,24 +797,19 @@ default="approximate"
         makes :meth:`correct_fwe_montecarlo` pay for a second pass over the permutations if
         cluster correction is then requested.
     n_iters : :obj:`int`, default=1000
-        Iterations for the null, read differently by the different methods. Under
-        ``null_method="approximate"`` it sets the draws per voxel, at 1000 each, and costs
-        little. Under ``"montecarlo"`` or ``"permute-magnitudes"`` each iteration is a full
-        refit and this becomes the dominant cost of the estimator -- far more so than for ALE,
-        whose per-iteration statistic is much cheaper -- so reduce it when exploring with
-        either of those nulls.
+        Permutations for the null. Each is a full refit, which makes this the dominant cost of
+        the estimator -- far more so than for ALE, whose per-iteration statistic is much
+        cheaper. It also sets the resolution of the uncorrected p, which cannot fall below
+        ``1 / (1 + n_iters)``, so lowering it to explore costs precision as well as confidence.
     n_cores : :obj:`int`, default=1
-        Processes used for the Monte Carlo null, which is where nearly all the time goes.
-        ``-1`` uses every available core and is close to linear, since the relocations are
-        independent; it is the single largest speedup available to a caller. Note the null is
-        intrinsically dearer than the observed fit -- relocation scatters the foci over far
-        more of the brain than the real, clustered configuration does, which made a null
-        iteration 2.4x the cost of the fit it came from in one whole-brain benchmark.
-        Cores for the Monte Carlo null. ``-1`` uses all available.
+        Processes used for the permutation null, which is where nearly all the time goes.
+        ``-1`` uses every available core and is close to linear, since the permutations are
+        independent; it is the single largest speedup available to a caller. The iterations run
+        in one block per core rather than one task per iteration, because the null is
+        accumulated per voxel and shipping each iteration's whole map back would cost more than
+        the refits do.
     seed : :obj:`int`, default=0
-        Seed for the relocation draws.
-    mask : Niimg-like object or None, optional
-        Mask to use. If None, the collection's masker is used.
+        Seed for the permutation draws.
     memory, memory_level, generate_description
         As in every other :class:`~nimare.estimator.Estimator`.
 
@@ -868,17 +839,24 @@ default="approximate"
     signed ``z_*`` companion), matching the names
     :class:`~nimare.meta.cbma.ale.ALE` uses. :class:`~nimare.correct.FDRCorrector` and
     ``FWECorrector(method="bonferroni")`` work off the uncorrected ``"p"`` map instead,
-    and are only meaningful when that map came from the Monte Carlo null.
+    and are only meaningful when that map came from the permutation null.
 
     Warnings
     --------
     This estimator is new and has not been validated against a reference implementation.
 
-    On a global null (30 studies of pure noise foci, 20 simulations) the Monte Carlo null
-    returned uncorrected ``p < .05`` for 5.2% of voxels with ``selection_model="none"`` and
-    4.2% with ``"zero-inflated"``, and every correction built on it rejected in 1 or 2 of the
-    20 simulations -- consistent with a nominal 0.05, though 20 simulations cannot resolve a
-    rate more finely than that.
+    On a global null (30 studies of pure noise foci) the permutation null returns roughly the
+    nominal uncorrected rate, and familywise correction rejects at roughly the nominal rate,
+    but the simulations behind those figures number in the tens and cannot resolve a rate more
+    finely than that.
+
+    What the null tests is worth being explicit about, because it is not what a reader of a
+    coordinate-based meta-analysis may expect. A voxel is significant when the effects reported
+    near it are large *relative to the effects reported elsewhere in this collection*, not when
+    the pooled effect there differs from zero in absolute terms, and not when studies converge
+    there. A collection with a genuine effect of the same size everywhere has nothing for this
+    null to find -- though neither would any method built on reported peaks, since a peak is
+    only reported where the effect is locally large.
 
     The effect-size maps are well ranked but not calibrated in magnitude. Against the 21 NIDM
     pain studies' full ``t`` images, CBES run on peaks thresholded out of those same images
@@ -909,7 +887,7 @@ default="approximate"
         coverage_radius=None,
         kernel_min_weight=0.01,
         max_iter=25,
-        null_method="approximate",
+        null_method="permute-magnitudes",
         cluster_threshold=0.001,
         n_iters=1000,
         n_cores=1,
@@ -998,8 +976,8 @@ default="approximate"
 
         Without coordinates there is nothing for this estimator to do that an image-based one
         does not do better. The selection model has no censored observations to explain, the
-        kernel has no peaks to spread, and the spatial null has nothing to relocate -- every
-        permutation would reproduce the observed map, so the p-values would look perfectly
+        kernel has no peaks to spread, and the null has nothing to permute -- an empty focus
+        table is invariant under every permutation, so the p-values would look perfectly
         calibrated and mean nothing. The fit would silently reduce to a random-effects
         meta-analysis of the images, which :mod:`nimare.meta.ibma` already does directly and
         with valid inference.
@@ -1021,8 +999,8 @@ default="approximate"
                 raise ValueError(
                     "This collection has images but no coordinates, and CBES is a "
                     "coordinate-based estimator: with nothing to pool from peaks it would "
-                    "reduce to a random-effects meta-analysis of the images, and its spatial "
-                    "null would have nothing to relocate -- every permutation reproduces the "
+                    "reduce to a random-effects meta-analysis of the images, and its null "
+                    "would have no foci to permute -- every permutation reproduces the "
                     "observed map, so the p-values would be meaningless. Use an image-based "
                     "estimator instead: nimare.meta.ibma.DerSimonianLaird or "
                     "nimare.meta.ibma.Hedges for random effects on beta/varcope maps, "
@@ -2155,10 +2133,9 @@ default="approximate"
     def _statistic(self, table, sample_sizes, thresholds, image_studies=None):
         """Fit one configuration of foci and return ``(fit, z)``.
 
-        The observed map and every Monte Carlo relocation go through this, so the null is
-        built from exactly the statistic being tested. Running the null off the naive
-        weighted mean while the observed map came from the selection model would compare two
-        different quantities.
+        The observed map and every permutation go through this, so the null is built from
+        exactly the statistic being tested. Running the null off the naive weighted mean while
+        the observed map came from the selection model would compare two different quantities.
         """
         fit = self._pool(table, image_studies)
         if self.selection_model != "none":
@@ -2179,11 +2156,6 @@ default="approximate"
             cached = _mask_img_to_bool(self.masker.mask_img)
             self._mask_bool_ = cached
         return cached
-
-    def _in_mask_ijk(self):
-        """Voxel indices a relocated focus may land on."""
-        # ``[:, :3]``: a mask image may carry a trailing singleton volume axis.
-        return np.argwhere(np.asarray(self.masker.mask_img.dataobj) > 0)[:, :3]
 
     def _flip_image_signs(self, rng):
         """Randomly sign-flip each image study, the null transformation images admit.
@@ -2217,149 +2189,52 @@ default="approximate"
     def _permute_magnitudes(self, rng):
         """Reassign the reported foci to each other's locations, positions held fixed.
 
-        The other null transformation the data admit, and a different hypothesis. Relocation
-        holds the magnitudes and randomizes the positions, so it asks whether the foci pile up
-        here more than uniform scattering would explain -- a convergence question, which the
-        magnitudes only scale. This holds the positions and randomizes what sits on them, so it
-        asks whether the effects reported near here are large for this collection.
+        The randomization an effect-size estimate admits. Each focus keeps where it is and
+        gives up what it said, so the hypothesis is that effect size is unrelated to location:
+        a voxel is interesting when the effects reported near it are large for this collection.
 
-        Permuting is only half of what makes that a different test. Because nothing moves, each
-        voxel keeps its own studies in every iteration, so it has a null of its own and is
-        compared only against itself -- see :meth:`_compute_permutation_null`. Referring the
-        permuted ``|z|`` to a histogram pooled over the brain instead would put a voxel carrying
-        thirty studies beside voxels carrying two, and convergence would drive significance here
-        exactly as it does under relocation, permutation or no permutation.
+        Permuting is only half of what makes that the test. Because nothing moves, each voxel
+        keeps its own studies in every iteration, so it has a null of its own and is compared
+        only against itself -- see :meth:`_compute_permutation_null`. Referring the permuted
+        ``|z|`` to a histogram pooled over the brain instead would put a voxel carrying thirty
+        studies beside voxels carrying two, and the number of studies, not the size of their
+        effects, would drive significance. Held per voxel, a location where thirty studies agree
+        on an unremarkable effect is unremarkable, which is the correct answer for a statistic
+        that reports effect size.
 
-        Held that way, the two nulls separate cleanly. A location where every study agrees on a
-        modest effect is unremarkable here, because a modest effect is unremarkable in the pool
-        being permuted; under relocation it is significant, because thirty studies do not land
-        on one voxel by chance. Neither is wrong, and :meth:`fit` runs whichever
-        ``null_method`` names.
+        Sign-flipping is the natural randomization for a one-sample effect and is what the image
+        studies get below, but it cannot be applied to reported peaks: a peak is in the table
+        only because it cleared a threshold, so the coordinate side is not sign-symmetric under
+        the null and flipping it would make every covered voxel significant. Permutation is what
+        remains once selection is taken seriously.
 
-        The fixed positions also make the null immune to a mis-scaling that relocation is not.
-        Covered voxels and studies per voxel match the observed fit exactly, where uniform
-        relocation gives them whatever the mask fill implies: on the NIDM pain peaks relocation
-        puts 8.86 studies on a covered voxel against the observed 7.06.
+        Only the reported value and its variance move. Study membership, sample size and
+        position all stay where they are, which is what makes the spatial design exactly
+        invariant: a study reaches a voxel, or does not, on geometry alone, and geometry is
+        untouched. Moving the study label as well would look more thorough and be wrong -- a
+        voxel keeps one observation per study, so relabelling can land two foci of the same
+        study on one voxel and quietly drop the count. Measured on thirty studies converging at
+        a voxel, relabelling took the null's study count there from 30 to about 20, inflated the
+        null's standard error, and made the site significant on multiplicity alone.
 
-        Whole rows move together, so a focus keeps its study membership, sample size and
-        reporting threshold alongside its effect size -- permuting the value alone would test it
-        against another study's censoring bound. Images have no location to hold fixed, so they
-        take the same sign flip they take under relocation.
+        Leaving the study label behind costs nothing in coherence, because a reporting
+        threshold is only ever consulted for a study that was *silent* at a voxel, and silence
+        is decided by position. A reported observation contributes a plain density term with no
+        cutoff in it, so the value it carries need not have come from the study that reported
+        at that location.
+
+        Images have no location to hold fixed, so they take the sign flip instead.
         """
         table = self._focus_table_
         permuted = table.copy()
         order = rng.permutation(len(table))
-        # column by column rather than as one block: a mixed-dtype ``.values`` would come back
-        # as object and quietly cost more than the permutation itself
-        for column in table.columns:
-            if column not in ("i", "j", "k"):
+        # ``peak_bias`` is present only when the rescaling was applied, and travels with the
+        # value it rescaled. Column by column rather than as one block: a mixed-dtype
+        # ``.values`` would come back as object and cost more than the permutation itself.
+        for column in ("g", "var_g", "stat", "peak_bias"):
+            if column in table.columns:
                 permuted[column] = table[column].values[order]
         return permuted
-
-    def _null_iteration(
-        self, seed, in_mask_ijk, sample_sizes, thresholds, cluster_stat=None, scheme="relocate"
-    ):
-        """One iteration of the null named by ``scheme``.
-
-        Returns ``(histogram of |z|, max |z|, max cluster size, max cluster mass)``; the two
-        cluster measures are zero unless ``cluster_stat`` gives a cluster-forming threshold.
-
-        Relocating the foci while keeping their effect sizes and study membership is the same
-        null the convergence-based estimators use -- that reported coordinates fall at random
-        within the mask -- but evaluated with a statistic that is sensitive to magnitude.
-        """
-        rng = np.random.default_rng(seed)
-        if scheme == "permute-magnitudes":
-            permuted = self._permute_magnitudes(rng)
-        else:
-            permuted = self._focus_table_.copy()
-            permuted[["i", "j", "k"]] = in_mask_ijk[
-                rng.integers(0, len(in_mask_ijk), size=len(permuted))
-            ]
-        _, z_null = self._statistic(
-            permuted, sample_sizes, thresholds, self._flip_image_signs(rng)
-        )
-
-        absolute = np.abs(z_null)
-        counts, _ = np.histogram(np.clip(absolute, 0, _NULL_MAX_Z), bins=_null_bin_edges())
-        peak = float(absolute.max()) if absolute.size else 0.0
-
-        max_size = max_mass = 0.0
-        if cluster_stat is not None and np.isfinite(cluster_stat):
-            mask_bool = self._mask_bool()
-            volume = np.zeros(mask_bool.shape, dtype=float)
-            volume[mask_bool] = z_null
-            max_size, max_mass = _calculate_cluster_measures(
-                volume, cluster_stat, _CLUSTER_CONNECTIVITY, tail="two"
-            )
-        return counts, peak, float(max_size), float(max_mass)
-
-    def _null_scheme(self):
-        """Which randomization the estimator's ``null_method`` asks for.
-
-        Only ``"permute-magnitudes"`` permutes; every other setting relocates, including
-        ``"approximate"`` and ``"none"``, whose FWE correction still has to permute something
-        and for which relocation is the null the estimator was validated on.
-        """
-        return "permute-magnitudes" if self.null_method == "permute-magnitudes" else "relocate"
-
-    def _compute_montecarlo_null(
-        self, n_iters, n_cores, seed, cluster_stat=None, cluster_threshold=None, scheme=None
-    ):
-        """Accumulate the null distributions in one pass over the relocations.
-
-        The voxelwise histogram (for uncorrected p), the maximum ``|z|`` (for voxel-level FWE)
-        and, when clusters are wanted, the maximum cluster size and mass all come from the same
-        refits. Computing them separately would mean permuting two or three times, and a
-        permutation here is a full refit.
-
-        Clusters need a forming threshold, and an honest one can only be read off the null that
-        this pass is producing. Rather than permute twice, ``cluster_threshold`` (a p-value) is
-        resolved against a short pilot run first; the pilot costs a few percent of the main
-        loop where a second full pass would cost 100%.
-        """
-        in_mask_ijk = self._in_mask_ijk()
-        sample_sizes = getattr(self, "_sample_sizes_", None)
-        thresholds = getattr(self, "_thresholds_", None)
-        n_cores = _check_ncores(n_cores)
-        scheme = self._null_scheme() if scheme is None else scheme
-
-        if cluster_stat is None and cluster_threshold is not None:
-            n_pilot = int(min(max(_NULL_PILOT_ITERS, n_iters // 20), n_iters))
-            pilot = Parallel(n_jobs=n_cores)(
-                # Seeded past the main loop's range so the pilot draws are disjoint from
-                # it, and never negative, which ``default_rng`` rejects.
-                delayed(self._null_iteration)(
-                    seed + n_iters + i, in_mask_ijk, sample_sizes, thresholds, None, scheme
-                )
-                for i in range(n_pilot)
-            )
-            pilot_histogram = np.sum([counts for counts, _, _, _ in pilot], axis=0).astype(
-                np.float64
-            )
-            cluster_stat = _stat_from_histogram(cluster_threshold, pilot_histogram)
-            self.null_distributions_["cluster_forming_stat"] = cluster_stat
-
-        results = Parallel(n_jobs=n_cores)(
-            delayed(self._null_iteration)(
-                seed + i, in_mask_ijk, sample_sizes, thresholds, cluster_stat, scheme
-            )
-            for i in tqdm(range(n_iters), disable=n_iters < 50, desc="CBES null")
-        )
-
-        histogram = np.sum([counts for counts, _, _, _ in results], axis=0).astype(np.float64)
-        max_values = np.array([peak for _, peak, _, _ in results], dtype=float)
-        self.null_distributions_["histogram_bins"] = _null_bin_edges()
-        self.null_distributions_["histweights_corr-none_method-montecarlo"] = histogram
-        self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = max_values
-        if cluster_stat is not None:
-            self.null_distributions_[
-                "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
-            ] = np.array([size for _, _, size, _ in results], dtype=float)
-            self.null_distributions_[
-                "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
-            ] = np.array([mass for _, _, _, mass in results], dtype=float)
-        return histogram, max_values
 
     def _permutation_chunk(self, seeds, sample_sizes, thresholds, observed, cluster_stat):
         """Run a block of permutations, reducing as it goes.
@@ -2401,13 +2276,17 @@ default="approximate"
     ):
         """Per-voxel null from permuting the magnitudes over fixed positions.
 
-        Unlike relocation, this null is *per voxel*. A relocated configuration is not tied to
-        any particular voxel, so the relocation null has to pool ``|z|`` over the brain to have
-        enough draws, and a voxel carrying many studies is then referred to a distribution made
-        mostly of voxels carrying few -- which is why convergence drives significance under that
-        null even though its statistic is a magnitude. Here the positions never move, so each
-        voxel keeps its own studies in every iteration and has its own null. Comparing a voxel
-        only against itself is what isolates the magnitude question from the convergence one.
+        The null is *per voxel*, which is the point. Because the positions never move, a voxel
+        is reached by the same studies in every iteration, so it has a well-defined null of its
+        own and is compared only against itself.
+
+        Pooling ``|z|`` over the brain into one histogram instead -- what a null whose
+        iterations are not tied to particular voxels is forced to do -- would refer a voxel
+        carrying thirty studies to a distribution made mostly of voxels carrying two. The
+        standard error falls with the number of contributing studies, so under a pooled null it
+        is the count of studies, not the size of their effects, that drives significance. That
+        is a convergence test wearing an effect-size statistic, and it is what comparing a voxel
+        against itself avoids.
 
         The uncorrected p is the usual randomization estimate, ``(1 + #{null >= observed}) /
         (1 + n_iters)``, which is why it cannot fall below ``1 / (1 + n_iters)``; the default
@@ -2465,169 +2344,6 @@ default="approximate"
             ] = np.array([mass for _, _, _, _, masses in results for mass in masses], dtype=float)
         return p_values, max_values
 
-    def _approximate_null(self, table, sample_sizes, thresholds, n_draws, seed):
-        """Null distribution of ``|z|`` from factorised per-voxel draws, not brain refits.
-
-        The relocation null moves every focus to a uniform in-mask voxel and refits the whole
-        brain. But at any *single* voxel the studies are independent under that null, and each
-        study's local configuration has a distribution that follows from its foci count and the
-        kernel geometry alone -- nothing about the brain is needed. For study ``k`` with
-        ``m_k`` foci, each focus independently lands inside this voxel's kernel support with
-        probability ``|support| / |mask|``, or inside the coverage sphere without reaching the
-        kernel, and a focus that lands is a uniformly chosen one of that study's foci carrying
-        its own ``g``. So the configuration can be sampled directly and the voxel fitted on its
-        own.
-
-        This is the same idea behind ALE's analytic null (Eickhoff et al., 2012), which
-        convolves per-study histograms because its statistic is a product over independent
-        studies. CBES's statistic is an EM fit rather than a product, so there is no
-        convolution to do -- but the independence that makes convolution valid also makes
-        direct sampling valid.
-
-        What it buys is a change of scaling, not a constant factor. Relocation costs
-        ``n_voxels x n_studies x n_iters``; this costs ``n_draws x n_studies``, with no
-        dependence on the size of the mask. On a whole brain with 40 studies that is about
-        9.1e9 study-voxel pairs against 4e7, and the draws are genuinely independent rather
-        than spatially correlated as neighbouring voxels are. Validated against the relocation
-        null to within 2% of the ``|z|`` threshold at every p from .05 down to 1e-4.
-
-        Only the *uncorrected* null comes from here. Familywise error needs the maximum over
-        the brain, which is a property of the spatial correlation this deliberately discards,
-        so :meth:`correct_fwe_montecarlo` still relocates.
-        """
-        rng = np.random.default_rng(seed)
-        images = getattr(self, "_image_studies_", None) or {}
-        if sample_sizes is not None:
-            study_ids = list(sample_sizes.index)
-        else:
-            # selection_model="none" leaves the roster unset, and the null still needs to know
-            # which studies exist.
-            study_ids = list(dict.fromkeys(table["id"].astype(str))) if len(table) else []
-        study_ids = study_ids + [s for s in images if s not in set(map(str, study_ids))]
-        n_studies = len(study_ids)
-
-        offsets, kernel_weights = self._kernel_support()
-        radius = self.coverage_radius
-        if radius is None:
-            radius = 2.0 * (self.fwhm if self.fwhm is not None else 10.0)
-        zooms = self.masker.mask_img.header.get_zooms()[:3]
-        n_sphere = len(sphere_kernel_offsets(radius, zooms))
-        n_mask = int(self._mask_bool().sum())
-        p_kernel = min(len(kernel_weights) / n_mask, 1.0)
-        p_sphere = min(n_sphere / n_mask, 1.0)
-
-        weights = np.zeros((n_studies, n_draws))
-        g_obs = np.zeros((n_studies, n_draws))
-        var_obs = np.ones((n_studies, n_draws))
-        covered = np.zeros((n_studies, n_draws), dtype=bool)
-
-        by_study = {str(key): value for key, value in table.groupby("id")} if len(table) else {}
-        for position, study_id in enumerate(study_ids):
-            image = images.get(study_id)
-            if image is not None:
-                # An image study contributes at weight 1 at every voxel, so it is covered in
-                # every draw. Its null value is its own map read at a random voxel with a random
-                # sign -- the factorised analogue of relocating a focus and sign-flipping an
-                # image, which is what the Monte Carlo null does. Leaving image studies out
-                # entirely, as this did, builds the null from a different set of studies than
-                # the observed statistic uses: on a mixed collection under a global null that
-                # made the test 50x conservative, because the pooled estimate is near zero
-                # everywhere while a coordinate-only null still carries large reported peaks.
-                g_map, var_map, usable = image
-                pool = np.flatnonzero(usable)
-                if not pool.size:
-                    continue
-                picks = rng.choice(pool, size=n_draws)
-                signs = np.where(rng.random(n_draws) < 0.5, 1.0, -1.0)
-                weights[position] = 1.0
-                g_obs[position] = signs * g_map[picks]
-                var_obs[position] = var_map[picks]
-                covered[position] = True
-                continue
-            sub = by_study.get(str(study_id))
-            if sub is None or not len(sub):
-                continue  # silent everywhere, so it is covered nowhere
-            n_foci = len(sub)
-            g_k = sub["g"].to_numpy()
-            var_k = sub["var_g"].to_numpy()
-
-            hit = rng.binomial(n_foci, p_kernel, size=n_draws) > 0
-            covered[position] = rng.binomial(n_foci, p_sphere, size=n_draws) > 0
-            covered[position] |= hit  # reaching the kernel implies reaching the sphere
-            if not hit.any():
-                continue
-            chosen = rng.integers(0, n_foci, size=int(hit.sum()))
-            weights[position, hit] = rng.choice(kernel_weights, size=int(hit.sum()))
-            g_obs[position, hit] = g_k[chosen]
-            var_obs[position, hit] = var_k[chosen]
-
-        safe_var = np.where(var_obs > 0, var_obs, 1.0)
-        a = weights / safe_var
-        tau2 = (
-            _local_dersimonian_laird(
-                weights.sum(0),
-                a.sum(0),
-                (a**2).sum(0),
-                (a * g_obs).sum(0),
-                (a * g_obs**2).sum(0),
-                (weights**2 / safe_var).sum(0),
-                (weights > 0).sum(0).astype(float),
-            )
-            if self.tau2_method == "dl"
-            else np.zeros(n_draws)
-        )
-
-        pooling = np.where(weights > 0, weights / (var_obs + tau2), 0.0)
-        denominator = pooling.sum(0)
-        start = np.divide(
-            (pooling * g_obs).sum(0), denominator, out=np.zeros(n_draws), where=denominator > 0
-        )
-
-        if self.selection_model == "none":
-            numerator = np.sqrt((weights**2 / (var_obs + tau2)).sum(0))
-            se = np.divide(
-                numerator, denominator, out=np.full(n_draws, np.inf), where=denominator > 0
-            )
-            mu = start
-        else:
-            # Image studies have no reporting threshold and never contribute a censoring term,
-            # so they take a null variance of zero and an unreachable cutoff, which is how
-            # _accumulate treats them in the observed fit.
-            sizes = np.array(
-                [float(sample_sizes[s]) if s in sample_sizes.index else np.nan for s in study_ids]
-            )
-            known = np.isfinite(sizes)
-            null_var = np.zeros((n_studies, 1))
-            null_var[known, 0] = null_effect_variance(sizes[known], design=self.design)
-            peak_bias = getattr(self, "_peak_bias_", None)
-            if peak_bias is not None:
-                factors = np.array(
-                    [float(peak_bias[s]) if s in peak_bias.index else 1.0 for s in study_ids]
-                )
-                null_var = null_var * factors[:, None] ** 2
-            cutoffs = np.array(
-                [abs(float(thresholds[s])) if s in thresholds.index else np.inf for s in study_ids]
-            )[:, None]
-            mu, _, se = self._fit_chunk(
-                weights=weights,
-                g_obs=g_obs,
-                var_obs=var_obs,
-                covered=covered,
-                tau2=tau2,
-                null_var=null_var,
-                cutoffs=cutoffs,
-                start=start,
-            )
-
-        z_values = np.abs(
-            np.divide(mu, se, out=np.zeros(n_draws), where=np.isfinite(se) & (se > 0))
-        )
-        # A voxel no relocated focus reached contributes |z| = 0 to the relocation null, so
-        # uncovered draws have to enter the histogram the same way rather than be dropped.
-        z_values[denominator <= 0] = 0.0
-        histogram, _ = np.histogram(z_values, bins=_null_bin_edges())
-        return histogram.astype(float)
-
     def _fit(self, dataset):
         self.dataset = dataset
         self.masker = self.masker or dataset.masker
@@ -2679,21 +2395,6 @@ default="approximate"
                 np.abs(z_values),
                 cluster_threshold=self.cluster_threshold,
             )
-        elif self.null_method == "montecarlo":
-            histogram, _ = self._compute_montecarlo_null(
-                self.n_iters,
-                self.n_cores,
-                self.seed,
-                cluster_threshold=self.cluster_threshold,
-            )
-            p_values = _p_from_histogram(np.abs(z_values), histogram)
-        elif self.null_method == "approximate":
-            n_draws = max(int(self.n_iters) * 1000, _MIN_APPROXIMATE_DRAWS)
-            histogram = self._approximate_null(
-                table, self._sample_sizes_, self._thresholds_, n_draws, self.seed
-            )
-            self.null_distributions_["histweights_corr-none_method-approximate"] = histogram
-            p_values = _p_from_histogram(np.abs(z_values), histogram)
         else:
             # No null was built, so there is nothing to refer z to. Returning 1 rather than a
             # normal-theory p-value keeps a caller from mistaking the absence of inference for
@@ -2731,11 +2432,10 @@ default="approximate"
         r"""FWE correction from maximum-statistic nulls, at voxel and cluster level.
 
         Each iteration randomizes the foci and refits, under whichever null ``null_method``
-        names, so the correction tests the same hypothesis the uncorrected map does. With
-        ``"permute-magnitudes"`` that means reassigning the foci to each other's locations;
-        with every other setting, including ``"approximate"`` and ``"none"``, it means moving
-        each focus to a uniformly drawn in-mask voxel, carrying its effect size and study
-        membership with it.
+        Each iteration reassigns the foci to each other's locations and refits, the same
+        randomization the uncorrected map came from, so voxel-level and familywise inference
+        test the same hypothesis. This runs even when the estimator was fitted with
+        ``null_method="none"``, since a maximum statistic has to come from somewhere.
 
         Three null distributions come out of the same refits: the maximum ``|z|``, the maximum
         cluster size, and the maximum cluster mass. Clusters are formed on ``|z|`` at the
@@ -2745,8 +2445,8 @@ default="approximate"
 
         When :meth:`fit` ran the same iterations at the same cluster-forming threshold, all
         three nulls are reused and this is nearly free. Asking for a different ``voxel_thresh``
-        than the estimator's ``cluster_threshold``, or fitting without a Monte Carlo null,
-        means permuting again here.
+        than the estimator's ``cluster_threshold``, or fitting without a null, means permuting
+        again here.
 
         Parameters
         ----------
@@ -2760,7 +2460,7 @@ default="approximate"
             Fit a generalized Pareto distribution to the tail of the maximum-statistic null
             and read corrected p-values off it, rather than off the empirical tail alone. A
             permutation p cannot fall below ``1 / (1 + n_iters)``, so without this a corrected
-            p of 1e-4 needs ten thousand relocations; extreme value theory says the exceedances
+            p of 1e-4 needs ten thousand permutations; extreme value theory says the exceedances
             of a high threshold are generalized Pareto whatever the parent distribution, so the
             tail can be modelled from far fewer \\citep{Winkler2016}. The fit is tested and
             the tail shortened until it is acceptable; if no fit passes, the empirical tail is
@@ -2795,27 +2495,16 @@ default="approximate"
             in self.null_distributions_
         )
 
-        permuting = self._null_scheme() == "permute-magnitudes"
-        observed_abs = np.abs(result.maps["z"]) if permuting else None
+        observed_abs = np.abs(result.maps["z"])
         if vfwe_only:
             if not reusable:
-                if permuting:
-                    _, cached = self._compute_permutation_null(
-                        n_iters, n_cores, seed, observed_abs
-                    )
-                else:
-                    _, cached = self._compute_montecarlo_null(n_iters, n_cores, seed)
+                _, cached = self._compute_permutation_null(n_iters, n_cores, seed, observed_abs)
         elif not already_clustered:
             # fit() either did not permute, or did so at a different cluster-forming
             # threshold, so the cluster nulls have to be built here.
-            if permuting:
-                _, cached = self._compute_permutation_null(
-                    n_iters, n_cores, seed, observed_abs, cluster_threshold=voxel_thresh
-                )
-            else:
-                _, cached = self._compute_montecarlo_null(
-                    n_iters, n_cores, seed, cluster_threshold=voxel_thresh
-                )
+            _, cached = self._compute_permutation_null(
+                n_iters, n_cores, seed, observed_abs, cluster_threshold=voxel_thresh
+            )
             cluster_stat = self.null_distributions_.get("cluster_forming_stat")
 
         if not vfwe_only and (cluster_stat is None or not np.isfinite(cluster_stat)):
@@ -2851,10 +2540,9 @@ default="approximate"
 
         scope = "voxel-level" if vfwe_only else "voxel- and cluster-level"
         description = (
-            f"Family-wise error rate correction was performed with a {scope} Monte Carlo "
-            f"procedure using {n_iters} iterations, in which every focus was relocated to a "
-            "uniformly drawn voxel within the analysis mask while retaining its effect size "
-            "and study membership."
+            f"Family-wise error rate correction was performed with a {scope} permutation "
+            f"procedure using {n_iters} iterations, in which the reported foci were reassigned "
+            "to each other's locations with the locations themselves held fixed."
         )
         if not vfwe_only:
             description += (
@@ -2867,7 +2555,7 @@ default="approximate"
                 " Corrected p-values in the tail were obtained by fitting a generalized Pareto "
                 "distribution to the exceedances of the maximum-statistic null "
                 "\\citep{Winkler2016}, which resolves p-values below the "
-                f"{1 / (1 + n_iters):.2g} floor that {n_iters} relocations would otherwise "
+                f"{1 / (1 + n_iters):.2g} floor that {n_iters} permutations would otherwise "
                 "impose; where no acceptable fit was found the empirical tail was retained."
             )
         return maps, {}, description
@@ -2923,27 +2611,14 @@ default="approximate"
         n_studies = (
             self._focus_table_["id"].nunique() if hasattr(self, "_focus_table_") else "an unknown"
         )
-        if self.null_method == "montecarlo":
-            inference = (
-                " Uncorrected p-values were obtained from a Monte Carlo null distribution, in "
-                f"which every focus was relocated to a random voxel within the analysis mask "
-                f"{self.n_iters} times while retaining its effect size and study membership, "
-                "testing whether the foci converge at each voxel beyond chance."
-            )
-        elif self.null_method == "permute-magnitudes":
+        if self.null_method == "permute-magnitudes":
             inference = (
                 " Uncorrected p-values were obtained from a permutation null distribution, in "
                 f"which the reported foci were reassigned to each other's locations "
-                f"{self.n_iters} times with the locations themselves held fixed, testing "
-                "whether the effects reported near each voxel are larger than those reported "
-                "elsewhere in the collection rather than whether the foci converge there."
-            )
-        elif self.null_method == "approximate":
-            inference = (
-                " Uncorrected p-values were obtained from a null distribution in which each "
-                "study's local configuration of foci was sampled directly from its focus count "
-                "and the kernel geometry, rather than by refitting the brain for every "
-                "relocation."
+                f"{self.n_iters} times with the locations themselves held fixed, each voxel "
+                "being referred to its own null. The test is therefore of whether the effects "
+                "reported near a voxel are larger than those reported elsewhere in the "
+                "collection, not of whether the foci converge there."
             )
         else:
             inference = " No null distribution was computed, so no p-values are reported."
