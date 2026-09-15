@@ -11,9 +11,9 @@ Exactly two things, both produced by ``_collect_inputs`` from a single narrowed 
 
 ``blocks_["coordinates"]``
     A :class:`~nimare.studyset.blocks.CoordinateBlock`. Used for ``group_of_point()``, which
-    gives each focus's analysis position, ``ijk(affine)``, which is memoised and truncates
-    exactly as :func:`nimare.utils.mm2vox` does, and ``space``/``space_categories`` for the
-    mixed-space check.
+    gives each focus's analysis position, ``ijk(affine)``, which is memoised and rounds to the
+    nearest voxel exactly as :func:`nimare.utils.mm2vox` does, and ``space``/``space_categories``
+    for the mixed-space check.
 ``studyset_``
     The narrowed selection itself, for ``ids`` and ``annotations_df``. The formula's terms are
     built against that frame.
@@ -149,9 +149,10 @@ class _CBMRInputs(Estimator):
         """Map every focus onto ``(experiment row, masked-voxel column)``.
 
         Both come straight off the coordinate block. ``ijk`` is memoised there and documented to
-        truncate exactly as :func:`nimare.utils.mm2vox` does, and ``group_of_point`` gives each
-        focus's analysis position directly -- which *is* the experiment row, because the block is
-        aligned to ``studyset_`` by construction. Foci outside the mask are dropped.
+        round to the nearest voxel exactly as :func:`nimare.utils.mm2vox` does, and
+        ``group_of_point`` gives each focus's analysis position directly -- which *is* the
+        experiment row, because the block is aligned to ``studyset_`` by construction. Foci
+        outside the mask are dropped.
         """
         ijk = block.ijk(mask_img.affine)
         rows = block.group_of_point()

@@ -490,6 +490,9 @@ def mm2vox(xyz, affine):
     -----
     From here:
     http://blog.chrisgorgolewski.org/2014/12/how-to-convert-between-voxel-and-mm.html
+
+    Coordinates that do not land on the voxel grid are rounded to the nearest voxel, so a focus
+    moves by at most half a voxel along each axis.
     """
     with np.errstate(invalid="ignore"):
         ijk = np.round(nib.affines.apply_affine(np.linalg.inv(affine), xyz)).astype(int)
