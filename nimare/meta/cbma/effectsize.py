@@ -51,26 +51,20 @@ __version__ = _version.get_versions()["version"]
 #: never done.
 _MIN_NULL_STATES_LOG10 = 4.0
 
-#: Minimum share of permutations that must attain *distinct* maximum statistics, and minimum
+#: Minimum share of permutations attaining *distinct* maximum statistics, and minimum
 #: coefficient of variation among them, for the voxel-level family-wise correction to be
-#: reported. Counting arrangements is not enough: a collection of two-focus studies admits 2^k
-#: rearrangements and so clears ``_MIN_NULL_STATES_LOG10`` comfortably, while its permutation
-#: distribution attains only a handful of values, because swapping two similar magnitudes within
-#: a study barely moves the map's maximum. Measured on simulated global nulls: at two foci per
-#: study the family-wise rate was 0.150 against a nominal 0.050, with 6 distinct maxima out of
-#: 200 permutations and a coefficient of variation of 0.032; at six foci per study it was exactly
-#: nominal, with 57 distinct maxima and a coefficient of variation of 0.106. Disabling the
-#: generalized Pareto tail changed neither, so the tail fit is not implicated.
+#: reported. Counting arrangements is not enough: a collection of two-focus studies clears
+#: ``_MIN_NULL_STATES_LOG10`` while its permutation distribution attains only a handful of
+#: values. On simulated global nulls, two foci per study gave a family-wise rate of 0.150
+#: against a nominal 0.050, with 6 distinct maxima in 200 permutations; six foci per study was
+#: nominal, with 57.
 _MIN_NULL_MAXIMA_DISTINCT_FRACTION = 0.10
 _MIN_NULL_MAXIMA_CV = 0.05
 
 #: Radius, in mm, inside which a reported focus counts as the study having said something
-#: about a voxel. This is the only geometry left in the model: with magnitudes no longer read
-#: off coordinate tables, a focus marks a neighbourhood the study was *not* silent about, and
-#: nothing else. 20 mm because prevalence rises monotonically with it at every true value and
-#: no radius recovers the truth (a true 0.50 reads 0.65, 0.73, 0.76, 0.81 at 8, 14, 20, 28 mm,
-#: mean absolute error 0.17 to 0.21 across the range), so the choice is not what limits the
-#: estimate; 20 mm is also roughly the extent a paper's peak stands in for.
+#: about a voxel, and the only geometry left in the model. 20 mm is roughly the extent a
+#: paper's peak stands in for. No radius recovers the true prevalence -- a true 0.50 reads
+#: 0.65, 0.73, 0.76, 0.81 at 8, 14, 20, 28 mm -- so the choice is not what limits the estimate.
 DEFAULT_COVERAGE_RADIUS_MM = 20.0
 
 #: Default two-tailed reporting threshold, on the z scale, when a study gives no better
@@ -245,16 +239,10 @@ def _censoring_terms(mu, cutoff_scaled, twice_cutoff_scaled, inv_sigma, inv_sigm
     measurements and the derivation.
 
     Returned as one dict because the E step and the M step both need these at the same ``mu``.
-    This is the most expensive function in the estimator -- most of the wall clock under a
-    permutation null, since each permutation runs a full EM -- and 45% of that is the two
-    ``ndtr`` calls, which no rearrangement of the surrounding algebra reaches. Three were
-    benchmarked and none was worth the churn; the lower tail cannot be dropped either. The
-    levers that work are ``n_cores`` and the compaction in :meth:`CBES._fit_chunk`.
 
-    Everything that does not move between EM iterations is passed in already divided: ``mu`` is
-    the only argument that changes, so ``cutoffs / sigma`` and the reciprocals are hoisted to
-    the caller. The arithmetic writes into its own temporaries wherever numpy allows it, each
-    avoided temporary being hundreds of megabytes of traffic.
+    This is the estimator's hot spot, and most of its cost is the two ``ndtr`` calls. ``mu`` is
+    the only argument that changes between EM iterations, so the caller hoists ``cutoffs /
+    sigma`` and the reciprocals and passes them in already divided.
     """
     # upper = (c - mu) / sigma;  lower = (-c - mu) / sigma = upper - 2c/sigma
     upper = mu * -inv_sigma
@@ -300,27 +288,24 @@ def _observed_information(
 ):
     r"""Observed information for :math:`\mu`, after profiling out the prevalence.
 
-    The EM's own curvature is not this. ``_mu_derivatives`` differentiates the *Q function*,
-    with the responsibilities held fixed, so for one observation it keeps :math:`r h` and drops
-    the :math:`r(1-r)s^2` that appears when the responsibility is allowed to move with
-    :math:`\mu`:
+    This is not the EM's own curvature. ``_mu_derivatives`` differentiates the *Q function* with
+    the responsibilities held fixed, so it keeps :math:`r h` and drops the :math:`r(1-r)s^2`
+    that appears once the responsibility moves with :math:`\mu`:
 
     .. math::
 
         \frac{\partial^2 \ell}{\partial \mu^2} = r h + r(1-r) s^2,
 
-    where :math:`r` is the posterior probability that the observation came from the active
-    component, :math:`s` that component's score in :math:`\mu` and :math:`h` its second
+    with :math:`r` the posterior probability that the observation came from the active
+    component, :math:`s` that component's score in :math:`\mu`, and :math:`h` its second
     derivative. Dropping a positive term from a negative curvature overstates the information,
-    so the reported error was too small -- measured at 62.5% to 89.8% coverage of nominal-95%
-    intervals, and not improving with more studies. This is the missing-information problem of
-    :footcite:t:`louis1982finding`, not a degrees-of-freedom adjustment, which is why referring
-    ``se`` to a ``t`` could not repair it.
+    which gave 62.5% to 89.8% coverage of nominal-95% intervals and did not improve with more
+    studies. This is the missing-information problem of :footcite:t:`louis1982finding`, so
+    referring ``se`` to a ``t`` cannot repair it.
 
-    The prevalence is estimated too, so its uncertainty belongs in :math:`\mu`'s. Writing
-    :math:`f_1, f_0` for the two component densities and :math:`f` for the mixture, the cross
-    and prevalence blocks reduce to functions of :math:`r` and :math:`\pi` alone, because
-    :math:`f_1/f = r/\pi` and :math:`f_0/f = (1-r)/(1-\pi)`:
+    The prevalence is estimated too, so its uncertainty belongs in :math:`\mu`'s. Since
+    :math:`f_1/f = r/\pi` and :math:`f_0/f = (1-r)/(1-\pi)`, the cross and prevalence blocks
+    reduce to functions of :math:`r` and :math:`\pi`:
 
     .. math::
 
@@ -328,44 +313,35 @@ def _observed_information(
         \qquad
         \frac{\partial\ell}{\partial\pi} = \frac{r}{\pi} - \frac{1-r}{1-\pi}.
 
-    What is returned is a triple. The first is the Schur complement
-    :math:`I_{\mu\mu} - I_{\mu\pi}^2 / I_{\pi\pi}`, so the caller inverts a scalar for
-    :math:`\mu`'s error. Voxels where that is not positive are left to the caller as having no
-    usable information.
+    Returns a triple.
 
-    The second is the variance of the *product* :math:`\mu\pi`, which is what ``g_marginal``
-    reports and the only quantity here that an image-based meta-analysis also estimates. It
-    needs the whole inverse rather than the Schur complement, because the two factors covary:
-    by the delta method, with :math:`D = I_{\mu\mu} I_{\pi\pi} - I_{\mu\pi}^2`,
+    The first is the Schur complement :math:`I_{\mu\mu} - I_{\mu\pi}^2 / I_{\pi\pi}`, so the
+    caller inverts a scalar. Voxels where it is not positive have no usable information.
+
+    The second is the variance of :math:`\mu\pi`, which ``g_marginal`` reports. It needs the
+    whole inverse rather than the Schur complement because the factors covary: by the delta
+    method, with :math:`D = I_{\mu\mu} I_{\pi\pi} - I_{\mu\pi}^2`,
 
     .. math::
 
         \operatorname{Var}(\mu\pi) =
             \frac{\pi^2 I_{\pi\pi} + \mu^2 I_{\mu\mu} - 2\mu\pi I_{\mu\pi}}{D}.
 
-    The cross term turns out to be small in this model -- measured under 1% of the variance
-    across configurations with :math:`\pi` from 0.20 to 1.00 -- so the simpler independent sum
-    :math:`\pi^2\operatorname{Var}(\mu) + \mu^2\operatorname{Var}(\pi)` would have been adequate
-    in every case tried. The reason is that :math:`I_{\mu\pi}` carries a factor :math:`r(1-r)`,
-    and with a threshold that separates the components cleanly the responsibilities sit near 0
-    or 1, so the two factors are nearly orthogonal: the reported values identify :math:`\mu`
-    and the count of silent studies identifies :math:`\pi`. The full inverse is used anyway
-    because it is the correct expression and costs nothing, and because nothing guarantees that
-    near-orthogonality on a collection whose thresholds sit close to its effects.
+    The cross term is under 1% of the variance across the configurations measured, because
+    :math:`I_{\mu\pi}` carries a factor :math:`r(1-r)` and a threshold that separates the
+    components leaves the responsibilities near 0 or 1. The full inverse is used anyway: it is
+    the correct expression, it costs nothing, and nothing guarantees that near-orthogonality on
+    a collection whose thresholds sit close to its effects.
 
-    The third is the share of :math:`I_{\mu\mu}` contributed by the coordinate indicators
-    rather than by the images' values, which costs nothing because the two are accumulated
-    separately anyway. It is the one diagnostic a reader needs and cannot otherwise get: at 0
-    the images carry the estimate alone and the tables changed nothing at this voxel, at 1 the
-    indicators carry it. Every caveat in :class:`CBES` -- the prevalence-1 regime, the
-    unexplained disagreement between collections, the over-shrinkage at the window -- is about
-    when to trust the coordinate channel, and this says where it is even acting.
+    The third is the share of :math:`I_{\mu\mu}` contributed by the coordinate indicators rather
+    than the images' values, reported as ``coordinate_share``. At 0 the images carry the
+    estimate alone; at 1 the indicators carry it.
 
-    The :math:`\pi` block is exact here rather than an approximation. The mixture density is
-    linear in :math:`\pi`, so :math:`\partial^2 \log f / \partial\pi^2 = -(\partial \log f /
-    \partial\pi)^2` identically, and the outer product of scores *is* the negative second
-    derivative -- which is why it can sit in the same matrix as the Hessian-based
-    :math:`\mu` block without mixing two different estimators of information.
+    The :math:`\pi` block is exact rather than approximate. The mixture density is linear in
+    :math:`\pi`, so :math:`\partial^2 \log f / \partial\pi^2 = -(\partial \log f /
+    \partial\pi)^2` identically and the outer product of scores is the negative second
+    derivative, which is why it can sit in the same matrix as the Hessian-based :math:`\mu`
+    block.
 
     References
     ----------
@@ -522,14 +498,11 @@ def reported_minimum_z(coordinates):
 
     .. math:: c_k \le \min_j |z_{kj}|
 
-    is a hard inequality rather than an inference. It can clamp an assumed threshold downward
-    and can never place one above the truth, which is what separates it from the retired
-    ``"study-min"`` rule -- that one tried to *recover* :math:`c_k` by undoing the order
-    statistic for the number of peaks, and overshot a cluster-forming cut by about 1 z.
+    is a bound, not an estimate: it can lower an assumed threshold but never raise one above
+    the truth.
 
-    A ``t`` is mapped to the z with the same tail probability, so a collection that tabulates
-    either is handled. Returns an empty series when no statistic column is present, which is a
-    perfectly ordinary coordinate table.
+    A ``t`` is mapped to the z with the same tail probability. Returns an empty series when the
+    table carries no statistic column.
     """
     if "z_stat" in coordinates.columns:
         values = np.abs(np.asarray(coordinates["z_stat"], dtype=float))
@@ -667,21 +640,19 @@ def _null_maxima_diagnostics(max_values):
     return (not (sparse and narrow)), n_distinct, cv
 
 
-def _local_dersimonian_laird(sum_w, sum_a, sum_a2, sum_ag, sum_ag2, sum_w2_over_s2, n_studies):
-    r"""Kernel-weighted DerSimonian-Laird estimate of between-study heterogeneity.
+def _local_dersimonian_laird(sum_a, sum_a2, sum_ag, sum_ag2, n_studies):
+    r"""Per-voxel DerSimonian-Laird estimate of between-study heterogeneity.
 
-    With local weights :math:`w_k` and within-study variances :math:`s^2_k`, write
-    :math:`a_k = w_k / s^2_k` and :math:`Q = \sum_k a_k (g_k - \bar{g}_a)^2`. Then
+    With within-study variances :math:`s^2_k`, write :math:`a_k = 1/s^2_k` and
+    :math:`Q = \sum_k a_k (g_k - \bar{g}_a)^2`. Then
 
     .. math::
 
-        E[Q] = \Big(\sum_k w_k - \tfrac{\sum_k a_k^2 s^2_k}{\sum_k a_k}\Big)
-               + \tau^2 \Big(\sum_k a_k - \tfrac{\sum_k a_k^2}{\sum_k a_k}\Big),
+        E[Q] = (k - 1) + \tau^2 \Big(\sum_k a_k - \tfrac{\sum_k a_k^2}{\sum_k a_k}\Big),
 
-    and equating :math:`Q` to its expectation gives the moment estimator below. Setting every
-    :math:`w_k = 1` recovers the classical DerSimonian-Laird estimator exactly, which is the
-    check :func:`~nimare.tests.test_meta_effectsize.test_local_dl_reduces_to_dersimonian_laird`
-    makes.
+    and equating :math:`Q` to its expectation gives the moment estimator below. This is the
+    classical estimator, applied one voxel at a time because each voxel has its own set of
+    contributing studies.
     """
     tau2 = np.zeros_like(sum_a)
     usable = (n_studies >= 2) & (sum_a > 0)
@@ -690,7 +661,7 @@ def _local_dersimonian_laird(sum_w, sum_a, sum_a2, sum_ag, sum_ag2, sum_w2_over_
 
     sum_a_u = sum_a[usable]
     q_stat = sum_ag2[usable] - (sum_ag[usable] ** 2) / sum_a_u
-    expected_q = sum_w[usable] - sum_w2_over_s2[usable] / sum_a_u
+    expected_q = n_studies[usable] - 1.0
     scale = sum_a_u - sum_a2[usable] / sum_a_u
 
     positive = scale > 0
@@ -835,102 +806,80 @@ class _IndicatorPairs:
 
 
 class CBES(Estimator):
-    r"""Coordinate-based effect-size meta-analysis, estimated from what studies did *not* report.
+    r"""Coordinate-based effect-size meta-analysis, estimated from what studies did not report.
 
-    .. versionadded:: 0.13.0
+    .. versionadded:: 0.22.0
 
-    Estimates the pooled standardized effect size (Hedges' :math:`g`) at every voxel from
-    effect-size images for the studies that share them, corrected by the pattern of
-    **reporting and non-reporting** in every other study's coordinate table.
+    Estimates Hedges' :math:`g` at every voxel from the effect-size images of the studies that
+    share them, corrected by the pattern of reporting and non-reporting in every other study's
+    coordinate table.
 
-    **Coordinate tables contribute only a reporting indicator, never a magnitude.** Per study
-    per voxel: either the study reported a focus here, or it reported nothing within
-    ``coverage_radius`` and so was silent about the neighbourhood. Reported peak heights are
-    discarded. That is the whole of the coordinate channel, and it is a deliberate narrowing of
-    an earlier design that pooled the heights as effect sizes. See Notes for what was measured.
+    Coordinate tables contribute only a reporting indicator, never a magnitude. Per study per
+    voxel, either the study reported a focus here, or it reported nothing within
+    ``coverage_radius`` and was silent about the neighbourhood. Reported peak heights are
+    discarded.
 
-    A collection must therefore supply at least one study with ``g`` and ``g_var`` images.
-    Coordinates alone carry no magnitude in this model, and a fit without an image is refused
-    rather than returned as a map of zeros.
+    A collection must supply at least one study with ``g`` and ``g_var`` images. Coordinates
+    alone carry no magnitude, and a fit without an image is refused rather than returned as
+    zeros.
 
     Parameters
     ----------
     design : {"one-sample", "two-sample"}, default="one-sample"
-        How each study's reported statistic relates to its sample size. ``"two-sample"`` reads
-        ``sample_sizes`` as per-group counts and sums them, so a threshold implies an effect
-        about twice as large as the same statistic would under ``"one-sample"``.
+        How a reported statistic relates to the sample size. ``"two-sample"`` reads
+        ``sample_sizes`` as per-group counts and sums them, so the same statistic implies an
+        effect about twice as large.
     selection_model : {"zero-inflated", "none"}, default="zero-inflated"
-        What the coordinate tables are used for. ``"zero-inflated"`` fits the censored mixture
-        described in the notes, so silences and reports correct the pooled mean and
-        ``prevalence`` is estimated. ``"none"`` makes the tables inert and returns a plain
-        local random-effects fit of the images -- the control arm the coordinate channel is
-        credited against, and roughly ten times faster.
+        What the tables are used for. ``"zero-inflated"`` fits the censored mixture, so
+        silences and reports correct the pooled mean and ``prevalence`` is estimated.
+        ``"none"`` makes the tables inert and returns a plain local random-effects fit of the
+        images, about ten times faster.
     interval : {"wald", "profile"}, default="wald"
-        How to bracket ``g``. ``"wald"`` reports ``se`` alone, referred to a *t* on ``dof``.
-        ``"profile"`` additionally emits ``g_lower`` and ``g_upper`` from the profile
-        likelihood, which inverts no matrix and needs no ``dof``. The bounds are asymmetric, as
-        a likelihood region generally is, and are infinite wherever the data do not reject
-        :math:`\pi = 0` -- which is most voxels, and is the honest answer rather than a failure
-        of the search. Costs roughly a second fit. **Requires**
+        How to bracket ``g``. ``"wald"`` reports ``se``, referred to a *t* on ``dof``.
+        ``"profile"`` also emits ``g_lower`` and ``g_upper`` from the profile likelihood, which
+        inverts no matrix and needs no ``dof``. Those bounds are asymmetric and are infinite
+        wherever the data do not reject :math:`\pi = 0`. Costs roughly a second fit. Requires
         ``selection_model="zero-inflated"``.
     analysis_mask : :obj:`str` or None, optional
         ``value_type`` of a per-study image marking the voxels that study examined, nonzero
-        meaning examined. Studies without one are taken to have examined the whole analysis
-        volume, which is what the censoring term assumes by default.
+        meaning examined. Studies without one are taken to have examined the whole volume.
 
-        This is what an ROI or partial-coverage study needs: its silence outside the region it
-        analysed is not evidence that nothing is there, and the censoring term would otherwise
-        read it as evidence against an effect. Voxels a study did not examine contribute
+        An ROI or partial-coverage study needs this: its silence outside the region it analysed
+        is not evidence that nothing is there. Voxels a study did not examine contribute
         neither a value nor a silence for it.
     threshold : :obj:`float`, :obj:`str`, or None, optional
-        The reporting threshold on the *z* scale, which is the one number a silence cannot do
-        without: "study k reported nothing here" is only evidence about the effect if we know
-        how large an effect would have had to be for k to report it.
+        The reporting threshold on the *z* scale. A silence is only evidence about the effect
+        if we know how large an effect would have had to be for that study to report it.
 
-        Pass a field name to read per-study values from metadata, a float to apply one cut to
-        every study, or leave it at the default two-tailed p < 0.001. It cannot be inferred from
-        the tables -- the retired rule that tried to recover it by undoing an order statistic
-        measured 0.201 of prevalence error against 0.008 for a fixed constant, because it cannot
-        tell a cluster-forming cut from a voxelwise one.
-
-        The conversion from this *z* to an effect size runs through
-        :func:`reporting_cutoff_to_g` and depends on the degrees of freedom assumed for the
-        reported statistic, so it is an assumption on top of an assumption.
+        Pass a metadata field name for per-study values, a float for one cut everywhere, or
+        leave the default two-tailed p < 0.001. It cannot be inferred from the tables, which do
+        not distinguish a cluster-forming cut from a voxelwise one.
     clamp_threshold : :obj:`bool`, default=True
         Lower each study's assumed cutoff to its own smallest reported ``|statistic|`` when that
-        is smaller. Anything a study reported *cleared* that study's threshold, so the smallest
-        reported value is a hard upper bound on the cut -- this corrects only studies whose
-        table contradicts the assumption, and never below the truth. It is bit-identical where
-        every study applied the assumed cut and where every study thresholded above it. Turn it
-        off to hold an assumed threshold exactly.
+        is smaller. Anything reported cleared that study's cut, so the smallest reported value
+        bounds it from above. Bit-identical where no table contradicts the assumption.
     coverage_radius : :obj:`float`, default=20.0
-        Radius, in mm, within which a reported focus counts as this study having said
-        *something* about a voxel; a study with no focus inside it is silent there. This is the
-        only geometry left in the model: papers do not report cluster extent reliably, so the
-        extent a focus stands in for has to be assumed rather than read.
+        Radius, in mm, within which a reported focus counts as the study having said something
+        about a voxel; a study with no focus inside it is silent there. Papers do not report
+        cluster extent reliably, so this has to be assumed rather than read.
 
-        Used only when ``selection_model="zero-inflated"``. ``g`` is insensitive to it at
-        realistic focus counts; ``prevalence`` is not, rising monotonically with the radius at
-        every true value and never recovering the truth, which is one reason to read that map
-        ordinally.
+        Used only when ``selection_model="zero-inflated"``. ``g`` is insensitive to it;
+        ``prevalence`` rises with it, which is one reason to read that map ordinally.
     max_iter : :obj:`int`, default=25
         EM iterations. Voxels are retired as they settle, so this bounds the slowest rather
-        than the typical one. Where a single study reported, the likelihood is a plateau and no
-        stopping rule recovers a magnitude; the cap makes that answer reproducible.
+        than the typical one.
     null_method : {"permute-images", "none"}, default="permute-images"
         How uncorrected p-values are obtained. ``"permute-images"`` scrambles each image
-        study's values among that study's own voxels and holds the silence pattern fixed, so it
-        tests whether a voxel's magnitude is exchangeable with others in the same studies.
+        study's values among that study's own voxels and holds the silence pattern fixed.
         ``"none"`` skips it, returning maps without p-values.
     cluster_threshold : :obj:`float` or None, default=0.001
         Voxel-level p-threshold defining clusters for :meth:`correct_fwe_montecarlo`.
     n_iters : :obj:`int`, default=1000
-        Permutations for the null. Each one runs a full EM, so this is the dominant cost.
+        Permutations for the null. Each runs a full EM, so this is the dominant cost.
     n_cores : :obj:`int`, default=1
-        Processes for the permutations; ``-1`` uses all available. The null is a thousand
-        independent fits, so this is the lever that matters for runtime.
+        Processes for the permutations; ``-1`` uses all available.
     seed : :obj:`int`, default=0
-        Seed for the permutation null, so a run is reproducible.
+        Seed for the permutation null.
 
     Attributes
     ----------
@@ -941,118 +890,85 @@ class CBES(Estimator):
 
     Notes
     -----
-    **Images give the magnitude.** Each voxel pools the studies supplying ``g``/``g_var`` maps by
-    local inverse-variance weighting, with a per-voxel DerSimonian-Laird :math:`\tau^2`. That
-    pooled mean is what ``g`` is built from; a coordinate table never contributes a value to it.
+    **Images give the magnitude.** Each voxel pools the studies supplying ``g``/``g_var`` maps
+    by inverse-variance weighting with a per-voxel DerSimonian-Laird :math:`\tau^2`. A
+    coordinate table never contributes a value to it.
 
-    **Coordinates give the selection.** Every study on the roster that reported no focus within
-    ``coverage_radius`` of a voxel contributes a *silence* there -- the statement that its effect
-    did not clear its own reporting threshold -- and a study that named the voxel contributes a
-    *report*, at that voxel only. The two are complementary probabilities of one event, and a
-    zero-inflated censored likelihood turns them into a correction on the pooled mean. Nothing
-    else is read from a table: not the height, not the count.
+    **Coordinates give the selection.** A study that reported no focus within
+    ``coverage_radius`` of a voxel contributes a silence there, meaning its effect did not clear
+    its own reporting threshold. A study that named the voxel contributes a report, at that
+    voxel only. A zero-inflated censored likelihood turns the two into a correction on the
+    pooled mean.
 
-    So the estimand is :math:`\mu`, the effect **conditional on being present in a study**, with
-    :math:`\pi` the fraction of studies in which it is. ``g_marginal`` is :math:`\pi\mu`, which is
-    what an image-only meta-analysis targets.
+    ``g`` is :math:`\mu`, the mean effect size among the studies whose effect at this voxel is
+    non-null. :math:`\pi` is the fraction of studies with a non-null effect there, and
+    ``g_marginal`` is :math:`\pi\mu`, the mean over all studies including the null ones.
 
-    Six things are worth knowing before reading the output, each measured rather than assumed.
-    The evidence -- every table, every route that failed -- is in ``notes/cbes-evidence.md`` in
-    the companion `nimare-experiments` repository; the symbolic derivations are in its
-    ``proofs/``.
+    Measurements behind the points below are in ``notes/cbes-evidence.md`` in the companion
+    `nimare-experiments` repository, with symbolic derivations in its ``proofs/``.
 
-    1. **Which of the two maps to read is a question about the estimand, not about accuracy.**
-       An image-based meta-analysis pools per-study effect maps, so where a fraction
-       :math:`\pi` of studies carry an effect :math:`\mu` and the rest carry zero, it targets
-       the population mean :math:`\pi\mu`. **That makes ``g_marginal`` the map comparable to an
-       IBMA or to the other estimators here, and ``g`` a quantity none of them estimate**: the
-       effect among the studies that have it.
+    1. **Which map to read is a question about the estimand.** An image-based meta-analysis
+       targets :math:`\pi\mu`, so ``g_marginal`` is the map comparable to an IBMA or to the
+       other estimators here, and ``g`` is a quantity none of them estimate. Read
+       ``g_marginal`` for that comparison, or when studies genuinely differ in whether they
+       carry the effect. Read ``g`` when the question is how large the effect is where present.
+       Where every study has the effect, :math:`\hat\pi < 1` is pure error and ``g_marginal``
+       can only do harm.
 
-       In practice the choice is not clean, because :math:`\pi` is the weakest part of the fit.
-       On the NIDM pain collection, scored against an inverse-variance pool of held-out studies
-       -- itself a :math:`\pi\mu` quantity, so ``g_marginal`` is the estimand-matched arm --
-       ``g_marginal`` does win on rmse, 0.184 against 0.230. But it undershoots by 0.291 at the
-       strongest voxels where ``g`` sits at +0.005, because the fitted prevalence is biased low
-       there (0.78 against a true 1.0 on held-out subjects, 0.65 over the whole map). So
-       ``g_marginal`` estimates the right quantity with a biased multiplier, and ``g`` estimates
-       a different quantity that happens to be close to it wherever :math:`\pi` is genuinely
-       near 1.
+       **To power a new study, use ``g``**, since power is conditional on the alternative being
+       true. ``g_marginal`` would fold "the effect may be absent in my study" into the effect
+       size; that belongs in ``prevalence``. Choosing a voxel because its estimate is largest
+       reintroduces the selection this estimator exists to correct.
 
-       Read ``g_marginal`` when the comparison is against an image-based meta-analysis, or when
-       the studies genuinely differ in whether they carry the effect. Read ``g`` when the
-       question is how large the effect is where it is present, or when there is reason to
-       think every study has it -- and in that last case note that :math:`\hat\pi < 1` is then
-       pure error, so ``g_marginal`` can only do harm.
-
-       **To power a new study, use ``g``.** Power is defined conditional on the alternative
-       being true, so the effect size it needs is the effect among studies that have it.
-       ``g_marginal`` would fold "the effect may be absent in my study" into the effect size and
-       under-power a study in which it is present; that consideration belongs in
-       ``prevalence``, separately. Note that ``g`` is biased low where the effect is weak, which
-       for planning is the conservative direction, and that choosing a voxel because its
-       estimate is largest reintroduces the selection this estimator exists to correct.
-
-    2. **The reporting threshold is an assumption, and it is load-bearing.** It can no longer be
-       inferred from the tables, so it is supplied through ``threshold`` or assumed. Its
-       conversion to an effect size also depends on the degrees of freedom assumed for the
-       reported statistic: the same *z* of 3.30 is 0.653 at 29 df and 0.604 at 1000.
+    2. **The reporting threshold is an assumption, and it is load-bearing.** Its conversion to
+       an effect size also depends on the degrees of freedom assumed for the reported statistic:
+       a *z* of 3.30 is 0.653 at 29 df and 0.604 at 1000.
 
     3. **A magnitude is recoverable from studies of differing size, and not otherwise.** A
-       silence constrains :math:`(\pi, \mu)` only through one scalar per distinct
-       ``(sigma, cutoff)`` pair, and because the cutoff in sampling-standard-deviation units is
-       the reported statistic again, varying the *threshold* moves both mixture components
-       together while varying the *sample size* moves only the active one. Measured at a fixed
-       20 studies: spreading sample sizes from 12 to 120 lifts the fraction of voxels where the
-       likelihood bounds :math:`\mu` from 0.42 to 0.69 and the fitted prevalence from 0.82 to
-       0.91, while spreading thresholds from 2.3 to 4.5 changes neither.
+       silence constrains :math:`(\pi, \mu)` through one scalar per distinct
+       ``(sigma, cutoff)`` pair, and the cutoff in sampling-standard-deviation units is the
+       reported statistic again. So varying the threshold moves both mixture components together
+       while varying the sample size moves only the active one: at 20 studies, spreading sample
+       sizes 12 to 120 lifts the fraction of voxels where the likelihood bounds :math:`\mu` from
+       0.42 to 0.69, and spreading thresholds 2.3 to 4.5 changes nothing.
 
     4. **``se`` is conservative, and where the effect is weak the likelihood does not bound
-       :math:`\mu` at all.** ``se/sd`` runs 1.2 to 2.2 against a known truth. Most of the excess
-       is the cost of profiling out a prevalence the indicator only partly identifies, not the
-       censoring term -- an all-image collection, where the indicator is structurally empty, was
-       the worst-calibrated configuration measured until :math:`\pi` was held at 1 there.
-       ``interval="profile"`` reports the likelihood region honestly, and it is unbounded
-       wherever the data do not reject :math:`\pi = 0`, which at two image studies is 97% of
-       voxels.
+       :math:`\mu` at all.** ``se/sd`` runs 1.2 to 2.2 against a known truth, mostly the cost of
+       profiling out a prevalence the indicator only partly identifies. ``interval="profile"``
+       is unbounded wherever the data do not reject :math:`\pi = 0`, which at two image studies
+       is 97% of voxels.
 
     5. **Read ``se`` and the interval width, never coverage.** Every configuration measured
-       covers 0.95 to 1.00, including those whose interval admits almost any magnitude.
-       P-values are unaffected by any of this: they come from the permutation null, which is
-       valid for whatever statistic it is computed on and needs no calibrated ``se``.
+       covers 0.95 to 1.00, including those admitting almost any magnitude. P-values come from
+       the permutation null and need no calibrated ``se``.
 
-    6. **``prevalence`` is ordinal, not a fraction.** It tracks the true prevalence in order but
-       not in level, and it is not comparable between voxels of one map. Use
-       ``coordinate_share`` to see where the coordinate channel acted at all: 0 means the images
-       carry the estimate alone there.
+    6. **``prevalence`` is ordinal, not a fraction**, and not comparable between voxels of one
+       map. ``coordinate_share`` shows where the coordinate channel acted; 0 means the images
+       carry the estimate alone.
 
-    What the permutation null tests is narrower than a reader may expect. It scrambles each
-    image's values among that image's own voxels and holds the silence pattern fixed, so it tests
-    whether a voxel's *magnitude* is exchangeable with other voxels in the same studies. It does
-    not test whether foci converge there, and a collection with no image cannot be tested at all.
+    The permutation null tests whether a voxel's magnitude is exchangeable with other voxels in
+    the same studies. It does not test whether foci converge there, and a collection with no
+    image cannot be tested at all.
 
     Warnings
     --------
     This estimator is new and has not been validated against a reference implementation.
 
-    **The correction can make ``g`` worse than doing nothing.** Judged against a reference built
-    from subjects that made no coordinate, an images-only pool recovered 0.85 of the true
-    magnitude where ``g`` recovered 0.63, and the fitted prevalence read 0.66 against a true
-    1.000. The regime is not exotic: it is what happens when every study really does have the
-    effect, so there is no absence for the model to find and any :math:`\pi < 1` is error. On the
-    pain collection, where studies genuinely differ, the same machinery improves the level
-    substantially. Which regime a given collection is in is not observable from the collection,
-    and that is the honest statement of the risk.
+    **The correction can make ``g`` worse than doing nothing.** Against a reference built from
+    subjects that made no coordinate, an images-only pool recovered 0.85 of the true magnitude
+    where ``g`` recovered 0.63, and the fitted prevalence read 0.66 against a true 1.000. That
+    is what happens when every study really has the effect: there is no absence to find and any
+    :math:`\pi < 1` is error. On the pain collection, where studies genuinely differ, the same
+    machinery improves the level substantially. Which regime a collection is in is not
+    observable from the collection.
 
-    **The report limb's probability is over-stated, and the error is bounded but not fixed.** The
-    model treats a report as :math:`P(|g| \ge c)`, while a paper reports a voxel only if it
-    cleared :math:`c` *and* was a local maximum. At a signal peak the mean field's own curvature
-    makes a maximum more likely, so a zero-mean maxima density is a lower bound -- off by up to a
-    factor of two, and most where the effect is sharpest. Correcting it needs a per-study peak
-    sharpness that no paper reports.
+    **The report limb's probability is over-stated by up to a factor of two.** The model treats
+    a report as :math:`P(|g| \ge c)`, but a paper reports a voxel only if it cleared :math:`c`
+    and was a local maximum. The error is largest where the effect is sharpest, and correcting
+    it needs a per-study peak sharpness that no paper reports.
 
-    **One image is enough to run and a thin basis for a magnitude.** The collection must supply
-    at least one study with both ``g`` and ``g_var``; with one, every magnitude rests on that
-    study and ``tau2`` cannot be estimated from the images at all.
+    **One image is enough to run.** With one, every magnitude rests on that study and ``tau2``
+    cannot be estimated from the images at all.
 
     References
     ----------
@@ -1507,10 +1423,8 @@ class CBES(Estimator):
         mask_flat_to_masked = _get_mask_flat_to_masked(mask_img)
         n_voxels = int(mask_flat_to_masked.max()) + 1 if mask_flat_to_masked.size else 0
 
-        sums = {
-            name: np.zeros(n_voxels, dtype=float)
-            for name in ("w", "w2", "a", "a2", "ag", "ag2", "w2_over_s2", "n")
-        }
+        # Every image contributes weight 1, so the study count is the only weight moment left.
+        sums = {name: np.zeros(n_voxels, dtype=float) for name in ("n", "a", "a2", "ag", "ag2")}
         contributions = []
 
         for study_id, (g, var_g, usable) in (image_studies or {}).items():
@@ -1522,14 +1436,11 @@ class CBES(Estimator):
 
             a = weights / var_g[cols]
             for name, value in (
-                ("w", weights),
-                ("w2", weights),
+                ("n", weights),
                 ("a", a),
                 ("a2", a**2),
                 ("ag", a * g[cols]),
                 ("ag2", a * g[cols] ** 2),
-                ("w2_over_s2", a),
-                ("n", weights),
             ):
                 sums[name][cols] += value
 
@@ -1546,13 +1457,7 @@ class CBES(Estimator):
 
         if self.tau2_method == "dl":
             tau2 = _local_dersimonian_laird(
-                sums["w"],
-                sums["a"],
-                sums["a2"],
-                sums["ag"],
-                sums["ag2"],
-                sums["w2_over_s2"],
-                sums["n"],
+                sums["a"], sums["a2"], sums["ag"], sums["ag2"], sums["n"]
             )
         else:
             tau2 = np.zeros(n_voxels, dtype=float)
@@ -1578,9 +1483,8 @@ class CBES(Estimator):
         g_hat[covered] = numerator[covered] / denominator[covered]
         se[covered] = np.sqrt(variance_numerator[covered]) / denominator[covered]
 
-        n_eff = np.zeros(n_voxels, dtype=float)
-        positive_w = sums["w2"] > 0
-        n_eff[positive_w] = sums["w"][positive_w] ** 2 / sums["w2"][positive_w]
+        # The Kish count over unit weights is the study count itself.
+        n_eff = sums["n"]
 
         return {
             "contributions": contributions,
@@ -1592,7 +1496,6 @@ class CBES(Estimator):
             "n_studies": sums["n"],
             "n_eff": n_eff,
             "denominator": denominator,
-            "sum_w": sums["w"],
         }
 
     def _indicator_entries(self, table, study_ids, active, n_voxels, image_ids=()):
@@ -1682,20 +1585,12 @@ class CBES(Estimator):
                 local = local[local >= 0]
                 reached_flag[local] = True
 
-            # A report asserts its indicator at the voxel it names and nowhere else, while a
-            # silence asserts one over the whole neighbourhood. That asymmetry is not a
-            # convenience: a silence really is a statement about a region -- nothing within
-            # the radius cleared the cut -- whereas "someone reported 18 mm away" says nothing
-            # about the effect here, the reported peak being a local maximum selected for
-            # being large and displaced from wherever the effect is.
-            #
-            # Swept, and there is no middle ground: the named voxel is optimal and the penalty
-            # starts at the first ring. Against a known truth, rmse where the effect is ran
-            # 0.070 at the named voxel, 0.113 at 4 mm, 0.122 at 6 mm and 0.126 at 20 mm, and
-            # the bias flipped from -0.039 to +0.094 at 4 mm alone -- one ring overshoots by
-            # more than the original undershoot, because a 4 mm sphere asserts the indicator at
-            # seven voxels rather than one. A voxel a study reached but did not name therefore
-            # gets no indicator either way.
+            # A report is asserted at the named voxel only; a silence is asserted over the
+            # whole neighbourhood. A silence is a statement about a region, while a peak 18 mm
+            # away says nothing about this voxel, being a local maximum selected for size and
+            # displaced from the effect. Widening the report was swept and only hurt: rmse
+            # 0.070 at the named voxel against 0.113 at 4 mm, with the bias flipping -0.039 to
+            # +0.094. So a voxel a study reached but did not name gets no indicator.
             at_focus = np.zeros(active.size, dtype=bool)
             if ijk.size:
                 named = padded_lookup[(ijk + pad) @ padded_strides]
@@ -1768,15 +1663,11 @@ class CBES(Estimator):
             return
 
         study_ids = list(sample_sizes.index)
-        # Which studies were silent where is decided by the foci positions, which the
-        # permutation null never moves, so this survives across refits like the geometry does.
-        #
-        # The key has to name everything that decides coverage, not just its shape. It used to
-        # be (active extent, number of analyses), which the calibration sequence defeats: that
-        # fits the coordinates alone and then each image donor alone, with the same roster and
-        # the same active voxels but an empty focus table, so a donor fit reused the coordinate
-        # fit's censoring matrix. Measured donor-only estimates of [0.2840, 0.3708] against
-        # [0.2658, 0.3421] once invalidated.
+        # The foci positions decide which studies were silent where, and the permutation null
+        # never moves them, so this survives across refits. The key must name everything that
+        # decides coverage, not just its shape: keyed on (active extent, number of analyses), a
+        # fit with an empty focus table reused a previous fit's censoring matrix and returned
+        # [0.2840, 0.3708] where the correct answer was [0.2658, 0.3421].
         masks = getattr(self, "_analysis_masks_", None) or {}
         coverage_key = (
             active.size,
@@ -2115,17 +2006,13 @@ class CBES(Estimator):
             reporting.voxel, weights=reporting.weight, minlength=width
         ) + np.bincount(silent.voxel, weights=silent.weight, minlength=width)
 
-        # Where no study contributes a reporting indicator, the prevalence is not identified and
-        # is held at 1 rather than fitted. Only the indicator separates "no effect in this
-        # study" from "a small effect plus noise": a two-component mixture fitted to a handful
-        # of Gaussian values with known variances will happily explain noise as a mixture, and
-        # does. With every study carrying an image -- so that the indicator is empty everywhere
-        # -- it returned a prevalence of 0.577 against a true 1.0, and profiling that
-        # unidentified parameter out of the observed information inflated ``se/sd`` to 2.21,
-        # the worst of any configuration measured, against 1.14 for the same images fitted
-        # without the mixture. Holding it at 1 makes the mixture collapse to the plain
-        # likelihood through the existing algebra: the responsibilities go to 1, so
-        # ``r(1 - r)`` goes to 0, so the cross block vanishes and the Schur complement with it.
+        # Where no study contributes a reporting indicator the prevalence is not identified, so
+        # it is held at 1. Only the indicator separates "no effect in this study" from "a small
+        # effect plus noise"; without it a two-component mixture explains noise as a mixture.
+        # With every study carrying an image it returned 0.577 against a true 1.0 and inflated
+        # se/sd to 2.21, against 1.14 for the same images fitted without the mixture. Holding
+        # it at 1 collapses the mixture to the plain likelihood: the responsibilities go to 1,
+        # so r(1 - r) goes to 0 and the cross block vanishes with the Schur complement.
         identified = (
             np.bincount(silent.voxel, weights=silent.weight, minlength=width) > 0
             if zero_inflated
@@ -2219,11 +2106,9 @@ class CBES(Estimator):
                 pi_shift = np.abs(pi - previous_pi)
                 # EM increases the likelihood monotonically, so a voxel whose likelihood has
                 # stopped rising has finished, whatever its parameters are still doing. Where a
-                # single study reported, the step criterion alone never fires and the loop runs
-                # to max_iter; this makes the answer reproducible, and that is all it makes it.
-                # The surface there is a plateau, not a ridge with a peak along it, because one
-                # report cannot separate a moderate effect from a false positive at mu = 0, so
-                # no stopping rule and no optimizer recovers a magnitude. See ``max_iter``.
+                # single study reported, the surface is a plateau and the step criterion never
+                # fires, so the loop runs to max_iter. That makes the answer reproducible and
+                # nothing more.
                 gain = log_likelihood - previous_ll
                 stalled = np.isfinite(previous_ll) & (
                     gain <= _EM_LOGLIK_TOLERANCE * (np.abs(log_likelihood) + 1.0)
@@ -2400,14 +2285,11 @@ class CBES(Estimator):
         mask_bool = self._mask_bool() if cluster_stat is not None else None
         for seed in seeds:
             rng = np.random.default_rng(seed)
-            # The focus table is passed through unchanged, which is the point. Only the image
-            # values move, because they are the only magnitudes in the model. The coordinate
-            # silence pattern is therefore identical in the observed fit and in every null
-            # draw, so whatever structure it contributes appears on both sides and cancels --
-            # which is what makes this a valid null for a silence-based estimator without
-            # relocating any focus. Relocation was tried and rejected: it is not conditional on
-            # multiplicity, and permuting whole rows put two foci of one study on a voxel and
-            # dropped the null's study count.
+            # The focus table passes through unchanged. Only the image values move, since they
+            # are the only magnitudes in the model, so the silence pattern is identical in the
+            # observed fit and in every null draw. Relocating foci instead was rejected: it is
+            # not conditional on multiplicity, and permuting whole rows put two foci of one
+            # study on a voxel and dropped the null's study count.
             _, z_null = self._statistic(
                 self._focus_table_,
                 sample_sizes,
@@ -2575,14 +2457,10 @@ class CBES(Estimator):
             p_values = np.ones_like(z_values)
         p_values[~fit["covered"]] = 1.0
 
-        # `dof` is taken from the censoring roster, not from a Kish count over the pooled
-        # weights. Two reasons, and the second is decisive. The likelihood uses every study on
-        # the roster -- the images through their values, the rest through their silence -- so
-        # crediting only the weighted contributors denies the model information it demonstrably
-        # used. And with coordinate magnitudes gone, the only weighted contributions are images
-        # at weight 1, so a Kish count is just the image count: `n_eff = k`, `dof = k - 1`,
-        # which is **0 with one image** and makes the recommended interval `nan`. The roster is
-        # the only reference that survives the design.
+        # `dof` counts the censoring roster, not the weighted contributors. The likelihood uses
+        # every study on the roster: the images through their values, the rest through their
+        # silence. Counting only the images would also give `dof = 0` with one image, making
+        # the interval `nan`.
         roster_size = getattr(self, "_sample_sizes_", None)
         if roster_size is not None and len(roster_size):
             dof = np.full(fit["g"].shape, float(len(roster_size)) - 1.0)

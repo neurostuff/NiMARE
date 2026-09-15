@@ -201,7 +201,7 @@ def test_null_effect_variance_distinguishes_the_two_designs():
 
 
 def test_local_dl_reduces_to_dersimonian_laird():
-    """With unit weights the local estimator must be the textbook DL estimator."""
+    """The per-voxel estimator must be the textbook DL estimator."""
     from pymare.estimators import DerSimonianLaird
 
     rng = np.random.default_rng(0)
@@ -214,12 +214,10 @@ def test_local_dl_reduces_to_dersimonian_laird():
 
     a = 1.0 / var_g
     actual = _local_dersimonian_laird(
-        sum_w=np.array([float(len(g))]),
         sum_a=np.array([a.sum()]),
         sum_a2=np.array([(a**2).sum()]),
         sum_ag=np.array([(a * g).sum()]),
         sum_ag2=np.array([(a * g**2).sum()]),
-        sum_w2_over_s2=np.array([a.sum()]),
         n_studies=np.array([float(len(g))]),
     )
     assert np.isclose(actual[0], expected)
@@ -227,10 +225,7 @@ def test_local_dl_reduces_to_dersimonian_laird():
 
 def test_local_dl_is_zero_without_two_studies():
     """Heterogeneity is not estimable from a single study, so it is reported as zero."""
-    zeros = np.zeros(1)
-    tau2 = _local_dersimonian_laird(
-        zeros, np.ones(1), np.ones(1), np.ones(1), np.ones(1), np.ones(1), np.ones(1)
-    )
+    tau2 = _local_dersimonian_laird(np.ones(1), np.ones(1), np.ones(1), np.ones(1), np.ones(1))
     assert tau2[0] == 0.0
 
 
