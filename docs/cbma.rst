@@ -67,10 +67,11 @@ as long as there are enough iterations.
 .. note::
     :class:`~nimare.meta.cbma.effectsize.CBES` offers neither of these, because both randomize
     the *locations* of the coordinates and so ask whether foci converge at a voxel beyond
-    chance. CBES estimates an effect size rather than convergence, so its null holds the
-    locations fixed and permutes the reported magnitudes across them, asking instead whether
-    the effects reported near a voxel are larger than those reported elsewhere in the
-    collection. See its ``null_method`` documentation.
+    chance. CBES estimates an effect size rather than convergence, and it reads the coordinate
+    tables only for where studies were silent, so its null holds every location fixed and
+    permutes each image study's effect sizes among its own voxels instead, asking whether the
+    effects near a voxel are larger than those the same studies show elsewhere. See its
+    ``null_method`` documentation.
 
 Example: :ref:`null-method-example`
 

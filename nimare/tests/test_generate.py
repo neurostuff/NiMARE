@@ -308,7 +308,7 @@ def test_simulate_field_produces_real_peak_height_inflation():
     import numpy as np
 
     from nimare.generate import create_effect_size_coordinate_studyset
-    from nimare.meta.cbma.effectsize import peak_stat_to_hedges_g
+    from nimare.transforms import d_to_g, t_to_d, z_to_t
 
     sample_size = 25
     studyset = create_effect_size_coordinate_studyset(
@@ -330,9 +330,10 @@ def test_simulate_field_produces_real_peak_height_inflation():
     assert on_signal.sum() >= 5
 
     z_values = np.abs(coordinates["z_stat"].astype(float).to_numpy())[on_signal]
-    implied, _ = peak_stat_to_hedges_g(
-        z_values, np.full(len(z_values), float(sample_size)), stat_type="z"
-    )
+    # The effect size a reader would infer from the reported statistic: the z is a
+    # p-value-preserving image of a t on n - 1, which is what the reporting software produced.
+    n = np.full(len(z_values), float(sample_size))
+    implied = d_to_g(t_to_d(z_to_t(z_values, n - 1.0), n), n)
     truth = np.abs(coordinates["value_trueg"].astype(float).to_numpy())[on_signal]
 
     # The reported statistic overstates the effect where its peak was found.

@@ -1,5 +1,6 @@
 """Utilities for generating data for testing."""
 
+import os
 from itertools import zip_longest
 
 import numpy as np
@@ -324,6 +325,13 @@ def _simulate_reported_peaks(
 
     Each peak carries the true effect at the voxel it was found in, so the inflation is a
     measurable quantity rather than something to be assumed.
+
+    Returns ``(peaks, field)``, where ``field`` carries the same study's whole effect-size map
+    and its sampling variance on the ``g`` scale, with the affine they live on. That is what a
+    study *sharing its images* would contribute, simulated from the same draw that produced its
+    peaks, so a collection can mix the two channels consistently -- which
+    :class:`~nimare.meta.cbma.effectsize.CBES` requires, reading magnitudes from images and
+    only silence from coordinate tables.
     """
     from scipy.ndimage import gaussian_filter, maximum_filter
 
@@ -337,7 +345,7 @@ def _simulate_reported_peaks(
     noise = gaussian_filter(rng.normal(size=shape), sigma)
     spread = noise.std()
     if spread <= 0:
-        return []
+        return [], None
     noise /= spread
 
     # Signal: a blob at each ground-truth focus, on the effect-size scale.
@@ -378,7 +386,22 @@ def _simulate_reported_peaks(
                 "true_g": float(signal[position]),
             }
         )
-    return reported
+
+    from nimare.transforms import d_to_g, t_to_d
+
+    affine = np.eye(4)
+    affine[:3, :3] = np.diag(zooms)
+    affine[:3, 3] = origin
+    g = d_to_g(t_to_d(signal * scale + noise, n_subjects), n_subjects)
+    field = {
+        "g": g,
+        # Hedges' sampling variance, which is a function of the *observed* effect -- the same
+        # variance a real conversion from a test statistic carries, including the small
+        # downward pull it puts on an inverse-variance mean.
+        "g_var": 1.0 / n_subjects + g**2 / (2.0 * n_subjects),
+        "affine": affine,
+    }
+    return reported, field
 
 
 def create_effect_size_coordinate_studyset(
@@ -396,6 +419,8 @@ def create_effect_size_coordinate_studyset(
     seed=None,
     space="MNI",
     simulate_field=False,
+    n_image_studies=0,
+    image_dir=None,
     smoothness_fwhm=10.0,
     blob_fwhm=10.0,
     field_zooms=4.0,
@@ -445,6 +470,20 @@ def create_effect_size_coordinate_studyset(
 
         Each reported point carries the true effect at the voxel it was found in, under the
         ``TRUEG`` value kind, so the inflation is measurable rather than assumed.
+    n_image_studies : :obj:`int`, default=0
+        Number of studies that also share their whole effect-size map, as ``g`` and ``g_var``
+        images written to ``image_dir``. The first ``n_image_studies`` studies get them, and
+        keep their coordinate tables too, so a study is both an image donor and a reporter --
+        which is what a real collection looks like when a paper shares its maps.
+
+        **Needed to simulate a valid input for**
+        :class:`~nimare.meta.cbma.effectsize.CBES`, which reads magnitudes only from images and
+        reads coordinate tables only for where studies were silent, and so requires at least
+        one image. Requires ``simulate_field=True``: without a field there is no map to write.
+    image_dir : :obj:`str` or None, optional
+        Directory to write the ``g``/``g_var`` images into. Required when ``n_image_studies``
+        is nonzero; the files are named after the analysis and left in place for the caller to
+        clean up.
     smoothness_fwhm : :obj:`float`, default=10.0
         FWHM, in mm, of the simulated noise field. Only used when ``simulate_field`` is set.
     blob_fwhm : :obj:`float`, default=10.0
@@ -490,6 +529,15 @@ def create_effect_size_coordinate_studyset(
 
     rng = np.random.default_rng(seed)
 
+    if n_image_studies:
+        if not simulate_field:
+            raise ValueError(
+                "n_image_studies needs simulate_field=True: the point simulator draws a value "
+                "at each focus and never builds a map, so there is nothing to write."
+            )
+        if not image_dir:
+            raise ValueError("n_image_studies needs image_dir, to write the images into.")
+
     ground_truth_foci = np.atleast_2d(np.asarray(ground_truth_foci, dtype=float))
     effect_sizes = np.broadcast_to(
         np.asarray(effect_sizes, dtype=float), (len(ground_truth_foci),)
@@ -524,7 +572,7 @@ def create_effect_size_coordinate_studyset(
             study_effects = [
                 rng.normal(effect, tau) if tau and effect else effect for effect in present
             ]
-            for peak in _simulate_reported_peaks(
+            reported_peaks, field = _simulate_reported_peaks(
                 ground_truth_foci,
                 study_effects,
                 n_subjects,
@@ -535,7 +583,8 @@ def create_effect_size_coordinate_studyset(
                 noise_extent if n_noise_foci or noise_extent else DEFAULT_NOISE_EXTENT,
                 design,
                 rng,
-            ):
+            )
+            for peak in reported_peaks:
                 points.append(
                     {
                         "space": space,
@@ -548,6 +597,24 @@ def create_effect_size_coordinate_studyset(
                         ],
                     }
                 )
+            images = []
+            if i_study < n_image_studies and field is not None:
+                import nibabel as nib
+
+                for value_type in ("g", "g_var"):
+                    path = os.path.join(image_dir, f"study-{i_study}-1_{value_type}.nii.gz")
+                    nib.save(
+                        nib.Nifti1Image(field[value_type].astype(np.float32), field["affine"]),
+                        path,
+                    )
+                    images.append(
+                        {
+                            "url": path,
+                            "filename": os.path.basename(path),
+                            "space": space,
+                            "value_type": value_type,
+                        }
+                    )
             studies.append(
                 {
                     "id": f"study-{i_study}",
@@ -565,6 +632,7 @@ def create_effect_size_coordinate_studyset(
                                 "reporting_threshold": float(threshold),
                             },
                             "points": points,
+                            "images": images,
                         }
                     ],
                 }

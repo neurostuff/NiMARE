@@ -1,86 +1,120 @@
-"""Tests for nimare.meta.cbma.effectsize (coordinate-based effect-size meta-analysis)."""
+"""Tests for nimare.meta.cbma.effectsize (coordinate-based effect-size meta-analysis).
+
+CBES reads magnitudes from effect-size images and reads coordinate tables only for where
+studies were **silent**. The tests are organised around that split: what the image channel
+does, what the silence channel does, what happens when one of them is missing, and what the
+permutation null is and is not testing.
+"""
 
 import copy
 import json
+from pathlib import Path
 
 import nibabel as nib
 import numpy as np
-import pandas as pd
 import pytest
+from nilearn.maskers import NiftiMasker
 
 from nimare.correct import FDRCorrector, FWECorrector
 from nimare.generate import create_effect_size_coordinate_studyset
 from nimare.meta.cbma.effectsize import (
     _NULL_Z_STEP,
     CBES,
+    DEFAULT_COVERAGE_RADIUS_MM,
     NULL_METHODS,
     _local_dersimonian_laird,
     _null_bin_edges,
+    _stat_from_histogram,
     null_effect_variance,
-    peak_stat_to_hedges_g,
+    reporting_cutoff_to_g,
 )
-from nimare.transforms import d_to_g, t_to_d
 from nimare.utils import mm2vox
 
 TRUTH = (0, 0, 0)
+TRUE_G = 0.5
+
+# The field simulator's grid, chosen to coincide exactly with ``small_mask`` so the images it
+# writes need no resampling and the truth is readable voxel for voxel.
+SHAPE = (21, 21, 21)
+ZOOMS = 4.0
+EXTENT = 40.0
+BLOB_FWHM = 10.0
+AFFINE = np.array(
+    [
+        [ZOOMS, 0, 0, -EXTENT],
+        [0, ZOOMS, 0, -EXTENT],
+        [0, 0, ZOOMS, -EXTENT],
+        [0, 0, 0, 1.0],
+    ]
+)
 
 
 @pytest.fixture(scope="module")
 def small_mask():
-    """Build a small 4mm box around the origin, so the fits in these tests stay quick."""
-    shape = (21, 21, 21)
-    affine = np.array([[4.0, 0, 0, -40.0], [0, 4.0, 0, -40.0], [0, 0, 4.0, -40.0], [0, 0, 0, 1.0]])
-    return nib.Nifti1Image(np.ones(shape, dtype=np.int32), affine)
+    """Build a small 4 mm box around the origin, so the fits in these tests stay quick."""
+    return nib.Nifti1Image(np.ones(SHAPE, dtype=np.int32), AFFINE)
 
 
-TRUE_G = 0.5
+def make_studyset(image_dir, *, n_images=2, n_studies=20, effect=TRUE_G, seed=7, **kwargs):
+    """Build a collection of field-simulated studies, the first ``n_images`` sharing maps.
 
-
-@pytest.fixture(scope="module")
-def studyset():
-    """30 studies with a true g of 0.5 at the origin, thresholded at p < .001.
-
-    Three noise foci per study, at the low end of the 3-to-20 range a real coordinate table
-    covers. Not one: the null shuffles values within an analysis, so a study reporting a single
-    focus has one arrangement and contributes no randomness -- at one noise focus this
-    collection admitted 63 arrangements in total and could not be tested at all.
+    The field simulator rather than the point one, because the point simulator draws a value
+    *at* the focus and never builds a map -- so it can produce neither the images this
+    estimator requires nor the selection its silence channel corrects.
     """
-    return create_effect_size_coordinate_studyset(
-        [TRUTH],
-        effect_sizes=TRUE_G,
-        n_studies=30,
+    options = dict(
         sample_size=(20, 40),
         tau=0.1,
-        seed=7,
-        n_noise_foci=3,
-        noise_extent=30.0,
-        spatial_sd=5.0,
+        simulate_field=True,
+        noise_extent=EXTENT,
+        field_zooms=ZOOMS,
+        blob_fwhm=BLOB_FWHM,
+    )
+    options.update(kwargs)
+    image_dir = Path(image_dir)
+    image_dir.mkdir(parents=True, exist_ok=True)
+    return create_effect_size_coordinate_studyset(
+        [TRUTH],
+        effect_sizes=effect,
+        n_studies=n_studies,
+        seed=seed,
+        n_image_studies=n_images,
+        image_dir=str(image_dir),
+        **options,
     )
 
 
 @pytest.fixture(scope="module")
-def mixed_studyset():
-    """Half the studies genuinely have no effect at the focus."""
-    return create_effect_size_coordinate_studyset(
-        [TRUTH],
-        effect_sizes=0.8,
-        n_studies=30,
-        sample_size=(20, 40),
-        tau=0.1,
-        prevalence=0.5,
-        seed=4,
-        n_noise_foci=1,
-        noise_extent=30.0,
-        spatial_sd=5.0,
-    )
+def studyset(tmp_path_factory):
+    """Build twenty studies with a true g of 0.5 at the origin; two share their maps."""
+    return make_studyset(tmp_path_factory.mktemp("cbes_base"))
+
+
+@pytest.fixture(scope="module")
+def coordinates_only(tmp_path_factory):
+    """Build the same collection with nobody sharing a map, which CBES has to refuse."""
+    return make_studyset(tmp_path_factory.mktemp("cbes_nocoord"), n_images=0)
 
 
 @pytest.fixture(scope="module")
 def permutation_fit(studyset, small_mask):
     """One permutation fit at ``n_iters=20``, shared by the tests that all wanted the same one."""
-    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="permute-magnitudes", n_iters=20)
-    result = estimator.fit(studyset)
-    return estimator, result
+    estimator = CBES(mask=small_mask, n_iters=20, threshold="reporting_threshold")
+    return estimator, estimator.fit(studyset)
+
+
+def truth_field(mask_img):
+    """Return the effect the simulator actually built, in the masker's voxel order.
+
+    Known exactly rather than estimated, which is the point of scoring against it: a reference
+    built from the same maps that produced the peaks would condition the comparison on the very
+    noise being measured.
+    """
+    grid = np.stack(np.indices(SHAPE), axis=-1) * ZOOMS - EXTENT
+    sigma = BLOB_FWHM / (2.0 * np.sqrt(2.0 * np.log(2.0)))
+    volume = TRUE_G * np.exp(-(grid**2).sum(axis=-1) / (2.0 * sigma**2))
+    masker = NiftiMasker(mask_img).fit()
+    return masker.transform(nib.Nifti1Image(volume.astype(np.float32), AFFINE)).ravel()
 
 
 def value_at(result, name, xyz=TRUTH):
@@ -90,53 +124,33 @@ def value_at(result, name, xyz=TRUTH):
     return float(img.get_fdata()[tuple(ijk)])
 
 
-def test_peak_stat_to_hedges_g_matches_transforms():
-    """The one-sample path is exactly the existing t -> d -> g conversion."""
-    t_values = np.array([3.5, -4.2, 6.0])
-    sample_sizes = np.array([20.0, 35.0, 50.0])
-
-    g, var_g = peak_stat_to_hedges_g(t_values, sample_sizes, stat_type="t")
-    expected_g, expected_var = d_to_g(
-        t_to_d(t_values, sample_sizes), sample_sizes, return_variance=True
-    )
-
-    assert np.allclose(g, expected_g)
-    assert np.allclose(var_g, expected_var)
-    assert g[1] < 0  # sign is carried through
-
-    # The same t means a smaller effect in a bigger study -- the point of the conversion.
-    same_t, _ = peak_stat_to_hedges_g([4.0, 4.0], [20.0, 80.0], stat_type="t")
-    assert same_t[1] < same_t[0]
+def arrays(result):
+    """Return every map as a flat array, in the masker's voxel order."""
+    return {name: result.get_map(name, return_type="array").ravel() for name in result.maps}
 
 
-def test_peak_stat_to_hedges_g_z_and_t_agree_in_large_samples():
-    """A z and the t it corresponds to give the same effect size."""
-    from nimare.transforms import t_to_z
-
-    sample_sizes = np.full(3, 500.0)
-    t_values = np.array([3.5, 4.5, 5.5])
-    z_values = t_to_z(t_values, sample_sizes - 1)
-
-    g_from_t, _ = peak_stat_to_hedges_g(t_values, sample_sizes, stat_type="t")
-    g_from_z, _ = peak_stat_to_hedges_g(z_values, sample_sizes, stat_type="z")
-    assert np.allclose(g_from_t, g_from_z, atol=1e-6)
-
-
-def test_peak_stat_to_hedges_g_rejects_tiny_studies():
-    """A study too small for the Hedges correction is refused rather than silently converted."""
-    with pytest.raises(ValueError, match="at least 4 subjects"):
-        peak_stat_to_hedges_g([3.0], [3], stat_type="t")
+# --------------------------------------------------------------- numerical pieces
 
 
 def test_null_effect_variance_shrinks_with_sample_size():
-    """A silent study still carries precision, and a larger one carries more."""
-    variances = null_effect_variance(np.array([20.0, 80.0]))
-    assert variances[0] > variances[1]
-    assert np.allclose(variances, 1.0 / np.array([20.0, 80.0]), rtol=0.15)
+    """The variance a silence is judged against is the sampling variance at mu = 0."""
+    variances = null_effect_variance(np.array([20.0, 80.0, 320.0]))
+    assert np.all(np.diff(variances) < 0)
+    # One-sample Hedges' variance at zero effect is about 1/N, and the bias correction pulls it
+    # very slightly below.
+    assert np.allclose(variances, 1.0 / np.array([20.0, 80.0, 320.0]), rtol=0.05)
+
+
+def test_null_effect_variance_distinguishes_the_two_designs():
+    """A two-sample N is a total split into groups, so its variance is about 4/N, not 1/N."""
+    one = null_effect_variance(np.array([40.0]), design="one-sample")[0]
+    two = null_effect_variance(np.array([40.0]), design="two-sample")[0]
+    assert np.isclose(one, 1.0 / 40.0, rtol=0.05)
+    assert np.isclose(two, 4.0 / 40.0, rtol=0.05)
 
 
 def test_local_dl_reduces_to_dersimonian_laird():
-    """With unit kernel weights the local estimator must be the textbook DL estimator."""
+    """With unit weights the local estimator must be the textbook DL estimator."""
     from pymare.estimators import DerSimonianLaird
 
     rng = np.random.default_rng(0)
@@ -160,46 +174,6 @@ def test_local_dl_reduces_to_dersimonian_laird():
     assert np.isclose(actual[0], expected)
 
 
-def test_pooling_reduces_to_weighted_least_squares(studyset, small_mask):
-    """With unit kernel weights the pooled estimate is ordinary inverse-variance weighting."""
-    from pymare.stats import weighted_least_squares
-
-    estimator = CBES(fwhm=8.0, mask=small_mask, null_method="none", selection_model="none")
-    estimator.fit(studyset)
-    fit = estimator._pool(estimator._focus_table_)
-
-    # Rebuild one covered voxel as a dense one-voxel dataset and pool it with PyMARE.
-    voxel = int(np.argmax(fit["n_studies"]))
-    g, v, w = [], [], []
-    for _, cols, weights, g_k, var_k in fit["contributions"]:
-        hit = np.flatnonzero(cols == voxel)
-        if hit.size:
-            g.append(g_k[hit[0]])
-            v.append(var_k[hit[0]])
-            w.append(weights[hit[0]])
-    g, v = np.asarray(g), np.asarray(v)
-    assert len(g) >= 3
-
-    tau2 = float(fit["tau2"][voxel])
-    expected, cov = weighted_least_squares(
-        g[:, None], v[:, None], np.ones((len(g), 1)), tau2=tau2, return_cov=True
-    )
-    # PyMARE weights purely by inverse variance, so the comparison holds at unit kernel weight.
-    unit = 1.0 / (v + tau2)
-    mine = float(np.sum(unit * g) / np.sum(unit))
-    assert np.isclose(mine, float(np.asarray(expected).ravel()[0]))
-    assert np.isclose(1.0 / np.sqrt(np.sum(unit)), float(np.sqrt(np.asarray(cov).ravel()[0])))
-
-    # And the estimator's own pooled value is that same weighted mean once the kernel weights
-    # it actually used are put back in.
-    w = np.asarray(w)
-    pooling = w / (v + tau2)
-    assert np.isclose(fit["g"][voxel], float(np.sum(pooling * g) / np.sum(pooling)))
-    assert np.isclose(
-        fit["se"][voxel], float(np.sqrt(np.sum(w**2 / (v + tau2))) / np.sum(pooling))
-    )
-
-
 def test_local_dl_is_zero_without_two_studies():
     """Heterogeneity is not estimable from a single study, so it is reported as zero."""
     zeros = np.zeros(1)
@@ -209,36 +183,151 @@ def test_local_dl_is_zero_without_two_studies():
     assert tau2[0] == 0.0
 
 
+def test_stat_from_histogram_finds_the_threshold_for_a_target_p():
+    """The cluster-forming statistic is read off the null histogram, not assumed."""
+    edges = _null_bin_edges()
+    histogram = np.zeros(len(edges) - 1)
+    # A flat null over |z| in [0, 1): a target p of 0.1 sits at the 90th percentile.
+    histogram[: int(1.0 / _NULL_Z_STEP)] = 1.0
+    assert np.isclose(_stat_from_histogram(0.1, histogram), 0.9, atol=2 * _NULL_Z_STEP)
+    # An empty histogram cannot place a threshold, and says so rather than returning zero.
+    assert not np.isfinite(_stat_from_histogram(0.1, np.zeros_like(histogram)))
+
+
+def test_pooling_reduces_to_inverse_variance_weighting(studyset, small_mask):
+    """With the silence switched off the pooled estimate is ordinary inverse-variance weighting."""
+    from pymare.stats import weighted_least_squares
+
+    estimator = CBES(mask=small_mask, null_method="none", selection_model="none")
+    estimator.fit(studyset)
+    fit = estimator._pool(estimator._focus_table_, estimator._image_studies_)
+
+    voxel = int(np.argmax(fit["n_studies"]))
+    g, v = [], []
+    for _, cols, _, g_k, var_k in fit["contributions"]:
+        hit = np.flatnonzero(cols == voxel)
+        if hit.size:
+            g.append(g_k[hit[0]])
+            v.append(var_k[hit[0]])
+    g, v = np.asarray(g), np.asarray(v)
+    assert len(g) >= 2
+
+    tau2 = float(fit["tau2"][voxel])
+    expected, cov = weighted_least_squares(
+        g[:, None], v[:, None], np.ones((len(g), 1)), tau2=tau2, return_cov=True
+    )
+    assert np.isclose(fit["g"][voxel], float(np.asarray(expected).ravel()[0]))
+    assert np.isclose(fit["se"][voxel], float(np.sqrt(np.asarray(cov).ravel()[0])))
+
+
+# ------------------------------------------------------------ options and refusals
+
+
 @pytest.mark.parametrize(
     "kwargs,match",
     [
         ({"design": "three-sample"}, "design must be"),
         ({"tau2_method": "reml"}, "tau2_method must be"),
-        ({"selection_model": "heckman"}, "selection_model must be"),
-        ({"null_method": "bootstrap"}, "null_method must be"),
+        ({"selection_model": "tobit"}, "selection_model must be"),
+        ({"null_method": "montecarlo"}, "null_method must be"),
+        ({"se_method": "sandwich"}, "se_method must be"),
+        ({"se_method": "hksj"}, "hksj"),
         ({"threshold": object()}, "threshold must be"),
-        ({"peak_bias": "shrink"}, "peak_bias must be"),
-        ({"peak_bias": 1.5}, "peak_bias must be"),
     ],
 )
 def test_cbes_rejects_bad_parameters(kwargs, match):
-    """Every option is validated at construction, before any fitting is paid for."""
+    """Unusable options are refused at construction, not at fit time."""
     with pytest.raises(ValueError, match=match):
         CBES(**kwargs)
 
 
-def test_cbes_requires_a_reported_statistic(small_mask):
-    """Coordinates without statistics get a message pointing at the convergence estimators."""
-    from nimare.generate import create_coordinate_studyset
+def test_the_removed_options_fail_loudly_rather_than_being_ignored():
+    """A caller carrying an old configuration has to hear about it, not get a different fit.
 
-    _, plain = create_coordinate_studyset(foci=1, n_studies=5, sample_size=20, seed=1)
-    with pytest.raises(ValueError, match="no usable 'z_stat' or 't_stat'"):
-        CBES(mask=small_mask, selection_model="none", null_method="none").fit(plain)
+    ``fwhm``, ``peak_bias``, ``peak_bias_scale``, ``stat_column``, ``kernel_min_weight`` and
+    ``use_images`` all belonged to the design in which coordinate tables supplied magnitudes.
+    Silently accepting them would mean accepting a request the estimator no longer honours.
+    """
+    for gone in (
+        "fwhm",
+        "peak_bias",
+        "peak_bias_scale",
+        "stat_column",
+        "kernel_min_weight",
+        "use_images",
+    ):
+        with pytest.raises(TypeError):
+            CBES(**{gone: 1.0})
+
+
+def test_the_only_null_is_the_image_permutation_one():
+    """The coordinate magnitudes are gone, so there is nothing left to permute over them."""
+    assert NULL_METHODS == ("permute-images", "none")
+    for gone in ("permute-magnitudes", "approximate", "montecarlo"):
+        with pytest.raises(ValueError, match="null_method must be"):
+            CBES(null_method=gone)
+
+
+def test_a_collection_with_no_shared_map_is_refused(coordinates_only, small_mask):
+    """Coordinates carry no magnitude here, so a fit without an image is refused.
+
+    Not returned as a map of zeros, and not quietly reduced to something else: the whole
+    magnitude channel is the images, and a caller who supplied none asked for a fit that has no
+    answer.
+    """
+    with pytest.raises(ValueError, match="at least one study supplying both a 'g' and a 'g_var'"):
+        CBES(mask=small_mask, null_method="none").fit(coordinates_only)
+
+
+def test_a_collection_with_no_coordinates_is_redirected_to_an_image_estimator(
+    studyset, small_mask
+):
+    """With no coordinate table there is no silence to read, so CBES adds nothing over an IBMA."""
+    stripped = copy.deepcopy(studyset.to_dict())
+    for study in stripped["studies"]:
+        for analysis in study["analyses"]:
+            analysis["points"] = []
+    from nimare.studyset import Studyset
+
+    with pytest.raises(ValueError, match="images but no coordinates"):
+        CBES(mask=small_mask, null_method="none").fit(
+            Studyset(stripped, target=None, mask=small_mask)
+        )
+
+
+def test_a_collection_with_neither_coordinates_nor_images_still_raises(tmp_path, small_mask):
+    """The missing-coordinates message must not shadow a collection that has nothing at all."""
+    from nimare.studyset import Studyset
+
+    empty = {
+        "id": "empty",
+        "name": "empty",
+        "studies": [
+            {
+                "id": "s0",
+                "name": "s0",
+                "metadata": {"sample_sizes": [30]},
+                "analyses": [
+                    {"id": "s0-1", "name": "1", "metadata": {"sample_sizes": [30]}, "points": []}
+                ],
+            }
+        ],
+    }
+    path = tmp_path / "empty.json"
+    path.write_text(json.dumps(empty))
+    with pytest.raises(Exception):
+        CBES(mask=small_mask, null_method="none").fit(
+            Studyset(json.loads(path.read_text()), target=None, mask=small_mask)
+        )
+
+
+# --------------------------------------------------------------------- the maps
 
 
 def test_cbes_produces_expected_maps(studyset, small_mask):
-    """Every advertised map is present and in range, and the effect lands where simulated."""
-    result = CBES(fwhm=12.0, mask=small_mask, null_method="none").fit(studyset)
+    """The documented maps are all present, and g lands near the truth at the focus."""
+    estimator = CBES(mask=small_mask, null_method="none", threshold="reporting_threshold")
+    result = estimator.fit(studyset)
 
     expected = {
         "g",
@@ -249,1835 +338,302 @@ def test_cbes_produces_expected_maps(studyset, small_mask):
         "tau2",
         "n_studies",
         "n_eff",
+        "dof",
         "prevalence",
         "g_marginal",
+        "se_marginal",
     }
     assert expected <= set(result.maps)
+    # Nothing from the design that pooled peak heights.
+    assert not {"g_relative", "g_absolute"} & set(result.maps)
 
-    p_values = result.get_map("p", return_type="array")
-    assert np.all((p_values >= 0) & (p_values <= 1))
-
-    prevalence = result.get_map("prevalence", return_type="array")
-    assert np.all((prevalence >= 0) & (prevalence <= 1))
-
-    # The effect is where it was simulated, not somewhere else. Localization is judged on z
-    # rather than g: a voxel reached by a single noise focus can have a large g with no
-    # precision behind it, so the raw effect-size map is not a detection statistic.
-    z_map = result.get_map("z", return_type="array")
-    assert value_at(result, "z") > np.percentile(z_map, 99)
-    assert value_at(result, "n_studies") > 1
-
-    # And the estimate at the truth is close to the simulated value.
-    assert abs(value_at(result, "g") - TRUE_G) < 0.15
+    assert value_at(result, "g") == pytest.approx(TRUE_G, abs=0.2)
+    assert value_at(result, "se") > 0
+    assert 0.0 < value_at(result, "prevalence") <= 1.0
+    # p is 1 everywhere with no null built, rather than a normal-theory value.
+    assert np.allclose(arrays(result)["p"], 1.0)
 
 
-def test_cbes_description_mentions_the_model(studyset, small_mask):
-    """The generated description names the model actually fitted."""
-    result = CBES(fwhm=12.0, mask=small_mask, null_method="none").fit(studyset)
-    assert "Hedges" in result.description_
-    assert "censor" in result.description_.lower()
+def test_g_is_on_the_scale_the_images_arrive_on(studyset, small_mask):
+    """No unidentified constant survives: the magnitude comes from maps already in g units."""
+    estimator = CBES(mask=small_mask, null_method="none", selection_model="none")
+    result = estimator.fit(studyset)
 
-    quiet = CBES(fwhm=12.0, mask=small_mask, generate_description=False, null_method="none").fit(
-        studyset
-    )
-    assert quiet.description_ == ""
-
-
-def test_selection_model_reduces_the_winners_curse(studyset, small_mask):
-    """Pooling reported peaks alone overestimates; modelling the silence pulls it back."""
-    naive = CBES(fwhm=12.0, mask=small_mask, selection_model="none", null_method="none").fit(
-        studyset
-    )
-    corrected = CBES(
-        fwhm=12.0, mask=small_mask, selection_model="zero-inflated", null_method="none"
-    ).fit(studyset)
-
-    naive_g = value_at(naive, "g")
-    corrected_g = value_at(corrected, "g")
-
-    # The naive estimate is biased away from zero, in the direction theory predicts.
-    assert naive_g > TRUE_G + 0.05
-    assert corrected_g < naive_g
-    assert abs(corrected_g - TRUE_G) < abs(naive_g - TRUE_G)
+    donors = estimator._image_studies_
+    assert len(donors) == 2
+    # With the silence off, the pooled value at a voxel must lie between the donors' own values.
+    values = arrays(result)
+    voxel = int(np.argmax(values["n_studies"]))
+    donor_values = [g[voxel] for g, _, _ in donors.values()]
+    assert min(donor_values) - 1e-9 <= values["g"][voxel] <= max(donor_values) + 1e-9
 
 
-def test_zero_component_keeps_silence_from_reading_as_a_small_common_effect(
-    mixed_studyset, small_mask
-):
-    """Half the studies are genuinely null at the focus, and the model must be able to say so."""
-    result = CBES(
-        fwhm=12.0, mask=small_mask, selection_model="zero-inflated", null_method="none"
-    ).fit(mixed_studyset)
+def test_dof_counts_the_censoring_roster_and_survives_a_single_image(tmp_path, small_mask):
+    """``dof`` is the roster minus one, which is the only reference that survives one image.
 
-    assert 0.0 < value_at(result, "prevalence") < 1.0  # some studies null, some not
-    assert value_at(result, "g") > 0.0  # and the effect among the rest is positive
-
-
-def test_the_marginal_effect_is_the_conditional_one_weighted_by_how_many_studies_have_it(
-    studyset, small_mask
-):
-    """``g_marginal`` averages over every study; ``g`` averages over those with an effect.
-
-    So the two differ by exactly ``prevalence``, and the marginal is the smaller wherever some
-    studies have no effect. It is emitted only under the zero-inflated model, because without a
-    prevalence there is no distinction between the two estimands to draw.
+    A Kish count over the pooling weights would be the image count, so ``dof`` would be zero
+    with one donor and the recommended *t* interval would be ``nan`` everywhere.
     """
-    result = CBES(fwhm=12.0, mask=small_mask, null_method="none").fit(studyset)
+    one = make_studyset(tmp_path / "one", n_images=1, n_studies=12, seed=3)
+    estimator = CBES(mask=small_mask, null_method="none", threshold="reporting_threshold")
+    result = estimator.fit(one)
 
-    g = result.get_map("g", return_type="array")
-    prevalence = result.get_map("prevalence", return_type="array")
-    marginal = result.get_map("g_marginal", return_type="array")
-    assert np.allclose(marginal, g * prevalence, atol=1e-6)
-
-    covered = result.get_map("n_studies", return_type="array") > 0
-    partial = covered & (prevalence < 1.0)
-    assert partial.any(), "nothing to compare if every covered voxel has every study"
-    assert np.all(np.abs(marginal[partial]) <= np.abs(g[partial]) + 1e-6)
-
-    without = CBES(fwhm=12.0, mask=small_mask, null_method="none", selection_model="none").fit(
-        studyset
-    )
-    assert "g_marginal" not in without.maps
-    assert "prevalence" not in without.maps
-
-
-def test_prevalence_tracks_the_simulated_fraction(small_mask):
-    """Halving the fraction of studies with a real effect halves the estimated prevalence."""
-    estimates = {}
-    for prevalence in (1.0, 0.4):
-        studyset = create_effect_size_coordinate_studyset(
-            [TRUTH],
-            effect_sizes=0.9,
-            n_studies=30,
-            sample_size=(25, 45),
-            prevalence=prevalence,
-            seed=11,
-            n_noise_foci=2,
-            noise_extent=30.0,
-            spatial_sd=4.0,
-        )
-        result = CBES(fwhm=12.0, mask=small_mask, null_method="none").fit(studyset)
-        estimates[prevalence] = value_at(result, "prevalence")
-
-    assert estimates[1.0] > estimates[0.4]
+    values = arrays(result)
+    assert len(estimator._image_studies_) == 1
+    assert np.isclose(values["n_eff"].max(), 1.0)
+    covered = values["n_studies"] > 0
+    assert covered.any()
+    assert np.allclose(values["dof"][covered], len(estimator._sample_sizes_) - 1.0)
+    assert values["dof"][covered].min() > 0
 
 
 def test_fixed_effects_option_zeroes_tau2(studyset, small_mask):
-    """``tau2_method='none'`` is a fixed-effects fit, so heterogeneity is identically zero."""
-    result = CBES(fwhm=12.0, mask=small_mask, tau2_method="none", null_method="none").fit(studyset)
-    assert np.all(result.get_map("tau2", return_type="array") == 0)
-
-
-def test_correct_fwe_montecarlo(studyset, small_mask):
-    """Correcting for the family can only make a p-value larger, never smaller."""
-    estimator = CBES(
-        fwhm=12.0,
-        mask=small_mask,
-        selection_model="none",
-        null_method="permute-magnitudes",
-        n_iters=20,
-        seed=0,
-    )
-    result = estimator.fit(studyset)
-    maps, tables, description = estimator.correct_fwe_montecarlo(
-        result, n_iters=20, seed=0, vfwe_only=True
-    )
-
-    assert tables == {}
-    assert "permutation" in description
-    p_corrected = 10.0 ** -maps["logp_level-voxel"]
-    assert np.all((p_corrected > 0) & (p_corrected <= 1))
-    assert np.all(p_corrected >= result.get_map("p", return_type="array") - 1e-6)
-
-
-def test_correct_fwe_montecarlo_needs_a_fit(small_mask):
-    """Correcting before fitting is an error rather than an empty result."""
-    with pytest.raises(ValueError, match="requires a fitted estimator"):
-        CBES(mask=small_mask, null_method="none").correct_fwe_montecarlo(None, n_iters=2)
-
-
-def test_simulator_respects_the_reporting_threshold():
-    """Nothing below the threshold is ever reported -- that is the censoring being simulated."""
-    studyset = create_effect_size_coordinate_studyset(
-        [TRUTH], effect_sizes=0.5, n_studies=20, threshold_z=3.0, seed=5, n_noise_foci=1
-    )
-    z_stats = studyset.coordinates["z_stat"].astype(float).values
-    assert np.all(np.abs(z_stats) >= 3.0)
-
-
-def test_simulator_prevalence_reduces_reporting():
-    """Fewer studies with a real effect means fewer reported peaks."""
-    counts = []
-    for prevalence in (1.0, 0.3):
-        studyset = create_effect_size_coordinate_studyset(
-            [TRUTH], effect_sizes=1.0, n_studies=40, prevalence=prevalence, seed=2
-        )
-        counts.append(len(studyset.coordinates))
-    assert counts[0] > counts[1]
-
-
-# ---------------------------------------------------------------------------- inference
-
-
-@pytest.fixture(scope="module")
-def null_studyset():
-    """30 studies reporting nothing but noise: no effect exists anywhere."""
-    return create_effect_size_coordinate_studyset(
-        [TRUTH],
-        effect_sizes=0.0,
-        n_studies=30,
-        sample_size=(20, 40),
-        prevalence=0.0,
-        n_noise_foci=8,
-        noise_extent=30.0,
-        seed=21,
-    )
-
-
-def test_no_null_reports_no_p_values(studyset, small_mask):
-    """Absence of inference must not be mistakable for inference."""
-    result = CBES(fwhm=8.0, mask=small_mask, null_method="none").fit(studyset)
-
-    assert np.all(result.get_map("p", return_type="array") == 1.0)
-    # The estimates themselves are still produced.
-    assert np.any(result.get_map("g", return_type="array") != 0)
-    assert "No null distribution" in result.description_
-
-
-@pytest.mark.parametrize(
-    "corrector,map_name",
-    [
-        (FDRCorrector(method="indep"), "p_corr-FDR_method-indep"),
-        (FWECorrector(method="bonferroni"), "p_corr-FWE_method-bonferroni"),
-    ],
-)
-def test_stock_correctors_work(permutation_fit, corrector, map_name):
-    """The generic correctors need only a p map, which CBES provides."""
-    _, result = permutation_fit
-    corrected = corrector.transform(result)
-
-    p_corr = corrected.get_map(map_name, return_type="array")
-    assert np.all((p_corr > 0) & (p_corr <= 1))
-    # Correction can only make p-values larger.
-    assert np.all(p_corr >= result.get_map("p", return_type="array") - 1e-6)
-
-
-def test_fwe_montecarlo_reports_voxel_and_cluster_levels(studyset, small_mask):
-    """Voxel-level, cluster-size and cluster-mass corrections all come from one permutation."""
-    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="permute-magnitudes", n_iters=25)
-    result = estimator.fit(studyset)
-    maps, tables, description = estimator.correct_fwe_montecarlo(result, voxel_thresh=0.01)
-
-    assert tables == {}
-    assert set(maps) == {
-        "logp_level-voxel",
-        "z_level-voxel",
-        "logp_desc-size_level-cluster",
-        "z_desc-size_level-cluster",
-        "logp_desc-mass_level-cluster",
-        "z_desc-mass_level-cluster",
-    }
-    for name, values in maps.items():
-        assert np.all(np.isfinite(values)), name
-        if name.startswith("logp"):
-            assert np.all(values >= 0)  # -log10(p) of a p in (0, 1]
-
-    for key in (
-        "values_desc-size_level-cluster_corr-fwe_method-montecarlo",
-        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo",
-    ):
-        assert len(estimator.null_distributions_[key]) == 25
-    assert "corresponds to |z|" in description
-
-
-def test_fwe_montecarlo_vfwe_only_returns_only_voxel_maps(permutation_fit):
-    """``vfwe_only`` skips the cluster measures and says so in its description."""
-    estimator, result = copy.deepcopy(permutation_fit)
-    maps, _, description = estimator.correct_fwe_montecarlo(result, vfwe_only=True)
-
-    assert set(maps) == {"logp_level-voxel", "z_level-voxel"}
-    assert "voxel-level" in description
-
-
-def test_cluster_null_is_built_during_fit(permutation_fit):
-    """The permutations fit() runs already record cluster measures, so correcting is free."""
-    estimator, _ = permutation_fit
-
-    assert "cluster_forming_stat" in estimator.null_distributions_
-    for key in (
-        "values_desc-size_level-cluster_corr-fwe_method-montecarlo",
-        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo",
-    ):
-        assert len(estimator.null_distributions_[key]) == 20
-
-
-def test_cluster_threshold_none_skips_the_cluster_null(studyset, small_mask):
-    """Opting out of cluster inference avoids recording the cluster nulls at all."""
-    estimator = CBES(
-        fwhm=12.0,
-        mask=small_mask,
-        null_method="permute-magnitudes",
-        n_iters=20,
-        cluster_threshold=None,
-    )
-    estimator.fit(studyset)
-
-    assert (
-        "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
-        not in estimator.null_distributions_
-    )
-
-
-def test_stat_from_histogram_finds_the_threshold_for_a_target_p():
-    """The cluster-forming threshold is read off the null rather than assumed."""
-    from nimare.meta.cbma.effectsize import _stat_from_histogram
-
-    rng = np.random.default_rng(3)
-    draws = np.clip(np.abs(rng.standard_normal(500_000)), 0, 50.0)
-    histogram, _ = np.histogram(draws, bins=_null_bin_edges())
-    histogram = histogram.astype(float)
-
-    previous = 0.0
-    for target in (0.05, 0.01, 0.001):
-        stat = _stat_from_histogram(target, histogram)
-        # No more than the target share of the null sits at or above it ...
-        assert np.mean(draws >= stat) <= target
-        # ... and it is not needlessly high: one bin lower overshoots.
-        assert np.mean(draws >= stat - _NULL_Z_STEP) > target
-        assert stat > previous  # a smaller p demands a larger statistic
-        previous = stat
-
-    # An empty null cannot name a threshold, and says so rather than guessing.
-    assert not np.isfinite(_stat_from_histogram(0.05, np.zeros_like(histogram)))
-
-
-def test_fwe_montecarlo_reuses_the_null_from_fit(permutation_fit):
-    """Fitting with the Monte Carlo null already paid for the max-statistic distribution."""
-    estimator, result = copy.deepcopy(permutation_fit)
-    assert "values_level-voxel_corr-fwe_method-montecarlo" in estimator.null_distributions_
-
-    cached = estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]
-    maps, _, _ = estimator.correct_fwe_montecarlo(result, n_iters=20, vfwe_only=True)
-    assert np.array_equal(
-        cached, estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]
-    )
-    assert maps["logp_level-voxel"].shape == result.get_map("p", return_type="array").shape
-
-
-def test_null_is_built_from_the_selected_statistic(studyset, small_mask):
-    """The permutation refits under the same selection model the observed map used."""
-    estimator = CBES(
-        fwhm=12.0,
-        mask=small_mask,
-        selection_model="zero-inflated",
-        null_method="permute-magnitudes",
-        n_iters=10,
-    )
-    estimator.fit(studyset)
-    histogram = estimator.null_distributions_["histweights_corr-none_method-montecarlo"]
-    assert histogram.sum() > 0
-
-
-def test_kernel_truncation_bounds_the_support(studyset, small_mask):
-    """A tighter truncation lets each focus reach fewer voxels."""
-    wide = CBES(fwhm=12.0, mask=small_mask, kernel_min_weight=1e-6, null_method="none").fit(
-        studyset
-    )
-    narrow = CBES(fwhm=12.0, mask=small_mask, kernel_min_weight=0.25, null_method="none").fit(
-        studyset
-    )
-
-    reached_wide = np.sum(wide.get_map("n_studies", return_type="array") > 0)
-    reached_narrow = np.sum(narrow.get_map("n_studies", return_type="array") > 0)
-    assert reached_narrow < reached_wide
-
-
-def test_fit_chunk_ignores_studies_that_say_nothing_here():
-    """The EM visits only weighted (study, voxel) pairs; padding must not change the answer."""
-    rng = np.random.default_rng(0)
-    n_studies, n_voxels = 6, 40
-    weights = np.where(
-        rng.random((n_studies, n_voxels)) < 0.5, rng.random((n_studies, n_voxels)), 0.0
-    )
-    kwargs = dict(
-        weights=weights,
-        g_obs=np.where(weights > 0, rng.normal(0.5, 0.3, weights.shape), 0.0),
-        var_obs=rng.uniform(0.02, 0.1, weights.shape),
-        covered=rng.random(weights.shape) < 0.7,
-        tau2=rng.uniform(0.0, 0.04, n_voxels),
-        null_var=rng.uniform(0.02, 0.08, (n_studies, 1)),
-        cutoffs=rng.uniform(0.3, 0.8, (n_studies, 1)),
-        start=rng.normal(0.5, 0.2, n_voxels),
-    )
-    estimator = CBES(max_iter=8, null_method="none")
-    baseline = estimator._fit_chunk(**kwargs)
-
-    # Three extra studies that are covered everywhere and reach no voxel.
-    padded = dict(kwargs)
-    pad = np.zeros((3, n_voxels))
-    padded["weights"] = np.vstack([kwargs["weights"], pad])
-    padded["g_obs"] = np.vstack([kwargs["g_obs"], pad])
-    padded["var_obs"] = np.vstack([kwargs["var_obs"], np.ones((3, n_voxels))])
-    padded["covered"] = np.vstack([kwargs["covered"], np.ones((3, n_voxels), dtype=bool)])
-    padded["null_var"] = np.vstack([kwargs["null_var"], np.full((3, 1), 0.05)])
-    padded["cutoffs"] = np.vstack([kwargs["cutoffs"], np.full((3, 1), 0.5)])
-    padded_result = estimator._fit_chunk(**padded)
-
-    for name, before, after in zip(
-        ("mu", "prevalence", "se", "se_marginal"), baseline, padded_result
-    ):
-        finite = np.isfinite(before)
-        assert np.array_equal(finite, np.isfinite(after)), name
-        assert np.allclose(before[finite], after[finite], rtol=1e-12), name
-
-
-# ------------------------------------------------------------- images alongside coordinates
-
-
-@pytest.fixture(scope="module")
-def image_studyset(tmp_path_factory):
-    """Ten studies supplying both g images and the peaks thresholded out of them."""
-    directory = tmp_path_factory.mktemp("cbes_images")
-    shape = (10, 10, 10)
-    affine = np.diag([4.0, 4.0, 4.0, 1.0])
-    affine[:3, 3] = -18.0
-
-    grid = np.indices(shape).astype(float)
-    centre = (np.array(shape) - 1) / 2.0
-    truth = 0.8 * np.exp(-sum((grid[i] - centre[i]) ** 2 for i in range(3)) / 8.0)
-
-    rng = np.random.default_rng(0)
-    nib.save(nib.Nifti1Image(np.ones(shape, np.int32), affine), directory / "mask.nii.gz")
-    studies = []
-    for k in range(10):
-        n_subjects = int(rng.integers(20, 40))
-        observed = truth + rng.normal(0, 1 / np.sqrt(n_subjects), shape)
-        nib.save(nib.Nifti1Image(observed.astype(np.float32), affine), directory / f"{k}_g.nii.gz")
-        nib.save(
-            nib.Nifti1Image(np.full(shape, 1.0 / n_subjects, np.float32), affine),
-            directory / f"{k}_var.nii.gz",
-        )
-        # One reported peak at the true centre, with the statistic implied by the image.
-        value = float(observed[tuple(int(c) for c in centre)])
-        bias = 1.0 - 3.0 / (4.0 * (n_subjects - 1) - 1)
-        from nimare.transforms import t_to_z
-
-        z = float(t_to_z(np.array([value / bias * np.sqrt(n_subjects)]), n_subjects - 1)[0])
-        studies.append(
-            {
-                "id": f"s{k}",
-                "name": f"s{k}",
-                "metadata": {"sample_sizes": [n_subjects]},
-                "analyses": [
-                    {
-                        "id": f"s{k}-1",
-                        "name": "1",
-                        "metadata": {"sample_sizes": [n_subjects]},
-                        "points": [
-                            {
-                                "space": "MNI",
-                                "coordinates": [0.0, 0.0, 0.0],
-                                "values": [{"kind": "Z", "value": z}],
-                            }
-                        ],
-                        "images": [
-                            {
-                                "url": str(directory / f"{k}_g.nii.gz"),
-                                "filename": f"{k}_g.nii.gz",
-                                "space": "MNI",
-                                "value_type": "g",
-                            },
-                            {
-                                "url": str(directory / f"{k}_var.nii.gz"),
-                                "filename": f"{k}_var.nii.gz",
-                                "space": "MNI",
-                                "value_type": "g_var",
-                            },
-                        ],
-                    }
-                ],
-            }
-        )
-
-    from nimare.studyset import Studyset
-
-    studyset = Studyset(
-        {"id": "img", "name": "img", "studies": studies},
-        target=None,
-        mask=str(directory / "mask.nii.gz"),
-    )
-    return studyset, truth
-
-
-@pytest.fixture(scope="module")
-def mixed_image_studyset(tmp_path_factory):
-    """Eight studies, of which the first three supply g images; the rest are coordinates only.
-
-    The image calibration needs both kinds in one collection -- it compares a coordinate-only
-    fit against each donor's own fit -- so a collection where every study has an image cannot
-    exercise it.
-    """
-    directory = tmp_path_factory.mktemp("cbes_mixed_images")
-    shape = (10, 10, 10)
-    affine = np.diag([4.0, 4.0, 4.0, 1.0])
-    affine[:3, 3] = -18.0
-
-    grid = np.indices(shape).astype(float)
-    centre = (np.array(shape) - 1) / 2.0
-    truth = 0.8 * np.exp(-sum((grid[i] - centre[i]) ** 2 for i in range(3)) / 8.0)
-
-    from nimare.studyset import Studyset
-    from nimare.transforms import t_to_z
-
-    rng = np.random.default_rng(3)
-    nib.save(nib.Nifti1Image(np.ones(shape, np.int32), affine), directory / "mask.nii.gz")
-    studies = []
-    for k in range(8):
-        n_subjects = int(rng.integers(20, 40))
-        observed = truth + rng.normal(0, 1 / np.sqrt(n_subjects), shape)
-        value = float(observed[tuple(int(c) for c in centre)])
-        bias = 1.0 - 3.0 / (4.0 * (n_subjects - 1) - 1)
-        z = float(t_to_z(np.array([value / bias * np.sqrt(n_subjects)]), n_subjects - 1)[0])
-        analysis = {
-            "id": f"m{k}-1",
-            "name": "1",
-            "metadata": {"sample_sizes": [n_subjects]},
-            "points": [
-                {
-                    "space": "MNI",
-                    "coordinates": [float(c * 4.0 - 18.0) for c in centre],
-                    "values": [{"kind": "Z", "value": z}],
-                }
-            ],
-            "images": [],
-        }
-        if k < 3:
-            nib.save(
-                nib.Nifti1Image(observed.astype(np.float32), affine), directory / f"m{k}_g.nii.gz"
-            )
-            nib.save(
-                nib.Nifti1Image(np.full(shape, 1.0 / n_subjects, np.float32), affine),
-                directory / f"m{k}_var.nii.gz",
-            )
-            analysis["images"] = [
-                {
-                    "url": str(directory / f"m{k}_g.nii.gz"),
-                    "filename": f"m{k}_g.nii.gz",
-                    "space": "MNI",
-                    "value_type": "g",
-                },
-                {
-                    "url": str(directory / f"m{k}_var.nii.gz"),
-                    "filename": f"m{k}_var.nii.gz",
-                    "space": "MNI",
-                    "value_type": "g_var",
-                },
-            ]
-        studies.append(
-            {
-                "id": f"m{k}",
-                "name": f"m{k}",
-                "metadata": {"sample_sizes": [n_subjects]},
-                "analyses": [analysis],
-            }
-        )
-
-    return Studyset(
-        {"id": "mixed", "name": "mixed", "studies": studies},
-        target=None,
-        mask=str(directory / "mask.nii.gz"),
-    )
-
-
-def test_images_are_used_in_place_of_coordinates(image_studyset):
-    """An image supersedes that study's own peaks: it says more, with no selection."""
-    studyset, _ = image_studyset
-    estimator = CBES(fwhm=8.0, null_method="none", use_images=True)
-    estimator.fit(studyset)
-
-    assert len(estimator._image_studies_) == 10
-    # Every study had an image, so no coordinate survives into the focus table.
-    assert len(estimator._focus_table_) == 0
-
-
-def test_images_recover_the_truth_better_than_coordinates(image_studyset):
-    """The point of admitting images: they are unbiased where reported peaks are not."""
-    studyset, truth = image_studyset
-    truth_vector = studyset.masker.transform(
-        nib.Nifti1Image(truth.astype(np.float32), studyset.masker.mask_img.affine)
-    ).ravel()
-
-    from_images = (
-        CBES(fwhm=8.0, null_method="none", use_images=True)
-        .fit(studyset)
-        .get_map("g", return_type="array")
-        .ravel()
-    )
-    from_coords = (
-        CBES(fwhm=8.0, null_method="none", use_images=False)
-        .fit(studyset)
-        .get_map("g", return_type="array")
-        .ravel()
-    )
-    hot = truth_vector > 0.2
-    assert abs(from_images[hot].mean() - truth_vector[hot].mean()) < 0.15
-
-    # Compare only where both produced an estimate: a voxel no kernel reaches is reported as
-    # zero by the coordinate fit, which would drag its mean down for reasons unrelated to bias.
-    both = hot & (from_coords != 0) & (from_images != 0)
-    assert both.sum() > 10
-    # Reported peaks are local maxima, so they overstate the same effect.
-    assert from_coords[both].mean() > from_images[both].mean()
-
-
-def test_use_images_false_ignores_them(image_studyset):
-    """``use_images=False`` falls back to the coordinates even when images are available."""
-    studyset, _ = image_studyset
-    estimator = CBES(fwhm=8.0, null_method="none", use_images=False)
-    estimator.fit(studyset)
-    assert estimator._image_studies_ == {}
-    assert len(estimator._focus_table_) == 10
-
-
-def test_peak_bias_rescales_the_estimate_exactly(image_studyset):
-    """Rho rescales g, its variance and the threshold together, so the fit scales with it."""
-    studyset, _ = image_studyset
-    plain = (
-        CBES(fwhm=8.0, null_method="none", use_images=False)
-        .fit(studyset)
-        .get_map("g", return_type="array")
-        .ravel()
-    )
-    scaled = (
-        CBES(fwhm=8.0, null_method="none", use_images=False, peak_bias=0.4)
-        .fit(studyset)
-        .get_map("g", return_type="array")
-        .ravel()
-    )
-    covered = plain != 0
-    assert np.allclose(scaled[covered], 0.4 * plain[covered], rtol=1e-6)
-
-
-@pytest.mark.parametrize("bad", [0.0, -0.5, 1.5])
-def test_peak_bias_rejects_out_of_range_values(bad):
-    """A rho outside (0, 1] would inflate rather than discount the reported peaks."""
-    with pytest.raises(ValueError, match="peak_bias must be None"):
-        CBES(peak_bias=bad)
-
-
-def test_null_peak_overshoot_matches_the_rft_expectation():
-    """A pure-noise peak sits about 1/u above the threshold."""
-    from nimare.meta.cbma.effectsize import null_peak_overshoot
-
-    for u in (2.5, 3.2905, 4.0):
-        mean_height = null_peak_overshoot(u)
-        assert u < mean_height < u + 1.0
-        assert abs((mean_height - u) - 1.0 / u) < 0.15
-
-
-def test_peak_information_separates_signal_from_the_null_floor():
-    """Peaks carrying real effect sit above the height pure noise reaches at the same threshold."""
-    from nimare.meta.cbma.effectsize import peak_information
-
-    u = 3.2905
-    # Heights indistinguishable from null peaks carry no effect-size information.
-    observed, expected, excess = peak_information(np.full(500, 3.63), u)
-    assert abs(excess) < 0.1
-    # Heights well above the null floor do.
-    _, _, excess_signal = peak_information(np.full(500, 5.5), u)
-    assert excess_signal > 1.5
-
-
-def test_uninformative_peaks_are_flagged(small_mask, caplog):
-    """The estimator says so when the reported magnitudes cannot identify the effect size."""
-    studyset = create_effect_size_coordinate_studyset(
-        [TRUTH],
-        effect_sizes=0.0,
-        n_studies=20,
-        sample_size=(20, 40),
-        prevalence=0.0,
-        n_noise_foci=6,
-        noise_extent=30.0,
-        seed=5,
-    )
-    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="none")
-    with caplog.at_level("WARNING"):
-        estimator.fit(studyset)
-
-    assert "uninformative" in caplog.text or "close to uninformative" in caplog.text
-    assert estimator.peak_information_["excess_z"] < 0.25
-
-
-def test_null_peak_mean_g_grows_with_threshold_and_shrinks_with_n():
-    """The artefact in a reported effect size is a function of (u, N), and a strong one."""
-    from nimare.meta.cbma.effectsize import null_peak_mean_g
-
-    at_n20 = [null_peak_mean_g(u, 20) for u in (2.3, 3.29, 4.3)]
-    assert at_n20[0] < at_n20[1] < at_n20[2]
-
-    at_u33 = [null_peak_mean_g(3.29, n) for n in (15, 30, 60)]
-    assert at_u33[0] > at_u33[1] > at_u33[2]
-
-
-def test_infer_threshold_from_minimum_recovers_a_known_threshold():
-    """Simulate the RFT peak-height null, take the minimum of m draws, recover u."""
-    from nimare.meta.cbma.effectsize import infer_threshold_from_minimum
-
-    rng = np.random.default_rng(0)
-    for true_u in (2.3, 3.2905, 4.0):
-        for n_peaks in (3, 8, 20):
-            # Inverse-transform sampling from S(z|u) = (z^2-1)exp(-z^2/2) / (u^2-1)exp(-u^2/2).
-            grid = np.linspace(true_u, true_u + 8.0, 4000)
-            survival = (grid**2 - 1) * np.exp(-0.5 * grid**2)
-            survival = survival / survival[0]
-            minima = [
-                np.interp(rng.random(n_peaks), survival[::-1], grid[::-1]).min()
-                for _ in range(400)
-            ]
-            raw = float(np.mean(minima))
-            fixed = float(np.mean([infer_threshold_from_minimum(m, n_peaks) for m in minima]))
-            assert raw > true_u  # the minimum of m peaks always overshoots
-            assert abs(fixed - true_u) < abs(raw - true_u)
-            assert abs(fixed - true_u) < 0.15
-
-
-def test_study_min_undoes_the_order_statistic(studyset, small_mask):
-    """``"study-min"`` infers each study's threshold rather than believing the minimum."""
-    estimator = CBES(fwhm=8.0, null_method="none", threshold="study-min", mask=small_mask)
-    estimator.fit(studyset)
-
-    table = estimator._focus_table_
-    raw = (
-        pd.Series(estimator._reported_z(table), index=np.asarray(table["id"].values, dtype=object))
-        .groupby(level=0)
-        .min()
-    )
-    inferred = estimator._cutoffs_z_.reindex(raw.index)
-
-    assert (inferred <= raw + 1e-8).all()
-    assert (inferred < raw - 1e-3).any()
-
-
-def test_threshold_can_name_a_metadata_field(small_mask):
-    """Papers that state their threshold should not be put through an inference."""
-    studyset = create_effect_size_coordinate_studyset(
-        [TRUTH], effect_sizes=0.9, n_studies=20, sample_size=25, threshold_z=3.0, seed=11
-    )
-    from_metadata = CBES(
-        fwhm=8.0, null_method="none", threshold="reporting_threshold", mask=small_mask
+    """``tau2_method="none"`` is a fixed-effects fit, so no heterogeneity is reported."""
+    result = CBES(
+        mask=small_mask, null_method="none", tau2_method="none", selection_model="none"
     ).fit(studyset)
-    from_float = CBES(fwhm=8.0, null_method="none", threshold=3.0, mask=small_mask).fit(studyset)
-
-    assert np.allclose(
-        from_metadata.get_map("g", return_type="array"),
-        from_float.get_map("g", return_type="array"),
-    )
-
-
-def test_threshold_metadata_field_must_exist(studyset, small_mask):
-    """Naming a missing metadata field fails loudly instead of falling back to a default."""
-    estimator = CBES(fwhm=8.0, null_method="none", threshold="nope", mask=small_mask)
-    with pytest.raises(ValueError, match="metadata field"):
-        estimator.fit(studyset)
-
-
-def test_per_study_peak_bias_discounts_strict_thresholds_and_small_samples():
-    """rho_k is the inverse of the artefact, so it falls as u rises and as N falls."""
-    import pandas as pd
-
-    estimator = CBES(peak_bias="per-study")
-    ids = ["a", "b", "c"]
-
-    sizes = pd.Series([20.0, 20.0, 20.0], index=ids)
-    by_threshold = estimator._peak_bias_factors(pd.Series([2.3, 3.29, 4.3], index=ids), sizes, ids)
-    assert by_threshold["a"] > by_threshold["b"] > by_threshold["c"]
-    assert by_threshold["b"] == pytest.approx(1.0)  # the median study anchors the scale
-
-    cutoffs = pd.Series([3.29, 3.29, 3.29], index=ids)
-    by_size = estimator._peak_bias_factors(cutoffs, pd.Series([15.0, 30.0, 60.0], index=ids), ids)
-    assert by_size["a"] < by_size["b"] < by_size["c"]
-
-
-def test_per_study_peak_bias_reduces_to_the_scalar_when_studies_agree(small_mask):
-    """With one threshold and one sample size there is nothing between studies to correct."""
-    studyset = create_effect_size_coordinate_studyset(
-        [TRUTH], effect_sizes=0.9, n_studies=20, sample_size=25, threshold_z=3.0, seed=12
-    )
-    common = dict(fwhm=8.0, null_method="none", threshold=3.0, mask=small_mask)
-    per_study = CBES(peak_bias="per-study", peak_bias_scale=0.4, **common).fit(studyset)
-    scalar = CBES(peak_bias=0.4, **common).fit(studyset)
-
-    assert np.allclose(
-        per_study.get_map("g", return_type="array"),
-        scalar.get_map("g", return_type="array"),
-    )
-
-
-def test_per_study_peak_bias_equalizes_a_mixed_threshold_collection(small_mask):
-    """The point of the correction: studies that thresholded differently stop disagreeing."""
-    from nimare.meta.cbma.effectsize import null_peak_mean_g
-
-    def gap(peak_bias):
-        estimator = CBES(
-            fwhm=8.0,
-            null_method="none",
-            threshold="reporting_threshold",
-            peak_bias=peak_bias,
-            mask=small_mask,
-        )
-        estimator.fit(studyset)
-        table = estimator._focus_table_
-        cutoffs = estimator._cutoffs_z_.reindex(table["id"].values).values
-        strict = np.abs(table["g"].values[cutoffs > 3.5])
-        lenient = np.abs(table["g"].values[cutoffs < 3.5])
-        return strict.mean() / lenient.mean()
-
-    studyset = create_effect_size_coordinate_studyset(
-        [TRUTH],
-        effect_sizes=0.6,
-        n_studies=40,
-        sample_size=25,
-        threshold_z=[2.3263, 4.2649],
-        seed=13,
-        n_noise_foci=2,
-        noise_extent=30.0,
-    )
-    assert null_peak_mean_g(4.2649, 25) > null_peak_mean_g(2.3263, 25)
-    uncorrected, corrected = gap(None), gap("per-study")
-    assert uncorrected > 1.2
-    assert abs(corrected - 1.0) < abs(uncorrected - 1.0)
-
-
-@pytest.fixture(scope="module")
-def half_image_studyset(image_studyset):
-    """Build ten studies where only the first five supply images."""
-    from nimare.studyset import Studyset
-
-    studyset, truth = image_studyset
-    paths = {
-        str(row.id): (row.g, row.g_var)
-        for row in studyset.images.itertuples()
-        if row.g is not None
-    }
-    coords = studyset.coordinates
-    sizes = dict(zip([str(i) for i in studyset.ids], studyset.sample_sizes()))
-
-    studies = []
-    for position, (analysis_id, sub) in enumerate(coords.groupby("id")):
-        analysis_id = str(analysis_id)
-        study_id = analysis_id.split("-")[0]
-        meta = {"sample_sizes": [int(sizes[analysis_id])]}
-        analysis = {
-            "id": analysis_id,
-            "name": "1",
-            "metadata": meta,
-            "points": [
-                {
-                    "space": "MNI",
-                    "coordinates": [float(row.x), float(row.y), float(row.z)],
-                    "values": [{"kind": "Z", "value": float(row.z_stat)}],
-                }
-                for row in sub.itertuples()
-            ],
-        }
-        if position < 5 and analysis_id in paths:
-            g_path, var_path = paths[analysis_id]
-            analysis["images"] = [
-                {"url": str(g_path), "filename": "g", "space": "MNI", "value_type": "g"},
-                {
-                    "url": str(var_path),
-                    "filename": "g_var",
-                    "space": "MNI",
-                    "value_type": "g_var",
-                },
-            ]
-        studies.append(
-            {"id": study_id, "name": study_id, "metadata": meta, "analyses": [analysis]}
-        )
-
-    mixed = Studyset(
-        {"id": "half", "name": "half", "studies": studies},
-        target=None,
-        mask=studyset.masker.mask_img,
-    )
-    return mixed, truth
-
-
-def test_mixing_images_with_an_uncalibrated_scale_warns(half_image_studyset, caplog):
-    """The default scale is the wrong one as soon as images are in the fit, so say so."""
-    studyset, _ = half_image_studyset
-    estimator = CBES(fwhm=8.0, null_method="none", peak_bias="per-study", peak_bias_scale=1.0)
-    with caplog.at_level("WARNING"):
-        estimator.fit(studyset)
-    assert "peak_bias_scale" in caplog.text
-
-
-def test_auto_peak_bias_scale_puts_coordinates_on_the_images_scale(half_image_studyset):
-    """'auto' reads the constant off the images, and it has to be the ratio it corrects."""
-    studyset, _ = half_image_studyset
-    estimator = CBES(fwhm=8.0, null_method="none", peak_bias="per-study", peak_bias_scale="auto")
-    estimator.fit(studyset)
-    scale = estimator._peak_bias_scale_
-
-    assert 0.0 < scale < 1.0  # a reported peak overstates the field around it
-
-    uncalibrated = CBES(fwhm=8.0, null_method="none", peak_bias="per-study", peak_bias_scale=1.0)
-    uncalibrated.fit(studyset)
-    assert np.allclose(
-        estimator._peak_bias_.values, scale * uncalibrated._peak_bias_.values, rtol=1e-8
-    )
-
-
-def test_auto_peak_bias_scale_falls_back_without_images(studyset, small_mask, caplog):
-    """Nothing to calibrate against is a warning and a relative map, not a failure."""
-    estimator = CBES(
-        fwhm=8.0,
-        null_method="none",
-        peak_bias="per-study",
-        peak_bias_scale="auto",
-        mask=small_mask,
-    )
-    with caplog.at_level("WARNING"):
-        estimator.fit(studyset)
-    assert "needs images" in caplog.text
-    assert estimator._peak_bias_scale_ == 1.0
-
-
-@pytest.mark.parametrize("bad", ["biggest", 0.0, -1.0])
-def test_peak_bias_scale_rejects_bad_values(bad):
-    """Only the documented keywords and positive floats set the scale."""
-    with pytest.raises(ValueError, match="peak_bias_scale must be"):
-        CBES(peak_bias_scale=bad)
-
-
-def test_unknown_null_methods_are_rejected():
-    """An unrecognised null method is refused at construction."""
-    with pytest.raises(ValueError, match="null_method must be"):
-        CBES(null_method="factorised")
-    # The relocation nulls were removed, not renamed; asking for one is an error.
-    for removed in ("montecarlo", "approximate"):
-        with pytest.raises(ValueError, match="null_method must be"):
-            CBES(null_method=removed)
-
-
-@pytest.fixture(scope="module")
-def images_only_studyset(tmp_path_factory):
-    """Six studies supplying g images and no coordinates at all."""
-    from nimare.studyset import Studyset
-
-    directory = tmp_path_factory.mktemp("cbes_images_only")
-    shape = (8, 8, 8)
-    affine = np.diag([4.0, 4.0, 4.0, 1.0])
-    affine[:3, 3] = -14.0
-    nib.save(nib.Nifti1Image(np.ones(shape, np.int32), affine), directory / "mask.nii.gz")
-
-    rng = np.random.default_rng(0)
-    studies = []
-    for k in range(6):
-        n = int(rng.integers(20, 40))
-        g = (0.5 + rng.normal(0, 1 / np.sqrt(n), shape)).astype(np.float32)
-        nib.save(nib.Nifti1Image(g, affine), directory / f"{k}_g.nii.gz")
-        nib.save(
-            nib.Nifti1Image(np.full(shape, 1.0 / n, np.float32), affine),
-            directory / f"{k}_var.nii.gz",
-        )
-        studies.append(
-            {
-                "id": f"s{k}",
-                "name": f"s{k}",
-                "metadata": {"sample_sizes": [n]},
-                "analyses": [
-                    {
-                        "id": f"s{k}-1",
-                        "name": "1",
-                        "metadata": {"sample_sizes": [n]},
-                        "points": [],
-                        "images": [
-                            {
-                                "url": str(directory / f"{k}_g.nii.gz"),
-                                "filename": f"{k}_g.nii.gz",
-                                "space": "MNI",
-                                "value_type": "g",
-                            },
-                            {
-                                "url": str(directory / f"{k}_var.nii.gz"),
-                                "filename": f"{k}_var.nii.gz",
-                                "space": "MNI",
-                                "value_type": "g_var",
-                            },
-                        ],
-                    }
-                ],
-            }
-        )
-    source = directory / "studyset.json"
-    source.write_text(json.dumps({"id": "imgs", "name": "imgs", "studies": studies}))
-    return Studyset(str(source)), str(directory / "mask.nii.gz")
-
-
-def test_the_null_rearranges_each_image_within_itself_rather_than_flipping_its_sign():
-    """Images take the coordinate side's action, so both randomize one hypothesis, not two."""
-    estimator = CBES()
-    usable = np.array([True, True, True, False])
-    estimator._image_studies_ = {
-        "a": (np.array([1.0, -2.0, 3.0, 0.0]), np.array([0.1, 0.2, 0.3, np.inf]), usable),
-        "b": (np.array([4.0, 5.0, -6.0, 0.0]), np.array([0.4, 0.5, 0.6, np.inf]), usable),
-    }
-    seen = {"a": set(), "b": set()}
-    for seed in range(40):
-        permuted = estimator._permute_image_values(np.random.default_rng(seed))
-        for name, (g, var_g, flags) in permuted.items():
-            g_0, var_0, _ = estimator._image_studies_[name]
-            # The same multiset of values, so the study's own distribution is preserved and
-            # only which voxel holds which value has changed. A sign flip would not be here.
-            assert sorted(g[usable]) == sorted(g_0[usable])
-            # The variance travels with the value it belongs to: the pair is one observation,
-            # and separating them would invent a precision the study never reported.
-            for value, variance in zip(g[usable], var_g[usable]):
-                assert variance == pytest.approx(var_0[g_0 == value][0])
-            # Unusable voxels are untouched, and the flags themselves never move.
-            assert g[~usable] == pytest.approx(g_0[~usable])
-            assert np.array_equal(flags, usable)
-            seen[name].add(tuple(g[usable]))
-    # Several arrangements must actually occur, or this is not a permutation. Three usable
-    # voxels admit six, and 40 draws should find all of them.
-    assert len(seen["a"]) == 6 and len(seen["b"]) == 6
-
-    # A coordinate-only fit has nothing to rearrange and must be left exactly alone.
-    estimator._image_studies_ = {}
-    assert not estimator._permute_image_values(np.random.default_rng(0))
-
-
-def test_the_null_shuffles_values_within_an_analysis_and_never_between_them():
-    """A value carries its study's sample size and threshold, so it may only move within it."""
-    estimator = CBES()
-    estimator._permutation_groups_ = None
-    estimator._focus_table_ = pd.DataFrame(
-        {
-            "id": ["a", "a", "a", "b", "b", "c"],
-            "i": [0, 1, 2, 3, 4, 5],
-            "j": [0, 0, 0, 0, 0, 0],
-            "k": [0, 0, 0, 0, 0, 0],
-            "g": [1.0, 2.0, 3.0, 10.0, 20.0, 100.0],
-            "var_g": [0.1, 0.2, 0.3, 1.0, 2.0, 10.0],
-        }
-    )
-    table = estimator._focus_table_
-    seen = set()
-    for seed in range(60):
-        permuted = estimator._permute_magnitudes(np.random.default_rng(seed))
-        # Positions and study membership are exactly invariant: the spatial design cannot move.
-        for column in ("id", "i", "j", "k"):
-            assert list(permuted[column]) == list(table[column])
-        for study, values in (("a", {1.0, 2.0, 3.0}), ("b", {10.0, 20.0}), ("c", {100.0})):
-            rows = permuted[permuted["id"] == study]
-            # Each study keeps its own multiset of values -- nothing arrives from another
-            # study, which is what the across-table shuffle used to allow.
-            assert set(rows["g"]) == values
-            # And the variance moved with the value it belongs to.
-            for g, var_g in zip(rows["g"], rows["var_g"]):
-                assert var_g == pytest.approx(table.loc[table["g"] == g, "var_g"].iloc[0])
-        seen.add(tuple(permuted["g"]))
-    # 3! * 2! * 1! = 12 arrangements, and the single-focus study contributes none of them.
-    assert len(seen) == 12
-
-
-def test_a_collection_of_single_focus_studies_is_refused_rather_than_given_p_values():
-    """With one focus per study the within-analysis null has no states, and says so."""
-    estimator = CBES()
-    estimator._permutation_groups_ = None
-    estimator._image_studies_ = {}
-    estimator._focus_table_ = pd.DataFrame(
-        {
-            "id": [str(i) for i in range(30)],
-            "i": list(range(30)),
-            "j": [0] * 30,
-            "k": [0] * 30,
-            "g": np.linspace(0.2, 1.0, 30),
-            "var_g": np.full(30, 0.1),
-        }
-    )
-    log10_states, contributing = estimator._null_has_states()
-    assert log10_states == 0.0 and contributing == 0
-    assert not estimator._null_is_usable()
-
-    # Every permutation reproduces the observed table, which is why p would come back at 1.0.
-    permuted = estimator._permute_magnitudes(np.random.default_rng(0))
-    assert list(permuted["g"]) == list(estimator._focus_table_["g"])
-
-    # Three foci each is enough: 30 studies * log10(6) clears the threshold comfortably.
-    estimator._permutation_groups_ = None
-    estimator._focus_table_ = pd.DataFrame(
-        {
-            "id": [str(i // 3) for i in range(90)],
-            "i": list(range(90)),
-            "j": [0] * 90,
-            "k": [0] * 90,
-            "g": np.linspace(0.2, 1.0, 90),
-            "var_g": np.full(90, 0.1),
-        }
-    )
-    log10_states, contributing = estimator._null_has_states()
-    assert contributing == 30
-    assert log10_states == pytest.approx(30 * np.log10(6), rel=1e-6)
-    assert estimator._null_is_usable()
-
-
-def test_images_only_collection_is_redirected_to_an_image_estimator(images_only_studyset):
-    """A collection with images and no coordinates is an error, not a quiet reduction."""
-    studyset, mask = images_only_studyset
-    for null_method in ("permute-magnitudes", "none"):
-        with pytest.raises(ValueError, match="coordinate-based estimator") as raised:
-            CBES(fwhm=10.0, mask=mask, use_images=True, null_method=null_method).fit(studyset)
-        assert "nimare.meta.ibma" in str(raised.value)
-
-
-def test_a_collection_with_neither_coordinates_nor_images_still_raises(tmp_path):
-    """The images-only path must not swallow the genuinely empty case."""
-    from nimare.studyset import Studyset
-
-    source = tmp_path / "empty.json"
-    source.write_text(
-        json.dumps(
-            {
-                "id": "empty",
-                "name": "empty",
-                "studies": [
-                    {
-                        "id": "s0",
-                        "name": "s0",
-                        "metadata": {"sample_sizes": [20]},
-                        "analyses": [
-                            {
-                                "id": "s0-1",
-                                "name": "1",
-                                "metadata": {"sample_sizes": [20]},
-                                "points": [],
-                                "images": [],
-                            }
-                        ],
-                    }
-                ],
-            }
-        )
-    )
-    with pytest.raises(ValueError, match="no data for 'coordinates'"):
-        CBES(null_method="none").fit(Studyset(str(source)))
-
-
-def test_the_only_null_is_the_permutation_one_and_removed_options_fail_loudly():
-    """CBES estimates effect size, so its null randomizes magnitudes, not positions."""
-    assert CBES().null_method == "permute-magnitudes"
-    assert set(NULL_METHODS) == {"permute-magnitudes", "none"}
-
-    for removed in ("montecarlo", "approximate"):
-        with pytest.raises(ValueError, match="null_method must be"):
-            CBES(null_method=removed)
-    for gone in ("_null_iteration", "_compute_montecarlo_null", "_approximate_null"):
-        assert not hasattr(CBES, gone)
-
-    with pytest.raises(TypeError):
-        CBES(censoring="rft")
-    with pytest.raises(TypeError):
-        CBES(smoothness_fwhm=12.0)
-
-
-def test_auto_scale_falls_back_to_a_relative_map_without_images(studyset, small_mask, caplog):
-    """``"auto"`` has nothing to calibrate against here, and must say so rather than guess."""
-    estimator = CBES(
-        fwhm=8.0,
-        mask=small_mask,
-        null_method="none",
-        peak_bias="per-study",
-        peak_bias_scale="auto",
-    )
-    with caplog.at_level("WARNING"):
-        result = estimator.fit(studyset)
-
-    assert estimator._peak_bias_scale_ == 1.0
-    assert estimator.scale_source_ == "unset"
-    assert "g_absolute" not in result.maps
-    assert "g_relative" in result.maps
-    assert "needs images" in caplog.text
-
-
-def test_the_external_corpus_prior_is_gone_and_fails_loudly():
-    """Borrowing the scale from another corpus assumed this collection resembled it."""
-    from nimare.meta.cbma import effectsize as module
-
-    assert module.PEAK_BIAS_SCALE_KEYWORDS == ("auto", "images")
-    with pytest.raises(ValueError):
-        CBES(peak_bias="per-study", peak_bias_scale="reference")
-    for gone in ("reference_magnitude", "REFERENCE_MAGNITUDE_BY_N", "REFERENCE_MAGNITUDE_LOG_SD"):
-        assert not hasattr(module, gone)
-    assert not hasattr(CBES, "_calibrate_scale_from_reference")
-
-
-def test_a_shared_peak_bias_rescales_g_alone_but_a_per_study_one_reweights(small_mask):
-    """One factor is a rescaling of the output; a per-study factor is a change to the model.
-
-    A shared ``rho`` scales every study's variance by the same square, so every
-    inverse-variance weight is scaled together and the inference is untouched. A per-study
-    ``rho`` scales each study's variance by its own, which reweights the studies against each
-    other -- so it moves ``z``, and the docstring used to claim it did not.
-
-    Judged over the voxels reaching ``|z| > 1`` and on the median shift. An earlier version
-    took the largest relative change over every covered voxel, which reported a factor of 42
-    and was an artefact: the extremes sit where the uncorrected ``z`` is near zero, and they
-    came out *larger* on the collection with the narrower sample sizes.
-    """
-    studyset = create_effect_size_coordinate_studyset(
-        [TRUTH],
-        effect_sizes=0.8,
-        n_studies=24,
-        sample_size=(15, 400),  # wide, or rho_k barely varies and there is nothing to see
-        tau=0.1,
-        seed=11,
-        n_noise_foci=3,
-        noise_extent=30.0,
-        spatial_sd=5.0,
-    )
-    fits = {}
-    for name, peak_bias in (("none", None), ("shared", 0.5), ("per-study", "per-study")):
-        estimator = CBES(fwhm=12.0, mask=small_mask, peak_bias=peak_bias, null_method="none")
-        result = estimator.fit(studyset)
-        fits[name] = {
-            key: result.get_map(key, return_type="array").ravel()
-            for key in ("g", "z", "prevalence", "n_studies")
-        }
-        if peak_bias == "per-study":
-            rho = estimator._peak_bias_
-            assert rho.max() / rho.min() > 2.0, "fixture must make rho_k actually vary"
-
-    covered = fits["none"]["n_studies"] > 0
-    strong = covered & (np.abs(fits["none"]["z"]) > 1.0)
-    assert strong.sum() > 100, "fixture must leave enough voxels worth looking at"
-
-    def shift(name, key):
-        """Median ratio to the uncorrected map, and the median relative change."""
-        a, b = fits["none"][key][strong], fits[name][key][strong]
-        return float(np.median(b / a)), float(np.median(np.abs(b - a) / np.abs(a)))
-
-    # Shared: g scales by the factor, and z does not move at all.
-    assert shift("shared", "g")[0] == pytest.approx(0.5, abs=1e-3)
-    assert shift("shared", "z")[1] < 0.01
-
-    # Per-study: z moves by more than a rounding error, in the tens of percent.
-    assert shift("per-study", "z")[1] > 0.05
-
-
-def test_a_degenerate_collection_gets_no_p_values_and_no_fwe_correction(small_mask):
-    """One focus per study leaves the null no states, and both paths have to say so.
-
-    The correction builds its own null, so it cannot lean on ``fit``'s refusal. Left to run,
-    almost every iteration reproduces the observed map, and the maximum statistic is the
-    observed one -- which comes back as a corrected p far *below* the uncorrected one.
-    """
-    studyset = create_effect_size_coordinate_studyset(
-        [TRUTH],
-        effect_sizes=0.9,
-        n_studies=25,
-        sample_size=(20, 40),
-        tau=0.1,
-        seed=3,
-        n_noise_foci=0,
-        spatial_sd=6.0,
-    )
-    estimator = CBES(fwhm=12.0, mask=small_mask, null_method="permute-magnitudes", n_iters=20)
-    result = estimator.fit(studyset)
-
-    # The magnitudes are still estimated; only the inference is withheld.
-    assert np.isfinite(result.get_map("g", return_type="array")).all()
-    assert np.all(result.get_map("p", return_type="array") == 1.0)
-
-    with pytest.raises(ValueError, match="too few"):
-        estimator.correct_fwe_montecarlo(result, vfwe_only=True)
-
-    # And the description says inference was not done, rather than describing a null.
-    assert "too few" in result.description_
-
-
-def test_permuting_magnitudes_leaves_the_spatial_design_untouched(small_mask):
-    """The invariant the null depends on, tested where it is easiest to break."""
-    rng = np.random.default_rng(11)
-    studies = []
-    for k in range(12):
-        n_subjects = int(rng.integers(20, 40))
-        anchor = rng.uniform(-20, 20, 3)
-        points = [
-            {
-                "space": "MNI",
-                # deliberately tight: within one kernel width of each other
-                "coordinates": [float(v) for v in anchor + rng.normal(0, 3, 3)],
-                "values": [{"kind": "Z", "value": float(rng.uniform(3.3, 5.0))}],
-            }
-            for _ in range(4)
-        ]
-        studies.append(
-            {
-                "id": f"s{k}",
-                "name": f"s{k}",
-                "metadata": {"sample_sizes": [n_subjects]},
-                "analyses": [
-                    {
-                        "id": f"s{k}-1",
-                        "name": "1",
-                        "metadata": {"sample_sizes": [n_subjects]},
-                        "points": points,
-                        "images": [],
-                    }
-                ],
-            }
-        )
-
-    from nimare.studyset import Studyset
-
-    clustered = Studyset({"id": "clus", "name": "clus", "studies": studies})
-    estimator = CBES(fwhm=10.0, mask=small_mask, null_method="none")
-    estimator.fit(clustered)
-    table = estimator._focus_table_
-    args = (estimator._sample_sizes_, estimator._thresholds_, estimator._image_studies_)
-    observed_fit, _ = estimator._statistic(table, *args)
-
-    for seed in range(5):
-        permuted = estimator._permute_magnitudes(np.random.default_rng(seed))
-
-        # The spatial design is untouched, column by column rather than in aggregate.
-        for column in ("i", "j", "k", "id", "sample_size"):
-            assert np.array_equal(permuted[column].values, table[column].values), column
-        # The values moved, and only by reordering.
-        assert not np.array_equal(permuted["g"].values, table["g"].values)
-        assert sorted(permuted["g"].values) == sorted(table["g"].values)
-        # A value keeps its own variance, or the pooling weights would be nonsense.
-        pairs = {(g, v) for g, v in zip(table["g"].values, table["var_g"].values)}
-        assert {(g, v) for g, v in zip(permuted["g"].values, permuted["var_g"].values)} == pairs
-
-        # The consequence, and the reason for all of the above.
-        permuted_fit, _ = estimator._statistic(permuted, *args)
-        assert np.array_equal(observed_fit["covered"], permuted_fit["covered"])
-        assert np.array_equal(observed_fit["n_studies"], permuted_fit["n_studies"])
-
-    # The arrangement really does put several foci of one study within reach of one voxel,
-    # so the guard above is testing something.
-    assert observed_fit["n_studies"].max() < len(table)
-
-
-def test_convergence_alone_does_not_make_a_voxel_significant(small_mask):
-    """The property that decides the null was worth changing for."""
-    rng = np.random.default_rng(5)
-    studies = []
-    for k in range(30):
-        n_subjects = int(rng.integers(20, 40))
-        # one peak on the convergence site, three scattered; all heights from one distribution
-        positions = [(0.0, 0.0, 0.0)] + [
-            tuple(float(v) for v in rng.uniform(-30, 30, 3)) for _ in range(3)
-        ]
-        points = [
-            {
-                "space": "MNI",
-                "coordinates": list(position),
-                "values": [{"kind": "Z", "value": float(rng.uniform(3.4, 4.2))}],
-            }
-            for position in positions
-        ]
-        studies.append(
-            {
-                "id": f"s{k}",
-                "name": f"s{k}",
-                "metadata": {"sample_sizes": [n_subjects]},
-                "analyses": [
-                    {
-                        "id": f"s{k}-1",
-                        "name": "1",
-                        "metadata": {"sample_sizes": [n_subjects]},
-                        "points": points,
-                        "images": [],
-                    }
-                ],
-            }
-        )
-
-    from nimare.studyset import Studyset
-
-    convergent = Studyset({"id": "conv", "name": "conv", "studies": studies})
-
-    estimator = CBES(
-        fwhm=12.0,
-        mask=small_mask,
-        selection_model="none",
-        null_method="permute-magnitudes",
-        n_iters=100,
-        seed=0,
-    )
-    result = estimator.fit(convergent)
-
-    centre = int(np.ravel_multi_index((10, 10, 10), small_mask.shape))
-    p_values = result.get_map("p", return_type="array")
-    z_values = result.get_map("z", return_type="array")
-
-    # The site really is the one every study reported at, and the statistic really is large
-    # there -- thirty studies make the standard error small. The p-value is still not small.
-    assert result.get_map("n_studies", return_type="array")[centre] == 30
-    assert abs(z_values[centre]) > 3
-    assert p_values[centre] > 0.05
-
-
-def test_permutation_null_calibrates_uncorrected_p(null_studyset, small_mask):
-    """Under a global null the permutation null must also return roughly the nominal rate."""
-    permutation = CBES(
-        fwhm=12.0,
-        mask=small_mask,
-        selection_model="none",
-        null_method="permute-magnitudes",
-        n_iters=50,
-    ).fit(null_studyset)
-
-    assert np.mean(permutation.get_map("p", return_type="array") < 0.05) < 0.15
-
-
-def test_fwe_correction_permutes_even_without_a_null_from_fit(null_studyset, small_mask):
-    """A maximum statistic has to come from somewhere, so the correction permutes on demand."""
-    estimator = CBES(
-        fwhm=12.0,
-        mask=small_mask,
-        selection_model="none",
-        null_method="none",
-        n_iters=30,
-    )
-    result = estimator.fit(null_studyset)
-    assert "values_level-voxel_corr-fwe_method-montecarlo" not in estimator.null_distributions_
-
-    maps, _, description = estimator.correct_fwe_montecarlo(result, vfwe_only=True)
-
-    assert np.all(np.isfinite(maps["logp_level-voxel"]))
-    assert "permutation" in description
-    assert (
-        len(estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]) == 30
-    )
-
-
-def test_scale_is_reported_as_an_interval_or_not_at_all(
-    studyset, small_mask, mixed_image_studyset
-):
-    """A partially identified scale must not be handed over as a bare point estimate."""
-    coordinates_only = CBES(fwhm=8.0, mask=small_mask, null_method="none", peak_bias="per-study")
-    coordinates_only.fit(studyset)
-    assert coordinates_only.scale_interval_ is None
-
-    from_images = CBES(
-        fwhm=8.0, null_method="none", peak_bias="per-study", peak_bias_scale="images"
-    )
-    result = from_images.fit(mixed_image_studyset)
-    interval = from_images.scale_interval_
-    assert interval is not None
-    low, high = interval
-    # A confidence interval for the donors' central value, so the pooled median sits inside.
-    assert 0 < low <= from_images._peak_bias_scale_ <= high
-    assert from_images.scale_source_ == "images"
-    assert "order of scale" in result.description_
-    assert "confidence interval" in result.description_
-
-
-def test_calibrating_the_scale_off_images_survives_every_study_being_a_donor(tmp_path_factory):
-    """``peak_bias_scale="images"`` must not fall over when there is no coordinate arm left.
-
-    The scale is read off the donors by comparing, at shared voxels, what the coordinate-only fit
-    says against what each donor's image says. When *every* study is a donor there is no
-    coordinate-only fit to compare against -- and nothing for a scale to act on either, since a
-    donor's own peaks are dropped in favour of its image, so 1.0 is the right answer.
-
-    Left unguarded this reached ``_accumulate`` with an empty focus table and no image studies and
-    raised "No study contributed any in-mask voxels" from three frames down, naming neither the
-    cause nor the configuration. It is reachable from a documented setting on a collection shape
-    two other tests exercise deliberately.
-    """
-    from nimare.studyset import Studyset
-
-    directory = tmp_path_factory.mktemp("cbes_calib_all_donors")
-    shape = (8, 8, 8)
-    affine = np.diag([4.0, 4.0, 4.0, 1.0])
-    affine[:3, 3] = -14.0
-    mask = nib.Nifti1Image(np.ones(shape, np.int32), affine)
-    rng = np.random.default_rng(0)
-
-    def studyset(n_studies, n_image):
-        studies = []
-        for k in range(n_studies):
-            n = 30
-            metadata = {"sample_sizes": [n]}
-            analysis = {
-                "id": f"s{k}-1",
-                "name": "1",
-                "metadata": metadata,
-                "points": [
-                    {
-                        "space": "MNI",
-                        "coordinates": [0.0, 0.0, 0.0],
-                        "values": [{"kind": "T", "value": 5.0}],
-                    }
-                ],
-            }
-            if k < n_image:
-                g = (0.5 + rng.normal(0, 0.2, shape)).astype(np.float32)
-                nib.save(nib.Nifti1Image(g, affine), directory / f"{k}_g.nii.gz")
-                nib.save(
-                    nib.Nifti1Image(np.full(shape, 1.0 / n, np.float32), affine),
-                    directory / f"{k}_var.nii.gz",
-                )
-                analysis["images"] = [
-                    {
-                        "url": str(directory / f"{k}_g.nii.gz"),
-                        "filename": f"{k}_g.nii.gz",
-                        "space": "MNI",
-                        "value_type": "g",
-                    },
-                    {
-                        "url": str(directory / f"{k}_var.nii.gz"),
-                        "filename": f"{k}_var.nii.gz",
-                        "space": "MNI",
-                        "value_type": "g_var",
-                    },
-                ]
-            studies.append(
-                {"id": f"s{k}", "name": f"s{k}", "metadata": metadata, "analyses": [analysis]}
-            )
-        return Studyset({"id": "c", "name": "c", "studies": studies}, target=None, mask=mask)
-
-    def fit(n_studies, n_image):
-        estimator = CBES(
-            fwhm=8.0,
-            mask=mask,
-            null_method="none",
-            peak_bias="per-study",
-            peak_bias_scale="images",
-        )
-        estimator.fit(studyset(n_studies, n_image))
-        return estimator
-
-    # A mixed collection calibrates off its donors, which is the point of the setting.
-    mixed = fit(6, 2)
-    assert mixed.scale_source_ == "images"
-    assert mixed._peak_bias_scale_ > 0
-
-    # All donors: no coordinate arm, so the scale is 1.0 and says it was never calibrated.
-    everything = fit(6, 6)
-    assert everything._peak_bias_scale_ == 1.0
-    assert everything.scale_source_ == "unset"
-    assert everything.n_scale_donors_ == 0
-    assert everything.scale_interval_ is None
-
-
-def test_the_scale_interval_narrows_with_donors_rather_than_tracking_their_range():
-    """It must be an interval for the scale, not the spread of the studies that set it.
-
-    ``(min, max)`` of the per-donor estimates answers a different question -- how far apart the
-    donors landed -- and its relation to the uncertainty in their centre runs the wrong way with
-    the donor count: on simulated collections it was 0.51 times an honest interval at two donors
-    and 4.32 times it at twenty, so the error changed sign in between. A range converges on the
-    donors' own spread; an interval for their centre has to shrink like 1 / sqrt(K).
-    """
-    from nimare.meta.cbma.effectsize import _scale_confidence_interval
-
-    assert _scale_confidence_interval([0.5]) is None
-    assert _scale_confidence_interval([]) is None
-
-    # Same spread of donor estimates, more of them: the interval must narrow, while the range
-    # of the inputs is 0.45 to 0.55 in every case.
-    widths = []
-    for donors in (
-        [0.45, 0.55],
-        np.linspace(0.45, 0.55, 5).tolist(),
-        np.linspace(0.45, 0.55, 20).tolist(),
-    ):
-        low, high = _scale_confidence_interval(donors)
-        assert low <= np.median(donors) <= high
-        widths.append(high - low)
-    assert widths[0] > widths[1] > widths[2]
-
-    # Two donors leave the scale barely pinned, and the interval should say so rather than
-    # inherit the reassuring narrowness of their range.
-    low, high = _scale_confidence_interval([0.45, 0.55])
-    assert high / low > 5.0
-
-    # Built on the log, so a scale is bracketed multiplicatively and cannot come out negative.
-    low, high = _scale_confidence_interval([0.1, 0.2, 0.4, 0.8])
-    assert low > 0
-
-
-def test_the_description_reports_what_the_peak_heights_carry(studyset, small_mask):
-    """The magnitude caveat belongs in the methods text, not only in the log."""
-    estimator = CBES(fwhm=8.0, mask=small_mask, null_method="none", peak_bias="per-study")
-    result = estimator.fit(studyset)
-
-    assert set(estimator.peak_information_) == {
-        "observed_mean_z",
-        "null_peak_mean_z",
-        "excess_z",
-    }
-    description = result.description_
-    assert "peaks of pure noise" in description
-    informative = estimator.peak_information_["excess_z"] >= 0.25
-    if informative:
-        assert "carry information about the size of the effect" in description
-    else:
-        assert "relative map only" in description
-
-
-def test_the_relative_map_cancels_the_scale_the_coordinates_cannot_identify(studyset, small_mask):
-    """Two fits differing only by the scale constant must give the same relative map."""
-    one = CBES(fwhm=8.0, mask=small_mask, null_method="none", peak_bias="per-study")
-    other = CBES(
-        fwhm=8.0,
-        mask=small_mask,
-        null_method="none",
-        peak_bias="per-study",
-        peak_bias_scale=0.5,
-    )
-    first = one.fit(studyset)
-    second = other.fit(studyset)
-
-    g_one = first.get_map("g", return_type="array").ravel()
-    g_two = second.get_map("g", return_type="array").ravel()
-    relative_one = first.get_map("g_relative", return_type="array").ravel()
-    relative_two = second.get_map("g_relative", return_type="array").ravel()
-
-    # The absolute maps differ by the constant...
-    moved = np.isfinite(g_one) & np.isfinite(g_two) & (np.abs(g_one) > 1e-6)
-    assert moved.any()
-    assert not np.allclose(g_one[moved], g_two[moved])
-    # ...and the relative maps agree to the accuracy the fit itself has. The cancellation is
-    # exact in the pooling step but only approximate through the EM, which is truncated at
-    # max_iter rather than converged (see ``max_iter``): starting from a rescaled g, the
-    # iteration stops at a slightly different point on the same plateau. Measured, 8 voxels in
-    # 9261 move at all and the largest moves by 3e-5 -- the relative figure looks worse only
-    # because those voxels sit near zero. Real scale leakage would move the map by order 1.
-    np.testing.assert_allclose(relative_one, relative_two, rtol=5e-3, atol=1e-4)
-    # A high percentile of the magnitude is the unit, so the map reaches about 1 and not much
-    # more, and it carries sign.
-    covered = np.abs(relative_one) > 0
-    assert 0.9 <= np.percentile(np.abs(relative_one[covered]), 95) <= 1.1
-
-
-def test_an_absolute_map_appears_only_when_something_pins_the_scale(studyset, small_mask):
-    """``g_absolute`` is a claim about units, so it must be absent when the units are unknown."""
-    shared = dict(fwhm=8.0, mask=small_mask, null_method="none", peak_bias="per-study")
-
-    coordinates_only = CBES(**shared).fit(studyset)
-    assert "g_relative" in coordinates_only.maps
-    assert "g_absolute" not in coordinates_only.maps
-
-    supplied = CBES(**shared, peak_bias_scale=0.6)
-    result = supplied.fit(studyset)
-    assert supplied.scale_source_ == "supplied"
-    assert "g_absolute" in result.maps
-    # Same numbers as "g"; the separate name is what carries the claim.
-    np.testing.assert_array_equal(
-        result.get_map("g_absolute", return_type="array"),
-        result.get_map("g", return_type="array"),
-    )
+    assert np.all(arrays(result)["tau2"] == 0.0)
 
 
 def test_hartung_knapp_replaces_the_se_without_touching_the_estimate(studyset, small_mask):
-    """HKSJ is a different variance, not a different fit."""
-    shared = dict(
-        fwhm=8.0,
-        mask=small_mask,
-        null_method="none",
-        peak_bias="per-study",
-        selection_model="none",
-    )
+    """HKSJ is a different standard error for the same weighted mean."""
+    shared = dict(mask=small_mask, null_method="none", selection_model="none")
     model = CBES(**shared, se_method="model").fit(studyset)
     hksj = CBES(**shared, se_method="hksj").fit(studyset)
 
-    np.testing.assert_allclose(
-        model.get_map("g", return_type="array"),
-        hksj.get_map("g", return_type="array"),
-        rtol=1e-10,
-    )
-    se_model = model.get_map("se", return_type="array").ravel()
-    se_hksj = hksj.get_map("se", return_type="array").ravel()
-    n_eff = model.get_map("n_eff", return_type="array").ravel()
-
-    assert np.all(np.isfinite(se_hksj))
-    # Where there is spread to measure the two disagree; where there is not, they agree.
-    spread = n_eff > 1.0
-    assert spread.any()
-    assert not np.allclose(se_model[spread], se_hksj[spread])
-    flat = (n_eff > 0) & (n_eff <= 1.0)
-    if flat.any():
-        np.testing.assert_allclose(se_model[flat], se_hksj[flat], rtol=1e-10)
+    a, b = arrays(model), arrays(hksj)
+    assert np.allclose(a["g"], b["g"])
+    covered = a["n_studies"] > 1
+    assert covered.any()
+    assert not np.allclose(a["se"][covered], b["se"][covered])
 
 
-def test_hartung_knapp_uses_the_effective_study_count_not_the_weight_total():
-    """The degrees of freedom must be Kish's ``n_eff``, which small kernel weights cannot break."""
-    from nimare.meta.cbma.effectsize import _hartung_knapp_se
-
-    # Three studies, all weights 0.1: sum(w) = 0.3 but n_eff = 3.
-    weights = np.full(3, 0.1)
-    n_eff = np.array([weights.sum() ** 2 / (weights**2).sum()])
-    assert np.isclose(n_eff[0], 3.0)
-
-    g = np.array([0.2, 0.5, 0.8])
-    var = np.full(3, 0.1)
-    a = weights / var
-    g_hat = np.array([(a * g).sum() / a.sum()])
-    se = _hartung_knapp_se(
-        g_hat=g_hat,
-        sum_a=np.array([a.sum()]),
-        sum_a_g2=np.array([(a * g * g).sum()]),
-        n_eff=n_eff,
-        covered=np.array([True]),
-        fallback=np.array([np.inf]),
-    )
-    expected = np.sqrt((a * (g - g_hat[0]) ** 2).sum() / ((3.0 - 1.0) * a.sum()))
-    np.testing.assert_allclose(se[0], expected)
-    # Rescaling every weight leaves it untouched, which sum(w) would not.
-    rescaled = weights * 17.0
-    a2 = rescaled / var
-    se_rescaled = _hartung_knapp_se(
-        g_hat=g_hat,
-        sum_a=np.array([a2.sum()]),
-        sum_a_g2=np.array([(a2 * g * g).sum()]),
-        n_eff=np.array([rescaled.sum() ** 2 / (rescaled**2).sum()]),
-        covered=np.array([True]),
-        fallback=np.array([np.inf]),
-    )
-    np.testing.assert_allclose(se[0], se_rescaled[0], rtol=1e-10)
+# ------------------------------------------------------------- the silence channel
 
 
-def test_hksj_is_refused_rather_than_ignored_under_the_selection_model():
-    """The combination that would silently do nothing has to fail instead."""
-    with pytest.raises(ValueError, match="hksj.*selection_model"):
-        CBES(se_method="hksj", selection_model="zero-inflated")
-    # And the supported combination constructs.
-    CBES(se_method="hksj", selection_model="none")
+def test_the_silence_channel_moves_the_estimate_toward_the_truth(tmp_path, small_mask):
+    r"""Drop the peak heights, keep the silence: that is the whole design, so measure it.
 
-
-def test_images_pin_the_scale_and_produce_an_absolute_map(mixed_image_studyset):
-    """The only remaining route to an absolute map, now that the corpus prior is gone."""
-    estimator = CBES(fwhm=8.0, null_method="none", peak_bias="per-study", peak_bias_scale="images")
-    result = estimator.fit(mixed_image_studyset)
-
-    assert estimator.scale_source_ == "images"
-    assert estimator.n_scale_donors_ >= 2
-    assert "g_absolute" in result.maps
-    assert "g_relative" in result.maps
-
-    # One donor is below the threshold for claiming an absolute scale, so the map is withheld
-    # even though a scale was still calibrated and applied.
-    one_donor = CBES(
-        fwhm=8.0,
-        null_method="none",
-        peak_bias="per-study",
-        peak_bias_scale="images",
-        use_images=True,
-    )
-    from nimare.meta.cbma.effectsize import _MIN_SCALE_DONORS
-
-    assert _MIN_SCALE_DONORS == 2
-    original = CBES._load_image_studies
-
-    def only_first(self, dataset):
-        studies = original(self, dataset)
-        return dict(list(studies.items())[:1])
-
-    CBES._load_image_studies = only_first
-    try:
-        sparse = one_donor.fit(mixed_image_studyset)
-    finally:
-        CBES._load_image_studies = original
-    assert one_donor.n_scale_donors_ == 1
-    assert one_donor.scale_interval_ is None
-    assert "g_absolute" not in sparse.maps
-
-
-def test_the_censored_mixture_em_finds_the_same_optimum_as_a_brute_force_search():
-    """No reference implementation exists, so the EM is checked against the likelihood itself.
-
-    ``_fit_chunk`` is an EM over a zero-inflated censored likelihood, and everything downstream
-    -- ``g``, ``prevalence``, ``se`` -- is whatever it returns. Writing the likelihood out a
-    second time, independently, and maximizing it on a grid is the only available oracle: if the
-    two disagree, either the EM is not climbing the likelihood the model describes or the model
-    is not the one documented.
+    Scored against the field the simulator built, which is known exactly and is independent of
+    the peaks the studies reported. ``g_marginal`` is the comparison to make: it is
+    :math:`\\pi\\mu`, the estimand an inverse-variance mean of the images also reports, whereas
+    ``g`` is :math:`\\mu`, the effect among the studies that have one, and is larger by
+    construction.
     """
-    from scipy import stats
+    truth = truth_field(small_mask)
+    paired = []
+    for seed in range(3):
+        collection = make_studyset(tmp_path / f"silence{seed}", seed=seed)
+        with_silence = arrays(
+            CBES(mask=small_mask, null_method="none", threshold="reporting_threshold").fit(
+                collection
+            )
+        )
+        without = arrays(
+            CBES(
+                mask=small_mask,
+                null_method="none",
+                selection_model="none",
+                threshold="reporting_threshold",
+            ).fit(collection)
+        )
+        paired.append(
+            (
+                float(np.sqrt(np.mean((np.abs(with_silence["g_marginal"]) - truth) ** 2))),
+                float(np.sqrt(np.mean((np.abs(without["g"]) - truth) ** 2))),
+            )
+        )
 
-    from nimare.meta.cbma.effectsize import _PROBABILITY_FLOOR, null_effect_variance
+    silence_rmse, image_rmse = np.mean(paired, axis=0)
+    assert silence_rmse < image_rmse
+    # Every seed, not only the mean: three arms going the same way is the claim.
+    assert all(a < b for a, b in paired)
 
-    n_studies, width = 6, 1
-    sample_sizes = np.array([20.0, 24.0, 30.0, 36.0, 40.0, 28.0])
-    null_var = null_effect_variance(sample_sizes, design="one-sample")[:, None]
-    cutoff = 0.55
-    cutoffs = np.full((n_studies, 1), cutoff)
-    tau2 = np.zeros(width)
 
-    # Three studies reported here, three were silent: the configuration the mixture is for.
-    weights = np.zeros((n_studies, width))
-    g_obs = np.zeros((n_studies, width))
-    var_obs = np.ones((n_studies, width))
-    covered = np.zeros((n_studies, width), dtype=bool)
-    reported = {0: 0.72, 1: 0.61, 2: 0.95}
-    for study, value in reported.items():
-        weights[study, 0] = 1.0
-        g_obs[study, 0] = value
-        var_obs[study, 0] = float(null_var[study, 0])
-        covered[study, 0] = True  # reported, so not silent
+def test_silence_is_only_read_where_no_focus_is_nearby(studyset, small_mask):
+    """A study that reported near a voxel contributes neither a value nor a silence there.
 
-    estimator = CBES(fwhm=8.0, null_method="none", max_iter=400)
-    mu, pi, _, _ = estimator._fit_chunk(
-        weights=weights,
-        g_obs=g_obs,
-        var_obs=var_obs,
-        covered=covered,
-        tau2=tau2,
-        null_var=null_var,
-        cutoffs=cutoffs,
-        start=np.array([float(np.mean(list(reported.values())))]),
+    That is the design: a coordinate table says *where* a study reported, and its peak height
+    is discarded, so a reporting coordinate study informs neither term.
+    """
+    estimator = CBES(mask=small_mask, null_method="none", threshold="reporting_threshold")
+    estimator.fit(studyset)
+
+    table = estimator._focus_table_
+    roster = list(estimator._sample_sizes_.index)
+    active = np.arange(int(np.asarray(estimator.masker.mask_img.dataobj).astype(bool).sum()))
+    col, pos, sign = estimator._indicator_entries(
+        table, roster, active, active.size, image_ids=tuple(estimator._image_studies_)
+    )
+    indicator = np.zeros((len(roster), active.size))
+    indicator[pos, col] = sign
+
+    # An image reports everywhere, so it has no indicator to contribute at any voxel: its
+    # magnitude enters through its value instead.
+    for study_id in estimator._image_studies_:
+        assert np.all(indicator[roster.index(study_id)] == 0.0)
+
+    for study_id in set(table["id"]):
+        row = indicator[roster.index(study_id)]
+        # A study that reported names some voxels (-1) and is silent about others (+1)...
+        assert (row == -1.0).any()
+        assert (row == 1.0).any()
+        # ...and says nothing at the voxels it reached but did not name.
+        assert (row == 0.0).any()
+        # It names exactly the voxels its own foci sit in.
+        named = int((row == -1.0).sum())
+        assert named <= int((table["id"] == study_id).sum())
+
+
+def test_a_study_that_reported_nothing_at_all_is_silent_everywhere(studyset, small_mask):
+    """A study with no focus never reaches ``inputs_``, but its silence is the strongest datum.
+
+    ``_collect_inputs`` drops a study with no coordinates (neurostuff/NiMARE#294), so the
+    roster has to come from the collection rather than from the coordinates table.
+    """
+    estimator = CBES(mask=small_mask, null_method="none", threshold="reporting_threshold")
+    estimator.fit(studyset)
+
+    roster = set(estimator._sample_sizes_.index)
+    reporting = set(estimator._focus_table_["id"].unique())
+    assert roster >= reporting
+    assert roster >= set(estimator._image_studies_)
+    assert len(roster) == len(studyset.ids)
+
+
+def test_silence_pulls_the_estimate_down_where_nobody_reported(tmp_path, small_mask):
+    """Every study staying silent about a region is evidence the effect there is small."""
+    collection = make_studyset(tmp_path / "quiet", n_images=1, n_studies=14, seed=11)
+    shared = dict(mask=small_mask, null_method="none", threshold="reporting_threshold")
+    with_silence = arrays(CBES(**shared).fit(collection))
+    without = arrays(CBES(**shared, selection_model="none").fit(collection))
+
+    # Judged on the marginal estimand, which is what the images-only fit also reports.
+    quiet = with_silence["prevalence"] < np.percentile(with_silence["prevalence"], 25)
+    assert quiet.any()
+    assert np.median(np.abs(with_silence["g_marginal"][quiet])) < np.median(
+        np.abs(without["g"][quiet])
     )
 
-    def log_likelihood(mu_value, pi_value):
-        """Evaluate the documented model, written out again from scratch.
 
-        With probability pi a study has a real effect of size mu here, otherwise none. A
-        reporting study contributes the density of what it reported under that mixture; a silent
-        study contributes the probability that it would have stayed below its cutoff.
-        """
-        total = 0.0
-        for study, value in reported.items():
-            sd = np.sqrt(float(null_var[study, 0]))
-            present = np.exp(-0.5 * ((value - mu_value) / sd) ** 2) / (sd * np.sqrt(2 * np.pi))
-            absent = np.exp(-0.5 * (value / sd) ** 2) / (sd * np.sqrt(2 * np.pi))
-            total += np.log(max(pi_value * present + (1 - pi_value) * absent, 1e-300))
-        # Silent studies enter at the average reporting weight, which is 1.0 here.
-        for study in range(n_studies):
-            if study in reported:
-                continue
-            sd = np.sqrt(float(null_var[study, 0]))
-            silent_present = max(
-                stats.norm.cdf((cutoff - mu_value) / sd)
-                - stats.norm.cdf((-cutoff - mu_value) / sd),
-                _PROBABILITY_FLOOR,
-            )
-            silent_absent = max(
-                stats.norm.cdf(cutoff / sd) - stats.norm.cdf(-cutoff / sd), _PROBABILITY_FLOOR
-            )
-            total += np.log(
-                max(pi_value * silent_present + (1 - pi_value) * silent_absent, 1e-300)
-            )
-        return total
+def test_the_threshold_decides_how_surprising_a_silence_is(tmp_path, small_mask):
+    """A study that thresholded strictly tells us less by staying silent, so the fit moves."""
+    collection = make_studyset(tmp_path / "thresh", n_studies=14, seed=5)
+    shared = dict(mask=small_mask, null_method="none")
+    lenient = arrays(CBES(**shared, threshold=2.5).fit(collection))
+    strict = arrays(CBES(**shared, threshold=5.0).fit(collection))
 
-    # Grid spacing of 0.01 in each parameter, which is finer than the tolerances asserted
-    # below and keeps this to a couple of seconds rather than a couple of minutes.
-    mu_grid = np.linspace(0.0, 1.6, 161)
-    pi_grid = np.linspace(0.01, 0.99, 99)
-    surface = np.array([[log_likelihood(m, p) for p in pi_grid] for m in mu_grid])
-    best = np.unravel_index(int(np.argmax(surface)), surface.shape)
-    brute_mu, brute_pi = mu_grid[best[0]], pi_grid[best[1]]
+    covered = lenient["n_studies"] > 0
+    assert covered.any()
+    # A stricter assumed cut makes silence weaker evidence, so more of the roster is read as
+    # having an effect that simply failed to clear it.
+    assert np.median(strict["prevalence"][covered]) > np.median(lenient["prevalence"][covered])
 
-    # The EM must not be beaten by the grid: its optimum is at least as good, to grid accuracy.
-    assert log_likelihood(mu[0], pi[0]) >= surface[best] - 1e-3
-    assert abs(mu[0] - brute_mu) < 0.05, (mu[0], brute_mu)
-    assert abs(pi[0] - brute_pi) < 0.08, (pi[0], brute_pi)
+
+def test_threshold_can_name_a_metadata_field(studyset, small_mask):
+    """Papers that state their threshold should not be forced through an assumed constant."""
+    estimator = CBES(mask=small_mask, null_method="none", threshold="reporting_threshold")
+    estimator.fit(studyset)
+
+    supplied = np.asarray(
+        studyset.get_metadata(field="reporting_threshold", ids=list(studyset.ids)), dtype=float
+    )
+    assert np.allclose(np.sort(estimator._cutoffs_z_.values), np.sort(supplied))
+    # And the likelihood gets them on the effect-size scale, not the z scale.
+    expected = reporting_cutoff_to_g(estimator._cutoffs_z_.values, estimator._sample_sizes_.values)
+    assert np.allclose(estimator._thresholds_.values, expected)
+
+
+def test_threshold_metadata_field_must_exist(studyset, small_mask):
+    """A misspelt field name is a silent no-op otherwise, and the fit would use the default."""
+    with pytest.raises(ValueError, match="not a metadata field"):
+        CBES(mask=small_mask, null_method="none", threshold="not_a_field").fit(studyset)
+
+
+def test_the_threshold_is_never_inferred_from_the_reported_heights(studyset, small_mask):
+    """The heights are not read at all, so there is nothing to infer a threshold from.
+
+    The removed rules undid the order statistic on a study's smallest reported value, which
+    cannot tell a voxelwise height cut from a cluster-forming one and overshot the second by
+    about 1 z. Assuming a constant is both simpler and more accurate.
+    """
+    default = CBES(mask=small_mask, null_method="none")
+    default.fit(studyset)
+    from nimare.meta.cbma.effectsize import DEFAULT_REPORTING_THRESHOLD_Z
+
+    assert np.allclose(default._cutoffs_z_.values, DEFAULT_REPORTING_THRESHOLD_Z)
+    for gone in ("study-min", "pooled-min"):
+        with pytest.raises(ValueError, match="not a metadata field"):
+            CBES(mask=small_mask, null_method="none", threshold=gone).fit(studyset)
+
+
+def test_the_reported_heights_do_not_reach_the_estimate(studyset, small_mask):
+    """Scale every reported statistic and the fit must not move: the values are never read."""
+    scrambled = copy.deepcopy(studyset.to_dict())
+    for study in scrambled["studies"]:
+        for analysis in study["analyses"]:
+            for point in analysis.get("points", []):
+                for value in point.get("values", []):
+                    if value.get("kind") == "Z":
+                        value["value"] = float(value["value"]) * 3.0 + 7.0
+    from nimare.studyset import Studyset
+
+    shared = dict(mask=small_mask, null_method="none", threshold="reporting_threshold")
+    original = arrays(CBES(**shared).fit(studyset))
+    altered = arrays(CBES(**shared).fit(Studyset(scrambled, target=None, mask=small_mask)))
+    for name in ("g", "se", "prevalence", "g_marginal"):
+        assert np.allclose(original[name], altered[name])
+
+
+def test_the_coverage_radius_is_assumed_rather_than_read(tmp_path, small_mask):
+    """Assume the extent a focus stands in for, rather than reading it.
+
+    Papers do not report cluster extent reliably, and assuming an extent is not the same thing
+    as treating everything outside it as silence.
+    """
+    collection = make_studyset(tmp_path / "radius", n_studies=14, seed=13)
+    shared = dict(mask=small_mask, null_method="none", threshold="reporting_threshold")
+    tight = arrays(CBES(**shared, coverage_radius=8.0).fit(collection))
+    wide = arrays(CBES(**shared, coverage_radius=28.0).fit(collection))
+
+    covered = tight["n_studies"] > 0
+    # A wider assumed extent means fewer studies count as silent, and prevalence rises with it
+    # monotonically at every true value.
+    assert np.median(wide["prevalence"][covered]) > np.median(tight["prevalence"][covered])
+    # None is the documented default, not a fall-back to some other geometry.
+    assert np.isclose(DEFAULT_COVERAGE_RADIUS_MM, 20.0)
+    default = arrays(CBES(**shared, coverage_radius=None).fit(collection))
+    fixed = arrays(CBES(**shared, coverage_radius=DEFAULT_COVERAGE_RADIUS_MM).fit(collection))
+    assert np.allclose(default["g"], fixed["g"])
+
+
+def test_the_marginal_map_is_the_conditional_one_times_the_prevalence(studyset, small_mask):
+    """``g_marginal`` is the estimand an image-based meta-analysis reports; ``g`` is not."""
+    result = CBES(mask=small_mask, null_method="none", threshold="reporting_threshold").fit(
+        studyset
+    )
+    values = arrays(result)
+    assert np.allclose(values["g_marginal"], values["g"] * values["prevalence"])
+
+
+def test_the_selection_model_can_be_switched_off_entirely(studyset, small_mask):
+    """``selection_model="none"`` must make the coordinate tables inert, not merely quieter.
+
+    It is the control arm the coordinates are credited against, so if a table still reached the
+    estimate there the measured benefit would be against the wrong baseline.
+    """
+    stripped = copy.deepcopy(studyset.to_dict())
+    for study in stripped["studies"]:
+        for analysis in study["analyses"]:
+            for point in analysis.get("points", []):
+                point["coordinates"] = [0.0, 0.0, 0.0]
+    from nimare.studyset import Studyset
+
+    shared = dict(mask=small_mask, null_method="none", selection_model="none")
+    original = arrays(CBES(**shared).fit(studyset))
+    moved = arrays(CBES(**shared).fit(Studyset(stripped, target=None, mask=small_mask)))
+    assert np.allclose(original["g"], moved["g"])
+    assert "prevalence" not in original
 
 
 def test_the_censored_likelihood_reads_silence_as_evidence_against_a_large_effect():
@@ -2085,12 +641,14 @@ def test_the_censored_likelihood_reads_silence_as_evidence_against_a_large_effec
 
     Adding silent studies must pull the optimum down: silence is improbable when the effect is
     large, so the more studies stay quiet the smaller the effect that best explains the data.
-    This is the whole reason the censoring term exists, and it is worth pinning separately from
-    the optimizer that exploits it.
-    """
-    from nimare.meta.cbma.effectsize import null_effect_variance
 
-    fitted = []
+    The cutoff here is deliberately low relative to the reported effect, which puts the studies
+    inside the *window of detectability* -- where the chance of reporting still responds to the
+    magnitude. Far above that window silence is certain whatever the effect, so it informs the
+    prevalence and not the magnitude; that is a property of the model rather than a defect, but
+    it means a probe placed there cannot see this behaviour at all.
+    """
+    fitted, prevalences = [], []
     for n_silent in (0, 3, 9):
         n_studies = 3 + n_silent
         sample_sizes = np.full(n_studies, 30.0)
@@ -2098,43 +656,132 @@ def test_the_censored_likelihood_reads_silence_as_evidence_against_a_large_effec
         weights = np.zeros((n_studies, 1))
         g_obs = np.zeros((n_studies, 1))
         var_obs = np.ones((n_studies, 1))
-        covered = np.zeros((n_studies, 1), dtype=bool)
+        # +1 is a silence; 0 is "no indicator", which is what a value-bearing study carries.
+        indicator = np.ones((n_studies, 1))
         for study, value in enumerate((0.8, 0.7, 0.9)):
             weights[study, 0] = 1.0
             g_obs[study, 0] = value
             var_obs[study, 0] = float(null_var[study, 0])
-            covered[study, 0] = True
+            indicator[study, 0] = 0.0
 
-        estimator = CBES(fwhm=8.0, null_method="none", max_iter=400)
-        mu, _, _, _ = estimator._fit_chunk(
+        estimator = CBES(null_method="none", max_iter=400)
+        mu, pi, _, _ = estimator._fit_chunk(
             weights=weights,
             g_obs=g_obs,
             var_obs=var_obs,
-            covered=covered,
+            indicator=indicator,
             tau2=np.zeros(1),
             null_var=null_var,
             cutoffs=np.full((n_studies, 1), 0.55),
             start=np.array([0.8]),
         )
         fitted.append(float(mu[0]))
+        prevalences.append(float(pi[0]))
 
     assert fitted[0] > fitted[1] > fitted[2], fitted
+    # And the prevalence falls too: the mixture is free to explain silence either way.
+    assert prevalences[0] > prevalences[-1], prevalences
+
+
+def test_fit_chunk_ignores_studies_that_say_nothing_here():
+    """A study with neither a value nor an indicator here must not move the fit at all.
+
+    That is the third case the block carries, and it is the common one: an image study's own
+    indicator, and any voxel an ``analysis_mask`` says a study never examined.
+    """
+    estimator = CBES(selection_model="zero-inflated", null_method="none")
+
+    def run(n_mute):
+        n_studies = 3 + n_mute
+        weights = np.zeros((n_studies, 1))
+        weights[:2, 0] = 1.0
+        g_obs = np.zeros((n_studies, 1))
+        g_obs[:2, 0] = [0.9, 1.1]
+        var_obs = np.full((n_studies, 1), 1.0 / 30.0)
+        indicator = np.zeros((n_studies, 1))
+        indicator[2, 0] = 1.0  # one genuinely silent study
+        mu, pi, _, _ = estimator._fit_chunk(
+            weights=weights,
+            g_obs=g_obs,
+            var_obs=var_obs,
+            indicator=indicator,
+            tau2=np.zeros(1),
+            null_var=np.full((n_studies, 1), 1.0 / 30.0),
+            cutoffs=np.full((n_studies, 1), 1.2),
+            start=np.array([1.0]),
+        )
+        return float(mu[0]), float(pi[0])
+
+    assert run(0) == pytest.approx(run(9), abs=1e-9)
+
+
+def test_a_report_and_a_silence_pull_the_magnitude_opposite_ways():
+    """Both values of the reporting indicator are evidence, and they disagree.
+
+    Dropping the report limb leaves the silences as the only evidence about the indicator, so
+    the model reads the silence fraction against a denominator that excludes every study that
+    reported -- and over-shrinks. Measured on a known truth, restoring it cut the rmse where
+    the effect is largest from 0.091 to 0.074 and the bias from -0.060 to -0.042.
+    """
+    estimator = CBES(selection_model="zero-inflated", null_method="none", max_iter=400)
+
+    def fit(sign):
+        # One image supplying a value, and nine coordinate studies all carrying ``sign``.
+        n_studies = 10
+        weights = np.zeros((n_studies, 1))
+        weights[0, 0] = 1.0
+        g_obs = np.zeros((n_studies, 1))
+        g_obs[0, 0] = 0.6
+        var_obs = np.full((n_studies, 1), 1.0 / 30.0)
+        indicator = np.zeros((n_studies, 1))
+        indicator[1:, 0] = sign
+        mu, _, _, _ = estimator._fit_chunk(
+            weights=weights,
+            g_obs=g_obs,
+            var_obs=var_obs,
+            indicator=indicator,
+            tau2=np.zeros(1),
+            null_var=np.full((n_studies, 1), 1.0 / 30.0),
+            cutoffs=np.full((n_studies, 1), 0.6),
+            start=np.array([0.6]),
+        )
+        return float(mu[0])
+
+    alone, silent, reported = fit(0.0), fit(1.0), fit(-1.0)
+    assert silent < alone < reported
+
+
+# ----------------------------------------------------------------- analysis masks
 
 
 @pytest.fixture(scope="module")
 def roi_studyset(tmp_path_factory):
-    """Twelve studies; four examined only a slab, and are silent everywhere else."""
+    """Build twelve studies; four examined only a slab, and are silent everywhere else.
+
+    One study shares its map, which CBES requires. The slab sits at one end of the volume, away
+    from the focus every whole-brain study reports at, so the partial studies' silence at the
+    focus is uninformative and must not be read.
+    """
     directory = tmp_path_factory.mktemp("cbes_roi")
     shape = (12, 12, 12)
     affine = np.diag([4.0, 4.0, 4.0, 1.0])
     affine[:3, 3] = -22.0
     nib.save(nib.Nifti1Image(np.ones(shape, np.int32), affine), directory / "mask.nii.gz")
 
-    # The slab the partial-coverage studies examined: one end of the volume, away from the
-    # focus every study reports at, so their silence at the focus is uninformative.
     slab = np.zeros(shape, np.int32)
     slab[:3] = 1
     nib.save(nib.Nifti1Image(slab, affine), directory / "slab.nii.gz")
+
+    rng = np.random.default_rng(2)
+    grid = np.indices(shape).astype(float)
+    centre = (np.array(shape) - 1) / 2.0
+    truth = 0.8 * np.exp(-sum((grid[i] - centre[i]) ** 2 for i in range(3)) / 8.0)
+    observed = truth + rng.normal(0, 1 / np.sqrt(30), shape)
+    nib.save(nib.Nifti1Image(observed.astype(np.float32), affine), directory / "donor_g.nii.gz")
+    nib.save(
+        nib.Nifti1Image(np.full(shape, 1.0 / 30.0, np.float32), affine),
+        directory / "donor_var.nii.gz",
+    )
 
     from nimare.studyset import Studyset
 
@@ -2145,10 +792,6 @@ def roi_studyset(tmp_path_factory):
             "id": f"r{k}-1",
             "name": "1",
             "metadata": {"sample_sizes": [30]},
-            # Whole-brain studies report at the focus; the partial ones report inside their slab.
-            # The partial studies report on the last plane they examined (voxel i = 2), so
-            # their kernel reaches i = 3 just outside it -- which is where a value must not
-            # leak. The whole-brain studies report at the centre.
             "points": [
                 {
                     "space": "MNI",
@@ -2167,6 +810,21 @@ def roi_studyset(tmp_path_factory):
                     "value_type": "analysis_mask",
                 }
             ]
+        if k == 0:
+            analysis["images"] = [
+                {
+                    "url": str(directory / "donor_g.nii.gz"),
+                    "filename": "donor_g.nii.gz",
+                    "space": "MNI",
+                    "value_type": "g",
+                },
+                {
+                    "url": str(directory / "donor_var.nii.gz"),
+                    "filename": "donor_var.nii.gz",
+                    "space": "MNI",
+                    "value_type": "g_var",
+                },
+            ]
         studies.append(
             {
                 "id": f"r{k}",
@@ -2183,710 +841,415 @@ def roi_studyset(tmp_path_factory):
     )
 
 
-def test_a_declared_analysis_mask_stops_silence_being_read_where_nobody_looked(roi_studyset):
-    """An ROI study never looked outside its region, so its silence there is not evidence."""
-    from nimare.utils import mm2vox
-
-    masker = roi_studyset.masker
-    ijk = mm2vox(np.array([[0.0, 0.0, 0.0]]), masker.mask_img.affine)[0]
+def masked_index(studyset, xyz):
+    """Return the position of an xyz (mm) location in the masker's voxel order."""
+    masker = studyset.masker
+    ijk = mm2vox(np.array([xyz]), masker.mask_img.affine)[0]
     mask = np.asarray(masker.mask_img.dataobj).astype(bool)
     lookup = np.full(mask.shape, -1, dtype=np.int64)
     lookup[mask] = np.arange(mask.sum())
-    focus = int(lookup[tuple(ijk)])
+    return int(lookup[tuple(ijk)])
+
+
+def test_a_declared_analysis_mask_stops_silence_being_read_where_nobody_looked(roi_studyset):
+    """An ROI study never looked outside its region, so its silence there is not evidence."""
+    focus = masked_index(roi_studyset, (0.0, 0.0, 0.0))
     assert focus >= 0
 
-    shared = dict(fwhm=8.0, null_method="none", peak_bias=None)
+    shared = dict(null_method="none")
     ignored = CBES(**shared).fit(roi_studyset)
     honoured = CBES(**shared, analysis_mask="analysis_mask").fit(roi_studyset)
 
-    # Reading the slab studies' silence as evidence drags the focus down; honouring the mask
-    # removes four spurious censoring terms, so the estimate there rises.
-    g_ignored = ignored.get_map("g", return_type="array").ravel()[focus]
-    g_honoured = honoured.get_map("g", return_type="array").ravel()[focus]
-    assert g_honoured > g_ignored
-
-    # Same for prevalence: silence that was never observed should not lower it.
-    pi_ignored = ignored.get_map("prevalence", return_type="array").ravel()[focus]
-    pi_honoured = honoured.get_map("prevalence", return_type="array").ravel()[focus]
-    assert pi_honoured > pi_ignored
-
-    # The studies that examined the whole volume are untouched either way.
-    assert honoured.get_map("n_studies", return_type="array").ravel()[focus] == (
-        ignored.get_map("n_studies", return_type="array").ravel()[focus]
+    # Four studies stop arguing against the effect at the focus, so the prevalence must rise.
+    assert (
+        honoured.get_map("prevalence", return_type="array").ravel()[focus]
+        > ignored.get_map("prevalence", return_type="array").ravel()[focus]
     )
 
 
-def test_an_absent_analysis_mask_changes_nothing_but_says_so(
-    roi_studyset, studyset, small_mask, caplog
-):
-    """Inert unless a study declares a mask -- but not silently, since that is a trap.
-
-    Requesting a value type that is not there leaves every study's silence read as evidence,
-    which is the behaviour the caller asked to switch off. A typo does it, and so does a loader
-    skipping the value type because it is not one NiMARE recognises.
-    """
-    shared = dict(fwhm=8.0, mask=small_mask, null_method="none", peak_bias=None)
-    without = CBES(**shared).fit(studyset)
-    # This collection carries no images at all, so naming a value type finds nothing.
+def test_an_absent_analysis_mask_changes_nothing_but_says_so(roi_studyset, caplog):
+    """Asking for a value type the collection does not carry is a silent no-op otherwise."""
+    shared = dict(null_method="none")
+    plain = arrays(CBES(**shared).fit(roi_studyset))
     with caplog.at_level("WARNING"):
-        with_name = CBES(**shared, analysis_mask="analysis_mask").fit(studyset)
+        requested = arrays(CBES(**shared, analysis_mask="nope").fit(roi_studyset))
+    assert np.allclose(plain["g"], requested["g"])
     assert "matches no image value type" in caplog.text
-    np.testing.assert_allclose(
-        without.get_map("g", return_type="array"),
-        with_name.get_map("g", return_type="array"),
-        rtol=1e-10,
-    )
-    assert CBES(fwhm=8.0, null_method="none")._load_analysis_masks(roi_studyset) == {}
-
-
-def test_dof_is_emitted_so_se_can_be_referred_to_a_t(studyset, small_mask):
-    """``se`` is observed information on few studies, so it needs a t reference, not a normal.
-
-    Simulated against a known effect, a normal interval on this ``se`` covers 85-94% of nominal
-    95%, where a t on ``dof`` covers 91-97%. The map is emitted so a caller can do that; the
-    p-values are unaffected, coming from the permutation null rather than from any reference
-    distribution.
-    """
-    result = CBES(fwhm=8.0, mask=small_mask, null_method="none").fit(studyset)
-    dof = result.get_map("dof", return_type="array").ravel()
-    n_eff = result.get_map("n_eff", return_type="array").ravel()
-
-    assert np.all(dof >= 0.0)
-    covered = n_eff > 0
-    np.testing.assert_allclose(dof[covered], np.clip(n_eff[covered] - 1.0, 0.0, None), rtol=1e-6)
-    # Somewhere has enough studies for a t interval to be usable at all.
-    assert np.any(dof > 1.0)
-
-
-def test_an_implausibly_high_inferred_threshold_is_called_out(studyset, small_mask, caplog):
-    """Cluster-extent reporting is indistinguishable from strict height thresholding.
-
-    The inference overshoots by about 1 z when reporting was by extent, which leaves g intact
-    but saturates prevalence. It cannot tell the two apart, so the honest move is to say when
-    the answer lands where extent reporting would put it, and name the output at risk.
-    """
-    from nimare.meta.cbma.effectsize import _SUSPICIOUS_INFERRED_THRESHOLD_Z
-
-    quiet = CBES(fwhm=8.0, mask=small_mask, null_method="none", threshold="study-min")
-    with caplog.at_level("WARNING"):
-        quiet.fit(studyset)
-    assert "above the usual range" not in caplog.text
-    assert np.median(quiet._cutoffs_z_.values) <= _SUSPICIOUS_INFERRED_THRESHOLD_Z
-
-    # A collection whose reported peaks are all far above any plausible height cut, which is
-    # what an extent-thresholded table looks like to this inference.
-    strict = studyset.copy()
-    coords = strict.coordinates
-    caplog.clear()
-    loud = CBES(fwhm=8.0, mask=small_mask, null_method="none", threshold="study-min")
-    with caplog.at_level("WARNING"):
-        # Supplied directly rather than simulated: the point under test is the warning, not the
-        # inference that feeds it.
-        loud._warn_if_threshold_implausible(np.full(len(coords["id"].unique()), 4.6))
-    assert "above the usual range" in caplog.text
-    assert "prevalence" in caplog.text
-
-    # No threshold at all must not warn, and must not raise.
-    caplog.clear()
-    loud._warn_if_threshold_implausible(np.array([np.nan, np.nan]))
-    assert caplog.text == ""
 
 
 def test_the_analysis_mask_is_keyed_per_contrast_not_per_study(roi_studyset):
-    """The key is the analysis id, which is what the censoring roster is indexed by.
-
-    Per-contrast subsumes per-study, but it means a paper contributing several contrasts has to
-    declare the mask on each one it applies to. If the two were keyed differently the lookup
-    would silently miss and the feature would never fire, so the agreement is worth pinning.
-    """
-    estimator = CBES(fwhm=8.0, null_method="none", analysis_mask="analysis_mask")
+    """Coverage is decided per analysis, matching the unit the rest of the estimator uses."""
+    estimator = CBES(null_method="none", analysis_mask="analysis_mask")
     estimator.fit(roi_studyset)
+    keys = set(estimator._analysis_masks_)
+    assert keys
+    assert all(key in set(estimator._sample_sizes_.index) for key in keys)
 
-    masks = estimator._analysis_masks_
-    roster = set(estimator._sample_sizes_.index)
-    # Four studies declare a slab; whole-brain ones are skipped rather than stored.
-    assert len(masks) == 4
-    # Whatever was found must be addressable by the roster the coverage pass iterates over.
-    assert set(masks).issubset(roster)
-    # The ids are analysis-level, carrying a contrast suffix rather than a bare study id.
-    assert all(key.rsplit("-", 1)[-1].isdigit() for key in masks), sorted(masks)
+
+# ---------------------------------------------------------------------- the null
+
+
+def test_the_null_shuffles_image_values_within_a_study_and_never_between_them(
+    studyset, small_mask
+):
+    """Exchangeability: values move among a study's own voxels, nothing moves between studies."""
+    estimator = CBES(mask=small_mask, null_method="none", threshold="reporting_threshold")
+    estimator.fit(studyset)
+
+    rng = np.random.default_rng(0)
+    permuted = estimator._permute_image_values(rng)
+    assert set(permuted) == set(estimator._image_studies_)
+    for study_id, (g, var_g, usable) in estimator._image_studies_.items():
+        new_g, new_var, new_usable = permuted[study_id]
+        assert np.array_equal(usable, new_usable)
+        # The same multiset of values, rearranged among this study's own usable voxels.
+        assert np.allclose(np.sort(g[usable]), np.sort(new_g[new_usable]))
+        assert np.allclose(np.sort(var_g[usable]), np.sort(new_var[new_usable]))
+
+
+def test_the_null_leaves_the_coordinate_tables_exactly_alone(studyset, small_mask):
+    """The silence pattern is identical in the observed fit and in every permutation.
+
+    That is what makes the censoring term cancel between the two, and why a null over the
+    coordinates is neither needed nor available.
+    """
+    estimator = CBES(mask=small_mask, null_method="none", threshold="reporting_threshold")
+    estimator.fit(studyset)
+    before = estimator._focus_table_.copy()
+    estimator._statistic(
+        estimator._focus_table_,
+        estimator._sample_sizes_,
+        estimator._thresholds_,
+        estimator._permute_image_values(np.random.default_rng(1)),
+    )
+    assert before.equals(estimator._focus_table_)
+
+
+def test_a_collection_that_cannot_be_permuted_is_refused_rather_than_given_p_values(
+    roi_studyset, caplog
+):
+    """A null that admits too few arrangements reads as a null result rather than as no test."""
+    estimator = CBES(null_method="permute-images", n_iters=10)
+    with caplog.at_level("WARNING"):
+        estimator.fit(roi_studyset)
+    # One donor over a 12^3 volume admits plenty of arrangements, so this one is testable --
+    # the guard is exercised by stubbing the roster out.
+    assert estimator._null_is_usable()
+
+    estimator._image_studies_ = {}
+    estimator._null_refusal_logged_ = False
+    with caplog.at_level("WARNING"):
+        assert not estimator._null_is_usable()
+    assert "cannot be tested" in caplog.text
+
+
+def test_the_null_counts_only_the_image_studies(studyset, small_mask):
+    """Coordinates contribute no randomness, because the shuffle never touches them."""
+    estimator = CBES(mask=small_mask, null_method="none", threshold="reporting_threshold")
+    estimator.fit(studyset)
+
+    log10_states, contributing = estimator._null_has_states()
+    assert contributing == len(estimator._image_studies_)
+    assert log10_states > 4.0
+    # Dropping every coordinate row must not change the count.
+    estimator._focus_table_ = estimator._focus_table_.iloc[:0]
+    assert estimator._null_has_states() == (log10_states, contributing)
+
+
+def test_no_null_reports_no_p_values(studyset, small_mask):
+    """``null_method="none"`` returns p = 1 everywhere, not a normal-theory p-value."""
+    result = CBES(mask=small_mask, null_method="none").fit(studyset)
+    assert np.allclose(arrays(result)["p"], 1.0)
+
+
+def test_the_permutation_null_produces_usable_p_values(permutation_fit):
+    """Check p is bounded by the permutation floor and refers each voxel to its own null."""
+    estimator, result = permutation_fit
+    p = arrays(result)["p"]
+    assert np.all(p >= 1.0 / (1.0 + estimator.n_iters) - 1e-12)
+    assert np.all(p <= 1.0)
+    assert p.min() < 1.0  # something moved, so the null was actually built
+
+
+def test_null_is_built_from_the_selected_statistic(studyset, small_mask):
+    """The null refits the same statistic the observed map came from, selection model included."""
+    estimator = CBES(
+        mask=small_mask, null_method="permute-images", n_iters=5, selection_model="zero-inflated"
+    )
+    estimator.fit(studyset)
+    fit, _ = estimator._statistic(
+        estimator._focus_table_,
+        estimator._sample_sizes_,
+        estimator._thresholds_,
+        estimator._permute_image_values(np.random.default_rng(0)),
+    )
+    # A permutation fit carries a prevalence, which only the selection model produces.
+    assert "prevalence" in fit
+
+
+def test_convergence_alone_does_not_make_a_voxel_significant(tmp_path, small_mask):
+    """The null is about magnitude, not about foci piling up: this is not a convergence test."""
+    # Every study reports at the same place with no effect anywhere, so the foci converge
+    # perfectly and the images carry nothing.
+    from nimare.studyset import Studyset
+
+    directory = tmp_path / "flat"
+    directory.mkdir()
+    shape = (10, 10, 10)
+    affine = np.diag([4.0, 4.0, 4.0, 1.0])
+    affine[:3, 3] = -18.0
+    nib.save(nib.Nifti1Image(np.ones(shape, np.int32), affine), directory / "mask.nii.gz")
+    rng = np.random.default_rng(0)
+    studies = []
+    for k in range(10):
+        analysis = {
+            "id": f"f{k}-1",
+            "name": "1",
+            "metadata": {"sample_sizes": [30]},
+            "points": [
+                {
+                    "space": "MNI",
+                    "coordinates": [0.0, 0.0, 0.0],
+                    "values": [{"kind": "Z", "value": 4.0}],
+                }
+            ],
+            "images": [],
+        }
+        if k < 2:
+            flat = rng.normal(0, 1 / np.sqrt(30), shape)
+            nib.save(
+                nib.Nifti1Image(flat.astype(np.float32), affine), directory / f"f{k}_g.nii.gz"
+            )
+            nib.save(
+                nib.Nifti1Image(np.full(shape, 1 / 30.0, np.float32), affine),
+                directory / f"f{k}_v.nii.gz",
+            )
+            analysis["images"] = [
+                {
+                    "url": str(directory / f"f{k}_g.nii.gz"),
+                    "filename": "g",
+                    "space": "MNI",
+                    "value_type": "g",
+                },
+                {
+                    "url": str(directory / f"f{k}_v.nii.gz"),
+                    "filename": "v",
+                    "space": "MNI",
+                    "value_type": "g_var",
+                },
+            ]
+        studies.append(
+            {
+                "id": f"f{k}",
+                "name": f"f{k}",
+                "metadata": {"sample_sizes": [30]},
+                "analyses": [analysis],
+            }
+        )
+
+    collection = Studyset(
+        {"id": "flat", "name": "flat", "studies": studies},
+        target=None,
+        mask=str(directory / "mask.nii.gz"),
+    )
+    result = CBES(null_method="permute-images", n_iters=50, seed=0).fit(collection)
+    p = arrays(result)["p"]
+    focus = masked_index(collection, (0.0, 0.0, 0.0))
+    # The foci converge exactly at the focus and the p there is unremarkable.
+    assert p[focus] > 0.05
+
+
+# ---------------------------------------------------------------- FWE correction
+
+
+def test_correct_fwe_montecarlo(studyset, small_mask):
+    """Voxel- and cluster-level corrected maps come out, with the names ALE uses."""
+    estimator = CBES(mask=small_mask, null_method="none", n_iters=20, seed=0)
+    result = estimator.fit(studyset)
+    corrected = FWECorrector(method="montecarlo", n_iters=20).transform(result)
+
+    for name in (
+        "logp_level-voxel_corr-FWE_method-montecarlo",
+        "logp_desc-size_level-cluster_corr-FWE_method-montecarlo",
+        "logp_desc-mass_level-cluster_corr-FWE_method-montecarlo",
+    ):
+        assert name in corrected.maps
+        values = corrected.get_map(name, return_type="array")
+        assert np.all(np.isfinite(values))
+        assert np.all(values >= 0)
+
+
+def test_correct_fwe_montecarlo_needs_a_fit(small_mask):
+    """Correcting an unfitted estimator is a programming error, not an empty result."""
+    with pytest.raises(ValueError, match="requires a fitted estimator"):
+        CBES(mask=small_mask).correct_fwe_montecarlo(None)
+
+
+def test_fwe_montecarlo_vfwe_only_returns_only_voxel_maps(permutation_fit):
+    """``vfwe_only`` skips the cluster pass, so no cluster maps are emitted."""
+    estimator, result = permutation_fit
+    maps, _, _ = estimator.correct_fwe_montecarlo(result, n_iters=10, vfwe_only=True)
+    assert "logp_level-voxel" in maps
+    assert not any("cluster" in name for name in maps)
+
+
+def test_cluster_null_is_built_during_fit(permutation_fit):
+    """``fit`` builds the cluster nulls alongside the voxel one, so correction is nearly free."""
+    estimator, _ = permutation_fit
+    assert "values_desc-size_level-cluster_corr-fwe_method-montecarlo" in (
+        estimator.null_distributions_
+    )
+    assert "values_desc-mass_level-cluster_corr-fwe_method-montecarlo" in (
+        estimator.null_distributions_
+    )
+    assert np.isfinite(estimator.null_distributions_["cluster_forming_stat"])
+
+
+def test_cluster_threshold_none_skips_the_cluster_null(studyset, small_mask):
+    """Opting out of the cluster null must actually skip it, not build it quietly."""
+    estimator = CBES(
+        mask=small_mask, null_method="permute-images", n_iters=10, cluster_threshold=None
+    )
+    estimator.fit(studyset)
+    assert "cluster_forming_stat" not in estimator.null_distributions_
+
+
+def test_fwe_montecarlo_reuses_the_null_from_fit(studyset, small_mask):
+    """The same iterations at the same threshold are reused rather than recomputed."""
+    estimator = CBES(mask=small_mask, n_iters=20, seed=0)
+    result = estimator.fit(studyset)
+    before = estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]
+    estimator.correct_fwe_montecarlo(result, n_iters=estimator.n_iters, voxel_thresh=0.001)
+    after = estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]
+    assert np.array_equal(before, after)
+
+
+@pytest.mark.parametrize(
+    "corrector,map_name",
+    [
+        (FDRCorrector(method="indep"), "logp_corr-FDR_method-indep"),
+        (FWECorrector(method="bonferroni"), "logp_corr-FWE_method-bonferroni"),
+    ],
+)
+def test_stock_correctors_work(permutation_fit, corrector, map_name):
+    """The uncorrected p map is a real p map, so the stock correctors apply to it."""
+    _, result = permutation_fit
+    corrected = corrector.transform(result)
+    assert map_name in corrected.maps
+    assert np.all(np.isfinite(corrected.get_map(map_name, return_type="array")))
+
+
+# ---------------------------------------------------------------- the description
+
+
+def test_cbes_description_says_where_each_channel_comes_from(studyset, small_mask):
+    """The description is what ends up in a methods section, so it has to name the design."""
+    result = CBES(mask=small_mask, null_method="none", threshold="reporting_threshold").fit(
+        studyset
+    )
+    description = result.description_
+
+    assert "coordinate tables supplied only" in description
+    assert "peak heights being discarded" in description
+    assert "zero-inflated censored" in description
+    assert "No effect-size images were imputed" in description
+    assert "no p-values are reported" in description
+    # Nothing left from the design that pooled peak heights.
+    for gone in ("Gaussian kernel", "peak-height", "confidence interval of"):
+        assert gone not in description
+
+
+def test_the_description_reports_the_null_it_actually_ran(permutation_fit):
+    """A reader has to be able to tell which hypothesis was tested."""
+    _, result = permutation_fit
+    description = result.description_
+    assert "reassigned among its own voxels" in description
+    assert "coordinate silence held fixed" in description
+
+
+# ------------------------------------------------------------------ two-sample
 
 
 @pytest.fixture(scope="module")
 def two_group_studyset(tmp_path_factory):
-    """Eight analyses whose metadata declares two groups of 30, i.e. sixty subjects each."""
-    directory = tmp_path_factory.mktemp("cbes_two_group")
-    shape = (8, 8, 8)
-    affine = np.diag([6.0, 6.0, 6.0, 1.0])
-    affine[:3, 3] = -21.0
-    nib.save(nib.Nifti1Image(np.ones(shape, np.int32), affine), directory / "mask.nii.gz")
-
+    """Build a two-sample collection whose metadata gives per-group sizes."""
+    collection = make_studyset(
+        tmp_path_factory.mktemp("cbes_two"), n_studies=12, seed=21, design="two-sample"
+    )
+    raw = copy.deepcopy(collection.to_dict())
+    for study in raw["studies"]:
+        for analysis in study["analyses"]:
+            total = int(np.sum(analysis["metadata"]["sample_sizes"]))
+            halves = [total // 2, total - total // 2]
+            analysis["metadata"]["sample_sizes"] = halves
+        study["metadata"]["sample_sizes"] = halves
     from nimare.studyset import Studyset
 
-    studies = [
-        {
-            "id": f"t{k}",
-            "name": f"t{k}",
-            "metadata": {"sample_sizes": [30, 30]},
-            "analyses": [
-                {
-                    "id": f"t{k}-1",
-                    "name": "1",
-                    "metadata": {"sample_sizes": [30, 30]},
-                    "points": [
-                        {
-                            "space": "MNI",
-                            "coordinates": [0.0, 0.0, 0.0],
-                            "values": [{"kind": "T", "value": 3.0}],
-                        }
-                    ],
-                    "images": [],
-                }
-            ],
-        }
-        for k in range(8)
-    ]
-    return Studyset(
-        {"id": "two_group", "name": "two_group", "studies": studies},
-        target=None,
-        mask=str(directory / "mask.nii.gz"),
+    return Studyset(raw, target=None, mask=None)
+
+
+def test_a_two_sample_design_gets_the_total_sample_size(two_group_studyset, small_mask):
+    """Sum a two-sample design's per-group sizes rather than averaging them.
+
+    ``[30, 30]`` means sixty subjects; reducing it by mean gave thirty, which was then read as
+    two groups of fifteen and wrecked every variance downstream.
+    """
+    estimator = CBES(mask=small_mask, design="two-sample", null_method="none")
+    estimator.fit(two_group_studyset)
+    assert estimator._size_reduction() == "sum"
+
+    supplied = two_group_studyset.get_metadata(
+        field="sample_sizes", ids=list(two_group_studyset.ids)
     )
+    totals = sorted(float(np.sum(value)) for value in supplied)
+    assert sorted(estimator._sample_sizes_.values) == pytest.approx(totals)
 
 
-def test_a_two_sample_design_gets_the_total_sample_size(two_group_studyset):
-    """``design="two-sample"`` splits its argument into equal groups, so it needs the total.
-
-    Metadata of ``[30, 30]`` means sixty subjects. Reducing it by mean handed the converter
-    thirty, which it read as two groups of fifteen -- inflating ``g`` by 39% at ``t = 3``
-    (1.066 against 0.765) and carrying the same error into the sampling variances, the cutoff
-    conversion and the null variances.
-    """
-    two_sample = CBES(fwhm=10.0, null_method="none", design="two-sample", peak_bias="per-study")
-    two_sample.fit(two_group_studyset)
-    assert set(two_sample._sample_sizes_.values) == {60.0}
-    assert set(two_sample._focus_table_["sample_size"]) == {60}
-
-    # One-sample keeps the mean, which is what a single or repeated value means there.
-    one_sample = CBES(fwhm=10.0, null_method="none", design="one-sample", peak_bias="per-study")
-    one_sample.fit(two_group_studyset)
-    assert set(one_sample._sample_sizes_.values) == {30.0}
-
-    # And the resulting g is the textbook value for two balanced groups of thirty.
-    expected, _ = peak_stat_to_hedges_g([3.0], [60.0], stat_type="t", design="two-sample")
-    got = two_sample._focus_table_["g"].abs().max()
-    assert np.isclose(got, expected[0], rtol=1e-6), (got, expected[0])
+# ----------------------------------------------------------------- the simulator
 
 
-def test_a_declared_analysis_mask_also_stops_the_value_leaking_outside_it(roi_studyset):
-    """Suppressing silence outside a region but still pooling the value there is the worst case.
-
-    A kernel reaches about 13 mm for a 10 mm FWHM, so a peak just inside a declared region
-    spills outside it. Honouring the mask for censoring while ignoring it for contributions
-    would hand an unexamined voxel a number from a study that never looked there -- measured at
-    g = 0.31 with two contributing studies where the correct answer was 0.20 from one.
-    """
-    masker = roi_studyset.masker
-    mask = np.asarray(masker.mask_img.dataobj).astype(bool)
-    lookup = np.full(mask.shape, -1, dtype=np.int64)
-    lookup[mask] = np.arange(mask.sum())
-    # The partial studies report at voxel (2, 1, 1) and examined only i < 3, so (3, 1, 1) is
-    # one voxel away -- inside the kernel's support -- and outside the slab. That is exactly
-    # where the value used to leak.
-    outside = int(lookup[3, 1, 1])
-    assert outside >= 0
-
-    shared = dict(fwhm=8.0, null_method="none", peak_bias=None, selection_model="none")
-    ignored = CBES(**shared).fit(roi_studyset)
-    honoured = CBES(**shared, analysis_mask="analysis_mask").fit(roi_studyset)
-
-    n_ignored = ignored.get_map("n_studies", return_type="array").ravel()[outside]
-    n_honoured = honoured.get_map("n_studies", return_type="array").ravel()[outside]
-    # The slab studies' kernels reach this voxel, and must stop counting once the mask is read.
-    assert n_ignored > n_honoured, (n_ignored, n_honoured)
+def test_simulator_respects_the_reporting_threshold(tmp_path):
+    """A study reports a peak only where its statistic cleared the threshold it applied."""
+    collection = make_studyset(tmp_path / "thresh_sim", n_studies=8, seed=1, threshold_z=4.5)
+    values = []
+    for analysis in collection.analyses:
+        for point in analysis.points:
+            for kind, value in point.values.items() if isinstance(point.values, dict) else ():
+                if kind in ("z_stat", "value_z"):
+                    values.append(abs(float(value)))
+    reported = np.abs(collection.coordinates["z_stat"].dropna().values)
+    assert reported.size
+    assert reported.min() >= 4.5 - 1e-6
 
 
-def test_an_analysis_mask_covering_nothing_means_nothing_rather_than_everything(
-    roi_studyset, tmp_path, caplog
-):
-    """An empty declared mask must not fall back to whole-brain, which inverts its meaning.
+def test_simulator_writes_images_only_when_asked(tmp_path):
+    """``n_image_studies`` is what makes a simulated collection a valid CBES input."""
+    plain = make_studyset(tmp_path / "plain", n_images=0, n_studies=6, seed=2)
+    assert not {"g", "g_var"} & set(plain.images.columns)
 
-    Dropping it used to do exactly that: a study saying "I examined nothing in this volume"
-    would be restored to contributing everywhere, instead of contributing neither a value nor
-    a silence.
-    """
-    from nimare.studyset import Studyset
-
-    affine = roi_studyset.masker.mask_img.affine
-    shape = roi_studyset.masker.mask_img.shape[:3]
-    empty = tmp_path / "empty.nii.gz"
-    nib.save(nib.Nifti1Image(np.zeros(shape, np.int32), affine), empty)
-    brain = tmp_path / "brain.nii.gz"
-    nib.save(nib.Nifti1Image(np.ones(shape, np.int32), affine), brain)
-
-    studies = [
-        {
-            "id": f"e{k}",
-            "name": f"e{k}",
-            "metadata": {"sample_sizes": [30]},
-            "analyses": [
-                {
-                    "id": f"e{k}-1",
-                    "name": "1",
-                    "metadata": {"sample_sizes": [30]},
-                    "points": [
-                        {
-                            "space": "MNI",
-                            "coordinates": [0.0, 0.0, 0.0],
-                            "values": [{"kind": "Z", "value": 4.0}],
-                        }
-                    ],
-                    "images": [
-                        {
-                            "url": str(empty if k == 0 else brain),
-                            "filename": "m.nii.gz",
-                            "space": "MNI",
-                            "value_type": "analysis_mask",
-                        }
-                    ],
-                }
-            ],
-        }
-        for k in range(6)
-    ]
-    studyset = Studyset(
-        {"id": "empty_mask", "name": "empty_mask", "studies": studies},
-        target=None,
-        mask=str(roi_studyset.masker.mask_img.get_filename() or brain),
-    )
-
-    estimator = CBES(fwhm=8.0, null_method="none", analysis_mask="analysis_mask")
-    with caplog.at_level("WARNING"):
-        estimator.fit(studyset)
-    assert "covering no in-mask voxel" in caplog.text
-    # Kept as an all-False mask rather than discarded, so the study contributes nothing.
-    empty_masks = [m for m in estimator._analysis_masks_.values() if not m.any()]
-    assert len(empty_masks) == 1
+    donors = make_studyset(tmp_path / "donors", n_images=2, n_studies=6, seed=2)
+    assert {"g", "g_var"} <= set(donors.images.columns)
+    assert int(donors.images["g"].notna().sum()) == 2
+    # The donors keep their coordinate tables: a paper that shares its maps still tabulates.
+    assert len(donors.coordinates)
 
 
-def test_the_coverage_cache_rebuilds_when_the_configuration_changes(mixed_image_studyset):
-    """A cache keyed on shape alone hands one fit's censoring matrix to a different fit.
-
-    Calibration fits the coordinates alone and then each image donor alone. Those share a
-    roster and an active extent but not a focus table, so a key of (extent, analysis count)
-    matched and the donor fits silently reused the coordinate fit's coverage.
-    """
-    from nimare.meta.cbma import effectsize as module
-
-    plain = module.CBES._coverage_entries
-    calls = {"n": 0}
-
-    def counted(self, *args, **kwargs):
-        calls["n"] += 1
-        return plain(self, *args, **kwargs)
-
-    module.CBES._coverage_entries = counted
-    try:
-        estimator = CBES(
-            fwhm=8.0, null_method="none", peak_bias="per-study", peak_bias_scale="images"
+def test_simulator_refuses_images_without_a_field(tmp_path):
+    """The point simulator never builds a map, so there is nothing to write."""
+    with pytest.raises(ValueError, match="needs simulate_field=True"):
+        create_effect_size_coordinate_studyset(
+            [TRUTH], n_studies=4, simulate_field=False, n_image_studies=1, image_dir=str(tmp_path)
         )
-        estimator.fit(mixed_image_studyset)
-    finally:
-        module.CBES._coverage_entries = plain
-
-    # Coordinates alone, each donor alone, then the fit itself: more than one configuration.
-    assert calls["n"] > 1, calls["n"]
-    # And the key names what decides coverage, not merely its shape.
-    key = estimator._coverage_[0]
-    assert len(key) >= 8, key
-
-
-def test_each_calibration_fit_gets_only_the_studies_it_contains(mixed_image_studyset):
-    """A donor-only fit handed the whole roster reads every other study as silent everywhere.
-
-    A study with no foci in the table a fit receives falls through ``_coverage_entries`` as
-    having examined every voxel and reported nothing. That is right in the real fit and wrong
-    in a calibration fit, where it puts one censored-silent observation per coordinate study
-    into a fit that should hold one image. On the pain collection it understated the scale by
-    6 to 14%, least with the most donors.
-    """
-    rosters = []
-    plain = CBES._statistic
-
-    def recording(self, table, sample_sizes, thresholds, image_studies=None):
-        if sample_sizes is not None:
-            rosters.append((tuple(sample_sizes.index), tuple(image_studies or ()), len(table)))
-        return plain(self, table, sample_sizes, thresholds, image_studies)
-
-    CBES._statistic = recording
-    try:
-        estimator = CBES(
-            fwhm=8.0, null_method="none", peak_bias="per-study", peak_bias_scale="images"
-        )
-        estimator.fit(mixed_image_studyset)
-    finally:
-        CBES._statistic = plain
-
-    donors = set(estimator._image_studies_)
-    assert donors, "fixture must supply image donors for this to test anything"
-
-    donor_fits = [r for r in rosters if len(r[1]) == 1]
-    assert len(donor_fits) == len(donors)
-    for roster, images, n_foci in donor_fits:
-        # One study in the roster, and it is the donor being calibrated. Nothing else can
-        # contribute silence.
-        assert roster == images
-        assert n_foci == 0
-
-    # And the coordinate-only fit holds the coordinate studies, never the donors.
-    coordinate_fits = [r for r in rosters if not r[1] and r[2]]
-    assert coordinate_fits
-    for roster, _, _ in coordinate_fits:
-        assert not (set(roster) & donors)
-
-    # The thresholds have to be narrowed alongside the sample sizes, or the fit would index a
-    # roster of one against a threshold series of many.
-    assert estimator.scale_source_ == "images"
-
-
-def test_the_family_wise_correction_is_withheld_when_the_null_barely_moves():
-    """Counting arrangements is not the same as the arrangements moving the maximum.
-
-    A collection of two-focus studies admits ``2**k`` rearrangements, so it clears the
-    arrangement-count guard comfortably -- and yet swapping two similar magnitudes within a
-    study barely moves the map's maximum, so the permutation distribution attains a handful of
-    values and understates the spread of the quantity it stands in for. Measured on simulated
-    global nulls: at two foci per study the family-wise rate was 0.150 against a nominal 0.050,
-    with 6 distinct maxima out of 200 permutations and a coefficient of variation of 0.032; at
-    six foci it was exactly nominal, with 57 distinct maxima and a coefficient of variation of
-    0.106. Turning the generalized Pareto tail off changed neither.
-    """
-    from nimare.meta.cbma.effectsize import _null_maxima_diagnostics
-
-    # The degenerate case: six values, tightly clustered.
-    usable, n_distinct, cv = _null_maxima_diagnostics(
-        np.repeat(np.linspace(4.0, 4.2, 6), 34)[:200]
-    )
-    assert not usable
-    assert n_distinct == 6
-    assert cv < 0.05
-
-    # The nominal case: a spread-out distribution.
-    rng = np.random.default_rng(0)
-    usable, n_distinct, cv = _null_maxima_diagnostics(rng.normal(4.0, 0.42, 200))
-    assert usable
-    assert cv > 0.05
-
-    # Both statistics must be low before the null is refused, so a coarse but wide distribution
-    # is kept -- it still separates an observed value from the bulk -- and so is a fine but
-    # narrow one, which can arise when every study reports many foci of similar size.
-    assert _null_maxima_diagnostics(np.repeat(np.array([2.0, 4.0, 8.0]), 67)[:200])[0]
-    assert _null_maxima_diagnostics(rng.normal(4.0, 0.002, 200))[0]
-
-    # Nothing to measure is not usable either.
-    assert not _null_maxima_diagnostics(np.array([3.0]))[0]
-    assert not _null_maxima_diagnostics(np.array([]))[0]
-
-    # Non-finite entries are dropped rather than poisoning the mean.
-    assert _null_maxima_diagnostics(
-        np.concatenate([rng.normal(4.0, 0.42, 200), [np.inf, np.nan]])
-    )[0]
-
-
-def test_the_marginal_standard_error_matches_a_numerical_hessian():
-    """``se_marginal`` must be the delta-method error of ``mu * pi``, checked numerically.
-
-    ``g_marginal`` is the only quantity CBES reports that an image-based meta-analysis also
-    estimates, so it is the one that can be held to coverage against an external reference -- and
-    it had no error at all. The error comes from the whole 2x2 inverse rather than the Schur
-    complement, since the product depends on both factors.
-
-    The check builds the log-likelihood out of the estimator's own working sets, so that what is
-    tested is the information formula and not a second opinion about what the likelihood is.
-    """
-    from nimare.meta.cbma.effectsize import (
-        _normal_pdf,
-        _observed_information,
-        null_effect_variance,
-    )
-
-    k = 12
-    sizes = np.full(k, 30.0)
-    null_var = null_effect_variance(sizes, design="one-sample")[:, None]
-    cutoff = 0.55
-    weights = np.zeros((k, 1))
-    g_obs = np.zeros((k, 1))
-    var_obs = np.ones((k, 1))
-    covered = np.zeros((k, 1), dtype=bool)
-    for study, value in enumerate((0.72, 0.61, 0.95, 0.80, 0.68, 0.91)):
-        weights[study, 0] = 1.0
-        g_obs[study, 0] = value
-        var_obs[study, 0] = float(null_var[study, 0])
-        covered[study, 0] = True
-    # The rest are covered and silent, which is what makes the prevalence estimable at all.
-    for study in range(6, k):
-        covered[study, 0] = True
-        var_obs[study, 0] = float(null_var[study, 0])
-
-    estimator = CBES(fwhm=8.0, null_method="none", max_iter=400)
-    shared = dict(
-        weights=weights,
-        g_obs=g_obs,
-        var_obs=var_obs,
-        covered=covered,
-        tau2=np.zeros(1),
-        null_var=null_var,
-        cutoffs=np.full((k, 1), cutoff),
-        start=np.array([0.75]),
-    )
-    mu, pi, _, se_marginal = estimator._fit_chunk(**shared)
-    assert np.isfinite(se_marginal[0]) and se_marginal[0] > 0
-
-    working = {name: value for name, value in shared.items() if name != "start"}
-    reporting, silent = estimator._working_sets(**working)
-
-    def log_likelihood(mu_value, pi_value):
-        """Evaluate the estimator's own censored mixture at both parameters."""
-        mu_vec = np.array([mu_value])
-        density_effect = (
-            _normal_pdf((reporting.g - mu_vec[reporting.voxel]) / reporting.sigma)
-            / reporting.sigma
-        )
-        mixture_rep = pi_value * density_effect + (1.0 - pi_value) * reporting.density_null
-        censoring = silent.censoring(mu_vec)
-        mixture_sil = pi_value * censoring["prob"] + (1.0 - pi_value) * silent.prob_silent_null
-        return float(
-            np.sum(reporting.weight * np.log(mixture_rep))
-            + np.sum(silent.weight * np.log(mixture_sil))
+    with pytest.raises(ValueError, match="needs image_dir"):
+        create_effect_size_coordinate_studyset(
+            [TRUTH], n_studies=4, simulate_field=True, n_image_studies=1
         )
 
-    # Central differences for the 2x2 Hessian at the fitted point.
-    step_mu, step_pi = 1e-4, 1e-4
-    m, p = float(mu[0]), float(pi[0])
-    d2_mu = (
-        log_likelihood(m + step_mu, p) - 2 * log_likelihood(m, p) + log_likelihood(m - step_mu, p)
-    ) / step_mu**2
-    d2_pi = (
-        log_likelihood(m, p + step_pi) - 2 * log_likelihood(m, p) + log_likelihood(m, p - step_pi)
-    ) / step_pi**2
-    d2_cross = (
-        log_likelihood(m + step_mu, p + step_pi)
-        - log_likelihood(m + step_mu, p - step_pi)
-        - log_likelihood(m - step_mu, p + step_pi)
-        + log_likelihood(m - step_mu, p - step_pi)
-    ) / (4 * step_mu * step_pi)
-    numerical = np.linalg.inv(-np.array([[d2_mu, d2_cross], [d2_cross, d2_pi]]))
-    gradient = np.array([p, m])  # d(mu*pi)/d(mu, pi)
-    expected = float(gradient @ numerical @ gradient)
 
-    assert np.isclose(se_marginal[0] ** 2, expected, rtol=0.05), (
-        se_marginal[0] ** 2,
-        expected,
-    )
-
-    # The cross term is small here, and that is worth pinning rather than assuming either way:
-    # I_mu_pi carries a factor r(1 - r), so a threshold that separates the components cleanly
-    # leaves the two factors nearly orthogonal -- the reported values identify mu and the count
-    # of silent studies identifies pi. Measured under 1% across prevalences from 0.20 to 1.00.
-    independent = p**2 * numerical[0, 0] + m**2 * numerical[1, 1]
-    assert np.isclose(independent, expected, rtol=0.02)
-
-    # And the analytic blocks agree with the numerical ones they are derived from.
-    information, marginal_variance = _observed_information(
-        width=1,
-        pi=pi,
-        reporting=reporting,
-        silent=silent,
-        mu=mu,
-        censoring=silent.censoring(mu),
-    )
-    assert np.isclose(marginal_variance[0], expected, rtol=0.05)
-    assert information[0] > 0
-
-
-def test_the_reported_error_exceeds_the_em_curvature_it_used_to_be():
-    """The EM's curvature is not the observed information, and is always more optimistic.
-
-    Per observation the Q function keeps ``r * h`` and drops ``r(1 - r) s^2``, the part
-    attributable to not knowing which mixture component the observation came from. Dropping a
-    positive term from a negative curvature overstates the information, so using it as an error
-    understated the uncertainty -- 62.5% to 89.8% coverage of nominal-95% intervals, against
-    94.5% to 98.4% for the observed information. It also ignored the jointly estimated
-    prevalence, which the Schur complement now accounts for.
-    """
-    from nimare.meta.cbma.effectsize import (
-        _mu_derivatives,
-        _observed_information,
-        null_effect_variance,
-    )
-
-    k = 12
-    sizes = np.full(k, 30.0)
-    null_var = null_effect_variance(sizes, design="one-sample")[:, None]
-    cutoff = 0.55
-    weights = np.zeros((k, 1))
-    g_obs = np.zeros((k, 1))
-    var_obs = np.ones((k, 1))
-    covered = np.zeros((k, 1), dtype=bool)
-    for study, value in enumerate((0.72, 0.61, 0.95, 0.80, 0.68, 0.91)):
-        weights[study, 0] = 1.0
-        g_obs[study, 0] = value
-        var_obs[study, 0] = float(null_var[study, 0])
-        covered[study, 0] = True
-
-    estimator = CBES(fwhm=8.0, null_method="none", max_iter=400)
-    shared = dict(
-        weights=weights,
-        g_obs=g_obs,
-        var_obs=var_obs,
-        covered=covered,
-        tau2=np.zeros(1),
-        null_var=null_var,
-        cutoffs=np.full((k, 1), cutoff),
-        start=np.array([0.75]),
-    )
-    mu, pi, se, se_marginal = estimator._fit_chunk(**shared)
-    assert np.isfinite(se[0]) and se[0] > 0
-
-    # Rebuild the working sets at the fitted point and compare the two quantities directly.
-    reporting, silent = estimator._working_sets(
-        weights=weights,
-        g_obs=g_obs,
-        var_obs=var_obs,
-        covered=covered,
-        tau2=np.zeros(1),
-        null_var=null_var,
-        cutoffs=np.full((k, 1), cutoff),
-    )
-    censoring = silent.censoring(mu)
-    _, curvature = _mu_derivatives(
-        width=1,
-        mu_rep=mu[reporting.voxel],
-        g_rep=reporting.g,
-        precision_rep=reporting.precision,
-        rep_voxel=reporting.voxel,
-        weight_rep=reporting.weight * reporting.responsibility,
-        sil_voxel=silent.voxel,
-        weight_sil=silent.weight * silent.responsibility,
-        censoring=censoring,
-    )
-    information, marginal_variance = _observed_information(
-        width=1, pi=pi, reporting=reporting, silent=silent, mu=mu, censoring=censoring
-    )
-    assert curvature[0] < 0
-    q_curvature_se = 1.0 / np.sqrt(-curvature[0])
-    assert information[0] > 0
-    assert se[0] > q_curvature_se, (se[0], q_curvature_se)
-    # And the reported error is the observed-information one, not the curvature one.
-    assert np.isclose(se[0], 1.0 / np.sqrt(information[0]))
-    # The product's variance comes from the same matrix and must be usable here too.
-    assert np.isfinite(marginal_variance[0]) and marginal_variance[0] > 0
-
-
-def test_effect_size_images_survive_conversion_to_a_dataset(mixed_image_studyset):
-    """A ``g``/``g_var`` pair must not be dropped on the way from a collection to a Dataset.
-
-    ``nimare.io``'s supported set listed the test statistics and omitted the effect-size maps,
-    so ``to_dataset()`` silently deleted exactly the columns this estimator reads. The fit then
-    proceeded from coordinates alone, which is the configuration whose interval does not cover.
-    """
-    dataset = mixed_image_studyset.to_dataset()
-    assert "g" in dataset.images.columns
-    assert "g_var" in dataset.images.columns
-    assert dataset.images[["g", "g_var"]].notna().all(axis=1).any()
-
-    # Point statistics have to survive too: ``Point.values`` is a dict keyed by column name,
-    # the converter only handled the list-of-{kind, value} shape, and the mismatch dropped
-    # every reported peak height without a word.
-    assert "z_stat" in dataset.coordinates.columns
-    assert dataset.coordinates["z_stat"].notna().all()
-
-    # The mask is passed explicitly because ``to_dataset()`` does not carry the collection's
-    # mask, and CBES then falls back to the default MNI template -- a separate way the legacy
-    # path changes the meaning of a fit, and one that moved this scale by 22% when the two
-    # sides were first compared. Holding it fixed is what isolates the conversion.
-    config = dict(
-        fwhm=8.0,
-        null_method="none",
-        peak_bias="per-study",
-        peak_bias_scale="images",
-        mask=mixed_image_studyset.masker.mask_img,
-    )
-    through_dataset = CBES(**config)
-    through_dataset.fit(dataset)
-    assert through_dataset.scale_source_ == "images"
-    assert through_dataset.n_scale_donors_ >= 2
-
-    # The contract that matters: converting a collection must not change the answer.
-    direct = CBES(**config)
-    direct.fit(mixed_image_studyset)
-    assert through_dataset._peak_bias_scale_ == pytest.approx(direct._peak_bias_scale_, rel=1e-6)
-
-
-def test_being_unable_to_find_any_image_is_said_out_loud(mixed_image_studyset, caplog):
-    """Falling back to coordinates alone in silence is the failure mode worth warning about.
-
-    A coordinate-only collection has no images table and nothing is wrong with it. A collection
-    that carries image rows in some other value type was asked for images and could not supply
-    them, and the resulting fit is a different estimator than the one the caller configured.
-    """
-    import logging
-
-    dataset = mixed_image_studyset.to_dataset()
-    # The shape of a collection whose maps came through as test statistics rather than as
-    # effect sizes: image rows present, neither column this estimator reads. Every g-derived
-    # column goes, including the ``__relative`` one a Dataset re-resolves the absolute path
-    # from, or the estimator still sees a 'g' column naming files that are not there.
-    images = dataset.images
-    dataset.images = images.drop(
-        columns=[c for c in images.columns if c.startswith(("g", "g_var"))]
-    ).assign(z="/nowhere/z.nii.gz")
-
-    estimator = CBES(fwhm=8.0, null_method="none", peak_bias="per-study")
-    with caplog.at_level(logging.WARNING, logger="nimare.meta.cbma.effectsize"):
-        estimator.fit(dataset)
-    messages = [r.message for r in caplog.records]
-    named = [m for m in messages if "no study supplies both a 'g' and a 'g_var' image" in m]
-    assert named, messages
-    # The message has to name what the collection *does* carry, or a caller cannot tell a
-    # mislabelled value type from a missing file.
-    assert "'z'" in named[0]
-
-    # And the quiet case stays quiet: a coordinate-only collection has no images table and
-    # nothing is wrong with it.
-    coords_only = mixed_image_studyset.to_dataset()
-    coords_only.images = coords_only.images.iloc[0:0]
-    caplog.clear()
-    with caplog.at_level(logging.WARNING, logger="nimare.meta.cbma.effectsize"):
-        CBES(fwhm=8.0, null_method="none", peak_bias="per-study").fit(coords_only)
-    assert not any("g_var" in r.message for r in caplog.records)
-
-
-def test_the_documented_interval_recipe_needs_a_coverage_mask(studyset, small_mask):
-    """``dof`` is clipped at zero, and the documented recipe is unusable there.
-
-    The class docstring tells callers to refer ``se`` to a *t* on ``dof``. ``dof`` is
-    ``n_eff - 1`` clipped at zero, so a sparsely reached voxel gives a critical value of ``nan``
-    (at 0), 6582 (at 0.3) or 12.71 (at 1) -- none reported as an error. This pins both halves of
-    the claim the docstring makes: that such voxels exist in a real fit, and that the arithmetic
-    there is what the docstring says it is.
-    """
-    from scipy.stats import t as student_t
-
-    assert np.isnan(student_t.ppf(0.975, 0.0))
-    assert student_t.ppf(0.975, 1.0) == pytest.approx(12.706, rel=1e-3)
-
-    estimator = CBES(fwhm=8.0, mask=small_mask, null_method="none")
-    result = estimator.fit(studyset)
-    dof = result.get_map("dof", return_type="array").ravel()
-    n_eff = result.get_map("n_eff", return_type="array").ravel()
-    covered = result.get_map("n_studies", return_type="array").ravel() > 0
-
-    # dof is exactly n_eff - 1 where that is positive, and never negative.
-    assert np.all(dof >= 0)
-    positive = n_eff > 1.0
-    assert np.allclose(dof[positive], n_eff[positive] - 1.0)
-
-    # The point of the caveat: among voxels the fit reports on, some carry a dof too small to
-    # refer anything to. If this ever stops being true the caveat can be softened.
-    assert covered.any()
-    assert np.any(dof[covered] < 1.0)
+def test_effect_size_images_survive_conversion_to_a_dataset(studyset, small_mask):
+    """A Dataset built from the collection must still carry the g images CBES needs."""
+    dataset = studyset.to_dataset()
+    assert {"g", "g_var"} <= set(dataset.images.columns)
+    assert int(dataset.images["g"].notna().sum()) == 2
+    result = CBES(mask=small_mask, null_method="none").fit(dataset)
+    assert np.isfinite(value_at(result, "g"))
