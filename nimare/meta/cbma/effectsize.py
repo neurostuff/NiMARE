@@ -998,6 +998,18 @@ class CBES(Estimator):
         uncertainty and no reporting threshold -- so it enters at kernel weight 1 and
         contributes no censoring term. Supply them with
         ``ImageTransformer(target=["g", "g_var"])``; a collection may mix the two freely.
+
+        **Where ``g_var`` came from is worth knowing, because it sets a floor on the
+        magnitude.** Contributions are pooled by inverse variance, and Hedges' variance
+        ``1/n + g^2 / (2(n - 1))`` is a function of the *observed* effect -- so a study that
+        drew high gets a larger variance and less weight, and the pooled estimate is pulled
+        toward zero. Measured on a simulated collection with a known truth of 0.800 where every
+        study supplies an image, that costs about 2 to 3% of the magnitude: -0.026, falling to
+        -0.002 when the same fit is given a variance not computed from the draw. It is a bias
+        in each weight rather than a small-sample artefact, so it does not shrink as studies
+        accumulate. A ``g_var`` map converted from a test statistic carries the term; one
+        estimated per voxel by a mixed model does not, and this estimator cannot tell which it
+        was handed, so it makes no attempt to correct it.
     peak_bias : :obj:`float`, "per-study", or None, optional
         Divide reported effect sizes by ``rho_k`` before pooling, to undo the inflation of a
         reported peak: a peak is a local maximum that cleared a threshold, so its height
