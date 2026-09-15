@@ -22,6 +22,7 @@ from nimare.meta.cbma.effectsize import (
     _NULL_Z_STEP,
     CBES,
     DEFAULT_COVERAGE_RADIUS_MM,
+    DEFAULT_REPORT_RADIUS_MM,
     NULL_METHODS,
     _local_dersimonian_laird,
     _null_bin_edges,
@@ -487,7 +488,14 @@ def test_silence_is_only_read_where_no_focus_is_nearby(studyset, small_mask):
     That is the design: a coordinate table says *where* a study reported, and its peak height
     is discarded, so a reporting coordinate study informs neither term.
     """
-    estimator = CBES(mask=small_mask, null_method="none", threshold="reporting_threshold")
+    # report_radius=None, so a study names exactly the voxels its own foci sit in and the
+    # containment check below is exact. The default widens that; see the three-zones test.
+    estimator = CBES(
+        mask=small_mask,
+        null_method="none",
+        threshold="reporting_threshold",
+        report_radius=None,
+    )
     estimator.fit(studyset)
 
     table = estimator._focus_table_
@@ -787,7 +795,7 @@ def test_a_thin_indicator_still_fits_the_prevalence(studyset, small_mask):
     assert (values["prevalence"] < 1.0).any(), "pi should still be free where silence speaks"
 
 
-def test_the_report_radius_makes_three_zones_and_defaults_to_the_named_voxel(studyset, small_mask):
+def test_the_report_radius_makes_three_zones_and_widens_only_the_report(studyset, small_mask):
     """``report_radius`` widens the ``-1`` limb only, leaving the ``0`` ring between the radii.
 
     The three zones are the whole design: a report bounds the effect from below over a small
@@ -796,24 +804,25 @@ def test_the_report_radius_makes_three_zones_and_defaults_to_the_named_voxel(stu
     silences, or it has changed what a silence means.
     """
     shared = dict(mask=small_mask, null_method="none", threshold="reporting_threshold")
-    narrow = CBES(**shared)
-    narrow.fit(studyset)
-    _, (_, _, narrow_sign) = narrow._coverage_
 
-    wide = CBES(report_radius=6.0, **shared)
-    wide.fit(studyset)
-    _, (_, _, wide_sign) = wide._coverage_
+    def signs(**kwargs):
+        estimator = CBES(**shared, **kwargs)
+        estimator.fit(studyset)
+        return estimator._coverage_[1][2]
 
-    # The silences are untouched: a report radius inside the coverage radius cannot reach them.
-    assert (wide_sign > 0).sum() == (narrow_sign > 0).sum()
-    # And the reports have grown, at the expense of the ring that carried no indicator.
-    assert (wide_sign < 0).sum() > (narrow_sign < 0).sum()
+    named = signs(report_radius=None)
+    default = signs()
+    wide = signs(report_radius=6.0)
 
-    # The default is the named voxel, so it must be bit-identical to not passing the argument.
-    plain = CBES(report_radius=None, **shared)
-    plain.fit(studyset)
-    _, (_, _, plain_sign) = plain._coverage_
-    assert np.array_equal(plain_sign, narrow_sign)
+    for wider in (default, wide):
+        # A report radius inside the coverage radius cannot reach the silences.
+        assert (wider > 0).sum() == (named > 0).sum()
+        # The reports grow at the expense of the ring that carried no indicator.
+        assert (wider < 0).sum() > (named < 0).sum()
+
+    # The default is 4 mm, between the named voxel and a wider sphere.
+    assert (named < 0).sum() < (default < 0).sum() < (wide < 0).sum()
+    assert np.array_equal(default, signs(report_radius=DEFAULT_REPORT_RADIUS_MM))
 
 
 def test_the_profile_interval_brackets_the_estimate_and_is_asked_for(studyset, small_mask):

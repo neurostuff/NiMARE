@@ -67,6 +67,14 @@ _MIN_NULL_MAXIMA_CV = 0.05
 #: 0.65, 0.73, 0.76, 0.81 at 8, 14, 20, 28 mm -- so the choice is not what limits the estimate.
 DEFAULT_COVERAGE_RADIUS_MM = 20.0
 
+#: Radius, in mm, over which a reported focus asserts its lower bound. A report says the effect
+#: cleared the cut somewhere in a small neighbourhood, not at one named voxel: a peak is a local
+#: maximum selected for size and displaced from the effect, so the named voxel is not privileged.
+#: 4 mm minimises error where the two limbs are balanced and where the silences outnumber the
+#: reports by three orders of magnitude; a wider radius centres the peaks better but costs
+#: whole-map accuracy.
+DEFAULT_REPORT_RADIUS_MM = 4.0
+
 #: Default two-tailed reporting threshold, on the z scale, when a study gives no better
 #: information. p < .001 uncorrected, the most common screening threshold in the literature.
 DEFAULT_REPORTING_THRESHOLD_Z = 3.2905267314919255
@@ -865,20 +873,21 @@ class CBES(Estimator):
 
         Used only when ``selection_model="zero-inflated"``. ``g`` is insensitive to it;
         ``prevalence`` rises with it, which is one reason to read that map ordinally.
-    report_radius : :obj:`float` or None, default=None
+    report_radius : :obj:`float` or None, default=4.0
         Radius, in mm, over which a reported focus asserts its lower bound. ``None`` asserts it
-        at the named voxel only, which is right when the coordinate studies are few: a peak is
-        a local maximum selected for size and displaced from the effect, so a neighbour's bound
-        is optimistic. On a small collection widening it only cost accuracy -- rmse 0.070 at
-        the named voxel against 0.113 at 4 mm.
+        at the named voxel alone.
 
-        The opposite regime is what it exists for. With hundreds of coordinate studies a voxel
-        collects a thousand silences and at most a handful of reports, and both ``g`` and
-        ``prevalence`` collapse. On a 1,443-study pain corpus against one image, widening the
-        report undoes that: the error at the strongest voxels runs −0.303 at the named voxel,
-        −0.122 at 4 mm, −0.031 at 6 mm and +0.022 at 8 mm, where ``g`` recovers 0.622 of a true
-        0.622. Whole-map rmse is lowest at 4 mm (0.216 against 0.234), so 4 mm minimises error
-        and 8 mm centres the peaks; there is no single best radius.
+        The default is not the named voxel because a peak is a local maximum selected for size
+        and displaced from wherever the effect is, so the named voxel is not the privileged
+        one. It matters most where the silences swamp the reports: on a 1,443-study pain corpus
+        a voxel collects a thousand silences and at most four reports, and both ``g`` and
+        ``prevalence`` collapse. Against one image there, the error at the strongest voxels
+        runs −0.303 at the named voxel, −0.122 at 4 mm, −0.031 at 6 mm and +0.022 at 8 mm,
+        where ``g`` recovers 0.622 of a true 0.622.
+
+        4 mm is the whole-map optimum (rmse 0.216 against 0.234 at the named voxel); a wider
+        radius centres the peaks better and costs rmse, so raise it when a calibrated magnitude
+        at the peaks matters more than error everywhere.
     max_iter : :obj:`int`, default=25
         EM iterations. Voxels are retired as they settle, so this bounds the slowest rather
         than the typical one.
@@ -919,7 +928,9 @@ class CBES(Estimator):
     ``g_marginal`` is :math:`\pi\mu`, the mean over all studies including the null ones.
 
     Measurements behind the points below are in ``notes/cbes-evidence.md`` in the companion
-    `nimare-experiments` repository, with symbolic derivations in its ``proofs/``.
+    `nimare-experiments` repository, with symbolic derivations in its ``proofs/``. Figures
+    marked ``[named voxel]`` were taken with ``report_radius=None``, before it defaulted to
+    4 mm, and are being re-measured.
 
     1. **Which map to read is a question about the estimand.** An image-based meta-analysis
        targets :math:`\pi\mu`, so ``g_marginal`` is the map comparable to an IBMA or to the
@@ -970,7 +981,8 @@ class CBES(Estimator):
 
     **The correction can make ``g`` worse than doing nothing.** Against a reference built from
     subjects that made no coordinate, an images-only pool recovered 0.85 of the true magnitude
-    where ``g`` recovered 0.63, and the fitted prevalence read 0.66 against a true 1.000. That
+    where ``g`` recovered 0.63, and the fitted prevalence read 0.66 against a true 1.000
+    [named voxel]. That
     is what happens when every study really has the effect: there is no absence to find and any
     :math:`\pi < 1` is error. On the pain collection, where studies genuinely differ, the same
     machinery improves the level substantially. Which regime a collection is in is not
@@ -1001,7 +1013,7 @@ class CBES(Estimator):
         threshold=None,
         clamp_threshold=True,
         coverage_radius=DEFAULT_COVERAGE_RADIUS_MM,
-        report_radius=None,
+        report_radius=DEFAULT_REPORT_RADIUS_MM,
         max_iter=25,
         null_method="permute-images",
         cluster_threshold=0.001,
