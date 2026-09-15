@@ -787,6 +787,35 @@ def test_a_thin_indicator_still_fits_the_prevalence(studyset, small_mask):
     assert (values["prevalence"] < 1.0).any(), "pi should still be free where silence speaks"
 
 
+def test_the_report_radius_makes_three_zones_and_defaults_to_the_named_voxel(studyset, small_mask):
+    """``report_radius`` widens the ``-1`` limb only, leaving the ``0`` ring between the radii.
+
+    The three zones are the whole design: a report bounds the effect from below over a small
+    sphere, a silence bounds it from above beyond ``coverage_radius``, and the ring in between
+    says nothing either way. Widening the report must eat into that ring and never into the
+    silences, or it has changed what a silence means.
+    """
+    shared = dict(mask=small_mask, null_method="none", threshold="reporting_threshold")
+    narrow = CBES(**shared)
+    narrow.fit(studyset)
+    _, (_, _, narrow_sign) = narrow._coverage_
+
+    wide = CBES(report_radius=6.0, **shared)
+    wide.fit(studyset)
+    _, (_, _, wide_sign) = wide._coverage_
+
+    # The silences are untouched: a report radius inside the coverage radius cannot reach them.
+    assert (wide_sign > 0).sum() == (narrow_sign > 0).sum()
+    # And the reports have grown, at the expense of the ring that carried no indicator.
+    assert (wide_sign < 0).sum() > (narrow_sign < 0).sum()
+
+    # The default is the named voxel, so it must be bit-identical to not passing the argument.
+    plain = CBES(report_radius=None, **shared)
+    plain.fit(studyset)
+    _, (_, _, plain_sign) = plain._coverage_
+    assert np.array_equal(plain_sign, narrow_sign)
+
+
 def test_the_profile_interval_brackets_the_estimate_and_is_asked_for(studyset, small_mask):
     """``interval="profile"`` emits bounds that contain ``g``; ``"wald"`` emits none at all."""
     shared = dict(mask=small_mask, null_method="none", threshold="reporting_threshold")

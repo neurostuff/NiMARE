@@ -865,6 +865,19 @@ class CBES(Estimator):
 
         Used only when ``selection_model="zero-inflated"``. ``g`` is insensitive to it;
         ``prevalence`` rises with it, which is one reason to read that map ordinally.
+    report_radius : :obj:`float` or None, default=None
+        Radius, in mm, over which a reported focus asserts its lower bound. ``None`` asserts it
+        at the named voxel only, which is right when the coordinate studies are few: a peak is
+        a local maximum selected for size and displaced from the effect, so a neighbour's bound
+        is optimistic. On a small collection widening it only cost accuracy -- rmse 0.070 at
+        the named voxel against 0.113 at 4 mm.
+
+        The opposite regime is what it exists for, though whether it recovers accuracy there is
+        not yet established. With hundreds of coordinate studies a voxel collects a thousand
+        silences and at most a handful of reports, and both ``g`` and ``prevalence`` collapse.
+        On a 1,443-study pain corpus a 6 mm radius takes the silence-to-report ratio from
+        1089:1 to 80:1 and the share of voxels carrying any lower bound from 50% to 99%; that
+        much is measured, the effect on error is still being measured.
     max_iter : :obj:`int`, default=25
         EM iterations. Voxels are retired as they settle, so this bounds the slowest rather
         than the typical one.
@@ -987,6 +1000,7 @@ class CBES(Estimator):
         threshold=None,
         clamp_threshold=True,
         coverage_radius=DEFAULT_COVERAGE_RADIUS_MM,
+        report_radius=None,
         max_iter=25,
         null_method="permute-images",
         cluster_threshold=0.001,
@@ -1018,6 +1032,7 @@ class CBES(Estimator):
         self.threshold = threshold
         self.clamp_threshold = clamp_threshold
         self.coverage_radius = coverage_radius
+        self.report_radius = report_radius
         self.max_iter = max_iter
         self.null_method = null_method
         self.cluster_threshold = cluster_threshold
@@ -1550,6 +1565,17 @@ class CBES(Estimator):
         flat_offsets = offsets.astype(np.int64) @ padded_strides
         reach = np.abs(offsets).max(axis=0)
 
+        # Offsets for the report limb, on the same padded grid. A radius under one voxel
+        # reduces to the named voxel, which is the default and stays on the cheap path.
+        report_flat_offsets = None
+        if self.report_radius:
+            report_offsets = sphere_kernel_offsets(
+                self.report_radius, mask_img.header.get_zooms()[:3]
+            )
+            if report_offsets.shape[0] > 1:
+                report_flat_offsets = report_offsets.astype(np.int64) @ padded_strides
+                reach = np.maximum(reach, np.abs(report_offsets).max(axis=0))
+
         active_lookup = np.full(n_voxels, -1, dtype=np.int64)
         active_lookup[active] = np.arange(active.size)
         # Reused across studies to deduplicate the voxels a study's spheres reach. A scratch
@@ -1585,15 +1611,20 @@ class CBES(Estimator):
                 local = local[local >= 0]
                 reached_flag[local] = True
 
-            # A report is asserted at the named voxel only; a silence is asserted over the
-            # whole neighbourhood. A silence is a statement about a region, while a peak 18 mm
-            # away says nothing about this voxel, being a local maximum selected for size and
-            # displaced from the effect. Widening the report was swept and only hurt: rmse
-            # 0.070 at the named voxel against 0.113 at 4 mm, with the bias flipping -0.039 to
-            # +0.094. So a voxel a study reached but did not name gets no indicator.
+            # A silence is asserted over the whole neighbourhood, a report over
+            # `report_radius` and by default over the named voxel alone. The asymmetry is
+            # deliberate: a peak is a local maximum selected for size and displaced from the
+            # effect, so a neighbour's lower bound is optimistic, and on a small collection
+            # widening it only cost accuracy. Where the coordinate studies number in the
+            # hundreds the report limb is swamped instead, and this is the lever for that.
             at_focus = np.zeros(active.size, dtype=bool)
             if ijk.size:
-                named = padded_lookup[(ijk + pad) @ padded_strides]
+                base = (ijk + pad) @ padded_strides
+                named = (
+                    padded_lookup[base]
+                    if report_flat_offsets is None
+                    else padded_lookup[(base[:, None] + report_flat_offsets).ravel()]
+                )
                 named = named[named >= 0].astype(np.int64)
                 local = active_lookup[named]
                 at_focus[local[local >= 0]] = True
@@ -1678,6 +1709,8 @@ class CBES(Estimator):
             table[["i", "j", "k"]].values.astype(np.int64).tobytes() if len(table) else b"",
             np.asarray(table["id"].values, dtype=object).tobytes() if len(table) else b"",
             tuple(sorted((study, mask.tobytes()) for study, mask in masks.items())),
+            self.coverage_radius,
+            self.report_radius,
         )
         cached = getattr(self, "_coverage_", None)
         if cached is not None and cached[0] == coverage_key:
