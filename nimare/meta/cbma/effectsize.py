@@ -1300,6 +1300,14 @@ class CBES(Estimator):
     width.** Coverage across all sixteen arms of that table is predicted to a mean absolute
     error of 0.034 by nothing but the bias-to-width ratio.
 
+    One caveat on the table's own numbers: they score ``g +/- 1.96 se``, a *normal* interval,
+    not the *t* on ``dof`` recommended just above. The recommended interval is wider, so these
+    are a lower bound on what a caller following this documentation gets, and the gap is not
+    small where the bias is large -- propagating the same bias and spread through a *t* moves
+    the twenty-four-study coordinates-only row from 0.40 to between 0.49 and 0.83 depending on
+    ``dof``, which the table did not record. Rows that already cover move toward 1.00 and so
+    become more conservative, not less.
+
     Two consequences follow, and the second is counterintuitive. The interval is usable when
     the collection carries image donors to pin the peak-height scale, and is not otherwise --
     coordinates alone leave a bias of about 30% of the effect that no interval width can
