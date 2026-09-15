@@ -240,7 +240,18 @@ def test_cbes_produces_expected_maps(studyset, small_mask):
     """Every advertised map is present and in range, and the effect lands where simulated."""
     result = CBES(fwhm=12.0, mask=small_mask, null_method="none").fit(studyset)
 
-    expected = {"g", "se", "z", "p", "logp", "tau2", "n_studies", "n_eff", "prevalence"}
+    expected = {
+        "g",
+        "se",
+        "z",
+        "p",
+        "logp",
+        "tau2",
+        "n_studies",
+        "n_eff",
+        "prevalence",
+        "g_marginal",
+    }
     assert expected <= set(result.maps)
 
     p_values = result.get_map("p", return_type="array")
@@ -300,6 +311,34 @@ def test_zero_component_keeps_silence_from_reading_as_a_small_common_effect(
 
     assert 0.0 < value_at(result, "prevalence") < 1.0  # some studies null, some not
     assert value_at(result, "g") > 0.0  # and the effect among the rest is positive
+
+
+def test_the_marginal_effect_is_the_conditional_one_weighted_by_how_many_studies_have_it(
+    studyset, small_mask
+):
+    """``g_marginal`` averages over every study; ``g`` averages over those with an effect.
+
+    So the two differ by exactly ``prevalence``, and the marginal is the smaller wherever some
+    studies have no effect. It is emitted only under the zero-inflated model, because without a
+    prevalence there is no distinction between the two estimands to draw.
+    """
+    result = CBES(fwhm=12.0, mask=small_mask, null_method="none").fit(studyset)
+
+    g = result.get_map("g", return_type="array")
+    prevalence = result.get_map("prevalence", return_type="array")
+    marginal = result.get_map("g_marginal", return_type="array")
+    assert np.allclose(marginal, g * prevalence, atol=1e-6)
+
+    covered = result.get_map("n_studies", return_type="array") > 0
+    partial = covered & (prevalence < 1.0)
+    assert partial.any(), "nothing to compare if every covered voxel has every study"
+    assert np.all(np.abs(marginal[partial]) <= np.abs(g[partial]) + 1e-6)
+
+    without = CBES(fwhm=12.0, mask=small_mask, null_method="none", selection_model="none").fit(
+        studyset
+    )
+    assert "g_marginal" not in without.maps
+    assert "prevalence" not in without.maps
 
 
 def test_prevalence_tracks_the_simulated_fraction(small_mask):

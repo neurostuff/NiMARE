@@ -1124,6 +1124,10 @@ class CBES(Estimator):
                    to distinguish it from ``g_relative`` times an unknown constant.
                    Pinning fixes the map's average level and not its values: see the
                    compression described under Warnings.
+    "g_marginal"   ``g`` times ``prevalence``: the effect averaged over *all* studies
+                   rather than over those that have one. Added under the zero-inflated
+                   selection model. Closest of the magnitude maps to an independent
+                   reference; see below.
     "se"           Standard error of the pooled estimate. See ``se_method``.
     "z"            ``g / se``. Two-tailed. Unaffected by the scale.
     "p", "logp"    p-value for ``z``, and its ``-log10``.
@@ -1154,6 +1158,23 @@ class CBES(Estimator):
     0.81, a true 1.00 as 0.74 to 0.94. The ordering survives, so comparing voxels within one map
     is sound, but the number is not a prevalence. Its map-wide median sits near 0.4 whatever the
     truth, so a map cannot be summarised by it.
+
+    ``g_marginal`` is ``g`` times ``prevalence``, and estimates a different quantity from ``g``:
+    the effect averaged over every study, including those with none here, rather than over the
+    studies that have one. It inherits the unidentified scale of ``g`` and the compression of
+    ``prevalence``, so it is no more absolute than either -- but measured against references
+    built from studies the coordinates never touched it is consistently the closest of the
+    magnitude maps. On the 21-study NIDM pain collection split in half, with coordinates taken
+    the way a paper would tabulate them, it correlates +0.32 to +0.48 with the held-out truth
+    against +0.14 to +0.28 for ``g``, and where that truth is largest its ratio to it is 1.10 to
+    1.23 against 1.46 to 2.29.
+
+    Two caveats hold it to the same reading as everything else here. It does not escape the
+    compression described under Warnings -- across the truth's strata it moves about as little as
+    ``g`` does -- and it degrades when studies report few foci, because ``prevalence`` then falls
+    toward its floor: at six foci per study it came back at 0.70 times the held-out truth overall,
+    having overshot downward. Read it ordinally, and prefer it to ``g`` when a magnitude map is
+    wanted.
 
     :meth:`correct_fwe_montecarlo` adds ``logp_level-voxel``,
     ``logp_desc-size_level-cluster`` and ``logp_desc-mass_level-cluster`` (each with a
@@ -3066,6 +3087,7 @@ class CBES(Estimator):
         }
         if "prevalence" in fit:
             maps["prevalence"] = fit["prevalence"].astype(DEFAULT_FLOAT_DTYPE)
+            maps["g_marginal"] = (fit["g"] * fit["prevalence"]).astype(DEFAULT_FLOAT_DTYPE)
         if self._scale_is_pinned():
             # Only here is "g" on the Hedges' g scale rather than on its own, so only here is
             # there a second map to emit. It is the same array; the separate name is the claim.
