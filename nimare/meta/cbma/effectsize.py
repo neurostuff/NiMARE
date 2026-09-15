@@ -1270,7 +1270,17 @@ class CBES(Estimator):
     "dof"          ``n_eff - 1``, the degrees of freedom to refer ``se`` to. See below.
     ============== ===============================================================
 
-    Build an interval from ``se`` against a *t* on ``dof``, not against a normal. Under the
+    Build an interval from ``se`` against a *t* on ``dof``, not against a normal, and **mask on
+    ``n_eff`` before you do**. ``dof`` is ``n_eff - 1`` clipped at zero, and ``n_eff`` is a Kish
+    effective count over the studies whose kernels reach the voxel -- so it is well below the
+    number of studies in the collection, and at a sparsely reached voxel it approaches one. At
+    ``dof = 0`` the critical value is ``nan``; at ``dof = 0.3`` it is 6582; at ``dof = 1`` it is
+    12.71. None of those are reported as errors, so an unmasked map will contain voxels whose
+    interval is silently meaningless. For scale, on a twelve-study fit at the default kernel the
+    *median* ``dof`` is about 4.5, giving a critical value of 2.67 rather than 1.96 -- so the
+    distinction is 36% of the width even where the fit is healthy, not a small-sample footnote.
+    ``n_eff`` also rises with ``fwhm`` (median ``dof`` 4.5, 7.8, 9.7 at 10, 16 and 24 mm), which
+    is part of why the kernel choice moves the interval as much as it does. Under the
     selection model ``se`` is the observed information of the censored mixture likelihood at the
     fitted point, with the prevalence profiled out by a Schur complement -- so it carries both
     the uncertainty about which component an observation came from and the cost of not knowing

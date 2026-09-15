@@ -2859,3 +2859,34 @@ def test_being_unable_to_find_any_image_is_said_out_loud(mixed_image_studyset, c
     with caplog.at_level(logging.WARNING, logger="nimare.meta.cbma.effectsize"):
         CBES(fwhm=8.0, null_method="none", peak_bias="per-study").fit(coords_only)
     assert not any("g_var" in r.message for r in caplog.records)
+
+
+def test_the_documented_interval_recipe_needs_a_coverage_mask(studyset, small_mask):
+    """``dof`` is clipped at zero, and the documented recipe is unusable there.
+
+    The class docstring tells callers to refer ``se`` to a *t* on ``dof``. ``dof`` is
+    ``n_eff - 1`` clipped at zero, so a sparsely reached voxel gives a critical value of ``nan``
+    (at 0), 6582 (at 0.3) or 12.71 (at 1) -- none reported as an error. This pins both halves of
+    the claim the docstring makes: that such voxels exist in a real fit, and that the arithmetic
+    there is what the docstring says it is.
+    """
+    from scipy.stats import t as student_t
+
+    assert np.isnan(student_t.ppf(0.975, 0.0))
+    assert student_t.ppf(0.975, 1.0) == pytest.approx(12.706, rel=1e-3)
+
+    estimator = CBES(fwhm=8.0, mask=small_mask, null_method="none")
+    result = estimator.fit(studyset)
+    dof = result.get_map("dof", return_type="array").ravel()
+    n_eff = result.get_map("n_eff", return_type="array").ravel()
+    covered = result.get_map("n_studies", return_type="array").ravel() > 0
+
+    # dof is exactly n_eff - 1 where that is positive, and never negative.
+    assert np.all(dof >= 0)
+    positive = n_eff > 1.0
+    assert np.allclose(dof[positive], n_eff[positive] - 1.0)
+
+    # The point of the caveat: among voxels the fit reports on, some carry a dof too small to
+    # refer anything to. If this ever stops being true the caveat can be softened.
+    assert covered.any()
+    assert np.any(dof[covered] < 1.0)
