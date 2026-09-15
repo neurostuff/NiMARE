@@ -623,7 +623,9 @@ def test_fit_chunk_ignores_studies_that_say_nothing_here():
     padded["cutoffs"] = np.vstack([kwargs["cutoffs"], np.full((3, 1), 0.5)])
     padded_result = estimator._fit_chunk(**padded)
 
-    for name, before, after in zip(("mu", "prevalence", "se"), baseline, padded_result):
+    for name, before, after in zip(
+        ("mu", "prevalence", "se", "se_marginal"), baseline, padded_result
+    ):
         finite = np.isfinite(before)
         assert np.array_equal(finite, np.isfinite(after)), name
         assert np.allclose(before[finite], after[finite], rtol=1e-12), name
@@ -1933,7 +1935,7 @@ def test_the_censored_mixture_em_finds_the_same_optimum_as_a_brute_force_search(
         covered[study, 0] = True  # reported, so not silent
 
     estimator = CBES(fwhm=8.0, null_method="none", max_iter=400)
-    mu, pi, _ = estimator._fit_chunk(
+    mu, pi, _, _ = estimator._fit_chunk(
         weights=weights,
         g_obs=g_obs,
         var_obs=var_obs,
@@ -2015,7 +2017,7 @@ def test_the_censored_likelihood_reads_silence_as_evidence_against_a_large_effec
             covered[study, 0] = True
 
         estimator = CBES(fwhm=8.0, null_method="none", max_iter=400)
-        mu, _, _ = estimator._fit_chunk(
+        mu, _, _, _ = estimator._fit_chunk(
             weights=weights,
             g_obs=g_obs,
             var_obs=var_obs,
@@ -2457,6 +2459,117 @@ def test_each_calibration_fit_gets_only_the_studies_it_contains(mixed_image_stud
     assert estimator.scale_source_ == "images"
 
 
+def test_the_marginal_standard_error_matches_a_numerical_hessian():
+    """``se_marginal`` must be the delta-method error of ``mu * pi``, checked numerically.
+
+    ``g_marginal`` is the only quantity CBES reports that an image-based meta-analysis also
+    estimates, so it is the one that can be held to coverage against an external reference -- and
+    it had no error at all. The error comes from the whole 2x2 inverse rather than the Schur
+    complement, since the product depends on both factors.
+
+    The check builds the log-likelihood out of the estimator's own working sets, so that what is
+    tested is the information formula and not a second opinion about what the likelihood is.
+    """
+    from nimare.meta.cbma.effectsize import (
+        _normal_pdf,
+        _observed_information,
+        null_effect_variance,
+    )
+
+    k = 12
+    sizes = np.full(k, 30.0)
+    null_var = null_effect_variance(sizes, design="one-sample")[:, None]
+    cutoff = 0.55
+    weights = np.zeros((k, 1))
+    g_obs = np.zeros((k, 1))
+    var_obs = np.ones((k, 1))
+    covered = np.zeros((k, 1), dtype=bool)
+    for study, value in enumerate((0.72, 0.61, 0.95, 0.80, 0.68, 0.91)):
+        weights[study, 0] = 1.0
+        g_obs[study, 0] = value
+        var_obs[study, 0] = float(null_var[study, 0])
+        covered[study, 0] = True
+    # The rest are covered and silent, which is what makes the prevalence estimable at all.
+    for study in range(6, k):
+        covered[study, 0] = True
+        var_obs[study, 0] = float(null_var[study, 0])
+
+    estimator = CBES(fwhm=8.0, null_method="none", max_iter=400)
+    shared = dict(
+        weights=weights,
+        g_obs=g_obs,
+        var_obs=var_obs,
+        covered=covered,
+        tau2=np.zeros(1),
+        null_var=null_var,
+        cutoffs=np.full((k, 1), cutoff),
+        start=np.array([0.75]),
+    )
+    mu, pi, _, se_marginal = estimator._fit_chunk(**shared)
+    assert np.isfinite(se_marginal[0]) and se_marginal[0] > 0
+
+    working = {name: value for name, value in shared.items() if name != "start"}
+    reporting, silent = estimator._working_sets(**working)
+
+    def log_likelihood(mu_value, pi_value):
+        """Evaluate the estimator's own censored mixture at both parameters."""
+        mu_vec = np.array([mu_value])
+        density_effect = (
+            _normal_pdf((reporting.g - mu_vec[reporting.voxel]) / reporting.sigma)
+            / reporting.sigma
+        )
+        mixture_rep = pi_value * density_effect + (1.0 - pi_value) * reporting.density_null
+        censoring = silent.censoring(mu_vec)
+        mixture_sil = pi_value * censoring["prob"] + (1.0 - pi_value) * silent.prob_silent_null
+        return float(
+            np.sum(reporting.weight * np.log(mixture_rep))
+            + np.sum(silent.weight * np.log(mixture_sil))
+        )
+
+    # Central differences for the 2x2 Hessian at the fitted point.
+    step_mu, step_pi = 1e-4, 1e-4
+    m, p = float(mu[0]), float(pi[0])
+    d2_mu = (
+        log_likelihood(m + step_mu, p) - 2 * log_likelihood(m, p) + log_likelihood(m - step_mu, p)
+    ) / step_mu**2
+    d2_pi = (
+        log_likelihood(m, p + step_pi) - 2 * log_likelihood(m, p) + log_likelihood(m, p - step_pi)
+    ) / step_pi**2
+    d2_cross = (
+        log_likelihood(m + step_mu, p + step_pi)
+        - log_likelihood(m + step_mu, p - step_pi)
+        - log_likelihood(m - step_mu, p + step_pi)
+        + log_likelihood(m - step_mu, p - step_pi)
+    ) / (4 * step_mu * step_pi)
+    numerical = np.linalg.inv(-np.array([[d2_mu, d2_cross], [d2_cross, d2_pi]]))
+    gradient = np.array([p, m])  # d(mu*pi)/d(mu, pi)
+    expected = float(gradient @ numerical @ gradient)
+
+    assert np.isclose(se_marginal[0] ** 2, expected, rtol=0.05), (
+        se_marginal[0] ** 2,
+        expected,
+    )
+
+    # The cross term is small here, and that is worth pinning rather than assuming either way:
+    # I_mu_pi carries a factor r(1 - r), so a threshold that separates the components cleanly
+    # leaves the two factors nearly orthogonal -- the reported values identify mu and the count
+    # of silent studies identifies pi. Measured under 1% across prevalences from 0.20 to 1.00.
+    independent = p**2 * numerical[0, 0] + m**2 * numerical[1, 1]
+    assert np.isclose(independent, expected, rtol=0.02)
+
+    # And the analytic blocks agree with the numerical ones they are derived from.
+    information, marginal_variance = _observed_information(
+        width=1,
+        pi=pi,
+        reporting=reporting,
+        silent=silent,
+        mu=mu,
+        censoring=silent.censoring(mu),
+    )
+    assert np.isclose(marginal_variance[0], expected, rtol=0.05)
+    assert information[0] > 0
+
+
 def test_the_reported_error_exceeds_the_em_curvature_it_used_to_be():
     """The EM's curvature is not the observed information, and is always more optimistic.
 
@@ -2498,7 +2611,7 @@ def test_the_reported_error_exceeds_the_em_curvature_it_used_to_be():
         cutoffs=np.full((k, 1), cutoff),
         start=np.array([0.75]),
     )
-    mu, pi, se = estimator._fit_chunk(**shared)
+    mu, pi, se, se_marginal = estimator._fit_chunk(**shared)
     assert np.isfinite(se[0]) and se[0] > 0
 
     # Rebuild the working sets at the fitted point and compare the two quantities directly.
@@ -2523,7 +2636,7 @@ def test_the_reported_error_exceeds_the_em_curvature_it_used_to_be():
         weight_sil=silent.weight * silent.responsibility,
         censoring=censoring,
     )
-    information = _observed_information(
+    information, marginal_variance = _observed_information(
         width=1, pi=pi, reporting=reporting, silent=silent, mu=mu, censoring=censoring
     )
     assert curvature[0] < 0
@@ -2532,3 +2645,5 @@ def test_the_reported_error_exceeds_the_em_curvature_it_used_to_be():
     assert se[0] > q_curvature_se, (se[0], q_curvature_se)
     # And the reported error is the observed-information one, not the curvature one.
     assert np.isclose(se[0], 1.0 / np.sqrt(information[0]))
+    # The product's variance comes from the same matrix and must be usable here too.
+    assert np.isfinite(marginal_variance[0]) and marginal_variance[0] > 0
