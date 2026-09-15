@@ -1361,11 +1361,25 @@ class CBES(Estimator):
     remedy for both -- a profile likelihood, which inverts nothing and needs no ``dof`` -- was
     implemented (``interval="profile"``) and it answers the question in a way that disqualifies
     the question. As :math:`\pi \to 0` the active component explains nothing, the mixture
-    density tends to the null one at every observation, and the profile log-likelihood
-    approaches a *horizontal asymptote* at the null-only value, independent of :math:`\mu`.
-    So the profile interval on :math:`\mu` is bounded **if and only if the data reject**
-    :math:`\pi = 0`, and with a handful of image studies they almost never do. Measured on the
-    field bed, the fraction of voxels where it is bounded at all:
+    density tends to the null one at every observation whose probability depends on
+    :math:`\mu`, and the profile log-likelihood approaches a *horizontal asymptote*,
+
+    .. math::
+
+        \ell_\infty = \max_\pi \left[
+            \sum_{i \,\notin\, \mathrm{reported}} \log\left((1 - \pi) b_i\right)
+            + \sum_{i \,\in\, \mathrm{reported}} \log\left(\pi + (1 - \pi) b_i\right)
+        \right],
+
+    where :math:`b_i` is observation :math:`i`'s density or probability under an effect of
+    exactly zero. Image values and silences drop their :math:`\mu` dependence because both
+    probabilities vanish as :math:`|\mu| \to \infty`; a *report* does not, its probability
+    tending to 1 instead, which is the only thing keeping :math:`\pi` in the expression. So the
+    interval is bounded exactly when :math:`2(\hat\ell - \ell_\infty)` exceeds the critical
+    value -- and at a voxel where no study reported, where the maximum is attained as
+    :math:`\pi \to 0`, that is precisely the likelihood-ratio test of :math:`\pi = 0`. With a
+    handful of image studies it almost never fires. Measured on the field bed, the fraction of
+    voxels where the interval is bounded at all:
 
     ==============  ================  =============  =============
     image studies   bounded overall   within 10 mm   beyond 30 mm
