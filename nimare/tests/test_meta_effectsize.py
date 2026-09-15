@@ -807,6 +807,41 @@ def test_a_thin_indicator_still_fits_the_prevalence(studyset, small_mask):
     assert (values["prevalence"] < 1.0).any(), "pi should still be free where silence speaks"
 
 
+def test_the_profile_interval_brackets_the_estimate_and_is_asked_for(studyset, small_mask):
+    """``interval="profile"`` emits bounds that contain ``g``; ``"wald"`` emits none at all."""
+    shared = dict(mask=small_mask, null_method="none", threshold="reporting_threshold")
+    plain = CBES(**shared).fit(studyset)
+    assert "g_lower" not in set(plain.maps)
+
+    result = CBES(interval="profile", **shared).fit(studyset)
+    values = arrays(result)
+    assert {"g_lower", "g_upper"} <= set(result.maps)
+    assert np.all(values["g_lower"] <= values["g"])
+    assert np.all(values["g"] <= values["g_upper"])
+    # The point estimate is untouched by asking for a different interval.
+    assert np.allclose(values["g"], arrays(plain)["g"])
+
+
+def test_the_profile_interval_is_unbounded_where_the_null_prevalence_stands(studyset, small_mask):
+    """Unbounded almost everywhere, and that is the model's answer rather than a search failure.
+
+    As ``pi`` goes to zero the active component explains nothing and the mixture density tends
+    to the null one, so the profile log-likelihood has a horizontal asymptote at the null-only
+    value, independent of ``mu``. The interval is therefore bounded exactly where the data
+    reject ``pi = 0``, which with two image studies is a small minority of voxels. A future
+    change that made these bounds finite everywhere would be hiding this, not fixing it.
+    """
+    result = CBES(
+        mask=small_mask, null_method="none", threshold="reporting_threshold", interval="profile"
+    ).fit(studyset)
+    values = arrays(result)
+    bounded = np.isfinite(values["g_lower"]) & np.isfinite(values["g_upper"])
+    assert bounded.mean() < 0.5, "most voxels should not bound mu at two image studies"
+    # Where it is bounded, it is bounded because there is more effect to see there.
+    if bounded.any() and (~bounded).any():
+        assert np.abs(values["g"][bounded]).mean() > np.abs(values["g"][~bounded]).mean()
+
+
 def test_the_marginal_map_is_the_conditional_one_times_the_prevalence(studyset, small_mask):
     """``g_marginal`` is the estimand an image-based meta-analysis reports; ``g`` is not."""
     result = CBES(mask=small_mask, null_method="none", threshold="reporting_threshold").fit(
@@ -865,7 +900,7 @@ def test_the_censored_likelihood_reads_silence_as_evidence_against_a_large_effec
             indicator[study, 0] = 0.0
 
         estimator = CBES(null_method="none", max_iter=400)
-        mu, pi, _, _, _ = estimator._fit_chunk(
+        mu, pi, *_ = estimator._fit_chunk(
             weights=weights,
             g_obs=g_obs,
             var_obs=var_obs,
@@ -900,7 +935,7 @@ def test_fit_chunk_ignores_studies_that_say_nothing_here():
         var_obs = np.full((n_studies, 1), 1.0 / 30.0)
         indicator = np.zeros((n_studies, 1))
         indicator[2, 0] = 1.0  # one genuinely silent study
-        mu, pi, _, _, _ = estimator._fit_chunk(
+        mu, pi, *_ = estimator._fit_chunk(
             weights=weights,
             g_obs=g_obs,
             var_obs=var_obs,
@@ -935,7 +970,7 @@ def test_a_report_and_a_silence_pull_the_magnitude_opposite_ways():
         var_obs = np.full((n_studies, 1), 1.0 / 30.0)
         indicator = np.zeros((n_studies, 1))
         indicator[1:, 0] = sign
-        mu, _, _, _, _ = estimator._fit_chunk(
+        mu, *_ = estimator._fit_chunk(
             weights=weights,
             g_obs=g_obs,
             var_obs=var_obs,

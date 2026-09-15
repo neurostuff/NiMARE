@@ -86,6 +86,13 @@ SELECTION_MODELS = ("zero-inflated", "none")
 #: degrees of freedom, which does not.
 SE_METHODS = ("model", "hksj")
 
+#: How the interval on ``g`` is obtained. ``"wald"`` reports ``se`` from the observed
+#: information with the prevalence profiled out by a Schur complement, referred to a *t*.
+#: ``"profile"`` additionally emits ``g_lower`` and ``g_upper`` from the profile likelihood,
+#: which inverts nothing and needs no degrees of freedom -- it costs roughly a second fit, and
+#: is provisional until measured against the arm table in :class:`CBES`.
+INTERVAL_METHODS = ("wald", "profile")
+
 #: How uncorrected p-values are obtained. ``"permute-images"`` scrambles each image study's
 #: values among its own voxels, holding the silence pattern fixed; ``"none"`` reports no
 #: p-values.
@@ -126,6 +133,15 @@ _PROBABILITY_FLOOR = 1e-12
 #: Prevalence is held inside (0, 1) by this margin: at exactly 0 or 1 the mixture degenerates
 #: and the responsibilities stop being informative.
 _PREVALENCE_CLAMP = 1e-4
+# The profile-likelihood interval. _PROFILE_CRITICAL is the 95% point of a chi-square on one
+# degree of freedom, which is what twice the log-likelihood deficit is compared against. The
+# multiples are of the reported standard error, which sets where to look for the crossing and
+# nothing else; they run past 8 because a voxel whose prevalence is barely identified has a very
+# flat profile, and stopping early would report a bound that is really an artifact of the grid.
+_PROFILE_CRITICAL = 3.841459
+_PROFILE_MULTIPLES = (0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 9.0)
+_PROFILE_INNER_ITERS = 10
+_PROFILE_FALLBACK_SCALE = 1.0
 
 #: Voxels x studies held in memory at once by the selection-model fit, which allocates several
 #: arrays of this size per iteration.
@@ -750,6 +766,7 @@ def _validate_options(
     null_method,
     threshold,
     se_method,
+    interval,
 ):
     """Reject unusable option combinations at construction, not at fit time.
 
@@ -769,6 +786,18 @@ def _validate_options(
         raise ValueError(f"null_method must be one of {NULL_METHODS}; got {null_method!r}.")
     if se_method not in SE_METHODS:
         raise ValueError(f"se_method must be one of {SE_METHODS}; got {se_method!r}.")
+    if interval not in INTERVAL_METHODS:
+        raise ValueError(f"interval must be one of {INTERVAL_METHODS}; got {interval!r}.")
+    if interval == "profile" and selection_model != "zero-inflated":
+        # Refused rather than ignored. Without the mixture there is no prevalence to maximise
+        # out, so the "profile" would be the plain likelihood and its interval would differ
+        # from the reported se only by the arithmetic used to find it -- which would look like
+        # a second opinion while being the same one.
+        raise ValueError(
+            "interval='profile' needs selection_model='zero-inflated'. With no mixture there "
+            "is no prevalence to profile out, so the interval would restate the reported se "
+            "rather than provide an independent one."
+        )
     if se_method == "hksj" and selection_model != "none":
         # Refused rather than ignored. HKSJ corrects the inverse-variance SE of a weighted
         # mean, and under the selection model that SE is discarded: the reported one comes
@@ -935,6 +964,18 @@ class CBES(Estimator):
         with few studies. **Requires** ``selection_model="none"``, the zero-inflated model
         reporting the censored likelihood's curvature instead. Changes ``se`` and so ``z``;
         p-values come from the permutation null either way.
+    interval : {"wald", "profile"}, default="wald"
+        How to bracket ``g``. ``"wald"`` reports ``se`` alone, referred to a *t* on ``dof``.
+        ``"profile"`` additionally emits ``g_lower`` and ``g_upper`` from the profile
+        likelihood -- the set of :math:`\mu` whose log-likelihood, with the prevalence
+        maximised out at each point, sits within half a chi-square critical value of the
+        maximum. It inverts no matrix and needs no ``dof``, which is why it is worth having
+        here specifically: both of the quantities it replaces degrade as the prevalence becomes
+        weakly identified, the Schur complement and the delta method alike. The bounds are
+        asymmetric, as a likelihood region generally is, so they are reported rather than
+        summarised as a half-width. Costs roughly a second fit, and **requires**
+        ``selection_model="zero-inflated"``. Provisional: ``se`` is still what ``z`` is built
+        from, and the interval's calibration against the arm table above is not yet measured.
     analysis_mask : :obj:`str` or None, optional
         ``value_type`` of a per-study image marking the voxels that study examined, nonzero
         meaning examined. Studies without one are taken to have examined the whole analysis
@@ -1314,9 +1355,40 @@ class CBES(Estimator):
     and 1.58. The reason is mechanical: :math:`\operatorname{Var}(\mu\pi)` needs the whole
     2x2 inverse rather than a Schur complement, and a near-singular information matrix amplifies
     there instead of cancelling. **So ``g_marginal`` is the more stable estimate and the less
-    trustworthy interval**, and what the width needs is a better-conditioned variance rather
-    than a different estimand -- a profile likelihood, which inverts nothing and would settle
-    the ``dof`` question in the same stroke.
+    trustworthy interval.**
+
+    **And the width is not the problem. There is no finite width to be had.** The obvious
+    remedy for both -- a profile likelihood, which inverts nothing and needs no ``dof`` -- was
+    implemented (``interval="profile"``) and it answers the question in a way that disqualifies
+    the question. As :math:`\pi \to 0` the active component explains nothing, the mixture
+    density tends to the null one at every observation, and the profile log-likelihood
+    approaches a *horizontal asymptote* at the null-only value, independent of :math:`\mu`.
+    So the profile interval on :math:`\mu` is bounded **if and only if the data reject**
+    :math:`\pi = 0`, and with a handful of image studies they almost never do. Measured on the
+    field bed, the fraction of voxels where it is bounded at all:
+
+    ==============  ================  =============  =============
+    image studies   bounded overall   within 10 mm   beyond 30 mm
+    ==============  ================  =============  =============
+    2                         0.025          0.086          0.029
+    5                         0.055          0.148          0.065
+    10                        0.072          0.284          0.083
+    ==============  ================  =============  =============
+
+    Reparametrising does not escape it: :math:`\pi\mu` has the same asymptote, reached along
+    :math:`\pi \to 0` with :math:`\mu \to \infty`. **So ``se`` reports a curvature at the
+    point the EM selected, and the likelihood does not support that precision about
+    :math:`\mu` anywhere in this regime.** The estimate's stability across replications --
+    a spread of 0.11 where ``se`` says 0.20 -- comes from the fit being started at the pooled
+    image mean and stopped after ``max_iter``, not from the data pinning it down. That is worth
+    knowing before reading ``g`` as a magnitude, and it is the strongest statement available
+    about why the ``se/sd`` question never resolved: it was asking whether an interval was
+    calibrated for a parameter the data do not bound.
+
+    None of this touches the p-values, which come from the permutation null and need no
+    calibrated ``se``, nor the *ordering* of ``g``, which every collection comparison here
+    scores and which holds up. It bears on reading a single voxel's ``g`` as a number with an
+    error bar.
 
     **The ``silence off`` row's width is not comparable.** Without the selection model there is
     no censoring roster, so ``dof`` falls back to the Kish count over the image weights, which
@@ -1647,6 +1719,7 @@ class CBES(Estimator):
         tau2_method="dl",
         selection_model="zero-inflated",
         se_method="model",
+        interval="wald",
         analysis_mask=None,
         threshold=None,
         clamp_threshold=True,
@@ -1674,6 +1747,7 @@ class CBES(Estimator):
             null_method=null_method,
             threshold=threshold,
             se_method=se_method,
+            interval=interval,
         )
 
         self.design = design
@@ -1688,6 +1762,7 @@ class CBES(Estimator):
         self.n_iters = n_iters
         self.n_cores = n_cores
         self.se_method = se_method
+        self.interval = interval
         self.analysis_mask = analysis_mask
         self.seed = seed
 
@@ -2385,6 +2460,8 @@ class CBES(Estimator):
         se_out = np.full(active.size, np.inf, dtype=float)
         se_marginal_out = np.full(active.size, np.inf, dtype=float)
         share_out = np.zeros(active.size, dtype=float)
+        lower_out = np.full(active.size, -np.inf, dtype=float)
+        upper_out = np.full(active.size, np.inf, dtype=float)
 
         # Dense blocks are (n_studies, chunk); cap their element count rather than their width
         # so that a studyset with many experiments simply takes more, smaller chunks.
@@ -2411,7 +2488,7 @@ class CBES(Estimator):
             if c_hi > c_lo:
                 indicator[ind_pos[c_lo:c_hi], ind_col[c_lo:c_hi] - lo] = ind_sign[c_lo:c_hi]
 
-            mu, pi, se, se_marginal, share = self._fit_chunk(
+            mu, pi, se, se_marginal, share, lower, upper = self._fit_chunk(
                 weights=weights,
                 g_obs=g_obs,
                 var_obs=var_obs,
@@ -2424,6 +2501,8 @@ class CBES(Estimator):
             mu_out[lo:hi], pi_out[lo:hi] = mu, pi
             se_out[lo:hi], se_marginal_out[lo:hi] = se, se_marginal
             share_out[lo:hi] = share
+            if lower is not None:
+                lower_out[lo:hi], upper_out[lo:hi] = lower, upper
 
         fit["g"] = np.zeros(n_voxels, dtype=float)
         fit["g"][active] = mu_out
@@ -2434,6 +2513,11 @@ class CBES(Estimator):
         fit["se_marginal"][active] = se_marginal_out
         fit["coordinate_share"] = np.zeros(n_voxels, dtype=float)
         fit["coordinate_share"][active] = share_out
+        if self.interval == "profile":
+            fit["g_lower"] = np.full(n_voxels, -np.inf, dtype=float)
+            fit["g_lower"][active] = lower_out
+            fit["g_upper"] = np.full(n_voxels, np.inf, dtype=float)
+            fit["g_upper"][active] = upper_out
 
     def _working_sets(self, *, weights, g_obs, var_obs, indicator, tau2, null_var, cutoffs):
         """Split the block into the value-bearing and indicator-bearing pairs the EM uses.
@@ -2539,6 +2623,119 @@ class CBES(Estimator):
         )
         return resp_rep, resp_sil, updated, log_likelihood
 
+    def _profile_log_likelihood(self, reporting, silent, total_weight, identified, mu):
+        r"""Log-likelihood at ``mu`` with the prevalence maximised out, one value per voxel.
+
+        The inner maximisation is the same E step the fit already uses. That is sound rather
+        than convenient: the mixture log-likelihood is a sum of logs of terms *linear* in
+        :math:`\pi`, so it is concave in :math:`\pi` alone and the fixed point is the global
+        conditional maximum. The censoring probabilities depend on ``mu`` and not on
+        :math:`\pi`, so the two normal CDFs per silent pair are paid once for the whole inner
+        loop, which is what makes a profile affordable here at all.
+        """
+        censoring = silent.censoring(mu)
+        pi = np.where(identified, 0.5, 1.0)
+        log_likelihood = np.zeros(mu.size)
+        for _ in range(_PROFILE_INNER_ITERS):
+            _, _, updated, log_likelihood = self._update_prevalence(
+                reporting, silent, mu, pi, total_weight, censoring
+            )
+            pi = np.where(identified, updated, 1.0)
+        # _update_prevalence reports the likelihood at the pi it was given, so one more pass is
+        # needed to read it at the converged one.
+        _, _, _, log_likelihood = self._update_prevalence(
+            reporting, silent, mu, pi, total_weight, censoring
+        )
+        return log_likelihood
+
+    def _profile_bound(
+        self, *, reporting, silent, total_weight, identified, mu_hat, peak, scale, direction
+    ):
+        r"""Edge of the likelihood region containing ``mu_hat``, in one direction.
+
+        Walked outward on a grid of multiples of ``scale`` and then interpolated on the
+        deficit. The grid costs one censoring evaluation per point against the fit's own
+        twenty-five, and a bisection would spend most of its steps re-deciding voxels whose
+        bound was already bracketed.
+
+        **The deficit is not monotone, and what is returned is therefore the edge of the
+        connected component around** ``mu_hat``, not the supremum of the region. As
+        :math:`\pi \to 0` the active component explains nothing and the mixture density tends
+        to the null one at every observation, so the profile log-likelihood has a *horizontal
+        asymptote* at the null-only value, independent of :math:`\mu`. The deficit therefore
+        rises away from the maximum and then falls back to
+        :math:`2(\ell(\hat\mu, \hat\pi) - \ell_{\mathrm{null}})`. Two consequences, both
+        intended:
+
+        * If that asymptote sits below the critical value -- equivalently, if the data do not
+          reject :math:`\pi = 0` -- no crossing is ever found and the bound is reported
+          infinite. That is the correct answer and not a failure of the search: the data really
+          do not exclude an arbitrarily large effect present in almost no studies.
+        * If the deficit does cross and later falls back, the region is disconnected. The first
+          crossing is reported, which is the component the estimate lives in and the only part
+          a reader can act on, but it is a lower bound on the width rather than the width.
+        """
+        width = mu_hat.size
+        inside_at = np.zeros(width)
+        inside_deficit = np.zeros(width)
+        outside_at = np.full(width, np.nan)
+        outside_deficit = np.full(width, np.nan)
+
+        for multiple in _PROFILE_MULTIPLES:
+            pending = np.isnan(outside_at)
+            if not pending.any():
+                break
+            trial = mu_hat + direction * multiple * scale
+            deficit = 2.0 * (
+                peak
+                - self._profile_log_likelihood(reporting, silent, total_weight, identified, trial)
+            )
+            # A negative deficit means mu_hat was not quite the maximiser. The region is still
+            # the right set to report, so the floor keeps the interpolation monotone instead of
+            # discarding the voxel.
+            np.maximum(deficit, 0.0, out=deficit)
+            crossed = pending & (deficit >= _PROFILE_CRITICAL)
+            outside_at[crossed] = multiple
+            outside_deficit[crossed] = deficit[crossed]
+            held = pending & ~crossed
+            inside_at[held] = multiple
+            inside_deficit[held] = deficit[held]
+
+        span = outside_deficit - inside_deficit
+        fraction = np.divide(
+            _PROFILE_CRITICAL - inside_deficit,
+            span,
+            out=np.zeros(width),
+            where=np.isfinite(span) & (span > 0),
+        )
+        np.clip(fraction, 0.0, 1.0, out=fraction)
+        reached = np.isfinite(outside_at)
+        multiple = np.where(reached, inside_at + (outside_at - inside_at) * fraction, np.inf)
+        return mu_hat + direction * multiple * scale
+
+    def _profile_interval(self, *, reporting, silent, total_weight, identified, mu_hat, se):
+        """Lower and upper profile-likelihood bounds on ``mu``, one pair per voxel.
+
+        The ``se`` sets only the *scale* of the search, not the answer: it is used to choose
+        where to look for the crossing, and a quantity known to be miscalibrated by up to a
+        factor of two is still a perfectly good ruler for that. Where it is not finite the
+        search falls back to a fixed span.
+        """
+        scale = np.where(np.isfinite(se) & (se > 0), se, _PROFILE_FALLBACK_SCALE)
+        peak = self._profile_log_likelihood(reporting, silent, total_weight, identified, mu_hat)
+        shared = dict(
+            reporting=reporting,
+            silent=silent,
+            total_weight=total_weight,
+            identified=identified,
+            mu_hat=mu_hat,
+            peak=peak,
+            scale=scale,
+        )
+        lower = self._profile_bound(direction=-1.0, **shared)
+        upper = self._profile_bound(direction=1.0, **shared)
+        return lower, upper
+
     def _fit_chunk(self, *, weights, g_obs, var_obs, indicator, tau2, null_var, cutoffs, start):
         """EM for one block of voxels. Returns ``(mu, prevalence, se)``, one value per voxel.
 
@@ -2581,6 +2778,10 @@ class CBES(Estimator):
             else np.zeros(width, dtype=bool)
         )
 
+        # Both of these are compacted as voxels retire, so the profile pass needs the
+        # uncompacted originals rather than whatever the loop leaves behind.
+        full_identified = identified
+        full_total_weight = total_weight
         mu = start.copy()
         pi = np.where(identified, 0.5, 1.0) if zero_inflated else np.ones(width)
         mu_out = np.zeros(width)
@@ -2704,7 +2905,30 @@ class CBES(Estimator):
         if mu.size:
             retire(np.arange(mu.size))
 
-        return mu_out, pi_out, se_out, se_marginal_out, share_out
+        if self.interval != "profile":
+            return mu_out, pi_out, se_out, se_marginal_out, share_out, None, None
+
+        # The working sets above have been compacted as voxels retired, so they no longer span
+        # the chunk. Rebuilding them costs one setup pass and keeps the profile a read-only
+        # postscript to the fit rather than something the EM has to carry along.
+        reporting, silent = self._working_sets(
+            weights=weights,
+            g_obs=g_obs,
+            var_obs=var_obs,
+            indicator=indicator,
+            tau2=tau2,
+            null_var=null_var,
+            cutoffs=cutoffs,
+        )
+        lower, upper = self._profile_interval(
+            reporting=reporting,
+            silent=silent,
+            total_weight=full_total_weight,
+            identified=full_identified,
+            mu_hat=mu_out,
+            se=se_out,
+        )
+        return mu_out, pi_out, se_out, se_marginal_out, share_out, lower, upper
 
     # ----------------------------------------------------------- the statistic
 
@@ -3030,6 +3254,9 @@ class CBES(Estimator):
             # Zero where there is no usable information, matching how "se" is emitted, so that
             # a reader is not handed an infinity to divide by.
             maps["coordinate_share"] = fit["coordinate_share"].astype(DEFAULT_FLOAT_DTYPE)
+            if "g_lower" in fit:
+                maps["g_lower"] = fit["g_lower"].astype(DEFAULT_FLOAT_DTYPE)
+                maps["g_upper"] = fit["g_upper"].astype(DEFAULT_FLOAT_DTYPE)
             marginal_se = fit.get("se_marginal")
             if marginal_se is not None:
                 maps["se_marginal"] = np.where(np.isfinite(marginal_se), marginal_se, 0).astype(
