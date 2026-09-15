@@ -81,12 +81,6 @@ DESIGNS = ("one-sample", "two-sample")
 
 SELECTION_MODELS = ("zero-inflated", "none")
 
-#: How the standard error of the pooled estimate is formed. ``"model"`` is the usual
-#: inverse-variance expression, which treats the estimated heterogeneity as known;
-#: ``"hksj"`` is the Hartung-Knapp-Sidik-Jonkman residual-variance form on ``n_eff - 1``
-#: degrees of freedom, which does not.
-SE_METHODS = ("model", "hksj")
-
 #: How the interval on ``g`` is obtained. ``"wald"`` reports ``se`` from the observed
 #: information with the prevalence profiled out by a Schur complement, referred to a *t*.
 #: ``"profile"`` additionally emits ``g_lower`` and ``g_upper`` from the profile likelihood,
@@ -673,38 +667,6 @@ def _null_maxima_diagnostics(max_values):
     return (not (sparse and narrow)), n_distinct, cv
 
 
-def _hartung_knapp_se(*, g_hat, sum_a, sum_a_g2, n_eff, covered, fallback):
-    r"""Hartung-Knapp-Sidik-Jonkman standard error of a kernel-weighted pooled estimate.
-
-    The model-based SE treats :math:`\hat{\tau}^2` as if it were the true heterogeneity, so its
-    intervals are too short exactly when heterogeneity is large and the studies are few. HKSJ
-    replaces it with the weighted spread of the studies about the pooled value,
-
-    .. math::
-
-        \mathrm{SE}^2 = \frac{\sum_k a_k (g_k - \hat{g})^2}{(k_{\mathrm{eff}} - 1)\sum_k a_k},
-        \qquad a_k = \frac{w_k}{s^2_k + \tau^2},
-
-    on :math:`k_{\mathrm{eff}} - 1` degrees of freedom, which gives much better interval
-    coverage than the model SE when heterogeneity is large and the studies are few.
-
-    :math:`k_{\mathrm{eff}}` is Kish's :math:`(\sum w)^2 / \sum w^2` -- the ``n_eff`` map --
-    and not :math:`\sum w`. The two agree when every weight is one, but only Kish's form is
-    invariant to rescaling the weights: at a voxel reached only by distant foci the weights sum
-    to less than one, and using that as a study count sends the degrees of freedom to zero.
-    Voxels with no effective spread to measure keep the model-based value.
-    """
-    se = np.array(fallback, dtype=float, copy=True)
-    usable = covered & (n_eff > 1.0) & (sum_a > 0)
-    if not np.any(usable):
-        return se
-    # sum a (g - ghat)^2, from the identity noted at the call site. Clipped at zero: the two
-    # terms are close where the studies agree, so rounding can make the difference negative.
-    residual = np.clip(sum_a_g2[usable] - g_hat[usable] ** 2 * sum_a[usable], 0.0, None)
-    se[usable] = np.sqrt(residual / ((n_eff[usable] - 1.0) * sum_a[usable]))
-    return se
-
-
 def _local_dersimonian_laird(sum_w, sum_a, sum_a2, sum_ag, sum_ag2, sum_w2_over_s2, n_studies):
     r"""Kernel-weighted DerSimonian-Laird estimate of between-study heterogeneity.
 
@@ -748,7 +710,6 @@ def _validate_options(
     selection_model,
     null_method,
     threshold,
-    se_method,
     interval,
 ):
     """Reject unusable option combinations at construction, not at fit time.
@@ -767,8 +728,6 @@ def _validate_options(
         )
     if null_method not in NULL_METHODS:
         raise ValueError(f"null_method must be one of {NULL_METHODS}; got {null_method!r}.")
-    if se_method not in SE_METHODS:
-        raise ValueError(f"se_method must be one of {SE_METHODS}; got {se_method!r}.")
     if interval not in INTERVAL_METHODS:
         raise ValueError(f"interval must be one of {INTERVAL_METHODS}; got {interval!r}.")
     if interval == "profile" and selection_model != "zero-inflated":
@@ -780,18 +739,6 @@ def _validate_options(
             "interval='profile' needs selection_model='zero-inflated'. With no mixture there "
             "is no prevalence to profile out, so the interval would restate the reported se "
             "rather than provide an independent one."
-        )
-    if se_method == "hksj" and selection_model != "none":
-        # Refused rather than ignored. HKSJ corrects the inverse-variance SE of a weighted
-        # mean, and under the selection model that SE is discarded: the reported one comes
-        # from the curvature of the censored likelihood at the fitted mu, a different
-        # estimator that this correction does not apply to. Accepting the combination would
-        # silently return the uncorrected value.
-        raise ValueError(
-            "se_method='hksj' needs selection_model='none'. HKSJ corrects the "
-            "inverse-variance standard error of the pooled mean, but the zero-inflated "
-            "selection model reports the curvature of the censored likelihood instead, "
-            "which this correction does not apply to."
         )
 
     # A string is a keyword or the name of a metadata field holding per-study thresholds, and
@@ -918,12 +865,6 @@ class CBES(Estimator):
         ``prevalence`` is estimated. ``"none"`` makes the tables inert and returns a plain
         local random-effects fit of the images -- the control arm the coordinate channel is
         credited against, and roughly ten times faster.
-    se_method : {"model", "hksj"}, default="model"
-        Standard error of the pooled estimate. ``"model"`` is the inverse-variance expression,
-        which treats the estimated :math:`\tau^2` as known; ``"hksj"`` is the
-        Hartung-Knapp-Sidik-Jonkman residual-variance form, which does not and covers better
-        with few studies. **Requires** ``selection_model="none"``, the zero-inflated model
-        reporting the censored likelihood's curvature instead.
     interval : {"wald", "profile"}, default="wald"
         How to bracket ``g``. ``"wald"`` reports ``se`` alone, referred to a *t* on ``dof``.
         ``"profile"`` additionally emits ``g_lower`` and ``g_upper`` from the profile
@@ -1125,7 +1066,6 @@ class CBES(Estimator):
         design="one-sample",
         tau2_method="dl",
         selection_model="zero-inflated",
-        se_method="model",
         interval="wald",
         analysis_mask=None,
         threshold=None,
@@ -1153,7 +1093,6 @@ class CBES(Estimator):
             selection_model=selection_model,
             null_method=null_method,
             threshold=threshold,
-            se_method=se_method,
             interval=interval,
         )
 
@@ -1168,7 +1107,6 @@ class CBES(Estimator):
         self.cluster_threshold = cluster_threshold
         self.n_iters = n_iters
         self.n_cores = n_cores
-        self.se_method = se_method
         self.interval = interval
         self.analysis_mask = analysis_mask
         self.seed = seed
@@ -1624,10 +1562,6 @@ class CBES(Estimator):
         numerator = np.zeros(n_voxels, dtype=float)
         denominator = np.zeros(n_voxels, dtype=float)
         variance_numerator = np.zeros(n_voxels, dtype=float)
-        # Sum of a_k g_k^2, which turns into the weighted residual sum of squares without a
-        # third pass: sum a (g - ghat)^2 = sum a g^2 - ghat^2 sum a, because ghat is itself
-        # sum(a g) / sum(a).
-        weighted_square = np.zeros(n_voxels, dtype=float)
 
         for _, cols, weights, g, var_g in contributions:
             total_var = var_g + tau2[cols]
@@ -1636,9 +1570,6 @@ class CBES(Estimator):
             denominator += np.bincount(cols, weights=pooling_weight, minlength=n_voxels)
             variance_numerator += np.bincount(
                 cols, weights=weights**2 / total_var, minlength=n_voxels
-            )
-            weighted_square += np.bincount(
-                cols, weights=pooling_weight * g * g, minlength=n_voxels
             )
 
         covered = denominator > 0
@@ -1650,16 +1581,6 @@ class CBES(Estimator):
         n_eff = np.zeros(n_voxels, dtype=float)
         positive_w = sums["w2"] > 0
         n_eff[positive_w] = sums["w"][positive_w] ** 2 / sums["w2"][positive_w]
-
-        if self.se_method == "hksj":
-            se = _hartung_knapp_se(
-                g_hat=g_hat,
-                sum_a=denominator,
-                sum_a_g2=weighted_square,
-                n_eff=n_eff,
-                covered=covered,
-                fallback=se,
-            )
 
         return {
             "contributions": contributions,

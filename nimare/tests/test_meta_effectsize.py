@@ -281,8 +281,6 @@ def test_pooling_reduces_to_inverse_variance_weighting(studyset, small_mask):
         ({"tau2_method": "reml"}, "tau2_method must be"),
         ({"selection_model": "tobit"}, "selection_model must be"),
         ({"null_method": "montecarlo"}, "null_method must be"),
-        ({"se_method": "sandwich"}, "se_method must be"),
-        ({"se_method": "hksj"}, "hksj"),
         ({"threshold": object()}, "threshold must be"),
     ],
 )
@@ -444,19 +442,6 @@ def test_fixed_effects_option_zeroes_tau2(studyset, small_mask):
         mask=small_mask, null_method="none", tau2_method="none", selection_model="none"
     ).fit(studyset)
     assert np.all(arrays(result)["tau2"] == 0.0)
-
-
-def test_hartung_knapp_replaces_the_se_without_touching_the_estimate(studyset, small_mask):
-    """HKSJ is a different standard error for the same weighted mean."""
-    shared = dict(mask=small_mask, null_method="none", selection_model="none")
-    model = CBES(**shared, se_method="model").fit(studyset)
-    hksj = CBES(**shared, se_method="hksj").fit(studyset)
-
-    a, b = arrays(model), arrays(hksj)
-    assert np.allclose(a["g"], b["g"])
-    covered = a["n_studies"] > 1
-    assert covered.any()
-    assert not np.allclose(a["se"][covered], b["se"][covered])
 
 
 # ------------------------------------------------------------- the silence channel
