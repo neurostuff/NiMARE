@@ -1304,10 +1304,19 @@ class CBES(Estimator):
     the collection carries image donors to pin the peak-height scale, and is not otherwise --
     coordinates alone leave a bias of about 30% of the effect that no interval width can
     absorb. And because ``se`` shrinks with the number of studies while that bias does not,
-    **coverage degrades as a collection grows**: 0.75 to 0.35 coordinates-only, 0.99 to 0.91
-    with two donors, on doubling the studies. A large coordinate-only collection does not give
-    a better interval on ``g``; it gives a tighter interval around the wrong value. Read
-    ``g_relative`` when there are no donors.
+    **coverage degrades as a collection grows**: 0.75 to 0.35 coordinates-only on doubling the
+    studies. A large coordinate-only collection does not give a better interval on ``g``; it
+    gives a tighter interval around the wrong value. Read ``g_relative`` when there are no
+    donors.
+
+    That decline is not fast, and it is not the whole reason a donor collection's coverage
+    slips. Growing the collection with the *weight share held fixed* -- one donor per twelve
+    studies throughout -- gives 0.97 at twelve studies, 0.97 at twenty-four and 0.72 at
+    forty-eight. So the erosion is real and confirmed at a size never otherwise measured, but
+    it takes hold well beyond the sizes most coordinate collections reach, and part of the
+    0.99-to-0.91 drop between the two-donor rows above is the donors' share halving rather than
+    the study count. ``se/sd`` also *rises* with study count (1.27, 1.44, 1.53), which offsets
+    some of the shrinking interval.
 
     What decides this is not the *fraction* of studies supplying images but their share of the
     pooling weight. Fitting ``bias(f) = b0 (1 - f) / ((1 - f) + r f)`` on twelve-study arms and
