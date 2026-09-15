@@ -1211,6 +1211,22 @@ class CBES(Estimator):
     when images or an explicit ``peak_bias_scale`` pin the scale, and even then
     ``scale_interval_`` reports how well.
 
+    **No image-based meta-analysis estimates what ``g`` estimates**, so ``g_absolute`` cannot be
+    checked against one even in principle. Every IBMA -- DerSimonian-Laird, Hedges, weighted least
+    squares, the likelihood estimators -- pools per-study effect maps around a single mean, so a
+    study with no effect at a voxel enters that average as a zero and the quantity estimated is
+    :math:`\pi(v)\,\mu(v)`, the effect over *all* studies. ``g`` is :math:`\mu(v)`, the effect
+    over the studies that have one. The two differ by a factor of :math:`1/\pi`, which on the
+    NIDM pain collection is 1.4 to 1.8, so part of what looks like inflation when ``g`` is scored
+    against an image-based reference is the two maps answering different questions.
+
+    Worse for validation, :math:`\mu(v)` may not be identifiable from images at all: computing it
+    requires classifying every study as having an effect at every voxel or not, which is a
+    thresholding decision and reintroduces the selection this estimator exists to correct.
+    ``g_marginal`` is therefore the map to compare against images, being the same estimand, and
+    it is the one that validates -- not because it is better estimated but because it answers the
+    reference's question.
+
     **The magnitude is also compressed, and pinning the scale does not uncompress it.** Judged
     against references built from studies the coordinates never touched -- held-out HCP subjects,
     and split halves of the 21-study NIDM pain collection and of NeuroVault collections sharing a
