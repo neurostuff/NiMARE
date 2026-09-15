@@ -1326,6 +1326,30 @@ class CBES(Estimator):
     when images or an explicit ``peak_bias_scale`` pin the scale, and even then
     ``scale_interval_`` reports how well.
 
+    **A reported z carries a degrees-of-freedom assumption, and it is load-bearing.** A reported
+    statistic is converted to an effect size through :func:`peak_stat_to_hedges_g`; a ``z`` is
+    treated as a p-value-preserving image of a *t* on ``n - 1`` degrees of freedom and mapped
+    back before conversion, which is what neuroimaging software usually produces. Reported peaks
+    sit far into the tail, where that map is steep, so the assumed degrees of freedom matter.
+    Holding ``n`` at 30 and varying only the assumed residual degrees of freedom:
+
+    ============  =======  =======  ========  =========  ======
+    reported z     df=29    df=60    df=120    df=1000   spread
+    ============  =======  =======  ========  =========  ======
+    3.30           0.653    0.626     0.614      0.604    1.08x
+    4.00           0.830    0.776     0.752      0.733    1.13x
+    5.00           1.133    1.009     0.959      0.918    1.23x
+    6.00           1.522    1.273     1.178      1.105    1.38x
+    ============  =======  =======  ========  =========  ======
+
+    The sensitivity grows with the reported height, so it is largest exactly where the
+    peak-height inflation is largest and in the same direction. The effective degrees of freedom
+    of a published z map are frequently *above* ``n - 1`` -- variance smoothing raises them, and
+    some mixed-effects tools do that deliberately -- and papers seldom state them, so the likely
+    direction of the error is a further over-statement of magnitude. A study reporting a ``t`` is
+    unaffected, since that conversion is direct, which is a reason to prefer
+    ``stat_column="t_stat"`` on a collection that offers both.
+
     **No image-based meta-analysis estimates what ``g`` estimates**, so ``g_absolute`` cannot be
     checked against one even in principle. Every IBMA -- DerSimonian-Laird, Hedges, weighted least
     squares, the likelihood estimators -- pools per-study effect maps around a single mean, so a
