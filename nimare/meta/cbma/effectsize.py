@@ -1280,7 +1280,19 @@ class CBES(Estimator):
     *median* ``dof`` is about 4.5, giving a critical value of 2.67 rather than 1.96 -- so the
     distinction is 36% of the width even where the fit is healthy, not a small-sample footnote.
     ``n_eff`` also rises with ``fwhm`` (median ``dof`` 4.5, 7.8, 9.7 at 10, 16 and 24 mm), which
-    is part of why the kernel choice moves the interval as much as it does. Under the
+    is part of why the kernel choice moves the interval as much as it does.
+
+    **``dof`` counts fewer studies than ``se`` draws on, so the interval is wider than the
+    information warrants.** Only a study whose foci reach the voxel contributes a kernel weight,
+    and ``n_eff`` is a Kish count over those weights -- but the censored likelihood also uses the
+    studies that reported nothing nearby, whose silence is what bounds the effect. On a
+    twelve-study coordinates-only fit the censoring roster at a well-covered voxel is 10 studies
+    while ``n_eff`` is 4.76 and ``dof`` is 3.76, so an ``se`` built from ten studies' information
+    is referred to under four degrees of freedom: a critical value of 2.87 where the roster would
+    give 2.26, about 27% of avoidable width. What the right degrees of freedom are for a
+    censored-likelihood observed information is a genuine question rather than an oversight, so
+    this is documented rather than changed; a profile-likelihood interval would need no ``dof``
+    at all. Under the
     selection model ``se`` is the observed information of the censored mixture likelihood at the
     fitted point, with the prevalence profiled out by a Schur complement -- so it carries both
     the uncertainty about which component an observation came from and the cost of not knowing
