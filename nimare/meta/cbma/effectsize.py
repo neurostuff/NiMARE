@@ -1390,11 +1390,49 @@ class CBES(Estimator):
     ==============  ================  =============  =============
 
     Reparametrising does not escape it: :math:`\pi\mu` has the same asymptote, reached along
-    :math:`\pi \to 0` with :math:`\mu \to \infty`. **So ``se`` reports a curvature at the
-    point the EM selected, and the likelihood does not support that precision about
-    :math:`\mu` anywhere in this regime.** The estimate's stability across replications --
-    a spread of 0.11 where ``se`` says 0.20 -- comes from the fit being started at the pooled
-    image mean and stopped after ``max_iter``, not from the data pinning it down. That is worth
+    :math:`\pi \to 0` with :math:`\mu \to \infty`.
+
+    **What does escape it is a literature whose studies differ in size, and the reason is
+    algebraic.** A silence constrains :math:`(\pi, \mu)` only through the probability of the
+    event observed, :math:`P = \pi S(\mu) + (1 - \pi) S(0)` with
+    :math:`S(\mu) = P(|g| < c \mid \mu)` -- one equation in two unknowns, which is the ridge.
+    Studies with *different* :math:`(\sigma, c)` supply different equations, but not all
+    heterogeneity helps, because the reporting cutoff measured in sampling standard deviations
+    is just the reported statistic back again: :math:`c / \sigma \approx z`. So
+
+    .. math::
+
+        S(0) = 2\Phi(z) - 1, \qquad
+        S(\mu) = \Phi(z - \mu\sqrt{n}) - \Phi(-z - \mu\sqrt{n}).
+
+    The null component's silence probability depends on the *threshold alone*. Varying the
+    threshold moves both components together through the same tail and leaves the equations
+    nearly collinear; varying the sample size moves the active component through
+    :math:`\mu\sqrt{n}` while leaving :math:`S(0)` exactly fixed, which is the contrast that
+    separates the two parameters. Measured, 20 studies throughout, with the bounded fraction of
+    the profile interval near the signal as the identifiability probe:
+
+    ==========================  ==============  ===================
+    studies                     bounded near    fitted :math:`\pi`
+    ==========================  ==============  ===================
+    alike, n 28-32, one cut              0.422                0.823
+    sample size spread 12-120            0.691                0.913
+    threshold spread 2.3-4.5             0.414                0.815
+    both spread                          0.676                0.901
+    ==========================  ==============  ===================
+
+    True :math:`\pi` is 1.0. Spreading the sample size identifies it; spreading the threshold
+    does nothing whatever, exactly as the cancellation above says. **So a magnitude is
+    recoverable from a literature of widely differing sample sizes and not from a literature of
+    uniformly sized studies, however many of them there are** -- which is the opposite of
+    treating heterogeneity as a nuisance, and is the one piece of advice here that bears on
+    whether to run this estimator on a given collection at all.
+
+    **So ``se`` reports a curvature at the point the EM selected, and outside that regime the
+    likelihood does not support that precision about :math:`\mu`.** The estimate's stability
+    across replications -- a spread of 0.11 where ``se`` says 0.20 -- comes from the pooled
+    image mean it starts from and the ``max_iter`` it stops at, not from the data pinning it
+    down. That is worth
     knowing before reading ``g`` as a magnitude, and it is the strongest statement available
     about why the ``se/sd`` question never resolved: it was asking whether an interval was
     calibrated for a parameter the data do not bound.
