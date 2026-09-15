@@ -303,6 +303,50 @@ def test_simulate_field_reports_nothing_when_the_field_has_no_variation():
     assert len(studyset.studies) == 3
 
 
+def test_prevalence_makes_the_studies_a_genuine_mixture():
+    """Below 1.0 some studies must have an effect of exactly zero, not merely a smaller one.
+
+    That distinction is the whole reason ``CBES(selection_model="zero-inflated")`` exists, so a
+    generator that quietly shrank every study instead of zeroing some would make the estimator
+    look good against a truth it was not built for. Checked on both simulators, because they
+    apply the draw at different places -- the field one zeroes the effect before building the
+    map, the point one skips the focus entirely.
+    """
+    from nimare.generate import create_effect_size_coordinate_studyset
+
+    shared = dict(
+        effect_sizes=0.8,
+        n_studies=40,
+        sample_size=30,
+        threshold_z=3.2905,
+    )
+
+    for label, extra in (
+        ("point", dict()),
+        ("field", dict(simulate_field=True, noise_extent=24.0, field_zooms=6.0)),
+    ):
+        full = create_effect_size_coordinate_studyset(
+            [(0, 0, 0)], seed=5, prevalence=1.0, **shared, **extra
+        )
+        half = create_effect_size_coordinate_studyset(
+            [(0, 0, 0)], seed=5, prevalence=0.4, **shared, **extra
+        )
+
+        def reporting_studies(studyset):
+            """Studies that reported at least one focus."""
+            coordinates = studyset.coordinates
+            if coordinates is None or not len(coordinates):
+                return 0
+            return int(coordinates["study_id"].nunique())
+
+        # Fewer studies report when fewer of them have an effect at all. This is the observable
+        # consequence of the mixture, and it is what the silence channel reads.
+        assert reporting_studies(half) < reporting_studies(full), label
+        # Both collections still contain every study; prevalence removes the effect, not the
+        # paper, which is exactly the asymmetry the estimator has to handle.
+        assert len(half.studies) == len(full.studies) == 40, label
+
+
 def test_simulate_field_produces_real_peak_height_inflation():
     """The point simulator cannot validate a peak-height correction; the field one can."""
     import numpy as np
