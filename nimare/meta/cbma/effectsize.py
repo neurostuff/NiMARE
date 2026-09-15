@@ -1196,9 +1196,31 @@ class CBES(Estimator):
     coordinates cannot identify -- but **read it ordinally, not as a fraction**. Against a
     simulator drawing a known prevalence it is compressed toward the middle of the range: a true
     0.25 comes back as 0.49 to 0.60 depending on ``coverage_radius``, a true 0.50 as 0.65 to
-    0.81, a true 1.00 as 0.74 to 0.94. The ordering survives, so comparing voxels within one map
-    is sound, but the number is not a prevalence. Its map-wide median sits near 0.4 whatever the
-    truth, so a map cannot be summarised by it.
+    0.81, a true 1.00 as 0.74 to 0.94. Its map-wide median sits near 0.4 whatever the truth, so a
+    map cannot be summarised by it.
+
+    **The ordinal reading holds on average over many maps, not within any one of them.** Tested
+    as the claim is made -- four sites in a single fit at true prevalences 0.25, 0.50, 0.75 and
+    1.00, 24 studies, 16 simulations -- the rank correlation against the truth averages +0.86 for
+    a strong effect, but the four-site ranking is exactly right in only half the maps; for a weak
+    effect it averages +0.59 with a standard deviation of 0.34 and is exactly right in 12%. The
+    spacing carries less than the order does: the compression changes sign across the range,
+    inflating a true 0.25 to 0.36 while deflating a true 1.00 to 0.93, so a difference between
+    two voxels is not a difference in prevalence even approximately. And the per-voxel scatter
+    falls as prevalence rises (0.19 to 0.07 across that sweep), so rare sites are both biased
+    upward and noisier -- the worst combination for the use this invites, picking out which
+    region is the least consistent.
+
+    The reason is structural rather than a calibration that could be fixed. ``prevalence`` and
+    ``g`` are separably estimable only in a window of detectability: where a study's effect lands
+    near its own reporting threshold, so that the chance of reporting responds to the magnitude.
+    Below that window nothing is detected and the prevalence is not identified at all; above it
+    detection saturates, the magnitude stops being constrained from above and the prevalence
+    absorbs the level instead -- which is why a strongly reported site returns a prevalence near
+    1 whatever its truth. A map spans magnitudes and therefore spans the window, so comparing two
+    voxels compares quantities identified to different degrees. A spread of sample sizes and
+    reporting thresholds across the collection widens the window; a roster of identically
+    powered studies narrows it.
 
     ``g_marginal`` is ``g`` times ``prevalence``, and estimates a different quantity from ``g``:
     the effect averaged over every study, including those with none here, rather than over the
