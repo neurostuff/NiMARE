@@ -1428,6 +1428,18 @@ class CBES(Estimator):
     treating heterogeneity as a nuisance, and is the one piece of advice here that bears on
     whether to run this estimator on a given collection at all.
 
+    **Necessary, not sufficient, and the boundary was measured rather than assumed.** On the HCP
+    held-out bed -- a strong motor contrast, about fourteen peaks per table -- the interval is
+    already bounded at 97% of the scored voxels whether the table sizes are uniform or spread
+    from 9 to 70, and spreading them changes the recovered magnitude not at all (0.680 against
+    0.671, with ``r`` and AUC identical to three decimals). The derivation predicts exactly
+    that: where :math:`\pi = 0` is decisively rejected there is no ridge for heterogeneity to
+    break. What it also shows is that the shortfall there is *not* a flat likelihood -- with
+    :math:`\mu` identified almost everywhere, ``g`` still recovers 0.68 of the truth against
+    the images' 0.92, and :math:`\pi` still fits 0.66 against a true 1.000. Those are
+    properties of what the censoring term assumes a silence to mean, and they are the subject
+    of the warnings below.
+
     **So ``se`` reports a curvature at the point the EM selected, and outside that regime the
     likelihood does not support that precision about :math:`\mu`.** The estimate's stability
     across replications -- a spread of 0.11 where ``se`` says 0.20 -- comes from the pooled
