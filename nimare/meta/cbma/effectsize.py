@@ -1409,20 +1409,22 @@ class CBES(Estimator):
     smaller event. Instrumenting the same bed to compare the observed reporting rate against the
     rate the model computes at the true :math:`\mu`:
 
-    =======  ==============  =============  =======
-    truth    observed rate   model's rate   ratio
-    =======  ==============  =============  =======
-    0.2               0.007          0.007     1.00
-    0.4               0.050          0.089     1.78
-    0.6               0.373          0.402     1.08
-    0.8               0.708          0.797     1.13
-    =======  ==============  =============  =======
+    =======  ========  ==============  =============  =====================
+    truth    reports   observed rate   model's rate   ratio (95% CI)
+    =======  ========  ==============  =============  =====================
+    0.2             3           0.007          0.007  0.97 (unmeasured)
+    0.4            21           0.050          0.086  **1.72 [1.19, 3.03]**
+    0.6           163           0.392          0.392  1.00 [0.87, 1.18]
+    0.8           299           0.702          0.789  1.12 [1.01, 1.27]
+    =======  ========  ==============  =============  =====================
 
-    The model overstates the reporting probability by a factor that **peaks in the middle of the
-    window** and falls away on both sides -- to 1.00 below it, where nothing is reported at all,
-    and to 1.08 to 1.13 above it. An overstated :math:`P(\text{report})` against an
-    under-observed count pulls :math:`\mu` down, hardest where the factor is largest. That is
-    the whole of the 0.4 deficit.
+    Counts are totals over 24 collections and the interval is Poisson on them, because this is a
+    ratio of two small rates and a point estimate would not be a measurement. **The
+    over-statement is real in the middle of the window** -- the 0.4 interval excludes 1 -- and
+    it is what pulls :math:`\mu` down there, which is the whole of that focus's deficit. Above
+    the window it is absent or mild, and the two intervals overlap, so the shape is "well below
+    1 at the window, at or just past 1 above it" rather than a peak with two sides. At 0.2
+    nothing is reported, so nothing is measured.
 
     **The mechanism is confirmed by intervention, and the shape of the fix is known.** The
     correction is not a reweighting -- that was tried twice and made every focus worse. It is
@@ -1440,11 +1442,17 @@ class CBES(Estimator):
     :math:`q` of 1.00, 0.90, 0.80, 0.70 and 0.56, because a scalar lifts the weak foci and
     overshoots the strong ones. The shipped :math:`q = 1` is the best constant.
 
-    So the fix needs :math:`q(\mu)`, the probability that an exceeding voxel is a local maximum,
-    which is a function of the field's **smoothness**. Unlike cluster extent, which papers do not
-    report reliably, estimated smoothness is routinely printed by SPM and FSL and stated in
-    methods sections -- so this is a missing input that the literature already publishes rather
-    than an unobtainable quantity. Open, with that route identified.
+    So the fix needs :math:`q(\mu)`, the probability that an exceeding voxel is the one actually
+    named. **A random-field expected-maxima density is not that function, and gets its sign
+    backwards.** The usual clump argument gives :math:`q \sim 1/\text{clump size} \sim u^3`
+    for a standardised threshold :math:`u = (c - \mu)/\sigma`, which *falls* as :math:`\mu`
+    rises -- :math:`u` runs +1.10, 0.00, -1.10 across the three foci above -- while the measured
+    :math:`q` *rises* (0.58, 1.00, 0.89). That density describes a zero-mean field, and these are
+    signal peaks: at a strong focus the blob's own curvature makes that voxel the local maximum,
+    so :math:`q` approaches 1, while at a marginal focus the noise decides which of several
+    exceeding voxels is the maximum. The governing quantity is the signal's curvature against the
+    noise smoothness, which a coordinate table does not carry and a reported FWHM does not
+    supply. Open, and harder than a missing metadata field.
 
     Worth stating alongside, because it is easy to assume otherwise: **the indicator channel does
     not dominate the fit.** At the 0.4 focus the observed count alone implies
