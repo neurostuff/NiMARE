@@ -1279,26 +1279,42 @@ class CBES(Estimator):
     foci at true ``g`` of 0.2, 0.4, 0.6 and 0.8 inside one map, 8 collections, regressing the
     estimate on the truth over the voxels carrying signal:
 
-    ==================  ======  =========  ======  ======  ======  ======  =========
-    estimate             slope  intercept  @ 0.2   @ 0.4   @ 0.6   @ 0.8   range
-    ==================  ======  =========  ======  ======  ======  ======  =========
-    images only          0.872     +0.044   0.242   0.446   0.586   0.764  3.2-fold
-    ``g``                0.729     +0.050   0.188   0.345   0.605   0.798  4.2-fold
-    ``g_marginal``       0.750     +0.017   0.151   0.293   0.589   0.765  5.1-fold
-    ==================  ======  =========  ======  ======  ======  ======  =========
+    Values are the estimate at each focus's own voxel, with its relative error beside it:
 
-    ``g`` recovers a 4.2-fold range for a true 4-fold, so the range is now right and slightly
-    over-spread rather than collapsed. Note *where* it differs from pooling the images alone: it
-    is closer to the truth at the two strong foci (0.798 for a true 0.800) and further below at
-    the two weak ones (0.188 for a true 0.200, against 0.242). That is the selection correction
-    working in the right direction -- a focus whose true effect is 0.2 against a cutoff near
-    0.6 g was reported mostly by luck and should be shrunk -- but it is also the whole of the
-    slope of 0.73, so **the weak end is where to expect over-correction**, not the strong end.
+    ================  =====  =========  ============  ============  ============  ============
+    estimate          slope  intercept  @ 0.2         @ 0.4         @ 0.6         @ 0.8
+    ================  =====  =========  ============  ============  ============  ============
+    images only       0.872     +0.044  0.242 (+21%)  0.446 (+12%)  0.586 (-2%)   0.764 (-5%)
+    ``g``             0.729     +0.050  0.188 (-6%)   0.345 (-14%)  0.605 (+1%)   0.798 (-0%)
+    ``g_marginal``    0.750     +0.017  0.151 (-25%)  0.293 (-27%)  0.589 (-2%)   0.765 (-4%)
+    ================  =====  =========  ============  ============  ============  ============
+
+    The recovered range across the four foci is 3.2-fold for the images alone, **4.2-fold for
+    ``g`` against a true 4-fold** and 5.1-fold for ``g_marginal``: right and slightly
+    over-spread rather than collapsed. ``g``'s mean absolute relative error over the four foci
+    is **5.2% against 9.8% for pooling the images alone**.
+
+    The improvement is not confined to the strong end -- it is largest at the *weakest* focus,
+    where the images are inflated by 21% and ``g`` is 6% low. That is the selection correction
+    doing exactly what it exists for: a focus whose true effect is 0.2 against a cutoff near
+    0.6 g is reported mostly by luck, so an estimator that pools only what got reported reads it
+    as much stronger than it is. The one place ``g`` is worse is the 0.4 focus, 14% low against
+    the images' 12% high -- comparable in size, opposite in sign.
+
+    So the slope of 0.729 is **not** the foci being compressed; it comes from the blob skirts,
+    where the truth runs 0.05 to 0.2 and both arms are dominated by the floor that reading a map
+    as ``|g|`` imposes. Read the per-focus column, not the slope, for what a peak's magnitude is
+    worth.
+
+    ``g_marginal`` is the exception and should be read narrowly: it is within 4% at the two
+    strong foci and 25% to 27% low at the two weak ones, because ``prevalence`` falls toward its
+    floor exactly where few studies reported. Prefer it to ``g`` only when comparing against an
+    image-based reference, where it is the matching estimand.
 
     A corollary for reading any three-bin summary of this estimator, including the ones above
     under "The interval": a top bin spanning 0.25 to 0.50 of truth averages voxels whose
     estimate is slightly high with voxels whose estimate is low, and reports the mixture as a
-    bias. The slope and intercept are the honest summary.
+    bias. The slope, the intercept and the per-focus values are the honest summary.
 
     **What the null tests is not what a reader may expect.** The null is that *within a study,
     effect size is unrelated to location*. A voxel is significant when the image studies'
