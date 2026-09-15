@@ -1571,15 +1571,15 @@ class CBES(Estimator):
             if usable_images:
                 raise ValueError(
                     "This collection has images but no coordinates, and CBES is a "
-                    "coordinate-based estimator: with nothing to pool from peaks it would "
-                    "reduce to a random-effects meta-analysis of the images, and its null "
-                    "would have no foci to permute -- every permutation reproduces the "
-                    "observed map, so the p-values would be meaningless. Use an image-based "
-                    "estimator instead: nimare.meta.ibma.DerSimonianLaird or "
-                    "nimare.meta.ibma.Hedges for random effects on beta/varcope maps, "
-                    "WeightedLeastSquares for fixed effects, or Stouffers on z maps. CBES is "
-                    "for collections that have coordinates, optionally with images alongside "
-                    "them for a subset of studies."
+                    "coordinate-based estimator: with nothing to pool from peaks the effect "
+                    "size it reports would be a random-effects meta-analysis of the images, "
+                    "with none of the selection modelling, prevalence estimation or "
+                    "peak-height correction it exists for. Use an image-based estimator "
+                    "instead: nimare.meta.ibma.DerSimonianLaird or nimare.meta.ibma.Hedges "
+                    "for random effects on beta/varcope maps, WeightedLeastSquares for fixed "
+                    "effects, or Stouffers on z maps. CBES is for collections that have "
+                    "coordinates, optionally with images alongside them for a subset of "
+                    "studies."
                 )
         super()._collect_inputs(dataset, drop_invalid=drop_invalid)
 
