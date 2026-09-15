@@ -1253,9 +1253,21 @@ class CBES(Estimator):
     subjects is already nearly unbiased. There is nothing for a selection correction to correct,
     and it does harm anyway -- fitted prevalence comes back at 0.664 against a true 1.0 (0.929 at
     the strongest decile), because "failed to clear its threshold" and "has no effect" both
-    explain a silence and the mixture splits the difference. The silences then push
-    :math:`\mu` down through the censoring term *and* :math:`\pi` down through the mixture, so
-    ``g_marginal`` is shrunk twice and is worst of all.
+    explain a silence and the mixture splits the difference.
+
+    **But the prevalence is the symptom, not the cause.** Refitting the same collection with the
+    prevalence *fixed* at 1 -- which is the truth here -- makes the magnitude **worse**, not
+    better: 0.60 of the reference against 0.63, and 0.411 against 0.422 for a true 0.5 on the
+    simulator. Removing the "this study has no effect" escape forces every silence to be
+    explained by a small :math:`\mu`, so :math:`\mu` falls further. So the **censoring term
+    over-shrinks :math:`\mu` whatever the prevalence does**, and a fitted :math:`\pi` below 1 is
+    the model partly *absorbing* that over-shrinkage rather than adding to it. ``g_marginal``
+    comes back worst of all (0.54) because it multiplies the two together.
+
+    Which makes this the same defect as the overstated reporting probability above, from another
+    direction: too high a :math:`P(\text{report})` against an under-observed count drags
+    :math:`\mu` down, and here there is no genuine absence for the prevalence to absorb it
+    into. Pinning the prevalence is therefore not the middle option it sounds like.
 
     Contrast the 21-study NIDM pain collection above, where genuinely different paradigms and
     populations mean a prevalence below 1 and the same correction cuts rmse 23% and bias 47%.
