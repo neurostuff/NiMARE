@@ -752,6 +752,61 @@ def test_coordinate_share_is_zero_when_the_coordinates_cannot_act(studyset, smal
     assert "coordinate_share" not in set(result.maps)
 
 
+def test_the_prevalence_is_not_fitted_where_no_indicator_identifies_it(
+    tmp_path_factory, small_mask
+):
+    """With every study carrying an image the indicator is empty, so ``pi`` must stay at 1.
+
+    Nothing but the reporting indicator separates "no effect in this study" from "a small
+    effect plus noise", so with no indicator anywhere the prevalence is unidentified. Left free
+    it does not merely wander -- a two-component mixture explains Gaussian noise as a mixture,
+    and returned 0.577 against a true 1.0 here.
+    """
+    all_images = make_studyset(
+        tmp_path_factory.mktemp("cbes_allimages"), n_images=20, n_studies=20
+    )
+    result = CBES(mask=small_mask, null_method="none", threshold="reporting_threshold").fit(
+        all_images
+    )
+    values = arrays(result)
+    assert np.allclose(values["coordinate_share"], 0.0), "the indicator should be empty"
+    assert np.allclose(values["prevalence"], 1.0)
+
+
+def test_an_unidentified_prevalence_is_not_profiled_out_of_the_error(tmp_path_factory, small_mask):
+    """Holding ``pi`` at 1 is only half of it; the Schur complement has to go too.
+
+    The limit cannot be left to the algebra: with ``pi`` clamped just below 1 the cross block
+    stays order one, so profiling would still subtract a term no parameter earned. The check is
+    that the mixture fit then agrees with the same images fitted without a mixture at all,
+    which is the model it has collapsed to.
+    """
+    all_images = make_studyset(
+        tmp_path_factory.mktemp("cbes_allimages_se"), n_images=20, n_studies=20
+    )
+    shared = dict(mask=small_mask, null_method="none", threshold="reporting_threshold")
+    mixture = arrays(CBES(**shared).fit(all_images))
+    plain = arrays(CBES(selection_model="none", **shared).fit(all_images))
+    finite = np.isfinite(mixture["se"]) & np.isfinite(plain["se"])
+    assert finite.any()
+    assert np.allclose(mixture["se"][finite], plain["se"][finite])
+    assert np.allclose(mixture["g"], plain["g"])
+
+
+def test_a_thin_indicator_still_fits_the_prevalence(studyset, small_mask):
+    """The guard is for no evidence at all, not for little of it.
+
+    The configuration the estimator is actually for -- a couple of images among many tables --
+    must be unaffected, or the guard has quietly become a different estimator.
+    """
+    result = CBES(mask=small_mask, null_method="none", threshold="reporting_threshold").fit(
+        studyset
+    )
+    values = arrays(result)
+    assert (values["coordinate_share"] > 0).any()
+    assert (values["prevalence"] < 1.0).any(), "pi should still be free where silence speaks"
+
+
 def test_the_marginal_map_is_the_conditional_one_times_the_prevalence(studyset, small_mask):
     """``g_marginal`` is the estimand an image-based meta-analysis reports; ``g`` is not."""
     result = CBES(mask=small_mask, null_method="none", threshold="reporting_threshold").fit(

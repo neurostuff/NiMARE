@@ -293,6 +293,7 @@ def _observed_information(
     silent,
     mu,
     censoring,
+    identified=None,
 ):
     r"""Observed information for :math:`\mu`, after profiling out the prevalence.
 
@@ -397,13 +398,29 @@ def _observed_information(
         i_pi = np.bincount(voxel, weights=weight * pi_score**2, minlength=width)
         return i_mu, cross, i_pi
 
+    def certain_where_unidentified(voxel, responsibility):
+        """Force the responsibility to exactly 1 where the prevalence is held at 1.
+
+        Not merely close to 1. With ``pi`` clamped a hair below 1 the responsibility comes out
+        a hair below it too, which leaves ``r(1 - r)`` small but non-zero and the collapse to
+        the plain likelihood approximate -- about 1 part in 10^4 of the error. Exactly 1 makes
+        the cross block vanish identically, so a mixture fit with no indicator anywhere and a
+        non-mixture fit of the same images return the same numbers rather than nearly the same.
+        """
+        if identified is None:
+            return responsibility
+        return np.where(identified[voxel], responsibility, 1.0)
+
     density_effect = (
         _normal_pdf((reporting.g - mu[reporting.voxel]) / reporting.sigma) / reporting.sigma
     )
     i_mu, cross, i_pi = blocks(
         reporting.voxel,
         reporting.weight,
-        responsibility_of(reporting.voxel, density_effect, reporting.density_null),
+        certain_where_unidentified(
+            reporting.voxel,
+            responsibility_of(reporting.voxel, density_effect, reporting.density_null),
+        ),
         (reporting.g - mu[reporting.voxel]) * reporting.precision,
         -reporting.precision,
     )
@@ -411,7 +428,10 @@ def _observed_information(
     add_mu, add_cross, add_pi = blocks(
         silent.voxel,
         silent.weight,
-        responsibility_of(silent.voxel, censoring["prob"], silent.prob_event_null),
+        certain_where_unidentified(
+            silent.voxel,
+            responsibility_of(silent.voxel, censoring["prob"], silent.prob_event_null),
+        ),
         censor_score,
         censoring["d2_over_prob"] - censor_score**2,
     )
@@ -442,6 +462,17 @@ def _observed_information(
         where=usable & (numerator > 0),
     )
     marginal_variance[~(usable & (numerator > 0))] = np.inf
+
+    if identified is not None:
+        # Where the prevalence is held at 1 rather than fitted there is nothing to profile out,
+        # so the information about mu is the plain block and mu*pi is mu. The limit cannot be
+        # left to the algebra: with pi clamped just below 1, ``(1 - r) / (1 - pi)`` tends to the
+        # ratio of the two component densities rather than to zero, so the cross block stays
+        # O(1) and the Schur complement would still subtract a term that no parameter earned.
+        plain = np.divide(1.0, i_mu, out=np.full(width, np.inf), where=i_mu > 0)
+        profiled = np.where(identified, profiled, i_mu)
+        marginal_variance = np.where(identified, marginal_variance, plain)
+
     return profiled, marginal_variance, coordinate_share
 
 
@@ -1196,46 +1227,94 @@ class CBES(Estimator):
     it covers 94.5% to 98.4% of nominal-95% intervals across prevalences, cutoffs and study
     counts, erring conservative.
 
-    **End to end the interval is not usable as an interval, and coverage will not tell you
-    that.** Re-measured after the two fixes above, on the field simulator with the truth known
-    exactly, 30 replications per arm, stratified by the truth because 9204 of 9261 voxels sit
-    near zero and a whole-map figure rewards any estimator that shrinks. ``width`` is the
-    half-width of the documented interval as a fraction of the truth, so the quiet stratum's is
-    meaningless by construction and omitted:
+    **End to end the interval is conservative rather than wrong, and coverage will not tell you
+    that either way.** Measured on the field simulator with the truth known exactly, 40
+    replications per arm, stratified by the truth because 9204 of 9261 voxels sit near zero and
+    a whole-map figure rewards any estimator that shrinks. ``width`` is the half-width of the
+    documented interval as a fraction of the truth, so the quiet stratum's is meaningless by
+    construction and omitted:
 
     =========================  ======  =========  ======  ========  =========  ========
     arm                          bias  ``se/sd``  cov(t)  bias      ``se/sd``  width
                                        (quiet)    (quiet) (effect)  (effect)   (effect)
     =========================  ======  =========  ======  ========  =========  ========
-    20 studies, 1 image        +0.114       2.71    0.98    -0.081       1.55      0.99
-    20 studies, 2 images       +0.093       3.17    0.98    -0.082       1.78      0.92
-    20 studies, 5 images       +0.076       3.67    0.99    -0.039       1.97      0.59
-    20 studies, 20 images      +0.045       3.74    0.97    -0.021       1.64      0.35
-    2 images, silence off      +0.101       2.05    1.00    -0.034       1.29      5.71
-    2 images, tau = 0.3        +0.093       3.17    0.98    -0.088       2.15      1.62
+    20 studies, 1 image        -0.000       1.51    0.98    -0.089       1.39      0.99
+    20 studies, 2 images       +0.001       1.80    0.98    -0.086       1.66      0.89
+    20 studies, 5 images       -0.000       2.06    0.99    -0.038       1.83      0.59
+    20 studies, 20 images      +0.000       1.16    0.98    -0.023       1.19      0.26
+    2 images, silence off      +0.001       1.23    1.00    -0.040       1.22      5.58
+    2 images, tau = 0.3        +0.001       1.80    0.98    -0.097       1.78      1.54
     =========================  ======  =========  ======  ========  =========  ========
 
-    Three things follow, and the first is the important one.
+    **An earlier version of this table was wrong in a way worth recording, because the error
+    was in the measurement and not the model.** It reported a quiet-stratum bias of +0.045 to
+    +0.114 and ``se/sd`` of 2.05 to 3.74. Both came from taking ``numpy.abs`` of ``g`` before
+    the spread across replications was computed. ``g`` is a *signed* inverse-variance mean, so
+    at a voxel whose truth is zero the absolute value shrinks the spread to about 0.6 of the
+    real one and puts the mean about 0.8 spreads above zero: it halved the denominator of
+    ``se/sd`` and manufactured the bias out of nothing, at once. At the foci, where the estimate
+    sits far from zero, the absolute value is nearly a no-op -- which is exactly why the old
+    table's *quiet* column ran 2.71 to 3.74 while its *effect* column ran 1.55 to 1.97, and
+    nobody looked twice. **The estimator is not biased upward where nothing was reported.**
 
-    **The point estimate improved and the interval got worse.** Every one of these arms covers
-    0.97 to 1.00, and at two images it does so with a half-width of 0.92 of the effect -- an
-    interval that admits almost any magnitude. Coverage alone cannot distinguish that from the
-    all-image row, which covers 0.99 at 0.35. **Read ``se/sd`` and the width, never coverage.**
+    The defect was confined to this: a spread of :math:`|g|` read as the estimator's sampling
+    spread, or a difference of :math:`|g|` from a near-zero truth read as a bias. Comparisons
+    between arms that take the absolute value of the *reference* as well -- the collection
+    comparisons below, and every ranking against SDM-PSI or an images-only pool -- apply the
+    same transformation to every arm and are unaffected.
 
-    **``se/sd`` is 1.55 to 3.74, worse than it was before the coordinate channel started
-    working.** It is anomalous in one direction only: the likelihood conditions on where the
-    foci fell while the replication spread is marginal over that, so a calibrated *conditional*
-    error should come out *below* the marginal spread, not several times above it. The excess is
-    in the censoring term -- switching the silence off drops it from 1.78 to 1.29 where the
-    effect is -- which is now demonstrable rather than inferred, the term having previously
-    been inert. So the indicator that corrects the magnitude is the same thing that inflates
-    the error, and only one of the two is wanted.
+    The check that would have caught it on the first run, and is now the top row of the arm
+    list: give every study an image and switch the selection model off, and the fit is a
+    textbook local inverse-variance random-effects meta-analysis whose ``se/sd`` must come out
+    near 1. It reads 1.00 to 1.24. A little of the residue above 1 is the bed rather than the
+    estimator -- the simulator's per-study noise measures 4% below the ``1/n + g^2/(2n)`` the
+    model assumes, so every ``se`` is 4% generous by construction.
+
+    Two things follow.
+
+    **The inflation was the prevalence, not the censoring term.** The old reading -- "the excess
+    is in the censoring term, since switching the silence off halves it" -- compared two
+    different estimators and was never a localisation. The configuration that settles it is the
+    all-image one: with every study carrying an image the reporting indicator is *structurally*
+    empty, ``coordinate_share`` is identically zero, and the coordinate channel cannot be
+    responsible for anything. That arm was nonetheless the worst measured, ``se/sd`` of 2.21 at
+    quiet voxels against 1.14 for the same images fitted without the mixture, in the same bed on
+    the same seeds. What it was paying for was a prevalence that nothing identified: only the
+    indicator separates "no effect in this study" from "a small effect plus noise", and left
+    free against 20 Gaussian values the mixture returned :math:`\pi = 0.577` against a true
+    1.000, whose uncertainty was then profiled out of the information about :math:`\mu`. The
+    inflation was concentrated at quiet and weak voxels (2.21 and 2.30) and absent at strong
+    ones (0.99 and 1.06), which is the signature of that trade-off: where the effect is weak,
+    "a small effect in every study" and "a large effect in a few" fit equally well.
+    :math:`\pi` is now held at 1 wherever no study contributes an indicator, and the all-image
+    arm returns the non-mixture fit exactly -- 1.16 in the table above, and asserted as an
+    identity in the tests rather than as a tolerance.
+
+    **What remains is a conservative interval where the coordinates do act, 1.28 to 2.03.** It
+    is anomalous in one direction only: the likelihood conditions on where the foci fell while
+    the replication spread is marginal over that, so a calibrated *conditional* error should sit
+    *below* the marginal spread, not above it. Two candidate causes are now ruled out. It is not
+    the reporting rule: the model censors on :math:`|g| < c` while a paper reports local maxima,
+    and feeding the estimator its own rule instead -- every supra-threshold voxel reported, 386
+    foci per collection against 172 -- moves ``se/sd`` from 1.83 to 1.80 at quiet voxels and
+    1.90 to 1.90 at the strongest focus, and the bias not at all. It is not the baseline either,
+    at 1.00 to 1.24. The residue tracks how much the indicator says about :math:`\pi`:
+    ``se/sd`` falls monotonically with ``coordinate_share``, 1.87 at under 0.05 to 1.33 above
+    0.50. So the same channel that identifies the prevalence is what makes its cost bearable,
+    and where the tables are thin the interval on :math:`\mu` is wider than the estimate
+    deserves. ``g_marginal`` reports :math:`\pi\mu`, the combination the ridge leaves
+    determined, and is the better object to put an interval on -- which has not yet been
+    measured.
 
     **The ``silence off`` row's width is not comparable.** Without the selection model there is
     no censoring roster, so ``dof`` falls back to the Kish count over the image weights, which
     at two images is 1 -- and a *t* on one degree of freedom has a critical value of 12.71. That
     row is a correct statement about two studies, not a wider interval for the same
     information.
+
+    **Read ``se/sd`` and the width, never coverage.** Every arm covers 0.95 to 1.00, including
+    the ones whose interval admits almost any magnitude: at two images the half-width is 0.89 of
+    the effect, and coverage alone cannot distinguish that from the all-image row's 0.26.
 
     **P-values are unaffected by any of this.** They come from the permutation null, which is
     valid for whatever statistic it is computed on and does not require a calibrated ``se``.
@@ -1347,17 +1426,17 @@ class CBES(Estimator):
     everywhere and the coordinates take over exactly where studies reported. That is the
     stratification the design rests on, now readable per voxel rather than only in aggregate.
 
-    **It does not, however, say where the interval is trustworthy, and that was tested rather
-    than assumed.** The ``se`` over-states the spread of ``g`` by roughly three-fold, and the
-    natural guess was that the excess is produced by the censoring term and so should track the
-    share. It does not: across bands of the share from below 0.05 to above 0.50, ``se/sd`` runs
-    2.93, 3.21, 3.23, 2.97 and 2.28, and the top decile of the share is *better* than the bottom
-    (2.86 against 3.24). Nor was the earlier reading that located the excess in the censoring
-    term ever a within-fit localisation -- it compared fits with ``selection_model="none"``,
-    which changes the estimator and the ``dof`` fallback together. The over-statement is
-    roughly uniform over the map and does not follow the channel that produces it, so the share
-    bounds what the coordinate caveats apply to and says nothing about the width of the
-    interval.
+    **It also says where the interval is trustworthy, in the direction opposite to the obvious
+    guess.** If the ``se``'s conservatism were produced by the censoring term, ``se/sd`` would
+    be worst where the share is high. It is the reverse, and monotonically so: across bands of
+    the share from below 0.05 to above 0.50 it runs 1.87, 1.82, 1.87, 1.63 and 1.33, with the
+    top decile at 1.54 against the bottom's 1.86. That is not a signal effect masquerading as a
+    share effect -- only a few hundred of these 15625 voxels carry any truth, so the band from
+    0.25 to 0.50 is almost entirely quiet, and the gradient holds inside it. The reason is the
+    one the interval section gives: what the ``se`` is paying for is an imprecisely known
+    prevalence, the indicator is the only thing that identifies it, and the share is precisely
+    how much indicator reached this voxel. So a high share is the regime where the coordinate
+    caveats bite *and* where the interval is soundest, and the two readings do not conflict.
 
     **Read ``prevalence`` ordinally, not as a fraction, and not within one map.** On the
     designed-prevalence dial just described -- real subjects, a true :math:`\pi` set by how many
@@ -2473,8 +2552,25 @@ class CBES(Estimator):
             reporting.voxel, weights=reporting.weight, minlength=width
         ) + np.bincount(silent.voxel, weights=silent.weight, minlength=width)
 
+        # Where no study contributes a reporting indicator, the prevalence is not identified and
+        # is held at 1 rather than fitted. Only the indicator separates "no effect in this
+        # study" from "a small effect plus noise": a two-component mixture fitted to a handful
+        # of Gaussian values with known variances will happily explain noise as a mixture, and
+        # does. With every study carrying an image -- so that the indicator is empty everywhere
+        # -- it returned a prevalence of 0.577 against a true 1.0, and profiling that
+        # unidentified parameter out of the observed information inflated ``se/sd`` to 2.21,
+        # the worst of any configuration measured, against 1.14 for the same images fitted
+        # without the mixture. Holding it at 1 makes the mixture collapse to the plain
+        # likelihood through the existing algebra: the responsibilities go to 1, so
+        # ``r(1 - r)`` goes to 0, so the cross block vanishes and the Schur complement with it.
+        identified = (
+            np.bincount(silent.voxel, weights=silent.weight, minlength=width) > 0
+            if zero_inflated
+            else np.zeros(width, dtype=bool)
+        )
+
         mu = start.copy()
-        pi = np.full(width, 0.5 if zero_inflated else 1.0)
+        pi = np.where(identified, 0.5, 1.0) if zero_inflated else np.ones(width)
         mu_out = np.zeros(width)
         pi_out = np.zeros(width)
         se_out = np.full(width, np.inf)
@@ -2504,6 +2600,7 @@ class CBES(Estimator):
                 silent=silent,
                 mu=mu,
                 censoring=silent.censoring(mu),
+                identified=identified if zero_inflated else None,
             )
             information = information[positions]
             marginal_variance = marginal_variance[positions]
@@ -2543,6 +2640,15 @@ class CBES(Estimator):
                     pi,
                     log_likelihood,
                 ) = self._update_prevalence(reporting, silent, mu, pi, total_weight, censoring)
+                # Unidentified voxels never leave pi = 1, and every observation there belongs
+                # to the active component with certainty.
+                pi = np.where(identified, pi, 1.0)
+                reporting.responsibility = np.where(
+                    identified[reporting.voxel], reporting.responsibility, 1.0
+                )
+                silent.responsibility = np.where(
+                    identified[silent.voxel], silent.responsibility, 1.0
+                )
                 pi_shift = np.abs(pi - previous_pi)
                 # EM increases the likelihood monotonically, so a voxel whose likelihood has
                 # stopped rising has finished, whatever its parameters are still doing. Where a
@@ -2578,6 +2684,7 @@ class CBES(Estimator):
             reporting = reporting.compact(position)
             silent = silent.compact(position)
             mu, pi = mu[keep], pi[keep]
+            identified = identified[keep]
             log_likelihood = log_likelihood[keep]
             total_weight = total_weight[keep]
             voxel_ids = voxel_ids[keep]
