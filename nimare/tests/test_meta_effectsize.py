@@ -821,6 +821,30 @@ def test_the_report_radius_makes_three_zones_and_widens_only_the_report(studyset
     assert (signs(report_radius=4.0) < 0).sum() < (signs(report_radius=6.0) < 0).sum()
 
 
+def test_a_study_contributes_one_indicator_per_voxel_and_never_two(studyset, small_mask):
+    """Overlapping foci within a study do not accumulate: the label is set, never counted.
+
+    A study reporting two foci 5 mm apart covers some voxels twice at a 4 mm report radius, and
+    7 of the 21 NIDM pain studies have a pair that close. If the limbs were accumulated rather
+    than flagged, those voxels would carry -2 and weigh double in the likelihood. They are
+    boolean masks, so the second write changes nothing, and this pins that against a refactor
+    to counting.
+    """
+    for radius in (None, 4.0, 8.0):
+        estimator = CBES(
+            mask=small_mask,
+            null_method="none",
+            threshold="reporting_threshold",
+            report_radius=radius,
+        )
+        estimator.fit(studyset)
+        voxel, study, sign = estimator._coverage_[1]
+
+        assert set(np.unique(sign)) <= {-1.0, 1.0}, "the stored labels are only -1 and +1"
+        pairs = np.unique(np.stack([study, voxel], axis=1), axis=0)
+        assert pairs.shape[0] == sign.size, "a study speaks at most once about a voxel"
+
+
 def test_the_adaptive_report_radius_follows_the_silence_to_report_ratio(studyset, small_mask):
     """The default reads how outnumbered the reports are and picks accordingly.
 
