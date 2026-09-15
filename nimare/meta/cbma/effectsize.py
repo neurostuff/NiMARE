@@ -1309,6 +1309,15 @@ class CBES(Estimator):
     a better interval on ``g``; it gives a tighter interval around the wrong value. Read
     ``g_relative`` when there are no donors.
 
+    What decides this is not the *fraction* of studies supplying images but their share of the
+    pooling weight. Fitting ``bias(f) = b0 (1 - f) / ((1 - f) + r f)`` on twelve-study arms and
+    checking it on twenty-four-study arms it had not seen puts ``r`` between 3 and 4.6: **one
+    study that shares its map carries three to five coordinate studies' worth of weight.** So
+    two donors among ten coordinate tables hold about 29% of the weight and the same two among
+    twenty-two hold 15% -- which is why adding coordinate-only studies to a mixed collection
+    moves the magnitude *away* from the truth, by diluting the only thing correcting the
+    peak-height inflation.
+
     An earlier version reported the curvature of the EM's *Q function* instead, which holds the
     responsibilities fixed and therefore overstates the information; that covered 62.5% to 89.8%
     and did not improve with more studies. The p-values are unaffected either way -- they come
