@@ -1302,9 +1302,21 @@ class CBES(Estimator):
     ``se/sd`` falls monotonically with ``coordinate_share``, 1.87 at under 0.05 to 1.33 above
     0.50. So the same channel that identifies the prevalence is what makes its cost bearable,
     and where the tables are thin the interval on :math:`\mu` is wider than the estimate
-    deserves. ``g_marginal`` reports :math:`\pi\mu`, the combination the ridge leaves
-    determined, and is the better object to put an interval on -- which has not yet been
-    measured.
+    deserves.
+
+    **Changing the estimand does not fix it, and this was tested rather than assumed.** The
+    ridge runs along curves of roughly constant :math:`\pi\mu`, so the product ought to be the
+    determined combination and ``g_marginal`` the sound thing to bracket. Half of that is true
+    and the useful half is not. The product really is the steadier *estimate* -- its spread
+    across replications is 0.076 at quiet voxels against 0.112 for ``g`` -- but its reported
+    error is worse, 0.349 against 0.204, and ``se_marginal/sd`` comes out above ``se/sd`` in
+    every stratum but the strongest: 4.58 against 1.83 at quiet voxels, then 2.04, 2.48, 2.43
+    and 1.58. The reason is mechanical: :math:`\operatorname{Var}(\mu\pi)` needs the whole
+    2x2 inverse rather than a Schur complement, and a near-singular information matrix amplifies
+    there instead of cancelling. **So ``g_marginal`` is the more stable estimate and the less
+    trustworthy interval**, and what the width needs is a better-conditioned variance rather
+    than a different estimand -- a profile likelihood, which inverts nothing and would settle
+    the ``dof`` question in the same stroke.
 
     **The ``silence off`` row's width is not comparable.** Without the selection model there is
     no censoring roster, so ``dof`` falls back to the Kish count over the image weights, which
