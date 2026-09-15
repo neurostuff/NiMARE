@@ -1169,12 +1169,27 @@ class CBES(Estimator):
     against +0.14 to +0.28 for ``g``, and where that truth is largest its ratio to it is 1.10 to
     1.23 against 1.46 to 2.29.
 
-    Two caveats hold it to the same reading as everything else here. It does not escape the
-    compression described under Warnings -- across the truth's strata it moves about as little as
-    ``g`` does -- and it degrades when studies report few foci, because ``prevalence`` then falls
-    toward its floor: at six foci per study it came back at 0.70 times the held-out truth overall,
-    having overshot downward. Read it ordinally, and prefer it to ``g`` when a magnitude map is
-    wanted.
+    Three caveats hold it to the same reading as everything else here.
+
+    It does not escape the compression described under Warnings: across the truth's strata it
+    moves about as little as ``g`` does, and below the median it is still several times the
+    truth. What it calibrates is the upper part of the range -- on held-out HCP subjects under
+    cluster-extent reporting it is within 10% to 20% of the truth above that truth's 75th
+    percentile, and four to five times it below the median.
+
+    It degrades when studies report few foci, because ``prevalence`` then falls toward its floor:
+    at six foci per study it came back at 0.70 times the held-out truth overall, overshooting
+    downward.
+
+    And it does not work for the reason its name gives. In the held-out HCP design every
+    synthetic study is drawn from one population, so the true prevalence is exactly 1 and
+    ``g_marginal`` should equal ``g``; instead ``prevalence`` comes back near 0.68 and the
+    product is the better estimate. Multiplying by it is shrinking an inflated magnitude by a
+    data-driven factor rather than averaging over studies that have no effect. That the two
+    happen to cancel -- ``g`` inflated upward by peak selection, ``prevalence`` compressed
+    downward toward the middle of its range -- is why this is worth using and also why it should
+    not be trusted beyond the regimes it has been measured in. Read it ordinally, and prefer it
+    to ``g`` when a magnitude map is wanted.
 
     :meth:`correct_fwe_montecarlo` adds ``logp_level-voxel``,
     ``logp_desc-size_level-cluster`` and ``logp_desc-mass_level-cluster`` (each with a
