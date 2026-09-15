@@ -1424,11 +1424,27 @@ class CBES(Estimator):
     under-observed count pulls :math:`\mu` down, hardest where the factor is largest. That is
     the whole of the 0.4 deficit.
 
-    The fix is not a reweighting: the correction is non-monotone in :math:`\mu`, so no uniform
-    rescaling of the limb can represent it, which is why flattening its sensitivity makes every
-    focus worse (see ``_censoring_terms``). It needs the survival function of a suprathreshold
-    *local maximum* in place of the plain Gaussian exceedance, which needs a field smoothness
-    this model does not currently carry. Open.
+    **The mechanism is confirmed by intervention, and the shape of the fix is known.** The
+    correction is not a reweighting -- that was tried twice and made every focus worse. It is
+    that both limbs must be complementary probabilities of the same event: writing
+    :math:`E = P(|g| \ge c \mid \mu)` and :math:`q` for the chance that a study exceeding here
+    actually *names* this voxel, a reported pair carries :math:`qE` and a silent one
+    :math:`1 - qE`. That is still a proper likelihood, and the arithmetic says where it acts --
+    the report limb's score is :math:`(qE)'/(qE) = E'/E`, so :math:`q` cancels there, while the
+    silent limb's becomes :math:`-qE'/(1 - qE)`, weakened by roughly :math:`q`. Exactly the
+    over-shrinkage above.
+
+    Measured with :math:`q` fixed at 0.56, the reciprocal of the 1.78 at the 0.4 focus, that
+    focus closes precisely: -11% to +1%. **But no constant :math:`q` helps overall** -- mean
+    absolute error over the four foci runs 8.9%, 9.4%, 10.3%, 11.0% and 12.2% at
+    :math:`q` of 1.00, 0.90, 0.80, 0.70 and 0.56, because a scalar lifts the weak foci and
+    overshoots the strong ones. The shipped :math:`q = 1` is the best constant.
+
+    So the fix needs :math:`q(\mu)`, the probability that an exceeding voxel is a local maximum,
+    which is a function of the field's **smoothness**. Unlike cluster extent, which papers do not
+    report reliably, estimated smoothness is routinely printed by SPM and FSL and stated in
+    methods sections -- so this is a missing input that the literature already publishes rather
+    than an unobtainable quantity. Open, with that route identified.
 
     Worth stating alongside, because it is easy to assume otherwise: **the indicator channel does
     not dominate the fit.** At the 0.4 focus the observed count alone implies
