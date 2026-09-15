@@ -1924,10 +1924,15 @@ class CBES(Estimator):
             # convenience: a silence really is a statement about a region -- nothing within
             # the radius cleared the cut -- whereas "someone reported 18 mm away" says nothing
             # about the effect here, the reported peak being a local maximum selected for
-            # being large and displaced from wherever the effect is. Asserting it across the
-            # sphere was measured at an rmse of 0.457 against 0.114 for the voxel alone, and
-            # +0.097 of bias where the truth is largest against -0.042. A voxel a study
-            # reached but did not name gets no indicator either way.
+            # being large and displaced from wherever the effect is.
+            #
+            # Swept, and there is no middle ground: the named voxel is optimal and the penalty
+            # starts at the first ring. Against a known truth, rmse where the effect is ran
+            # 0.070 at the named voxel, 0.113 at 4 mm, 0.122 at 6 mm and 0.126 at 20 mm, and
+            # the bias flipped from -0.039 to +0.094 at 4 mm alone -- one ring overshoots by
+            # more than the original undershoot, because a 4 mm sphere asserts the indicator at
+            # seven voxels rather than one. A voxel a study reached but did not name therefore
+            # gets no indicator either way.
             at_focus = np.zeros(active.size, dtype=bool)
             if ijk.size:
                 named = padded_lookup[(ijk + pad) @ padded_strides]
