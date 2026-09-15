@@ -295,8 +295,12 @@ def _point_value_items(values):
     if not values:
         return
     if isinstance(values, dict):
-        for kind, value in values.items():
-            yield _point_value_kind_to_coordinate_column(kind), value
+        # Keys of the dict shape are already coordinate column names: the store builds them by
+        # running the NIMADS kind through _point_value_kind_to_coordinate_column on the way in.
+        # Mapping them a second time is wrong for any kind that fell through to the
+        # ``value_<kind>`` fallback -- an "F map" stored as ``value_f`` would come back out as
+        # ``value_value_f``.
+        yield from values.items()
         return
     for point_value in values:
         if not isinstance(point_value, dict):

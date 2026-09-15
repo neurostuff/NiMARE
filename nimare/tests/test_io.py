@@ -1036,3 +1036,33 @@ def test_supported_image_types_are_still_normalized():
     assert io._normalize_image_type("variance") == "varcope"
     assert io._normalize_image_type("T map") == "t"
     assert io._normalize_image_type(None) is None
+
+
+def test_point_values_survive_both_shapes_including_unsupported_kinds():
+    """The converter sees two shapes of point values and must not double-prefix either.
+
+    Raw NIMADS JSON carries a list of ``{"kind": ..., "value": ...}`` dicts, keyed by NIMADS
+    kind. The studyset object model exposes ``Point.values`` as a dict already keyed by the
+    coordinate column name, because the store normalizes on the way in. Only the list shape was
+    handled, so every reported peak statistic was silently dropped at ``to_dataset()``.
+
+    The dict keys must be passed through verbatim. Normalizing them a second time is harmless
+    for a known kind ('z_stat' maps to itself) but wrong for one that fell through to the
+    ``value_<kind>`` fallback: an F map stored as ``value_f`` would come back ``value_value_f``.
+    """
+    from nimare.io import _point_value_items
+
+    as_list = [
+        {"kind": "Z", "value": 3.5},
+        {"kind": "F", "value": 9.0},
+        {"kind": None, "value": 1.0},
+        "not a dict",
+    ]
+    assert dict(_point_value_items(as_list)) == {"z_stat": 3.5, "value_f": 9.0, None: 1.0}
+
+    as_dict = {"z_stat": 3.5, "value_f": 9.0}
+    assert dict(_point_value_items(as_dict)) == {"z_stat": 3.5, "value_f": 9.0}
+
+    assert list(_point_value_items(None)) == []
+    assert list(_point_value_items({})) == []
+    assert list(_point_value_items([])) == []
