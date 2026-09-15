@@ -225,6 +225,15 @@ def _censoring_terms(mu, cutoff_scaled, twice_cutoff_scaled, inv_sigma, inv_sigm
     a pair that reported, whose probability is :math:`1 - P(|g| < c \mid \mu)` with its height
     discarded.
 
+    **The ``-1`` limb's probability is overstated, and the error peaks mid-window.** A paper
+    reports a voxel only if it cleared ``c`` *and* the value there was a local maximum, which
+    this :math:`P(|g| \\ge c)` does not require. Measured against a known truth, the model's
+    reporting rate exceeded the observed one by 1.00, 1.78, 1.08 and 1.13 at true ``g`` of 0.2,
+    0.4, 0.6 and 0.8 -- non-monotone, so no uniform reweighting of the limb can absorb it, and
+    raising its probability to a power was measured making every focus worse. Correcting it needs
+    the survival of a suprathreshold local maximum, and that needs a field smoothness this model
+    does not carry. See ``CBES`` under "Why the indicator and not the heights".
+
     **Dropping the ``-1`` pairs biases the magnitude down, and hard.** They used to contribute
     nothing at all, on the reasoning that a coordinate carries no usable height -- but omitting
     them leaves the *silent* pairs as the only evidence about the indicator, so the model reads
@@ -1313,11 +1322,38 @@ class CBES(Estimator):
     within a few percent.
 
     **The 0.4 focus is the clear remaining defect: 18% low, about three standard errors, where
-    the images are 5% high.** That is the middle of the window -- 1 of 17 studies reported there
-    -- so it is exactly where the likelihood is most sensitive to the reporting model, and
-    exactly where a mis-specified one would bite hardest. Flattening the report limb's
-    sensitivity does not fix it (it makes every focus worse; see ``_censoring_terms``), so the
-    cause is not the limb's weight. Unexplained, and the first thing to look at.
+    the images are 5% high. It is located, and it is the reporting model's functional form.**
+    The censored likelihood gives a reported voxel the probability :math:`P(|g| \ge c)`, but a
+    paper reports a voxel only if it cleared :math:`c` **and** was a local maximum -- a strictly
+    smaller event. Instrumenting the same bed to compare the observed reporting rate against the
+    rate the model computes at the true :math:`\mu`:
+
+    =======  ==============  =============  =======
+    truth    observed rate   model's rate   ratio
+    =======  ==============  =============  =======
+    0.2               0.007          0.007     1.00
+    0.4               0.050          0.089     1.78
+    0.6               0.373          0.402     1.08
+    0.8               0.708          0.797     1.13
+    =======  ==============  =============  =======
+
+    The model overstates the reporting probability by a factor that **peaks in the middle of the
+    window** and falls away on both sides -- to 1.00 below it, where nothing is reported at all,
+    and to 1.08 to 1.13 above it. An overstated :math:`P(\text{report})` against an
+    under-observed count pulls :math:`\mu` down, hardest where the factor is largest. That is
+    the whole of the 0.4 deficit.
+
+    The fix is not a reweighting: the correction is non-monotone in :math:`\mu`, so no uniform
+    rescaling of the limb can represent it, which is why flattening its sensitivity makes every
+    focus worse (see ``_censoring_terms``). It needs the survival function of a suprathreshold
+    *local maximum* in place of the plain Gaussian exceedance, which needs a field smoothness
+    this model does not currently carry. Open.
+
+    Worth stating alongside, because it is easy to assume otherwise: **the indicator channel does
+    not dominate the fit.** At the 0.4 focus the observed count alone implies
+    :math:`\mu = 0.161` and the images imply about 0.4; the fit lands at 0.337. Below the window
+    the count implies a nonsensical :math:`\mu = -0.144` and the fit is within 6% of the truth.
+    The images carry the magnitude; the indicators move it.
 
     The slope of 0.759 is not the foci: it comes from the blob skirts, where the truth runs 0.05
     to 0.2 and both arms are dominated by the floor that reading a map as ``|g|`` imposes. Read
