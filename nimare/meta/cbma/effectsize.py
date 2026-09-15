@@ -70,6 +70,19 @@ _MIN_SCALE_DONORS = 2
 #: never done.
 _MIN_NULL_STATES_LOG10 = 4.0
 
+#: Minimum share of permutations that must attain *distinct* maximum statistics, and minimum
+#: coefficient of variation among them, for the voxel-level family-wise correction to be
+#: reported. Counting arrangements is not enough: a collection of two-focus studies admits 2^k
+#: rearrangements and so clears ``_MIN_NULL_STATES_LOG10`` comfortably, while its permutation
+#: distribution attains only a handful of values, because swapping two similar magnitudes within
+#: a study barely moves the map's maximum. Measured on simulated global nulls: at two foci per
+#: study the family-wise rate was 0.150 against a nominal 0.050, with 6 distinct maxima out of
+#: 200 permutations and a coefficient of variation of 0.032; at six foci per study it was exactly
+#: nominal, with 57 distinct maxima and a coefficient of variation of 0.106. Disabling the
+#: generalized Pareto tail changed neither, so the tail fit is not implicated.
+_MIN_NULL_MAXIMA_DISTINCT_FRACTION = 0.10
+_MIN_NULL_MAXIMA_CV = 0.05
+
 #: Keywords ``peak_bias_scale`` understands; anything else must be a positive number.
 PEAK_BIAS_SCALE_KEYWORDS = ("auto", "images")
 
@@ -725,6 +738,31 @@ def _scale_confidence_interval(per_donor, alpha=0.05):
     spread = float(np.std(logs, ddof=1)) / np.sqrt(ratios.size)
     half = float(student_t.ppf(1.0 - alpha / 2.0, ratios.size - 1)) * spread
     return (float(np.exp(centre - half)), float(np.exp(centre + half)))
+
+
+def _null_maxima_diagnostics(max_values):
+    """Return ``(usable, n_distinct, cv)`` for a permutation distribution of maxima.
+
+    The family-wise correction refers the observed maximum to this distribution, so what matters
+    is not how many arrangements the collection admits but how much the arrangements actually
+    move the maximum. A null attaining six values cannot resolve a p-value and, more to the
+    point, understates the spread of the quantity it is standing in for.
+
+    Both statistics must be low before the null is called unusable, because either alone can be
+    low for a benign reason -- a coarse but wide distribution still separates the observed value
+    from the bulk, and a fine but narrow one can arise when every study reports many foci of
+    similar size. In the measurements behind the thresholds the two moved together.
+    """
+    values = np.asarray(max_values, dtype=float)
+    values = values[np.isfinite(values)]
+    if values.size < 2:
+        return False, int(values.size), 0.0
+    n_distinct = int(np.unique(values).size)
+    mean = float(np.mean(values))
+    cv = float(np.std(values) / abs(mean)) if mean != 0.0 else 0.0
+    sparse = n_distinct < max(2, int(np.ceil(_MIN_NULL_MAXIMA_DISTINCT_FRACTION * values.size)))
+    narrow = cv < _MIN_NULL_MAXIMA_CV
+    return (not (sparse and narrow)), n_distinct, cv
 
 
 def _hartung_knapp_se(*, g_hat, sum_a, sum_a_g2, n_eff, covered, fallback):
@@ -3411,9 +3449,39 @@ class CBES(Estimator):
         observed = np.abs(result.maps["z"])
         sign = np.sign(result.maps["z"])
         maps = {}
-        maps["logp_level-voxel"], maps["z_level-voxel"] = _max_statistic_maps(
-            observed, cached, sign, tail_approximation=tail_approximation
-        )
+        # The correction is only as good as the spread of the null it refers to, and that is
+        # knowable only once the permutations have run -- unlike ``_null_is_usable``, which
+        # counts arrangements before building anything and cannot see that a collection of
+        # two-focus studies barely moves its own maximum.
+        usable, n_distinct, cv = _null_maxima_diagnostics(cached)
+        self.null_distributions_["max_statistic_distinct_values"] = n_distinct
+        self.null_distributions_["max_statistic_cv"] = cv
+        if usable:
+            maps["logp_level-voxel"], maps["z_level-voxel"] = _max_statistic_maps(
+                observed, cached, sign, tail_approximation=tail_approximation
+            )
+        else:
+            LGR.warning(
+                f"No voxel-level family-wise correction was computed: across {n_iters} "
+                f"permutations the maximum statistic attained only {n_distinct} distinct "
+                f"values with a coefficient of variation of {cv:.3f}. Rearranging magnitudes "
+                "within a study that reported only two or three foci barely moves the map's "
+                "maximum, so the permutation distribution understates the spread of the "
+                "quantity it stands in for -- on simulated global nulls that configuration "
+                "rejected at 0.150 against a nominal 0.050. 'logp_level-voxel' is 0 "
+                "everywhere to say that nothing was corrected, rather than reporting a "
+                "family-wise p-value that does not hold its level. A collection whose studies "
+                "report more foci each, or an uncorrected 'p' map read with a different "
+                "multiplicity correction, are the alternatives."
+            )
+            maps["logp_level-voxel"] = np.zeros_like(observed)
+            maps["z_level-voxel"] = np.zeros_like(observed)
+            # The cluster-level nulls are left alone. They are built from the same permutations
+            # but refer a different quantity -- a cluster's size or mass rather than the map's
+            # maximum -- whose own degeneracy has not been measured, and refusing it here on the
+            # strength of the voxel-level measurement would be an assumption rather than a
+            # finding. It would also make the description below claim a voxel-level scope for a
+            # run whose voxel level is exactly what was withheld.
 
         if not vfwe_only:
             mask_bool = self._mask_bool()

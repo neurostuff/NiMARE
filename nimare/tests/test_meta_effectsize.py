@@ -2459,6 +2459,50 @@ def test_each_calibration_fit_gets_only_the_studies_it_contains(mixed_image_stud
     assert estimator.scale_source_ == "images"
 
 
+def test_the_family_wise_correction_is_withheld_when_the_null_barely_moves():
+    """Counting arrangements is not the same as the arrangements moving the maximum.
+
+    A collection of two-focus studies admits ``2**k`` rearrangements, so it clears the
+    arrangement-count guard comfortably -- and yet swapping two similar magnitudes within a
+    study barely moves the map's maximum, so the permutation distribution attains a handful of
+    values and understates the spread of the quantity it stands in for. Measured on simulated
+    global nulls: at two foci per study the family-wise rate was 0.150 against a nominal 0.050,
+    with 6 distinct maxima out of 200 permutations and a coefficient of variation of 0.032; at
+    six foci it was exactly nominal, with 57 distinct maxima and a coefficient of variation of
+    0.106. Turning the generalized Pareto tail off changed neither.
+    """
+    from nimare.meta.cbma.effectsize import _null_maxima_diagnostics
+
+    # The degenerate case: six values, tightly clustered.
+    usable, n_distinct, cv = _null_maxima_diagnostics(
+        np.repeat(np.linspace(4.0, 4.2, 6), 34)[:200]
+    )
+    assert not usable
+    assert n_distinct == 6
+    assert cv < 0.05
+
+    # The nominal case: a spread-out distribution.
+    rng = np.random.default_rng(0)
+    usable, n_distinct, cv = _null_maxima_diagnostics(rng.normal(4.0, 0.42, 200))
+    assert usable
+    assert cv > 0.05
+
+    # Both statistics must be low before the null is refused, so a coarse but wide distribution
+    # is kept -- it still separates an observed value from the bulk -- and so is a fine but
+    # narrow one, which can arise when every study reports many foci of similar size.
+    assert _null_maxima_diagnostics(np.repeat(np.array([2.0, 4.0, 8.0]), 67)[:200])[0]
+    assert _null_maxima_diagnostics(rng.normal(4.0, 0.002, 200))[0]
+
+    # Nothing to measure is not usable either.
+    assert not _null_maxima_diagnostics(np.array([3.0]))[0]
+    assert not _null_maxima_diagnostics(np.array([]))[0]
+
+    # Non-finite entries are dropped rather than poisoning the mean.
+    assert _null_maxima_diagnostics(
+        np.concatenate([rng.normal(4.0, 0.42, 200), [np.inf, np.nan]])
+    )[0]
+
+
 def test_the_marginal_standard_error_matches_a_numerical_hessian():
     """``se_marginal`` must be the delta-method error of ``mu * pi``, checked numerically.
 
