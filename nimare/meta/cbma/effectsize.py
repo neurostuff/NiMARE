@@ -10,6 +10,7 @@ import logging
 import os
 from dataclasses import dataclass
 
+import nibabel as nib
 import numpy as np
 import pandas as pd
 from joblib import Memory, Parallel, delayed
@@ -259,9 +260,24 @@ def _censoring_terms(mu, cutoff_scaled, twice_cutoff_scaled, inv_sigma, inv_sigm
     (rmse 0.192); with the indicator restored, 0.524 (rmse 0.129).
 
     Returned as one dict because the E step and the M step both need these at the same ``mu``.
-    This is the most expensive single function in the estimator, over an array with one entry
-    per censored ``(study, voxel)`` pair; the cost is spread over four memory-bound kernels, so
-    what pays is removing a pass rather than speeding one up.
+    **This is the most expensive single function in the estimator** -- 59% of a whole-brain fit
+    with a permutation null, which at the default ``n_iters`` is most of the wall clock, since
+    each permutation runs a full EM.
+
+    Profiled rather than assumed, and the assumption was wrong: the cost is *not* spread evenly
+    over memory-bound kernels. On 600,000 pairs the two ``ndtr`` calls take 10.7 ms and 8.1 ms
+    against 3.0 ms each for the two densities and 0.4 ms for an arithmetic pass, so **45% of
+    the time is two normal CDFs** and no rearrangement of the surrounding algebra reaches it.
+    Three were measured -- one reciprocal in place of two divisions, ``second`` obtained from
+    ``first`` through
+    :math:`u\phi(u) - l\phi(l) = u(\phi(u) - \phi(l)) + k\phi(l)`, and both together -- and
+    they came out at 1.00x, 1.09x and 1.05x with up to 5e-14 of drift. Not worth the churn.
+
+    Nor can the lower tail be dropped to save its CDF: its median contribution is 2e-5 of the
+    silent probability, which sounds negligible, but its maximum is 0.30 and it exceeds 1% of
+    the score's numerator for 38% of pairs. The two levers that do work are ``n_cores``, the
+    null being a thousand independent fits, and the compaction in :meth:`CBES._fit_chunk`,
+    which shrinks the array as voxels retire.
 
     Everything that does not move between EM iterations is passed in already divided: ``mu`` is
     the only argument that changes, so ``cutoffs / sigma`` and the reciprocals are hoisted to
@@ -1973,6 +1989,38 @@ class CBES(Estimator):
             )
         return series
 
+    def _read_masked(self, path, mask_arr):
+        """Read one image into masked-vector form, avoiding nilearn's ``gc.collect``.
+
+        :func:`nilearn._utils.niimg.safe_get_data` runs a full garbage collection on every
+        call, which ``masker.transform`` reaches. At two image studies that is 0.4 of the 2.0
+        seconds a whole-brain fit takes -- a fifth of the runtime in the collector -- and it
+        grows with the number of images, so a twenty-image collection spends seconds there.
+
+        When the image is already on the analysis grid a boolean index gives exactly what
+        ``transform`` would, so the round trip buys nothing. When it is not, or when the masker
+        carries any signal transformation, the original path is used: standardisation,
+        detrending, smoothing or a target grid all change the values, and silently skipping
+        them to save time would be a different estimator.
+        """
+        plain = (
+            not getattr(self.masker, "standardize", False)
+            and not getattr(self.masker, "detrend", False)
+            and not getattr(self.masker, "smoothing_fwhm", None)
+            and getattr(self.masker, "target_affine", None) is None
+            and getattr(self.masker, "target_shape", None) is None
+        )
+        if plain:
+            img = nib.load(str(path))
+            if img.shape[:3] == mask_arr.shape and np.allclose(
+                img.affine, self.masker.mask_img.affine, atol=1e-6
+            ):
+                values = np.asarray(img.dataobj, dtype=np.float64)
+                if values.ndim > 3:
+                    values = values[..., 0]
+                return values[mask_arr]
+        return self.masker.transform(str(path)).ravel().astype(float)
+
     def _load_image_studies(self, dataset):
         """Return ``{study_id: (g, var_g)}`` for studies supplying both images.
 
@@ -2000,6 +2048,7 @@ class CBES(Estimator):
             )
 
         loaded = {}
+        mask_arr = _mask_img_to_bool(self.masker.mask_img)
         for study_id, g_path, var_path in zip(
             images["id"].astype(str), images["g"], images["g_var"]
         ):
@@ -2011,8 +2060,8 @@ class CBES(Estimator):
             if not (os.path.isfile(str(g_path)) and os.path.isfile(str(var_path))):
                 LGR.warning(f"Study {study_id} names g images that are missing on disk.")
                 continue
-            g = self.masker.transform(str(g_path)).ravel().astype(float)
-            var_g = self.masker.transform(str(var_path)).ravel().astype(float)
+            g = self._read_masked(g_path, mask_arr)
+            var_g = self._read_masked(var_path, mask_arr)
             usable = np.isfinite(g) & np.isfinite(var_g) & (var_g > 0)
             if not usable.any():
                 LGR.warning(f"Study {study_id} has no usable g image voxels.")
