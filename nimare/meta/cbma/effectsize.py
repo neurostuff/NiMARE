@@ -1278,6 +1278,37 @@ class CBES(Estimator):
     to 98.4% of nominal-95% intervals across prevalences, cutoffs and study counts, erring
     conservative.
 
+    **That is the interval measured where the model is exactly true. End to end, on simulated
+    collections that report the way papers do, it is much worse -- and how much worse depends
+    on whether any study supplied an image.** Against a known truth of 0.800, 100 replications
+    per row, studies reporting a genuine *t* and every table produced by a cluster-forming
+    threshold:
+
+    ============================  ======  =========  =====  ========
+    collection                      bias  ``se/sd``  cover  interval
+    ============================  ======  =========  =====  ========
+    12 studies, coordinates only  +0.255       2.14   0.75      0.42
+    24 studies, coordinates only  +0.246       2.01   0.35      0.29
+    12 studies, 2 image donors    -0.038       1.32   0.99      0.26
+    24 studies, 2 image donors    -0.064       1.35   0.91      0.19
+    12 studies, all images        -0.018       1.10   0.94      0.16
+    ============================  ======  =========  =====  ========
+
+    ``interval`` is the half-width as a fraction of the effect, because coverage without width
+    is not a measurement. ``se/sd`` stays at or above 1 in every row, so no interval is too
+    narrow for the estimator's own variability: **every coverage shortfall here is bias, not
+    width.** Coverage across all sixteen arms of that table is predicted to a mean absolute
+    error of 0.034 by nothing but the bias-to-width ratio.
+
+    Two consequences follow, and the second is counterintuitive. The interval is usable when
+    the collection carries image donors to pin the peak-height scale, and is not otherwise --
+    coordinates alone leave a bias of about 30% of the effect that no interval width can
+    absorb. And because ``se`` shrinks with the number of studies while that bias does not,
+    **coverage degrades as a collection grows**: 0.75 to 0.35 coordinates-only, 0.99 to 0.91
+    with two donors, on doubling the studies. A large coordinate-only collection does not give
+    a better interval on ``g``; it gives a tighter interval around the wrong value. Read
+    ``g_relative`` when there are no donors.
+
     An earlier version reported the curvature of the EM's *Q function* instead, which holds the
     responsibilities fixed and therefore overstates the information; that covered 62.5% to 89.8%
     and did not improve with more studies. The p-values are unaffected either way -- they come
