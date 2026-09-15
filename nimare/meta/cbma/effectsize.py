@@ -76,9 +76,12 @@ DEFAULT_COVERAGE_RADIUS_MM = 20.0
 DEFAULT_REPORT_RADIUS_MM = 4.0
 
 #: Silences per report, at the voxels where any study reported, above which ``"adaptive"``
-#: widens the report limb to ``DEFAULT_REPORT_RADIUS_MM``. Calibrated on the two regimes
-#: measured: NIDM pain with nine tables sits at 5 and is better served by the named voxel,
-#: while a 1,443-study corpus sits at 604 and needs the wider report.
+#: widens the report limb to ``DEFAULT_REPORT_RADIUS_MM``. Bracketed by measurement rather than
+#: chosen: on real collections at ratios 5 and 18 the named voxel still wins on rmse, by 0.006,
+#: while at 140 and 604 the wider report wins, by 0.017 and 0.018. 50 is the geometric midpoint
+#: of the bracketing pair. Centring at the strongest voxels crosses earlier -- 4 mm is better
+#: centred from 18 upward -- so lower this when a calibrated magnitude at the peaks matters
+#: more than whole-map error.
 ADAPTIVE_REPORT_RATIO = 50.0
 
 #: Default two-tailed reporting threshold, on the z scale, when a study gives no better
