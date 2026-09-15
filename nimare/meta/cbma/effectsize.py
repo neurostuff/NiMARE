@@ -1234,6 +1234,39 @@ class CBES(Estimator):
     --------
     This estimator is new and has not been validated against a reference implementation.
 
+    **The correction can make ``g`` worse than doing nothing, and the regime where it does is
+    not exotic.** Judged against a reference built from subjects used to make no coordinate at
+    all -- 786 HCP subjects, 480 cut into 16 synthetic studies of 30 with coordinates extracted
+    the way papers produce them, 306 held out to give the truth:
+
+    ======================  ======  ========  =====  ===========
+    estimate                     r  rank r     AUC   magnitude
+    ======================  ======  ========  =====  ===========
+    two images, pooled      +0.845    +0.576  0.973         0.85
+    ``g``                   +0.830    +0.575  0.967         0.63
+    ``g_marginal``          +0.785    +0.564  0.943         0.54
+    ======================  ======  ========  =====  ===========
+
+    Pooling the two images alone wins on every metric, magnitude included. **That design has a
+    prevalence of exactly 1**: every synthetic study draws from the same population, so there is
+    no between-study absence for the mixture to find, and an unthresholded map of 30 of those
+    subjects is already nearly unbiased. There is nothing for a selection correction to correct,
+    and it does harm anyway -- fitted prevalence comes back at 0.664 against a true 1.0 (0.929 at
+    the strongest decile), because "failed to clear its threshold" and "has no effect" both
+    explain a silence and the mixture splits the difference. The silences then push
+    :math:`\mu` down through the censoring term *and* :math:`\pi` down through the mixture, so
+    ``g_marginal`` is shrunk twice and is worst of all.
+
+    Contrast the 21-study NIDM pain collection above, where genuinely different paradigms and
+    populations mean a prevalence below 1 and the same correction cuts rmse 23% and bias 47%.
+    **The two beds bracket the regime, and a user cannot easily tell which one a real collection
+    is in.** Prefer ``selection_model="none"`` -- which reduces this to an inverse-variance
+    meta-analysis of the images -- when the collection is a set of similar studies of the same
+    effect in comparable populations, and reserve the correction for a literature where studies
+    plausibly differ in whether the effect is present at all. The estimator offers no diagnostic
+    that settles this, because the quantity that would settle it is ``prevalence``, which is
+    exactly what is wrong when it matters.
+
     **Read ``prevalence`` ordinally, not as a fraction, and not within one map.** Against a
     simulator drawing a known prevalence it is compressed toward the middle of the range: a
     true 0.25 comes back as 0.49 to 0.60 depending on ``coverage_radius``, a true 0.50 as 0.65
