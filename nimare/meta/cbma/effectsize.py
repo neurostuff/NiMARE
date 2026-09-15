@@ -1279,37 +1279,54 @@ class CBES(Estimator):
     foci at true ``g`` of 0.2, 0.4, 0.6 and 0.8 inside one map, 8 collections, regressing the
     estimate on the truth over the voxels carrying signal:
 
-    Values are the estimate at each focus's own voxel, with its relative error beside it:
+    Values are the estimate at each focus's own voxel, with its standard error across the 24
+    collections and its relative error:
 
-    ================  =====  =========  ============  ============  ============  ============
-    estimate          slope  intercept  @ 0.2         @ 0.4         @ 0.6         @ 0.8
-    ================  =====  =========  ============  ============  ============  ============
-    images only       0.872     +0.044  0.242 (+21%)  0.446 (+12%)  0.586 (-2%)   0.764 (-5%)
-    ``g``             0.729     +0.050  0.188 (-6%)   0.345 (-14%)  0.605 (+1%)   0.798 (-0%)
-    ``g_marginal``    0.750     +0.017  0.151 (-25%)  0.293 (-27%)  0.589 (-2%)   0.765 (-4%)
-    ================  =====  =========  ============  ============  ============  ============
+    ==============  =====  =========  ==================  ==================
+    estimate        slope  intercept  @ 0.2               @ 0.4
+    ==============  =====  =========  ==================  ==================
+    images only     0.911     +0.043  0.230 +- .025 (+15%)  0.419 +- .029 (+5%)
+    ``g``           0.759     +0.049  0.194 +- .019 (-3%)   0.329 +- .022 (-18%)
+    ``g_marginal``  0.769     +0.018  0.151 +- .018 (-25%)  0.267 +- .024 (-33%)
+    ==============  =====  =========  ==================  ==================
 
-    The recovered range across the four foci is 3.2-fold for the images alone, **4.2-fold for
-    ``g`` against a true 4-fold** and 5.1-fold for ``g_marginal``: right and slightly
-    over-spread rather than collapsed. ``g``'s mean absolute relative error over the four foci
-    is **5.2% against 9.8% for pooling the images alone**.
+    ==============  ==================  ==================  =========  ==========
+    estimate        @ 0.6               @ 0.8               range      mean |err|
+    ==============  ==================  ==================  =========  ==========
+    images only     0.635 +- .027 (+6%)   0.792 +- .025 (-1%)  3.44-fold        6.7%
+    ``g``           0.634 +- .016 (+6%)   0.825 +- .017 (+3%)  4.26-fold        7.5%
+    ``g_marginal``  0.576 +- .015 (-4%)   0.780 +- .019 (-3%)  5.18-fold       16.1%
+    ==============  ==================  ==================  =========  ==========
 
-    The improvement is not confined to the strong end -- it is largest at the *weakest* focus,
-    where the images are inflated by 21% and ``g`` is 6% low. That is the selection correction
-    doing exactly what it exists for: a focus whose true effect is 0.2 against a cutoff near
-    0.6 g is reported mostly by luck, so an estimator that pools only what got reported reads it
-    as much stronger than it is. The one place ``g`` is worse is the 0.4 focus, 14% low against
-    the images' 12% high -- comparable in size, opposite in sign.
+    **The range is recovered and the level is not uniformly better.** ``g`` returns 4.26-fold
+    for a true 4-fold against 3.44-fold for pooling the images alone, so the compression that
+    was the earlier design's headline failure is gone. But its *mean* absolute relative error
+    over the four foci is 7.5% against the images' 6.7% -- a wash, slightly the wrong way --
+    because the two arms trade errors focus by focus rather than one dominating.
 
-    So the slope of 0.729 is **not** the foci being compressed; it comes from the blob skirts,
-    where the truth runs 0.05 to 0.2 and both arms are dominated by the floor that reading a map
-    as ``|g|`` imposes. Read the per-focus column, not the slope, for what a peak's magnitude is
-    worth.
+    Where they trade is informative, and it maps onto the window of detectability. At the
+    weakest focus, where **no** study reports (0 of 18 in a representative collection), the
+    images are inflated 15% and ``g`` is 3% off: the correction is working, though note that the
+    coordinate channel contributes nothing usable there -- with nothing reported and silence
+    nearly flat in :math:`\mu` below the cut, ``g`` is the two-image estimate and its accuracy
+    is the images' sampling noise. At the strongest focus, where 12 of 18 report, both are
+    within a few percent.
 
-    ``g_marginal`` is the exception and should be read narrowly: it is within 4% at the two
-    strong foci and 25% to 27% low at the two weak ones, because ``prevalence`` falls toward its
-    floor exactly where few studies reported. Prefer it to ``g`` only when comparing against an
-    image-based reference, where it is the matching estimand.
+    **The 0.4 focus is the clear remaining defect: 18% low, about three standard errors, where
+    the images are 5% high.** That is the middle of the window -- 1 of 17 studies reported there
+    -- so it is exactly where the likelihood is most sensitive to the reporting model, and
+    exactly where a mis-specified one would bite hardest. Flattening the report limb's
+    sensitivity does not fix it (it makes every focus worse; see ``_censoring_terms``), so the
+    cause is not the limb's weight. Unexplained, and the first thing to look at.
+
+    The slope of 0.759 is not the foci: it comes from the blob skirts, where the truth runs 0.05
+    to 0.2 and both arms are dominated by the floor that reading a map as ``|g|`` imposes. Read
+    the per-focus columns, not the slope.
+
+    ``g_marginal`` should be read narrowly: within 4% at the two strong foci and 25% to 33% low
+    at the two weak ones, because ``prevalence`` falls toward its floor exactly where few studies
+    reported. Prefer it to ``g`` only when comparing against an image-based reference, where it
+    is the matching estimand.
 
     A corollary for reading any three-bin summary of this estimator, including the ones above
     under "The interval": a top bin spanning 0.25 to 0.50 of truth averages voxels whose
