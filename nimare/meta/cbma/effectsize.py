@@ -1241,17 +1241,30 @@ class CBES(Estimator):
     0.81, a true 1.00 as 0.74 to 0.94. Its map-wide median sits near 0.4 whatever the truth, so a
     map cannot be summarised by it.
 
-    **The ordinal reading holds on average over many maps, not within any one of them.** Tested
-    as the claim is made -- four sites in a single fit at true prevalences 0.25, 0.50, 0.75 and
-    1.00, 24 studies, 16 simulations -- the rank correlation against the truth averages +0.86 for
-    a strong effect, but the four-site ranking is exactly right in only half the maps; for a weak
-    effect it averages +0.59 with a standard deviation of 0.34 and is exactly right in 12%. The
-    spacing carries less than the order does: the compression changes sign across the range,
-    inflating a true 0.25 to 0.36 while deflating a true 1.00 to 0.93, so a difference between
-    two voxels is not a difference in prevalence even approximately. And the per-voxel scatter
-    falls as prevalence rises (0.19 to 0.07 across that sweep), so rare sites are both biased
-    upward and noisier -- the worst combination for the use this invites, picking out which
+    **The ordinal reading holds on average over many maps, and rarely within any one of them.**
+    Tested as the claim is made -- four sites in a single fit at true prevalences 0.25, 0.50,
+    0.75 and 1.00, 24 studies -- the rank correlation against the truth averages +0.76 for a
+    strong effect, but the four-site ranking is exactly right in only **19%** of maps; for a weak
+    effect it averages +0.33 with a standard deviation of 0.60 and is exactly right in **6%**.
+    Individual weak-effect maps run from anti-ordered to ordered, so a reader comparing two
+    voxels in one of them is reading noise. The spacing carries less still: a true 0.25 comes
+    back near 0.31 while a true 0.50 comes back near 0.68, so the map is inflated in the middle
+    of the range and a difference between two voxels is not a difference in prevalence even
+    approximately. And the per-voxel scatter is largest at the low end, so rare sites are both
+    biased upward and noisier -- the worst combination for the use this invites, picking out which
     region is the least consistent.
+
+    The assumed reporting threshold moves the level of this map and not its order. Supplying one
+    rather than inferring it changed a true 0.50 from 0.64 to 0.68 and left the rank correlation
+    and the exact-ordering rate identical to three decimals, because a change of cutoff applies a
+    roughly common inflation across voxels. Under cluster-extent reporting, however, inference is
+    badly wrong in level: the smallest value a study reports is then its smallest cluster
+    *maximum* rather than anything near its threshold, ``threshold="study-min"`` came back at
+    z = 4.0 against a true forming cut of z = 3.1, and the prevalences it produced were inflated
+    at every site (a true 0.25 reading 0.48, a true 0.50 reading 0.86). Passing the
+    cluster-forming threshold explicitly, or leaving ``threshold`` at a plausible constant,
+    recovered a true 0.25 as 0.21 and a true 0.50 as 0.47. **On a collection whose tables came
+    from cluster-extent correction, supply the threshold.**
 
     The reason is structural rather than a calibration that could be fixed. ``prevalence`` and
     ``g`` are separably estimable only in a window of detectability: where a study's effect lands
