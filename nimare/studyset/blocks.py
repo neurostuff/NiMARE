@@ -77,14 +77,14 @@ class CoordinateBlock:
     def ijk(self, affine):
         """Matrix indices for ``affine``, memoised.
 
-        Truncates rather than rounds, matching :func:`nimare.utils.mm2vox`.
+        Rounds to the nearest voxel, matching :func:`nimare.utils.mm2vox`.
         """
         key = np.asarray(affine).tobytes()
         got = self._ijk_cache.get(key)
         if got is None:
             inv = np.linalg.inv(affine)
             with np.errstate(invalid="ignore"):
-                got = (self.xyz @ inv[:3, :3].T + inv[:3, 3]).astype(np.int32)
+                got = np.round(self.xyz @ inv[:3, :3].T + inv[:3, 3]).astype(np.int32)
             got.flags.writeable = False
             self._ijk_cache[key] = got
         return got
