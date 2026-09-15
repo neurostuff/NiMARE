@@ -1166,8 +1166,15 @@ class CBES(Estimator):
     it covers 94.5% to 98.4% of nominal-95% intervals across prevalences, cutoffs and study
     counts, erring conservative.
 
-    **End to end it is wider than the information warrants, and coverage will not tell you
-    that.** On simulated collections reporting the way papers do, the reported ``se`` ran 1.1 to
+    **End to end it was measured wider than the information warranted, and coverage will not
+    tell you that -- but those measurements predate the model this now is, and have not been
+    redone.** Every ``se/sd`` figure below was taken when the reporting threshold was being
+    compared against effect sizes on the *z* scale, which saturated the censoring term and made
+    the coordinate channel contribute nothing, and before the reporting limb of the indicator
+    existed. Both are fixed. Treat what follows as the shape of the problem rather than as the
+    current calibration, and read the width alongside any coverage figure regardless.
+
+    On simulated collections reporting the way papers do, the reported ``se`` ran 1.1 to
     2.1 times the estimator's own spread across replications, so the interval covered by being
     generous: one arm covered 0.94 with a half-width of **0.91 of the effect**, an interval that
     admits almost any magnitude, and coverage alone cannot distinguish that from an arm covering
