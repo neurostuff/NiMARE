@@ -1275,20 +1275,38 @@ class CBES(Estimator):
     :math:`\mu` down, and here there is no genuine absence for the prevalence to absorb it
     into. Pinning the prevalence is therefore not the middle option it sounds like.
 
-    Contrast the 21-study NIDM pain collection above, where genuinely different paradigms and
-    populations mean a prevalence below 1 and the same correction cuts rmse 23% and bias 47%.
-    **The two beds bracket the regime, and a user cannot easily tell which one a real collection
-    is in.** Prefer ``selection_model="none"`` -- which reduces this to an inverse-variance
-    meta-analysis of the images -- when the collection is a set of similar studies of the same
-    effect in comparable populations, and reserve the correction for a literature where studies
-    plausibly differ in whether the effect is present at all. The estimator offers no diagnostic
-    that settles this, because the quantity that would settle it is ``prevalence``, which is
-    exactly what is wrong when it matters.
+    Contrast the 21-study NIDM pain collection above, where the same correction cuts rmse 23%
+    and bias 47%. **Why the two disagree is not settled, and the obvious explanations have been
+    tested and rejected.**
 
-    **Read ``prevalence`` ordinally, not as a fraction, and not within one map.** Against a
-    simulator drawing a known prevalence it is compressed toward the middle of the range: a
-    true 0.25 comes back as 0.49 to 0.60 depending on ``coverage_radius``, a true 0.50 as 0.65
-    to 0.81, a true 1.00 as 0.74 to 0.94. Its map-wide median sits near 0.4 whatever the truth,
+    It is not the prevalence. Building the regime as a dial -- MOTOR_LH studies that carry the
+    effect mixed with EMOTION_FACES studies that do not, so the true :math:`\pi` is designed
+    rather than assumed -- ``g`` recovers 0.68, 0.63, 0.56 and 0.53 of :math:`\mu` at true
+    prevalences of 1.00, 0.75, 0.50 and 0.25. It degrades *monotonically* as prevalence falls,
+    rather than improving.
+
+    Nor is it the statistic. On the pain bed's own whole-map rmse the two arms tie on that dial
+    (0.130 against 0.129 at :math:`\pi = 1`) or the images win (0.281 against 0.241 at 0.50).
+
+    The beds differ in several ways at once -- real studies against synthetic, real between-study
+    heterogeneity against none, a study-level reference against a subject-pooled one -- and
+    which of those decides it is unmeasured.
+
+    So the advice here is empirical rather than principled: **fit it both ways.**
+    ``selection_model="none"`` reduces to an inverse-variance meta-analysis of the images and
+    costs about a tenth of the runtime, so the comparison is cheap. Where the two agree, little
+    turns on the choice; where they disagree sharply, the correction is doing something
+    load-bearing that nothing measured here can yet vouch for.
+
+    **Read ``prevalence`` ordinally, not as a fraction, and not within one map.** On the
+    designed-prevalence dial just described -- real subjects, a true :math:`\pi` set by how many
+    studies carry the effect -- it reads 0.918, 0.714, 0.590 and 0.540 against true values of
+    1.00, 0.75, 0.50 and 0.25, measured at the strongest decile. So it tracks well down to about
+    0.5 and then **floors near 0.54**, which is the compression in its least flattering place:
+    a rare effect and a common one come back nearly the same. Against a simulator the same
+    compression is worse still -- a true 0.25 comes back as 0.49 to 0.60 depending on
+    ``coverage_radius``, a true 0.50 as 0.65 to 0.81, a true 1.00 as 0.74 to 0.94.
+    Its map-wide median sits near 0.4 whatever the truth,
     so a map cannot be summarised by it.
 
     Worse, the ordinal reading holds on average over many maps and rarely within any one of
