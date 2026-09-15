@@ -1740,7 +1740,29 @@ class CBES(Estimator):
     so :math:`q` approaches 1, while at a marginal focus the noise decides which of several
     exceeding voxels is the maximum. The governing quantity is the signal's curvature against the
     noise smoothness, which a coordinate table does not carry and a reported FWHM does not
-    supply. Open, and harder than a missing metadata field.
+    supply.
+
+    **That is now derived rather than inferred, which bounds it.** Write the observed field as
+    :math:`Z = m + e` with :math:`e` smooth, stationary and mean-zero. A local maximum needs
+    :math:`Z'(0) = 0` and :math:`Z''(0) < 0`. At a signal peak the first condition reduces to
+    the null one, because :math:`m'(0) = 0` there; the second does not, since
+    :math:`Z''(0) = -\kappa + e''(0)` with :math:`\kappa = -m''(0) > 0`, so
+
+    .. math::
+
+        P\big(Z''(0) < 0\big) = \Phi(\kappa / \sigma_2), \qquad
+        \sigma_2 = \operatorname{sd}\big(e''(0)\big).
+
+    A zero-mean density is the case :math:`\kappa = 0`, where this is exactly one half, and
+    :math:`\Phi(\kappa/\sigma_2)` increases strictly in :math:`\kappa`. So the standard
+    density is not merely wrong at a signal peak, it is a **lower bound**, understating the
+    chance of a maximum by a factor of :math:`2\Phi(\kappa/\sigma_2)` -- one where the mean is
+    flat, tending to two as the peak sharpens. Exactly one of the two conditions defining a
+    maximum carries the signal, and it is the one that density pins at a half.
+
+    Which settles the status of the limb rather than only its sign: the error is understood, it
+    is bounded by two, and **it is not fixable from tables alone**, because the correction needs
+    a per-study peak sharpness no paper reports. Open, and now open for a stated reason.
 
     Worth stating alongside, because it is easy to assume otherwise: **the indicator channel does
     not dominate the fit.** At the 0.4 focus the observed count alone implies
