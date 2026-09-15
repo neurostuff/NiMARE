@@ -1272,13 +1272,33 @@ class CBES(Estimator):
     measured in. It degrades when studies report few foci, because ``prevalence`` then falls
     toward its floor: at six foci per study it came back at 0.70 times the held-out truth.
 
-    **The magnitude is a level, and the pattern is what the coordinates move.** Judged against
-    references built from studies the coordinates never touched, the silence correction improves
-    the level and the ordering of ``g`` but does not expand its dynamic range: a reference effect
-    spanning elevenfold across its strata came back spanning about 1.2-fold under the earlier
-    design, and the coordinate channel now corrects the bias rather than the compression. Read
-    ``g`` as ordering voxels within one collection and as a level that has been corrected
-    downward, not as a calibrated per-voxel magnitude.
+    **The dynamic range is recovered, which the earlier design's was not.** Compression was that
+    design's headline failure: a reference effect spanning elevenfold across its strata came
+    back spanning about 1.2-fold, and an unknown overall scale would have left that ratio alone,
+    so it was a real defect and not a units problem. Re-measured here on four well-separated
+    foci at true ``g`` of 0.2, 0.4, 0.6 and 0.8 inside one map, 8 collections, regressing the
+    estimate on the truth over the voxels carrying signal:
+
+    ==================  ======  =========  ======  ======  ======  ======  =========
+    estimate             slope  intercept  @ 0.2   @ 0.4   @ 0.6   @ 0.8   range
+    ==================  ======  =========  ======  ======  ======  ======  =========
+    images only          0.872     +0.044   0.242   0.446   0.586   0.764  3.2-fold
+    ``g``                0.729     +0.050   0.188   0.345   0.605   0.798  4.2-fold
+    ``g_marginal``       0.750     +0.017   0.151   0.293   0.589   0.765  5.1-fold
+    ==================  ======  =========  ======  ======  ======  ======  =========
+
+    ``g`` recovers a 4.2-fold range for a true 4-fold, so the range is now right and slightly
+    over-spread rather than collapsed. Note *where* it differs from pooling the images alone: it
+    is closer to the truth at the two strong foci (0.798 for a true 0.800) and further below at
+    the two weak ones (0.188 for a true 0.200, against 0.242). That is the selection correction
+    working in the right direction -- a focus whose true effect is 0.2 against a cutoff near
+    0.6 g was reported mostly by luck and should be shrunk -- but it is also the whole of the
+    slope of 0.73, so **the weak end is where to expect over-correction**, not the strong end.
+
+    A corollary for reading any three-bin summary of this estimator, including the ones above
+    under "The interval": a top bin spanning 0.25 to 0.50 of truth averages voxels whose
+    estimate is slightly high with voxels whose estimate is low, and reports the mixture as a
+    bias. The slope and intercept are the honest summary.
 
     **What the null tests is not what a reader may expect.** The null is that *within a study,
     effect size is unrelated to location*. A voxel is significant when the image studies'
