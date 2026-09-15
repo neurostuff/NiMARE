@@ -1288,9 +1288,21 @@ class CBES(Estimator):
     Nor is it the statistic. On the pain bed's own whole-map rmse the two arms tie on that dial
     (0.130 against 0.129 at :math:`\pi = 1`) or the images win (0.281 against 0.241 at 0.50).
 
-    The beds differ in several ways at once -- real studies against synthetic, real between-study
-    heterogeneity against none, a study-level reference against a subject-pooled one -- and
-    which of those decides it is unmeasured.
+    Nor is it between-study heterogeneity, the other obvious candidate: adding a relative
+    :math:`\tau` of 0.0, 0.3 and 0.6 to the dial's effect studies leaves rmse at 0.126, 0.135
+    and 0.159 against the images' 0.126, 0.123 and 0.140 -- no crossing anywhere.
+
+    **What does move it is how the reference is built, and that is a caution about the pain
+    number rather than an endorsement of it.** The pain reference was an inverse-variance mean
+    of 19 study-level ``g`` maps. Hedges' variance is a function of the *observed* effect, so a
+    study that drew high gets less weight and such a reference is itself pulled downward --
+    and ``g`` is pulled downward too, so an estimator biased low scores better against a
+    reference biased low. Rebuilding the dial's reference the same way, from synthetic
+    reference studies rather than pooled subjects, takes ``g`` from tied (0.126 against 0.126)
+    to winning (0.122 against 0.125). **But that accounts for about 2 points of the pain gap's
+    22**, so the direction of the artefact is demonstrated and its magnitude is not. The one
+    remaining difference -- real studies against synthetic, with their different scanners,
+    paradigms and sample sizes -- cannot be dialled.
 
     So the advice here is empirical rather than principled: **fit it both ways.**
     ``selection_model="none"`` reduces to an inverse-variance meta-analysis of the images and
