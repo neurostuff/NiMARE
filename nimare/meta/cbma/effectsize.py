@@ -872,12 +872,13 @@ class CBES(Estimator):
         is optimistic. On a small collection widening it only cost accuracy -- rmse 0.070 at
         the named voxel against 0.113 at 4 mm.
 
-        The opposite regime is what it exists for, though whether it recovers accuracy there is
-        not yet established. With hundreds of coordinate studies a voxel collects a thousand
-        silences and at most a handful of reports, and both ``g`` and ``prevalence`` collapse.
-        On a 1,443-study pain corpus a 6 mm radius takes the silence-to-report ratio from
-        1089:1 to 80:1 and the share of voxels carrying any lower bound from 50% to 99%; that
-        much is measured, the effect on error is still being measured.
+        The opposite regime is what it exists for. With hundreds of coordinate studies a voxel
+        collects a thousand silences and at most a handful of reports, and both ``g`` and
+        ``prevalence`` collapse. On a 1,443-study pain corpus against one image, widening the
+        report undoes that: the error at the strongest voxels runs −0.303 at the named voxel,
+        −0.122 at 4 mm, −0.031 at 6 mm and +0.022 at 8 mm, where ``g`` recovers 0.622 of a true
+        0.622. Whole-map rmse is lowest at 4 mm (0.216 against 0.234), so 4 mm minimises error
+        and 8 mm centres the peaks; there is no single best radius.
     max_iter : :obj:`int`, default=25
         EM iterations. Voxels are retired as they settle, so this bounds the slowest rather
         than the typical one.
