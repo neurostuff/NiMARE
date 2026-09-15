@@ -2210,7 +2210,7 @@ class CBES(Estimator):
             )
         return series[~series.index.duplicated()]
 
-    def _study_cutoffs_z(self, table, sample_sizes):
+    def _study_cutoffs_z(self, sample_sizes):
         """Per-study reporting threshold on the z scale, one entry per study on the roster.
 
         This is the one number a silence cannot do without. "Study k reported nothing near voxel
@@ -2263,7 +2263,7 @@ class CBES(Estimator):
                 )
         return pd.Series(cutoff_z, index=index)
 
-    def _accumulate(self, table, image_studies=None):
+    def _accumulate(self, image_studies=None):
         """Walk the image studies, returning per-study voxel contributions and voxel sums.
 
         **Only images contribute a magnitude.** A coordinate table says where a study reported
@@ -2272,8 +2272,6 @@ class CBES(Estimator):
         and no per-focus value: a reported height was the only thing a kernel had to spread,
         and spreading it was measured to cost accuracy on every collection tested.
 
-        ``table`` is still taken, and still decides the silence geometry downstream, so the
-        signature does not change and the caller does not have to know which channel is which.
         """
         mask_img = self.masker.mask_img
         mask_flat_to_masked = _get_mask_flat_to_masked(mask_img)
@@ -2312,9 +2310,9 @@ class CBES(Estimator):
 
     # ----------------------------------------- pooling and the selection model
 
-    def _pool(self, table, image_studies=None):
+    def _pool(self, image_studies=None):
         """Run the two-pass local random-effects fit. Returns a dict of masked-voxel arrays."""
-        contributions, sums, n_voxels = self._accumulate(table, image_studies)
+        contributions, sums, n_voxels = self._accumulate(image_studies)
 
         if self.tau2_method == "dl":
             tau2 = _local_dersimonian_laird(
@@ -3086,7 +3084,7 @@ class CBES(Estimator):
         exactly the statistic being tested. Running the null off the naive weighted mean while
         the observed map came from the selection model would compare two different quantities.
         """
-        fit = self._pool(table, image_studies)
+        fit = self._pool(image_studies)
         if self.selection_model != "none":
             self._apply_selection_model(
                 fit, table, thresholds, sample_sizes, image_ids=tuple(image_studies or ())
@@ -3312,7 +3310,7 @@ class CBES(Estimator):
         # absolute-versus-relative distinction to carry.
         if self.selection_model != "none":
             roster = self._all_sample_sizes(dataset)
-            self._cutoffs_z_ = self._study_cutoffs_z(table, roster)
+            self._cutoffs_z_ = self._study_cutoffs_z(roster)
             # The censored likelihood compares an effect size against a bound, so the bound has
             # to be an effect size. Leaving it on the z scale saturates the censoring term --
             # a z of 3.29 is about 18 sampling standard deviations at N = 30, so every silence

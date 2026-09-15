@@ -251,7 +251,7 @@ def test_pooling_reduces_to_inverse_variance_weighting(studyset, small_mask):
 
     estimator = CBES(mask=small_mask, null_method="none", selection_model="none")
     estimator.fit(studyset)
-    fit = estimator._pool(estimator._focus_table_, estimator._image_studies_)
+    fit = estimator._pool(estimator._image_studies_)
 
     voxel = int(np.argmax(fit["n_studies"]))
     g, v = [], []
@@ -1222,7 +1222,7 @@ def test_null_is_built_from_the_selected_statistic(studyset, small_mask):
     assert "prevalence" in fit
 
 
-def test_convergence_alone_does_not_make_a_voxel_significant(tmp_path, small_mask):
+def test_convergence_alone_does_not_make_a_voxel_significant(tmp_path):
     """The null is about magnitude, not about foci piling up: this is not a convergence test."""
     # Every study reports at the same place with no effect anywhere, so the foci converge
     # perfectly and the images carry nothing.
