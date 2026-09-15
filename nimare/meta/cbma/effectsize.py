@@ -1118,11 +1118,12 @@ class CBES(Estimator):
     "g"            Pooled Hedges' g, on whatever scale the fit could identify.
     "g_relative"   ``g`` over the 95th percentile of ``|g|``, so the unidentified
                    scale cancels. Always emitted, and the map to read by default.
-    "g_absolute"   ``g`` on the true Hedges' g scale. **Only present when the scale
-                   is pinned**: at least two image studies in the collection, or an
-                   explicit numeric ``peak_bias_scale``. Absent otherwise, because
-                   there would be nothing to distinguish it from ``g_relative``
-                   times an unknown constant.
+    "g_absolute"   ``g`` with its overall scale pinned, which needs at least two
+                   image studies in the collection or an explicit numeric
+                   ``peak_bias_scale``; absent otherwise, there being nothing then
+                   to distinguish it from ``g_relative`` times an unknown constant.
+                   Pinning fixes the map's average level and not its values: see the
+                   compression described under Warnings.
     "se"           Standard error of the pooled estimate. See ``se_method``.
     "z"            ``g / se``. Two-tailed. Unaffected by the scale.
     "p", "logp"    p-value for ``z``, and its ``-log10``.
@@ -1173,6 +1174,33 @@ class CBES(Estimator):
     information at all -- which on real collections is often. ``g_absolute`` is emitted only
     when images or an explicit ``peak_bias_scale`` pin the scale, and even then
     ``scale_interval_`` reports how well.
+
+    **The magnitude is also compressed, and pinning the scale does not uncompress it.** Judged
+    against references built from studies the coordinates never touched -- held-out HCP subjects,
+    and split halves of the 21-study NIDM pain collection and of NeuroVault collections sharing a
+    cognitive paradigm -- a reference effect spanning elevenfold across its strata comes back
+    spanning about 1.2-fold. An unknown constant would leave that ratio alone; it does not.
+
+    Nor is the level a property of the studies. On one collection, holding the studies fixed and
+    changing only how a paper would have tabulated them, the ratio of ``g`` to the held-out truth
+    where that truth is largest runs from 0.82 to 2.29 -- across thresholding by FDR, by voxelwise
+    family-wise error and by cluster extent, and across tabulating a cluster by its maximum or by
+    its centre of mass. Two collections reporting the same effects under different conventions
+    will not agree.
+
+    The cause is the input rather than the fit, so no option here changes it. Regressing the
+    held-out truth at a focus on the effect size that focus's own table reports gives a slope of
+    0.08 to 0.18 with most of the value in the intercept: one tabulated coordinate explains 5% to
+    9% of the variance in the effect at its own location. The pooled map already does slightly
+    better than that ceiling, so the estimator is extracting more than a coordinate carries, not
+    less. Measured and rejected as remedies: the truncated-normal selection correction, which is
+    the wrong event for a local maximum and returns 0.26 for a true 0.5; ``peak_bias="per-study"``;
+    subtracting the censoring floor; reporting by centre of mass, which carries no winner's curse
+    and still does not decompress; and widening the assumed cluster, which costs correlation.
+
+    Read ``g`` and ``g_relative`` as ordering voxels within one collection, which they do: against
+    the same held-out references they correlate +0.21 to +0.45, and better than any single
+    coordinate does.
 
     What the null tests is not what a reader of a coordinate-based meta-analysis may expect. The
     estimand is :math:`\mu(v)`, the effect size at a voxel among the studies that have an
