@@ -75,6 +75,12 @@ DEFAULT_COVERAGE_RADIUS_MM = 20.0
 #: whole-map accuracy.
 DEFAULT_REPORT_RADIUS_MM = 4.0
 
+#: Silences per report, at the voxels where any study reported, above which ``"adaptive"``
+#: widens the report limb to ``DEFAULT_REPORT_RADIUS_MM``. Calibrated on the two regimes
+#: measured: NIDM pain with nine tables sits at 5 and is better served by the named voxel,
+#: while a 1,443-study corpus sits at 604 and needs the wider report.
+ADAPTIVE_REPORT_RATIO = 50.0
+
 #: Default two-tailed reporting threshold, on the z scale, when a study gives no better
 #: information. p < .001 uncorrected, the most common screening threshold in the literature.
 DEFAULT_REPORTING_THRESHOLD_Z = 3.2905267314919255
@@ -648,6 +654,29 @@ def _null_maxima_diagnostics(max_values):
     return (not (sparse and narrow)), n_distinct, cv
 
 
+def silence_to_report_ratio(voxel, sign):
+    """Median silences per report, over the voxels where any study reported.
+
+    The one number that says whether the report limb can speak. A report bounds the effect from
+    below, a silence from above, and the fit is driven by whichever limb has the weight. On a
+    collection of nine tables a reported voxel carries about eight silences against its one
+    report; on a 1,443-study corpus it carries a thousand, and both ``g`` and ``prevalence``
+    collapse toward zero because nothing holds them up.
+
+    Measured per voxel and then taken as a median, rather than as a ratio of totals, because
+    the totals are dominated by the vast majority of voxels no study ever named.
+    """
+    if not voxel.size:
+        return 0.0
+    width = int(voxel.max()) + 1
+    reports = np.bincount(voxel[sign < 0], minlength=width).astype(float)
+    silences = np.bincount(voxel[sign > 0], minlength=width).astype(float)
+    spoken = reports > 0
+    if not np.any(spoken):
+        return np.inf
+    return float(np.median(silences[spoken] / reports[spoken]))
+
+
 def _local_dersimonian_laird(sum_a, sum_a2, sum_ag, sum_ag2, n_studies):
     r"""Per-voxel DerSimonian-Laird estimate of between-study heterogeneity.
 
@@ -690,6 +719,7 @@ def _validate_options(
     null_method,
     threshold,
     interval,
+    report_radius,
 ):
     """Reject unusable option combinations at construction, not at fit time.
 
@@ -707,6 +737,14 @@ def _validate_options(
         )
     if null_method not in NULL_METHODS:
         raise ValueError(f"null_method must be one of {NULL_METHODS}; got {null_method!r}.")
+    if report_radius is not None and report_radius != "adaptive":
+        if not np.isscalar(report_radius) or isinstance(report_radius, str):
+            raise ValueError(
+                'report_radius must be a number, None, or "adaptive"; got ' f"{report_radius!r}."
+            )
+        if float(report_radius) < 0:
+            raise ValueError(f"report_radius must not be negative; got {report_radius!r}.")
+
     if interval not in INTERVAL_METHODS:
         raise ValueError(f"interval must be one of {INTERVAL_METHODS}; got {interval!r}.")
     if interval == "profile" and selection_model != "zero-inflated":
@@ -873,21 +911,23 @@ class CBES(Estimator):
 
         Used only when ``selection_model="zero-inflated"``. ``g`` is insensitive to it;
         ``prevalence`` rises with it, which is one reason to read that map ordinally.
-    report_radius : :obj:`float` or None, default=4.0
+    report_radius : :obj:`float`, None, or ``"adaptive"``, default=``"adaptive"``
         Radius, in mm, over which a reported focus asserts its lower bound. ``None`` asserts it
-        at the named voxel alone.
+        at the named voxel alone; a float asserts it over that sphere.
 
-        The default is not the named voxel because a peak is a local maximum selected for size
-        and displaced from wherever the effect is, so the named voxel is not the privileged
-        one. It matters most where the silences swamp the reports: on a 1,443-study pain corpus
-        a voxel collects a thousand silences and at most four reports, and both ``g`` and
-        ``prevalence`` collapse. Against one image there, the error at the strongest voxels
-        runs −0.303 at the named voxel, −0.122 at 4 mm, −0.031 at 6 mm and +0.022 at 8 mm,
-        where ``g`` recovers 0.622 of a true 0.622.
+        Which is better depends on how badly the report limb is outnumbered, and that turns out
+        to vary by two orders of magnitude across real collections. On NIDM pain's nine tables
+        a reported voxel carries five silences per report, and the named voxel wins. On a
+        1,443-study corpus it carries 605, both ``g`` and ``prevalence`` collapse, and widening
+        the report undoes it: error at the strongest voxels runs −0.303 at the named voxel,
+        −0.122 at 4 mm, −0.031 at 6 mm and +0.022 at 8 mm, where ``g`` recovers 0.622 of a true
+        0.622.
 
-        4 mm is the whole-map optimum (rmse 0.216 against 0.234 at the named voxel); a wider
-        radius centres the peaks better and costs rmse, so raise it when a calibrated magnitude
-        at the peaks matters more than error everywhere.
+        ``"adaptive"`` measures that ratio from the tables and picks: the named voxel below
+        ``ADAPTIVE_REPORT_RATIO`` silences per report, ``DEFAULT_REPORT_RADIUS_MM`` above it.
+        The resolved value is on ``report_radius_`` after fitting. Set a float to override --
+        a wider radius centres the peaks better and costs whole-map accuracy, so raise it when
+        a calibrated magnitude at the peaks matters more than error everywhere.
     max_iter : :obj:`int`, default=25
         EM iterations. Voxels are retired as they settle, so this bounds the slowest rather
         than the typical one.
@@ -1013,7 +1053,7 @@ class CBES(Estimator):
         threshold=None,
         clamp_threshold=True,
         coverage_radius=DEFAULT_COVERAGE_RADIUS_MM,
-        report_radius=DEFAULT_REPORT_RADIUS_MM,
+        report_radius="adaptive",
         max_iter=25,
         null_method="permute-images",
         cluster_threshold=0.001,
@@ -1037,6 +1077,7 @@ class CBES(Estimator):
             null_method=null_method,
             threshold=threshold,
             interval=interval,
+            report_radius=report_radius,
         )
 
         self.design = design
@@ -1526,7 +1567,9 @@ class CBES(Estimator):
             "denominator": denominator,
         }
 
-    def _indicator_entries(self, table, study_ids, active, n_voxels, image_ids=()):
+    def _indicator_entries(
+        self, table, study_ids, active, n_voxels, image_ids=(), report_radius=None
+    ):
         """Pair each voxel with every coordinate study's reporting indicator there.
 
         Returns ``(voxel, study_position, sign)``: ``sign = +1`` where the study has no focus
@@ -1581,10 +1624,8 @@ class CBES(Estimator):
         # Offsets for the report limb, on the same padded grid. A radius under one voxel
         # reduces to the named voxel, which is the default and stays on the cheap path.
         report_flat_offsets = None
-        if self.report_radius:
-            report_offsets = sphere_kernel_offsets(
-                self.report_radius, mask_img.header.get_zooms()[:3]
-            )
+        if report_radius:
+            report_offsets = sphere_kernel_offsets(report_radius, mask_img.header.get_zooms()[:3])
             if report_offsets.shape[0] > 1:
                 report_flat_offsets = report_offsets.astype(np.int64) @ padded_strides
                 reach = np.maximum(reach, np.abs(report_offsets).max(axis=0))
@@ -1659,6 +1700,49 @@ class CBES(Estimator):
 
         return np.concatenate(cols), np.concatenate(positions), np.concatenate(signs)
 
+    def _resolve_indicator(self, table, study_ids, active, n_voxels, image_ids):
+        """Build the indicator, choosing the report radius from the data when asked to.
+
+        ``"adaptive"`` needs the named-voxel indicator before it can measure how outnumbered
+        the reports are, so that version is built first and kept when the ratio is low. Only
+        when it is high is the report limb re-dilated, and the silences are untouched either
+        way, so the second pass costs one more dilation and nothing else.
+        """
+        requested = self.report_radius
+        if requested != "adaptive":
+            self.report_radius_ = requested
+            return self._indicator_entries(
+                table,
+                study_ids,
+                active,
+                n_voxels,
+                image_ids=image_ids,
+                report_radius=requested,
+            )
+
+        entries = self._indicator_entries(
+            table, study_ids, active, n_voxels, image_ids=image_ids, report_radius=None
+        )
+        ratio = silence_to_report_ratio(entries[0], entries[2])
+        if ratio < ADAPTIVE_REPORT_RATIO:
+            self.report_radius_ = None
+            LGR.info(f"report_radius: the named voxel, from {ratio:.0f} silences per report.")
+            return entries
+
+        self.report_radius_ = DEFAULT_REPORT_RADIUS_MM
+        LGR.info(
+            f"report_radius: {DEFAULT_REPORT_RADIUS_MM:.0f} mm, from {ratio:.0f} silences per "
+            "report, which would otherwise swamp the reports."
+        )
+        return self._indicator_entries(
+            table,
+            study_ids,
+            active,
+            n_voxels,
+            image_ids=image_ids,
+            report_radius=DEFAULT_REPORT_RADIUS_MM,
+        )
+
     def _value_entries(self, fit, study_ids, active, n_voxels):
         """``(local_voxel, study_position, w, g, var)`` for every voxel the kernel reaches."""
         position = {study_id: i for i, study_id in enumerate(study_ids)}
@@ -1729,8 +1813,8 @@ class CBES(Estimator):
         if cached is not None and cached[0] == coverage_key:
             ind_col, ind_pos, ind_sign = cached[1]
         else:
-            ind_col, ind_pos, ind_sign = self._indicator_entries(
-                table, study_ids, active, n_voxels, image_ids=image_ids
+            ind_col, ind_pos, ind_sign = self._resolve_indicator(
+                table, study_ids, active, n_voxels, image_ids
             )
             self._coverage_ = (coverage_key, (ind_col, ind_pos, ind_sign))
         values = self._value_entries(fit, study_ids, active, n_voxels)

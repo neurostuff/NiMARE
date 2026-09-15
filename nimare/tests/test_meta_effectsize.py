@@ -20,9 +20,9 @@ from nimare.correct import FDRCorrector, FWECorrector
 from nimare.generate import create_effect_size_coordinate_studyset
 from nimare.meta.cbma.effectsize import (
     _NULL_Z_STEP,
+    ADAPTIVE_REPORT_RATIO,
     CBES,
     DEFAULT_COVERAGE_RADIUS_MM,
-    DEFAULT_REPORT_RADIUS_MM,
     NULL_METHODS,
     _local_dersimonian_laird,
     _null_bin_edges,
@@ -30,6 +30,7 @@ from nimare.meta.cbma.effectsize import (
     null_effect_variance,
     reported_minimum_z,
     reporting_cutoff_to_g,
+    silence_to_report_ratio,
 )
 from nimare.utils import mm2vox
 
@@ -811,18 +812,56 @@ def test_the_report_radius_makes_three_zones_and_widens_only_the_report(studyset
         return estimator._coverage_[1][2]
 
     named = signs(report_radius=None)
-    default = signs()
-    wide = signs(report_radius=6.0)
-
-    for wider in (default, wide):
+    for radius in (4.0, 6.0):
+        wider = signs(report_radius=radius)
         # A report radius inside the coverage radius cannot reach the silences.
         assert (wider > 0).sum() == (named > 0).sum()
         # The reports grow at the expense of the ring that carried no indicator.
         assert (wider < 0).sum() > (named < 0).sum()
+    assert (signs(report_radius=4.0) < 0).sum() < (signs(report_radius=6.0) < 0).sum()
 
-    # The default is 4 mm, between the named voxel and a wider sphere.
-    assert (named < 0).sum() < (default < 0).sum() < (wide < 0).sum()
-    assert np.array_equal(default, signs(report_radius=DEFAULT_REPORT_RADIUS_MM))
+
+def test_the_adaptive_report_radius_follows_the_silence_to_report_ratio(studyset, small_mask):
+    """The default reads how outnumbered the reports are and picks accordingly.
+
+    A handful of tables leaves the report limb able to speak, so the named voxel is kept. It is
+    only when the silences outnumber the reports by orders of magnitude that widening pays, and
+    that is a property of the collection rather than something a user should have to know.
+    """
+    estimator = CBES(mask=small_mask, null_method="none", threshold="reporting_threshold")
+    estimator.fit(studyset)
+
+    voxel, _, sign = estimator._coverage_[1]
+    ratio = silence_to_report_ratio(voxel, sign)
+    assert ratio < ADAPTIVE_REPORT_RATIO, "this fixture is meant to be a low-ratio collection"
+    assert estimator.report_radius_ is None
+
+    # An explicit value is honoured and recorded rather than adapted away.
+    explicit = CBES(
+        mask=small_mask,
+        null_method="none",
+        threshold="reporting_threshold",
+        report_radius=6.0,
+    )
+    explicit.fit(studyset)
+    assert explicit.report_radius_ == 6.0
+    assert (explicit._coverage_[1][2] < 0).sum() > (sign < 0).sum()
+
+
+def test_the_silence_to_report_ratio_counts_per_voxel_not_in_total():
+    """The ratio is a median over voxels that were named, not a ratio of grand totals.
+
+    Totals are dominated by the voxels no study ever named, which carry silences and no report
+    and so say nothing about whether a report can be heard where one exists.
+    """
+    # Two named voxels: voxel 0 has one report against four silences, voxel 1 two against four.
+    voxel = np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2])
+    sign = np.array([-1, 1, 1, 1, 1, -1, -1, 1, 1, 1, 1, 1, 1, 1], dtype=float)
+    assert silence_to_report_ratio(voxel, sign) == 3.0  # median of 4/1 and 4/2
+
+    # A collection nobody reported in has no ratio to speak of rather than a zero.
+    assert silence_to_report_ratio(voxel, np.ones_like(sign)) == np.inf
+    assert silence_to_report_ratio(np.array([], dtype=int), np.array([])) == 0.0
 
 
 def test_the_profile_interval_brackets_the_estimate_and_is_asked_for(studyset, small_mask):
