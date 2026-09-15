@@ -1177,25 +1177,37 @@ class CBES(Estimator):
     helping and the magnitudes hurting, not of a magnitude channel working.
 
     On the 21-study NIDM pain collection, split in half so the reference comes from studies the
-    coordinates never touched, with the tables extracted the way a paper would produce them
-    (cluster-forming cut, whole clusters kept, one focus per cluster) and eight splits scored
-    paired:
+    coordinates never touched, eight splits scored paired, and run twice: once on the tables
+    **the papers actually printed** -- the collection's own 267 transcribed peaks -- and once on
+    tables re-extracted from the same studies' maps the way a paper would produce them
+    (cluster-forming cut, whole clusters kept, one focus per cluster).
 
     ==========================  ======  ========  ==========  =====  ======
     estimate                      bias  at top      rmse      rank r  AUC
     ==========================  ======  ========  ==========  =====  ======
     images only, pooled         +0.136    +0.137       0.269   0.484   0.893
     CBES with the silence off   +0.142    +0.155       0.272   0.499   0.899
-    CBES ``g``                  +0.075    -0.065       0.210   0.486   0.889
-    CBES ``g_marginal``         -0.004    -0.226       0.191   0.458   0.861
+    CBES ``g``, published        +0.069    +0.005       0.230   0.480   0.886
+    CBES ``g``, extracted        +0.075    -0.065       0.210   0.486   0.889
+    CBES ``g_marginal``, publ.   -0.064    -0.291       0.184   0.483   0.887
     ==========================  ======  ========  ==========  =====  ======
 
-    **The coordinate channel corrects the level and leaves the pattern alone.** ``rmse`` falls
-    22% against pooling the images by themselves (paired p = 0.0003) and the bias 45%
-    (p < 0.0001); at the strongest voxels a +0.137 overestimate becomes a slight under. But the
-    ordering barely moves -- rank correlation +0.002 (p = 0.90) and AUC -0.004 (p = 0.32) --
-    and Pearson ``r`` costs 0.042 (p = 0.017). Read it as a correction to the magnitude, not as
+    **The coordinate channel corrects the level and leaves the pattern alone, and this holds on
+    real tables rather than only on a proxy for them.** On the published coordinates ``rmse``
+    falls 14% against pooling the images alone (paired p = 0.0024) and the mean bias 49%
+    (p = 0.0001), while the +0.137 overestimate at the strongest voxels becomes **+0.005** --
+    the best-centred top stratum of any arm measured here. The ordering barely moves: rank
+    correlation -0.004 (p = 0.84) and AUC -0.006 (p = 0.30). Pearson ``r`` costs 0.030 and that
+    cost is no longer significant (p = 0.075). Read it as a correction to the magnitude, not as
     a better map.
+
+    Running both table sources matters because they are not interchangeable, which was measured
+    rather than assumed: the cluster scheme recovers only 23% of pain's published peaks within
+    8 mm and 42% within 20 mm, and finds 119 peaks where the papers printed 267. So the
+    extracted arm is a different and sparser input, not a faithful copy -- it reads more voxels
+    as silent than the literature does. That it gives a *larger* rmse gain (22%, p = 0.0003)
+    and a worse-centred top stratum (-0.065) is consistent with that: more silence, more
+    shrinkage. The published-table row is the one to quote.
 
     The reason the heights were never going to work is in the input rather than the fit.
     Regressing a held-out truth at a focus on the effect size that focus's own table reports
