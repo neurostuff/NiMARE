@@ -1247,7 +1247,13 @@ class CBES(Estimator):
     ``g_marginal``          +0.785    +0.564  0.943         0.54
     ======================  ======  ========  =====  ===========
 
-    Pooling the two images alone wins on every metric, magnitude included. **That design has a
+    Pooling the two images alone wins on every metric, magnitude included -- **and so does an
+    independent method given the same data.** SDM-PSI, which takes the same mixture by design,
+    was run on the same studies with the same two supplied as maps: it returns r +0.722, AUC
+    0.927 and 0.43 of the reference, behind ``g`` on every column and behind the two images
+    alone on every column. Two unrelated methods both do worse with the fourteen coordinate
+    tables than without them, which makes this a property of thresholded coordinate tables in
+    this regime rather than a quirk of this estimator's censoring term. **That design has a
     prevalence of exactly 1**: every synthetic study draws from the same population, so there is
     no between-study absence for the mixture to find, and an unthresholded map of 30 of those
     subjects is already nearly unbiased. There is nothing for a selection correction to correct,
