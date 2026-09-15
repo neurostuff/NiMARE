@@ -1166,25 +1166,46 @@ class CBES(Estimator):
     it covers 94.5% to 98.4% of nominal-95% intervals across prevalences, cutoffs and study
     counts, erring conservative.
 
-    **End to end it was measured wider than the information warranted, and coverage will not
-    tell you that -- but those measurements predate the model this now is, and have not been
-    redone.** Every ``se/sd`` figure below was taken when the reporting threshold was being
-    compared against effect sizes on the *z* scale, which saturated the censoring term and made
-    the coordinate channel contribute nothing, and before the reporting limb of the indicator
-    existed. Both are fixed. Treat what follows as the shape of the problem rather than as the
-    current calibration, and read the width alongside any coverage figure regardless.
+    **End to end the interval is not usable as an interval, and coverage will not tell you
+    that.** Re-measured after the two fixes above, on the field simulator with the truth known
+    exactly, 30 replications per arm, stratified by the truth because 9204 of 9261 voxels sit
+    near zero and a whole-map figure rewards any estimator that shrinks. ``width`` is the
+    half-width of the documented interval as a fraction of the truth, so the quiet stratum's is
+    meaningless by construction and omitted:
 
-    On simulated collections reporting the way papers do, the reported ``se`` ran 1.1 to
-    2.1 times the estimator's own spread across replications, so the interval covered by being
-    generous: one arm covered 0.94 with a half-width of **0.91 of the effect**, an interval that
-    admits almost any magnitude, and coverage alone cannot distinguish that from an arm covering
-    0.97 at 0.12. Read ``se/sd`` and the width, not coverage. The excess is located in the
-    censoring term -- ``selection_model="none"`` nearly halves the ``se``, while fitted ``tau2``
-    was exactly zero and ``tau2_method="none"`` changed nothing -- and it is anomalous in one
-    direction only: the likelihood conditions on where the foci fell while the replication
-    spread is marginal over that, so a calibrated conditional ``se`` should come out *below* the
-    marginal ``sd``. Across twenty-one arms, coverage was predicted to a mean absolute error of
-    0.024 by the bias-to-width ratio alone, so nothing else is going on.
+    =========================  ======  =========  ======  ========  =========  ========
+    arm                          bias  ``se/sd``  cov(t)  bias      ``se/sd``  width
+                                       (quiet)    (quiet) (effect)  (effect)   (effect)
+    =========================  ======  =========  ======  ========  =========  ========
+    20 studies, 1 image        +0.114       2.71    0.98    -0.081       1.55      0.99
+    20 studies, 2 images       +0.093       3.17    0.98    -0.082       1.78      0.92
+    20 studies, 5 images       +0.076       3.67    0.99    -0.039       1.97      0.59
+    20 studies, 20 images      +0.045       3.74    0.97    -0.021       1.64      0.35
+    2 images, silence off      +0.101       2.05    1.00    -0.034       1.29      5.71
+    2 images, tau = 0.3        +0.093       3.17    0.98    -0.088       2.15      1.62
+    =========================  ======  =========  ======  ========  =========  ========
+
+    Three things follow, and the first is the important one.
+
+    **The point estimate improved and the interval got worse.** Every one of these arms covers
+    0.97 to 1.00, and at two images it does so with a half-width of 0.92 of the effect -- an
+    interval that admits almost any magnitude. Coverage alone cannot distinguish that from the
+    all-image row, which covers 0.99 at 0.35. **Read ``se/sd`` and the width, never coverage.**
+
+    **``se/sd`` is 1.55 to 3.74, worse than it was before the coordinate channel started
+    working.** It is anomalous in one direction only: the likelihood conditions on where the
+    foci fell while the replication spread is marginal over that, so a calibrated *conditional*
+    error should come out *below* the marginal spread, not several times above it. The excess is
+    in the censoring term -- switching the silence off drops it from 1.78 to 1.29 where the
+    effect is -- which is now demonstrable rather than inferred, the term having previously
+    been inert. So the indicator that corrects the magnitude is the same thing that inflates
+    the error, and only one of the two is wanted.
+
+    **The ``silence off`` row's width is not comparable.** Without the selection model there is
+    no censoring roster, so ``dof`` falls back to the Kish count over the image weights, which
+    at two images is 1 -- and a *t* on one degree of freedom has a critical value of 12.71. That
+    row is a correct statement about two studies, not a wider interval for the same
+    information.
 
     **P-values are unaffected by any of this.** They come from the permutation null, which is
     valid for whatever statistic it is computed on and does not require a calibrated ``se``.
