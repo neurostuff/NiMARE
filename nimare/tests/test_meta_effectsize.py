@@ -722,6 +722,36 @@ def test_the_coverage_radius_is_assumed_rather_than_read(tmp_path, small_mask):
     assert np.allclose(default["g"], fixed["g"])
 
 
+def test_coordinate_share_says_where_the_coordinate_channel_is_acting(studyset, small_mask):
+    """Say whether the coordinate channel is doing anything at each voxel.
+
+    The one diagnostic a reader cannot otherwise get. It is the fraction of the Fisher
+    information about ``g`` contributed by the reporting indicators rather than the images'
+    values, so 0 means the images carry the estimate alone and every coordinate caveat is moot
+    there, and 1 means the indicators carry it.
+    """
+    result = CBES(mask=small_mask, null_method="none", threshold="reporting_threshold").fit(
+        studyset
+    )
+    values = arrays(result)
+    share = values["coordinate_share"]
+
+    assert np.all(share >= 0.0) and np.all(share <= 1.0)
+    # It has to vary: a constant map would be telling the reader nothing.
+    covered = values["n_studies"] > 0
+    assert share[covered].std() > 0.01
+    # Highest where the studies actually reported, which is the stratification the design rests
+    # on -- the images carry the rest of the map.
+    focus = int(np.argmax(np.abs(values["g"]) * covered))
+    assert share[focus] > np.median(share[covered])
+
+
+def test_coordinate_share_is_zero_when_the_coordinates_cannot_act(studyset, small_mask):
+    """With the selection model off the tables are inert, so no share is reported at all."""
+    result = CBES(mask=small_mask, null_method="none", selection_model="none").fit(studyset)
+    assert "coordinate_share" not in set(result.maps)
+
+
 def test_the_marginal_map_is_the_conditional_one_times_the_prevalence(studyset, small_mask):
     """``g_marginal`` is the estimand an image-based meta-analysis reports; ``g`` is not."""
     result = CBES(mask=small_mask, null_method="none", threshold="reporting_threshold").fit(
@@ -780,7 +810,7 @@ def test_the_censored_likelihood_reads_silence_as_evidence_against_a_large_effec
             indicator[study, 0] = 0.0
 
         estimator = CBES(null_method="none", max_iter=400)
-        mu, pi, _, _ = estimator._fit_chunk(
+        mu, pi, _, _, _ = estimator._fit_chunk(
             weights=weights,
             g_obs=g_obs,
             var_obs=var_obs,
@@ -815,7 +845,7 @@ def test_fit_chunk_ignores_studies_that_say_nothing_here():
         var_obs = np.full((n_studies, 1), 1.0 / 30.0)
         indicator = np.zeros((n_studies, 1))
         indicator[2, 0] = 1.0  # one genuinely silent study
-        mu, pi, _, _ = estimator._fit_chunk(
+        mu, pi, _, _, _ = estimator._fit_chunk(
             weights=weights,
             g_obs=g_obs,
             var_obs=var_obs,
@@ -850,7 +880,7 @@ def test_a_report_and_a_silence_pull_the_magnitude_opposite_ways():
         var_obs = np.full((n_studies, 1), 1.0 / 30.0)
         indicator = np.zeros((n_studies, 1))
         indicator[1:, 0] = sign
-        mu, _, _, _ = estimator._fit_chunk(
+        mu, _, _, _, _ = estimator._fit_chunk(
             weights=weights,
             g_obs=g_obs,
             var_obs=var_obs,

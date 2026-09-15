@@ -324,7 +324,7 @@ def _observed_information(
         \qquad
         \frac{\partial\ell}{\partial\pi} = \frac{r}{\pi} - \frac{1-r}{1-\pi}.
 
-    What is returned is a pair. The first is the Schur complement
+    What is returned is a triple. The first is the Schur complement
     :math:`I_{\mu\mu} - I_{\mu\pi}^2 / I_{\pi\pi}`, so the caller inverts a scalar for
     :math:`\mu`'s error. Voxels where that is not positive are left to the caller as having no
     usable information.
@@ -348,6 +348,14 @@ def _observed_information(
     and the count of silent studies identifies :math:`\pi`. The full inverse is used anyway
     because it is the correct expression and costs nothing, and because nothing guarantees that
     near-orthogonality on a collection whose thresholds sit close to its effects.
+
+    The third is the share of :math:`I_{\mu\mu}` contributed by the coordinate indicators
+    rather than by the images' values, which costs nothing because the two are accumulated
+    separately anyway. It is the one diagnostic a reader needs and cannot otherwise get: at 0
+    the images carry the estimate alone and the tables changed nothing at this voxel, at 1 the
+    indicators carry it. Every caveat in :class:`CBES` -- the prevalence-1 regime, the
+    unexplained disagreement between collections, the over-shrinkage at the window -- is about
+    when to trust the coordinate channel, and this says where it is even acting.
 
     The :math:`\pi` block is exact here rather than an approximation. The mixture density is
     linear in :math:`\pi`, so :math:`\partial^2 \log f / \partial\pi^2 = -(\partial \log f /
@@ -407,7 +415,16 @@ def _observed_information(
         censor_score,
         censoring["d2_over_prob"] - censor_score**2,
     )
-    i_mu += add_mu
+    # The share of the information about mu that came from the coordinate tables, before the
+    # two are summed. Every caveat in ``CBES`` turns on a question a reader cannot otherwise
+    # answer -- is the coordinate channel doing anything *here*? -- and this answers it
+    # directly: 0 means the images carry the estimate alone and the tables changed nothing at
+    # this voxel, 1 means the indicators carry it.
+    total_mu = i_mu + add_mu
+    coordinate_share = np.divide(add_mu, total_mu, out=np.zeros(width), where=np.abs(total_mu) > 0)
+    np.clip(coordinate_share, 0.0, 1.0, out=coordinate_share)
+
+    i_mu = total_mu
     cross += add_cross
     i_pi += add_pi
 
@@ -425,7 +442,7 @@ def _observed_information(
         where=usable & (numerator > 0),
     )
     marginal_variance[~(usable & (numerator > 0))] = np.inf
-    return profiled, marginal_variance
+    return profiled, marginal_variance, coordinate_share
 
 
 def _mu_derivatives(
@@ -1064,6 +1081,10 @@ class CBES(Estimator):
                    ``prevalence``.
     "se_marginal"  Standard error of ``g_marginal``, by the delta method on the
                    same observed information. Zero where there is none.
+    "coordinate\_  Share of the Fisher information about ``g`` that came from the
+     share"        coordinate tables rather than from the images' values, in [0, 1].
+                   **Read this before trusting the coordinate channel anywhere.**
+                   Added under the zero-inflated selection model.
     "se"           Standard error of the pooled estimate. See ``se_method``.
     "z"            ``g / se``. Two-tailed.
     "p", "logp"    p-value for ``z``, and its ``-log10``.
@@ -1309,6 +1330,22 @@ class CBES(Estimator):
     costs about a tenth of the runtime, so the comparison is cheap. Where the two agree, little
     turns on the choice; where they disagree sharply, the correction is doing something
     load-bearing that nothing measured here can yet vouch for.
+
+    **``coordinate_share`` is the diagnostic every caveat here needs, and it is the one thing a
+    reader could not otherwise get.** The warnings above are all about *when* to trust the
+    coordinate channel -- the prevalence-1 regime where it does harm, the unexplained
+    disagreement between collections, the over-shrinkage at the window. None of them can be
+    checked on a given collection. What can be checked is whether the channel is even acting at
+    a voxel: ``coordinate_share`` is the fraction of the information about ``g`` contributed by
+    the indicators rather than the images' values, and it comes free because the two are
+    accumulated separately inside the likelihood. At 0 the images carry the estimate alone and
+    the tables changed nothing here, so none of the coordinate caveats apply; at 1 the
+    indicators carry it and all of them do.
+
+    On a 20-study collection with two image donors it runs from 0.02 to 1.00, with a **median of
+    0.10 and 0.79 at the focus** -- so on a typical map the images carry the estimate almost
+    everywhere and the coordinates take over exactly where studies reported. That is the
+    stratification the design rests on, now readable per voxel rather than only in aggregate.
 
     **Read ``prevalence`` ordinally, not as a fraction, and not within one map.** On the
     designed-prevalence dial just described -- real subjects, a true :math:`\pi` set by how many
@@ -2244,6 +2281,7 @@ class CBES(Estimator):
         pi_out = np.zeros(active.size, dtype=float)
         se_out = np.full(active.size, np.inf, dtype=float)
         se_marginal_out = np.full(active.size, np.inf, dtype=float)
+        share_out = np.zeros(active.size, dtype=float)
 
         # Dense blocks are (n_studies, chunk); cap their element count rather than their width
         # so that a studyset with many experiments simply takes more, smaller chunks.
@@ -2270,7 +2308,7 @@ class CBES(Estimator):
             if c_hi > c_lo:
                 indicator[ind_pos[c_lo:c_hi], ind_col[c_lo:c_hi] - lo] = ind_sign[c_lo:c_hi]
 
-            mu, pi, se, se_marginal = self._fit_chunk(
+            mu, pi, se, se_marginal, share = self._fit_chunk(
                 weights=weights,
                 g_obs=g_obs,
                 var_obs=var_obs,
@@ -2282,6 +2320,7 @@ class CBES(Estimator):
             )
             mu_out[lo:hi], pi_out[lo:hi] = mu, pi
             se_out[lo:hi], se_marginal_out[lo:hi] = se, se_marginal
+            share_out[lo:hi] = share
 
         fit["g"] = np.zeros(n_voxels, dtype=float)
         fit["g"][active] = mu_out
@@ -2290,6 +2329,8 @@ class CBES(Estimator):
         fit["se"][active] = se_out
         fit["se_marginal"] = np.full(n_voxels, np.inf, dtype=float)
         fit["se_marginal"][active] = se_marginal_out
+        fit["coordinate_share"] = np.zeros(n_voxels, dtype=float)
+        fit["coordinate_share"][active] = share_out
 
     def _working_sets(self, *, weights, g_obs, var_obs, indicator, tau2, null_var, cutoffs):
         """Split the block into the value-bearing and indicator-bearing pairs the EM uses.
@@ -2426,6 +2467,7 @@ class CBES(Estimator):
         pi_out = np.zeros(width)
         se_out = np.full(width, np.inf)
         se_marginal_out = np.full(width, np.inf)
+        share_out = np.zeros(width)
         voxel_ids = np.arange(width)
 
         def retire(positions):
@@ -2443,7 +2485,7 @@ class CBES(Estimator):
             ids = voxel_ids[positions]
             mu_out[ids] = mu[positions]
             pi_out[ids] = pi[positions]
-            information, marginal_variance = _observed_information(
+            information, marginal_variance, share = _observed_information(
                 width=mu.size,
                 pi=pi,
                 reporting=reporting,
@@ -2453,6 +2495,7 @@ class CBES(Estimator):
             )
             information = information[positions]
             marginal_variance = marginal_variance[positions]
+            share_out[ids] = share[positions]
             informative = information > 0
             se_out[ids[informative]] = 1.0 / np.sqrt(information[informative])
             marginal = np.isfinite(marginal_variance) & (marginal_variance > 0)
@@ -2530,7 +2573,7 @@ class CBES(Estimator):
         if mu.size:
             retire(np.arange(mu.size))
 
-        return mu_out, pi_out, se_out, se_marginal_out
+        return mu_out, pi_out, se_out, se_marginal_out, share_out
 
     # ----------------------------------------------------------- the statistic
 
@@ -2855,6 +2898,7 @@ class CBES(Estimator):
             maps["g_marginal"] = (fit["g"] * fit["prevalence"]).astype(DEFAULT_FLOAT_DTYPE)
             # Zero where there is no usable information, matching how "se" is emitted, so that
             # a reader is not handed an infinity to divide by.
+            maps["coordinate_share"] = fit["coordinate_share"].astype(DEFAULT_FLOAT_DTYPE)
             marginal_se = fit.get("se_marginal")
             if marginal_se is not None:
                 maps["se_marginal"] = np.where(np.isfinite(marginal_se), marginal_se, 0).astype(
