@@ -1347,6 +1347,18 @@ class CBES(Estimator):
     everywhere and the coordinates take over exactly where studies reported. That is the
     stratification the design rests on, now readable per voxel rather than only in aggregate.
 
+    **It does not, however, say where the interval is trustworthy, and that was tested rather
+    than assumed.** The ``se`` over-states the spread of ``g`` by roughly three-fold, and the
+    natural guess was that the excess is produced by the censoring term and so should track the
+    share. It does not: across bands of the share from below 0.05 to above 0.50, ``se/sd`` runs
+    2.93, 3.21, 3.23, 2.97 and 2.28, and the top decile of the share is *better* than the bottom
+    (2.86 against 3.24). Nor was the earlier reading that located the excess in the censoring
+    term ever a within-fit localisation -- it compared fits with ``selection_model="none"``,
+    which changes the estimator and the ``dof`` fallback together. The over-statement is
+    roughly uniform over the map and does not follow the channel that produces it, so the share
+    bounds what the coordinate caveats apply to and says nothing about the width of the
+    interval.
+
     **Read ``prevalence`` ordinally, not as a fraction, and not within one map.** On the
     designed-prevalence dial just described -- real subjects, a true :math:`\pi` set by how many
     studies carry the effect -- it reads 0.918, 0.714, 0.590 and 0.540 against true values of
