@@ -12,6 +12,7 @@ from pathlib import Path
 
 import nibabel as nib
 import numpy as np
+import pandas as pd
 import pytest
 from nilearn.maskers import NiftiMasker
 
@@ -140,6 +141,55 @@ def test_null_effect_variance_shrinks_with_sample_size():
     # One-sample Hedges' variance at zero effect is about 1/N, and the bias correction pulls it
     # very slightly below.
     assert np.allclose(variances, 1.0 / np.array([20.0, 80.0, 320.0]), rtol=0.05)
+
+
+def test_the_cutoff_conversion_distinguishes_the_two_designs():
+    """A two-sample N is a total split into equal groups, so its cutoff is a different g.
+
+    Worth a direct test rather than an inherited one: the last time these two designs shared a
+    code path the sample size was reduced by mean instead of sum, which read ``[30, 30]`` as two
+    groups of fifteen and inflated everything downstream by 39%.
+    """
+    one = reporting_cutoff_to_g([3.29], [40.0], design="one-sample")[0]
+    two = reporting_cutoff_to_g([3.29], [40.0], design="two-sample")[0]
+    # Same statistic, half the subjects per group, so the effect it implies is about twice as
+    # large -- the ratio of the two designs' standard errors, sqrt(4/N) over sqrt(1/N).
+    assert two / one == pytest.approx(2.0, rel=0.1)
+
+    # A sign is irrelevant: the cutoff is a magnitude either way.
+    assert reporting_cutoff_to_g([-3.29], [40.0])[0] == pytest.approx(one)
+
+    # And a study too small for the conversion is refused rather than returned as a nan.
+    with pytest.raises(ValueError, match="at least 4 subjects"):
+        reporting_cutoff_to_g([3.29], [3.0], design="one-sample")
+    with pytest.raises(ValueError, match="at least 5 subjects"):
+        reporting_cutoff_to_g([3.29], [4.0], design="two-sample")
+    with pytest.raises(ValueError, match="design must be"):
+        reporting_cutoff_to_g([3.29], [40.0], design="paired")
+
+
+def test_the_threshold_bound_reads_a_t_table_as_well_as_a_z_one():
+    """A collection tabulating ``t`` must give the same bound as one tabulating the same tails.
+
+    The bound lives on the z scale because that is what ``threshold`` is quoted on, so a ``t``
+    has to be mapped to the z with the same tail probability rather than used as-is.
+    """
+    from nimare.transforms import t_to_z
+
+    n = 30.0
+    t_values = np.array([4.0, 5.5, 6.0])
+    z_from_t = t_to_z(t_values, n - 1.0)
+
+    as_z = pd.DataFrame({"id": ["a", "a", "a"], "z_stat": z_from_t})
+    as_t = pd.DataFrame({"id": ["a", "a", "a"], "t_stat": t_values, "sample_size": [n] * 3})
+    assert reported_minimum_z(as_z)["a"] == pytest.approx(reported_minimum_z(as_t)["a"])
+    # The minimum, not the first or the largest.
+    assert reported_minimum_z(as_t)["a"] == pytest.approx(float(z_from_t.min()))
+
+    # No statistic column at all is an ordinary coordinate table, not an error.
+    assert reported_minimum_z(pd.DataFrame({"id": ["a"]})).empty
+    # Nor is a column that holds nothing usable.
+    assert reported_minimum_z(pd.DataFrame({"id": ["a", "b"], "z_stat": [np.nan, 0.0]})).empty
 
 
 def test_null_effect_variance_distinguishes_the_two_designs():
