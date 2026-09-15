@@ -36,8 +36,14 @@ DEFAULT_MAP_TYPE_CONVERSION = {
 
 #: Image types NiMARE can read from a Dataset. Anything else is not a statistic NiMARE knows
 #: how to transform or meta-analyze, so it is dropped rather than guessed at.
+#:
+#: ``g``/``g_var`` are effect-size maps rather than test statistics, and
+#: :func:`~nimare.transforms.transform_images` has always listed them among its valid targets.
+#: They were missing here, so a NIMADS collection carrying an effect-size map lost it at
+#: ``to_dataset()`` -- and an estimator that reads those columns then fitted from coordinates
+#: alone without saying so.
 SUPPORTED_IMAGE_TYPES = frozenset(
-    {"beta", "varcope", "se", "sd", "samplevar_dataset", "t", "z", "p"}
+    {"beta", "varcope", "se", "sd", "samplevar_dataset", "t", "z", "p", "g", "g_var"}
 )
 
 #: Extensions of the image formats nibabel can load from a path or URL.
@@ -273,6 +279,34 @@ def _point_value_kind_to_coordinate_column(kind):
     return _POINT_VALUE_COLUMN_MAP.get(normalized, f"value_{normalized}")
 
 
+def _point_value_items(values):
+    """Yield ``(coordinate column, value)`` for one focus, whichever shape its values take.
+
+    Two shapes reach here. Raw NIMADS JSON carries a **list** of ``{"kind": ..., "value": ...}``
+    dicts, which is what this function was originally written against. The studyset object model
+    exposes :attr:`nimare.studyset.nested.Point.values` as a **dict** already keyed by the
+    Dataset column name, e.g. ``{"z_stat": 3.64}``.
+
+    Only the list shape was handled. Iterating the dict yields its keys, which are strings, so
+    the ``isinstance(point_value, dict)`` test rejected every one and the conversion dropped
+    every reported peak statistic without a word. Any effect-size estimator reading a Dataset
+    built this way saw coordinates with no statistic attached.
+    """
+    if not values:
+        return
+    if isinstance(values, dict):
+        for kind, value in values.items():
+            yield _point_value_kind_to_coordinate_column(kind), value
+        return
+    for point_value in values:
+        if not isinstance(point_value, dict):
+            continue
+        yield (
+            _point_value_kind_to_coordinate_column(point_value.get("kind")),
+            point_value.get("value"),
+        )
+
+
 def _coordinate_column_to_point_value_kind(column):
     """Map a Dataset coordinate column to a NIMADS point-value kind."""
     return _COORDINATE_VALUE_KIND_MAP.get(column)
@@ -409,11 +443,7 @@ def convert_nimads_to_dataset(studyset, annotation=None):
 
         point_value_columns = {}
         for i_point, point in enumerate(analysis.points):
-            for point_value in getattr(point, "values", []) or []:
-                if not isinstance(point_value, dict):
-                    continue
-                column = _point_value_kind_to_coordinate_column(point_value.get("kind"))
-                value = point_value.get("value")
+            for column, value in _point_value_items(getattr(point, "values", None)):
                 if column is None or _is_missing(value):
                     continue
                 point_value_columns.setdefault(column, [None] * n_points)

@@ -1687,14 +1687,26 @@ class CBES(Estimator):
             column = "z_stat"
         elif "t_stat" in coords.columns and coords["t_stat"].notna().any():
             column = "t_stat"
-        elif getattr(self, "_image_studies_", None):
-            return None, "z"  # images carry the fit; the coordinates are unused
         else:
+            # This branch used to return ``(None, "z")`` when images were present -- "images
+            # carry the fit; the coordinates are unused". But a collection whose coordinates
+            # carry no statistic anywhere *is* the images-without-coordinates case that
+            # ``_collect_inputs`` refuses by name, and for the same reason: with nothing to
+            # pool from peaks the result is a random-effects meta-analysis of the images with
+            # none of the selection modelling this estimator exists for. Refusing there and
+            # quietly reducing here was the same decision made two ways, and the quiet one was
+            # reachable by accident -- a NIMADS collection converted through a legacy Dataset
+            # lost its peak statistics silently, so a fit that looked like CBES was an IBMA.
             raise ValueError(
                 "CBES needs a reported test statistic for each peak, but the input "
                 "coordinates have no usable 'z_stat' or 't_stat' column. Convergence-based "
                 "estimators (ALE, MKDADensity, KDA) do not require one; effect-size "
-                "estimation does."
+                "estimation does. If this collection also carries images, note that they "
+                "cannot stand in for the peak statistics: the fit would reduce to a "
+                "random-effects meta-analysis of the images, which nimare.meta.ibma does "
+                "directly and with valid inference. Attach the reported statistic to each "
+                "point (value kind 'Z' or 'T' in NIMADS, or a 'z_stat'/'t_stat' coordinate "
+                "column), or name the column explicitly with stat_column=."
             )
 
         return column, "t" if column.startswith("t") else "z"
@@ -1710,6 +1722,33 @@ class CBES(Estimator):
 
         images = getattr(dataset, "images", None)
         if images is None or "g" not in images.columns or "g_var" not in images.columns:
+            # A coordinate-only collection has no images table at all and nothing is wrong with
+            # it. But a collection that *has* image rows carrying neither column was asked to
+            # supply images and could not, and falling back to coordinates alone in silence is
+            # the worst failure this estimator has: the peak-height scale then has nothing to
+            # calibrate against, which is the difference between an interval that covers and one
+            # that does not. Name what is missing rather than quietly becoming a different fit.
+            # "Has image rows" is not the signal: a Dataset's images table carries one row per
+            # analysis whether or not that analysis names any file. What distinguishes "asked
+            # for images and could not supply them" is a column that actually names a path.
+            named = sorted(
+                c
+                for c in (images.columns if images is not None else [])
+                if c not in ("id", "study_id", "contrast_id", "space")
+                and not c.endswith("__relative")
+                and images[c].notna().any()
+            )
+            if named:
+                present = named
+                LGR.warning(
+                    "use_images=True but no study supplies both a 'g' and a 'g_var' image, so "
+                    "this fit uses coordinates alone. The collection carries image columns "
+                    f"{present or 'none'}. CBES reads effect-size maps, not test statistics: "
+                    "convert them with nimare.transforms.transform_images(target='g') (and "
+                    "'g_var'), or label them value_type='g'/'g_var' in the NIMADS collection. "
+                    "Without image donors peak_bias_scale='images' has nothing to calibrate "
+                    "and the reported magnitude keeps the peak-height inflation."
+                )
             return {}
 
         loaded = {}

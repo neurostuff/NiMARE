@@ -2780,3 +2780,82 @@ def test_the_reported_error_exceeds_the_em_curvature_it_used_to_be():
     assert np.isclose(se[0], 1.0 / np.sqrt(information[0]))
     # The product's variance comes from the same matrix and must be usable here too.
     assert np.isfinite(marginal_variance[0]) and marginal_variance[0] > 0
+
+
+def test_effect_size_images_survive_conversion_to_a_dataset(mixed_image_studyset):
+    """A ``g``/``g_var`` pair must not be dropped on the way from a collection to a Dataset.
+
+    ``nimare.io``'s supported set listed the test statistics and omitted the effect-size maps,
+    so ``to_dataset()`` silently deleted exactly the columns this estimator reads. The fit then
+    proceeded from coordinates alone, which is the configuration whose interval does not cover.
+    """
+    dataset = mixed_image_studyset.to_dataset()
+    assert "g" in dataset.images.columns
+    assert "g_var" in dataset.images.columns
+    assert dataset.images[["g", "g_var"]].notna().all(axis=1).any()
+
+    # Point statistics have to survive too: ``Point.values`` is a dict keyed by column name,
+    # the converter only handled the list-of-{kind, value} shape, and the mismatch dropped
+    # every reported peak height without a word.
+    assert "z_stat" in dataset.coordinates.columns
+    assert dataset.coordinates["z_stat"].notna().all()
+
+    # The mask is passed explicitly because ``to_dataset()`` does not carry the collection's
+    # mask, and CBES then falls back to the default MNI template -- a separate way the legacy
+    # path changes the meaning of a fit, and one that moved this scale by 22% when the two
+    # sides were first compared. Holding it fixed is what isolates the conversion.
+    config = dict(
+        fwhm=8.0,
+        null_method="none",
+        peak_bias="per-study",
+        peak_bias_scale="images",
+        mask=mixed_image_studyset.masker.mask_img,
+    )
+    through_dataset = CBES(**config)
+    through_dataset.fit(dataset)
+    assert through_dataset.scale_source_ == "images"
+    assert through_dataset.n_scale_donors_ >= 2
+
+    # The contract that matters: converting a collection must not change the answer.
+    direct = CBES(**config)
+    direct.fit(mixed_image_studyset)
+    assert through_dataset._peak_bias_scale_ == pytest.approx(direct._peak_bias_scale_, rel=1e-6)
+
+
+def test_being_unable_to_find_any_image_is_said_out_loud(mixed_image_studyset, caplog):
+    """Falling back to coordinates alone in silence is the failure mode worth warning about.
+
+    A coordinate-only collection has no images table and nothing is wrong with it. A collection
+    that carries image rows in some other value type was asked for images and could not supply
+    them, and the resulting fit is a different estimator than the one the caller configured.
+    """
+    import logging
+
+    dataset = mixed_image_studyset.to_dataset()
+    # The shape of a collection whose maps came through as test statistics rather than as
+    # effect sizes: image rows present, neither column this estimator reads. Every g-derived
+    # column goes, including the ``__relative`` one a Dataset re-resolves the absolute path
+    # from, or the estimator still sees a 'g' column naming files that are not there.
+    images = dataset.images
+    dataset.images = images.drop(
+        columns=[c for c in images.columns if c.startswith(("g", "g_var"))]
+    ).assign(z="/nowhere/z.nii.gz")
+
+    estimator = CBES(fwhm=8.0, null_method="none", peak_bias="per-study")
+    with caplog.at_level(logging.WARNING, logger="nimare.meta.cbma.effectsize"):
+        estimator.fit(dataset)
+    messages = [r.message for r in caplog.records]
+    named = [m for m in messages if "no study supplies both a 'g' and a 'g_var' image" in m]
+    assert named, messages
+    # The message has to name what the collection *does* carry, or a caller cannot tell a
+    # mislabelled value type from a missing file.
+    assert "'z'" in named[0]
+
+    # And the quiet case stays quiet: a coordinate-only collection has no images table and
+    # nothing is wrong with it.
+    coords_only = mixed_image_studyset.to_dataset()
+    coords_only.images = coords_only.images.iloc[0:0]
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="nimare.meta.cbma.effectsize"):
+        CBES(fwhm=8.0, null_method="none", peak_bias="per-study").fit(coords_only)
+    assert not any("g_var" in r.message for r in caplog.records)
