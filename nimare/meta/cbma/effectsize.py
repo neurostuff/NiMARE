@@ -2094,6 +2094,22 @@ class CBES(Estimator):
         # roster less the donors -- a coordinate study that reported nothing anywhere is
         # genuinely silent and belongs here, unlike a donor, which speaks through its image.
         coordinate_ids = [study for study in sample_sizes.index if study not in set(donor_ids)]
+        if not coordinate_ids or not len(table[table["id"].isin(coordinate_ids)]):
+            # Every study is a donor, so there is no coordinate-only fit to compare the images
+            # against -- and nothing for a scale to act on either, since a donor's own peaks are
+            # dropped in favour of its image. Returning 1.0 is the right answer rather than a
+            # fallback. Left unguarded, this reached `_accumulate` with an empty focus table and
+            # no image studies and raised "No study contributed any in-mask voxels" from three
+            # frames down, which named neither the cause nor the configuration.
+            LGR.info(
+                "peak_bias_scale='images' has nothing to calibrate: every study supplies an "
+                "image, so no study speaks through coordinates and the peak-height scale has "
+                "nothing to act on. Using 1.0."
+            )
+            self.scale_source_ = "unset"
+            self.n_scale_donors_ = 0
+            self.scale_interval_ = None
+            return 1.0
         coordinate_only = self._statistic(
             table[table["id"].isin(coordinate_ids)],
             sample_sizes.loc[coordinate_ids],

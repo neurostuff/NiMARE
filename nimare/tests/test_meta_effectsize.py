@@ -1678,6 +1678,95 @@ def test_scale_is_reported_as_an_interval_or_not_at_all(
     assert "confidence interval" in result.description_
 
 
+def test_calibrating_the_scale_off_images_survives_every_study_being_a_donor(tmp_path_factory):
+    """``peak_bias_scale="images"`` must not fall over when there is no coordinate arm left.
+
+    The scale is read off the donors by comparing, at shared voxels, what the coordinate-only fit
+    says against what each donor's image says. When *every* study is a donor there is no
+    coordinate-only fit to compare against -- and nothing for a scale to act on either, since a
+    donor's own peaks are dropped in favour of its image, so 1.0 is the right answer.
+
+    Left unguarded this reached ``_accumulate`` with an empty focus table and no image studies and
+    raised "No study contributed any in-mask voxels" from three frames down, naming neither the
+    cause nor the configuration. It is reachable from a documented setting on a collection shape
+    two other tests exercise deliberately.
+    """
+    from nimare.studyset import Studyset
+
+    directory = tmp_path_factory.mktemp("cbes_calib_all_donors")
+    shape = (8, 8, 8)
+    affine = np.diag([4.0, 4.0, 4.0, 1.0])
+    affine[:3, 3] = -14.0
+    mask = nib.Nifti1Image(np.ones(shape, np.int32), affine)
+    rng = np.random.default_rng(0)
+
+    def studyset(n_studies, n_image):
+        studies = []
+        for k in range(n_studies):
+            n = 30
+            metadata = {"sample_sizes": [n]}
+            analysis = {
+                "id": f"s{k}-1",
+                "name": "1",
+                "metadata": metadata,
+                "points": [
+                    {
+                        "space": "MNI",
+                        "coordinates": [0.0, 0.0, 0.0],
+                        "values": [{"kind": "T", "value": 5.0}],
+                    }
+                ],
+            }
+            if k < n_image:
+                g = (0.5 + rng.normal(0, 0.2, shape)).astype(np.float32)
+                nib.save(nib.Nifti1Image(g, affine), directory / f"{k}_g.nii.gz")
+                nib.save(
+                    nib.Nifti1Image(np.full(shape, 1.0 / n, np.float32), affine),
+                    directory / f"{k}_var.nii.gz",
+                )
+                analysis["images"] = [
+                    {
+                        "url": str(directory / f"{k}_g.nii.gz"),
+                        "filename": f"{k}_g.nii.gz",
+                        "space": "MNI",
+                        "value_type": "g",
+                    },
+                    {
+                        "url": str(directory / f"{k}_var.nii.gz"),
+                        "filename": f"{k}_var.nii.gz",
+                        "space": "MNI",
+                        "value_type": "g_var",
+                    },
+                ]
+            studies.append(
+                {"id": f"s{k}", "name": f"s{k}", "metadata": metadata, "analyses": [analysis]}
+            )
+        return Studyset({"id": "c", "name": "c", "studies": studies}, target=None, mask=mask)
+
+    def fit(n_studies, n_image):
+        estimator = CBES(
+            fwhm=8.0,
+            mask=mask,
+            null_method="none",
+            peak_bias="per-study",
+            peak_bias_scale="images",
+        )
+        estimator.fit(studyset(n_studies, n_image))
+        return estimator
+
+    # A mixed collection calibrates off its donors, which is the point of the setting.
+    mixed = fit(6, 2)
+    assert mixed.scale_source_ == "images"
+    assert mixed._peak_bias_scale_ > 0
+
+    # All donors: no coordinate arm, so the scale is 1.0 and says it was never calibrated.
+    everything = fit(6, 6)
+    assert everything._peak_bias_scale_ == 1.0
+    assert everything.scale_source_ == "unset"
+    assert everything.n_scale_donors_ == 0
+    assert everything.scale_interval_ is None
+
+
 def test_the_scale_interval_narrows_with_donors_rather_than_tracking_their_range():
     """It must be an interval for the scale, not the spread of the studies that set it.
 
