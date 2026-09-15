@@ -26,6 +26,7 @@ from nimare.meta.cbma.effectsize import (
     _null_bin_edges,
     _stat_from_histogram,
     null_effect_variance,
+    reported_minimum_z,
     reporting_cutoff_to_g,
 )
 from nimare.utils import mm2vox
@@ -567,22 +568,86 @@ def test_the_threshold_is_never_inferred_from_the_reported_heights(studyset, sma
             CBES(mask=small_mask, null_method="none", threshold=gone).fit(studyset)
 
 
-def test_the_reported_heights_do_not_reach_the_estimate(studyset, small_mask):
-    """Scale every reported statistic and the fit must not move: the values are never read."""
-    scrambled = copy.deepcopy(studyset.to_dict())
-    for study in scrambled["studies"]:
+def scale_reported_statistics(studyset, mask, factor):
+    """Return the collection with every reported statistic scaled by ``factor``.
+
+    A pure scaling, not an affine map. Adding a constant is not monotone in ``|z|`` -- it pulls
+    the negative peaks toward zero and so *lowers* the smallest reported magnitude, which is
+    the one quantity the estimator still reads. Scaling keeps ``|z|`` ordered and moves the
+    minimum in the direction asked for.
+    """
+    altered = copy.deepcopy(studyset.to_dict())
+    for study in altered["studies"]:
         for analysis in study["analyses"]:
             for point in analysis.get("points", []):
                 for value in point.get("values", []):
                     if value.get("kind") == "Z":
-                        value["value"] = float(value["value"]) * 3.0 + 7.0
+                        value["value"] = float(value["value"]) * factor
     from nimare.studyset import Studyset
 
-    shared = dict(mask=small_mask, null_method="none", threshold="reporting_threshold")
+    return Studyset(altered, target=None, mask=mask)
+
+
+def test_the_reported_heights_never_reach_the_magnitude(studyset, small_mask):
+    """Scale every reported statistic and the fit must not move: heights are not magnitudes.
+
+    ``clamp_threshold=False`` so the one channel the statistics *do* still feed -- a bound on
+    the reporting threshold -- is switched off, leaving nothing for them to touch.
+    """
+    shared = dict(
+        mask=small_mask,
+        null_method="none",
+        threshold="reporting_threshold",
+        clamp_threshold=False,
+    )
     original = arrays(CBES(**shared).fit(studyset))
-    altered = arrays(CBES(**shared).fit(Studyset(scrambled, target=None, mask=small_mask)))
-    for name in ("g", "se", "prevalence", "g_marginal"):
-        assert np.allclose(original[name], altered[name])
+    for factor in (0.6, 3.0):
+        altered = arrays(
+            CBES(**shared).fit(scale_reported_statistics(studyset, small_mask, factor))
+        )
+        for name in ("g", "se", "prevalence", "g_marginal"):
+            assert np.allclose(original[name], altered[name]), (factor, name)
+
+
+def test_the_reported_heights_reach_the_threshold_and_only_the_threshold(studyset, small_mask):
+    """The one thing the statistics are still read for is a *bound* on each study's cutoff.
+
+    Anything a study reported cleared its cut, so its smallest reported value is an upper bound
+    on that cut -- a hard inequality, not an inference, and it can only move a cutoff down.
+    """
+    # Scaled down so the smallest reported value falls below the cut the metadata states,
+    # which is the only situation the bound can act in: a table that contradicts its own
+    # stated threshold.
+    contradictory = scale_reported_statistics(studyset, small_mask, 0.8)
+    shared = dict(mask=small_mask, null_method="none", threshold="reporting_threshold")
+    clamped = CBES(**shared)
+    clamped.fit(contradictory)
+    held = CBES(**shared, clamp_threshold=False)
+    held.fit(contradictory)
+
+    # The clamp never raises a cutoff, and lowers at least one on this collection.
+    assert np.all(clamped._cutoffs_z_.values <= held._cutoffs_z_.values + 1e-9)
+    assert np.any(clamped._cutoffs_z_.values < held._cutoffs_z_.values - 1e-9)
+
+    # And the bound really is each study's own minimum, where that bites.
+    minima = reported_minimum_z(clamped.inputs_["coordinates"]).reindex(clamped._cutoffs_z_.index)
+    expected = np.minimum(held._cutoffs_z_.values, minima.fillna(np.inf).values)
+    assert np.allclose(clamped._cutoffs_z_.values, expected)
+
+
+def test_the_threshold_bound_is_a_no_op_on_tables_that_do_not_contradict_it(studyset, small_mask):
+    """Raise every reported statistic and the bound becomes vacuous, changing nothing.
+
+    This is the thin-table case -- a paper reporting only its strongest peaks -- where the
+    smallest reported value sits far above the cut it actually applied. The clamp must do
+    nothing there rather than guess.
+    """
+    thin = scale_reported_statistics(studyset, small_mask, 2.0)
+    shared = dict(mask=small_mask, null_method="none", threshold="reporting_threshold")
+    clamped = arrays(CBES(**shared).fit(thin))
+    held = arrays(CBES(**shared, clamp_threshold=False).fit(thin))
+    for name in ("g", "se", "prevalence"):
+        assert np.array_equal(clamped[name], held[name])
 
 
 def test_the_coverage_radius_is_assumed_rather_than_read(tmp_path, small_mask):
