@@ -1301,52 +1301,51 @@ class CBES(Estimator):
     conservative.
 
     **That is the interval measured where the model is exactly true. End to end, on simulated
-    collections that report the way papers do, it is much worse -- and how much worse depends
-    on whether any study supplied an image.** Against a known truth of 0.800, 100 replications
-    per row, studies reporting a genuine *t* and every table produced by a cluster-forming
-    threshold:
+    collections that report the way papers do, it covers nearly everywhere -- and that is not the
+    good news it looks like.** Against a known truth of 0.800, 100 replications per row, studies
+    reporting a genuine *t* and every table produced by a cluster-forming threshold. ``cover`` is
+    the recommended interval, a *t* on each fit's own ``dof``; ``width`` is its half-width as a
+    fraction of the effect, because coverage without width is not a measurement:
 
-    ============================  ======  =========  =====  ========
-    collection                      bias  ``se/sd``  cover  interval
-    ============================  ======  =========  =====  ========
-    12 studies, coordinates only  +0.255       2.14   0.75      0.42
-    24 studies, coordinates only  +0.246       2.01   0.35      0.29
-    12 studies, 2 image donors    -0.038       1.32   0.99      0.26
-    24 studies, 2 image donors    -0.064       1.35   0.91      0.19
-    12 studies, all images        -0.018       1.10   0.94      0.16
-    ============================  ======  =========  =====  ========
+    ================================  ======  =========  =====  ======  =====
+    collection                          bias  ``se/sd``  dof     cover  width
+    ================================  ======  =========  =====  ======  =====
+    12 studies, coordinates only      +0.255       2.14    4.5    0.98   0.57
+    24 studies, coordinates only      +0.246       2.01    9.1    0.56   0.33
+    12 studies, 2 image donors        -0.038       1.32    4.4    1.00   0.36
+    24 studies, 2 image donors        -0.064       1.35    8.6    0.96   0.22
+    24 studies, all images            -0.022       1.11   23.0    0.97   0.12
+    12 studies, no images, tau 0.3    +0.268       1.70    3.6    0.94   0.91
+    ================================  ======  =========  =====  ======  =====
 
-    ``interval`` is the half-width as a fraction of the effect, because coverage without width
-    is not a measurement. ``se/sd`` stays at or above 1 in every row, so no interval is too
-    narrow for the estimator's own variability: **every coverage shortfall here is bias, not
-    width.** Coverage across all sixteen arms of that table is predicted to a mean absolute
-    error of 0.034 by nothing but the bias-to-width ratio.
+    Read the last row first. It covers 0.94 with a half-width of **0.91 of the effect** -- an
+    interval that admits almost any magnitude. Coverage alone cannot distinguish that from the
+    24-study all-image row, which covers 0.97 at 0.12.
 
-    One caveat on the table's own numbers: they score ``g +/- 1.96 se``, a *normal* interval,
-    not the *t* on ``dof`` recommended just above. The recommended interval is wider, so these
-    are a lower bound on what a caller following this documentation gets, and the gap is not
-    small where the bias is large -- propagating the same bias and spread through a *t* moves
-    the twenty-four-study coordinates-only row from 0.40 to between 0.49 and 0.83 depending on
-    ``dof``, which the table did not record. Rows that already cover move toward 1.00 and so
-    become more conservative, not less.
+    Three things follow.
 
-    Two consequences follow, and the second is counterintuitive. The interval is usable when
-    the collection carries image donors to pin the peak-height scale, and is not otherwise --
-    coordinates alone leave a bias of about 30% of the effect that no interval width can
-    absorb. And because ``se`` shrinks with the number of studies while that bias does not,
-    **coverage degrades as a collection grows**: 0.75 to 0.35 coordinates-only on doubling the
-    studies. A large coordinate-only collection does not give a better interval on ``g``; it
-    gives a tighter interval around the wrong value. Read ``g_relative`` when there are no
-    donors.
+    **``se/sd`` is the diagnostic, not coverage.** The reported error is 1.1 to 2.1 times the
+    estimator's own spread across replications, so the interval covers by being generous. The
+    excess is located in the censoring term -- ``selection_model="none"`` nearly halves the
+    ``se``, while fitted ``tau2`` is exactly zero here and ``tau2_method="none"`` changes nothing
+    -- and it is anomalous in one direction only: the likelihood conditions on where the foci fell
+    while the replication spread is marginal over that, so a calibrated conditional ``se`` should
+    come out *below* the marginal ``sd``. Coverage across all twenty-one arms is predicted to a
+    mean absolute error of 0.024 by the bias-to-width ratio alone, so nothing else is going on.
 
-    That decline is not fast, and it is not the whole reason a donor collection's coverage
-    slips. Growing the collection with the *weight share held fixed* -- one donor per twelve
-    studies throughout -- gives 0.97 at twelve studies, 0.97 at twenty-four and 0.72 at
-    forty-eight. So the erosion is real and confirmed at a size never otherwise measured, but
-    it takes hold well beyond the sizes most coordinate collections reach, and part of the
-    0.99-to-0.91 drop between the two-donor rows above is the donors' share halving rather than
-    the study count. ``se/sd`` also *rises* with study count (1.27, 1.44, 1.53), which offsets
-    some of the shrinking interval.
+    **Bias and width are what separate the configurations.** With image donors pinning the scale
+    the interval is usable: 0.96 to 1.00 coverage at widths of 0.12 to 0.36. Coordinates-only it
+    covers at twelve studies and runs [0.60, 1.51] for a truth of 0.800, then falls to 0.56 at
+    twenty-four. Read ``g_relative`` when there are no donors.
+
+    **Widening the kernel breaks it twice over**, because ``se`` falls *and* ``n_eff`` rises
+    toward the study count so the critical value shrinks as well: coverage 0.98, 0.52, 0.13 across
+    ``fwhm`` 10, 16 and 24 at twelve studies and 0.56, 0.04, 0.00 at twenty-four, on a bias that
+    does not move. A wide kernel improves the map on real data, so the two goals point opposite
+    ways and one default cannot serve both.
+
+    **P-values are unaffected by any of this.** They come from the permutation null, which is
+    valid for whatever statistic it is computed on and does not require a calibrated ``se``.
 
     What decides this is not the *fraction* of studies supplying images but their share of the
     pooling weight. Fitting ``bias(f) = b0 (1 - f) / ((1 - f) + r f)`` on twelve-study arms and
