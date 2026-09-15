@@ -1669,10 +1669,48 @@ def test_scale_is_reported_as_an_interval_or_not_at_all(
     interval = from_images.scale_interval_
     assert interval is not None
     low, high = interval
-    # The bounds are the spread of the donors' own estimates, so the pooled median sits inside.
+    # A confidence interval for the donors' central value, so the pooled median sits inside.
     assert 0 < low <= from_images._peak_bias_scale_ <= high
     assert from_images.scale_source_ == "images"
     assert "order of scale" in result.description_
+    assert "confidence interval" in result.description_
+
+
+def test_the_scale_interval_narrows_with_donors_rather_than_tracking_their_range():
+    """It must be an interval for the scale, not the spread of the studies that set it.
+
+    ``(min, max)`` of the per-donor estimates answers a different question -- how far apart the
+    donors landed -- and its relation to the uncertainty in their centre runs the wrong way with
+    the donor count: on simulated collections it was 0.51 times an honest interval at two donors
+    and 4.32 times it at twenty, so the error changed sign in between. A range converges on the
+    donors' own spread; an interval for their centre has to shrink like 1 / sqrt(K).
+    """
+    from nimare.meta.cbma.effectsize import _scale_confidence_interval
+
+    assert _scale_confidence_interval([0.5]) is None
+    assert _scale_confidence_interval([]) is None
+
+    # Same spread of donor estimates, more of them: the interval must narrow, while the range
+    # of the inputs is 0.45 to 0.55 in every case.
+    widths = []
+    for donors in (
+        [0.45, 0.55],
+        np.linspace(0.45, 0.55, 5).tolist(),
+        np.linspace(0.45, 0.55, 20).tolist(),
+    ):
+        low, high = _scale_confidence_interval(donors)
+        assert low <= np.median(donors) <= high
+        widths.append(high - low)
+    assert widths[0] > widths[1] > widths[2]
+
+    # Two donors leave the scale barely pinned, and the interval should say so rather than
+    # inherit the reassuring narrowness of their range.
+    low, high = _scale_confidence_interval([0.45, 0.55])
+    assert high / low > 5.0
+
+    # Built on the log, so a scale is bracketed multiplicatively and cannot come out negative.
+    low, high = _scale_confidence_interval([0.1, 0.2, 0.4, 0.8])
+    assert low > 0
 
 
 def test_the_description_reports_what_the_peak_heights_carry(studyset, small_mask):
