@@ -386,3 +386,49 @@ def test_simulate_field_produces_real_peak_height_inflation():
 
     # And most of what gets reported is noise, which is why peak magnitudes carry so little.
     assert on_signal.mean() < 0.3
+
+
+def test_image_studies_are_refused_without_a_field_or_a_directory():
+    """Both preconditions for writing images are checked, and each says which one failed.
+
+    The point simulator draws a value at each focus and never builds a map, so asking it for
+    image studies is a request it cannot meet. Failing with the reason beats failing later on a
+    missing file, or worse, returning a studyset whose image studies have no images.
+    """
+    from nimare.generate import create_effect_size_coordinate_studyset
+
+    foci = [(0, 0, 0)]
+    with pytest.raises(ValueError, match="simulate_field=True"):
+        create_effect_size_coordinate_studyset(
+            foci, n_studies=4, n_image_studies=1, simulate_field=False, seed=0
+        )
+    with pytest.raises(ValueError, match="image_dir"):
+        create_effect_size_coordinate_studyset(
+            foci, n_studies=4, n_image_studies=1, simulate_field=True, image_dir=None, seed=0
+        )
+
+
+def test_the_generator_varies_sample_size_and_threshold_when_given_a_range():
+    """A tuple of sample sizes and a list of thresholds both produce per-study variation.
+
+    Not cosmetic. The coordinate channel's whole ability to separate the magnitude from the
+    prevalence is the spread of study designs -- with one sample size and one threshold the
+    information matrix of the reporting indicator is singular -- so a generator that silently
+    collapsed either would make a bed that cannot exhibit the effect it is built to measure.
+    """
+    import numpy as np
+
+    from nimare.generate import create_effect_size_coordinate_studyset
+
+    foci = [(0, 0, 0)]
+    studyset = create_effect_size_coordinate_studyset(
+        foci, n_studies=12, sample_size=(12, 60), threshold_z=[2.3, 3.1, 4.0], seed=1
+    )
+    sizes = {int(np.ravel(n)[0]) for n in studyset.sample_sizes()}
+    assert len(sizes) > 1, sizes
+    thresholds = {
+        study.metadata.get("reporting_threshold")
+        for study in studyset.studies
+        if study.metadata.get("reporting_threshold") is not None
+    }
+    assert len(thresholds) > 1, thresholds
