@@ -307,6 +307,16 @@ class CBMR(_CBMRInputs):
         ``"cpu"`` or ``"cuda"``. Default is ``"cpu"``.
     random_state : :obj:`int`, optional
         Seed for weight initialization. Default is None.
+    information_method : {"closed_form", "autodiff"}, optional
+        How the observed Fisher information behind standard errors, p-values and hypothesis
+        tests is computed. ``"closed_form"`` uses the fast derivations added in
+        https://github.com/neurostuff/NiMARE/pull/1121, which were written with LLM assistance
+        and are checked against symbolic proofs and a limited set of numerical comparisons
+        (https://github.com/jdkent/cbmr-proofs) but are not yet independently or exhaustively
+        validated; using it logs a warning the first time it actually runs. ``"autodiff"``
+        always differentiates the log-likelihood directly instead, which is the slower,
+        more memory-intensive computation CBMR used before that PR and carries no such caveat.
+        Default is ``"closed_form"``.
 
     Notes
     -----
@@ -328,9 +338,11 @@ class CBMR(_CBMRInputs):
         tol=1e-8,
         device="cpu",
         random_state=None,
+        information_method="closed_form",
         **kwargs,
     ):
         from nimare.meta.cbmr.distributions import resolve_distribution
+        from nimare.meta.cbmr.model import INFORMATION_METHODS
         from nimare.meta.cbmr.terms import formula_to_design
 
         self.design = formula_to_design(formula)
@@ -344,6 +356,12 @@ class CBMR(_CBMRInputs):
         self.lr = lr
         self.tol = tol
         self.device = device
+        if information_method not in INFORMATION_METHODS:
+            raise ValueError(
+                f"information_method must be one of {INFORMATION_METHODS}, got "
+                f"{information_method!r}."
+            )
+        self.information_method = information_method
         if _uses_cuda(self.device) and not torch.cuda.is_available():
             LGR.debug("CUDA not found; using device 'cpu'.")
             self.device = "cpu"
@@ -427,7 +445,12 @@ class CBMR(_CBMRInputs):
         )
 
         foci = self.inputs_["foci"]
-        self.cbmr_model = CBMRModel(self.predictor, self.distribution, device=self.device)
+        self.cbmr_model = CBMRModel(
+            self.predictor,
+            self.distribution,
+            device=self.device,
+            information_method=self.information_method,
+        )
         self.cbmr_model.fit(foci, n_iter=self.n_iter, lr=self.lr, tol=self.tol)
 
         maps, tables = self._summarize()
