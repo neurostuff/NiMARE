@@ -970,22 +970,42 @@ class CBES(Estimator):
     max_iter : :obj:`int`, default=25
         EM iterations. Voxels are retired as they settle, so this bounds the slowest rather
         than the typical one.
+
+        **It is also a shrinkage parameter, and the default does not converge.** Against a grid
+        over :math:`(\mu, \pi)` at two images and twenty tables, 76% of voxels sit more than
+        0.01 in log-likelihood below the best the grid finds at 25 iterations, and 3.5% at 400.
+        Stopping early holds :math:`\mu` near the images-only pool, and raising the cap moves
+        every configuration measured the same way: :math:`\mu` gets a worse rmse and
+        :math:`\hat\pi` climbs. From 10 iterations to 400 at a true prevalence of 1.0, rmse
+        runs 0.183 to 0.289 while :math:`\hat\pi` runs 0.709 to 0.998; at a true prevalence of
+        0.6 the same sweep gives 0.410 to 0.707 and 0.541 to 0.723. So :math:`\hat\pi` crosses
+        the truth and keeps going, and converging does not make the prevalence a fraction -- it
+        reaches 1.0 only because 1.0 is a boundary. On the pain collection, going from 25 to 400
+        improves the level (mean error 0.073 to 0.069, and 0.014 to 0.004 where the effect is
+        largest) and costs ordering (*r* 0.575 to 0.560, AUC 0.886 to 0.882) and rmse (0.240 to
+        0.244).
+
+        25 is a point on that trade, not a convergence criterion. Raise it if the level matters
+        more than the ordering, but do not tune it against a collection with a known answer.
     null_method : {"permute-images", "spatial-images", "none"}, default="permute-images"
         How uncorrected p-values are obtained. Both nulls rearrange each image study's own
         values among that study's own voxels and hold the silence pattern fixed; neither moves
         a focus. ``"none"`` skips it, returning maps without p-values.
 
         ``"permute-images"`` scatters the values independently, which destroys the image's
-        spatial autocorrelation -- the permuted statistic maps come out 2.5 times rougher than
-        the observed one. That leaves the voxelwise rate nominal and the family-wise rate too
-        liberal in small collections, because the observed map can lay a coherent blob of large
-        values over a region where few studies were silent and a scattered map cannot.
-
-        ``"spatial-images"`` keeps the autocorrelation, by redrawing the Fourier phases and
+        spatial autocorrelation: the permuted statistic maps come out 2.5 times rougher than the
+        observed one. ``"spatial-images"`` keeps it, by redrawing the Fourier phases and
         rank-mapping the surrogate back onto the study's own ``(g, var)`` pairs. The same
         observations are rearranged either way; only their spatial arrangement differs. This is
         the volumetric analogue of the spatial nulls used for brain maps, where a spin test is
         unavailable because there is no spherical surface to rotate.
+
+        **The choice does not affect the error rates.** Under a global null both give a nominal
+        voxelwise rate and the same family-wise rate: 0.150, 0.075 and 0.100 at 12 studies with
+        two images, 20 with two, and 12 with one. So the family-wise rate is too liberal in
+        small collections for some reason other than the roughness mismatch, and preserving the
+        autocorrelation costs 8 to 10 times in the randomiser without fixing it. Reach for
+        ``"spatial-images"`` when the question is spatial specificity, not for calibration.
     cluster_threshold : :obj:`float` or None, default=0.001
         Voxel-level p-threshold defining clusters for :meth:`correct_fwe_montecarlo`.
     n_iters : :obj:`int`, default=1000
