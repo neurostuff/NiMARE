@@ -1110,16 +1110,21 @@ class CBES(Estimator):
        map. ``coordinate_share`` shows where the coordinate channel acted; 0 means the images
        carry the estimate alone.
 
-    **Prior work.** The premise is not new. MetaNSUE :footcite:p:`albajes2019metansue` makes the
-    same argument -- a study reporting only that an effect was not significant can be neither
-    dropped nor entered as zero, since both bias the pool -- and SDM-PSI
-    :footcite:p:`albajes2019meta` carries it into neuroimaging. ES-SDM
-    :footcite:p:`radua2012new` combines images with coordinates in one model. The difference
-    here is what happens to the bound: those methods impute values inside it and pool the
-    completed datasets, this one writes it into the likelihood and imputes nothing. Measured
-    against a brute-force MLE the two agree on the point estimate to three decimals. What
-    separates them is the interval, which the censored likelihood gets right with no tuning
-    where imputation needs enough draws and a degrees-of-freedom correction.
+    **Prior work, and the censored likelihood is not what is new here.** MetaNSUE
+    :footcite:p:`albajes2019metansue` makes the same argument this model rests on -- a study
+    reporting only that an effect was not significant can be neither dropped nor entered as
+    zero, since both bias the pool -- and SDM-PSI :footcite:p:`albajes2019meta` carries it into
+    neuroimaging, maximising the same interval-censored likelihood over a study's effect-size
+    bounds, after :footcite:t:`tobin1958estimation`. ES-SDM :footcite:p:`radua2012new` already
+    combines images with coordinates in one model. SDM-PSI then draws multiple imputations from
+    that fit to propagate the uncertainty and to permute subject images.
+
+    Three things here are different. Reported peak heights are discarded rather than entered as
+    exact observations, so the upward bias of a selected maximum cannot enter the estimate.
+    Prevalence is a parameter, so ``g`` and ``g_marginal`` are separable quantities rather than
+    one pooled effect -- which is also the source of this model's identification problems, since
+    nothing in a reporting indicator can separate them. And inference is a permutation of image
+    values rather than of imputed subject images.
 
     The permutation null tests whether a voxel's magnitude is exchangeable with other voxels in
     the same studies. It does not test whether foci converge there, and a collection with no
