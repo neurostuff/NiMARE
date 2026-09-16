@@ -53,9 +53,14 @@ from scipy.stats import nct, norm
 
 DESIGNS = ("one-sample", "two-sample")
 
-#: Gauss-Hermite nodes for the average over the predictive distribution. Adaptive quadrature is
-#: not used: it returns ``nan`` by roundoff once the integrand is nearly constant, and a ``nan``
-#: silently compared against a threshold is a verdict from a missing number.
+#: Grid resolution for the average over the predictive distribution. Adaptive quadrature is not
+#: used: it returns ``nan`` by roundoff once the integrand is nearly constant, and a ``nan``
+#: silently compared against a threshold is a verdict from a missing number. Nor is Gauss-Hermite,
+#: which cannot resolve a power curve's transition -- see :func:`_predictive_grid`.
+#:
+#: Unlike the block module this needs no underflow guard on the node count, because the rule here
+#: is a refined linspace and not a Gauss-Hermite one: there are no quadrature weights to
+#: underflow. Raising it is safe and does make the answer more accurate.
 DEFAULT_NODES = 96
 
 #: Above this non-centrality scipy's noncentral t is unreliable, while the power is one to

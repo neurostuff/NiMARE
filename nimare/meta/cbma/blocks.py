@@ -67,6 +67,15 @@ def _quadrature(between_variance, nodes):
     if between_variance <= 0:
         return np.zeros(1), np.zeros(1)
     positions, weights = np.polynomial.hermite.hermgauss(int(nodes))
+    # numpy's hermgauss underflows above roughly 400 nodes: at 600 it returns zero weights and
+    # warns inside its own routine, and the resulting rule yields nan rather than a more accurate
+    # answer. Refuse it rather than return a number computed from a broken rule.
+    if np.any(weights <= 0):
+        raise ValueError(
+            f"A {int(nodes)}-node Gauss-Hermite rule underflows: "
+            f"{int(np.sum(weights <= 0))} of its weights are zero. Use fewer nodes; more is "
+            "not more accurate here."
+        )
     return positions * np.sqrt(2.0 * between_variance), np.log(weights) - 0.5 * np.log(np.pi)
 
 
