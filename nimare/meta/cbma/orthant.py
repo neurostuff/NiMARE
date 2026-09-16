@@ -243,3 +243,138 @@ def draw_constrained_block(
             limit = min(max(limit, 1e-12), 1.0 - 1e-12)
             state[position] = conditional_mean + scale * norm.ppf(generator.uniform(0.0, limit))
     return state
+
+
+def _quadrature(between_variance, nodes):
+    r"""Nodes and log-weights for :math:`\int f(u)\,N(u; 0, \tau^2)\,du`.
+
+    Shares :mod:`~nimare.meta.cbma.blocks`'s convention deliberately, including its refusal of a
+    rule whose weights have underflowed: a zero between-study variance is a point mass rather
+    than a degenerate integral, and more nodes past a few hundred is not more accurate.
+    """
+    between_variance = float(between_variance)
+    if between_variance <= 0:
+        return np.zeros(1), np.zeros(1)
+    positions, weights = np.polynomial.hermite.hermgauss(int(nodes))
+    if np.any(weights <= 0):
+        raise ValueError(
+            f"A {int(nodes)}-node Gauss-Hermite rule underflows: "
+            f"{int(np.sum(weights <= 0))} of its weights are zero. Use fewer nodes; more is "
+            "not more accurate here."
+        )
+    return positions * np.sqrt(2.0 * between_variance), np.log(weights) - 0.5 * np.log(np.pi)
+
+
+def general_block_loglik(mean, between_variance, blocks, *, nodes=21, use_heights=True):
+    r"""Log-likelihood of reported maxima and silent blocks under **arbitrary** covariance.
+
+    The exchangeable block in :mod:`~nimare.meta.cbma.blocks` generates within-block dependence
+    from the shared study effect alone, which ties the within-block correlation to the
+    between-study variance: :math:`r = \tau^2/(\tau^2+\sigma^2)`. A smooth field with no
+    heterogeneity is therefore outside that family entirely. This takes each block's covariance
+    as given and integrates the study effect over it,
+
+    .. math:: L_i = \int \varphi(u;\,0,\tau^2)\;
+        \begin{cases}
+        \Phi_M(c\mathbf 1;\ \mu + u,\ \Sigma_i) & \text{silent} \\
+        f_{Y_j}(h)\,P(Y_{-j} \le h \mathbf 1 \mid Y_j = h) & \text{reported at } j
+        \end{cases}\; du,
+
+    so the two sources of dependence are separate parameters as
+    :mod:`~nimare.meta.cbma.spatial` writes them.
+
+    Reduces **exactly** to the exchangeable likelihood when :math:`\Sigma_i` is diagonal, since
+    independent elements plus a shared effect *is* the exchangeable model, and to the scalar
+    censored reference at :math:`M = 1`. Both are asserted in the tests rather than asserted
+    here.
+
+    Parameters
+    ----------
+    mean, between_variance : :obj:`float`
+        The marginal mean and the between-study variance.
+    blocks : :obj:`list` of :obj:`dict`
+        One entry per block, with ``covariance`` as an :math:`(M, M)` within-study sampling
+        covariance, ``threshold`` as the cut its maximum had to clear, and either ``height`` and
+        ``index`` for a reported maximum or ``height`` absent/``nan`` for silence. A block whose
+        location was not recorded may set ``index=None``, which sums over locations and is only
+        correct when the table genuinely did not say where the peak was.
+    nodes : :obj:`int`
+        Gauss-Hermite nodes for the study effect.
+    use_heights : :obj:`bool`, default=True
+        With ``False`` a report contributes only the probability that the block reported at all,
+        which is the indicator-only likelihood.
+
+    Returns
+    -------
+    :obj:`float`
+        The summed log-likelihood, or ``-inf`` where any block has numerically zero probability
+        so an optimiser walks away rather than through it.
+
+    Notes
+    -----
+    **Cost.** Every quadrature node needs an :math:`M`-dimensional normal orthant probability,
+    computed by quasi-Monte Carlo, so this is a reference for small blocks and not a whole-brain
+    likelihood. Its error is the CDF's own, around :math:`10^{-5}` at these dimensions, which is
+    why a fit against it should not be asked for more than three or four decimal places.
+    """
+    offsets, log_weights = _quadrature(between_variance, nodes)
+    total = 0.0
+    for block in blocks:
+        covariance = np.atleast_2d(np.asarray(block["covariance"], dtype=float))
+        size = covariance.shape[0]
+        threshold = float(block["threshold"])
+        height = block.get("height")
+        reported = height is not None and np.isfinite(height)
+
+        terms = np.empty(offsets.size, dtype=float)
+        for position, offset in enumerate(offsets):
+            centre = np.full(size, float(mean) + float(offset))
+            if not reported:
+                terms[position] = block_silence_log_probability(centre, covariance, threshold)
+                continue
+            if not use_heights:
+                # The report *indicator*: one minus the silence probability, formed as a log so
+                # a near-certain report does not lose its precision to cancellation.
+                silence = block_silence_log_probability(centre, covariance, threshold)
+                remaining = -np.expm1(silence)
+                terms[position] = np.log(remaining) if remaining > 0 else -np.inf
+                continue
+            index = block.get("index")
+            if index is None:
+                terms[position] = maximum_log_density(centre, covariance, float(height))
+            else:
+                terms[position] = recorded_maximum_log_density(
+                    centre, covariance, int(index), float(height)
+                )
+        combined = terms + log_weights
+        finite = combined[np.isfinite(combined)]
+        if finite.size == 0:
+            return -np.inf
+        largest = float(np.max(finite))
+        total += largest + float(np.log(np.sum(np.exp(finite - largest))))
+    return float(total)
+
+
+def fit_general_blocks(
+    blocks, *, between_variance=0.0, nodes=21, use_heights=True, bounds=(-6.0, 6.0)
+):
+    """Maximise :func:`general_block_loglik` in the mean at a fixed between-study variance.
+
+    The between-study variance is held rather than profiled: at the block counts this module can
+    afford, it is not estimable from the blocks alone, and pretending otherwise would put a
+    number on the boundary and call it an estimate.
+    """
+    from scipy.optimize import minimize_scalar
+
+    def negative(value):
+        out = general_block_loglik(
+            value, between_variance, blocks, nodes=nodes, use_heights=use_heights
+        )
+        return -out if np.isfinite(out) else np.inf
+
+    result = minimize_scalar(negative, bounds=bounds, method="bounded")
+    return {
+        "mean": float(result.x),
+        "loglik": float(-result.fun) if np.isfinite(result.fun) else -np.inf,
+        "converged": bool(result.success),
+    }
