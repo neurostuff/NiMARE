@@ -1000,12 +1000,17 @@ class CBES(Estimator):
         the volumetric analogue of the spatial nulls used for brain maps, where a spin test is
         unavailable because there is no spherical surface to rotate.
 
-        **The choice does not affect the error rates.** Under a global null both give a nominal
-        voxelwise rate and the same family-wise rate: 0.150, 0.075 and 0.100 at 12 studies with
-        two images, 20 with two, and 12 with one. So the family-wise rate is too liberal in
-        small collections for some reason other than the roughness mismatch, and preserving the
-        autocorrelation costs 8 to 10 times in the randomiser without fixing it. Reach for
+        **The choice does not appear to affect the error rates**, and preserving the
+        autocorrelation costs 8 to 10 times in the randomiser. Under a global null the voxelwise
+        rate is nominal either way, and at 200 simulations the family-wise rate is 0.055 at 12
+        studies with two images. Earlier runs of 40 simulations read 0.150 and prompted a search
+        for the cause; the binomial standard error at 40 is 0.034, so those runs could not
+        distinguish 0.05 from 0.15 and the effect they suggested may not exist. Reach for
         ``"spatial-images"`` when the question is spatial specificity, not for calibration.
+
+        Roughening the null cannot make a maximum-statistic test liberal in any case: more resels
+        raise the expected Euler characteristic, the null maximum and the critical value
+        together. So this choice is not where a calibration problem would come from.
     cluster_threshold : :obj:`float` or None, default=0.001
         Voxel-level p-threshold defining clusters for :meth:`correct_fwe_montecarlo`.
     n_iters : :obj:`int`, default=1000
