@@ -1002,11 +1002,14 @@ class CBES(Estimator):
 
         **The choice does not appear to affect the error rates**, and preserving the
         autocorrelation costs 8 to 10 times in the randomiser. Under a global null the voxelwise
-        rate is nominal either way, and at 200 simulations the family-wise rate is 0.055 at 12
-        studies with two images. Earlier runs of 40 simulations read 0.150 and prompted a search
-        for the cause; the binomial standard error at 40 is 0.034, so those runs could not
-        distinguish 0.05 from 0.15 and the effect they suggested may not exist. Reach for
-        ``"spatial-images"`` when the question is spatial specificity, not for calibration.
+        rate is nominal either way. **The family-wise rate at small study counts is not
+        pinned down.** Three runs at 12 studies with two images read 0.150, 0.055 and 0.100, at
+        40, 200 and 100 simulations. The first is uninformative, since the binomial standard
+        error of a rate near 0.05 at 40 simulations is 0.034; the other two straddle the nominal
+        0.05 without separating from each other, and were measured on different revisions of the
+        fit. Treat the family-wise correction below roughly 20 studies as unverified rather than
+        as either sound or broken. Reach for ``"spatial-images"`` when the question is spatial
+        specificity, not for calibration.
 
         Roughening the null cannot make a maximum-statistic test liberal in any case: more resels
         raise the expected Euler characteristic, the null maximum and the critical value
