@@ -65,7 +65,7 @@ class PerAnalysis:
         cache = derived(store)
         got = cache.get(key)
         if got is None:
-            reducer = {"mean": np.mean, "max": np.max, "min": np.min}[self.reduce]
+            reducer = {"mean": np.mean, "max": np.max, "min": np.min, "sum": np.sum}[self.reduce]
             if self.field in ("sample_sizes", "sample_size"):
                 out = _normalized_sample_sizes(store, reducer)
             else:

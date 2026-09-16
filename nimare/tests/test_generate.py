@@ -278,3 +278,111 @@ def test_create_neurovault_studyset():
     expected_columns = {"beta", "t", "varcope", "z"}
     assert isinstance(studyset, Studyset)
     assert expected_columns.issubset(studyset.images.columns)
+
+
+def test_simulate_field_reports_nothing_when_the_field_has_no_variation():
+    """A field with no room to vary reports no peaks, rather than dividing by its own zero."""
+    from nimare.generate import create_effect_size_coordinate_studyset
+
+    studyset = create_effect_size_coordinate_studyset(
+        [(0, 0, 0)],
+        effect_sizes=0.8,
+        n_studies=3,
+        sample_size=25,
+        seed=0,
+        simulate_field=True,
+        # reaches the field simulator, but leaves it a single voxel to work with
+        n_noise_foci=2,
+        noise_extent=0.0,
+    )
+
+    # Nothing is reported at all, and in particular nothing is reported as NaN.
+    coordinates = studyset.coordinates
+    assert coordinates is None or len(coordinates) == 0
+    # The studyset is still well formed, with its studies present and simply empty-handed.
+    assert len(studyset.studies) == 3
+
+
+def test_prevalence_makes_the_studies_a_genuine_mixture():
+    """Below 1.0 some studies must have an effect of exactly zero, not merely a smaller one.
+
+    That distinction is the whole reason ``CBES(selection_model="zero-inflated")`` exists, so a
+    generator that quietly shrank every study instead of zeroing some would make the estimator
+    look good against a truth it was not built for. Checked on both simulators, because they
+    apply the draw at different places -- the field one zeroes the effect before building the
+    map, the point one skips the focus entirely.
+    """
+    from nimare.generate import create_effect_size_coordinate_studyset
+
+    shared = dict(
+        effect_sizes=0.8,
+        n_studies=40,
+        sample_size=30,
+        threshold_z=3.2905,
+    )
+
+    for label, extra in (
+        ("point", dict()),
+        ("field", dict(simulate_field=True, noise_extent=24.0, field_zooms=6.0)),
+    ):
+        full = create_effect_size_coordinate_studyset(
+            [(0, 0, 0)], seed=5, prevalence=1.0, **shared, **extra
+        )
+        half = create_effect_size_coordinate_studyset(
+            [(0, 0, 0)], seed=5, prevalence=0.4, **shared, **extra
+        )
+
+        def reporting_studies(studyset):
+            """Studies that reported at least one focus."""
+            coordinates = studyset.coordinates
+            if coordinates is None or not len(coordinates):
+                return 0
+            return int(coordinates["study_id"].nunique())
+
+        # Fewer studies report when fewer of them have an effect at all. This is the observable
+        # consequence of the mixture, and it is what the silence channel reads.
+        assert reporting_studies(half) < reporting_studies(full), label
+        # Both collections still contain every study; prevalence removes the effect, not the
+        # paper, which is exactly the asymmetry the estimator has to handle.
+        assert len(half.studies) == len(full.studies) == 40, label
+
+
+def test_simulate_field_produces_real_peak_height_inflation():
+    """The point simulator cannot validate a peak-height correction; the field one can."""
+    import numpy as np
+
+    from nimare.generate import create_effect_size_coordinate_studyset
+    from nimare.transforms import d_to_g, t_to_d, z_to_t
+
+    sample_size = 25
+    studyset = create_effect_size_coordinate_studyset(
+        [(0, 0, 0)],
+        effect_sizes=0.8,
+        n_studies=25,
+        sample_size=sample_size,
+        seed=2,
+        simulate_field=True,
+        noise_extent=40.0,
+        threshold_z=3.2905,
+    )
+    coordinates = studyset.coordinates
+    assert len(coordinates) > 50
+    assert "value_trueg" in coordinates.columns
+
+    distance = np.sqrt((coordinates[["x", "y", "z"]].astype(float).to_numpy() ** 2).sum(axis=1))
+    on_signal = distance <= 15.0
+    assert on_signal.sum() >= 5
+
+    z_values = np.abs(coordinates["z_stat"].astype(float).to_numpy())[on_signal]
+    # The effect size a reader would infer from the reported statistic: the z is a
+    # p-value-preserving image of a t on n - 1, which is what the reporting software produced.
+    n = np.full(len(z_values), float(sample_size))
+    implied = d_to_g(t_to_d(z_to_t(z_values, n - 1.0), n), n)
+    truth = np.abs(coordinates["value_trueg"].astype(float).to_numpy())[on_signal]
+
+    # The reported statistic overstates the effect where its peak was found.
+    inflation = truth.mean() / np.abs(implied).mean()
+    assert 0.3 < inflation < 0.95
+
+    # And most of what gets reported is noise, which is why peak magnitudes carry so little.
+    assert on_signal.mean() < 0.3

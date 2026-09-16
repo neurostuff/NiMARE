@@ -1,5 +1,6 @@
 """Utilities for generating data for testing."""
 
+import os
 from itertools import zip_longest
 
 import numpy as np
@@ -289,6 +290,410 @@ def _create_source(foci, sample_sizes, space="MNI"):
         }
 
     return source
+
+
+#: Half-width, in mm, of the cube noise foci are drawn from, and the extent of the simulated
+#: field when a caller asks for one without asking for noise. Named because the field simulator
+#: takes it as its own extent, so the two must not drift apart.
+DEFAULT_NOISE_EXTENT = 60.0
+
+
+def _simulate_reported_peaks(
+    ground_truth_foci,
+    effect_sizes,
+    n_subjects,
+    threshold,
+    smoothness_fwhm,
+    blob_fwhm,
+    field_zooms,
+    field_extent,
+    design,
+    rng,
+):
+    """Simulate a study's statistic field and report the local maxima that clear its threshold.
+
+    This is what makes peak-height inflation appear. Drawing a value at the ground-truth
+    location and thresholding it, as the point simulator does, produces a reported statistic
+    that is an unbiased estimate of the effect there -- so there is nothing for a peak-height
+    correction to correct, and no simulator built that way can validate one.
+
+    Here a smooth Gaussian noise field is added to the signal, and what gets reported is the
+    position and height of a *local maximum* that cleared the threshold. Those maxima are
+    selected for being large, and sit where the noise happened to help, so the reported height
+    overstates the effect at that location and the reported position is displaced from the
+    truth. Both fall out of the simulation rather than being imposed.
+
+    Each peak carries the true effect at the voxel it was found in, so the inflation is a
+    measurable quantity rather than something to be assumed.
+
+    Returns ``(peaks, field)``, where ``field`` carries the same study's whole effect-size map
+    and its sampling variance on the ``g`` scale, with the affine they live on. That is what a
+    study *sharing its images* would contribute, simulated from the same draw that produced its
+    peaks, so a collection can mix the two channels consistently -- which
+    :class:`~nimare.meta.cbma.effectsize.CBES` requires, reading magnitudes from images and
+    only silence from coordinate tables.
+    """
+    from scipy.ndimage import gaussian_filter, maximum_filter
+
+    zooms = np.full(3, float(field_zooms))
+    half = int(np.ceil(field_extent / zooms[0]))
+    shape = tuple(np.full(3, 2 * half + 1, dtype=int))
+    origin = -zooms * half
+
+    # Unit-variance smooth Gaussian noise: the field a null study would have.
+    sigma = smoothness_fwhm / (2.0 * np.sqrt(2.0 * np.log(2.0))) / zooms
+    noise = gaussian_filter(rng.normal(size=shape), sigma)
+    spread = noise.std()
+    if spread <= 0:
+        return [], None
+    noise /= spread
+
+    # Signal: a blob at each ground-truth focus, on the effect-size scale.
+    grid = np.stack(np.indices(shape), axis=-1) * zooms + origin
+    signal = np.zeros(shape, dtype=float)
+    blob_sigma = blob_fwhm / (2.0 * np.sqrt(2.0 * np.log(2.0)))
+    for focus, effect in zip(ground_truth_foci, effect_sizes):
+        squared = ((grid - np.asarray(focus, dtype=float)) ** 2).sum(axis=-1)
+        signal += float(effect) * np.exp(-squared / (2.0 * blob_sigma**2))
+
+    scale = np.sqrt(n_subjects) if design == "one-sample" else np.sqrt(n_subjects / 4.0)
+    # ``signal * scale`` is the noncentrality of the *t* statistic, so the field is built on
+    # the t scale and then transformed, exactly as the point-based path does. Reporting
+    # ``signal * scale + noise`` directly as a Z would label a t-scale statistic as a z: the
+    # two agree closely near the threshold and diverge hard above it, because the t's heavier
+    # tails mean a given tail probability sits at a much larger quantile. An estimator that
+    # inverts a reported Z through the t -- which is what a paper's Z came from -- then
+    # recovers a wildly inflated effect size, 8.8 against a true 1.6 at g = 1.6, and about
+    # 13% too high even at g = 0.8.
+    from nimare.transforms import t_to_z
+
+    dof = n_subjects - 1 if design == "one-sample" else n_subjects - 2
+    observed = t_to_z(signal * scale + noise, dof)
+
+    # Local maxima of |observed| that clear the threshold, which is what a paper tabulates.
+    magnitude = np.abs(observed)
+    is_peak = (magnitude == maximum_filter(magnitude, size=3)) & (magnitude >= threshold)
+    peaks = np.argwhere(is_peak)
+
+    reported = []
+    for index in peaks:
+        position = tuple(index)
+        reported.append(
+            {
+                "coordinates": [float(c) for c in grid[position]],
+                "z": float(observed[position]),
+                # The effect actually present where the peak was found, on the g scale.
+                "true_g": float(signal[position]),
+            }
+        )
+
+    from nimare.transforms import d_to_g, t_to_d
+
+    affine = np.eye(4)
+    affine[:3, :3] = np.diag(zooms)
+    affine[:3, 3] = origin
+    g = d_to_g(t_to_d(signal * scale + noise, n_subjects), n_subjects)
+    field = {
+        "g": g,
+        # Hedges' sampling variance, which is a function of the *observed* effect -- the same
+        # variance a real conversion from a test statistic carries, including the small
+        # downward pull it puts on an inverse-variance mean.
+        "g_var": 1.0 / n_subjects + g**2 / (2.0 * n_subjects),
+        "affine": affine,
+    }
+    return reported, field
+
+
+def create_effect_size_coordinate_studyset(
+    ground_truth_foci,
+    effect_sizes=0.5,
+    n_studies=20,
+    sample_size=(20, 40),
+    tau=0.0,
+    prevalence=1.0,
+    threshold_z=3.2905267314919255,
+    spatial_sd=6.0,
+    n_noise_foci=0,
+    noise_extent=DEFAULT_NOISE_EXTENT,
+    design="one-sample",
+    seed=None,
+    space="MNI",
+    simulate_field=False,
+    n_image_studies=0,
+    image_dir=None,
+    smoothness_fwhm=10.0,
+    blob_fwhm=10.0,
+    field_zooms=4.0,
+):
+    """Simulate a studyset whose coordinates carry reported z statistics.
+
+    .. versionadded:: 0.13.0
+
+    Unlike :func:`create_coordinate_dataset`, which only places foci, this simulates the whole
+    reporting process that coordinate-based *effect-size* estimation has to invert: a true
+    effect size at each ground-truth location, a study-level draw around it, a sampling draw
+    around that, and finally a **within-study threshold** that decides whether the peak is
+    reported at all. Studies whose local effect fails to clear the threshold contribute no
+    focus there, which is exactly the censoring that makes the reported peaks a biased sample
+    of the field.
+
+    Parameters
+    ----------
+    ground_truth_foci : :obj:`list` of :obj:`tuple`
+        xyz (mm) coordinates of the true effects.
+    effect_sizes : :obj:`float` or :obj:`list`, default=0.5
+        True population Hedges' g at each ground-truth focus. A scalar applies to all of them.
+    n_studies : :obj:`int`, default=20
+        Number of studies to simulate.
+    sample_size : :obj:`int` or :obj:`tuple`, default=(20, 40)
+        Per-study sample size, or the inclusive range to draw it from.
+    tau : :obj:`float`, default=0.0
+        Between-study standard deviation of the true effect at a focus.
+    prevalence : :obj:`float`, default=1.0
+        Probability that any given study has a non-null effect at a given focus. Below 1.0 the
+        studies are a genuine mixture: some have an effect of the stated size, the rest have
+        exactly zero. This is the situation a plain censored model cannot represent -- it has
+        to explain a study's silence as a small common effect rather than as no effect -- and
+        is what ``CBES(selection_model="zero-inflated")`` is built to recover.
+    simulate_field : :obj:`bool`, default=False
+        Simulate each study's whole statistic field and report the local maxima that clear its
+        threshold, instead of drawing a value at each ground-truth location.
+
+        This is the difference between a simulator that can validate a peak-height correction
+        and one that cannot. The default draws a value *at* the focus, so the reported statistic
+        is an unbiased estimate of the effect there and the true inflation is exactly 1 -- there
+        is nothing for such a correction to recover. With a field, what gets reported is a local
+        maximum selected for being large, sitting where the noise happened to help, so its
+        height overstates the effect at its location and its position is displaced from the
+        truth. Both emerge from the simulation rather than being imposed, and ``spatial_sd`` is
+        then unused.
+
+        Each reported point carries the true effect at the voxel it was found in, under the
+        ``TRUEG`` value kind, so the inflation is measurable rather than assumed.
+    n_image_studies : :obj:`int`, default=0
+        Number of studies that also share their whole effect-size map, as ``g`` and ``g_var``
+        images written to ``image_dir``. The first ``n_image_studies`` studies get them, and
+        keep their coordinate tables too, so a study is both an image donor and a reporter --
+        which is what a real collection looks like when a paper shares its maps.
+
+        **Needed to simulate a valid input for**
+        :class:`~nimare.meta.cbma.effectsize.CBES`, which reads magnitudes only from images and
+        reads coordinate tables only for where studies were silent, and so requires at least
+        one image. Requires ``simulate_field=True``: without a field there is no map to write.
+    image_dir : :obj:`str` or None, optional
+        Directory to write the ``g``/``g_var`` images into. Required when ``n_image_studies``
+        is nonzero; the files are named after the analysis and left in place for the caller to
+        clean up.
+    smoothness_fwhm : :obj:`float`, default=10.0
+        FWHM, in mm, of the simulated noise field. Only used when ``simulate_field`` is set.
+    blob_fwhm : :obj:`float`, default=10.0
+        FWHM, in mm, of the signal blob at each ground-truth focus. Only used when
+        ``simulate_field`` is set.
+    field_zooms : :obj:`float`, default=4.0
+        Voxel size, in mm, of the simulated field. Only used when ``simulate_field`` is set.
+    threshold_z : :obj:`float` or sequence of :obj:`float`, default=3.29
+        Two-tailed reporting threshold on the z scale (p < .001 by default). A study reports a
+        peak only where its observed statistic clears this. A sequence is drawn from at random,
+        one threshold per study, which simulates a literature search over papers that did not
+        agree on a threshold; each study then records its own under the ``reporting_threshold``
+        metadata field, so estimators can be tested with and without knowing it.
+    spatial_sd : :obj:`float`, default=6.0
+        Standard deviation, in mm, of the localization error on a reported peak.
+    n_noise_foci : :obj:`int`, default=0
+        Number of null foci per study. Their locations are uniform in a cube of side
+        ``2 * noise_extent`` and their statistics are drawn from the exponential
+        peak-overshoot approximation for the height of a suprathreshold local maximum, so
+        noise peaks look like real reported peaks rather than like implausibly large ones.
+    noise_extent : :obj:`float`, default=60.0
+        Half-width, in mm, of the cube noise foci are drawn from.
+    design : {"one-sample", "two-sample"}, default="one-sample"
+        Design to simulate. Only affects the statistic/effect-size conversion.
+    seed : :obj:`int` or None, optional
+        Random seed.
+    space : :obj:`str`, default="MNI"
+        Coordinate space label recorded on each point.
+
+    Returns
+    -------
+    :obj:`~nimare.studyset.Studyset`
+        Studyset whose points carry a ``Z`` value and whose analyses carry ``sample_sizes``.
+
+    Examples
+    --------
+    >>> studyset = create_effect_size_coordinate_studyset(
+    ...     [(0, 0, 0)], effect_sizes=0.8, n_studies=10, seed=1
+    ... )
+    """
+    from nimare.studyset import Studyset
+    from nimare.transforms import t_to_z
+
+    rng = np.random.default_rng(seed)
+
+    if n_image_studies:
+        if not simulate_field:
+            raise ValueError(
+                "n_image_studies needs simulate_field=True: the point simulator draws a value "
+                "at each focus and never builds a map, so there is nothing to write."
+            )
+        if not image_dir:
+            raise ValueError("n_image_studies needs image_dir, to write the images into.")
+
+    ground_truth_foci = np.atleast_2d(np.asarray(ground_truth_foci, dtype=float))
+    effect_sizes = np.broadcast_to(
+        np.asarray(effect_sizes, dtype=float), (len(ground_truth_foci),)
+    )
+
+    if isinstance(sample_size, (int, np.integer)):
+        sample_sizes = np.full(n_studies, int(sample_size))
+    else:
+        low, high = sample_size
+        sample_sizes = rng.integers(int(low), int(high) + 1, size=n_studies)
+
+    if np.ndim(threshold_z) == 0:
+        thresholds = np.full(n_studies, float(threshold_z))
+    else:
+        thresholds = rng.choice(np.asarray(threshold_z, dtype=float), size=n_studies)
+
+    studies = []
+    for i_study, (n_subjects, threshold) in enumerate(zip(sample_sizes, thresholds)):
+        dof = n_subjects - 1 if design == "one-sample" else n_subjects - 2
+        scale = (
+            np.sqrt(1.0 / n_subjects)
+            if design == "one-sample"
+            else np.sqrt(4.0 / n_subjects)  # equal groups: sqrt(1/n1 + 1/n2)
+        )
+
+        points = []
+        if simulate_field:
+            present = [
+                effect if prevalence >= 1.0 or rng.random() < prevalence else 0.0
+                for effect in effect_sizes
+            ]
+            study_effects = [
+                rng.normal(effect, tau) if tau and effect else effect for effect in present
+            ]
+            reported_peaks, field = _simulate_reported_peaks(
+                ground_truth_foci,
+                study_effects,
+                n_subjects,
+                threshold,
+                smoothness_fwhm,
+                blob_fwhm,
+                field_zooms,
+                noise_extent if n_noise_foci or noise_extent else DEFAULT_NOISE_EXTENT,
+                design,
+                rng,
+            )
+            for peak in reported_peaks:
+                points.append(
+                    {
+                        "space": space,
+                        "coordinates": peak["coordinates"],
+                        "values": [
+                            {"kind": "Z", "value": peak["z"]},
+                            # The effect where the peak was found, so the inflation a
+                            # peak-height correction targets is measurable rather than assumed.
+                            {"kind": "TRUEG", "value": peak["true_g"]},
+                        ],
+                    }
+                )
+            images = []
+            if i_study < n_image_studies and field is not None:
+                import nibabel as nib
+
+                for value_type in ("g", "g_var"):
+                    path = os.path.join(image_dir, f"study-{i_study}-1_{value_type}.nii.gz")
+                    nib.save(
+                        nib.Nifti1Image(field[value_type].astype(np.float32), field["affine"]),
+                        path,
+                    )
+                    images.append(
+                        {
+                            "url": path,
+                            "filename": os.path.basename(path),
+                            "space": space,
+                            "value_type": value_type,
+                        }
+                    )
+            studies.append(
+                {
+                    "id": f"study-{i_study}",
+                    "name": f"study-{i_study}",
+                    "metadata": {
+                        "sample_sizes": [int(n_subjects)],
+                        "reporting_threshold": float(threshold),
+                    },
+                    "analyses": [
+                        {
+                            "id": f"study-{i_study}-1",
+                            "name": "1",
+                            "metadata": {
+                                "sample_sizes": [int(n_subjects)],
+                                "reporting_threshold": float(threshold),
+                            },
+                            "points": points,
+                            "images": images,
+                        }
+                    ],
+                }
+            )
+            continue
+
+        for focus, true_g in zip(ground_truth_foci, effect_sizes):
+            if prevalence < 1.0 and rng.random() >= prevalence:
+                continue  # this study simply has no effect here
+            study_effect = rng.normal(true_g, tau) if tau else true_g
+            sampling_sd = np.sqrt(scale**2 + study_effect**2 / (2.0 * n_subjects))
+            observed_d = rng.normal(study_effect, sampling_sd)
+            observed_z = t_to_z(np.array([observed_d / scale]), dof)[0]
+            if np.abs(observed_z) < threshold:
+                continue
+            reported = focus + rng.normal(0, spatial_sd, size=3)
+            points.append(
+                {
+                    "space": space,
+                    "coordinates": [float(c) for c in reported],
+                    "values": [{"kind": "Z", "value": float(observed_z)}],
+                }
+            )
+
+        for _ in range(n_noise_foci):
+            # Height of a null suprathreshold local maximum: P(Z > z | Z > u) ~= exp(-u(z - u)).
+            overshoot = rng.exponential(1.0 / threshold)
+            noise_z = (threshold + overshoot) * rng.choice([-1.0, 1.0])
+            points.append(
+                {
+                    "space": space,
+                    "coordinates": [
+                        float(c) for c in rng.uniform(-noise_extent, noise_extent, size=3)
+                    ],
+                    "values": [{"kind": "Z", "value": float(noise_z)}],
+                }
+            )
+
+        studies.append(
+            {
+                "id": f"study-{i_study}",
+                "name": f"study-{i_study}",
+                "metadata": {
+                    "sample_sizes": [int(n_subjects)],
+                    "reporting_threshold": float(threshold),
+                },
+                "analyses": [
+                    {
+                        "id": f"study-{i_study}-1",
+                        "name": "1",
+                        "metadata": {
+                            "sample_sizes": [int(n_subjects)],
+                            "reporting_threshold": float(threshold),
+                        },
+                        "points": points,
+                    }
+                ],
+            }
+        )
+
+    return Studyset({"id": "simulated", "name": "simulated", "studies": studies})
 
 
 def _create_foci(foci, foci_percentage, fwhm, n_studies, n_noise_foci, rng, space):

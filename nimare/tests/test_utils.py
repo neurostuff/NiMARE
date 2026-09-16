@@ -290,11 +290,7 @@ def test_apply_liberal_mask():
 
 
 def test_apply_liberal_mask_groups_voxels_that_are_not_adjacent():
-    """Voxels sharing a coverage pattern belong in one bag, however they are ordered.
-
-    Voxels 0 and 2 are covered by the same studies but are separated by a voxel with a
-    different pattern, so a grouping that only compares neighbours would split them.
-    """
+    """Voxels sharing a coverage pattern belong in one bag, however they are ordered."""
     data = np.array(
         [
             [1.0, np.nan, 2.0],
@@ -349,12 +345,7 @@ def test_apply_liberal_mask_partitions_every_covered_voxel():
 
 
 def test_liberal_mask_bags_and_values_compose_to_apply_liberal_mask():
-    """The split entry points must cut the data exactly as the combined one does.
-
-    ``IBMAEstimator`` groups once and slices each image input with the result, which is
-    roughly 40% cheaper for a beta/varcope estimator than regrouping per input. That is only
-    safe while the two paths agree.
-    """
+    """The split entry points must cut the data exactly as the combined one does."""
     rng = np.random.default_rng(0)
     data = rng.normal(size=(8, 300))
     data[rng.random(data.shape) < 0.3] = np.nan
@@ -396,12 +387,7 @@ def test_bibtex_reference_list_is_cached():
 
 
 def test_clip_logp_values_keeps_values_a_p_value_could_not_hold():
-    """A -log10(p) must not be clipped to the range of the p-value it came from.
-
-    Storing p itself bottoms out around 1.4e-45 in float32, i.e. -log10(p) of 44.85 or a z of
-    14.1. Clipping the logarithm there would discard anything computed in log space, which is
-    the whole reason for computing in log space.
-    """
+    """A -log10(p) must not be clipped to the range of the p-value it came from."""
     values = np.array([0.0, 44.85, 100.0, 1000.0, 5000.0])
 
     clipped = utils._clip_logp_values(values)
@@ -429,3 +415,221 @@ def test_nlogp_to_logp_values_converts_nlogp_to_logp():
     assert logp.dtype == np.dtype(utils.DEFAULT_FLOAT_DTYPE)
     # The same tail through the p-value instead would have been clipped at 44.85.
     assert utils._p_to_logp_values(np.array([1e-300]))[0] < 45.0
+
+
+def test_gpd_tail_p_engages_only_with_enough_exceedances():
+    """The tail fit needs a tail, and says so by declining rather than fitting noise."""
+    from nimare.meta.utils import _gpd_tail_p
+
+    rng = np.random.default_rng(0)
+    observed = np.array([12.0, 4.0])
+    for n_iters in (20, 50):
+        maxima = np.abs(rng.standard_normal(n_iters)) * 2.0 + 3.0
+        assert _gpd_tail_p(observed, maxima) is None, n_iters
+
+    maxima = np.abs(rng.standard_normal(500)) * 2.0 + 3.0
+    fitted = _gpd_tail_p(observed, maxima)
+    assert fitted is not None
+    assert np.all((fitted >= 0) & (fitted <= 1))
+    # Monotone: a larger statistic cannot be less significant.
+    ordered = _gpd_tail_p(np.array([4.0, 8.0, 12.0]), maxima)
+    assert ordered[0] > ordered[1] >= ordered[2]
+
+
+def test_gpd_tail_p_keeps_the_empirical_tail_near_the_floor():
+    """Below five times the empirical floor the fit is not trusted, so the empirical p is used.
+
+    This test previously asserted that no corrected p could fall below five times the
+    permutation floor, which encoded a bug rather than a policy: it conflated "do not trust the
+    fitted tail here" with "never report a small p", and the empirical ``1 / (1 + n)`` is not
+    manufactured significance -- it is exactly what the permutations support. What must never
+    happen is a value *below* the empirical tail.
+    """
+    from nimare.meta.utils import _GPD_FLOOR_MULTIPLE, _gpd_tail_p
+
+    rng = np.random.default_rng(1)
+    n_iters = 500
+    maxima = np.abs(rng.standard_normal(n_iters)) * 2.0 + 3.0
+    floor = _GPD_FLOOR_MULTIPLE / (1.0 + n_iters)
+
+    # An observation far past anything the permutations reached: the fit is not trusted this
+    # far out, so the answer is the permutation tail itself.
+    extreme = np.array([maxima.max() * 3.0])
+    fitted = _gpd_tail_p(extreme, maxima)
+    assert fitted is not None
+    empirical = (1 + int((maxima >= extreme[0]).sum())) / (1.0 + n_iters)
+    assert np.isclose(fitted[0], empirical)
+    assert fitted[0] >= 1.0 / (1.0 + n_iters) - 1e-12
+    assert fitted[0] < floor
+
+    # A statistic below the fit's threshold is scored against the permutations themselves,
+    # which cannot give less than one exceedance out of n + 1.
+    modest = _gpd_tail_p(np.array([float(np.median(maxima))]), maxima)
+    assert modest[0] > 0.25
+
+
+def test_gpd_goodness_of_fit_returns_a_usable_p_value():
+    """The fit is tested before it is trusted, so its test has to behave like a test."""
+    from nimare.meta.utils import _gpd_goodness_of_fit
+
+    rng = np.random.default_rng(2)
+    from scipy import stats as sp_stats
+
+    shape, scale = 0.1, 1.5
+    genuine = sp_stats.genpareto.rvs(shape, loc=0.0, scale=scale, size=400, random_state=rng)
+    p_good = _gpd_goodness_of_fit(genuine, shape, scale, n_boot=60, seed=0)
+    assert 0.0 <= p_good <= 1.0
+    # Data that is plainly not generalized Pareto should not pass as easily as data that is.
+    wrong = np.abs(rng.standard_normal(400)) * 0.01 + 5.0
+    p_bad = _gpd_goodness_of_fit(wrong, shape, scale, n_boot=60, seed=0)
+    assert 0.0 <= p_bad <= 1.0
+    assert p_bad < p_good
+
+
+def test_gpd_tail_p_shortens_the_tail_and_gives_up_cleanly():
+    """The retry path, and the surrender at the end of it."""
+    from nimare.meta.utils import _gpd_tail_p
+
+    # Degenerate tail: every extreme value identical, so the excesses are all zero and no
+    # generalized Pareto can be fitted at any tail length.
+    flat_tail = np.concatenate([np.linspace(0.0, 1.0, 400), np.full(200, 1.0)])
+    assert _gpd_tail_p(np.array([5.0]), flat_tail) is None
+
+    # Below the hard minimum it declines without trying at all.
+    assert _gpd_tail_p(np.array([5.0]), np.linspace(0, 1, 99)) is None
+
+    # A tail with a kink in it: fittable somewhere, but not at the length first attempted.
+    rng = np.random.default_rng(3)
+    body = np.abs(rng.standard_normal(500)) * 2.0
+    kinked = np.sort(np.concatenate([body, body.max() + np.full(40, 4.0)]))
+    result = _gpd_tail_p(np.array([kinked.max() * 1.2, float(np.median(kinked))]), kinked)
+    # Either it found a shorter acceptable tail or it gave up; both are valid, and both must
+    # come back as usable probabilities rather than as an exception.
+    assert result is None or np.all((result >= 0) & (result <= 1))
+
+
+def test_padded_flat_to_masked_agrees_with_the_unpadded_lookup():
+    """Padding must not change which voxel an index names, only where it is safe to add."""
+    rng = np.random.default_rng(0)
+    mask = np.zeros((9, 11, 7), dtype=np.int16)
+    mask[2:7, 3:9, 1:6] = 1
+    mask_img = nib.Nifti1Image(mask, np.eye(4))
+    offsets = utils_meta.sphere_kernel_offsets(2.0, (1.0, 1.0, 1.0))
+
+    plain = utils_meta._get_mask_flat_to_masked(mask_img)
+    padded, padded_shape, pad = utils_meta._padded_flat_to_masked(mask_img, offsets)
+
+    assert np.all(padded_shape == np.array(mask.shape) + 2 * pad)
+    assert padded.max() == plain.max()
+    # Every in-image voxel resolves to the same masked index through either lookup.
+    shape = np.array(mask.shape)
+    ijk = np.stack([rng.integers(0, n, 200) for n in shape], axis=1)
+    flat = ijk @ np.array([shape[1] * shape[2], shape[2], 1])
+    padded_flat = (ijk + pad) @ np.array([padded_shape[1] * padded_shape[2], padded_shape[2], 1])
+    assert np.array_equal(plain[flat], padded[padded_flat])
+
+
+def test_padded_dilation_matches_a_bounds_checked_one_even_from_outside_the_image():
+    """The point of the padding is that a focus near, or past, the edge needs no special case."""
+    mask = np.zeros((9, 11, 7), dtype=np.int16)
+    mask[2:7, 3:9, 1:6] = 1
+    mask_img = nib.Nifti1Image(mask, np.eye(4))
+    offsets = utils_meta.sphere_kernel_offsets(2.0, (1.0, 1.0, 1.0)).astype(np.int64)
+    shape = np.array(mask.shape, dtype=np.int64)
+
+    plain = utils_meta._get_mask_flat_to_masked(mask_img)
+    padded, padded_shape, pad = utils_meta._padded_flat_to_masked(mask_img, offsets)
+    padded_strides = np.array([padded_shape[1] * padded_shape[2], padded_shape[2], 1])
+    flat_offsets = offsets @ padded_strides
+    reach = np.abs(offsets).max(axis=0)
+
+    # On the edge, one voxel outside, and far enough out to reach nothing.
+    for focus in ([2, 3, 1], [0, 0, 0], [-1, 4, 3], [9, 4, 3], [-40, 4, 3]):
+        focus = np.array(focus, dtype=np.int64)
+        candidates = focus + offsets
+        in_bounds = np.all((candidates >= 0) & (candidates < shape), axis=-1)
+        flat = candidates @ np.array([shape[1] * shape[2], shape[2], 1])
+        expected = plain[np.where(in_bounds, flat, 0)]
+        expected = np.sort(expected[in_bounds & (expected >= 0)])
+
+        if np.all((focus >= -reach) & (focus < shape + reach)):
+            reached = padded[(focus + pad) @ padded_strides + flat_offsets]
+            reached = np.sort(reached[reached >= 0])
+        else:
+            reached = np.array([], dtype=np.int32)  # dropped, and provably reaches nothing
+        assert np.array_equal(expected, reached), focus
+
+
+def test_gpd_tail_p_gives_up_when_the_fitter_raises_or_returns_nonsense(monkeypatch):
+    """A fitter that fails, or succeeds with a degenerate answer, must not be trusted."""
+    from nimare.meta.utils import _gpd_tail_p
+
+    rng = np.random.default_rng(3)
+    maxima = np.abs(rng.standard_normal(500)) * 2.0 + 3.0
+    observed = np.array([maxima.max() * 2.0])
+    assert _gpd_tail_p(observed, maxima) is not None  # fittable before it is sabotaged
+
+    attempts = []
+
+    def raising(*args, **kwargs):
+        attempts.append("raise")
+        raise RuntimeError("optimizer gave up")
+
+    monkeypatch.setattr(utils_meta.stats.genpareto, "fit", raising)
+    assert _gpd_tail_p(observed, maxima) is None
+    # It shortened the tail and retried rather than surrendering on the first failure.
+    assert len(attempts) > 1
+
+    for bad in ((np.nan, 0.0, 1.0), (0.1, 0.0, np.inf), (0.1, 0.0, -1.0), (0.1, 0.0, 0.0)):
+        monkeypatch.setattr(utils_meta.stats.genpareto, "fit", lambda *a, **k: bad)
+        assert _gpd_tail_p(observed, maxima) is None, bad
+
+
+def test_gpd_goodness_of_fit_discards_replicates_it_cannot_refit(monkeypatch):
+    """A bootstrap replicate that will not refit is dropped, not counted as agreement."""
+    from nimare.meta.utils import _gpd_goodness_of_fit
+
+    rng = np.random.default_rng(4)
+    excess = utils_meta.stats.genpareto.rvs(0.1, loc=0.0, scale=1.5, size=200, random_state=rng)
+    n_boot = 25
+
+    monkeypatch.setattr(
+        utils_meta.stats.genpareto, "fit", lambda *a, **k: (_ for _ in ()).throw(RuntimeError())
+    )
+    assert _gpd_goodness_of_fit(excess, 0.1, 1.5, n_boot=n_boot) == 1 / (1 + n_boot)
+
+    for bad in ((np.nan, 0.0, 1.0), (0.1, 0.0, -1.0), (0.1, 0.0, 0.0)):
+        monkeypatch.setattr(utils_meta.stats.genpareto, "fit", lambda *a, **k: bad)
+        assert _gpd_goodness_of_fit(excess, 0.1, 1.5, n_boot=n_boot) == 1 / (1 + n_boot), bad
+
+
+def test_the_gpd_tail_falls_back_to_the_empirical_p_rather_than_clamping_up():
+    """Below the range the fit is trusted in, the empirical p is the answer, not a floor.
+
+    The code applies the fit only well above the permutation floor, having measured it
+    anticonservative below that. It used to enforce that by raising the fitted value *up* to
+    five times the floor, which for a statistic beyond every null maximum handed back 0.009980
+    where the empirical p was 0.001996 -- five times too conservative, and worse than not
+    fitting a tail at all.
+    """
+    from nimare.meta.utils import _GPD_FLOOR_MULTIPLE, _gpd_tail_p
+
+    rng = np.random.default_rng(0)
+    maxima = np.abs(rng.standard_normal(500)) * 2.0 + 3.0
+    floor = _GPD_FLOOR_MULTIPLE / (1.0 + maxima.size)
+
+    extreme = np.array([maxima.max() * 3.0])
+    fitted = _gpd_tail_p(extreme, maxima)
+    assert fitted is not None
+    empirical = (1 + int((maxima >= extreme[0]).sum())) / (1 + maxima.size)
+    assert np.isclose(fitted[0], empirical), (fitted[0], empirical)
+    assert fitted[0] < floor  # i.e. it is no longer clamped up to the floor
+
+    # Well above the floor the fit is still used, and still differs from the empirical tail.
+    moderate = np.array([float(np.percentile(maxima, 90))])
+    above = _gpd_tail_p(moderate, maxima)
+    assert above is not None
+    assert above[0] > 5 * floor
+    assert not np.isclose(
+        above[0], (1 + int((maxima >= moderate[0]).sum())) / (1 + maxima.size), rtol=1e-6
+    )
