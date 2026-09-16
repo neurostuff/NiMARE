@@ -23,7 +23,7 @@ _TRANSFORMS = {
 class StudyWeights(NiMAREBase):
     r"""Relative weights for the contrasts entering a meta-analysis.
 
-    .. versionadded:: 0.5.0
+    .. versionadded:: 0.22.0
 
     Implements the weighting scheme of :footcite:t:`wager2009evaluating`, in which each
     study contrast map is weighted by the square root of its sample size and contrasts
@@ -66,11 +66,13 @@ class StudyWeights(NiMAREBase):
     fixed_effects_labels : :obj:`tuple` of :obj:`str`, optional
         Values of ``inference_field`` that mark a fixed-effects model. Matched
         case-insensitively after stripping whitespace.
-    on_missing : {"impute", "raise"}, default="impute"
+    on_missing : {"raise", "impute"}, default="raise"
         What to do with contrasts whose weight is missing, zero or negative.
-        ``"impute"`` replaces them with the mean of the valid weights and warns, which is
-        what the CANlab MATLAB implementation does; it keeps the weighted and unweighted
-        analyses over the same study set. ``"raise"`` refuses instead.
+        ``"raise"`` refuses, because a silently substituted weight is invisible in the
+        output map. ``"impute"`` instead replaces them with the mean of the valid weights
+        and warns, which is what the CANlab MATLAB implementation does; it keeps the
+        weighted and unweighted analyses over the same study set, at the cost of
+        weighting some contrasts by a number that is not theirs.
 
     References
     ----------
@@ -85,7 +87,7 @@ class StudyWeights(NiMAREBase):
         inference_field=None,
         fixed_effects_discount=0.75,
         fixed_effects_labels=DEFAULT_FIXED_EFFECTS_LABELS,
-        on_missing="impute",
+        on_missing="raise",
     ):
         if isinstance(source, str) and source not in ("sample_size", "uniform"):
             raise ValueError(

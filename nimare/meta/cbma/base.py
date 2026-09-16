@@ -365,12 +365,16 @@ class CBMAEstimator(Estimator):
 
         return MetaResult(self, mask=masker, maps=maps, tables=tables, description=description)
 
-    def _compute_weights(self, ma_values):
+    def _compute_weights(self, ma_values, study_ids=None):
         """Perform optional weight computation routine.
 
         Takes an array of meta-analysis values as input and returns an array
         of the same shape, weighted as desired.
         Can be ignored by algorithms that don't support weighting.
+
+        ``study_ids`` names the studies behind the rows of *ma_values* when they are a
+        subset of those fitted, so that a weighting scheme can renormalise over them.
+        ``None`` means every fitted study is represented, in ``inputs_["id"]`` order.
         """
         return None
 

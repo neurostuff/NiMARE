@@ -135,7 +135,7 @@ class MKDADensity(CBMAEstimator):
     The MKDA density method was originally introduced in :footcite:t:`wager2007meta`.
     Sample-size weighting follows :footcite:t:`wager2009evaluating`.
 
-    .. versionchanged:: 0.5.0
+    .. versionchanged:: 0.22.0
 
         - New parameters: ``weighting``, which enables the sample-size weighting of
           :footcite:t:`wager2009evaluating`, and ``n_histogram_bins``, which sets the
@@ -379,36 +379,28 @@ class MKDADensity(CBMAEstimator):
         description += ". "
         return description
 
-    def _compute_weights(self, ma_values):
+    def _compute_weights(self, ma_values, study_ids=None):
         """Determine contrast-wise weights, normalised over the contrasts being analysed.
 
-        The weights are aligned to the MA-map rows by study ID rather than by position.
-        Rows come out of the kernel in ``np.unique(id)`` order; attaching the wrong sample
-        size to a contrast is invisible in the output, so the alignment is explicit.
+        ``_preprocess_input`` collects the raw weights against ``inputs_["id"]``, and the
+        kernel emits one MA-map row per study in that same order, so no realignment is
+        needed for a full analysis. A subsample passes the IDs of the rows it kept, which
+        is what makes leave-one-out renormalise over the studies it actually used.
         """
-        study_ids = np.unique(self.inputs_["coordinates"]["id"].values)
-        n_exp = len(study_ids)
+        n_exp = ma_values.shape[0]
 
         if self._raw_weights_ is None:
             raw = np.ones(n_exp, dtype=np.float64)
+        elif study_ids is None:
+            raw = self._raw_weights_.to_numpy(dtype=np.float64)
         else:
-            aligned = self._raw_weights_.reindex(study_ids)
-            if aligned.isna().any():
-                missing = list(aligned.index[aligned.isna()])
-                raise ValueError(
-                    f"No weight was computed for {len(missing)} of the {n_exp} contrasts "
-                    f"being analysed: {', '.join(str(i) for i in missing[:5])}."
-                )
-            raw = aligned.to_numpy(dtype=np.float64)
+            raw = self._raw_weights_.loc[list(study_ids)].to_numpy(dtype=np.float64)
 
-        weight_vec = normalize_weights(raw, n_exp)[:, None]
-
-        if weight_vec.shape[0] != ma_values.shape[0]:
+        if raw.shape[0] != n_exp:
             raise ValueError(
-                f"Computed {weight_vec.shape[0]} weights for {ma_values.shape[0]} modeled "
-                "activation maps."
+                f"Computed {raw.shape[0]} weights for {n_exp} modeled activation maps."
             )
-        return weight_vec
+        return normalize_weights(raw, n_exp)[:, None]
 
     def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", return_type="sparse"):
         """Collect MKDA MA maps in masked CSR form."""
@@ -422,11 +414,8 @@ class MKDADensity(CBMAEstimator):
         return collect_csr_ma_maps(self, coords_key=coords_key, maps_key=maps_key)
 
     def _prepare_subsample_null(self, ma_maps, subset_study_ids=None):
-        """Recompute experiment weights for the active subset of studies."""
-        if subset_study_ids is not None:
-            subset_mask = self.inputs_["coordinates"]["id"].isin(subset_study_ids)
-            self.inputs_["coordinates"] = self.inputs_["coordinates"][subset_mask]
-        self.weight_vec_ = self._compute_weights(ma_maps)
+        """Recompute contrast weights for the active subset of studies."""
+        self.weight_vec_ = self._compute_weights(ma_maps, study_ids=subset_study_ids)
 
     def _compute_null_montecarlo_permutation(self, iter_ijk, iter_df, bin_edges=None):
         """Run one Monte Carlo permutation, binning onto the weighted grid when there is one."""

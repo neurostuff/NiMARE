@@ -95,27 +95,31 @@ def test_unknown_inference_field_raises():
 
 
 def test_missing_sample_size_imputes_mean_weight(caplog):
-    """Missing weights take the mean of the valid ones, as the CANlab implementation does."""
+    """`on_missing='impute'` takes the mean of the valid ones, as CANlab does."""
     studyset = _studyset([16, 25, None])
     with caplog.at_level(logging.WARNING, logger="nimare.meta.cbma.weights"):
-        weights = StudyWeights().raw_weights(studyset, studyset.ids)
+        weights = StudyWeights(on_missing="impute").raw_weights(studyset, studyset.ids)
 
     np.testing.assert_allclose(weights.to_numpy(), [4.0, 5.0, 4.5])
     assert "imputing the mean weight" in caplog.text
 
 
 def test_zero_sample_size_is_treated_as_missing():
-    """A zero sample size would zero out a contrast entirely; impute instead."""
+    """A zero sample size would zero out a contrast entirely, so it counts as missing."""
     studyset = _studyset([16, 25, 0])
-    weights = StudyWeights().raw_weights(studyset, studyset.ids)
+    with pytest.raises(ValueError, match="missing or non-positive weight"):
+        StudyWeights().raw_weights(studyset, studyset.ids)
+
+    weights = StudyWeights(on_missing="impute").raw_weights(studyset, studyset.ids)
     np.testing.assert_allclose(weights.to_numpy(), [4.0, 5.0, 4.5])
 
 
-def test_on_missing_raise():
-    """`on_missing='raise'` refuses rather than imputing."""
+def test_on_missing_raise_is_the_default():
+    """A missing sample size is refused unless imputation is asked for explicitly."""
     studyset = _studyset([16, 25, None])
-    with pytest.raises(ValueError, match="missing or non-positive weight"):
-        StudyWeights(on_missing="raise").raw_weights(studyset, studyset.ids)
+    for weighting in (StudyWeights(), StudyWeights(on_missing="raise")):
+        with pytest.raises(ValueError, match="missing or non-positive weight"):
+            weighting.raw_weights(studyset, studyset.ids)
 
 
 def test_all_weights_invalid_raises():
@@ -221,7 +225,7 @@ def test_counts_recorded_for_the_methods_description():
         [16, 25, None, 36],
         extra_metadata=[{"inference": "fixed"}, {"inference": "random"}, None, None],
     )
-    weighting = StudyWeights(inference_field="inference")
+    weighting = StudyWeights(inference_field="inference", on_missing="impute")
     weighting.raw_weights(studyset, studyset.ids)
 
     assert weighting.n_fixed_effects_ == 1
@@ -230,7 +234,7 @@ def test_counts_recorded_for_the_methods_description():
 
 def test_counts_reset_between_calls():
     """Counts describe the most recent call, not every call ever made."""
-    weighting = StudyWeights(inference_field="inference")
+    weighting = StudyWeights(inference_field="inference", on_missing="impute")
     messy = _studyset([16, None], extra_metadata=[{"inference": "ffx"}, {"inference": "rfx"}])
     weighting.raw_weights(messy, messy.ids)
     assert (weighting.n_fixed_effects_, weighting.n_imputed_) == (1, 1)
