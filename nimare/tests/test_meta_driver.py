@@ -468,15 +468,51 @@ def test_the_grid_method_agrees_with_the_optimiser():
     assert np.max(np.abs(exact["upper"][usable] - grid["upper"][usable])) < 1e-3
 
 
-def test_the_grid_method_refuses_a_free_between_study_variance():
-    """The grid is over the mean alone, so it cannot profile a second parameter."""
+def test_the_grid_method_profiles_the_between_study_variance_when_none_is_fixed():
+    """And it must, because holding it at zero makes the estimator unable to express a mid effect.
+
+    A tight silence from a large study and a printed peak from a small one are *contradictory*
+    at zero between-study variance -- they then describe the same quantity -- so the likelihood
+    separates into two basins and the estimate lands in one of them. On a whole-brain fit that
+    left a hole in the distribution: three voxels in the band |g| from 0.115 to 0.185 where 140
+    belong. Freeing the variance lets the two records describe different study levels, and the
+    estimate can sit between them.
+    """
     from nimare.meta.cbma.driver import fit_locations
 
-    def studies_at(index):
-        return []
+    # One very precise silence, asserting |g| < 0.1, against one printed peak at 0.9.
+    studies = [
+        {
+            "id": "large_silent",
+            "peaks": np.zeros((0, 3)),
+            "heights": np.zeros(0),
+            "threshold": 0.1,
+            "variance": 0.001,
+        },
+        {
+            "id": "small_reporting",
+            "peaks": np.array([[1.0, 0.0, 0.0]]),
+            "heights": np.array([0.9]),
+            "threshold": 0.6,
+            "variance": 0.05,
+        },
+    ]
 
-    with pytest.raises(ValueError, match="fixed_between_variance"):
-        fit_locations(np.zeros((1, 3)), studies_at, 8.0, method="grid")
+    def studies_at(index):
+        return studies
+
+    positions = np.zeros((1, 3))
+    held = fit_locations(
+        positions, studies_at, 8.0, fixed_between_variance=0.0, method="grid", sided="two"
+    )
+    freed = fit_locations(positions, studies_at, 8.0, method="grid", sided="two")
+
+    # Held at zero, the estimate is pinned by the precise silence and cannot reach the peak.
+    assert abs(held["estimate"][0]) <= 0.15
+    assert held["between_variance"][0] == 0.0
+    # Freed, the fit uses heterogeneity to reconcile them and lands between the two claims.
+    assert freed["between_variance"][0] > 0.0
+    assert freed["estimate"][0] > held["estimate"][0]
 
 
 def test_an_unknown_method_is_refused():

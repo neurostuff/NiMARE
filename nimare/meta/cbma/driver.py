@@ -320,7 +320,30 @@ def records_from_bundle(bundle, position, reach, *, image_values=None, image_var
 _GRID_POINTS = 257
 
 
-def _grid_fit(lower, upper, variances, roles, *, between_variance, retention, cutoff, span=12.0):
+#: Between-study variances the grid profiles over when asked to. Zero plus a geometric ladder,
+#: because the interesting range is small and a linear ladder wastes its points at the top.
+_TAU2_LADDER = 9
+
+
+def _tau2_candidates(variances, count=_TAU2_LADDER):
+    """Build a ladder of between-study variances, zero to a few times the sampling scale."""
+    cap = 4.0 * float(np.nanmax(variances)) if variances.size else 1.0
+    cap = max(cap, 1e-4)
+    return np.concatenate(([0.0], np.geomspace(cap * 1e-3, cap, count - 1)))
+
+
+def _grid_fit(
+    lower,
+    upper,
+    variances,
+    roles,
+    *,
+    between_variance,
+    retention,
+    cutoff,
+    span=12.0,
+    profile_tau2=False,
+):
     r"""Estimate and interval from a single vectorised pass over a grid of means.
 
     **Why this exists.** Profiling a whole-brain fit put 65-104 ms per location in the profile
@@ -359,11 +382,37 @@ def _grid_fit(lower, upper, variances, roles, *, between_variance, retention, cu
     # Widen once if the maximum lands on an edge: a narrower grid is only a saving while it still
     # contains the answer, and silently returning a boundary as an estimate is the failure mode
     # this whole module has been bitten by before.
+    # With ``profile_tau2`` the curve is the *profile* over the between-study variance: the
+    # elementwise maximum over a ladder of candidates, which is one vectorised call each.
+    #
+    # **Why this is not optional on a real corpus.** Holding the between-study variance at zero
+    # says every study measures the same quantity, so a large study's silence and a small
+    # study's printed peak are contradictory rather than merely different. The likelihood then
+    # has two separated maxima -- one satisfying the tight silences, one satisfying the report --
+    # and the estimate lands in one basin or the other. On the whole-brain faces fit that left a
+    # visible *hole* in the distribution between |g| of 0.115 and 0.185: three voxels in a band
+    # that holds 140 once the variance is free. An estimator that cannot express a small effect
+    # is not shrinking, it is failing to describe the field.
+    candidates = (
+        _tau2_candidates(variances) if profile_tau2 else np.array([float(between_variance)])
+    )
     curve = usable = means = None
     for attempt in range(3):
         means = np.linspace(centre - width, centre + width, _GRID_POINTS)
-        curve = loglik_over_means(
-            means, between_variance, lower, upper, variances, retention=retention, roles=roles
+        stacked = np.stack(
+            [
+                loglik_over_means(
+                    means, value, lower, upper, variances, retention=retention, roles=roles
+                )
+                for value in candidates
+            ]
+        )
+        with np.errstate(invalid="ignore"):
+            curve = np.nanmax(np.where(np.isfinite(stacked), stacked, -np.inf), axis=0)
+        chosen_tau2 = (
+            float(candidates[int(np.argmax(stacked[:, int(np.nanargmax(curve))]))])
+            if np.any(np.isfinite(curve))
+            else float(between_variance)
         )
         usable = np.isfinite(curve)
         if not usable.any():
@@ -416,6 +465,7 @@ def _grid_fit(lower, upper, variances, roles, *, between_variance, retention, cu
         "upper": bounds[1],
         "touched_search_limit": touched,
         "n_informative": int(informative.sum()),
+        "between_variance": chosen_tau2,
     }
 
 
@@ -456,6 +506,11 @@ def _fit_one(index, position, studies_at, images_at, settings, cache):
     )
     shrink = settings["shrink"]
     between = float(shrink.get("fixed_between_variance") or 0.0)
+    if settings["profile_tau2"]:
+        # ``shrink`` carries ``fixed_between_variance=None`` in this case, which the exact path
+        # reads as "profile it"; the grid path needs a starting value for the span only.
+        shrink = {key: value for key, value in shrink.items() if key != "fixed_between_variance"}
+        shrink["fixed_between_variance"] = None
     if settings["method"] == "grid":
         grid = _grid_fit(
             lower,
@@ -465,12 +520,13 @@ def _fit_one(index, position, studies_at, images_at, settings, cache):
             between_variance=between,
             retention=extra.get("retention"),
             cutoff=settings["cutoff"],
+            profile_tau2=settings["profile_tau2"],
         )
         if grid is None:
             return None
         return {
             "estimate": grid["mean"],
-            "between_variance": between,
+            "between_variance": grid["between_variance"],
             "valid": True,
             "converged": True,
             "lower": grid["lower"],
@@ -588,11 +644,7 @@ def fit_locations(
     if method not in ("exact", "grid"):
         raise ValueError(f"method must be 'exact' or 'grid'; got {method!r}.")
     n_jobs = int(n_jobs)
-    if method == "grid" and fixed_between_variance is None:
-        raise ValueError(
-            "method='grid' profiles the mean on a grid at a fixed between-study variance; "
-            "supply fixed_between_variance, or use method='exact' to profile it."
-        )
+
     out = {
         "estimate": np.full(count, np.nan),
         "lower": np.full(count, np.nan),
@@ -616,6 +668,7 @@ def fit_locations(
         "level": float(level),
         "shrink": shrink,
         "cutoff": float(chi2.ppf(level, 1)) / 2.0,
+        "profile_tau2": fixed_between_variance is None,
     }
 
     if n_jobs == 1:
