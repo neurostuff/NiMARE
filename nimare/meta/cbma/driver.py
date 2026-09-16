@@ -33,6 +33,28 @@ bias changes sign between an 8 mm and a 12 mm reach, because a short reach reads
 printed the cluster containing a location as silent there while a long one reads a peak up to
 20 mm away as the effect here. There is no safe default; there is a measured optimum on one
 corpus, and the parameter belongs in whatever sensitivity analysis accompanies a result.
+
+**But the two are one knob, not two, and that changes what an envelope has to cover.** Write
+:math:`\alpha(R)` for the chance a peak falls within the reach where the study's own value never
+cleared its threshold and :math:`\beta(R)` for the chance none does where it did. The retention
+the likelihood then wants is :math:`(1-\beta) + F\alpha/S` -- the false-silence complement
+*plus the false reports it silently absorbs* -- so at the reach where the two errors are equally
+numerous, which is the reach that leaves the estimating equation unbiased, the data asks for full
+retention exactly. Shortening the reach buys a retention below one by precisely the false reports
+the smaller ball no longer admits. So the honest envelope runs along a curve through the
+``(reach, retention)`` plane rather than over its rectangle, and a pair chosen off that curve is
+double-counting or double-discounting the same ambiguity. :func:`envelope_over_assumptions`
+still evaluates the full grid, because locating the curve needs each study's own map and a
+caller may not have one; where the maps exist the curve is the shorter and better-founded
+sensitivity analysis.
+
+**Neither setting has to be guessed when unthresholded maps are available.** The retention is a
+parameter of a fixed likelihood, so pooling locations with a free mean at each locates it by
+maximum likelihood -- one per-location fit cannot, since an absence term is strictly decreasing
+in the retention and a location with no report maximises at the floor whatever the corpus does.
+The reach is not a parameter of any one likelihood, since changing it changes which records
+exist; it comes instead from the balance :math:`F\alpha(R) = S\beta(R)` above, measured on the
+maps the caller already holds.
 """
 
 from __future__ import annotations
@@ -242,6 +264,12 @@ def envelope_over_assumptions(
     pseudo-studies, only a short reach with a low retention beats an equally regularised
     image-only baseline at all: 12 mm and 20 mm never do, at any retention. A single number from
     a single assumed pair would therefore be a number whose sign the assumption chose.
+
+    **The grid is wider than the set of defensible pairs**, for the reason the module docstring
+    gives: the retention the data wants at a given reach is fixed by that reach's false-report
+    and false-silence rates, so the pairs worth reporting lie on a curve rather than filling the
+    rectangle. Reporting the whole grid is the conservative choice when the maps needed to locate
+    that curve are absent, and an over-statement of the range when they are present.
 
     **Every combination is evaluated, and that is not a performance oversight.** The implied
     magnitude in :func:`~nimare.meta.cbma.sensitivity.retention_envelope` is monotone in its

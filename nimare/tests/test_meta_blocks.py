@@ -12,8 +12,8 @@ import pytest
 from nimare.meta.cbma.blocks import (
     block_loglik,
     block_report_probability,
-    quadrature_is_converged,
     naive_to_exact_se_ratio,
+    quadrature_is_converged,
 )
 from nimare.meta.cbma.censored import (
     ObservationState,

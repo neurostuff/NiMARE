@@ -84,7 +84,7 @@ _MASS_FLOOR = 1e-300
 
 
 class ObservationState(enum.Enum):
-    """What a single record actually tells us about one study's effect at one location.
+    r"""What a single record actually tells us about one study's effect at one location.
 
     The distinction between these is the point. Collapsing them loses the difference between
     "this study measured a small effect here" and "this study's table does not say".
@@ -1367,7 +1367,7 @@ def restricted_between_variance(
     step = float(means[1] - means[0])
 
     def loglik_over_means(between_variance):
-        """The log-likelihood at every mean on the grid at once.
+        """Evaluate the log-likelihood at every mean on the grid at once.
 
         Vectorised over the grid rather than looping :func:`censored_loglik`, because the loop
         made one estimate cost the square of the grid size in likelihood evaluations -- about a
@@ -1405,7 +1405,7 @@ def restricted_between_variance(
         return out
 
     def criterion(between_variance):
-        """log of the flat-prior integral over the mean, by the log-sum-exp trapezoid."""
+        """Log of the flat-prior integral over the mean, by the log-sum-exp trapezoid."""
         terms = loglik_over_means(between_variance)
         if not np.any(np.isfinite(terms)):
             return -np.inf
