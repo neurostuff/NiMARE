@@ -681,3 +681,117 @@ def test_the_no_peak_silence_term_is_the_two_branch_mixture():
         )
         fitted.append(fit["mean"])
     assert all(later > earlier for earlier, later in zip(fitted, fitted[1:])), fitted
+
+
+def test_the_restricted_variance_matches_the_closed_form_it_generalises():
+    """In the equal-variance Gaussian case the answer is ``D/(K-1) - s^2``, computed nowhere here.
+
+    That is the whole justification for the numerical integral: the restricted likelihood is
+    defined as the likelihood with the mean integrated out under a flat prior, which generalises
+    to interval-censored records, and for a Gaussian model that integral must reproduce the
+    textbook divisor. Agreement is therefore a check against an independent route rather than a
+    restatement of the implementation. Derived in
+    ``proofs/small_sample_between_study_variance.py``.
+    """
+    from nimare.meta.cbma.censored import restricted_between_variance
+
+    rng = np.random.default_rng(0)
+    sampling, count = 0.05, 7
+    worst = 0.0
+    for _ in range(12):
+        values = rng.normal(0.0, np.sqrt(sampling + 0.045), size=count)
+        lower, upper = bounds_from_states(
+            [ObservationState.IMAGE] * count, values=values, thresholds=np.zeros(count)
+        )
+        variances = np.full(count, sampling)
+        got = restricted_between_variance(lower, upper, variances, grid=513)["between_variance"]
+        closed_form = max(((values - values.mean()) ** 2).sum() / (count - 1) - sampling, 0.0)
+        worst = max(worst, abs(got - closed_form))
+    assert worst < 5e-3, worst
+
+
+def test_the_restricted_variance_exceeds_the_joint_maximiser_at_small_study_counts():
+    """The point of it: the joint maximiser is short by one K-th of the *total* variance.
+
+    ``E[tau2_ML] = tau2 - (tau2 + s^2)/K``, so at seven studies the joint fit collapses toward
+    zero whenever ``tau2 < s^2/6``. Measured on 21 published pain studies, seven-study fits gave
+    a median of .0173 against .0453 from all 21 with 38% at exactly zero. This checks the
+    direction on averages rather than on one draw, because either estimator can be the larger on
+    a single sample.
+    """
+    from nimare.meta.cbma.censored import restricted_between_variance
+
+    rng = np.random.default_rng(3)
+    sampling, count = 0.05, 7
+    joint, restricted = [], []
+    for _ in range(60):
+        values = rng.normal(0.0, np.sqrt(sampling + 0.045), size=count)
+        lower, upper = bounds_from_states(
+            [ObservationState.IMAGE] * count, values=values, thresholds=np.zeros(count)
+        )
+        variances = np.full(count, sampling)
+        joint.append(fit_censored(lower, upper, variances)["between_variance"])
+        restricted.append(restricted_between_variance(lower, upper, variances)["between_variance"])
+    joint, restricted = np.asarray(joint), np.asarray(restricted)
+    assert np.median(restricted) > np.median(joint)
+    # And it must reduce the pile-up at the boundary, which is the symptom that was measured.
+    assert np.mean(restricted <= 1e-9) < np.mean(joint <= 1e-9)
+
+
+def test_the_restricted_variance_reports_its_boundary_and_refuses_an_empty_record_set():
+    """A solution at zero is a fact about the fit and must be visible, not inferred from a value.
+
+    The correction fixes the divisor and not the boundary: for any estimator
+    ``E[max(T, 0)] >= E[T]``, so a fifth of seven-study fits still land at zero and a summary
+    that quotes these estimates without the boundary share is hiding the part that did not get
+    fixed.
+    """
+    from nimare.meta.cbma.censored import restricted_between_variance
+
+    # Seven identical observations: no dispersion at all, so zero is the right answer and the
+    # flag must say so rather than leaving a bare 0.0 to be read as an estimate.
+    count = 7
+    lower, upper = bounds_from_states(
+        [ObservationState.IMAGE] * count,
+        values=np.full(count, 0.4),
+        thresholds=np.zeros(count),
+    )
+    out = restricted_between_variance(lower, upper, np.full(count, 0.05))
+    assert out["between_variance"] == pytest.approx(0.0)
+    assert out["at_zero_boundary"] and out["converged"]
+
+    # Nothing informative: report the failure rather than returning a number.
+    uninformative = bounds_from_states([ObservationState.UNKNOWN_COMPLETENESS] * 3)
+    empty = restricted_between_variance(*uninformative, np.full(3, 0.05))
+    assert not empty["converged"] and np.isnan(empty["between_variance"])
+
+
+def test_the_restricted_variance_accepts_censored_records_and_retention():
+    """The reason it is an integral and not a formula: most records here are intervals.
+
+    A closed-form restricted adjustment is derived for a Gaussian linear model, which a table of
+    silences is not. Integrating the mean out is the definition that survives, so the function
+    has to accept the mixed record set the estimator actually sees -- and the reporting model has
+    to be the same one being fitted, or the variance is estimated under a different model than
+    the mean.
+    """
+    from nimare.meta.cbma.censored import restricted_between_variance
+
+    states = [ObservationState.IMAGE] * 3 + [ObservationState.NO_PEAK_NEARBY] * 6
+    lower, upper = bounds_from_states(
+        states,
+        values=np.array([0.5, 0.2, 0.6] + [0.0] * 6),
+        thresholds=np.array([0.0] * 3 + [0.6] * 6),
+        signs=np.ones(9),
+    )
+    variances = np.full(9, 0.05)
+    roles = retention_roles(states)
+    plain = restricted_between_variance(lower, upper, variances)
+    with_retention = restricted_between_variance(
+        lower, upper, variances, retention=0.25, roles=roles
+    )
+    assert plain["converged"] and with_retention["converged"]
+    assert np.isfinite(plain["between_variance"])
+    assert np.isfinite(with_retention["between_variance"])
+    # The two describe different reporting models, so they must not silently coincide.
+    assert plain["loglik"] != with_retention["loglik"]

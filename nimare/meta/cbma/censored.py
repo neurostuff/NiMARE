@@ -1221,3 +1221,158 @@ def prevalence_times_conditional_mean_gap(mean, between_variance, threshold=0.0)
         density = norm.pdf((mean - threshold) / scale)
     density = np.where(scale > 0, density, 0.0)
     return scale * density - (1.0 - prevalence) * mean
+
+
+def restricted_between_variance(
+    lower,
+    upper,
+    variances,
+    *,
+    retention=None,
+    roles=None,
+    grid=257,
+    span=8.0,
+):
+    r"""Estimate :math:`\tau^2` by integrating the mean out under a flat prior.
+
+    :func:`fit_censored` maximises in :math:`(m, \tau^2)` jointly, and the maximum-likelihood
+    estimate of a variance from :math:`K` points is short by one :math:`K`-th of the *total*
+    variance rather than of :math:`\tau^2`:
+
+    .. math:: E[\hat\tau^2_{\text{ML}}] = \tau^2 - \frac{\tau^2 + s^2}{K},
+
+    derived in ``proofs/small_sample_between_study_variance.py``. So whenever
+    :math:`\tau^2 < (\tau^2+s^2)/K` -- at seven studies, whenever
+    :math:`\tau^2 < s^2/6` -- the expected estimate before truncation is negative and the
+    truncated one piles up at zero. Measured on 21 published pain studies, fits from seven
+    studies gave a median of .0173 against .0453 from all 21, with **38% at exactly zero**.
+
+    The correction is the restricted likelihood, and the definition used here is the one that
+    survives censoring: :math:`\int L(m,\tau^2)\,dm` under a flat prior on the mean. For a
+    Gaussian model that integral reproduces the textbook
+    :math:`\tfrac12\log\sum_i (s_i^2+\tau^2)^{-1}` adjustment exactly, up to a constant free of
+    the parameters, and in the equal-variance case its maximiser divides the squared deviations
+    by :math:`K-1` instead of :math:`K` -- the same correction that makes a sample variance
+    unbiased. Both are claims in that file rather than assertions here. Carrying the closed-form
+    adjustment across to interval-censored records by analogy would not have been sound, which
+    is why the integral is taken numerically instead.
+
+    Use it as a two-step, which is what restricted estimation is::
+
+        tau2 = restricted_between_variance(lower, upper, variances)
+        fit = fit_censored(lower, upper, variances, fixed_between_variance=tau2)
+
+    **What this does not fix.** Truncation at zero is a separate matter and the restricted
+    criterion does not touch it: for any estimator, :math:`E[\max(T,0)] \ge E[T]`, so at
+    :math:`\tau^2 = 0` every estimator confined to non-negative values is biased upward.
+    Simulated at the pain corpus's scale and seven studies, the correction moves the median from
+    .023 to .035 against a true .045 and the pile-up at zero from 28% to 21%: a real improvement
+    and not a cure. A corpus whose heterogeneity is genuinely near zero will still see a
+    pile-up, and reporting the share of fits at the boundary belongs in any summary that quotes
+    these estimates.
+
+    Parameters
+    ----------
+    lower, upper, variances
+        As :func:`censored_loglik`.
+    retention, roles
+        Passed through, so the reporting model is the same one being fitted.
+    grid : :obj:`int`
+        Points in the mean used for the integral, and in the search over :math:`\tau^2`.
+    span : :obj:`float`
+        Half-width of the mean grid, in standard deviations of the widest record.
+
+    Returns
+    -------
+    :obj:`dict`
+        ``between_variance``, ``loglik`` of the restricted criterion at it, ``at_zero_boundary``
+        and ``at_variance_cap`` so a boundary solution is visible rather than silent, and
+        ``converged``.
+    """
+    lower = np.asarray(lower, dtype=float)
+    upper = np.asarray(upper, dtype=float)
+    variances = np.asarray(variances, dtype=float)
+    informative = _informative_mask(lower, upper)
+    failure = {
+        "between_variance": np.nan,
+        "loglik": -np.inf,
+        "at_zero_boundary": False,
+        "at_variance_cap": False,
+        "converged": False,
+    }
+    if not informative.any():
+        return failure
+
+    centre_pool = np.where(np.isfinite(lower), lower, np.where(np.isfinite(upper), upper, 0.0))
+    centre_pool = centre_pool[informative]
+    centre = float(np.median(centre_pool)) if centre_pool.size else 0.0
+    cap = _tau2_cap(lower, upper, variances)
+    width = span * float(np.sqrt(np.max(variances[informative]) + cap))
+    means = np.linspace(centre - width, centre + width, int(grid))
+    step = float(means[1] - means[0])
+
+    def loglik_over_means(between_variance):
+        """The log-likelihood at every mean on the grid at once.
+
+        Vectorised over the grid rather than looping :func:`censored_loglik`, because the loop
+        made one estimate cost the square of the grid size in likelihood evaluations -- about a
+        second and a third each, which is ten hours for a whole mask and so not a usable fix at
+        all. The records are fixed across the grid, so the standardised bounds are one outer
+        subtraction.
+        """
+        total = np.asarray(variances, dtype=float) + float(between_variance)
+        if np.any(total <= 0):
+            return np.full(means.size, -np.inf)
+        scale = np.sqrt(total)
+        exact = np.isfinite(lower) & np.isfinite(upper) & (lower == upper)
+        censored = informative & ~exact
+        out = np.zeros(means.size)
+
+        if exact.any():
+            residual = (lower[exact][None, :] - means[:, None]) / scale[exact][None, :]
+            terms = -0.5 * residual**2 - np.log(scale[exact][None, :] * np.sqrt(2 * np.pi))
+            if retention is not None:
+                rho = _retention_vector(retention, lower.size)
+                aligned = np.asarray(roles, dtype=int).reshape(-1)
+                terms = terms + np.where(aligned[exact] == 1, np.log(rho[exact]), 0.0)[None, :]
+            out = out + terms.sum(axis=1)
+
+        if censored.any():
+            with np.errstate(invalid="ignore"):
+                lower_z = (lower[censored][None, :] - means[:, None]) / scale[censored][None, :]
+                upper_z = (upper[censored][None, :] - means[:, None]) / scale[censored][None, :]
+            terms = _interval_log_mass(lower_z, upper_z)
+            if retention is not None:
+                rho = _retention_vector(retention, lower.size)
+                aligned = np.asarray(roles, dtype=int).reshape(-1)
+                terms = _apply_retention(terms, rho[censored][None, :], aligned[censored][None, :])
+            out = out + np.where(np.isfinite(terms), terms, -np.inf).sum(axis=1)
+        return out
+
+    def criterion(between_variance):
+        """log of the flat-prior integral over the mean, by the log-sum-exp trapezoid."""
+        terms = loglik_over_means(between_variance)
+        if not np.any(np.isfinite(terms)):
+            return -np.inf
+        highest = np.max(terms[np.isfinite(terms)])
+        weights = np.exp(np.where(np.isfinite(terms), terms - highest, -np.inf))
+        # Trapezoid rather than a plain sum: the integrand is peaked, and a rectangle rule over
+        # a coarse grid biases the integral in a way that would move the maximiser.
+        integral = float(np.trapezoid(weights, dx=step))
+        if integral <= 0:
+            return -np.inf
+        return highest + float(np.log(integral))
+
+    candidates = np.concatenate(([0.0], np.geomspace(cap * 1e-6, cap, int(grid) - 1)))
+    values = np.array([criterion(value) for value in candidates])
+    if not np.any(np.isfinite(values)):
+        return failure
+    best = int(np.nanargmax(values))
+    estimate = float(candidates[best])
+    return {
+        "between_variance": estimate,
+        "loglik": float(values[best]),
+        "at_zero_boundary": bool(best == 0),
+        "at_variance_cap": bool(best == candidates.size - 1),
+        "converged": True,
+    }
