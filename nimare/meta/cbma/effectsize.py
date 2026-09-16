@@ -1091,8 +1091,16 @@ class CBES(Estimator):
        interval is too narrow at the default and too wide at convergence.
 
        Where the effect is weak the likelihood does not bound :math:`\mu` at all:
-       ``interval="profile"`` is unbounded wherever the data do not reject :math:`\pi = 0`,
-       which at two image studies is 97% of voxels.
+       ``interval="profile"`` is unbounded wherever the data do not reject :math:`\pi = 0`.
+
+       **That unboundedness is the diagnostic for whether to believe the interval.** Against a
+       known truth at a prevalence of 0.6, nominal-95% Wald coverage is 0.97 at the voxels where
+       the profile bound is finite and 0.87 where it is not. Read ``g``'s interval where
+       ``g_lower`` and ``g_upper`` are finite; elsewhere the point estimate is still the maximum
+       likelihood one, but the interval under-covers by about eight points. The two interval
+       methods are otherwise interchangeable -- scored on the same voxels they cover 0.964 and
+       0.969 at the same width, so ``"profile"`` is worth its extra fit for the bound's
+       finiteness rather than for the bound.
 
     5. **Read ``se`` and the interval width, never coverage.** Every configuration measured
        covers 0.95 to 1.00, including those admitting almost any magnitude. P-values come from
@@ -1120,6 +1128,16 @@ class CBES(Estimator):
     Warnings
     --------
     This estimator is new and has not been validated against a reference implementation.
+
+    **Whether a collection is in the regime this estimator helps cannot usually be tested.**
+    :math:`\pi = 1` lies on the edge of the parameter space, so a likelihood-ratio test of it
+    follows the half-and-half mixture of :footcite:t:`chernoff1954distribution`, with a
+    level-0.05 cut at 2.71 rather than 3.84. That test is conservative here -- its boundary atom
+    is 0.66 to 0.83 against the asymptotic 0.5 -- and, more to the point, nearly powerless at
+    the collection sizes this estimator is built for. Against a true prevalence of 0.6 it rejects
+    at 0.13 with two image studies, 0.35 with six and 0.62 with twenty. Twentyfold more
+    coordinate tables move it from 0.13 to 0.18. So with a handful of images, assume the regime
+    cannot be identified from the data and decide it from what is known about the collection.
 
     **The correction can make ``g`` worse than doing nothing.** Against a reference built from
     subjects that made no coordinate, an images-only pool recovered 0.85 of the true magnitude
