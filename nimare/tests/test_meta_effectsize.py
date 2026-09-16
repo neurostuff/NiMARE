@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from nilearn.maskers import NiftiMasker
+from scipy.special import ndtr
 
 from nimare.correct import FDRCorrector, FWECorrector
 from nimare.generate import create_effect_size_coordinate_studyset
@@ -1117,6 +1118,92 @@ def test_a_report_and_a_silence_pull_the_magnitude_opposite_ways():
 
     alone, silent, reported = fit(0.0), fit(1.0), fit(-1.0)
     assert silent < alone < reported
+
+
+def test_the_fit_leaves_its_start_where_the_reported_limb_makes_the_curvature_positive():
+    """Newton must not stall at the start value just because the observed curvature is uphill.
+
+    Where a study reported, the indicator contributes log(1 - P(silent)), which is convex in mu.
+    With enough reporters the total observed curvature turns positive, at which point
+    ``-score / curvature`` points the wrong way. Refusing the step left the voxel holding its
+    start value with a standard error taken somewhere that is not a maximum; against a grid MLE
+    that happened at 2.2% of voxels and cost 0.34 in mu at each.
+    """
+    n_studies = 6
+    start = 0.05
+    weights = np.zeros((n_studies, 1))
+    weights[0, 0] = 1.0
+    g_obs = np.zeros((n_studies, 1))
+    g_obs[0, 0] = start
+    var_obs = np.full((n_studies, 1), 1.0 / 20.0)
+    indicator = np.zeros((n_studies, 1))
+    indicator[1:, 0] = -1.0  # every coordinate study reported here
+    cutoff = 0.69
+
+    estimator = CBES(selection_model="none", null_method="none", max_iter=400)
+    mu, _pi, se, *_ = estimator._fit_chunk(
+        weights=weights,
+        g_obs=g_obs,
+        var_obs=var_obs,
+        indicator=indicator,
+        tau2=np.zeros(1),
+        null_var=np.full((n_studies, 1), 1.0 / 20.0),
+        cutoffs=np.full((n_studies, 1), cutoff),
+        start=np.array([start]),
+    )
+
+    # Twenty studies all reporting is strong evidence for a large effect, so the fit has to move
+    # well above a start chosen below the cutoff.
+    assert float(mu[0]) > start + 0.2, float(mu[0])
+    assert np.isfinite(se[0])
+
+    # And it lands on the maximum, not merely somewhere else: check against a grid.
+    sd = np.sqrt(1.0 / 20.0)
+    grid = np.linspace(-1.0, 3.0, 4001)
+    silent_prob = np.clip(ndtr((cutoff - grid) / sd) - ndtr((-cutoff - grid) / sd), 1e-300, None)
+    log_likelihood = (n_studies - 1) * np.log(np.clip(1.0 - silent_prob, 1e-300, None))
+    log_likelihood -= 0.5 * ((start - grid) / sd) ** 2
+    assert float(mu[0]) == pytest.approx(grid[log_likelihood.argmax()], abs=5e-3)
+
+
+def test_a_fit_with_no_mixture_does_not_profile_out_a_prevalence_it_never_estimated():
+    """Without ``selection_model='zero-inflated'`` there is no prevalence, so none is profiled.
+
+    The information about mu is then the plain block. Subtracting a Schur complement for a
+    parameter that was never fitted understated it about eightfold and drove nominal-95%
+    coverage to 0.998.
+
+    The invariant tested is the one a reader can check without the algebra: reporting indicators
+    are evidence, so adding them cannot make the interval wider.
+    """
+    n_studies = 11
+    estimator = CBES(selection_model="none", null_method="none", max_iter=400)
+
+    def se_with(sign):
+        weights = np.zeros((n_studies, 1))
+        weights[0, 0] = 1.0
+        g_obs = np.zeros((n_studies, 1))
+        g_obs[0, 0] = 0.5
+        var_obs = np.full((n_studies, 1), 1.0 / 20.0)
+        indicator = np.zeros((n_studies, 1))
+        indicator[1:, 0] = sign
+        _mu, _pi, se, *_ = estimator._fit_chunk(
+            weights=weights,
+            g_obs=g_obs,
+            var_obs=var_obs,
+            indicator=indicator,
+            tau2=np.zeros(1),
+            null_var=np.full((n_studies, 1), 1.0 / 20.0),
+            cutoffs=np.full((n_studies, 1), 0.69),
+            start=np.array([0.5]),
+        )
+        return float(se[0])
+
+    images_only = se_with(0.0)
+    # One image at variance 1/20 and nothing else: the se is that image's own.
+    assert images_only == pytest.approx(np.sqrt(1.0 / 20.0), rel=1e-6)
+    assert se_with(1.0) < images_only
+    assert se_with(-1.0) < images_only
 
 
 # ----------------------------------------------------------------- analysis masks

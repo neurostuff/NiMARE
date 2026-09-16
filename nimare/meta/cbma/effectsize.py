@@ -510,6 +510,36 @@ def _mu_derivatives(
     return score, curvature
 
 
+def _fisher_denominator(
+    *, width, precision_rep, rep_voxel, weight_rep, sil_voxel, weight_sil, censoring
+):
+    r"""Give Newton a denominator that is negative by construction, where the observed one is not.
+
+    Where a study reported, the indicator contributes :math:`\log(1 - P(\text{silent}))`, which
+    is convex in ``mu``. At a voxel with enough reporters the observed curvature can therefore be
+    positive, at which point ``-score / curvature`` points uphill and the caller refuses the step
+    -- leaving the voxel at whatever value it started from, with a standard error taken at a
+    point that is not a maximum. Measured in a scalar bed against a known truth, that happened at
+    2.2% of voxels and cost 0.34 in ``mu`` at each one, enough to raise the estimator's standard
+    deviation from the exact MLE's 0.080 to 0.095.
+
+    Fisher's information is an expectation of a square, so it is non-negative whatever the data
+    did, and scoring with it always moves along the score. The fixed point is unchanged: only the
+    denominator differs, and at the maximum the score is zero either way.
+
+    Both pieces come from quantities the caller already holds. For an indicator with event
+    probability :math:`p`, the information is :math:`(\partial_\mu s)^2 / (s(1-s))` where
+    :math:`s = P(\text{silent})`; the stored score is :math:`\pm \partial_\mu s / p` and
+    :math:`s(1-s) = p(1-p)`, so the numerator is ``(score * prob) ** 2``.
+    """
+    prob = censoring["prob"]
+    derivative_squared = (censoring["score"] * prob) ** 2
+    information = derivative_squared / np.clip(prob * (1.0 - prob), _PROBABILITY_FLOOR, None)
+    denominator = -np.bincount(rep_voxel, weights=weight_rep * precision_rep, minlength=width)
+    denominator -= np.bincount(sil_voxel, weights=weight_sil * information, minlength=width)
+    return denominator
+
+
 # -------------------------------------------------------- reported-peak theory
 
 
@@ -2205,7 +2235,13 @@ class CBES(Estimator):
                 silent=silent,
                 mu=mu,
                 censoring=silent.censoring(mu),
-                identified=identified if zero_inflated else None,
+                # Always an array, never None. Without a mixture ``identified`` is all-False,
+                # which is the truth -- there is no prevalence anywhere -- and the guard inside
+                # then reports the plain block. Passing None instead let the Schur complement
+                # subtract for a parameter that was never fitted, which understated the
+                # information about eightfold against a brute-force MLE and drove nominal-95%
+                # coverage to 0.998.
+                identified=identified,
             )
             information = information[positions]
             marginal_variance = marginal_variance[positions]
@@ -2266,6 +2302,25 @@ class CBES(Estimator):
                 )
 
             score, curvature = derivatives(censoring)
+            # The observed curvature is positive wherever the reported limb's convexity outweighs
+            # everything else, and there -score / curvature points uphill. Falling back to Fisher
+            # information keeps the direction right; taking no step at all would leave the voxel
+            # at its start value, which is what it used to do.
+            uphill = curvature >= 0
+            if uphill.any():
+                curvature = np.where(
+                    uphill,
+                    _fisher_denominator(
+                        width=mu.size,
+                        precision_rep=reporting.precision,
+                        rep_voxel=reporting.voxel,
+                        weight_rep=reporting.weight * reporting.responsibility,
+                        sil_voxel=silent.voxel,
+                        weight_sil=silent.weight * silent.responsibility,
+                        censoring=censoring,
+                    ),
+                    curvature,
+                )
             step = np.where(curvature < 0, -score / curvature, 0.0)
             # The likelihood is concave but flat far from the data; cap the step so a voxel
             # with almost no reporting weight cannot run away.
