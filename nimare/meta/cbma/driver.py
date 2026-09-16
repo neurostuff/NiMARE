@@ -82,6 +82,7 @@ def records_for_location(
     *,
     image_values=None,
     image_variances=None,
+    sided="one",
 ):
     r"""Build one record per study at a single location.
 
@@ -102,13 +103,36 @@ def records_for_location(
         Estimates and sampling variances from studies that supplied an unthresholded image.
         These enter as :attr:`~censored.ObservationState.IMAGE` records, which retention never
         touches: an available image is available whatever the table printed.
+    sided : ``{"one", "two"}``, default="one"
+        Which reporting protocol the tables came from, overridable per study with a ``sided``
+        key. This is a property of the *protocol* and cannot be assumed globally: a paper that
+        prints only activations really does have a one-sided rule, and its silence really does
+        mean :math:`Y < c`.
+
+        ``"one"``
+            Only a positive peak is a report; a printed negative peak is discarded and its study
+            enters as an absence bounded above by its threshold. Lossy but not false, since
+            :math:`Y < c` contains the truth.
+        ``"two"``
+            A printed negative peak is a *signed report* on :math:`[h, -c)`, and an absence means
+            :math:`|Y| < c`. Correct where the estimand is signed and the tables came from a
+            two-sided rule, which is the usual case.
+
+        **The two halves cannot be mixed.** A symmetric absence combined with discarded negative
+        peaks asserts :math:`|Y| < c` where the table says :math:`Y \le -c` -- intervals that are
+        *disjoint*, misstating the asserted value by one to two effect sizes at every such
+        record. Conversely a one-sided absence under a two-sided rule is asymmetric, and its
+        score at a null mean is :math:`-\varphi(c)/\Phi(c)` rather than zero, so every silent
+        study pulls a null location downward and the pull accumulates with the corpus size. Both
+        are derived in ``proofs/what_a_negative_peak_says.py``.
 
     Returns
     -------
     lower, upper, variances, roles : :obj:`numpy.ndarray`
         Ready for :func:`~censored.fit_censored`.
     """
-    states, values, thresholds, variances = [], [], [], []
+    states, values, thresholds, variances, signs = [], [], [], [], []
+    conflicts = 0
     if image_values is not None:
         image_values = np.asarray(image_values, dtype=float).reshape(-1)
         image_variances = np.asarray(image_variances, dtype=float).reshape(-1)
@@ -122,6 +146,7 @@ def records_for_location(
             values.append(value)
             thresholds.append(0.0)
             variances.append(variance)
+            signs.append(1.0)
 
     position = np.asarray(position, dtype=float).reshape(3)
     for study in studies:
@@ -132,26 +157,56 @@ def records_for_location(
                 f"study {study.get('id', '?')!r} has {peaks.shape[0]} peaks and "
                 f"{heights.shape[0]} heights."
             )
+        protocol = str(study.get("sided", sided))
+        if protocol not in ("one", "two"):
+            raise ValueError(
+                f"study {study.get('id', '?')!r} has sided={protocol!r}; use 'one' or 'two'."
+            )
         nearby = np.array([], dtype=int)
         if peaks.size:
             distance = np.linalg.norm(peaks - position[None, :], axis=1)
-            nearby = np.flatnonzero((distance <= reach) & (heights > 0))
+            eligible = distance <= reach
+            if protocol == "one":
+                eligible &= heights > 0
+            nearby = np.flatnonzero(eligible)
         if nearby.size:
-            chosen = nearby[np.argmax(heights[nearby])]
+            if protocol == "one":
+                chosen = nearby[np.argmax(heights[nearby])]
+            else:
+                # **The nearest peak, not the largest.** Under a two-sided protocol peaks of
+                # both signs can fall within one reach, and their records disagree: a positive
+                # peak bounds this location's value from above, a negative one from below. No
+                # algebra settles which speaks for the location, so the stated choice is
+                # proximity -- which is the only thing that justified reading a peak as
+                # speaking for a nearby location in the first place -- with the larger magnitude
+                # breaking a tie. ``conflicts`` counts how often the question arose.
+                order = np.lexsort((-np.abs(heights[nearby]), distance[nearby]))
+                chosen = nearby[order[0]]
+                if np.unique(np.sign(heights[nearby])).size > 1:
+                    conflicts += 1
             at_location = float(distance[chosen]) <= COINCIDENT_MM
             states.append(ObservationState.EXACT if at_location else ObservationState.CLUSTER_PEAK)
             values.append(float(heights[chosen]))
+            signs.append(float(np.sign(heights[chosen])) or 1.0)
         else:
             states.append(ObservationState.NO_PEAK_NEARBY)
             values.append(0.0)
+            # A one-sided protocol's silence is ``Y < c``; a two-sided protocol's is
+            # ``|Y| < c``, which is what an unsigned sign requests from
+            # :func:`~censored.bounds_from_states`. The two cannot be mixed: a symmetric silence
+            # combined with discarded negative peaks asserts an interval *disjoint* from the
+            # truth wherever a study printed a deactivation, biased upward by one to two effect
+            # sizes per record (``proofs/what_a_negative_peak_says.py``).
+            signs.append(1.0 if protocol == "one" else 0.0)
         thresholds.append(float(study["threshold"]))
         variances.append(float(study["variance"]))
 
+    sign_array = np.asarray(signs, dtype=float)
     lower, upper = bounds_from_states(
         states,
         values=np.asarray(values, dtype=float),
         thresholds=np.asarray(thresholds, dtype=float),
-        signs=np.ones(len(states)),
+        signs=np.where(sign_array == 0.0, np.nan, sign_array),
     )
     return lower, upper, np.asarray(variances, dtype=float), retention_roles(states)
 
@@ -165,6 +220,7 @@ def fit_locations(
     fixed_between_variance=None,
     level=0.95,
     images_at=None,
+    sided="one",
 ):
     r"""Fit every location independently and return estimates, intervals and failures.
 
@@ -226,6 +282,7 @@ def fit_locations(
             reach,
             image_values=None if images is None else images[0],
             image_variances=None if images is None else images[1],
+            sided=sided,
         )
         # Retention is passed only where it can act. At 1.0 the mixture is the certain-silence
         # reading, so supplying it would change nothing while suggesting otherwise.

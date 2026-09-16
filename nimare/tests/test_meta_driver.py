@@ -256,3 +256,133 @@ def test_the_envelope_refuses_an_empty_grid():
 
     with pytest.raises(ValueError, match="non-empty"):
         envelope_over_assumptions(np.zeros((1, 3)), lambda index: _studies(), [], [1.0])
+
+
+def _signed_studies():
+    """Three studies at one location: a negative peak nearby, a positive one, and nothing."""
+    return [
+        {
+            "id": "negative",
+            "peaks": np.array([[3.0, 0.0, 0.0]]),
+            "heights": np.array([-1.4]),
+            "threshold": 0.75,
+            "variance": 0.04,
+        },
+        {
+            "id": "positive",
+            "peaks": np.array([[3.0, 0.0, 0.0]]),
+            "heights": np.array([1.4]),
+            "threshold": 0.75,
+            "variance": 0.04,
+        },
+        {
+            "id": "silent",
+            "peaks": np.zeros((0, 3)),
+            "heights": np.zeros(0),
+            "threshold": 0.75,
+            "variance": 0.04,
+        },
+    ]
+
+
+def test_a_negative_peak_is_a_report_two_sided_and_a_silence_one_sided():
+    """The estimand is signed, so a printed deactivation is information, not an absence."""
+    from nimare.meta.cbma.driver import records_for_location
+
+    position = np.zeros(3)
+    one_lower, one_upper, _, one_roles = records_for_location(
+        position, _signed_studies(), 8.0, sided="one"
+    )
+    two_lower, two_upper, _, two_roles = records_for_location(
+        position, _signed_studies(), 8.0, sided="two"
+    )
+
+    # One-sided: the negative-peak study is entered as an absence bounded by its own threshold.
+    assert one_roles[0] == -1
+    assert not np.isfinite(one_lower[0]) and one_upper[0] == pytest.approx(0.75)
+
+    # Two-sided: it is a report, on the interval the table actually implies.
+    assert two_roles[0] == 1
+    assert two_lower[0] == pytest.approx(-1.4)
+    assert two_upper[0] == pytest.approx(-0.75)
+
+
+def test_the_two_sided_silence_is_symmetric_and_the_one_sided_one_is_not():
+    """A symmetric silence and discarded negative peaks cannot be mixed; the sides must match."""
+    from nimare.meta.cbma.driver import records_for_location
+
+    position = np.zeros(3)
+    one_lower, one_upper, _, _ = records_for_location(
+        position, _signed_studies(), 8.0, sided="one"
+    )
+    two_lower, two_upper, _, _ = records_for_location(
+        position, _signed_studies(), 8.0, sided="two"
+    )
+    assert not np.isfinite(one_lower[2]) and one_upper[2] == pytest.approx(0.75)
+    assert two_lower[2] == pytest.approx(-0.75)
+    assert two_upper[2] == pytest.approx(0.75)
+
+
+def test_two_sided_negative_reports_drive_the_estimate_negative():
+    """And the direction is the point: silence cannot express a deactivation, a report can."""
+    from nimare.meta.cbma.driver import fit_locations
+
+    negatives = [
+        {
+            "id": f"n{index}",
+            "peaks": np.array([[2.0, 0.0, 0.0]]),
+            "heights": np.array([-1.3]),
+            "threshold": 0.75,
+            "variance": 0.04,
+        }
+        for index in range(6)
+    ]
+
+    def studies_at(index):
+        return negatives
+
+    positions = np.zeros((1, 3))
+    two_sided = fit_locations(positions, studies_at, 8.0, fixed_between_variance=0.0, sided="two")
+    one_sided = fit_locations(positions, studies_at, 8.0, fixed_between_variance=0.0, sided="one")
+    assert two_sided["estimate"][0] < -0.5
+    # One-sided reads the same six tables as six silences, so it cannot see the deactivation and
+    # lands wherever a bounded-above absence puts it -- above the two-sided answer either way.
+    assert one_sided["estimate"][0] > two_sided["estimate"][0]
+
+
+def test_the_nearest_peak_wins_when_both_signs_are_within_reach():
+    """The stated tie-break, since no algebra settles which of two peaks speaks for a location."""
+    from nimare.meta.cbma.driver import records_for_location
+
+    study = {
+        "id": "both",
+        "peaks": np.array([[2.0, 0.0, 0.0], [7.0, 0.0, 0.0]]),
+        "heights": np.array([-1.1, 2.6]),
+        "threshold": 0.75,
+        "variance": 0.04,
+    }
+    lower, upper, _, roles = records_for_location(np.zeros(3), [study], 8.0, sided="two")
+    # The nearer peak is the negative one, despite the positive one being much larger.
+    assert roles[0] == 1
+    assert upper[0] == pytest.approx(-0.75)
+    assert lower[0] == pytest.approx(-1.1)
+
+
+def test_a_study_may_declare_its_own_protocol():
+    """Sided-ness is a property of a study's reporting rule, not of the analysis."""
+    from nimare.meta.cbma.driver import records_for_location
+
+    studies = _signed_studies()
+    studies[0]["sided"] = "two"
+    _, _, _, roles = records_for_location(np.zeros(3), studies, 8.0, sided="one")
+    assert roles[0] == 1
+
+
+def test_an_unknown_protocol_is_refused():
+    """A protocol that is neither one- nor two-sided is a mistake, not a third model."""
+    from nimare.meta.cbma.driver import records_for_location
+
+    studies = _signed_studies()
+    studies[0]["sided"] = "both"
+    with pytest.raises(ValueError, match="sided="):
+        records_for_location(np.zeros(3), studies, 8.0)
