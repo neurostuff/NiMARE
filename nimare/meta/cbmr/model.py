@@ -241,8 +241,7 @@ class CBMRModel(torch.nn.Module):
         """Return the observed Fisher information by automatic differentiation.
 
         ``jacfwd(jacrev(.))`` builds an intermediate of shape ``(n_parameters, n_patterns,
-        n_voxels)``, which is tens of GB on a many-group model. This is what every distribution
-        used before the closed forms in :mod:`nimare.meta.cbmr.information`.
+        n_voxels)``, which is tens of GB on a many-group model.
         """
         flat = self.coefficients.detach().clone()
         nuisance = None if self.nuisance is None else self.nuisance.detach().clone()
