@@ -141,16 +141,39 @@ def test_one_image_study_reports_no_precision_rather_than_perfect_precision():
         optimal_coefficient(effects, f_image, 1, 50)
 
 
-def test_a_predictor_that_never_varies_leaves_the_image_mean_untouched():
-    """A constant predictor carries no information, so the coefficient and the shift are zero."""
+def test_a_predictor_that_never_varies_falls_back_to_a_valid_image_only_mean():
+    """A constant predictor gives a zero coefficient and the estimator becomes the image mean.
+
+    The fallback must stay **valid** with the image-only standard error. An earlier version of
+    this test asserted the opposite -- ``not out["valid"].any()`` -- which locked in a defect:
+    ``valid`` required the predictor to vary, and the invalid flag then blanked a correct
+    standard error to infinity. The test protected the bug from the test suite, which is why it
+    took an external audit to find. Caught by that audit.
+    """
     rng = np.random.default_rng(5)
     values = 0.4 + rng.normal(scale=0.3, size=(6, 8))
     flat = np.ones((6, 8))
     lam = optimal_coefficient(values, flat, 6, 40, mode="voxelwise")
     assert np.all(lam == 0.0)
+
     out = control_variate_mean(values, flat, np.ones((40, 8)), lam)
     assert out["estimate"] == pytest.approx(values.mean(axis=0))
+    assert out["valid"].all()
+    assert out["degenerate_predictor"].all()
+    image_only = values.std(axis=0, ddof=1) / np.sqrt(6)
+    assert out["se"] == pytest.approx(image_only)
+    assert out["se_images_only"] == pytest.approx(image_only)
+    # Doing nothing is a variance ratio of exactly one, not an undefined quantity.
+    assert out["variance_ratio"] == pytest.approx(np.ones(8))
+
+
+def test_a_constant_predictor_whose_cohort_means_differ_is_refused():
+    """The one unsafe degenerate case: a displacement with no variance term to cover it."""
+    rng = np.random.default_rng(6)
+    values = 0.4 + rng.normal(scale=0.3, size=(6, 4))
+    out = control_variate_mean(values, np.ones((6, 4)), np.full((10, 4), 2.0), 1.0)
     assert not out["valid"].any()
+    assert out["degenerate_predictor"].all()
 
 
 def test_the_augmented_mean_is_exactly_the_control_variate_with_the_coefficient_pinned_at_one():

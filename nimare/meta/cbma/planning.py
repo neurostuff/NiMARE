@@ -22,14 +22,16 @@ plug-in power is optimistic precisely in the regime where a study is being desig
 adequately powered. Derived in ``proofs/assurance_not_plug_in_power.py``, and confirmed there
 against the exact noncentral t.
 
-**The ceiling, and what it is a ceiling on.** In the normal approximation
+**The limit, and what it is a limit on.** In the normal approximation
 :math:`\mathcal{A}(n) = \Phi\!\left((\sqrt n \hat m - z)/\sqrt{1 + n s^2}\right)`, so as
 :math:`n \to \infty` assurance tends to :math:`\Phi(\hat m / s)` and no sample size buys more.
 That limit is for rejection **in a stated direction**. Two-sided power tends to one at every
 non-zero effect, so two-sided assurance tends to one and has no informative ceiling. Assurance
 here is therefore directional by default: a rejection in the wrong direction is not a successful
 study. :func:`assurance_ceiling` reports the limit, because a power curve that climbs to one is
-a power curve that has forgotten heterogeneity.
+a power curve that has forgotten heterogeneity. It is an *asymptotic* value, not a
+finite-sample bound: with wrong-sign components in the predictive distribution, assurance need
+not be monotone and can exceed its own limit at finite :math:`n`.
 
 Notes
 -----
@@ -310,25 +312,63 @@ def _predictive_grid(mean, predictive_sd, sizes, *, alpha, design, allocation, n
     return grid[(grid >= mean - 12.0 * predictive_sd) & (grid <= mean + 12.0 * predictive_sd)]
 
 
-def assurance_ceiling(mean, predictive_sd, *, directional=True):
+def assurance_ceiling(
+    mean, predictive_sd, *, directional=True, alpha=0.05, null_mass=None, direction=None
+):
     r"""Report the limit assurance approaches as the sample size grows.
 
-    For **directional** assurance this is :math:`\Phi(|\hat m| / s)`: no sample size buys more
-    than the probability that a future study's own effect has the sign being tested for.
+    For a fixed predictive distribution and the correctly signed tail of a two-sided
+    :math:`\alpha`-level test,
 
-    For two-sided assurance it is **one**, and that is not a useful ceiling. Two-sided power
-    tends to one at every non-zero effect, so two-sided assurance tends to the probability that
-    the future effect is non-zero, which under a continuous predictive distribution is one. An
-    earlier version of this module reported :math:`\Phi(|\hat m|/s)` as a ceiling on two-sided
-    assurance; that was wrong, and a test comparing the two caught it -- two-sided assurance at
-    50,000 observations reached 0.9996 against a claimed ceiling of 0.8849.
+    .. math:: \lim_{n\to\infty}\mathcal{A}_+(n)
+        = P(\text{sign}\cdot\theta > 0) + \frac{\alpha}{2}\,P(\theta = 0),
+
+    and the two-sided limit is :math:`P(\theta \ne 0) + \alpha\,P(\theta = 0)`. Under a
+    continuous predictive distribution the point mass is zero and these reduce to
+    :math:`\Phi(|\hat m|/s)` and one respectively.
+
+    .. warning::
+        **This is an asymptotic value, not a universal finite-sample ceiling.** With a predictive
+        distribution carrying wrong-sign components, assurance need not be monotone in the
+        sample size and can exceed its own limit at finite :math:`n`: the external audit
+        supplies a mixture whose finite-:math:`n` assurance is .012823 against a limit of .0125.
+        Treat this as the value the curve tends to, and check monotonicity rather than assuming
+        it.
+
+        A previous version returned one whenever ``predictive_sd`` was zero. That is wrong for a
+        point mass **at zero effect**, whose directional rejection probability is
+        :math:`\alpha/2` and whose two-sided probability is :math:`\alpha`, in the limit as at
+        any :math:`n`. Caught by the audit.
+
+    Parameters
+    ----------
+    null_mass : :obj:`float`, optional
+        :math:`P(\theta = 0)` under the predictive distribution, for a mixture carrying an
+        atom there. Defaults to one when ``predictive_sd`` is zero and ``mean`` is zero -- a
+        degenerate distribution at no effect -- and to zero otherwise.
+    direction : :obj:`float`, optional
+        The sign being tested for. Defaults to the sign of ``mean``. Specify it explicitly
+        rather than reading it off a fitted mean after the fact.
     """
+    mean = float(mean)
     predictive_sd = float(predictive_sd)
-    if not directional:
-        return 1.0
-    if predictive_sd <= 0:
-        return 1.0
-    return float(norm.cdf(abs(float(mean)) / predictive_sd))
+    sign = float(np.sign(direction if direction is not None else mean)) or 1.0
+
+    if null_mass is None:
+        null_mass = 1.0 if (predictive_sd == 0.0 and mean == 0.0) else 0.0
+    null_mass = float(null_mass)
+    if not 0.0 <= null_mass <= 1.0:
+        raise ValueError("null_mass must be a probability.")
+
+    if predictive_sd == 0.0:
+        correct_sign = 1.0 - null_mass if sign * mean > 0 else 0.0
+    else:
+        correct_sign = (1.0 - null_mass) * float(norm.cdf(sign * mean / predictive_sd))
+
+    if directional:
+        return correct_sign + alpha / 2.0 * null_mass
+    non_null = 1.0 - null_mass
+    return non_null + alpha * null_mass
 
 
 def required_sample_size(
@@ -342,52 +382,66 @@ def required_sample_size(
     directional=True,
     maximum=100000,
 ):
-    """Smallest sample size reaching a target assurance, or ``None`` if the ceiling forbids it.
+    """Smallest sample size reaching a target assurance, with an explicit status.
 
-    Returning ``None`` rather than the maximum searched is deliberate: a target above
-    :func:`assurance_ceiling` is not merely expensive, it is unreachable at any sample size, and
-    a number would read as a recommendation.
+    Returns ``(size, status)``. ``status`` is one of:
+
+    ``"reached"``
+        ``size`` is the smallest sample size on the searched integers meeting the target.
+    ``"not_reached_within_budget"``
+        The target is not met at ``maximum``; ``size`` is ``None``. This is **not** the same as
+        unattainable -- a larger budget may reach it.
+    ``"above_asymptotic_limit"``
+        The target exceeds :func:`assurance_ceiling`, so no sample size reaches it under this
+        predictive distribution. ``size`` is ``None``.
+
+    These three are not interchangeable and were previously collapsed into a bare ``None``.
+
+    The search brackets by doubling and then bisects, but **clamps the bracket to**
+    ``maximum`` so a feasible size below the budget cannot be stepped over. The old version
+    doubled past the budget and then reported nothing: at mean .3, zero predictive spread,
+    target .8 and maximum 100 it returned ``None`` although assurance at 100 is .8439 and 90
+    suffices. Caught by the external audit.
     """
     if not 0.0 < target < 1.0:
         raise ValueError("The target assurance must lie strictly between zero and one.")
-    if target >= assurance_ceiling(mean, predictive_sd, directional=directional):
-        return None
-    low, high = 3, 64
-    while high <= maximum:
-        value = float(
-            assurance(
-                high,
-                mean,
-                predictive_sd,
-                alpha=alpha,
-                design=design,
-                allocation=allocation,
-                directional=directional,
-            )[0]
+    if int(maximum) < 3:
+        raise ValueError("The maximum sample size must be at least three.")
+
+    limit = assurance_ceiling(mean, predictive_sd, directional=directional, alpha=alpha)
+    if target >= limit:
+        return None, "above_asymptotic_limit"
+
+    def reached(size):
+        return (
+            float(
+                assurance(
+                    size,
+                    mean,
+                    predictive_sd,
+                    alpha=alpha,
+                    design=design,
+                    allocation=allocation,
+                    directional=directional,
+                )[0]
+            )
+            >= target
         )
-        if value >= target:
-            break
-        low, high = high, high * 2
-    else:
-        return None
+
+    ceiling_size = int(maximum)
+    if not reached(ceiling_size):
+        return None, "not_reached_within_budget"
+
+    low, high = 3, min(8, ceiling_size)
+    while high < ceiling_size and not reached(high):
+        low, high = high, min(high * 2, ceiling_size)
     while low + 1 < high:
         middle = (low + high) // 2
-        value = float(
-            assurance(
-                middle,
-                mean,
-                predictive_sd,
-                alpha=alpha,
-                design=design,
-                allocation=allocation,
-                directional=directional,
-            )[0]
-        )
-        if value >= target:
+        if reached(middle):
             high = middle
         else:
             low = middle
-    return int(high)
+    return int(high), "reached"
 
 
 def assurance_is_converged(sample_size, mean, predictive_sd, *, tolerance=1e-4, **kwargs):

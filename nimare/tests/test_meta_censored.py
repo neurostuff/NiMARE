@@ -78,6 +78,7 @@ def test_both_scores_agree_with_finite_differences_on_every_kind_of_record():
         precisions=np.array([np.nan, 0.01, np.nan, np.nan, np.nan, np.nan]),
         thresholds=np.array([np.nan, np.nan, 0.5, 0.5, 0.45, np.nan]),
         signs=np.array([np.nan, np.nan, 1.0, np.nan, np.nan, np.nan]),
+        absence_is_voxelwise=True,
     )
     variances = rng.uniform(0.02, 0.08, size=len(states))
 
@@ -172,11 +173,11 @@ def test_an_unsigned_directional_record_is_refused_rather_than_guessed():
 def test_a_missing_threshold_is_refused_rather_than_defaulted():
     """A silently defaulted threshold is an assumption entering through a gap."""
     with pytest.raises(ValueError, match="need 'thresholds'"):
-        bounds_from_states([ObservationState.ABSENT_COMPLETE_TABLE])
+        bounds_from_states([ObservationState.ABSENT_COMPLETE_TABLE], absence_is_voxelwise=True)
     with pytest.raises(ValueError, match="need 'values'"):
-        bounds_from_states([ObservationState.IMAGE])
+        bounds_from_states([ObservationState.IMAGE], absence_is_voxelwise=True)
     with pytest.raises(ValueError, match="not an observation state"):
-        bounds_from_states(["probably_silent"])
+        bounds_from_states(["probably_silent"], absence_is_voxelwise=True)
 
 
 def test_a_one_sided_record_matches_a_two_sided_one_with_a_remote_far_bound():
@@ -186,7 +187,10 @@ def test_a_one_sided_record_matches_a_two_sided_one_with_a_remote_far_bound():
     thresholds = np.full(8, 0.45)
 
     one_sided_lower, one_sided_upper = bounds_from_states(
-        [ObservationState.DIRECTION_ONLY] * 8, thresholds=thresholds, signs=np.ones(8)
+        [ObservationState.DIRECTION_ONLY] * 8,
+        thresholds=thresholds,
+        signs=np.ones(8),
+        absence_is_voxelwise=True,
     )
     remote_lower, remote_upper = one_sided_lower.copy(), np.full(8, 1e6)
 
@@ -242,6 +246,7 @@ def _retention_setup(reported_flags, threshold=0.6):
         states,
         thresholds=np.full(count, threshold),
         signs=np.ones(count),
+        absence_is_voxelwise=True,
     )
     return lower, upper, retention_roles(states)
 
@@ -409,6 +414,7 @@ def _mixed_corpus(n_images, n_coordinates, thresholds, rng):
         values=np.concatenate([observed, np.full(n_coordinates, np.nan)]),
         thresholds=np.concatenate([np.full(n_images, np.nan), cuts]),
         signs=np.concatenate([np.full(n_images, np.nan), np.ones(n_coordinates)]),
+        absence_is_voxelwise=True,
     )
     variances = np.concatenate([image_variance, coordinate_variance])
     return lower, upper, variances, retention_roles(states)
@@ -453,7 +459,9 @@ def test_a_corpus_with_one_threshold_and_one_precision_reports_no_identification
         ObservationState.DIRECTION_ONLY if flag else ObservationState.ABSENT_COMPLETE_TABLE
         for flag in printed
     ]
-    lower, upper = bounds_from_states(states, thresholds=cuts, signs=np.ones(count))
+    lower, upper = bounds_from_states(
+        states, thresholds=cuts, signs=np.ones(count), absence_is_voxelwise=True
+    )
     fit = fit_censored(
         lower,
         upper,
@@ -522,3 +530,36 @@ def test_a_prevalence_with_no_heterogeneity_is_an_indicator_not_a_division_by_ze
     assert float(practical_prevalence(0.1, 0.0, 0.2)) == 0.0
     with pytest.raises(ValueError, match="cannot be negative"):
         practical_prevalence(0.4, -0.01, 0.2)
+
+
+def test_a_complete_table_is_not_turned_into_a_voxelwise_interval_by_default():
+    """The voxelwise reading of an absent peak must be asserted, never assumed.
+
+    A complete table lists every local maximum above the threshold, not every suprathreshold
+    voxel: a voxel can clear the cut and simply not be a local maximum. Reading "no peak listed
+    here" as "the effect here was below the cut" fabricates an observation, which is exactly the
+    inference the module refuses for *unknown* completeness -- and it was making it
+    automatically for known completeness. Caught by an external audit.
+    """
+    with pytest.raises(ValueError, match="absence_is_voxelwise"):
+        bounds_from_states(
+            [ObservationState.ABSENT_COMPLETE_TABLE],
+            thresholds=np.array([0.6]),
+            signs=np.array([1.0]),
+        )
+
+    # Asserting it explicitly is allowed, and gives the same bounds as before.
+    lower, upper = bounds_from_states(
+        [ObservationState.ABSENT_COMPLETE_TABLE],
+        thresholds=np.array([0.6]),
+        signs=np.array([1.0]),
+        absence_is_voxelwise=True,
+    )
+    assert not np.isfinite(lower[0]) and upper[0] == pytest.approx(0.6)
+
+    # NONSIGNIFICANT needs no such assertion: an explicit scalar non-significance really is a
+    # censoring interval, which is the whole reason the two states are distinct.
+    lower, upper = bounds_from_states(
+        [ObservationState.NONSIGNIFICANT], thresholds=np.array([0.6])
+    )
+    assert (lower[0], upper[0]) == (-0.6, 0.6)

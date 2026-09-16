@@ -38,6 +38,12 @@ actually produces, and two of them -- :attr:`ObservationState.UNKNOWN_COMPLETENE
 being read as evidence of a small effect. A table whose completeness is unknown cannot support
 the inference that an unlisted voxel was below threshold.
 
+**A complete table is not a complete map.** ``ABSENT_COMPLETE_TABLE`` used to become a
+voxelwise interval automatically. It no longer does: a complete list of local maxima above a
+threshold is not a list of every suprathreshold voxel, so an unlisted location need not have
+been below the cut. The voxelwise reading now has to be asserted explicitly, and the block
+likelihood in :mod:`nimare.meta.cbma.blocks` is the right home for the event as it actually is.
+
 **The reporting partition.** Report, silence, and anything in between are disjoint events whose
 probabilities sum to one. Using :math:`1 - p_{\text{report}}` for the silence probability
 overstates it by exactly the probability of whatever third event was dropped, and the
@@ -179,7 +185,14 @@ def _as_states(states):
     return out
 
 
-def bounds_from_states(states, values=None, thresholds=None, precisions=None, signs=None):
+def bounds_from_states(
+    states,
+    values=None,
+    thresholds=None,
+    precisions=None,
+    signs=None,
+    absence_is_voxelwise=False,
+):
     r"""Turn observation states into the interval each one implies.
 
     Parameters
@@ -213,12 +226,43 @@ def bounds_from_states(states, values=None, thresholds=None, precisions=None, si
         Interval bounds, with ``-inf``/``inf`` for one-sided records and both infinite for the
         uninformative states. ``lower == upper`` marks an exactly observed value.
 
+    absence_is_voxelwise : :obj:`bool`, default=False
+        Required to be ``True`` before an :attr:`ObservationState.ABSENT_COMPLETE_TABLE` record
+        is turned into a voxelwise interval, because **that reading is usually wrong**.
+
+        A complete table lists every *local maximum* above the threshold. It does not list every
+        suprathreshold *voxel*: a voxel can exceed the cut and simply not be a local maximum, so
+        "no peak was listed here" does not imply "the effect here was below the cut". Treating
+        it as though it did fabricates a below-threshold observation, which is precisely the
+        inference this module refuses for unknown completeness -- and it was doing it
+        automatically for known completeness. Flagged by an external audit.
+
+        Two honest routes exist. Use :attr:`ObservationState.NONSIGNIFICANT` where a
+        *prespecified scalar* test is genuinely known to have been non-significant, which is a
+        valid censoring interval. Or use :mod:`nimare.meta.cbma.blocks`, whose likelihood models
+        "no local maximum in this region cleared the threshold" as the event it actually is.
+        Passing ``absence_is_voxelwise=True`` asserts that the voxelwise reading holds for this
+        corpus; it is never inferred.
+
     Raises
     ------
     ValueError
         If a state's required input is missing or not finite. A silently defaulted threshold
-        would be an assumption entering through a gap rather than through the interface.
+        would be an assumption entering through a gap rather than through the interface. Also if
+        an ``ABSENT_COMPLETE_TABLE`` record appears without ``absence_is_voxelwise=True``.
     """
+    states_checked = _as_states(states)
+    if not absence_is_voxelwise and any(
+        state is ObservationState.ABSENT_COMPLETE_TABLE for state in states_checked
+    ):
+        raise ValueError(
+            "ABSENT_COMPLETE_TABLE records were supplied without absence_is_voxelwise=True. A "
+            "complete table lists every local maximum above the threshold, not every "
+            "suprathreshold voxel, so an unlisted voxel need not have been below the cut. Use "
+            "NONSIGNIFICANT where a prespecified scalar test is known to be non-significant, or "
+            "the block likelihood in nimare.meta.cbma.blocks, which models the reporting event "
+            "as it is. Pass absence_is_voxelwise=True only to assert the voxelwise reading."
+        )
     states = _as_states(states)
     count = len(states)
     lower = np.full(count, -np.inf)
@@ -306,23 +350,28 @@ def _interval_log_mass(lower_z, upper_z):
 
 
 def _retention_vector(retention, count):
+    """Retention broadcast to the **full** record shape, before any subsetting.
+
+    Broadcasting to a subset's length was a defect: with a per-record retention array, the
+    values were matched to the censored records' positions rather than to their own, and a mixed
+    exact/censored table raised a broadcasting error outright. Broadcast to every record, then
+    index with the same mask the observations were indexed with.
+    """
     values = np.broadcast_to(np.asarray(retention, dtype=float), (count,)).astype(float)
     if np.any(~np.isfinite(values)) or np.any(values <= 0) or np.any(values > 1):
         raise ValueError("retention must be finite and in (0, 1]; a zero would print nothing.")
     return values
 
 
-def _apply_retention(log_mass, retention, roles, selection):
+def _apply_retention(log_mass, rho, roles):
     """Turn interval log-probabilities into retention-aware ones.
+
+    ``rho`` and ``roles`` must already be restricted to the same records as ``log_mass``.
 
     An absence is ``(1 - rho) + rho * mass`` rather than ``1 - rho * (1 - mass)``: algebraically
     the same, but the first form adds two non-negative numbers and the second subtracts nearly
     equal ones.
     """
-    if roles is None:
-        raise ValueError("Supplying retention requires roles; use retention_roles(states).")
-    roles = np.asarray(roles, dtype=int)[selection]
-    rho = _retention_vector(retention, roles.size)
     mass = np.exp(log_mass)
     out = np.where(roles == 1, log_mass + np.log(rho), log_mass)
     with np.errstate(divide="ignore"):
@@ -359,9 +408,34 @@ def censored_loglik(
 
     informative = np.isfinite(lower) | np.isfinite(upper)
     exact = np.isfinite(lower) & np.isfinite(upper) & (lower == upper)
+
+    aligned_rho = aligned_roles = None
+    if retention is not None:
+        if roles is None:
+            raise ValueError("Supplying retention requires roles; use retention_roles(states).")
+        aligned_roles = np.asarray(roles, dtype=int).reshape(-1)
+        if aligned_roles.size != lower.size:
+            raise ValueError(
+                f"roles must have one entry per record; got {aligned_roles.size} for "
+                f"{lower.size} records."
+            )
+        aligned_rho = _retention_vector(retention, lower.size)
+
     total = 0.0
     if exact.any():
-        total += float(norm.logpdf(lower[exact], loc=mean, scale=scale[exact]).sum())
+        terms = norm.logpdf(lower[exact], loc=mean, scale=scale[exact])
+        if retention is not None:
+            # An exactly reported peak height is still a *report*: its presence in the table is
+            # a retention event, so it carries a factor of rho exactly as a censored report
+            # does. Omitting it was a defect worth log(rho) per such record -- log(2) at
+            # rho = 0.5 -- and it left the exact and censored limbs describing different models.
+            # An IMAGE record has role 0 and is untouched: an available image is available
+            # whatever the table printed.
+            terms = terms + np.where(aligned_roles[exact] == 1, np.log(aligned_rho[exact]), 0.0)
+        if not np.all(np.isfinite(terms)):
+            return -np.inf
+        total += float(terms.sum())
+
     censored = informative & ~exact
     if censored.any():
         with np.errstate(invalid="ignore"):
@@ -369,7 +443,7 @@ def censored_loglik(
             upper_z = (upper[censored] - mean) / scale[censored]
         terms = _interval_log_mass(lower_z, upper_z)
         if retention is not None:
-            terms = _apply_retention(terms, retention, roles, censored)
+            terms = _apply_retention(terms, aligned_rho[censored], aligned_roles[censored])
         if not np.all(np.isfinite(terms)):
             return -np.inf
         total += float(terms.sum())
@@ -393,29 +467,43 @@ def retention_score(mean, between_variance, lower, upper, variances, retention, 
     scale = np.sqrt(np.asarray(variances, dtype=float) + float(between_variance))
     roles = np.asarray(roles, dtype=int)
 
+    if roles.size != lower.size:
+        raise ValueError(
+            f"roles must have one entry per record; got {roles.size} for {lower.size} records."
+        )
+    aligned_rho = _retention_vector(retention, lower.size)
+
     informative = _informative_mask(lower, upper)
     exact = np.isfinite(lower) & np.isfinite(upper) & (lower == upper)
     censored = informative & ~exact
-    if not censored.any():
-        return 0.0
-
-    rho = _retention_vector(retention, int(censored.sum()))
-    with np.errstate(invalid="ignore"):
-        lower_z = (lower[censored] - mean) / scale[censored]
-        upper_z = (upper[censored] - mean) / scale[censored]
-    mass = np.exp(_interval_log_mass(lower_z, upper_z))
-    selected = roles[censored]
 
     total = 0.0
-    report = selected == 1
-    if report.any():
-        total += float(np.sum(1.0 / rho[report]))
-    absence = selected == -1
-    if absence.any():
-        denominator = np.clip(
-            (1.0 - rho[absence]) + rho[absence] * mass[absence], _MASS_FLOOR, None
-        )
-        total += float(np.sum((mass[absence] - 1.0) / denominator))
+
+    # Exactly reported records carry log(rho) in the likelihood, hence 1/rho in this score.
+    # Omitting them left an analytic gradient that agreed with a *different* likelihood from the
+    # one being maximised, which finite-difference checks against that same wrong likelihood
+    # could not detect.
+    exact_reports = exact & (roles == 1)
+    if exact_reports.any():
+        total += float(np.sum(1.0 / aligned_rho[exact_reports]))
+
+    if censored.any():
+        with np.errstate(invalid="ignore"):
+            lower_z = (lower[censored] - mean) / scale[censored]
+            upper_z = (upper[censored] - mean) / scale[censored]
+        mass = np.exp(_interval_log_mass(lower_z, upper_z))
+        selected = roles[censored]
+        rho = aligned_rho[censored]
+
+        report = selected == 1
+        if report.any():
+            total += float(np.sum(1.0 / rho[report]))
+        absence = selected == -1
+        if absence.any():
+            denominator = np.clip(
+                (1.0 - rho[absence]) + rho[absence] * mass[absence], _MASS_FLOOR, None
+            )
+            total += float(np.sum((mass[absence] - 1.0) / denominator))
     return total
 
 
@@ -473,8 +561,14 @@ def censored_score(mean, between_variance, lower, upper, variances, *, retention
                 raise ValueError(
                     "Supplying retention requires roles; use retention_roles(states)."
                 )
-            selected_roles = np.asarray(roles, dtype=int)[censored]
-            rho = _retention_vector(retention, selected_roles.size)
+            aligned = np.asarray(roles, dtype=int).reshape(-1)
+            if aligned.size != lower.size:
+                raise ValueError(
+                    f"roles must have one entry per record; got {aligned.size} for "
+                    f"{lower.size} records."
+                )
+            selected_roles = aligned[censored]
+            rho = _retention_vector(retention, lower.size)[censored]
             # A report carries a factor of rho, which is constant in (m, tau^2) and so drops
             # out of the score. An absence has probability (1-rho) + rho*mass, whose derivative
             # is rho times the mass derivative.
@@ -836,7 +930,17 @@ def fit_censored(
 
 
 def profile_interval(
-    lower, upper, variances, *, level=0.95, fixed_between_variance=None, search=None, grid=257
+    lower,
+    upper,
+    variances,
+    *,
+    level=0.95,
+    retention=None,
+    roles=None,
+    estimate_retention=False,
+    fixed_between_variance=None,
+    search=None,
+    grid=257,
 ):
     r"""Profile-likelihood interval for :math:`m`, with :math:`\tau^2` maximised out.
 
@@ -847,13 +951,28 @@ def profile_interval(
     rather than crossing the cutoff, and that frequency belongs in any summary that quotes these
     intervals.
 
+    Parameters
+    ----------
+    retention, roles, estimate_retention
+        Passed through to :func:`fit_censored` **and** used inside the profile, so the interval
+        describes the same observation and reporting model that was fitted. With
+        ``estimate_retention=True`` the retention is profiled out as a nuisance parameter.
+
     Returns
     -------
     :obj:`dict`
         ``lower``, ``upper``, ``level``, ``touched_search_limit`` and ``valid``. The bounds are
         ``nan``, never zero, where they could not be found.
     """
-    fit = fit_censored(lower, upper, variances, fixed_between_variance=fixed_between_variance)
+    fit = fit_censored(
+        lower,
+        upper,
+        variances,
+        retention=retention,
+        roles=roles,
+        estimate_retention=estimate_retention,
+        fixed_between_variance=fixed_between_variance,
+    )
     unavailable = {
         "lower": np.nan,
         "upper": np.nan,
@@ -875,24 +994,79 @@ def profile_interval(
         search = 12.0 * spread + 1.0
 
     def profile(mean):
-        if fixed_between_variance is not None:
-            return censored_loglik(mean, fixed_between_variance, lower, upper, variances)
-        best = -np.inf
-        cap = _tau2_cap(lower, upper, variances)
-        for fraction in _TAU2_STARTS:
-            start = min(fraction * _variance_scale(lower, upper, variances), cap)
-            result = minimize(
-                lambda parameter: (
-                    -censored_loglik(mean, parameter[0], lower, upper, variances),
-                    -censored_score(mean, parameter[0], lower, upper, variances)[1:],
-                ),
-                x0=[start],
-                jac=True,
-                method="L-BFGS-B",
-                bounds=[(0.0, cap)],
+        """Log-likelihood at ``mean``, with every other parameter of the *same* model profiled.
+
+        The reporting model has to be the one the fit used. An earlier version took no retention
+        argument at all, so a retention-aware fit was profiled against a rho = 1 likelihood and
+        the resulting interval belonged to neither model.
+        """
+        if fixed_between_variance is not None and not estimate_retention:
+            return censored_loglik(
+                mean,
+                fixed_between_variance,
+                lower,
+                upper,
+                variances,
+                retention=retention,
+                roles=roles,
             )
-            if np.isfinite(result.fun):
-                best = max(best, float(-result.fun))
+        cap = _tau2_cap(lower, upper, variances)
+        scale = _variance_scale(lower, upper, variances)
+        best = -np.inf
+
+        if not estimate_retention:
+            for fraction in _TAU2_STARTS:
+                result = minimize(
+                    lambda parameter: (
+                        -censored_loglik(
+                            mean,
+                            parameter[0],
+                            lower,
+                            upper,
+                            variances,
+                            retention=retention,
+                            roles=roles,
+                        ),
+                        -censored_score(
+                            mean,
+                            parameter[0],
+                            lower,
+                            upper,
+                            variances,
+                            retention=retention,
+                            roles=roles,
+                        )[1:],
+                    ),
+                    x0=[min(fraction * scale, cap)],
+                    jac=True,
+                    method="L-BFGS-B",
+                    bounds=[(0.0, cap)],
+                )
+                if np.isfinite(result.fun):
+                    best = max(best, float(-result.fun))
+            return best
+
+        # Retention is a nuisance parameter here, so it is profiled out alongside tau^2 rather
+        # than held at whatever the fit happened to find.
+        def negative(parameter):
+            candidate = float(np.clip(parameter[1], _RETENTION_FLOOR, 1.0))
+            value = censored_loglik(
+                mean, parameter[0], lower, upper, variances, retention=candidate, roles=roles
+            )
+            if not np.isfinite(value):
+                return np.inf
+            return -value
+
+        for fraction in _TAU2_STARTS:
+            for start_retention in _RETENTION_STARTS:
+                result = minimize(
+                    negative,
+                    x0=[min(fraction * scale, cap), start_retention],
+                    method="L-BFGS-B",
+                    bounds=[(0.0, cap), (_RETENTION_FLOOR, 1.0)],
+                )
+                if np.isfinite(result.fun):
+                    best = max(best, float(-result.fun))
         return best
 
     offsets = np.linspace(0.0, search, int(grid))

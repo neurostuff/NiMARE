@@ -47,7 +47,8 @@ advance and fails it.
 **This is a composite likelihood unless you say otherwise.** ``study_index`` groups blocks
 by the study they came from and makes the likelihood exact. Without it every block is treated as
 its own study, which overstates the information badly once a study contributes several blocks --
-see :func:`standard_error_inflation`.
+see :func:`naive_to_exact_se_ratio` for the diagnostic and :func:`godambe_se_ratio` for the
+correction.
 
 **When heights are worth reading.** The reported height is a location family in the mean, so its
 mean-score is minus its height-score and its contribution is an ordinary location-family Fisher
@@ -177,7 +178,9 @@ def block_loglik(
         exact to composite standard error runs 1.000, 0.798, 0.615, 0.421, 0.204 at 1, 2, 4, 10
         and 50 blocks per study: a whole-brain composite fit reports an interval five times too
         narrow. Derived in ``proofs/composite_block_likelihood.py``;
-        :func:`standard_error_inflation` measures it for a given configuration.
+        :func:`naive_to_exact_se_ratio` measures it for a given configuration, and
+        :func:`godambe_se_ratio` gives the closed-form correction factor for an
+        equicorrelated cluster. The first is a diagnostic; only the second is a correction.
     use_heights : :obj:`bool`, default=True
         Read the reported height. With ``False`` a report contributes only the probability that
         the block reported at all, which is the indicator-only likelihood -- the comparison the
@@ -246,23 +249,54 @@ def block_loglik(
     return float(totals.sum())
 
 
-def standard_error_inflation(
+def quadrature_is_converged(
+    mean, between_variance, element_variances, *, tolerance=1e-6, **kwargs
+):
+    """Report whether doubling the quadrature nodes moves the log-likelihood.
+
+    A quadrature rule that has not converged produces a likelihood that is smooth, plausible and
+    wrong, which no amount of downstream checking catches. This is cheap and belongs in any run
+    that reports a number.
+    """
+    kwargs.pop("nodes", None)
+    coarse = block_loglik(mean, between_variance, element_variances, nodes=DEFAULT_NODES, **kwargs)
+    fine = block_loglik(
+        mean, between_variance, element_variances, nodes=2 * DEFAULT_NODES, **kwargs
+    )
+    if not (np.isfinite(coarse) and np.isfinite(fine)):
+        return False, np.inf
+    gap = abs(fine - coarse) / max(abs(fine), 1.0)
+    return bool(gap < tolerance), float(gap)
+
+
+def naive_to_exact_se_ratio(
     mean, between_variance, element_variances, *, step=1e-3, study_index=None, **kwargs
 ):
-    r"""Ratio of the exact standard error to the composite one, at this configuration.
+    r"""Ratio of the **naive** composite standard error to the exact one, at this configuration.
 
-    Returns ``exact_se / composite_se``, which is at most one: the composite likelihood treats
-    one draw of a study's effect as many independent ones, so it overstates the information and
-    understates the interval. A value of 0.5 means a composite fit's interval is half the width
+    Returns ``naive_se / exact_se``, which is at most one: the composite likelihood treats one
+    draw of a study's effect as many independent ones, so it overstates the information and
+    understates the interval. A value of 0.5 means a naive composite interval is half the width
     it should be.
 
-    This is the calibration the design assessment asks for in its step 4 -- "assess approximation
-    error against the small exact models" -- and it is a diagnostic, not a correction. Applying
-    it would need a sandwich or Godambe adjustment, which this does not do.
+    .. warning::
+        This is a **diagnostic, not a correction**, and it is specific to the configuration it
+        is evaluated at. Applying it as a standard-error multiplier is not justified: the
+        principled correction is the Godambe sandwich
+        :math:`\operatorname{Cov}(\hat\psi) \approx H^{-1} J H^{-\top}` with
+        :math:`H = -\sum_i \mathbb{E}[\nabla u_i]` and
+        :math:`J = \sum_i \operatorname{Var}(u_i)` over **independent clusters**, which needs
+        per-cluster score sums rather than a curvature ratio. See
+        :func:`godambe_se_ratio` for the equicorrelated closed form, and
+        ``proofs/composite_block_likelihood.py`` for both.
+
+        An earlier version of this function was named ``standard_error_inflation`` and its
+        docstring stated the ratio the other way round, as exact over naive. The number it
+        returned was and is naive-over-exact; only the description was reversed.
     """
     if study_index is None:
         raise ValueError(
-            "standard_error_inflation compares a grouped fit against an ungrouped one, so it "
+            "naive_to_exact_se_ratio compares a grouped fit against an ungrouped one, so it "
             "needs study_index; without it the two are the same likelihood."
         )
 
@@ -282,30 +316,41 @@ def standard_error_inflation(
         return -(values[0] - 2 * values[1] + values[2]) / step**2
 
     exact = curvature(study_index)
-    composite = curvature(None)
-    if not (np.isfinite(exact) and np.isfinite(composite)) or composite <= 0 or exact <= 0:
+    naive = curvature(None)
+    if not (np.isfinite(exact) and np.isfinite(naive)) or naive <= 0 or exact <= 0:
         return np.nan
-    return float(np.sqrt(exact / composite))
+    # se ratio is the reciprocal square root of the information ratio.
+    return float(np.sqrt(exact / naive))
 
 
-def quadrature_is_converged(
-    mean, between_variance, element_variances, *, tolerance=1e-6, **kwargs
-):
-    """Report whether doubling the quadrature nodes moves the log-likelihood.
+def godambe_se_ratio(elements, correlation):
+    r"""Exact factor by which a naive equicorrelated-cluster standard error is too small.
 
-    A quadrature rule that has not converged produces a likelihood that is smooth, plausible and
-    wrong, which no amount of downstream checking catches. This is cheap and belongs in any run
-    that reports a number.
+    For a cluster of :math:`B` observations with common unknown mean and equicorrelation
+    :math:`r`, the marginal composite scores sum to :math:`\mathbf{1}^\top(Y-m\mathbf 1)/s^2`,
+    giving sensitivity :math:`H = B/s^2` and variability
+    :math:`J = B[1+(B-1)r]/s^2`. The Godambe information :math:`H^2/J` then equals the exact
+    :math:`\mathbf{1}^\top\Sigma^{-1}\mathbf{1}` identically, and
+
+    .. math:: \frac{\operatorname{se}_{\rm exact}}{\operatorname{se}_{\rm naive}}
+        = \sqrt{1 + (B-1)\,r}.
+
+    So a naive interval must be **widened** by this factor. Unlike
+    :func:`naive_to_exact_se_ratio` this is a closed form rather than a numerical diagnostic,
+    and it is exact for the equicorrelated case only. Derived in
+    ``proofs/composite_block_likelihood.py``.
     """
-    kwargs.pop("nodes", None)
-    coarse = block_loglik(mean, between_variance, element_variances, nodes=DEFAULT_NODES, **kwargs)
-    fine = block_loglik(
-        mean, between_variance, element_variances, nodes=2 * DEFAULT_NODES, **kwargs
-    )
-    if not (np.isfinite(coarse) and np.isfinite(fine)):
-        return False, np.inf
-    gap = abs(fine - coarse) / max(abs(fine), 1.0)
-    return bool(gap < tolerance), float(gap)
+    count = np.asarray(elements, dtype=float)
+    rho = np.asarray(correlation, dtype=float)
+    if np.any(count < 2):
+        raise ValueError("A cluster needs at least two observations to have a correlation.")
+    lower_bound = -1.0 / (count - 1.0)
+    if np.any(rho <= lower_bound) or np.any(rho >= 1.0):
+        raise ValueError(
+            "The equicorrelation must lie in (-1/(B-1), 1) for the covariance to be positive "
+            "definite."
+        )
+    return np.sqrt(1.0 + (count - 1.0) * rho)
 
 
 def block_report_probability(

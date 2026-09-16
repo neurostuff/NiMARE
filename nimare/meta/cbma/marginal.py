@@ -124,7 +124,14 @@ def control_variate_mean(
             :math:`\bar f_C - \bar f_I` and its standard error. The exchangeability assumption
             says this is zero in expectation.
         ``valid``
-            Where every quantity above is finite and the predictor varied.
+            Where the estimate and its standard error are usable. This does **not** require the
+            predictor to vary: a constant predictor gives a zero coefficient and the estimator
+            falls back to the image-only mean, which is valid. It is false where the image
+            cohort has no spread, or where a constant predictor's cohort means nevertheless
+            differ so that the correction moves the estimate with no variance term to cover it.
+        ``degenerate_predictor``
+            The predictor had no variance in the image cohort, so ``correlation`` is undefined
+            and ``variance_ratio`` is exactly one.
     """
     values = np.atleast_2d(np.asarray(values, dtype=float))
     predictions_image = np.atleast_2d(np.asarray(predictions_image, dtype=float))
@@ -180,7 +187,18 @@ def control_variate_mean(
     # The shift is a difference of two independent cohort means of the same quantity.
     shift_se = np.sqrt(var_f * (1.0 / n_images + 1.0 / n_coord))
 
-    valid = np.isfinite(se) & (se > 0) & (var_f > 0) & (var_y > 0)
+    # A predictor with no variance in the image cohort is a degenerate but legitimate case, not
+    # an invalid one: the optimal coefficient is then zero, the correction contributes nothing,
+    # and the estimator *is* the image-only mean with the image-only standard error. Requiring
+    # ``var_f > 0`` here marked that case invalid and then blanked a perfectly good standard
+    # error to infinity, destroying the fallback the construction is supposed to guarantee.
+    #
+    # The one genuinely unsafe combination is a constant predictor whose two cohort means still
+    # differ: then ``lambda * shift`` displaces the estimate while ``var_f = 0`` leaves the
+    # standard error unable to account for it. That, and only that, is flagged.
+    degenerate = var_f <= 0
+    unaccounted = degenerate & (np.abs(lam * shift) > 0)
+    valid = np.isfinite(se) & (se > 0) & (var_y > 0) & ~unaccounted
     return {
         "estimate": estimate,
         "se": np.where(valid, se, np.inf),
@@ -190,6 +208,7 @@ def control_variate_mean(
         "cohort_shift": shift,
         "cohort_shift_se": shift_se,
         "valid": valid,
+        "degenerate_predictor": degenerate,
     }
 
 

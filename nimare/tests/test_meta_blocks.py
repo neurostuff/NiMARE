@@ -13,7 +13,7 @@ from nimare.meta.cbma.blocks import (
     block_loglik,
     block_report_probability,
     quadrature_is_converged,
-    standard_error_inflation,
+    naive_to_exact_se_ratio,
 )
 from nimare.meta.cbma.censored import (
     ObservationState,
@@ -53,10 +53,15 @@ def test_a_one_element_block_agrees_exactly_with_the_scalar_censored_reference()
         thresholds=np.array([threshold]),
         elements=np.array([1]),
     )
+    # The voxelwise reading of an absent peak is asserted here because for a **one-element**
+    # block it is exactly true: the block's maximum is its only value, so "no local maximum
+    # cleared the cut" and "the value was below the cut" are the same event. That equality is
+    # precisely why this cross-module identity holds, and it is what fails for larger blocks.
     lower, upper = bounds_from_states(
         [ObservationState.ABSENT_COMPLETE_TABLE],
         thresholds=np.array([threshold]),
         signs=np.array([1.0]),
+        absence_is_voxelwise=True,
     )
     assert silent_block == pytest.approx(
         censored_loglik(mean, between, lower, upper, np.array([within])), abs=1e-9
@@ -322,7 +327,7 @@ def test_grouping_blocks_by_study_changes_the_likelihood_and_lowers_the_informat
             assert composite < exact
 
         ratios.append(
-            standard_error_inflation(
+            naive_to_exact_se_ratio(
                 mean,
                 between,
                 variances,
@@ -382,7 +387,7 @@ def test_a_mismatched_study_index_is_refused():
             study_index=np.array([0, 0]),
         )
     with pytest.raises(ValueError, match="needs study_index"):
-        standard_error_inflation(
+        naive_to_exact_se_ratio(
             0.4,
             0.0225,
             np.full(3, 0.04),

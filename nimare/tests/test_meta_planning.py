@@ -7,7 +7,7 @@ convention cannot hide behind self-consistency.
 
 import numpy as np
 import pytest
-from scipy.stats import nct, ttest_1samp
+from scipy.stats import nct, norm, ttest_1samp
 
 from nimare.meta.cbma.planning import (
     assurance,
@@ -101,22 +101,55 @@ def test_power_at_a_null_effect_is_the_test_size():
         assert float(two_sided_power(0.0, size, alpha=0.01)) == pytest.approx(0.01, abs=1e-9)
 
 
-def test_an_unreachable_target_returns_nothing_rather_than_a_number():
-    """A target above the ceiling is unreachable at any size, so a number would mislead."""
+def test_the_sample_size_search_distinguishes_its_three_failure_modes():
+    """Unattainable, over budget, and reached are different answers and must not be one None.
+
+    The search also must not step over a feasible size below the budget. The audited defect:
+    mean .3, no predictive spread, target .8 and a maximum of 100 returned nothing although
+    assurance at 100 is .8439 and 90 suffices, because the bracket doubled past the budget.
+    """
     mean, spread = 0.2, 0.3
     ceiling = assurance_ceiling(mean, spread)
-    assert required_sample_size(min(ceiling + 0.05, 0.999), mean, spread) is None
-    reachable = required_sample_size(ceiling * 0.8, mean, spread)
-    assert reachable is not None
-    assert float(assurance(reachable, mean, spread)[0]) >= ceiling * 0.8
-    assert float(assurance(reachable - 1, mean, spread)[0]) < ceiling * 0.8
+
+    size, status = required_sample_size(min(ceiling + 0.05, 0.999), mean, spread)
+    assert size is None and status == "above_asymptotic_limit"
+
+    size, status = required_sample_size(ceiling * 0.95, mean, spread, maximum=10)
+    assert size is None and status == "not_reached_within_budget"
+
+    size, status = required_sample_size(ceiling * 0.8, mean, spread)
+    assert status == "reached"
+    assert float(assurance(size, mean, spread)[0]) >= ceiling * 0.8
+    assert float(assurance(size - 1, mean, spread)[0]) < ceiling * 0.8
+
+    # The audited case, exactly.
+    assert required_sample_size(0.8, 0.3, 0.0, maximum=100) == (90, "reached")
+
+
+def test_a_point_mass_at_no_effect_has_the_test_size_as_its_limit_not_one():
+    """A degenerate predictive distribution at zero effect never becomes detectable.
+
+    An earlier version returned one for any zero predictive spread, which is right for a point
+    mass at a non-zero effect and wrong at zero: the directional rejection probability there is
+    alpha/2 at every sample size, including in the limit. Caught by the external audit.
+    """
+    assert assurance_ceiling(0.0, 0.0) == pytest.approx(0.025)
+    assert assurance_ceiling(0.0, 0.0, directional=False) == pytest.approx(0.05)
+    assert assurance_ceiling(0.0, 0.0, alpha=0.01) == pytest.approx(0.005)
+    # A point mass away from zero is still detectable with certainty in the limit.
+    assert assurance_ceiling(0.4, 0.0) == pytest.approx(1.0)
+    # An explicit atom inside a continuous mixture is carried through.
+    assert assurance_ceiling(0.3, 0.25, null_mass=0.2) == pytest.approx(
+        0.8 * float(norm.cdf(0.3 / 0.25)) + 0.025 * 0.2
+    )
 
 
 def test_a_two_sample_design_needs_more_observations_than_a_one_sample_one():
     """The scale factor differs, which the document insists is not a total-count detail."""
     assert float(design_scale(64, "two-sample")) > float(design_scale(64, "one-sample"))
-    one = required_sample_size(0.8, 0.5, 0.1, design="one-sample")
-    two = required_sample_size(0.8, 0.5, 0.1, design="two-sample")
+    one, one_status = required_sample_size(0.8, 0.5, 0.1, design="one-sample")
+    two, two_status = required_sample_size(0.8, 0.5, 0.1, design="two-sample")
+    assert one_status == two_status == "reached"
     assert two > one
 
 
