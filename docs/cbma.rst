@@ -92,7 +92,7 @@ either way. Dividing by the contrast count recovers the weighted *proportion* of
     :class:`~nimare.meta.cbma.mkda.MKDAChi2` are unweighted, as they are in the original
     method.
 
-Example: :ref:`sphx_glr_auto_examples_02_meta-analyses_01_plot_cbma.py`
+Example: :ref:`metas_mkda_weighting`
 
 .. _null methods:
 

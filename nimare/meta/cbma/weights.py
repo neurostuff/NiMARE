@@ -244,23 +244,25 @@ class StudyWeights(NiMAREBase):
             raise ValueError(
                 "No contrast has a usable weight. Check the collection's sample-size " "metadata."
             )
+        n_missing = len(missing_ids)
+        subject = "contrast has" if n_missing == 1 else "contrasts have"
         if self.on_missing == "raise":
             shown = ", ".join(str(study_id) for study_id in missing_ids[:25])
-            suffix = f", ... (+{len(missing_ids) - 25} more)" if len(missing_ids) > 25 else ""
+            suffix = f", ... (+{n_missing - 25} more)" if n_missing > 25 else ""
             raise ValueError(
-                f"{len(missing_ids)} contrasts have a missing or non-positive weight: "
+                f"{n_missing} {subject} a missing or non-positive weight: "
                 f"{shown}{suffix}. Populate their sample sizes, or pass "
                 "StudyWeights(on_missing='impute') to give them the mean weight."
             )
 
         weights = weights.copy()
-        self.n_imputed_ = len(missing_ids)
+        self.n_imputed_ = n_missing
         imputed = float(np.mean(weights.to_numpy(dtype=float)[~invalid]))
         weights[invalid] = imputed
         shown = ", ".join(str(study_id) for study_id in missing_ids[:5])
-        suffix = f", ... (+{len(missing_ids) - 5} more)" if len(missing_ids) > 5 else ""
+        suffix = f", ... (+{n_missing - 5} more)" if n_missing > 5 else ""
         LGR.warning(
-            f"{len(missing_ids)} contrasts have a missing or non-positive weight "
+            f"{n_missing} {subject} a missing or non-positive weight "
             f"({shown}{suffix}); imputing the mean weight of the remaining "
             f"{int((~invalid).sum())} ({imputed:.4g})."
         )
