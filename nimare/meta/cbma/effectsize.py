@@ -1068,11 +1068,23 @@ class CBES(Estimator):
        sizes 12 to 120 lifts the fraction of voxels where the likelihood bounds :math:`\mu` from
        0.42 to 0.69, and spreading thresholds 2.3 to 4.5 changes nothing.
 
-    4. **``se`` is conservative, and where the effect is weak the likelihood does not bound
-       :math:`\mu` at all.** ``se/sd`` runs 1.2 to 2.2 against a known truth, mostly the cost of
-       profiling out a prevalence the indicator only partly identifies. ``interval="profile"``
-       is unbounded wherever the data do not reject :math:`\pi = 0`, which at two image studies
-       is 97% of voxels.
+    4. **``se`` is not reliably conservative: which way it errs depends on the prevalence.**
+       Against a known truth, ``se/sd`` is 1.25 to 1.84 where every study carries the effect and
+       0.80 where 60% of them do. The second is the regime this estimator exists for, and there
+       the interval is too narrow.
+
+       The arithmetic is not at fault -- the observed information matches an exact
+       finite-difference Hessian of the same likelihood to four decimals. It is a property of
+       where the default stops. When the mixture is real the likelihood has a near-flat ridge in
+       :math:`(\mu, \pi)`; ``max_iter=25`` leaves the fit near the pooled start, where the
+       curvature is steep and the standard error correspondingly small. Run it to convergence
+       and both the spread and the standard error grow, the standard error much faster, so
+       ``se/sd`` goes from 0.80 to 2.55 at two images. There is no setting that makes it 1: the
+       interval is too narrow at the default and too wide at convergence.
+
+       Where the effect is weak the likelihood does not bound :math:`\mu` at all:
+       ``interval="profile"`` is unbounded wherever the data do not reject :math:`\pi = 0`,
+       which at two image studies is 97% of voxels.
 
     5. **Read ``se`` and the interval width, never coverage.** Every configuration measured
        covers 0.95 to 1.00, including those admitting almost any magnitude. P-values come from
