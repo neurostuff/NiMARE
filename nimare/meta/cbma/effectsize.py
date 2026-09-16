@@ -82,6 +82,12 @@ DEFAULT_REPORT_RADIUS_MM = 4.0
 #: of the bracketing pair. Centring at the strongest voxels crosses earlier -- 4 mm is better
 #: centred from 18 upward -- so lower this when a calibrated magnitude at the peaks matters
 #: more than whole-map error.
+#:
+#: One known miss: an HCP-shaped roster sits at 10 and so keeps the named voxel, where 4 mm is
+#: slightly better (magnitude 0.62 against 0.64 on MOTOR_LH, 0.68 against 0.70 on
+#: EMOTION_FACES). The cost is 0.02 of magnitude recovery against the 0.18 the threshold
+#: protects at the other end, and it is the regime where the prevalence is truly 1 and nothing
+#: fixes the shortfall anyway.
 ADAPTIVE_REPORT_RATIO = 50.0
 
 #: Default two-tailed reporting threshold, on the z scale, when a study gives no better
