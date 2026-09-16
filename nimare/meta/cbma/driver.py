@@ -139,8 +139,115 @@ def records_for_location(
     lower, upper, variances, roles : :obj:`numpy.ndarray`
         Ready for :func:`~censored.fit_censored`.
     """
+    bundle = bundle_studies(studies, sided=sided)
+    return records_from_bundle(
+        bundle,
+        position,
+        reach,
+        image_values=image_values,
+        image_variances=image_variances,
+    )
+
+
+def bundle_studies(studies, sided="two"):
+    r"""Flatten a study list into concatenated arrays, so geometry is one call and not one each.
+
+    Profiling a whole-brain fit left record building at about 11 ms per location with 160
+    studies -- comparable to the fit itself once that was vectorised -- and the reason is
+    structural rather than arithmetic: :func:`records_for_location` loops the studies and takes a
+    distance per study, so the cost is 160 numpy calls on six-element arrays, which is call
+    overhead. Concatenating once turns that into one distance call over every peak, with the
+    per-study selection done by segment reductions.
+
+    Each study's protocol is baked in here as a per-peak eligibility mask, so a per-study
+    ``sided`` override survives the flattening rather than being silently replaced by the
+    call-level default.
+    """
+    peaks, heights, eligible, starts, counts = [], [], [], [], []
+    thresholds, variances, offset = [], [], 0
+    for study in studies:
+        study_peaks = np.asarray(study["peaks"], dtype=float).reshape(-1, 3)
+        study_heights = np.asarray(study["heights"], dtype=float).reshape(-1)
+        if study_peaks.shape[0] != study_heights.shape[0]:
+            raise ValueError(
+                f"study {study.get('id', '?')!r} has {study_peaks.shape[0]} peaks and "
+                f"{study_heights.shape[0]} heights."
+            )
+        protocol = str(study.get("sided", sided))
+        if protocol not in ("one", "two"):
+            raise ValueError(
+                f"study {study.get('id', '?')!r} has sided={protocol!r}; use 'one' or 'two'."
+            )
+        peaks.append(study_peaks)
+        heights.append(study_heights)
+        eligible.append(
+            study_heights > 0 if protocol == "one" else np.ones(study_heights.size, dtype=bool)
+        )
+        starts.append(offset)
+        counts.append(study_peaks.shape[0])
+        offset += study_peaks.shape[0]
+        thresholds.append(float(study["threshold"]))
+        variances.append(float(study["variance"]))
+    return {
+        "peaks": np.concatenate(peaks) if peaks else np.zeros((0, 3)),
+        "heights": np.concatenate(heights) if heights else np.zeros(0),
+        "eligible": np.concatenate(eligible) if eligible else np.zeros(0, dtype=bool),
+        "starts": np.asarray(starts, dtype=int),
+        "counts": np.asarray(counts, dtype=int),
+        "thresholds": np.asarray(thresholds, dtype=float),
+        "variances": np.asarray(variances, dtype=float),
+        "sided": [str(study.get("sided", sided)) for study in studies],
+        "n_studies": len(studies),
+    }
+
+
+def _chosen_peaks(bundle, position, reach):
+    """Index of each study's chosen peak, or ``-1`` where it has none within the reach.
+
+    Implements the same rule as :func:`records_for_location` -- the nearest eligible peak, with
+    the larger magnitude breaking a tie -- by segment reductions rather than a loop, so exact
+    distance ties still resolve by magnitude and not by table order.
+    """
+    total = bundle["heights"].size
+    if total == 0 or bundle["n_studies"] == 0:
+        return np.full(bundle["n_studies"], -1, dtype=int), np.zeros(0)
+
+    distance = np.linalg.norm(bundle["peaks"] - np.asarray(position, dtype=float)[None, :], axis=1)
+    usable = bundle["eligible"] & (distance <= reach)
+    masked = np.where(usable, distance, np.inf)
+
+    starts, counts = bundle["starts"], bundle["counts"]
+    # ``reduceat`` needs every start index to be inside the array, and a study with no peaks has
+    # a zero-length segment whose start can equal the length -- which raises rather than
+    # returning an empty reduction. Reduce over the studies that *have* peaks and scatter the
+    # answer back; a study with none is a silence by definition, not an edge case to patch after.
+    present = np.flatnonzero(counts > 0)
+    chosen = np.full(bundle["n_studies"], -1, dtype=int)
+    if present.size == 0:
+        return chosen, distance
+    segment_starts = starts[present]
+    segment_counts = counts[present]
+
+    nearest = np.minimum.reduceat(masked, segment_starts)
+    at_nearest = usable & (masked == np.repeat(nearest, segment_counts))
+    magnitude = np.where(at_nearest, np.abs(bundle["heights"]), -np.inf)
+    largest = np.maximum.reduceat(magnitude, segment_starts)
+    winner = at_nearest & (magnitude == np.repeat(largest, segment_counts))
+    positions = np.where(winner, np.arange(total), total)
+    picked = np.minimum.reduceat(positions, segment_starts)
+    chosen[present] = np.where(picked < total, picked, -1)
+    return chosen, distance
+
+
+def records_from_bundle(bundle, position, reach, *, image_values=None, image_variances=None):
+    r"""Build one location's records from a pre-flattened study bundle.
+
+    This is the single implementation: :func:`records_for_location` builds a one-off bundle and
+    calls it, so the per-location convenience path and the batch path cannot drift apart. The
+    only difference between them is *when* the flattening happens -- once per analysis instead of
+    once per location, which is the whole saving.
+    """
     states, values, thresholds, variances, signs = [], [], [], [], []
-    conflicts = 0
     if image_values is not None:
         image_values = np.asarray(image_values, dtype=float).reshape(-1)
         image_variances = np.asarray(image_variances, dtype=float).reshape(-1)
@@ -156,58 +263,21 @@ def records_for_location(
             variances.append(variance)
             signs.append(1.0)
 
-    position = np.asarray(position, dtype=float).reshape(3)
-    for study in studies:
-        peaks = np.asarray(study["peaks"], dtype=float).reshape(-1, 3)
-        heights = np.asarray(study["heights"], dtype=float).reshape(-1)
-        if peaks.shape[0] != heights.shape[0]:
-            raise ValueError(
-                f"study {study.get('id', '?')!r} has {peaks.shape[0]} peaks and "
-                f"{heights.shape[0]} heights."
-            )
-        protocol = str(study.get("sided", sided))
-        if protocol not in ("one", "two"):
-            raise ValueError(
-                f"study {study.get('id', '?')!r} has sided={protocol!r}; use 'one' or 'two'."
-            )
-        nearby = np.array([], dtype=int)
-        if peaks.size:
-            distance = np.linalg.norm(peaks - position[None, :], axis=1)
-            eligible = distance <= reach
-            if protocol == "one":
-                eligible &= heights > 0
-            nearby = np.flatnonzero(eligible)
-        if nearby.size:
-            if protocol == "one":
-                chosen = nearby[np.argmax(heights[nearby])]
-            else:
-                # **The nearest peak, not the largest.** Under a two-sided protocol peaks of
-                # both signs can fall within one reach, and their records disagree: a positive
-                # peak bounds this location's value from above, a negative one from below. No
-                # algebra settles which speaks for the location, so the stated choice is
-                # proximity -- which is the only thing that justified reading a peak as
-                # speaking for a nearby location in the first place -- with the larger magnitude
-                # breaking a tie. ``conflicts`` counts how often the question arose.
-                order = np.lexsort((-np.abs(heights[nearby]), distance[nearby]))
-                chosen = nearby[order[0]]
-                if np.unique(np.sign(heights[nearby])).size > 1:
-                    conflicts += 1
-            at_location = float(distance[chosen]) <= COINCIDENT_MM
+    chosen, distance = _chosen_peaks(bundle, position, reach)
+    for index in range(bundle["n_studies"]):
+        pick = int(chosen[index])
+        if pick >= 0:
+            height = float(bundle["heights"][pick])
+            at_location = float(distance[pick]) <= COINCIDENT_MM
             states.append(ObservationState.EXACT if at_location else ObservationState.CLUSTER_PEAK)
-            values.append(float(heights[chosen]))
-            signs.append(float(np.sign(heights[chosen])) or 1.0)
+            values.append(height)
+            signs.append(float(np.sign(height)) or 1.0)
         else:
             states.append(ObservationState.NO_PEAK_NEARBY)
             values.append(0.0)
-            # A one-sided protocol's silence is ``Y < c``; a two-sided protocol's is
-            # ``|Y| < c``, which is what an unsigned sign requests from
-            # :func:`~censored.bounds_from_states`. The two cannot be mixed: a symmetric silence
-            # combined with discarded negative peaks asserts an interval *disjoint* from the
-            # truth wherever a study printed a deactivation, biased upward by one to two effect
-            # sizes per record (``proofs/what_a_negative_peak_says.py``).
-            signs.append(1.0 if protocol == "one" else 0.0)
-        thresholds.append(float(study["threshold"]))
-        variances.append(float(study["variance"]))
+            signs.append(1.0 if bundle["sided"][index] == "one" else 0.0)
+        thresholds.append(float(bundle["thresholds"][index]))
+        variances.append(float(bundle["variances"][index]))
 
     sign_array = np.asarray(signs, dtype=float)
     lower, upper = bounds_from_states(
@@ -233,11 +303,21 @@ def records_for_location(
 #: exact        72.9                --
 #: ===========  ==================  ==================
 #:
-#: 513 keeps the disagreement at four decimal places -- two orders below the estimate's own
-#: standard error of roughly 0.2 -- for a 5.8-fold saving. The coarser grids are faster still and
-#: their error is arguably negligible too, but 1.7e-03 would move the third decimal of a
-#: reported interval, and a performance change should not be visible in the results at all.
-_GRID_POINTS = 513
+#: Those figures are from the first version, whose grid spanned twelve times the *least* precise
+#: record's standard error. Scaling the span to the estimate's own precision instead changes the
+#: trade entirely, because the points then lie where the likelihood varies:
+#:
+#: ===========  ===================  ==================
+#: grid points  CPU ms per location  largest difference
+#: ===========  ===================  ==================
+#: 257          7.1                  2.8e-04
+#: 513          10.9                  2.3e-04
+#: ===========  ===================  ==================
+#:
+#: So 257 on the narrow span is both faster than 513 on the wide one and four times more
+#: accurate, which is what it means for a grid to have been in the wrong place rather than too
+#: coarse. 257 it is: 7.1 ms per location is 3.5 minutes for a 29,398-voxel mask on one core.
+_GRID_POINTS = 257
 
 
 def _grid_fit(lower, upper, variances, roles, *, between_variance, retention, cutoff, span=12.0):
@@ -265,14 +345,33 @@ def _grid_fit(lower, upper, variances, roles, *, between_variance, retention, cu
     if finite.size == 0:
         return None
     centre = float(np.mean(finite))
-    width = span * float(np.sqrt(np.max(variances[informative]) + max(between_variance, 0.0)))
-    means = np.linspace(centre - width, centre + width, _GRID_POINTS)
-    curve = loglik_over_means(
-        means, between_variance, lower, upper, variances, retention=retention, roles=roles
-    )
-    usable = np.isfinite(curve)
-    if not usable.any():
-        return None
+
+    # The grid must span the plausible range of the *estimate*, whose scale is set by the most
+    # precise record, not the least. Using the largest variance made the grid about seven times
+    # wider than needed -- 12 times a coordinate study's standard error of 0.32 where the
+    # estimate's own was 0.14 -- so most of the points fell where the likelihood is already
+    # negligible. The widest record still sets a floor, since with interval records alone the
+    # maximum can sit well away from the bounds' centre.
+    precision = float(np.sqrt(np.min(variances[informative]) + max(between_variance, 0.0)))
+    coarse = float(np.sqrt(np.max(variances[informative]) + max(between_variance, 0.0)))
+    width = span * max(precision, 0.25 * coarse)
+
+    # Widen once if the maximum lands on an edge: a narrower grid is only a saving while it still
+    # contains the answer, and silently returning a boundary as an estimate is the failure mode
+    # this whole module has been bitten by before.
+    curve = usable = means = None
+    for attempt in range(3):
+        means = np.linspace(centre - width, centre + width, _GRID_POINTS)
+        curve = loglik_over_means(
+            means, between_variance, lower, upper, variances, retention=retention, roles=roles
+        )
+        usable = np.isfinite(curve)
+        if not usable.any():
+            return None
+        best = int(np.nanargmax(np.where(usable, curve, -np.inf)))
+        if 0 < best < means.size - 1:
+            break
+        width *= 4.0
     best = int(np.nanargmax(np.where(usable, curve, -np.inf)))
     peak = float(curve[best])
 
@@ -398,15 +497,22 @@ def fit_locations(
         else {"fixed_between_variance": float(fixed_between_variance)}
     )
 
+    bundled = None
     for index in range(count):
         images = images_at(index) if images_at is not None else None
-        lower, upper, variances, roles = records_for_location(
+        here = studies_at(index)
+        # The bundle is rebuilt only when the study list changes identity. Flattening 160 studies
+        # costs about as much as one location's fit, so doing it per location made record
+        # building half of a whole-brain run; almost every caller returns the same list for every
+        # location, and one that does not still gets a correct answer, just no saving.
+        if bundled is None or bundled[0] is not here:
+            bundled = (here, bundle_studies(here, sided=sided))
+        lower, upper, variances, roles = records_from_bundle(
+            bundled[1],
             positions[index],
-            studies_at(index),
             reach,
             image_values=None if images is None else images[0],
             image_variances=None if images is None else images[1],
-            sided=sided,
         )
         # Retention is passed only where it can act. At 1.0 the mixture is the certain-silence
         # reading, so supplying it would change nothing while suggesting otherwise.
