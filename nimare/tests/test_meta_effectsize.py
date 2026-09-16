@@ -306,9 +306,13 @@ def test_the_removed_options_fail_loudly_rather_than_being_ignored():
             CBES(**{gone: 1.0})
 
 
-def test_the_only_null_is_the_image_permutation_one():
-    """The coordinate magnitudes are gone, so there is nothing left to permute over them."""
-    assert NULL_METHODS == ("permute-images", "none")
+def test_the_only_nulls_randomize_images():
+    """The coordinate magnitudes are gone, so there is nothing left to permute over them.
+
+    Both nulls rearrange each image's own values and neither touches a focus. They differ only
+    in whether that rearrangement keeps the image's spatial autocorrelation.
+    """
+    assert NULL_METHODS == ("permute-images", "spatial-images", "none")
     for gone in ("permute-magnitudes", "approximate", "montecarlo"):
         with pytest.raises(ValueError, match="null_method must be"):
             CBES(null_method=gone)

@@ -108,7 +108,7 @@ INTERVAL_METHODS = ("wald", "profile")
 #: How uncorrected p-values are obtained. ``"permute-images"`` scrambles each image study's
 #: values among its own voxels, holding the silence pattern fixed; ``"none"`` reports no
 #: p-values.
-NULL_METHODS = ("permute-images", "none")
+NULL_METHODS = ("permute-images", "spatial-images", "none")
 
 #: Resolution of the permutation null histogram for |z|, and where its upper tail is clipped.
 _NULL_Z_STEP = 0.01
@@ -940,10 +940,22 @@ class CBES(Estimator):
     max_iter : :obj:`int`, default=25
         EM iterations. Voxels are retired as they settle, so this bounds the slowest rather
         than the typical one.
-    null_method : {"permute-images", "none"}, default="permute-images"
-        How uncorrected p-values are obtained. ``"permute-images"`` scrambles each image
-        study's values among that study's own voxels and holds the silence pattern fixed.
-        ``"none"`` skips it, returning maps without p-values.
+    null_method : {"permute-images", "spatial-images", "none"}, default="permute-images"
+        How uncorrected p-values are obtained. Both nulls rearrange each image study's own
+        values among that study's own voxels and hold the silence pattern fixed; neither moves
+        a focus. ``"none"`` skips it, returning maps without p-values.
+
+        ``"permute-images"`` scatters the values independently, which destroys the image's
+        spatial autocorrelation -- the permuted statistic maps come out 2.5 times rougher than
+        the observed one. That leaves the voxelwise rate nominal and the family-wise rate too
+        liberal in small collections, because the observed map can lay a coherent blob of large
+        values over a region where few studies were silent and a scattered map cannot.
+
+        ``"spatial-images"`` keeps the autocorrelation, by redrawing the Fourier phases and
+        rank-mapping the surrogate back onto the study's own ``(g, var)`` pairs. The same
+        observations are rearranged either way; only their spatial arrangement differs. This is
+        the volumetric analogue of the spatial nulls used for brain maps, where a spin test is
+        unavailable because there is no spherical surface to rotate.
     cluster_threshold : :obj:`float` or None, default=0.001
         Voxel-level p-threshold defining clusters for :meth:`correct_fwe_montecarlo`.
     n_iters : :obj:`int`, default=1000
@@ -2367,6 +2379,59 @@ class CBES(Estimator):
             out[study_id] = (g_null, var_null, usable)
         return out
 
+    def _spatial_image_surrogates(self, rng):
+        """Rearrange each image's values keeping that image's own spatial autocorrelation.
+
+        ``permute-images`` scatters an image's values independently across its voxels, which
+        destroys the autocorrelation: the permuted statistic maps are 2.5 times rougher than the
+        observed one. That matters for the maximum and not for any single voxel, which is why
+        the voxelwise rate stays nominal while the family-wise rate does not. The observed map
+        can put a coherent blob of large values over a region where few studies were silent; a
+        scattered map has no blob to put anywhere, so the null never produces that alignment and
+        the observed maximum occasionally clears every permuted one.
+
+        This is the volumetric analogue of the spatial nulls used for brain maps -- spin tests
+        need a spherical surface, so the volume equivalents match the autocorrelation instead.
+        The surrogate here is a Fourier phase randomization: the image's power spectrum, and so
+        its autocorrelation, is kept while its phases are redrawn. The surrogate values are then
+        rank-mapped back onto the study's own ``(g, var)`` pairs, so exactly the same
+        observations are rearranged as under ``permute-images`` and only their arrangement
+        differs.
+        """
+        images = getattr(self, "_image_studies_", None)
+        if not images:
+            return images
+        mask_bool = self._mask_bool()
+        shape = mask_bool.shape
+        out = {}
+        for study_id, (g, var_g, usable) in images.items():
+            where = np.flatnonzero(usable)
+            if where.size < 2:
+                out[study_id] = (g, var_g, usable)
+                continue
+            volume = np.zeros(shape, dtype=float)
+            volume[mask_bool] = np.where(usable, g, 0.0)
+            spectrum = np.fft.rfftn(volume)
+            phases = rng.uniform(0.0, 2.0 * np.pi, size=spectrum.shape)
+            surrogate = np.fft.irfftn(np.abs(spectrum) * np.exp(1j * phases), s=shape)
+            draw = surrogate[mask_bool][where]
+
+            # The voxel holding the k-th largest surrogate value takes the k-th largest pair,
+            # so the multiset of (g, var) is untouched and only the arrangement is new.
+            destination = np.argsort(np.argsort(draw))
+            ascending = np.argsort(g[where], kind="mergesort")
+            g_null, var_null = g.copy(), var_g.copy()
+            g_null[where] = g[where][ascending][destination]
+            var_null[where] = var_g[where][ascending][destination]
+            out[study_id] = (g_null, var_null, usable)
+        return out
+
+    def _randomized_images(self, rng):
+        """Randomize the images the way this null asks for."""
+        if self.null_method == "spatial-images":
+            return self._spatial_image_surrogates(rng)
+        return self._permute_image_values(rng)
+
     def _null_has_states(self):
         """Report ``(n_arrangements_log10, n_contributing)`` for the within-study shuffle.
 
@@ -2433,7 +2498,7 @@ class CBES(Estimator):
                 self._focus_table_,
                 sample_sizes,
                 thresholds,
-                self._permute_image_values(rng),
+                self._randomized_images(rng),
             )
             absolute = np.abs(z_null)
             exceedances += absolute >= observed
@@ -2581,7 +2646,7 @@ class CBES(Estimator):
             self._focus_table_, self._sample_sizes_, self._thresholds_, self._image_studies_
         )
 
-        if self.null_method == "permute-images" and self._null_is_usable():
+        if self.null_method != "none" and self._null_is_usable():
             p_values, _ = self._compute_permutation_null(
                 self.n_iters,
                 self.n_cores,
@@ -2837,14 +2902,14 @@ class CBES(Estimator):
         n_foci = len(getattr(self, "_focus_table_", []))
         roster = getattr(self, "_sample_sizes_", None)
         n_studies = 0 if roster is None else len(roster)
-        if self.null_method == "permute-images" and self._null_is_usable():
+        if self.null_method != "none" and self._null_is_usable():
             inference = (
                 " Uncorrected p-values were obtained from a permutation null distribution, in "
                 "which each image study's effect sizes were reassigned among its own voxels "
                 f"{self.n_iters} times with the pattern of coordinate silence held fixed, "
                 "each voxel being referred to its own null."
             )
-        elif self.null_method == "permute-images":
+        elif self.null_method != "none":
             inference = (
                 " No null distribution was computed, because the collection admits too few "
                 "within-study arrangements to test, so no p-values are reported."
