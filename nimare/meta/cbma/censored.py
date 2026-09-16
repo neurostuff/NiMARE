@@ -828,6 +828,61 @@ def fit_censored(
         if between < 0:
             raise ValueError("fixed_between_variance must be non-negative.")
 
+        if estimate_retention:
+            # Estimating the retention at a *fixed* between-study variance is a well-posed
+            # two-parameter problem, and it is the one the HCP corpora need, where the
+            # between-study variance is zero by construction because every cohort draws from
+            # one population. Before this branch existed, the combination was silently
+            # ignored: this early return ran first, the supplied retention stayed ``None``, and
+            # the result carried no ``retention`` key at all -- so a caller asking the data what
+            # the retention was got the rho = 1 fit and no indication of it. A request that
+            # cannot be honoured must fail; one that can must be honoured.
+            if roles is None:
+                raise ValueError(
+                    "Estimating retention requires roles; use retention_roles(states). Without "
+                    "them nothing says which records a retention probability applies to."
+                )
+
+            def pair_objective(parameters):
+                candidate = float(np.clip(parameters[1], _RETENTION_FLOOR, 1.0))
+                value = censored_loglik(
+                    parameters[0],
+                    between,
+                    lower,
+                    upper,
+                    variances,
+                    retention=candidate,
+                    roles=roles,
+                )
+                if not np.isfinite(value):
+                    return np.inf
+                return -value
+
+            best = None
+            for start in (0.9, 0.5, 0.2):
+                candidate = minimize(
+                    pair_objective,
+                    x0=[start_mean, start],
+                    method="L-BFGS-B",
+                    bounds=[(None, None), (_RETENTION_FLOOR, 1.0)],
+                )
+                if np.isfinite(candidate.fun) and (best is None or candidate.fun < best.fun):
+                    best = candidate
+            if best is None:
+                return failure
+            return {
+                "mean": float(best.x[0]),
+                "between_variance": between,
+                "retention": float(np.clip(best.x[1], _RETENTION_FLOOR, 1.0)),
+                "loglik": float(-best.fun),
+                "n_informative": int(informative.sum()),
+                "converged": bool(best.success),
+                "at_zero_boundary": between == 0.0,
+                "at_variance_cap": False,
+                "at_full_retention": bool(best.x[1] >= 1.0 - 1e-9),
+                "valid": True,
+            }
+
         def objective(parameters):
             value = censored_loglik(
                 parameters[0],
