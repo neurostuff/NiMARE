@@ -1,0 +1,734 @@
+r"""Scalar interval-censored random-effects reference for the marginal effect.
+
+This is the reference model the combined estimator is built on: a *scalar* Gaussian
+random-effects meta-analysis in which an observation is an **event about a study's estimate**
+rather than a value. A study's latent effect is :math:`\theta_i \sim N(m, \tau^2)` and its
+estimate is :math:`Y_i \mid \theta_i \sim N(\theta_i, s_i^2)`, so marginally
+:math:`Y_i \sim N(m, s_i^2 + \tau^2)` and an observation :math:`L_i < Y_i < U_i` contributes
+
+.. math::
+    \ell_i(m, \tau^2) = \log\left[
+    \Phi\!\left(\frac{U_i - m}{\sqrt{s_i^2+\tau^2}}\right)
+    - \Phi\!\left(\frac{L_i - m}{\sqrt{s_i^2+\tau^2}}\right)\right].
+
+Both parameters are estimated jointly. Freezing :math:`\tau^2` at a between-study variance read
+off a small image subset is not the same quantity whenever the effect distribution has a
+component at zero: there
+:math:`\operatorname{Var}(\theta) = \pi\tau_a^2 + \pi(1-\pi)\mu^2`, so dividing a total variance
+by the prevalence overstates the active component's variance by exactly :math:`(1-\pi)\mu^2`.
+
+Everything computed here is derived first in ``proofs/scalar_censored_reference.py`` of the
+companion experiments repository: the marginalisation, the exact scores, the one-sided limits,
+and the degenerate-interval limit that makes :meth:`ObservationState.EXACT` reduce to ordinary
+random-effects meta-analysis. The one expression not in that file is the exact observation's own
+score, which is the derivative of a Gaussian log-density; the tests check it against finite
+differences alongside the censored ones.
+
+**What this does not do.** It takes the bounds as given. Where the bounds come from -- how a
+published table becomes an interval -- is the substantive problem and is not addressed here.
+Bounds manufactured from a nearest-peak distance are not the bounds this likelihood assumes, and
+no property proved of this estimator transfers to them. It is also scalar: one estimand, no
+spatial dependence, no borrowing across voxels.
+
+Notes
+-----
+**Unknown is not null.** :class:`ObservationState` separates the cases a coordinate table
+actually produces, and two of them -- :attr:`ObservationState.UNKNOWN_COMPLETENESS` and
+:attr:`ObservationState.OUTSIDE_MASK` -- contribute *nothing* to the likelihood rather than
+being read as evidence of a small effect. A table whose completeness is unknown cannot support
+the inference that an unlisted voxel was below threshold.
+
+**The reporting partition.** Report, silence, and anything in between are disjoint events whose
+probabilities sum to one. Using :math:`1 - p_{\text{report}}` for the silence probability
+overstates it by exactly the probability of whatever third event was dropped, and the
+probabilities that would be correct among retained events are the conditional ones,
+:math:`p_r/(p_r+p_s)`. This module therefore never forms a silence probability as a complement:
+a silence is an interval like any other, and an event that is neither is simply not observed.
+"""
+
+from __future__ import annotations
+
+import enum
+
+import numpy as np
+from scipy.optimize import minimize
+from scipy.special import log_ndtr, ndtr
+from scipy.stats import chi2, norm
+
+#: Largest heterogeneity the optimiser will consider, as a multiple of the observed spread of
+#: the finite bounds. A cap is needed because a likelihood with only one-sided observations can
+#: be flat in ``tau2``, and an unbounded search then reports whichever value it stopped at.
+_TAU2_CAP_MULTIPLE = 25.0
+
+#: Starting values for ``tau2``, as fractions of the sampling variance scale. The mixture of an
+#: interval likelihood and a boundary at zero makes a single start unsafe.
+_TAU2_STARTS = (0.0, 0.25, 1.0, 4.0)
+
+#: Below this the interval mass is treated as numerically unusable and the observation is
+#: refused rather than contributing a log of something indistinguishable from zero.
+_MASS_FLOOR = 1e-300
+
+
+class ObservationState(enum.Enum):
+    """What a single record actually tells us about one study's effect at one location.
+
+    The distinction between these is the point. Collapsing them loses the difference between
+    "this study measured a small effect here" and "this study's table does not say".
+
+    Attributes
+    ----------
+    IMAGE
+        An unthresholded image was available, so the estimate is observed. Contributes the
+        ordinary random-effects Gaussian term.
+    EXACT
+        A peak height reported to full precision, taken as the estimate itself. Identical to
+        ``IMAGE`` in the likelihood; kept separate because its provenance differs and because a
+        selected peak height is not an unbiased estimate of the effect at that location.
+    ROUNDED
+        A peak height reported to finite precision, so the estimate lies in a known interval.
+    BOUNDED
+        A known two-sided interval from some other source, such as a reported range.
+    DIRECTION_ONLY
+        A peak was reported with its sign but no usable magnitude, so the estimate is known only
+        to have cleared the study's threshold in that direction: one-sided.
+    NONSIGNIFICANT
+        The study states explicitly that the effect here was not significant, which is a genuine
+        two-sided interval inside its own threshold.
+    ABSENT_COMPLETE_TABLE
+        No peak is listed and the table is known to be complete, so the estimate did not clear
+        the threshold. The same interval as ``NONSIGNIFICANT``, from a weaker premise.
+    UNKNOWN_COMPLETENESS
+        No peak is listed and the table's completeness is unknown. **Contributes nothing.**
+    OUTSIDE_MASK
+        The location was not analysed. **Contributes nothing.**
+    """
+
+    IMAGE = "image"
+    EXACT = "exact"
+    ROUNDED = "rounded"
+    BOUNDED = "bounded"
+    DIRECTION_ONLY = "direction_only"
+    NONSIGNIFICANT = "nonsignificant"
+    ABSENT_COMPLETE_TABLE = "absent_complete_table"
+    UNKNOWN_COMPLETENESS = "unknown_completeness"
+    OUTSIDE_MASK = "outside_mask"
+
+
+#: States that carry no information about the effect. Listed once so that nothing has to
+#: rediscover which they are.
+UNINFORMATIVE_STATES = frozenset(
+    {ObservationState.UNKNOWN_COMPLETENESS, ObservationState.OUTSIDE_MASK}
+)
+
+#: States whose presence in a table is itself subject to retention: the effect cleared the
+#: threshold, and whether it was then printed is a separate event.
+RETAINED_REPORT_STATES = frozenset(
+    {
+        ObservationState.EXACT,
+        ObservationState.ROUNDED,
+        ObservationState.BOUNDED,
+        ObservationState.DIRECTION_ONLY,
+    }
+)
+
+#: The one state retention actually bites on. An absent row in a complete table is ambiguous
+#: between "did not clear the threshold" and "cleared it and was not printed".
+RETAINED_ABSENCE_STATES = frozenset({ObservationState.ABSENT_COMPLETE_TABLE})
+
+
+def retention_roles(states):
+    """How retention enters each record: ``0`` not at all, ``1`` as a report, ``-1`` as absence.
+
+    An :attr:`ObservationState.IMAGE` is unaffected, because an available image is available
+    whatever the table printed. An :attr:`ObservationState.NONSIGNIFICANT` record is also
+    unaffected: the study *said* the effect was not significant, so its presence is not a
+    retention event -- that is the whole difference between it and
+    :attr:`ObservationState.ABSENT_COMPLETE_TABLE`, which is the ambiguous case.
+    """
+    roles = np.zeros(len(states), dtype=int)
+    for index, state in enumerate(_as_states(states)):
+        if state in RETAINED_REPORT_STATES:
+            roles[index] = 1
+        elif state in RETAINED_ABSENCE_STATES:
+            roles[index] = -1
+    return roles
+
+
+def _as_states(states):
+    """Accept enum members or their values, and reject anything else by name."""
+    out = []
+    for item in states:
+        if isinstance(item, ObservationState):
+            out.append(item)
+            continue
+        try:
+            out.append(ObservationState(item))
+        except ValueError as error:
+            raise ValueError(
+                f"{item!r} is not an observation state; expected one of "
+                f"{[state.value for state in ObservationState]}."
+            ) from error
+    return out
+
+
+def bounds_from_states(states, values=None, thresholds=None, precisions=None, signs=None):
+    r"""Turn observation states into the interval each one implies.
+
+    Parameters
+    ----------
+    states : sequence of :class:`ObservationState` or :obj:`str`
+        One state per record.
+    values : :obj:`numpy.ndarray`, optional
+        Reported or observed estimate, on the effect-size scale. Required for ``IMAGE``,
+        ``EXACT`` and ``ROUNDED``.
+    thresholds : :obj:`numpy.ndarray`, optional
+        The study's reporting threshold on the effect-size scale, as a positive magnitude.
+        Required for ``DIRECTION_ONLY``, ``NONSIGNIFICANT`` and ``ABSENT_COMPLETE_TABLE``. It is
+        supplied, never inferred from the smallest reported value: that value is an order
+        statistic of the reported heights and so moves with how much signal the study had.
+    precisions : :obj:`numpy.ndarray`, optional
+        Full width of the rounding interval for ``ROUNDED`` records, in effect-size units.
+    signs : :obj:`numpy.ndarray`, optional
+        ``+1`` or ``-1`` for ``DIRECTION_ONLY`` records. A table giving unsigned magnitudes
+        cannot use that state: an unsigned report constrains both tails and is a union of two
+        intervals, which this likelihood does not represent.
+
+        Also read, optionally, for ``NONSIGNIFICANT`` and ``ABSENT_COMPLETE_TABLE`` records,
+        where it carries the *reporting protocol's* sidedness rather than a direction of effect.
+        Under a one-sided protocol an absence means :math:`Y < c`, so a supplied ``+1`` leaves
+        the lower bound at ``-inf``; left unsupplied, an absence is the two-sided
+        :math:`|Y| < c`.
+
+    Returns
+    -------
+    lower, upper : :obj:`numpy.ndarray`
+        Interval bounds, with ``-inf``/``inf`` for one-sided records and both infinite for the
+        uninformative states. ``lower == upper`` marks an exactly observed value.
+
+    Raises
+    ------
+    ValueError
+        If a state's required input is missing or not finite. A silently defaulted threshold
+        would be an assumption entering through a gap rather than through the interface.
+    """
+    states = _as_states(states)
+    count = len(states)
+    lower = np.full(count, -np.inf)
+    upper = np.full(count, np.inf)
+
+    def required(array, name, index, state):
+        if array is None:
+            raise ValueError(f"{state.value!r} records need {name!r}, which was not supplied.")
+        value = np.asarray(array, dtype=float).reshape(-1)[index]
+        if not np.isfinite(value):
+            raise ValueError(f"{state.value!r} record {index} has a non-finite {name!r}.")
+        return value
+
+    for index, state in enumerate(states):
+        if state in UNINFORMATIVE_STATES:
+            continue
+        if state in (ObservationState.IMAGE, ObservationState.EXACT):
+            point = required(values, "values", index, state)
+            lower[index] = upper[index] = point
+        elif state is ObservationState.ROUNDED:
+            point = required(values, "values", index, state)
+            width = required(precisions, "precisions", index, state)
+            if width <= 0:
+                raise ValueError(f"{state.value!r} record {index} has a non-positive precision.")
+            lower[index], upper[index] = point - width / 2.0, point + width / 2.0
+        elif state is ObservationState.BOUNDED:
+            lower[index] = required(values, "values", index, state)
+            upper[index] = lower[index] + required(precisions, "precisions", index, state)
+        elif state is ObservationState.DIRECTION_ONLY:
+            cut = abs(required(thresholds, "thresholds", index, state))
+            direction = required(signs, "signs", index, state)
+            if direction > 0:
+                lower[index] = cut
+            elif direction < 0:
+                upper[index] = -cut
+            else:
+                raise ValueError(
+                    f"{state.value!r} record {index} has sign zero. An unsigned report "
+                    "constrains both tails and is a union of two intervals, which this "
+                    "likelihood cannot represent; use a signed contrast or drop the record."
+                )
+        else:  # NONSIGNIFICANT, ABSENT_COMPLETE_TABLE
+            cut = abs(required(thresholds, "thresholds", index, state))
+            # Absence is one-sided under a one-sided reporting protocol. A study that would have
+            # reported only positive peaks and reported none tells us Y < c, not |Y| < c, and
+            # reading it as the two-sided interval would invent a lower bound the protocol never
+            # supports. The sidedness comes from ``signs`` because it is a property of the
+            # protocol, not of the record.
+            direction = 0.0
+            if signs is not None:
+                supplied = np.asarray(signs, dtype=float).reshape(-1)[index]
+                direction = 0.0 if not np.isfinite(supplied) else float(supplied)
+            if direction > 0:
+                upper[index] = cut
+            elif direction < 0:
+                lower[index] = -cut
+            else:
+                lower[index], upper[index] = -cut, cut
+
+    return lower, upper
+
+
+def _interval_log_mass(lower_z, upper_z):
+    """Log probability of a standardised interval, computed to avoid cancellation.
+
+    ``ndtr(b) - ndtr(a)`` loses all its digits when both bounds sit in the same tail, so the
+    upper tail is taken from the mirrored CDF there. Returns ``-inf`` where the mass underflows,
+    which the caller turns into a refusal rather than a very large log-likelihood.
+    """
+    lower_z = np.asarray(lower_z, dtype=float)
+    upper_z = np.asarray(upper_z, dtype=float)
+    both_upper = lower_z > 0
+    mass = np.where(
+        both_upper,
+        ndtr(-lower_z) - ndtr(-upper_z),
+        ndtr(upper_z) - ndtr(lower_z),
+    )
+    one_sided_below = ~np.isfinite(lower_z) & np.isfinite(upper_z)
+    one_sided_above = np.isfinite(lower_z) & ~np.isfinite(upper_z)
+    with np.errstate(invalid="ignore"):
+        out = np.where(mass > _MASS_FLOOR, np.log(np.clip(mass, _MASS_FLOOR, None)), -np.inf)
+        out = np.where(one_sided_below, log_ndtr(upper_z), out)
+        out = np.where(one_sided_above, log_ndtr(-lower_z), out)
+    return out
+
+
+def _retention_vector(retention, count):
+    values = np.broadcast_to(np.asarray(retention, dtype=float), (count,)).astype(float)
+    if np.any(~np.isfinite(values)) or np.any(values <= 0) or np.any(values > 1):
+        raise ValueError("retention must be finite and in (0, 1]; a zero would print nothing.")
+    return values
+
+
+def _apply_retention(log_mass, retention, roles, selection):
+    """Turn interval log-probabilities into retention-aware ones.
+
+    An absence is ``(1 - rho) + rho * mass`` rather than ``1 - rho * (1 - mass)``: algebraically
+    the same, but the first form adds two non-negative numbers and the second subtracts nearly
+    equal ones.
+    """
+    if roles is None:
+        raise ValueError("Supplying retention requires roles; use retention_roles(states).")
+    roles = np.asarray(roles, dtype=int)[selection]
+    rho = _retention_vector(retention, roles.size)
+    mass = np.exp(log_mass)
+    out = np.where(roles == 1, log_mass + np.log(rho), log_mass)
+    with np.errstate(divide="ignore"):
+        absence = np.log(np.clip((1.0 - rho) + rho * mass, _MASS_FLOOR, None))
+    return np.where(roles == -1, absence, out)
+
+
+def censored_loglik(
+    mean, between_variance, lower, upper, variances, *, retention=None, roles=None
+):
+    r"""Total log-likelihood of interval and exact observations.
+
+    Exact records (``lower == upper``) contribute the Gaussian log-density, which the degenerate
+    limit of the interval term equals up to an additive constant free of the parameters, so the
+    two kinds of record can be summed. Records with both bounds infinite contribute nothing.
+
+    Retention, if supplied, is the probability that an effect which cleared its threshold was
+    actually printed. A record whose ``roles`` entry is ``1`` then contributes
+    :math:`\rho \times \text{mass}`, and one whose entry is ``-1`` contributes
+    :math:`(1-\rho) + \rho\,\text{mass}`, which is the retention-aware probability of *not*
+    seeing a row. Leaving ``retention`` unset is the :math:`\rho = 1` special case, and that is
+    not a neutral simplification: it asserts every exceedance is printed, and its bias is
+    computable in closed form (see ``proofs/retention_in_the_reporting_model.py``).
+
+    Returns ``-inf`` if any usable record has numerically zero probability, so an optimiser walks
+    away from such a point rather than through it.
+    """
+    lower = np.asarray(lower, dtype=float)
+    upper = np.asarray(upper, dtype=float)
+    total_variance = np.asarray(variances, dtype=float) + float(between_variance)
+    if np.any(total_variance <= 0):
+        return -np.inf
+    scale = np.sqrt(total_variance)
+
+    informative = np.isfinite(lower) | np.isfinite(upper)
+    exact = np.isfinite(lower) & np.isfinite(upper) & (lower == upper)
+    total = 0.0
+    if exact.any():
+        total += float(norm.logpdf(lower[exact], loc=mean, scale=scale[exact]).sum())
+    censored = informative & ~exact
+    if censored.any():
+        with np.errstate(invalid="ignore"):
+            lower_z = (lower[censored] - mean) / scale[censored]
+            upper_z = (upper[censored] - mean) / scale[censored]
+        terms = _interval_log_mass(lower_z, upper_z)
+        if retention is not None:
+            terms = _apply_retention(terms, retention, roles, censored)
+        if not np.all(np.isfinite(terms)):
+            return -np.inf
+        total += float(terms.sum())
+    return total
+
+
+def censored_score(mean, between_variance, lower, upper, variances, *, retention=None, roles=None):
+    r"""Exact gradient of :func:`censored_loglik` in :math:`(m, \tau^2)`.
+
+    For a censored record with standardised bounds :math:`a, b` and interval mass
+    :math:`\Delta = \Phi(b) - \Phi(a)`,
+
+    .. math::
+        \partial_m \ell = -\frac{\varphi(b)-\varphi(a)}{\sigma\Delta},
+        \qquad
+        \partial_{\tau^2} \ell = -\frac{b\varphi(b)-a\varphi(a)}{2\sigma^2\Delta},
+
+    both verified symbolically in ``proofs/scalar_censored_reference.py``. An exact record
+    contributes the Gaussian score.
+    """
+    lower = np.asarray(lower, dtype=float)
+    upper = np.asarray(upper, dtype=float)
+    total_variance = np.asarray(variances, dtype=float) + float(between_variance)
+    scale = np.sqrt(total_variance)
+
+    informative = np.isfinite(lower) | np.isfinite(upper)
+    exact = np.isfinite(lower) & np.isfinite(upper) & (lower == upper)
+    d_mean = 0.0
+    d_between = 0.0
+
+    if exact.any():
+        residual = lower[exact] - mean
+        variance = total_variance[exact]
+        d_mean += float((residual / variance).sum())
+        d_between += float((residual**2 / variance**2 - 1.0 / variance).sum() / 2.0)
+
+    censored = informative & ~exact
+    if censored.any():
+        with np.errstate(invalid="ignore"):
+            lower_z = (lower[censored] - mean) / scale[censored]
+            upper_z = (upper[censored] - mean) / scale[censored]
+        mass = np.exp(_interval_log_mass(lower_z, upper_z))
+        mass = np.clip(mass, _MASS_FLOOR, None)
+        # phi vanishes at an infinite bound, and so does z*phi; nan_to_num turns the inf*0 that
+        # numpy produces there into the limit.
+        with np.errstate(invalid="ignore"):
+            density_low = np.nan_to_num(norm.pdf(lower_z), nan=0.0, posinf=0.0, neginf=0.0)
+            density_high = np.nan_to_num(norm.pdf(upper_z), nan=0.0, posinf=0.0, neginf=0.0)
+            weighted_low = np.nan_to_num(lower_z * density_low, nan=0.0, posinf=0.0, neginf=0.0)
+            weighted_high = np.nan_to_num(upper_z * density_high, nan=0.0, posinf=0.0, neginf=0.0)
+        mass_d_mean = -(density_high - density_low) / scale[censored]
+        mass_d_between = -(weighted_high - weighted_low) / (2.0 * total_variance[censored])
+        if retention is None:
+            d_mean += float((mass_d_mean / mass).sum())
+            d_between += float((mass_d_between / mass).sum())
+        else:
+            if roles is None:
+                raise ValueError(
+                    "Supplying retention requires roles; use retention_roles(states)."
+                )
+            selected_roles = np.asarray(roles, dtype=int)[censored]
+            rho = _retention_vector(retention, selected_roles.size)
+            # A report carries a factor of rho, which is constant in (m, tau^2) and so drops
+            # out of the score. An absence has probability (1-rho) + rho*mass, whose derivative
+            # is rho times the mass derivative.
+            denominator = np.where(selected_roles == -1, (1.0 - rho) + rho * mass, mass)
+            numerator_scale = np.where(selected_roles == -1, rho, 1.0)
+            denominator = np.clip(denominator, _MASS_FLOOR, None)
+            d_mean += float((numerator_scale * mass_d_mean / denominator).sum())
+            d_between += float((numerator_scale * mass_d_between / denominator).sum())
+    return np.array([d_mean, d_between])
+
+
+def _informative_mask(lower, upper):
+    lower = np.asarray(lower, dtype=float)
+    upper = np.asarray(upper, dtype=float)
+    return np.isfinite(lower) | np.isfinite(upper)
+
+
+def _variance_scale(lower, upper, variances):
+    """Sampling-variance scale of the informative records only.
+
+    Uninformative rows must not reach this. They set the optimiser's starting values through it,
+    and a start that moves with the number of rows that contribute nothing would make
+    "contributes nothing" true only to the optimiser's tolerance.
+    """
+    informative = _informative_mask(lower, upper)
+    variances = np.asarray(variances, dtype=float)
+    if not informative.any():
+        return 0.0
+    return float(np.mean(variances[informative]))
+
+
+def _tau2_cap(lower, upper, variances):
+    """Upper bound for the heterogeneity search, from the spread of the informative bounds."""
+    informative = _informative_mask(lower, upper)
+    finite = np.concatenate(
+        [np.asarray(lower, dtype=float)[informative], np.asarray(upper, dtype=float)[informative]]
+    )
+    finite = finite[np.isfinite(finite)]
+    scale = float(np.var(finite)) if finite.size > 1 else 0.0
+    if informative.any():
+        scale = max(scale, float(np.max(np.asarray(variances, dtype=float)[informative])))
+    return _TAU2_CAP_MULTIPLE * max(scale, 1e-6)
+
+
+def fit_censored(
+    lower,
+    upper,
+    variances,
+    *,
+    retention=None,
+    roles=None,
+    fixed_between_variance=None,
+    max_starts=None,
+):
+    r"""Maximise the censored likelihood in :math:`(m, \tau^2)` from several starts.
+
+    Parameters
+    ----------
+    lower, upper : :obj:`numpy.ndarray`
+        Interval bounds, as returned by :func:`bounds_from_states`.
+    variances : :obj:`numpy.ndarray`
+        Sampling variance :math:`s_i^2` of each study's estimate.
+    fixed_between_variance : :obj:`float`, optional
+        Hold :math:`\tau^2` at this value instead of estimating it. Provided to *measure* the
+        cost of freezing heterogeneity, not as a recommended mode.
+    max_starts : :obj:`int`, optional
+        Cap on the number of starting values. Defaults to all of them.
+
+    Returns
+    -------
+    :obj:`dict`
+        ``mean``, ``between_variance``, ``loglik``, ``n_informative``, ``converged``,
+        ``at_zero_boundary`` (the fit sits at :math:`\tau^2 = 0`), ``at_variance_cap``, and
+        ``valid``. ``mean`` is ``nan`` when no record is informative: there is no estimate then,
+        and a zero would read as one.
+
+    Notes
+    -----
+    Several starts are used because the interval likelihood is not globally concave in
+    :math:`(m, \tau^2)` and a boundary at :math:`\tau^2 = 0` is often active. The returned
+    ``converged`` flag reports the optimiser's own verdict at the best start; it is not a claim
+    that the maximum is global.
+    """
+    lower = np.asarray(lower, dtype=float)
+    upper = np.asarray(upper, dtype=float)
+    variances = np.asarray(variances, dtype=float)
+    if not (lower.shape == upper.shape == variances.shape):
+        raise ValueError(
+            f"lower, upper and variances must have the same shape; got {lower.shape}, "
+            f"{upper.shape} and {variances.shape}."
+        )
+    if np.any(variances <= 0):
+        raise ValueError("Every sampling variance must be positive.")
+    if np.any(lower > upper):
+        raise ValueError("Every lower bound must be no greater than its upper bound.")
+
+    informative = _informative_mask(lower, upper)
+    failure = {
+        "mean": np.nan,
+        "between_variance": np.nan,
+        "loglik": -np.inf,
+        "n_informative": int(informative.sum()),
+        "converged": False,
+        "at_zero_boundary": False,
+        "at_variance_cap": False,
+        "valid": False,
+    }
+    if not informative.any():
+        return failure
+
+    with np.errstate(invalid="ignore"):
+        centres = np.where(
+            np.isfinite(lower) & np.isfinite(upper),
+            (lower + upper) / 2.0,
+            np.where(np.isfinite(lower), lower, upper),
+        )
+    start_mean = float(np.mean(centres[informative]))
+    cap = _tau2_cap(lower, upper, variances)
+    scale = _variance_scale(lower, upper, variances)
+
+    if fixed_between_variance is not None:
+        between = float(fixed_between_variance)
+        if between < 0:
+            raise ValueError("fixed_between_variance must be non-negative.")
+
+        def objective(parameters):
+            value = censored_loglik(
+                parameters[0],
+                between,
+                lower,
+                upper,
+                variances,
+                retention=retention,
+                roles=roles,
+            )
+            gradient = censored_score(
+                parameters[0],
+                between,
+                lower,
+                upper,
+                variances,
+                retention=retention,
+                roles=roles,
+            )
+            return -value, -gradient[:1]
+
+        result = minimize(objective, x0=[start_mean], jac=True, method="L-BFGS-B")
+        if not np.isfinite(result.fun):
+            return failure
+        return {
+            "mean": float(result.x[0]),
+            "between_variance": between,
+            "loglik": float(-result.fun),
+            "n_informative": int(informative.sum()),
+            "converged": bool(result.success),
+            "at_zero_boundary": between == 0.0,
+            "at_variance_cap": False,
+            "valid": True,
+        }
+
+    def objective(parameters):
+        value = censored_loglik(
+            parameters[0],
+            parameters[1],
+            lower,
+            upper,
+            variances,
+            retention=retention,
+            roles=roles,
+        )
+        if not np.isfinite(value):
+            return np.inf, np.zeros(2)
+        return -value, -censored_score(
+            parameters[0],
+            parameters[1],
+            lower,
+            upper,
+            variances,
+            retention=retention,
+            roles=roles,
+        )
+
+    starts = [(start_mean, min(fraction * scale, cap)) for fraction in _TAU2_STARTS]
+    if max_starts is not None:
+        starts = starts[: max(int(max_starts), 1)]
+
+    best = None
+    for start in starts:
+        result = minimize(
+            objective,
+            x0=list(start),
+            jac=True,
+            method="L-BFGS-B",
+            bounds=[(None, None), (0.0, cap)],
+        )
+        if not np.isfinite(result.fun):
+            continue
+        if best is None or result.fun < best.fun:
+            best = result
+    if best is None:
+        return failure
+
+    return {
+        "mean": float(best.x[0]),
+        "between_variance": float(best.x[1]),
+        "loglik": float(-best.fun),
+        "n_informative": int(informative.sum()),
+        "converged": bool(best.success),
+        "at_zero_boundary": bool(best.x[1] <= 0.0),
+        "at_variance_cap": bool(best.x[1] >= cap * (1 - 1e-9)),
+        "valid": True,
+    }
+
+
+def profile_interval(
+    lower, upper, variances, *, level=0.95, fixed_between_variance=None, search=None, grid=257
+):
+    r"""Profile-likelihood interval for :math:`m`, with :math:`\tau^2` maximised out.
+
+    Inverts nothing and needs no degrees of freedom, so it survives the weak identification that
+    makes a Wald interval unreliable here. It still refers :math:`2\Delta\ell` to
+    :math:`\chi^2_1`, which needs the regularity that a boundary at :math:`\tau^2 = 0` can
+    break: ``touched_search_limit`` reports when a bound ran into the end of the search range
+    rather than crossing the cutoff, and that frequency belongs in any summary that quotes these
+    intervals.
+
+    Returns
+    -------
+    :obj:`dict`
+        ``lower``, ``upper``, ``level``, ``touched_search_limit`` and ``valid``. The bounds are
+        ``nan``, never zero, where they could not be found.
+    """
+    fit = fit_censored(lower, upper, variances, fixed_between_variance=fixed_between_variance)
+    unavailable = {
+        "lower": np.nan,
+        "upper": np.nan,
+        "level": float(level),
+        "touched_search_limit": True,
+        "valid": False,
+    }
+    if not fit["valid"]:
+        return unavailable
+
+    cutoff = float(chi2.ppf(level, 1)) / 2.0
+    peak = fit["loglik"]
+
+    variances = np.asarray(variances, dtype=float)
+    if search is None:
+        spread = np.sqrt(
+            _variance_scale(lower, upper, variances) + max(fit["between_variance"], 0.0)
+        )
+        search = 12.0 * spread + 1.0
+
+    def profile(mean):
+        if fixed_between_variance is not None:
+            return censored_loglik(mean, fixed_between_variance, lower, upper, variances)
+        best = -np.inf
+        cap = _tau2_cap(lower, upper, variances)
+        for fraction in _TAU2_STARTS:
+            start = min(fraction * _variance_scale(lower, upper, variances), cap)
+            result = minimize(
+                lambda parameter: (
+                    -censored_loglik(mean, parameter[0], lower, upper, variances),
+                    -censored_score(mean, parameter[0], lower, upper, variances)[1:],
+                ),
+                x0=[start],
+                jac=True,
+                method="L-BFGS-B",
+                bounds=[(0.0, cap)],
+            )
+            if np.isfinite(result.fun):
+                best = max(best, float(-result.fun))
+        return best
+
+    offsets = np.linspace(0.0, search, int(grid))
+    bounds = []
+    touched = False
+    for direction in (-1.0, 1.0):
+        crossing = np.nan
+        previous = (0.0, peak)
+        for offset in offsets[1:]:
+            candidate = fit["mean"] + direction * offset
+            value = profile(candidate)
+            if not np.isfinite(value):
+                break
+            if peak - value >= cutoff:
+                # Linear interpolation in the offset between the last two evaluations.
+                span = offset - previous[0]
+                gap_now, gap_before = peak - value, peak - previous[1]
+                weight = (
+                    0.0
+                    if gap_now == gap_before
+                    else (cutoff - gap_before) / (gap_now - gap_before)
+                )
+                crossing = fit["mean"] + direction * (previous[0] + weight * span)
+                break
+            previous = (offset, value)
+        if not np.isfinite(crossing):
+            touched = True
+        bounds.append(crossing)
+
+    return {
+        "lower": float(bounds[0]),
+        "upper": float(bounds[1]),
+        "level": float(level),
+        "touched_search_limit": touched,
+        "valid": bool(np.isfinite(bounds[0]) and np.isfinite(bounds[1])),
+    }
