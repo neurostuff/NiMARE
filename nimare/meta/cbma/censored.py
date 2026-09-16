@@ -929,3 +929,65 @@ def profile_interval(
         "touched_search_limit": touched,
         "valid": bool(np.isfinite(bounds[0]) and np.isfinite(bounds[1])),
     }
+
+
+def practical_prevalence(mean, between_variance, threshold=0.0):
+    r"""Share of studies whose own effect exceeds a stated threshold.
+
+    .. math:: \pi_\delta^+ = \Phi\!\left(\frac{m - \delta}{\tau}\right)
+
+    The design assessment proposes this in place of a structural-zero prevalence, and is right
+    that it avoids an implausible exact-zero interpretation. It is also right that "it is not
+    automatically identifiable because it has a better name": this is a function of the two
+    parameters already being estimated, so it carries no information they do not, and it
+    inherits the heterogeneity's uncertainty in full.
+
+    It inherits something worse as well. Its derivative in the heterogeneity is
+    :math:`(\delta - m)\varphi/\tau^2`, so **wherever the mean falls short of the threshold the
+    prevalence increases with heterogeneity**: at a mean of 0.10 below a threshold of 0.30 it
+    runs 0.000, 0.023, 0.159, 0.309, 0.401 as :math:`\tau` goes 0.05, 0.10, 0.20, 0.40, 0.80. A
+    number that can be moved from nothing to two fifths by between-study noise alone must not be
+    reported without the heterogeneity beside it, which is why :func:`practical_prevalence`
+    takes the variance as an argument rather than reading it off a fit.
+
+    Verified in ``proofs/practical_prevalence.py``.
+    """
+    between_variance = np.asarray(between_variance, dtype=float)
+    if np.any(between_variance < 0):
+        raise ValueError("The between-study variance cannot be negative.")
+    scale = np.sqrt(between_variance)
+    mean = np.asarray(mean, dtype=float)
+    threshold = np.asarray(threshold, dtype=float)
+    degenerate = scale <= 0
+    with np.errstate(divide="ignore", invalid="ignore"):
+        value = ndtr((mean - threshold) / scale)
+    # With no heterogeneity every study is the mean, so the prevalence is an indicator.
+    return np.where(degenerate, (mean > threshold).astype(float), value)
+
+
+def prevalence_times_conditional_mean_gap(mean, between_variance, threshold=0.0):
+    r"""How far :math:`\pi_\delta^+\,\mathbb{E}[\theta\mid\theta>\delta]` sits from the mean.
+
+    .. math::
+        \pi_\delta^+\,\mathbb{E}[\theta\mid\theta>\delta] - m
+        = \tau\,\varphi\!\left(\frac{m-\delta}{\tau}\right) - (1-\pi_\delta^+)\,m
+
+    The assessment warns that "multiplying prevalence by the conditional mean does not recover
+    the full marginal mean unless the complementary component has mean zero". This is that gap in
+    closed form. It is exposed rather than merely documented so that anyone tempted to form the
+    product can see what it costs first.
+
+    Its **sign flips**: the product overstates the marginal mean where the density term dominates
+    and understates it where the complementary mass does. It vanishes only as the threshold
+    recedes to :math:`-\infty`, where every study counts as above it -- so at any finite
+    threshold under a continuous effect distribution the assessment's "unless" is never met.
+    """
+    between_variance = np.asarray(between_variance, dtype=float)
+    scale = np.sqrt(np.clip(between_variance, 0.0, None))
+    mean = np.asarray(mean, dtype=float)
+    threshold = np.asarray(threshold, dtype=float)
+    prevalence = practical_prevalence(mean, between_variance, threshold)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        density = norm.pdf((mean - threshold) / scale)
+    density = np.where(scale > 0, density, 0.0)
+    return scale * density - (1.0 - prevalence) * mean

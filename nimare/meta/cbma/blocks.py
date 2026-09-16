@@ -32,6 +32,11 @@ study's total is whatever survives. It becomes a cap only when a study is given 
 which is a thing to do deliberately and to say, not a default. :func:`block_loglik` takes as many
 blocks per study as it is given and imposes no limit.
 
+**This is a composite likelihood unless you say otherwise.** ``study_index`` groups blocks
+by the study they came from and makes the likelihood exact. Without it every block is treated as
+its own study, which overstates the information badly once a study contributes several blocks --
+see :func:`standard_error_inflation`.
+
 **When heights are worth reading.** The reported height is a location family in the mean, so its
 mean-score is minus its height-score and its contribution is an ordinary location-family Fisher
 information. Comparing that with the report indicator's information shows how much the height
@@ -70,6 +75,43 @@ def _standardised(values, mean, offsets, scales):
     return (values[:, None] - mean - offsets[None, :]) / scales[:, None]
 
 
+def _conditional_log_terms(
+    mean, element_variances, heights, thresholds, elements, offsets, use_heights
+):
+    """Log-probability of each block's observation given each study-effect node.
+
+    The ``(blocks, nodes)`` matrix everything else is built from. Keeping it explicit is what
+    makes the exact per-study likelihood possible: the shared study effect has to be held fixed
+    across a study's blocks before it is integrated out, not integrated out block by block.
+    """
+    scales = np.sqrt(element_variances)
+    reported = np.isfinite(heights)
+    terms = np.empty((heights.size, offsets.size), dtype=float)
+
+    cut = _standardised(thresholds, mean, offsets, scales)
+    log_silent = elements[:, None] * log_ndtr(cut)
+
+    if reported.any():
+        if use_heights:
+            standardised = _standardised(heights[reported], mean, offsets, scales[reported])
+            counts = elements[reported][:, None]
+            terms[reported] = (
+                np.log(elements[reported])[:, None]
+                - np.log(scales[reported])[:, None]
+                + (counts - 1.0) * log_ndtr(standardised)
+                - 0.5 * standardised**2
+                - 0.5 * np.log(2.0 * np.pi)
+            )
+        else:
+            # log(1 - exp(x)) for x <= 0, computed the stable way, conditional on the node
+            # rather than on the marginal silence probability.
+            terms[reported] = np.log(-np.expm1(np.minimum(log_silent[reported], -1e-300)))
+    silent = ~reported
+    if silent.any():
+        terms[silent] = log_silent[silent]
+    return terms
+
+
 def block_loglik(
     mean,
     between_variance,
@@ -78,6 +120,7 @@ def block_loglik(
     heights,
     thresholds,
     elements,
+    study_index=None,
     use_heights=True,
     nodes=DEFAULT_NODES,
 ):
@@ -98,10 +141,26 @@ def block_loglik(
         reported height is an order statistic and moves with how much signal a study had.
     elements : :obj:`numpy.ndarray`
         Number of elements :math:`M_i` in each block.
+    study_index : :obj:`numpy.ndarray`, optional
+        Which study each block belongs to. **This changes the likelihood, not just its
+        bookkeeping.** Blocks of one study share that study's effect, so the exact likelihood
+        integrates it out once per study,
+        :math:`L_i = \int \prod_b t_b(u)\,p(u)\,du`. Left unset, every block is treated as its
+        own study, which gives the *composite* likelihood
+        :math:`\tilde L_i = \prod_b \int t_b(u)\,p(u)\,du` -- correct only when that is
+        actually true.
+
+        The two are not close. For an all-silent study the composite version understates the
+        likelihood and **overstates the information**, because it counts one draw of the study
+        effect as many. Measured at nine elements per block and a strict threshold, the ratio of
+        exact to composite standard error runs 1.000, 0.798, 0.615, 0.421, 0.204 at 1, 2, 4, 10
+        and 50 blocks per study: a whole-brain composite fit reports an interval five times too
+        narrow. Derived in ``proofs/composite_block_likelihood.py``;
+        :func:`standard_error_inflation` measures it for a given configuration.
     use_heights : :obj:`bool`, default=True
-        Read the reported height. With ``False`` a report contributes only
-        :math:`\log[1 - P(H \le c)]`, which is the indicator-only likelihood -- the comparison
-        the design assessment calls modest and which this makes measurable.
+        Read the reported height. With ``False`` a report contributes only the probability that
+        the block reported at all, which is the indicator-only likelihood -- the comparison the
+        design assessment calls modest and which this makes measurable.
     nodes : :obj:`int`
         Gauss-Hermite nodes for the integral over the study effect.
 
@@ -143,44 +202,69 @@ def block_loglik(
         )
 
     offsets, log_weights = _quadrature(between_variance, nodes)
-    scales = np.sqrt(element_variances)
+    terms = _conditional_log_terms(
+        mean, element_variances, heights, thresholds, elements, offsets, use_heights
+    )
 
-    total = 0.0
-
-    if reported.any():
-        if use_heights:
-            standardised = _standardised(heights[reported], mean, offsets, scales[reported])
-            counts = elements[reported][:, None]
-            log_density = (
-                np.log(elements[reported])[:, None]
-                - np.log(scales[reported])[:, None]
-                + (counts - 1.0) * log_ndtr(standardised)
-                - 0.5 * standardised**2
-                - 0.5 * np.log(2.0 * np.pi)
+    if study_index is None:
+        totals = logsumexp(terms + log_weights[None, :], axis=1)
+    else:
+        labels = np.asarray(study_index).reshape(-1)
+        if labels.size != heights.size:
+            raise ValueError(
+                f"study_index must have one entry per block; got {labels.size} for "
+                f"{heights.size} blocks."
             )
-            terms = logsumexp(log_density + log_weights[None, :], axis=1)
-        else:
-            standardised = _standardised(thresholds[reported], mean, offsets, scales[reported])
-            log_silent = elements[reported][:, None] * log_ndtr(standardised)
-            silent = logsumexp(log_silent + log_weights[None, :], axis=1)
-            # log(1 - exp(x)) for x <= 0, computed the stable way.
-            terms = np.log(-np.expm1(np.minimum(silent, -1e-300)))
-        if not np.all(np.isfinite(terms)):
-            return -np.inf
-        total += float(terms.sum())
+        codes, positions = np.unique(labels, return_inverse=True)
+        stacked = np.zeros((codes.size, offsets.size), dtype=float)
+        np.add.at(stacked, positions, terms)
+        totals = logsumexp(stacked + log_weights[None, :], axis=1)
 
-    silent_blocks = ~reported
-    if silent_blocks.any():
-        standardised = _standardised(
-            thresholds[silent_blocks], mean, offsets, scales[silent_blocks]
+    if not np.all(np.isfinite(totals)):
+        return -np.inf
+    return float(totals.sum())
+
+
+def standard_error_inflation(
+    mean, between_variance, element_variances, *, step=1e-3, study_index=None, **kwargs
+):
+    r"""Ratio of the exact standard error to the composite one, at this configuration.
+
+    Returns ``exact_se / composite_se``, which is at most one: the composite likelihood treats
+    one draw of a study's effect as many independent ones, so it overstates the information and
+    understates the interval. A value of 0.5 means a composite fit's interval is half the width
+    it should be.
+
+    This is the calibration the design assessment asks for in its step 4 -- "assess approximation
+    error against the small exact models" -- and it is a diagnostic, not a correction. Applying
+    it would need a sandwich or Godambe adjustment, which this does not do.
+    """
+    if study_index is None:
+        raise ValueError(
+            "standard_error_inflation compares a grouped fit against an ungrouped one, so it "
+            "needs study_index; without it the two are the same likelihood."
         )
-        log_silent = elements[silent_blocks][:, None] * log_ndtr(standardised)
-        terms = logsumexp(log_silent + log_weights[None, :], axis=1)
-        if not np.all(np.isfinite(terms)):
-            return -np.inf
-        total += float(terms.sum())
 
-    return total
+    def curvature(grouping):
+        values = [
+            block_loglik(
+                candidate,
+                between_variance,
+                element_variances,
+                study_index=grouping,
+                **kwargs,
+            )
+            for candidate in (mean - step, mean, mean + step)
+        ]
+        if not all(np.isfinite(values)):
+            return np.nan
+        return -(values[0] - 2 * values[1] + values[2]) / step**2
+
+    exact = curvature(study_index)
+    composite = curvature(None)
+    if not (np.isfinite(exact) and np.isfinite(composite)) or composite <= 0 or exact <= 0:
+        return np.nan
+    return float(np.sqrt(exact / composite))
 
 
 def quadrature_is_converged(

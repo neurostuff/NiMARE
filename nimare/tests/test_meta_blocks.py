@@ -13,6 +13,7 @@ from nimare.meta.cbma.blocks import (
     block_loglik,
     block_report_probability,
     quadrature_is_converged,
+    standard_error_inflation,
 )
 from nimare.meta.cbma.censored import (
     ObservationState,
@@ -279,3 +280,113 @@ def test_zero_heterogeneity_is_a_point_mass_not_a_degenerate_integral():
         elements=np.array([9]),
     )
     assert value == pytest.approx(nearby, abs=1e-6)
+
+
+def test_grouping_blocks_by_study_changes_the_likelihood_and_lowers_the_information():
+    """Blocks of one study share its effect, so integrating it out once is a different model.
+
+    Proved in ``proofs/composite_block_likelihood.py``: the discrepancy is the covariance of the
+    block terms under the study effect, and for an all-silent study every term decreases in that
+    effect, so the terms are positively associated. The composite version therefore understates
+    the likelihood and overstates the information -- it counts one draw as many.
+    """
+    mean, between, within, elements, threshold = 0.4, 0.0225, 0.04, 9, 0.75
+    ratios = []
+    for blocks in (1, 2, 4, 10, 50):
+        heights = np.full(blocks, np.nan)
+        thresholds = np.full(blocks, threshold)
+        counts = np.full(blocks, elements)
+        variances = np.full(blocks, within)
+        one_study = np.zeros(blocks, dtype=int)
+
+        exact = block_loglik(
+            mean,
+            between,
+            variances,
+            heights=heights,
+            thresholds=thresholds,
+            elements=counts,
+            study_index=one_study,
+        )
+        composite = block_loglik(
+            mean,
+            between,
+            variances,
+            heights=heights,
+            thresholds=thresholds,
+            elements=counts,
+        )
+        if blocks == 1:
+            assert exact == composite
+        else:
+            assert composite < exact
+
+        ratios.append(
+            standard_error_inflation(
+                mean,
+                between,
+                variances,
+                heights=heights,
+                thresholds=thresholds,
+                elements=counts,
+                study_index=one_study,
+            )
+        )
+
+    assert ratios[0] == pytest.approx(1.0, abs=1e-6)
+    assert np.all(np.diff(ratios) < 0)
+    assert ratios[-1] < 0.25
+
+
+def test_one_block_per_study_is_the_same_whether_or_not_it_is_grouped():
+    """Grouping can only matter where a group has more than one member."""
+    rng = np.random.default_rng(29)
+    blocks = 12
+    heights = np.where(rng.random(blocks) < 0.5, 0.95, np.nan)
+    thresholds = np.full(blocks, 0.75)
+    counts = np.full(blocks, 9)
+    variances = rng.uniform(0.02, 0.06, size=blocks)
+    distinct = np.arange(blocks)
+
+    assert block_loglik(
+        0.4,
+        0.0225,
+        variances,
+        heights=heights,
+        thresholds=thresholds,
+        elements=counts,
+        study_index=distinct,
+    ) == pytest.approx(
+        block_loglik(
+            0.4,
+            0.0225,
+            variances,
+            heights=heights,
+            thresholds=thresholds,
+            elements=counts,
+        ),
+        abs=1e-9,
+    )
+
+
+def test_a_mismatched_study_index_is_refused():
+    """A grouping that does not label every block cannot be applied silently."""
+    with pytest.raises(ValueError, match="one entry per block"):
+        block_loglik(
+            0.4,
+            0.0225,
+            np.full(3, 0.04),
+            heights=np.full(3, np.nan),
+            thresholds=np.full(3, 0.75),
+            elements=np.full(3, 9),
+            study_index=np.array([0, 0]),
+        )
+    with pytest.raises(ValueError, match="needs study_index"):
+        standard_error_inflation(
+            0.4,
+            0.0225,
+            np.full(3, 0.04),
+            heights=np.full(3, np.nan),
+            thresholds=np.full(3, 0.75),
+            elements=np.full(3, 9),
+        )

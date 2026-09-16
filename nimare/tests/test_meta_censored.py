@@ -15,6 +15,8 @@ from nimare.meta.cbma.censored import (
     censored_loglik,
     censored_score,
     fit_censored,
+    practical_prevalence,
+    prevalence_times_conditional_mean_gap,
     profile_interval,
     retention_roles,
 )
@@ -467,3 +469,56 @@ def test_estimating_retention_without_roles_is_refused():
     lower, upper, roles = _retention_setup([True, False, False])
     with pytest.raises(ValueError, match="requires roles"):
         fit_censored(lower, upper, np.full(3, 0.04), estimate_retention=True)
+
+
+def test_practical_prevalence_rises_with_heterogeneity_below_the_threshold_and_falls_above_it():
+    """Its derivative in the heterogeneity carries the sign of the threshold minus the mean.
+
+    Proved in ``proofs/practical_prevalence.py``. This is the property that makes the quantity
+    dangerous to report alone: at a mean that never reaches the threshold, between-study noise
+    alone drives it from nothing to two fifths.
+    """
+    spreads = np.array([0.05, 0.1, 0.2, 0.4, 0.8])
+    below = practical_prevalence(0.1, spreads**2, 0.3)
+    assert np.all(np.diff(below) > 0)
+    assert below[0] < 1e-4 and below[-1] > 0.35
+
+    above = practical_prevalence(0.5, spreads**2, 0.3)
+    assert np.all(np.diff(above) < 0)
+
+    # At the threshold itself the heterogeneity cannot matter: the answer is a half throughout.
+    at_threshold = practical_prevalence(0.3, spreads**2, 0.3)
+    assert np.allclose(at_threshold, 0.5)
+
+
+def test_the_prevalence_product_gap_matches_its_closed_form_and_changes_sign():
+    """The gap is tau*phi - (1-pi)*m, which is not signed, and vanishes only in the limit."""
+    signs = set()
+    for mean in (0.1, 0.3, 0.5):
+        for spread in (0.1, 0.2, 0.4):
+            for threshold in (0.0, 0.2):
+                variance = spread**2
+                prevalence = float(practical_prevalence(mean, variance, threshold))
+                density = float(norm.pdf((mean - threshold) / spread))
+                predicted = spread * density - (1.0 - prevalence) * mean
+                assert float(
+                    prevalence_times_conditional_mean_gap(mean, variance, threshold)
+                ) == pytest.approx(predicted, abs=1e-12)
+                signs.add(np.sign(predicted))
+    assert signs == {-1.0, 1.0}, "the gap should take both signs over this grid"
+
+    # As the threshold recedes the whole distribution counts as above it and the gap closes.
+    receding = [
+        abs(float(prevalence_times_conditional_mean_gap(0.3, 0.04, threshold)))
+        for threshold in (-0.5, -1.0, -2.0, -4.0)
+    ]
+    assert receding == sorted(receding, reverse=True)
+    assert receding[-1] < 1e-8
+
+
+def test_a_prevalence_with_no_heterogeneity_is_an_indicator_not_a_division_by_zero():
+    """Every study is the mean then, so the share above a threshold is zero or one."""
+    assert float(practical_prevalence(0.4, 0.0, 0.2)) == 1.0
+    assert float(practical_prevalence(0.1, 0.0, 0.2)) == 0.0
+    with pytest.raises(ValueError, match="cannot be negative"):
+        practical_prevalence(0.4, -0.01, 0.2)

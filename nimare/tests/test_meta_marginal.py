@@ -12,6 +12,7 @@ import pytest
 
 from nimare.meta.cbma.marginal import (
     achievable_ratio,
+    augmented_mean,
     control_variate_mean,
     optimal_coefficient,
 )
@@ -150,3 +151,70 @@ def test_a_predictor_that_never_varies_leaves_the_image_mean_untouched():
     out = control_variate_mean(values, flat, np.ones((40, 8)), lam)
     assert out["estimate"] == pytest.approx(values.mean(axis=0))
     assert not out["valid"].any()
+
+
+def test_the_augmented_mean_is_exactly_the_control_variate_with_the_coefficient_pinned_at_one():
+    """At a constant propensity the two estimators coincide, which is a proven identity.
+
+    Verified in ``proofs/propensity_augmented_mean.py``. It matters because it says the
+    augmentation is not an alternative model but a constrained one, at a coefficient the
+    variance-minimising value almost never takes -- so it buys shift-robustness by giving up the
+    variance reduction, and the trade is measurable rather than a matter of taste.
+    """
+    rng = np.random.default_rng(71)
+    studies, voxels = 25, 4
+    predictions = rng.normal(0.3, 0.2, size=(studies, voxels))
+    available = np.zeros(studies, dtype=bool)
+    available[:10] = True
+    values = predictions[available] + rng.normal(0.1, 0.15, size=(10, voxels))
+
+    propensity = available.sum() / studies
+    augmented = augmented_mean(values, predictions, available, propensity)
+
+    pooled = predictions.mean(axis=0)
+    image_values = values.mean(axis=0)
+    image_predictions = predictions[available].mean(axis=0)
+    pinned = image_values + 1.0 * (pooled - image_predictions)
+
+    assert np.allclose(augmented["estimate"], pinned, rtol=0, atol=1e-12)
+
+
+def test_the_augmented_mean_is_unbiased_under_ignorable_sharing():
+    """Inverse-propensity weighting undoes a sharing probability that differs by stratum.
+
+    The tolerance comes from the estimator's own spread across replications rather than being
+    chosen: three standard errors of the mean over the replications.
+    """
+    rng = np.random.default_rng(83)
+    truth = 0.4
+    estimates = []
+    for _ in range(600):
+        studies = 120
+        stratum = rng.integers(0, 2, studies)
+        propensity = np.where(stratum == 0, 0.9, 0.3)
+        effects = truth + 0.3 * stratum + rng.normal(0, 0.25, size=studies)
+        predictions = (0.5 * effects + rng.normal(0, 0.2, size=studies))[:, None]
+        available = rng.random(studies) < propensity
+        result = augmented_mean(effects[available][:, None], predictions, available, propensity)
+        estimates.append(float(result["estimate"][0]))
+
+    estimates = np.asarray(estimates)
+    target = truth + 0.3 * 0.5
+    assert estimates.mean() == pytest.approx(
+        target, abs=3 * estimates.std() / np.sqrt(estimates.size)
+    )
+
+
+def test_an_impossible_propensity_or_a_mismatched_cohort_is_refused():
+    """A zero propensity means a study could not have shared, so no weighting recovers it."""
+    predictions = np.zeros((6, 2))
+    available = np.array([True, True, False, False, False, False])
+    values = np.zeros((2, 2))
+    with pytest.raises(ValueError, match=r"in \(0, 1\]"):
+        augmented_mean(values, predictions, available, 0.0)
+    with pytest.raises(ValueError, match=r"in \(0, 1\]"):
+        augmented_mean(values, predictions, available, 1.5)
+    with pytest.raises(ValueError, match="one row per available"):
+        augmented_mean(np.zeros((3, 2)), predictions, available, 0.5)
+    with pytest.raises(ValueError, match="one entry per study"):
+        augmented_mean(values, predictions, np.array([True, False]), 0.5)

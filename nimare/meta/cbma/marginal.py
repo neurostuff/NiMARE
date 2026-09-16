@@ -203,3 +203,90 @@ def achievable_ratio(correlation, n_images, n_coordinates):
     """
     rho = np.asarray(correlation, dtype=float)
     return 1.0 - rho**2 / (1.0 + n_images / n_coordinates)
+
+
+def augmented_mean(values, predictions, available, propensity):
+    r"""Propensity-augmented mean, for image sharing that is not random.
+
+    .. math::
+        \hat m = \frac{1}{K}\sum_i\left[f(X_i)
+        + \frac{A_i}{e(X_i)}\{Y_i - f(X_i)\}\right]
+
+    The design assessment offers this as the one route against its "main vulnerability",
+    non-random image sharing. Three things about it are worth knowing before using it, all
+    verified in ``proofs/propensity_augmented_mean.py``:
+
+    **It is the control variate with the coefficient pinned at one.** At a constant propensity
+    :math:`e = n/K` the two coincide exactly, with the pooled predictor mean in place of the
+    coordinate cohort's. Since :math:`\lambda^* = \operatorname{Cov}(Y,f)/
+    [(1+n/N)\operatorname{Var}(f)]` equals one only by coincidence, the augmentation buys
+    robustness to a cohort shift by giving up the variance reduction. Which trade is better is an
+    empirical question about the size of the shift, and both sides of it are measurable --
+    ``cohort_shift`` from :func:`control_variate_mean` and ``variance_ratio`` from the same call.
+
+    **Overlap is not a formality.** The weighted residual's variance is :math:`v/e`, so halving a
+    stratum's sharing probability doubles its variance contribution. Measured on a two-stratum
+    simulation, the estimator's standard deviation runs 0.028, 0.039, 0.067, 0.120 as the
+    smaller propensity falls 0.60, 0.30, 0.10, 0.03 -- unbiased throughout, and four times
+    noisier at the end.
+
+    **It does not fix outcome-dependent sharing**, and the residual bias has a closed form. If
+    sharing is tilted by the outcome, :math:`P(A=1\mid X,Y) = e(X)h(Y)/\mathbb{E}[h(Y)\mid X]`,
+    the bias is :math:`\operatorname{Cov}(h(Y), Y)/\mathbb{E}[h(Y)]` within each stratum:
+    positive when studies that found something share more, which is the direction that matters.
+    No propensity model built from metadata removes it, so this must not be presented as a
+    remedy for publication bias.
+
+    Parameters
+    ----------
+    values : :obj:`numpy.ndarray` of shape (n_available, n_voxels)
+        Effects of the studies whose images are available, in the order ``available`` selects.
+    predictions : :obj:`numpy.ndarray` of shape (n_studies, n_voxels)
+        The predictor for **every** study, shared or not.
+    available : :obj:`numpy.ndarray` of :obj:`bool`, shape (n_studies,)
+        Which studies supplied an image.
+    propensity : :obj:`float` or :obj:`numpy.ndarray`
+        Sharing probability of each study. Estimated propensities add their own uncertainty,
+        which this does not propagate.
+
+    Returns
+    -------
+    :obj:`dict`
+        ``estimate``, ``se``, ``effective_share`` (the mean inverse-propensity weight among
+        available studies, which should be near one and drifts when the propensities are wrong),
+        ``minimum_propensity`` and ``valid``.
+    """
+    predictions = np.atleast_2d(np.asarray(predictions, dtype=float))
+    values = np.atleast_2d(np.asarray(values, dtype=float))
+    available = np.asarray(available, dtype=bool).reshape(-1)
+    if available.size != predictions.shape[0]:
+        raise ValueError(
+            f"available must have one entry per study; got {available.size} for "
+            f"{predictions.shape[0]} studies."
+        )
+    if values.shape[0] != int(available.sum()):
+        raise ValueError(
+            f"values must have one row per available study; got {values.shape[0]} for "
+            f"{int(available.sum())} available."
+        )
+    weights = np.broadcast_to(np.asarray(propensity, dtype=float), (available.size,)).astype(float)
+    if np.any(~np.isfinite(weights)) or np.any(weights <= 0) or np.any(weights > 1):
+        raise ValueError(
+            "Every propensity must be finite and in (0, 1]. A propensity of zero means a study "
+            "could not have shared an image, so no weighting recovers it."
+        )
+
+    contributions = predictions.copy()
+    contributions[available] += (values - predictions[available]) / weights[available, None]
+    count = available.size
+    estimate = contributions.mean(axis=0)
+    spread = contributions.std(axis=0, ddof=1) if count > 1 else np.full(estimate.shape, np.inf)
+    standard_error = spread / np.sqrt(count) if count > 1 else np.full(estimate.shape, np.inf)
+
+    return {
+        "estimate": estimate,
+        "se": standard_error,
+        "effective_share": float(np.mean(1.0 / weights[available])) if available.any() else np.nan,
+        "minimum_propensity": float(weights.min()),
+        "valid": bool(count > 1 and available.any()),
+    }
