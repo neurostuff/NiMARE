@@ -306,6 +306,54 @@ def test_the_removed_options_fail_loudly_rather_than_being_ignored():
             CBES(**{gone: 1.0})
 
 
+def test_the_spatial_null_rearranges_the_same_values_but_keeps_them_clustered(
+    studyset, small_mask
+):
+    """The spatial surrogate must move the same observations, only more coherently.
+
+    Two properties make it a null rather than a different model. It rearranges exactly the
+    pairs the study reported, so the marginal distribution of ``g`` is untouched and only the
+    arrangement is new; and it keeps the image's spatial autocorrelation, which is the whole
+    reason it exists, since scattering the values is what leaves the family-wise rate liberal.
+    """
+    estimator = CBES(
+        mask=small_mask,
+        null_method="spatial-images",
+        threshold="reporting_threshold",
+        n_iters=10,
+    )
+    estimator.fit(studyset)
+    rng = np.random.default_rng(0)
+    original = estimator._image_studies_
+    spatial = estimator._spatial_image_surrogates(rng)
+    scrambled = estimator._permute_image_values(rng)
+    mask_bool = estimator._mask_bool()
+
+    def roughness(values, usable):
+        volume = np.zeros(mask_bool.shape)
+        volume[mask_bool] = np.where(usable, values, 0.0)
+        return float(np.mean(np.diff(volume, axis=0) ** 2))
+
+    assert set(spatial) == set(original)
+    rougher = 0
+    for study_id, (g, var_g, usable) in original.items():
+        g_spatial, var_spatial, _ = spatial[study_id]
+        # Exactly the reported pairs, rearranged: the sorted values are unchanged.
+        assert np.allclose(np.sort(g_spatial[usable]), np.sort(g[usable]))
+        assert np.allclose(np.sort(var_spatial[usable]), np.sort(var_g[usable]))
+        # And g keeps its variance, since the pair travels together.
+        pairs = {
+            (round(float(a), 10), round(float(b), 10))
+            for a, b in zip(g_spatial[usable], var_spatial[usable])
+        }
+        assert pairs <= {
+            (round(float(a), 10), round(float(b), 10)) for a, b in zip(g[usable], var_g[usable])
+        }
+        if roughness(scrambled[study_id][0], usable) > roughness(g_spatial, usable):
+            rougher += 1
+    assert rougher == len(original), "the scramble must be rougher than the spatial surrogate"
+
+
 def test_the_only_nulls_randomize_images():
     """The coordinate magnitudes are gone, so there is nothing left to permute over them.
 

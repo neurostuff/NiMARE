@@ -2411,9 +2411,10 @@ class CBES(Estimator):
                 continue
             volume = np.zeros(shape, dtype=float)
             volume[mask_bool] = np.where(usable, g, 0.0)
-            spectrum = np.fft.rfftn(volume)
+            axes = tuple(range(volume.ndim))
+            spectrum = np.fft.rfftn(volume, axes=axes)
             phases = rng.uniform(0.0, 2.0 * np.pi, size=spectrum.shape)
-            surrogate = np.fft.irfftn(np.abs(spectrum) * np.exp(1j * phases), s=shape)
+            surrogate = np.fft.irfftn(np.abs(spectrum) * np.exp(1j * phases), s=shape, axes=axes)
             draw = surrogate[mask_bool][where]
 
             # The voxel holding the k-th largest surrogate value takes the k-th largest pair,
