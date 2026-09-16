@@ -230,10 +230,11 @@ class CBMRModel(torch.nn.Module):
         if self.information_method == "closed_form":
             closed_form = closed_form_information(self.distribution)
             if closed_form is not None:
+                result = closed_form(self)
                 if not self._closed_form_warned:
                     self._closed_form_warned = True
                     LGR.warning(_CLOSED_FORM_WARNING)
-                return closed_form(self)
+                return result
 
         return self._autodiff_information_matrix()
 
