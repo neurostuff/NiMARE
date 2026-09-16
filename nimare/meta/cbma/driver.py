@@ -419,6 +419,108 @@ def _grid_fit(lower, upper, variances, roles, *, between_variance, retention, cu
     }
 
 
+def _fit_one(index, position, studies_at, images_at, settings, cache):
+    """Fit one location and return its row, shared by the serial loop and the workers.
+
+    One implementation for both, so a parallel run cannot compute something a serial run would
+    not. ``cache`` is a single-entry, caller-owned dictionary holding the flattened bundle for
+    the study list last seen, which is the same object for every location in every caller here.
+
+    **Not a module-level cache.** The first version kept one, keyed on ``id(studies)``, and the
+    tests caught it immediately: a two-sided call and a one-sided call on the same study list
+    returned identical estimates, because the second reused the first's bundle and the protocol
+    is baked into it. A global keyed on an object's identity is also unsound on its own terms,
+    since an id is reusable once the object is collected. Caller-owned state cannot leak between
+    calls, and per-chunk state cannot leak between workers.
+    """
+    images = images_at(index) if images_at is not None else None
+    here = studies_at(index)
+    bundle = cache.get("bundle")
+    if bundle is None or bundle[0] is not here:
+        bundle = (here, bundle_studies(here, sided=settings["sided"]))
+        cache["bundle"] = bundle
+    lower, upper, variances, roles = records_from_bundle(
+        bundle[1],
+        position,
+        settings["reach"],
+        image_values=None if images is None else images[0],
+        image_variances=None if images is None else images[1],
+    )
+    # Retention is passed only where it can act. At 1.0 the mixture is the certain-silence
+    # reading, so supplying it would change nothing while suggesting otherwise.
+    retention = settings["retention"]
+    extra = (
+        {"retention": retention, "roles": roles}
+        if (retention < 1.0 and (roles != 0).any())
+        else {}
+    )
+    shrink = settings["shrink"]
+    between = float(shrink.get("fixed_between_variance") or 0.0)
+    if settings["method"] == "grid":
+        grid = _grid_fit(
+            lower,
+            upper,
+            variances,
+            roles,
+            between_variance=between,
+            retention=extra.get("retention"),
+            cutoff=settings["cutoff"],
+        )
+        if grid is None:
+            return None
+        return {
+            "estimate": grid["mean"],
+            "between_variance": between,
+            "valid": True,
+            "converged": True,
+            "lower": grid["lower"],
+            "upper": grid["upper"],
+            "touched_search_limit": bool(grid["touched_search_limit"]),
+        }
+
+    fit = fit_censored(lower, upper, variances, **shrink, **extra)
+    interval = profile_interval(
+        lower, upper, variances, level=settings["level"], **shrink, **extra
+    )
+    return {
+        "estimate": fit["mean"],
+        "between_variance": fit["between_variance"],
+        "valid": bool(fit["valid"]),
+        "converged": bool(fit["converged"]),
+        "lower": interval["lower"],
+        "upper": interval["upper"],
+        "touched_search_limit": bool(interval.get("touched_search_limit", False)),
+    }
+
+
+def _fit_chunk(indices, positions, studies_at, images_at, settings):
+    """Fit one contiguous block of locations and return its rows.
+
+    A module-level function rather than a closure because joblib has to ship it to a worker.
+    The *global* index is passed through, not the position within the chunk: ``studies_at`` and
+    ``images_at`` are indexed by location, so renumbering them would hand each worker a
+    different corpus than the serial path would -- silently, and only for locations after the
+    first chunk.
+    """
+    rows = []
+    cache = {}
+    for index in indices:
+        rows.append(
+            (
+                index,
+                _fit_one(
+                    int(index),
+                    positions[int(index)],
+                    studies_at,
+                    images_at,
+                    settings,
+                    cache,
+                ),
+            )
+        )
+    return rows
+
+
 def fit_locations(
     positions,
     studies_at,
@@ -430,8 +532,16 @@ def fit_locations(
     images_at=None,
     sided="two",
     method="exact",
+    n_jobs=1,
 ):
     r"""Fit every location independently and return estimates, intervals and failures.
+
+    ``n_jobs`` splits the locations across processes. Every location is an independent fit, so
+    this is embarrassingly parallel and the only reason it is not the default is that a process
+    pool costs a second or two to start, which dominates a small run. ``0`` or a negative value
+    means every core, following :func:`~nimare.utils._check_ncores`. Locations are dispatched in
+    contiguous chunks rather than one task each: at a few milliseconds per location the dispatch
+    overhead would otherwise be a large share of the work.
 
     ``method="grid"`` replaces the per-location optimiser and interval search with a single
     vectorised pass over a grid of means (:func:`_grid_fit`), which profiling identified as the
@@ -477,6 +587,7 @@ def fit_locations(
     count = positions.shape[0]
     if method not in ("exact", "grid"):
         raise ValueError(f"method must be 'exact' or 'grid'; got {method!r}.")
+    n_jobs = int(n_jobs)
     if method == "grid" and fixed_between_variance is None:
         raise ValueError(
             "method='grid' profiles the mean on a grid at a fixed between-study variance; "
@@ -497,60 +608,40 @@ def fit_locations(
         else {"fixed_between_variance": float(fixed_between_variance)}
     )
 
-    bundled = None
-    for index in range(count):
-        images = images_at(index) if images_at is not None else None
-        here = studies_at(index)
-        # The bundle is rebuilt only when the study list changes identity. Flattening 160 studies
-        # costs about as much as one location's fit, so doing it per location made record
-        # building half of a whole-brain run; almost every caller returns the same list for every
-        # location, and one that does not still gets a correct answer, just no saving.
-        if bundled is None or bundled[0] is not here:
-            bundled = (here, bundle_studies(here, sided=sided))
-        lower, upper, variances, roles = records_from_bundle(
-            bundled[1],
-            positions[index],
-            reach,
-            image_values=None if images is None else images[0],
-            image_variances=None if images is None else images[1],
-        )
-        # Retention is passed only where it can act. At 1.0 the mixture is the certain-silence
-        # reading, so supplying it would change nothing while suggesting otherwise.
-        extra = (
-            {"retention": retention, "roles": roles}
-            if (retention < 1.0 and (roles != 0).any())
-            else {}
-        )
-        if method == "grid":
-            grid = _grid_fit(
-                lower,
-                upper,
-                variances,
-                roles,
-                between_variance=float(shrink.get("fixed_between_variance") or 0.0),
-                retention=extra.get("retention"),
-                cutoff=float(chi2.ppf(level, 1)) / 2.0,
-            )
-            if grid is None:
-                continue
-            out["estimate"][index] = grid["mean"]
-            out["between_variance"][index] = float(shrink.get("fixed_between_variance") or 0.0)
-            out["valid"][index] = True
-            out["converged"][index] = True
-            out["lower"][index] = grid["lower"]
-            out["upper"][index] = grid["upper"]
-            out["touched_search_limit"][index] = bool(grid["touched_search_limit"])
-            continue
+    settings = {
+        "reach": float(reach),
+        "retention": float(retention),
+        "sided": sided,
+        "method": method,
+        "level": float(level),
+        "shrink": shrink,
+        "cutoff": float(chi2.ppf(level, 1)) / 2.0,
+    }
 
-        fit = fit_censored(lower, upper, variances, **shrink, **extra)
-        interval = profile_interval(lower, upper, variances, level=level, **shrink, **extra)
-        out["estimate"][index] = fit["mean"]
-        out["between_variance"][index] = fit["between_variance"]
-        out["valid"][index] = bool(fit["valid"])
-        out["converged"][index] = bool(fit["converged"])
-        out["lower"][index] = interval["lower"]
-        out["upper"][index] = interval["upper"]
-        out["touched_search_limit"][index] = bool(interval.get("touched_search_limit", False))
+    if n_jobs == 1:
+        rows = _fit_chunk(range(count), positions, studies_at, images_at, settings)
+    else:
+        from joblib import Parallel, delayed
+
+        from nimare.utils import _check_ncores
+
+        workers = _check_ncores(n_jobs)
+        # Chunked rather than one task per location: at 7 ms a location the dispatch overhead
+        # would otherwise be a large share of the work. Contiguous chunks also keep the bundle
+        # cache useful inside each worker.
+        chunks = np.array_split(np.arange(count), max(workers * 4, 1))
+        gathered = Parallel(n_jobs=workers)(
+            delayed(_fit_chunk)(chunk, positions, studies_at, images_at, settings)
+            for chunk in chunks
+            if chunk.size
+        )
+        rows = [row for chunk_rows in gathered for row in chunk_rows]
+
+    for index, row in rows:
+        if row is None:
+            continue
+        for key, value in row.items():
+            out[key][int(index)] = value
     return out
 
 

@@ -488,3 +488,81 @@ def test_an_unknown_method_is_refused():
 
     with pytest.raises(ValueError, match="method must be"):
         fit_locations(np.zeros((1, 3)), studies_at, 8.0, method="fast")
+
+
+def test_parallel_and_serial_fits_are_identical():
+    """Parallelism is a scheduling change, so any difference in the numbers is a defect.
+
+    Checked bit-for-bit rather than approximately: the workers run the same single-location
+    function the serial loop does, so there is no arithmetic that could legitimately differ.
+    """
+    from nimare.meta.cbma.driver import fit_locations
+
+    rng = np.random.default_rng(13)
+    studies = []
+    for index in range(12):
+        count = int(rng.integers(10, 80))
+        threshold = 3.09 / np.sqrt(count)
+        n_peaks = max(1, int(rng.poisson(4)))
+        magnitudes = threshold * (1.0 + rng.exponential(0.6, n_peaks))
+        signs = rng.choice([1.0, -1.0], n_peaks, p=[0.8, 0.2])
+        studies.append(
+            {
+                "id": f"s{index}",
+                "peaks": rng.uniform(-30, 30, (n_peaks, 3)),
+                "heights": magnitudes * signs,
+                "threshold": threshold,
+                "variance": 1.0 / count,
+            }
+        )
+    positions = rng.uniform(-30, 30, (23, 3))
+
+    def studies_at(index):
+        return studies
+
+    def images_at(index):
+        return np.array([0.35]), np.array([0.03])
+
+    shared = dict(
+        retention=0.25,
+        fixed_between_variance=0.0,
+        images_at=images_at,
+        method="grid",
+        sided="two",
+    )
+    serial = fit_locations(positions, studies_at, 8.0, n_jobs=1, **shared)
+    parallel = fit_locations(positions, studies_at, 8.0, n_jobs=2, **shared)
+
+    for key in ("estimate", "lower", "upper", "between_variance"):
+        assert np.array_equal(serial[key], parallel[key], equal_nan=True), key
+    for key in ("valid", "converged", "touched_search_limit"):
+        assert np.array_equal(serial[key], parallel[key]), key
+
+
+def test_a_protocol_change_is_not_masked_by_the_bundle_cache():
+    """Two calls on the same study list under different protocols must differ.
+
+    This is the regression for a module-level bundle cache keyed on ``id(studies)``: it returned
+    the first call's flattening to the second, and since the protocol is baked into the bundle,
+    a one-sided fit silently got two-sided records.
+    """
+    from nimare.meta.cbma.driver import fit_locations
+
+    negatives = [
+        {
+            "id": f"n{index}",
+            "peaks": np.array([[2.0, 0.0, 0.0]]),
+            "heights": np.array([-1.3]),
+            "threshold": 0.75,
+            "variance": 0.04,
+        }
+        for index in range(6)
+    ]
+
+    def studies_at(index):
+        return negatives
+
+    positions = np.zeros((1, 3))
+    two = fit_locations(positions, studies_at, 8.0, fixed_between_variance=0.0, sided="two")
+    one = fit_locations(positions, studies_at, 8.0, fixed_between_variance=0.0, sided="one")
+    assert one["estimate"][0] != two["estimate"][0]
