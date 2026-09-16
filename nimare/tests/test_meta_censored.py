@@ -563,3 +563,121 @@ def test_a_complete_table_is_not_turned_into_a_voxelwise_interval_by_default():
         [ObservationState.NONSIGNIFICANT], thresholds=np.array([0.6])
     )
     assert (lower[0], upper[0]) == (-0.6, 0.6)
+
+
+def test_cluster_peak_bounds_the_effect_rather_than_fixing_it():
+    """A printed height belongs to the cluster's maximum, so it bounds this location above.
+
+    The interval is ``(c, h]``: the cluster maximum cannot be below the effect at a member
+    voxel, and membership of a suprathreshold cluster puts the effect above the cut. Reading the
+    same report as ``EXACT`` moves the maximiser from the midpoint to the height itself, which
+    is a bias of ``(h - c) / 2`` with a known sign, and on HCP pseudo-studies it is the whole of
+    the positive bias at a wide coverage radius.
+    """
+    lower, upper = bounds_from_states(
+        [ObservationState.CLUSTER_PEAK],
+        values=np.array([1.9]),
+        thresholds=np.array([0.6]),
+        signs=np.array([1.0]),
+    )
+    assert (lower[0], upper[0]) == pytest.approx((0.6, 1.9))
+
+    # The maximiser is the midpoint, from the fitter rather than from the algebra.
+    fit = fit_censored(lower, upper, np.array([0.09]), fixed_between_variance=0.0)
+    assert fit["mean"] == pytest.approx(1.25, abs=1e-3)
+
+    # A negative report is the mirror image, not an unsigned magnitude.
+    lower, upper = bounds_from_states(
+        [ObservationState.CLUSTER_PEAK],
+        values=np.array([-1.9]),
+        thresholds=np.array([0.6]),
+        signs=np.array([-1.0]),
+    )
+    assert (lower[0], upper[0]) == pytest.approx((-1.9, -0.6))
+
+
+def test_cluster_peak_refuses_a_height_inside_its_own_threshold():
+    """A peak below the cut it was selected by is two scales disagreeing, not a value to clip.
+
+    This is the guard that caught a z being divided by the square root of the sample size as
+    though it were a t: the converted height fell below the converted threshold, and without the
+    refusal it would have been fitted as an ordinary interval and read as estimator bias.
+    """
+    with pytest.raises(ValueError, match="inside its own threshold"):
+        bounds_from_states(
+            [ObservationState.CLUSTER_PEAK],
+            values=np.array([0.3]),
+            thresholds=np.array([0.6]),
+            signs=np.array([1.0]),
+        )
+    with pytest.raises(ValueError, match="sign zero"):
+        bounds_from_states(
+            [ObservationState.CLUSTER_PEAK],
+            values=np.array([1.9]),
+            thresholds=np.array([0.6]),
+            signs=np.array([0.0]),
+        )
+
+
+def test_no_peak_nearby_is_retention_eligible_where_nonsignificant_is_not():
+    """The two states share an interval and differ in what they admit not knowing.
+
+    ``NONSIGNIFICANT`` is a study saying the effect here was small, so its presence is not a
+    reporting event. ``NO_PEAK_NEARBY`` is a study saying nothing about this location: a cluster
+    it did print may contain the location with its peak beyond the assumed reach. That ambiguity
+    is what retention represents, so only the second carries a role.
+    """
+    states = [ObservationState.NONSIGNIFICANT, ObservationState.NO_PEAK_NEARBY]
+    roles = retention_roles(states)
+    assert roles.tolist() == [0, -1]
+
+    lower, upper = bounds_from_states(
+        states, thresholds=np.array([0.6, 0.6]), signs=np.array([1.0, 1.0])
+    )
+    assert not np.isfinite(lower).any()
+    assert upper == pytest.approx([0.6, 0.6])
+
+
+def test_the_no_peak_silence_term_is_the_two_branch_mixture():
+    """``NO_PEAK_NEARBY`` under retention is exactly ``kappa * S + F`` with ``kappa = 1 - rho``.
+
+    Verified in ``proofs/what_a_silence_says.py`` and checked here numerically, because the
+    point of the state is that it needs no new parameter: the retention machinery already
+    computes the mixture, and the previous silence term was its ``kappa = 0`` special case. If
+    this identity ever fails, the state is no longer the thing the proof describes.
+    """
+    from scipy.stats import norm
+
+    mean, variance, cut = 0.35, 0.09, 0.6
+    states = [ObservationState.NO_PEAK_NEARBY]
+    lower, upper = bounds_from_states(states, thresholds=np.array([cut]), signs=np.array([1.0]))
+    roles = retention_roles(states)
+    below = norm.cdf((cut - mean) / np.sqrt(variance))
+    above = 1.0 - below
+
+    for rho in (1.0, 0.9, 0.5, 0.2, 0.05):
+        got = censored_loglik(
+            mean, 0.0, lower, upper, np.array([variance]), retention=rho, roles=roles
+        )
+        assert got == pytest.approx(np.log((1.0 - rho) * above + below), abs=1e-12)
+
+    # And the direction the proof gives: a smaller retention means a weaker downward push, so
+    # the fitted mean rises monotonically as rho falls.
+    fitted = []
+    for rho in (1.0, 0.8, 0.6, 0.4):
+        records = [ObservationState.IMAGE] + [ObservationState.NO_PEAK_NEARBY] * 8
+        bounds = bounds_from_states(
+            records,
+            values=np.array([0.5] + [0.0] * 8),
+            thresholds=np.array([0.0] + [cut] * 8),
+            signs=np.ones(9),
+        )
+        fit = fit_censored(
+            *bounds,
+            np.full(9, variance),
+            retention=rho,
+            roles=retention_roles(records),
+            fixed_between_variance=0.0,
+        )
+        fitted.append(fit["mean"])
+    assert all(later > earlier for earlier, later in zip(fitted, fitted[1:])), fitted

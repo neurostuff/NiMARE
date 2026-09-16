@@ -98,6 +98,18 @@ class ObservationState(enum.Enum):
         A peak height reported to full precision, taken as the estimate itself. Identical to
         ``IMAGE`` in the likelihood; kept separate because its provenance differs and because a
         selected peak height is not an unbiased estimate of the effect at that location.
+
+        **Rarely the right state for a coordinate table.** A printed height belongs to the
+        cluster's maximum, not to the location being modelled; use ``CLUSTER_PEAK`` unless the
+        location *is* the peak.
+    CLUSTER_PEAK
+        A peak height printed for a cluster that is taken to contain this location. The height
+        is the cluster's *maximum*, so it bounds the effect here from above, and membership of a
+        suprathreshold cluster bounds it from below by the study's threshold: the interval is
+        :math:`(c, h]`. Reading such a report as ``EXACT`` instead is a misspecification with a
+        known sign -- the exact record's maximiser is :math:`h` where the interval's is
+        :math:`(c+h)/2`, so it pushes the estimate up by :math:`(h-c)/2` -- and measured on HCP
+        pseudo-studies it is the whole of the positive bias at a wide coverage radius.
     ROUNDED
         A peak height reported to finite precision, so the estimate lies in a known interval.
     BOUNDED
@@ -108,6 +120,17 @@ class ObservationState(enum.Enum):
     NONSIGNIFICANT
         The study states explicitly that the effect here was not significant, which is a genuine
         two-sided interval inside its own threshold.
+    NO_PEAK_NEARBY
+        No peak is listed within the assumed reach of this location. The same interval as
+        ``NONSIGNIFICANT`` and a **different premise**: the study said nothing about this
+        location, and a cluster it did print may well contain the location with its peak
+        further away than the assumed reach. That ambiguity is a retention event, so this state
+        is retention-eligible where ``NONSIGNIFICANT`` is not, and the retention probability
+        delivers exactly the two-branch mixture :math:`\kappa S + F` with
+        :math:`\kappa = 1-\rho` (``proofs/what_a_silence_says.py``). Left at
+        :math:`\rho = 1` it is the certain-silence reading, whose score is more negative than
+        the correct one at every mean by :math:`\kappa f/[F(\kappa S + F)]`, which is why a
+        corpus dominated by silences biases downward.
     ABSENT_COMPLETE_TABLE
         No peak is listed and the table is known to be complete, so the estimate did not clear
         the threshold. The same interval as ``NONSIGNIFICANT``, from a weaker premise.
@@ -119,10 +142,12 @@ class ObservationState(enum.Enum):
 
     IMAGE = "image"
     EXACT = "exact"
+    CLUSTER_PEAK = "cluster_peak"
     ROUNDED = "rounded"
     BOUNDED = "bounded"
     DIRECTION_ONLY = "direction_only"
     NONSIGNIFICANT = "nonsignificant"
+    NO_PEAK_NEARBY = "no_peak_nearby"
     ABSENT_COMPLETE_TABLE = "absent_complete_table"
     UNKNOWN_COMPLETENESS = "unknown_completeness"
     OUTSIDE_MASK = "outside_mask"
@@ -139,15 +164,25 @@ UNINFORMATIVE_STATES = frozenset(
 RETAINED_REPORT_STATES = frozenset(
     {
         ObservationState.EXACT,
+        ObservationState.CLUSTER_PEAK,
         ObservationState.ROUNDED,
         ObservationState.BOUNDED,
         ObservationState.DIRECTION_ONLY,
     }
 )
 
-#: The one state retention actually bites on. An absent row in a complete table is ambiguous
-#: between "did not clear the threshold" and "cleared it and was not printed".
-RETAINED_ABSENCE_STATES = frozenset({ObservationState.ABSENT_COMPLETE_TABLE})
+#: The states retention actually bites on. Both are absences whose cause is ambiguous between
+#: "did not clear the threshold" and "cleared it and no row appeared here". For
+#: ``ABSENT_COMPLETE_TABLE`` the second branch is suppression; for ``NO_PEAK_NEARBY`` it is a
+#: printed cluster whose peak fell outside the assumed reach. The likelihood cannot tell them
+#: apart -- they are the same term -- so one parameter covers both, and which mechanism it is
+#: taken to describe is the caller's statement rather than the model's.
+#:
+#: ``NONSIGNIFICANT`` is deliberately absent: there the study *said* the effect was small, so
+#: its presence is not a retention event. That is the whole distinction.
+RETAINED_ABSENCE_STATES = frozenset(
+    {ObservationState.ABSENT_COMPLETE_TABLE, ObservationState.NO_PEAK_NEARBY}
+)
 
 
 def retention_roles(states):
@@ -282,6 +317,27 @@ def bounds_from_states(
         if state in (ObservationState.IMAGE, ObservationState.EXACT):
             point = required(values, "values", index, state)
             lower[index] = upper[index] = point
+        elif state is ObservationState.CLUSTER_PEAK:
+            height = required(values, "values", index, state)
+            cut = abs(required(thresholds, "thresholds", index, state))
+            direction = required(signs, "signs", index, state)
+            if direction == 0:
+                raise ValueError(
+                    f"{state.value!r} record {index} has sign zero. A cluster peak bounds one "
+                    "tail; without a direction the record is a union of two intervals, which "
+                    "this likelihood cannot represent."
+                )
+            if abs(height) < cut:
+                raise ValueError(
+                    f"{state.value!r} record {index} reports a height of {height:g} inside its "
+                    f"own threshold of {cut:g}. A printed peak below the cut it was selected by "
+                    "is a table and a threshold that contradict each other, not something to "
+                    "clip -- most often the height and the threshold are on different scales."
+                )
+            if direction > 0:
+                lower[index], upper[index] = cut, abs(height)
+            else:
+                lower[index], upper[index] = -abs(height), -cut
         elif state is ObservationState.ROUNDED:
             point = required(values, "values", index, state)
             width = required(precisions, "precisions", index, state)
@@ -304,7 +360,7 @@ def bounds_from_states(
                     "constrains both tails and is a union of two intervals, which this "
                     "likelihood cannot represent; use a signed contrast or drop the record."
                 )
-        else:  # NONSIGNIFICANT, ABSENT_COMPLETE_TABLE
+        else:  # NONSIGNIFICANT, NO_PEAK_NEARBY, ABSENT_COMPLETE_TABLE
             cut = abs(required(thresholds, "thresholds", index, state))
             # Absence is one-sided under a one-sided reporting protocol. A study that would have
             # reported only positive peaks and reported none tells us Y < c, not |Y| < c, and
