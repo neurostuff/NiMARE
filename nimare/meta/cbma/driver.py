@@ -60,11 +60,13 @@ maps the caller already holds.
 from __future__ import annotations
 
 import numpy as np
+from scipy.stats import chi2
 
 from nimare.meta.cbma.censored import (
     ObservationState,
     bounds_from_states,
     fit_censored,
+    loglik_over_means,
     profile_interval,
     retention_roles,
 )
@@ -82,7 +84,7 @@ def records_for_location(
     *,
     image_values=None,
     image_variances=None,
-    sided="one",
+    sided="two",
 ):
     r"""Build one record per study at a single location.
 
@@ -103,9 +105,15 @@ def records_for_location(
         Estimates and sampling variances from studies that supplied an unthresholded image.
         These enter as :attr:`~censored.ObservationState.IMAGE` records, which retention never
         touches: an available image is available whatever the table printed.
-    sided : ``{"one", "two"}``, default="one"
+    sided : ``{"one", "two"}``, default="two"
         Which reporting protocol the tables came from, overridable per study with a ``sided``
-        key. This is a property of the *protocol* and cannot be assumed globally: a paper that
+        key. **Two-sided by default**, because the estimand is a signed effect size, an
+        unthresholded map carries both signs, and on a corpus of 158 published faces tables
+        reading the signs correctly moved the combined fit from rmse .4360 to .4066 against an
+        external reference, cut the bias from -.108 to -.066, and raised the correlation from
+        .332 to .417. At certain silence the gain is larger still, .5551 to .4355: a table's
+        deactivations are informative, and discarding them is not a conservative choice. This is a
+        property of the *protocol* and cannot be assumed globally: a paper that
         prints only activations really does have a one-sided rule, and its silence really does
         mean :math:`Y < c`.
 
@@ -211,6 +219,107 @@ def records_for_location(
     return lower, upper, np.asarray(variances, dtype=float), retention_roles(states)
 
 
+#: Points in the mean grid the fast path evaluates, over a range set by the data and refined
+#: quadratically around the maximum. Chosen by measuring the trade rather than by taste, against
+#: the exact optimiser on 120 locations of a 160-study corpus:
+#:
+#: ===========  ==================  ==================
+#: grid points  CPU ms per location  largest difference
+#: ===========  ==================  ==================
+#: 129          7.4                 6.2e-03
+#: 257          6.6                 1.7e-03
+#: 513          12.6                4.3e-04
+#: 1025         23.5                2.1e-04
+#: exact        72.9                --
+#: ===========  ==================  ==================
+#:
+#: 513 keeps the disagreement at four decimal places -- two orders below the estimate's own
+#: standard error of roughly 0.2 -- for a 5.8-fold saving. The coarser grids are faster still and
+#: their error is arguably negligible too, but 1.7e-03 would move the third decimal of a
+#: reported interval, and a performance change should not be visible in the results at all.
+_GRID_POINTS = 513
+
+
+def _grid_fit(lower, upper, variances, roles, *, between_variance, retention, cutoff, span=12.0):
+    r"""Estimate and interval from a single vectorised pass over a grid of means.
+
+    **Why this exists.** Profiling a whole-brain fit put 65-104 ms per location in the profile
+    interval and 30-45 ms in the point fit, against 0.08 ms of record building, and both were
+    nearly flat in the number of studies -- an exponent of +0.26 and +0.11 against the study
+    count. Flat in the study count means the cost is Python-level iteration, not arithmetic over
+    records: the optimiser's calls and the interval's grid loop, each re-entering a scalar
+    likelihood. One call to :func:`~censored.loglik_over_means` evaluates the whole grid 8 to 40
+    times faster than the equivalent loop, and the *same* curve yields both the maximiser and
+    the likelihood-ratio crossings, so the interval costs nothing beyond the fit.
+
+    The estimate is the grid's maximum refined by fitting a parabola through its two neighbours,
+    which is exact for a locally quadratic log-likelihood -- and a log-likelihood is locally
+    quadratic at an interior maximum, which is the same fact the curvature standard error rests
+    on. Agreement with the exact optimiser is asserted in the tests rather than assumed, because
+    a faster path that quietly disagrees is not an optimisation.
+    """
+    informative = np.isfinite(lower) | np.isfinite(upper)
+    if not informative.any():
+        return None
+    finite = np.concatenate([lower[np.isfinite(lower)], upper[np.isfinite(upper)]])
+    if finite.size == 0:
+        return None
+    centre = float(np.mean(finite))
+    width = span * float(np.sqrt(np.max(variances[informative]) + max(between_variance, 0.0)))
+    means = np.linspace(centre - width, centre + width, _GRID_POINTS)
+    curve = loglik_over_means(
+        means, between_variance, lower, upper, variances, retention=retention, roles=roles
+    )
+    usable = np.isfinite(curve)
+    if not usable.any():
+        return None
+    best = int(np.nanargmax(np.where(usable, curve, -np.inf)))
+    peak = float(curve[best])
+
+    estimate = float(means[best])
+    if 0 < best < means.size - 1 and usable[best - 1] and usable[best + 1]:
+        left, centre_value, right = curve[best - 1], curve[best], curve[best + 1]
+        denominator = left - 2.0 * centre_value + right
+        if denominator < 0:
+            step = float(means[1] - means[0])
+            shift = 0.5 * float(left - right) / float(denominator)
+            # A parabola through three points puts its vertex within half a step of the middle
+            # one; anything else means the curve is not locally quadratic there and the grid
+            # maximum is the better answer.
+            if abs(shift) <= 0.5:
+                estimate = float(means[best] + shift * step)
+
+    # The interval is the outermost pair of points where the curve is still within the cutoff of
+    # its maximum, interpolated linearly between the bracketing grid points exactly as the
+    # scalar search does.
+    inside = np.flatnonzero(usable & (curve >= peak - cutoff))
+    bounds = []
+    touched = False
+    for side, index in (("lower", inside[0]), ("upper", inside[-1])):
+        step_out = -1 if side == "lower" else 1
+        neighbour = index + step_out
+        if neighbour < 0 or neighbour >= means.size or not usable[neighbour]:
+            bounds.append(float(means[index]))
+            touched = True
+            continue
+        gap_inside = peak - float(curve[index])
+        gap_outside = peak - float(curve[neighbour])
+        weight = (
+            0.0
+            if gap_outside == gap_inside
+            else (cutoff - gap_inside) / (gap_outside - gap_inside)
+        )
+        bounds.append(float(means[index] + weight * (means[neighbour] - means[index])))
+    return {
+        "mean": estimate,
+        "loglik": peak,
+        "lower": bounds[0],
+        "upper": bounds[1],
+        "touched_search_limit": touched,
+        "n_informative": int(informative.sum()),
+    }
+
+
 def fit_locations(
     positions,
     studies_at,
@@ -220,9 +329,17 @@ def fit_locations(
     fixed_between_variance=None,
     level=0.95,
     images_at=None,
-    sided="one",
+    sided="two",
+    method="exact",
 ):
     r"""Fit every location independently and return estimates, intervals and failures.
+
+    ``method="grid"`` replaces the per-location optimiser and interval search with a single
+    vectorised pass over a grid of means (:func:`_grid_fit`), which profiling identified as the
+    whole cost of a whole-brain fit: 65-104 ms per location in the interval and 30-45 ms in the
+    fit, both nearly flat in the study count, against 0.08 ms of record building. It requires a
+    fixed between-study variance, since the grid is over the mean alone. ``"exact"`` keeps the
+    optimiser and is the reference the fast path is checked against.
 
     Parameters
     ----------
@@ -259,6 +376,13 @@ def fit_locations(
     """
     positions = np.asarray(positions, dtype=float).reshape(-1, 3)
     count = positions.shape[0]
+    if method not in ("exact", "grid"):
+        raise ValueError(f"method must be 'exact' or 'grid'; got {method!r}.")
+    if method == "grid" and fixed_between_variance is None:
+        raise ValueError(
+            "method='grid' profiles the mean on a grid at a fixed between-study variance; "
+            "supply fixed_between_variance, or use method='exact' to profile it."
+        )
     out = {
         "estimate": np.full(count, np.nan),
         "lower": np.full(count, np.nan),
@@ -291,6 +415,27 @@ def fit_locations(
             if (retention < 1.0 and (roles != 0).any())
             else {}
         )
+        if method == "grid":
+            grid = _grid_fit(
+                lower,
+                upper,
+                variances,
+                roles,
+                between_variance=float(shrink.get("fixed_between_variance") or 0.0),
+                retention=extra.get("retention"),
+                cutoff=float(chi2.ppf(level, 1)) / 2.0,
+            )
+            if grid is None:
+                continue
+            out["estimate"][index] = grid["mean"]
+            out["between_variance"][index] = float(shrink.get("fixed_between_variance") or 0.0)
+            out["valid"][index] = True
+            out["converged"][index] = True
+            out["lower"][index] = grid["lower"]
+            out["upper"][index] = grid["upper"]
+            out["touched_search_limit"][index] = bool(grid["touched_search_limit"])
+            continue
+
         fit = fit_censored(lower, upper, variances, **shrink, **extra)
         interval = profile_interval(lower, upper, variances, level=level, **shrink, **extra)
         out["estimate"][index] = fit["mean"]

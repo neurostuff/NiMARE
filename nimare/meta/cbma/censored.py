@@ -506,6 +506,74 @@ def censored_loglik(
     return total
 
 
+def loglik_over_means(
+    means, between_variance, lower, upper, variances, *, retention=None, roles=None
+):
+    r"""Log-likelihood at every mean in ``means`` at once, for fixed records.
+
+    The scalar :func:`censored_loglik` called in a loop over a grid is what a profile interval and
+    a grid search both do, and it is where a whole-brain fit spends its time: profiling showed
+    65-104 ms per location for the interval and 30-45 ms for the fit, against 0.08 ms of record
+    building, with the per-location cost nearly flat in the number of studies. Flat in the study
+    count means the cost is Python-level iteration rather than arithmetic over records, so the
+    fix is to do the arithmetic once over the whole grid.
+
+    The records do not change across the grid, so the standardised bounds are a single outer
+    subtraction and every term is one vectorised expression.
+
+    Returns ``-inf`` at grid points where any usable record has numerically zero probability,
+    matching :func:`censored_loglik` point for point rather than approximately -- asserted in the
+    tests, since a faster function that disagrees with the reference is not an optimisation.
+    """
+    means = np.asarray(means, dtype=float).reshape(-1)
+    lower = np.asarray(lower, dtype=float)
+    upper = np.asarray(upper, dtype=float)
+    variances = np.asarray(variances, dtype=float)
+    total = variances + float(between_variance)
+    if np.any(total <= 0):
+        return np.full(means.size, -np.inf)
+    scale = np.sqrt(total)
+
+    informative = np.isfinite(lower) | np.isfinite(upper)
+    exact = np.isfinite(lower) & np.isfinite(upper) & (lower == upper)
+    censored = informative & ~exact
+    out = np.zeros(means.size)
+
+    aligned_rho = aligned_roles = None
+    if retention is not None:
+        if roles is None:
+            raise ValueError("Supplying retention requires roles; use retention_roles(states).")
+        aligned_roles = np.asarray(roles, dtype=int).reshape(-1)
+        if aligned_roles.size != lower.size:
+            raise ValueError(
+                f"roles must have one entry per record; got {aligned_roles.size} for "
+                f"{lower.size} records."
+            )
+        aligned_rho = _retention_vector(retention, lower.size)
+
+    if exact.any():
+        residual = (lower[exact][None, :] - means[:, None]) / scale[exact][None, :]
+        terms = -0.5 * residual**2 - np.log(scale[exact][None, :] * np.sqrt(2 * np.pi))
+        if retention is not None:
+            terms = (
+                terms
+                + np.where(aligned_roles[exact] == 1, np.log(aligned_rho[exact]), 0.0)[None, :]
+            )
+        out = out + np.where(np.isfinite(terms), terms, -np.inf).sum(axis=1)
+
+    if censored.any():
+        with np.errstate(invalid="ignore"):
+            lower_z = (lower[censored][None, :] - means[:, None]) / scale[censored][None, :]
+            upper_z = (upper[censored][None, :] - means[:, None]) / scale[censored][None, :]
+        terms = _interval_log_mass(lower_z, upper_z)
+        if retention is not None:
+            terms = _apply_retention(
+                terms, aligned_rho[censored][None, :], aligned_roles[censored][None, :]
+            )
+        out = out + np.where(np.isfinite(terms), terms, -np.inf).sum(axis=1)
+    return out
+
+
 def retention_score(mean, between_variance, lower, upper, variances, retention, roles):
     r"""Differentiate the log-likelihood with respect to the retention probability.
 
@@ -1181,14 +1249,44 @@ def profile_interval(
         return best
 
     offsets = np.linspace(0.0, search, int(grid))
+
+    # Where every other parameter is held, the profile is a single log-likelihood per grid point
+    # and the whole grid can be evaluated in one vectorised call instead of ``grid`` scalar ones.
+    # This is the hot path for a whole-brain fit -- profiling put the interval at 65-104 ms per
+    # location against the fit's 30-45 ms -- and :func:`loglik_over_means` is asserted equal to
+    # the scalar reference point for point, so this changes the cost and not the answer. With a
+    # free between-study variance or an estimated retention each grid point carries its own
+    # nested optimisation, and that path is unchanged.
+    held = fixed_between_variance is not None and not estimate_retention
+
+    def curve_for(direction):
+        """Evaluate the profile at every offset in this direction, vectorised where it can be.
+
+        Indexed by position rather than looked up by mean: an earlier version keyed a dictionary
+        on the float value, which happens to be bit-identical here but makes the correctness of a
+        performance change rest on floating-point equality.
+        """
+        if not held:
+            return None
+        return loglik_over_means(
+            fit["mean"] + direction * offsets,
+            fixed_between_variance,
+            lower,
+            upper,
+            variances,
+            retention=retention,
+            roles=roles,
+        )
+
     bounds = []
     touched = False
     for direction in (-1.0, 1.0):
         crossing = np.nan
         previous = (0.0, peak)
-        for offset in offsets[1:]:
+        precomputed = curve_for(direction)
+        for index, offset in enumerate(offsets[1:], start=1):
             candidate = fit["mean"] + direction * offset
-            value = profile(candidate)
+            value = float(precomputed[index]) if precomputed is not None else profile(candidate)
             if not np.isfinite(value):
                 break
             if peak - value >= cutoff:

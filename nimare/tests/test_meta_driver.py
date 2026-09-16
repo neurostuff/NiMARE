@@ -42,7 +42,12 @@ def test_a_peak_at_the_location_is_exact_and_one_nearby_is_a_bound():
     as exact, which is why the distance test is here and not left to the caller.
     """
     lower, upper, variances, roles = records_for_location(
-        np.zeros(3), _studies(), reach=8.0, image_values=[0.5], image_variances=[0.04]
+        np.zeros(3),
+        _studies(),
+        reach=8.0,
+        image_values=[0.5],
+        image_variances=[0.04],
+        sided="one",
     )
     # image, the coincident peak, then two silences
     assert lower[0] == upper[0] == pytest.approx(0.5)
@@ -53,9 +58,24 @@ def test_a_peak_at_the_location_is_exact_and_one_nearby_is_a_bound():
     assert variances == pytest.approx([0.04, 0.09, 0.09, 0.09])
 
     # Four millimetres away the same peak is a bound, and there is no image record.
-    lower, upper, _, roles = records_for_location(np.array([4.0, 0.0, 0.0]), _studies(), reach=8.0)
+    lower, upper, _, roles = records_for_location(
+        np.array([4.0, 0.0, 0.0]), _studies(), reach=8.0, sided="one"
+    )
     assert (lower[0], upper[0]) == pytest.approx((0.6, 1.9))
     assert roles.tolist() == [1, -1, -1]
+
+    # Under the two-sided default the *states* are identical and only the silences' lower bound
+    # changes, from unbounded below to the threshold's mirror. Pinning both conventions here
+    # rather than only the one in force: the first version of this test asserted
+    # ``not isfinite(lower[2:])`` unconditionally, so it encoded the protocol rather than the
+    # distance rule it is named for, and flipping the default broke it for the wrong reason.
+    lower, upper, _, roles = records_for_location(
+        np.zeros(3), _studies(), reach=8.0, image_values=[0.5], image_variances=[0.04]
+    )
+    assert lower[1] == upper[1] == pytest.approx(1.9)
+    assert lower[2:] == pytest.approx([-0.6, -0.6])
+    assert upper[2:] == pytest.approx([0.6, 0.6])
+    assert roles.tolist() == [0, 1, -1, -1]
 
 
 def test_a_peak_outside_the_reach_is_a_silence_not_a_report():
@@ -175,16 +195,30 @@ def test_bounds_come_from_the_shared_state_machine():
     its own bound arithmetic, the two will drift and this fails.
     """
     studies = _studies()
-    lower, upper, _, _ = records_for_location(np.zeros(3), studies, reach=8.0)
+    states = [
+        ObservationState.EXACT,
+        ObservationState.NO_PEAK_NEARBY,
+        ObservationState.NO_PEAK_NEARBY,
+    ]
+    values = np.array([1.9, 0.0, 0.0])
+    thresholds = np.array([0.6, 0.6, 0.6])
+
+    # One-sided: every record carries a positive sign, so a silence is bounded above only.
+    lower, upper, _, _ = records_for_location(np.zeros(3), studies, reach=8.0, sided="one")
     expected_lower, expected_upper = bounds_from_states(
-        [
-            ObservationState.EXACT,
-            ObservationState.NO_PEAK_NEARBY,
-            ObservationState.NO_PEAK_NEARBY,
-        ],
-        values=np.array([1.9, 0.0, 0.0]),
-        thresholds=np.array([0.6, 0.6, 0.6]),
-        signs=np.ones(3),
+        states, values=values, thresholds=thresholds, signs=np.ones(3)
+    )
+    assert lower == pytest.approx(expected_lower)
+    assert upper == pytest.approx(expected_upper)
+
+    # Two-sided: a silence's sign is unspecified, which is how the state machine is asked for
+    # the symmetric interval. The driver must still be *asking* rather than computing.
+    lower, upper, _, _ = records_for_location(np.zeros(3), studies, reach=8.0, sided="two")
+    expected_lower, expected_upper = bounds_from_states(
+        states,
+        values=values,
+        thresholds=thresholds,
+        signs=np.array([1.0, np.nan, np.nan]),
     )
     assert lower == pytest.approx(expected_lower)
     assert upper == pytest.approx(expected_upper)
@@ -386,3 +420,71 @@ def test_an_unknown_protocol_is_refused():
     studies[0]["sided"] = "both"
     with pytest.raises(ValueError, match="sided="):
         records_for_location(np.zeros(3), studies, 8.0)
+
+
+def test_the_grid_method_agrees_with_the_optimiser():
+    """A faster path that disagrees with the reference is not an optimisation.
+
+    Pinned at four decimal places on both the estimate and the interval bounds, which is where
+    the grid resolution was chosen to put it and two orders below the estimate's own standard
+    error. A regression here means the fast path has drifted from the likelihood, not that it is
+    approximate.
+    """
+    from nimare.meta.cbma.driver import fit_locations
+
+    rng = np.random.default_rng(11)
+    studies = []
+    for index in range(24):
+        count = int(rng.integers(10, 120))
+        threshold = 3.09 / np.sqrt(count)
+        n_peaks = max(1, int(rng.poisson(5)))
+        magnitudes = threshold * (1.0 + rng.exponential(0.6, n_peaks))
+        signs = rng.choice([1.0, -1.0], n_peaks, p=[0.85, 0.15])
+        studies.append(
+            {
+                "id": f"s{index}",
+                "peaks": rng.uniform(-40, 40, (n_peaks, 3)),
+                "heights": magnitudes * signs,
+                "threshold": threshold,
+                "variance": 1.0 / count,
+            }
+        )
+    positions = rng.uniform(-40, 40, (25, 3))
+
+    def studies_at(index):
+        return studies
+
+    def images_at(index):
+        return np.array([0.4]), np.array([0.02])
+
+    shared = dict(retention=0.25, fixed_between_variance=0.0, images_at=images_at, sided="two")
+    exact = fit_locations(positions, studies_at, 8.0, method="exact", **shared)
+    grid = fit_locations(positions, studies_at, 8.0, method="grid", **shared)
+
+    usable = exact["valid"] & grid["valid"]
+    assert usable.sum() >= 20
+    assert np.max(np.abs(exact["estimate"][usable] - grid["estimate"][usable])) < 1e-3
+    assert np.max(np.abs(exact["lower"][usable] - grid["lower"][usable])) < 1e-3
+    assert np.max(np.abs(exact["upper"][usable] - grid["upper"][usable])) < 1e-3
+
+
+def test_the_grid_method_refuses_a_free_between_study_variance():
+    """The grid is over the mean alone, so it cannot profile a second parameter."""
+    from nimare.meta.cbma.driver import fit_locations
+
+    def studies_at(index):
+        return []
+
+    with pytest.raises(ValueError, match="fixed_between_variance"):
+        fit_locations(np.zeros((1, 3)), studies_at, 8.0, method="grid")
+
+
+def test_an_unknown_method_is_refused():
+    """Silently falling back to the slow path would hide a typo in a caller's configuration."""
+    from nimare.meta.cbma.driver import fit_locations
+
+    def studies_at(index):
+        return []
+
+    with pytest.raises(ValueError, match="method must be"):
+        fit_locations(np.zeros((1, 3)), studies_at, 8.0, method="fast")
