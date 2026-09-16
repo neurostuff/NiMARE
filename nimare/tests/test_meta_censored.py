@@ -381,3 +381,89 @@ def test_an_explicit_nonsignificance_is_not_a_retention_event_but_an_absent_row_
         ]
     )
     assert list(roles) == [0, 0, -1, 1, 0]
+
+
+def _mixed_corpus(n_images, n_coordinates, thresholds, rng):
+    """Build an image cohort and a coordinate cohort with spread sizes and known retention."""
+    true_mean, between, retention = 0.4, 0.0225, 0.5
+    sizes = np.array([12, 16, 20, 28, 40, 60, 90, 140])
+
+    coordinate_sizes = np.resize(sizes, n_coordinates)
+    cuts = np.resize(thresholds, n_coordinates)
+    coordinate_variance = 1.0 / coordinate_sizes
+    estimates = rng.normal(true_mean, np.sqrt(coordinate_variance + between))
+    printed = (estimates > cuts) & (rng.random(n_coordinates) < retention)
+
+    image_sizes = np.resize(sizes, n_images)
+    image_variance = 1.0 / image_sizes
+    observed = rng.normal(true_mean, np.sqrt(image_variance + between))
+
+    states = [ObservationState.IMAGE] * n_images + [
+        ObservationState.DIRECTION_ONLY if flag else ObservationState.ABSENT_COMPLETE_TABLE
+        for flag in printed
+    ]
+    lower, upper = bounds_from_states(
+        states,
+        values=np.concatenate([observed, np.full(n_coordinates, np.nan)]),
+        thresholds=np.concatenate([np.full(n_images, np.nan), cuts]),
+        signs=np.concatenate([np.full(n_images, np.nan), np.ones(n_coordinates)]),
+    )
+    variances = np.concatenate([image_variance, coordinate_variance])
+    return lower, upper, variances, retention_roles(states)
+
+
+def test_estimating_retention_recovers_it_where_images_pin_the_other_two_parameters():
+    """Joint estimation must land on the truth, within its own predicted standard error.
+
+    The tolerance is not chosen: the observed-information calculation for this design gives
+    se(rho) about 0.19 at eight images and a hundred tables, so 20 replications have a standard
+    error on the mean estimate of about 0.04 and three of those is the band used here.
+    """
+    rng = np.random.default_rng(101)
+    spread = np.array([0.35, 0.45, 0.55, 0.6, 0.65, 0.75, 0.85, 0.95])
+
+    retentions, means = [], []
+    for _ in range(20):
+        lower, upper, variances, roles = _mixed_corpus(8, 100, spread, rng)
+        fit = fit_censored(lower, upper, variances, roles=roles, estimate_retention=True)
+        assert fit["valid"]
+        retentions.append(fit["retention"])
+        means.append(fit["mean"])
+
+    assert np.mean(retentions) == pytest.approx(0.5, abs=0.13)
+    assert np.mean(means) == pytest.approx(0.4, abs=0.06)
+
+
+def test_a_corpus_with_one_threshold_and_one_precision_reports_no_identification():
+    """Parallel score directions give rank-one information, and that must be visible.
+
+    Proved as "two distinct precisions can carry at most two of the three parameters": the score
+    direction depends on a study's threshold and precision alone, so a corpus sharing both
+    cannot separate three parameters however many studies it has. With no images to pin the
+    other two, the condition number must come back infinite rather than merely large.
+    """
+    rng = np.random.default_rng(202)
+    count = 300
+    cuts = np.full(count, 0.6)
+    estimates = rng.normal(0.4, np.sqrt(0.04 + 0.0225), size=count)
+    printed = (estimates > 0.6) & (rng.random(count) < 0.5)
+    states = [
+        ObservationState.DIRECTION_ONLY if flag else ObservationState.ABSENT_COMPLETE_TABLE
+        for flag in printed
+    ]
+    lower, upper = bounds_from_states(states, thresholds=cuts, signs=np.ones(count))
+    fit = fit_censored(
+        lower,
+        upper,
+        np.full(count, 0.04),
+        roles=retention_roles(states),
+        estimate_retention=True,
+    )
+    assert not np.isfinite(fit["condition_number"])
+
+
+def test_estimating_retention_without_roles_is_refused():
+    """Refuse a retention fit with no roles: nothing says which records it applies to."""
+    lower, upper, roles = _retention_setup([True, False, False])
+    with pytest.raises(ValueError, match="requires roles"):
+        fit_censored(lower, upper, np.full(3, 0.04), estimate_retention=True)

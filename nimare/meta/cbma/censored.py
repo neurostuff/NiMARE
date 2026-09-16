@@ -64,6 +64,14 @@ _TAU2_CAP_MULTIPLE = 25.0
 #: interval likelihood and a boundary at zero makes a single start unsafe.
 _TAU2_STARTS = (0.0, 0.25, 1.0, 4.0)
 
+#: Retention is bounded away from zero: a retention of exactly zero prints nothing, so no
+#: table could have been produced under it and the likelihood is undefined there.
+_RETENTION_FLOOR = 1e-6
+
+#: Starting values for an estimated retention. The likelihood is often nearly flat in it, so the
+#: start that wins is informative about how flat.
+_RETENTION_STARTS = (0.25, 0.5, 0.9)
+
 #: Below this the interval mass is treated as numerically unusable and the observation is
 #: refused rather than contributing a log of something indistinguishable from zero.
 _MASS_FLOOR = 1e-300
@@ -368,6 +376,49 @@ def censored_loglik(
     return total
 
 
+def retention_score(mean, between_variance, lower, upper, variances, retention, roles):
+    r"""Differentiate the log-likelihood with respect to the retention probability.
+
+    A reported record contributes :math:`1/\rho`; an absent one contributes
+    :math:`(\Delta - 1)/[(1-\rho) + \rho\Delta]` for its interval mass :math:`\Delta`. Both
+    are verified symbolically in ``proofs/retention_in_the_reporting_model.py``, along with the
+    fact that the second reduces to :math:`-S/(1-\rho S)` for a one-sided absence, so the
+    general form is the same model as the directional one rather than a second one.
+
+    Records retention does not apply to -- images, explicit nonsignificance, and the
+    uninformative states -- contribute nothing.
+    """
+    lower = np.asarray(lower, dtype=float)
+    upper = np.asarray(upper, dtype=float)
+    scale = np.sqrt(np.asarray(variances, dtype=float) + float(between_variance))
+    roles = np.asarray(roles, dtype=int)
+
+    informative = _informative_mask(lower, upper)
+    exact = np.isfinite(lower) & np.isfinite(upper) & (lower == upper)
+    censored = informative & ~exact
+    if not censored.any():
+        return 0.0
+
+    rho = _retention_vector(retention, int(censored.sum()))
+    with np.errstate(invalid="ignore"):
+        lower_z = (lower[censored] - mean) / scale[censored]
+        upper_z = (upper[censored] - mean) / scale[censored]
+    mass = np.exp(_interval_log_mass(lower_z, upper_z))
+    selected = roles[censored]
+
+    total = 0.0
+    report = selected == 1
+    if report.any():
+        total += float(np.sum(1.0 / rho[report]))
+    absence = selected == -1
+    if absence.any():
+        denominator = np.clip(
+            (1.0 - rho[absence]) + rho[absence] * mass[absence], _MASS_FLOOR, None
+        )
+        total += float(np.sum((mass[absence] - 1.0) / denominator))
+    return total
+
+
 def censored_score(mean, between_variance, lower, upper, variances, *, retention=None, roles=None):
     r"""Exact gradient of :func:`censored_loglik` in :math:`(m, \tau^2)`.
 
@@ -435,6 +486,51 @@ def censored_score(mean, between_variance, lower, upper, variances, *, retention
     return np.array([d_mean, d_between])
 
 
+def _identification_condition(fit, lower, upper, variances, roles):
+    """Condition number of the observed information in the three parameters, by differences.
+
+    This is the practical form of the identification condition: a study's score direction is
+    fixed by its threshold and its precision alone, so records sharing both contribute parallel
+    gradients and the information collapses to rank one however many of them there are. Three
+    parameters need three (threshold, precision) pairs whose score directions are not collinear,
+    and collinearity is a single scalar equation on the design rather than a curiosity.
+
+    A large condition number is not a failure. It is the statement that the fit is formally
+    identified and badly determined, which is worth reporting rather than hiding behind a
+    standard error that looks finite.
+    """
+    point = np.array([fit["mean"], fit["between_variance"], fit["retention"]], dtype=float)
+    steps = np.array([1e-4, 1e-5, 1e-4])
+
+    def gradient(parameters):
+        rho = float(np.clip(parameters[2], _RETENTION_FLOOR, 1.0))
+        partial = censored_score(
+            parameters[0], parameters[1], lower, upper, variances, retention=rho, roles=roles
+        )
+        slope = retention_score(parameters[0], parameters[1], lower, upper, variances, rho, roles)
+        return np.array([partial[0], partial[1], slope])
+
+    hessian = np.zeros((3, 3))
+    for index in range(3):
+        forward, backward = point.copy(), point.copy()
+        forward[index] += steps[index]
+        backward[index] -= steps[index]
+        if index == 1:
+            backward[index] = max(backward[index], 0.0)
+        if index == 2:
+            forward[index] = min(forward[index], 1.0)
+            backward[index] = max(backward[index], _RETENTION_FLOOR)
+        span = forward[index] - backward[index]
+        if span <= 0:
+            return float("inf")
+        hessian[:, index] = (gradient(forward) - gradient(backward)) / span
+    information = -(hessian + hessian.T) / 2.0
+    eigenvalues = np.linalg.eigvalsh(information)
+    if eigenvalues[0] <= 0:
+        return float("inf")
+    return float(eigenvalues[-1] / eigenvalues[0])
+
+
 def _informative_mask(lower, upper):
     lower = np.asarray(lower, dtype=float)
     upper = np.asarray(upper, dtype=float)
@@ -475,6 +571,7 @@ def fit_censored(
     *,
     retention=None,
     roles=None,
+    estimate_retention=False,
     fixed_between_variance=None,
     max_starts=None,
 ):
@@ -486,6 +583,32 @@ def fit_censored(
         Interval bounds, as returned by :func:`bounds_from_states`.
     variances : :obj:`numpy.ndarray`
         Sampling variance :math:`s_i^2` of each study's estimate.
+    retention : :obj:`float` or :obj:`numpy.ndarray`, optional
+        Probability that an effect clearing its threshold was actually printed. Supplied from
+        external calibration. Leaving it unset is the :math:`\rho = 1` model.
+    roles : :obj:`numpy.ndarray`, optional
+        Which records retention applies to, from :func:`retention_roles`. Required whenever
+        retention is supplied or estimated.
+    estimate_retention : :obj:`bool`, default=False
+        Estimate :math:`\rho` jointly with the other two parameters instead of taking it as
+        given. Whether this is worth doing is a property of the design, not a preference:
+
+        * a study's score direction is fixed by its threshold and its precision alone, so
+          records sharing both contribute parallel gradients and the information collapses to
+          rank one however many there are;
+        * three parameters need three (threshold, precision) pairs whose directions are not
+          collinear, which is why the returned ``condition_number`` matters more than the rank;
+        * from report indicators *alone* the retention is barely estimable at realistic corpus
+          sizes -- at 100 coordinate studies with no threshold spread its standard error is
+          around 1.8 on a parameter confined to :math:`[0,1]`, falling to about 0.5 with
+          threshold spread. Images change this, because they pin the magnitude and the
+          heterogeneity and leave the report rate to carry only the retention.
+
+        The trade against supplying a value: at 8 images and 100 coordinate studies, estimating
+        retention widens the interval on the mean by about a third, while a supplied value wrong
+        by 0.2 displaces the estimate by roughly 1.6 standard errors. Fitting wins there. With
+        one image and many tables the misspecified fit has the *lower* root-mean-square error
+        and no coverage at all, which is the trade the whole construction exists to expose.
     fixed_between_variance : :obj:`float`, optional
         Hold :math:`\tau^2` at this value instead of estimating it. Provided to *measure* the
         cost of freezing heterogeneity, not as a recommended mode.
@@ -495,10 +618,16 @@ def fit_censored(
     Returns
     -------
     :obj:`dict`
-        ``mean``, ``between_variance``, ``loglik``, ``n_informative``, ``converged``,
-        ``at_zero_boundary`` (the fit sits at :math:`\tau^2 = 0`), ``at_variance_cap``, and
-        ``valid``. ``mean`` is ``nan`` when no record is informative: there is no estimate then,
-        and a zero would read as one.
+        ``mean``, ``between_variance``, ``retention``, ``loglik``, ``n_informative``,
+        ``converged``, ``at_zero_boundary`` (the fit sits at :math:`\tau^2 = 0`),
+        ``at_variance_cap``, and ``valid``. ``mean`` is ``nan`` when no record is informative:
+        there is no estimate then, and a zero would read as one.
+
+        With ``estimate_retention=True`` the result also carries ``at_full_retention`` and
+        ``condition_number``, the ratio of the largest to the smallest eigenvalue of the
+        observed information in all three parameters. A large value is not a failure; it is the
+        statement that the fit is formally identified and badly determined, which is worth
+        reporting rather than hiding behind a standard error that looks finite.
 
     Notes
     -----
@@ -606,6 +735,73 @@ def fit_censored(
             roles=roles,
         )
 
+    if estimate_retention:
+        if roles is None:
+            raise ValueError(
+                "Estimating retention requires roles; use retention_roles(states). Without "
+                "them nothing says which records a retention probability applies to."
+            )
+
+        def triple_objective(parameters):
+            candidate = float(np.clip(parameters[2], _RETENTION_FLOOR, 1.0))
+            value = censored_loglik(
+                parameters[0],
+                parameters[1],
+                lower,
+                upper,
+                variances,
+                retention=candidate,
+                roles=roles,
+            )
+            if not np.isfinite(value):
+                return np.inf, np.zeros(3)
+            partial = censored_score(
+                parameters[0],
+                parameters[1],
+                lower,
+                upper,
+                variances,
+                retention=candidate,
+                roles=roles,
+            )
+            slope = retention_score(
+                parameters[0], parameters[1], lower, upper, variances, candidate, roles
+            )
+            return -value, -np.array([partial[0], partial[1], slope])
+
+        best = None
+        for fraction in _TAU2_STARTS:
+            for start_retention in _RETENTION_STARTS:
+                result = minimize(
+                    triple_objective,
+                    x0=[start_mean, min(fraction * scale, cap), start_retention],
+                    jac=True,
+                    method="L-BFGS-B",
+                    bounds=[(None, None), (0.0, cap), (_RETENTION_FLOOR, 1.0)],
+                )
+                if not np.isfinite(result.fun):
+                    continue
+                if best is None or result.fun < best.fun:
+                    best = result
+        if best is None:
+            return failure
+        found = {
+            "mean": float(best.x[0]),
+            "between_variance": float(best.x[1]),
+            "retention": float(best.x[2]),
+            "loglik": float(-best.fun),
+            "n_informative": int(informative.sum()),
+            "converged": bool(best.success),
+            "at_zero_boundary": bool(best.x[1] <= 0.0),
+            "at_variance_cap": bool(best.x[1] >= cap * (1 - 1e-9)),
+            "at_full_retention": bool(best.x[2] >= 1.0 - 1e-9),
+            "valid": True,
+        }
+        found["condition_number"] = _identification_condition(
+            found, lower, upper, variances, roles
+        )
+        return found
+
     starts = [(start_mean, min(fraction * scale, cap)) for fraction in _TAU2_STARTS]
     if max_starts is not None:
         starts = starts[: max(int(max_starts), 1)]
@@ -629,6 +825,7 @@ def fit_censored(
     return {
         "mean": float(best.x[0]),
         "between_variance": float(best.x[1]),
+        "retention": None if retention is None else float(np.mean(retention)),
         "loglik": float(-best.fun),
         "n_informative": int(informative.sum()),
         "converged": bool(best.success),
