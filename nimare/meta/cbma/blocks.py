@@ -32,6 +32,18 @@ study's total is whatever survives. It becomes a cap only when a study is given 
 which is a thing to do deliberately and to say, not a default. :func:`block_loglik` takes as many
 blocks per study as it is given and imposes no limit.
 
+**The block is exchangeable, and real spatial correlation is not.** Conditioning on the study
+effect leaves the elements independent, so every pair within a block correlates equally. Measured
+against exact multivariate-normal orthant probabilities at matched mean correlation, the
+exchangeable model **understates a block's silence probability** -- so it overstates how often a
+block reports -- by up to 0.030 at nine elements with slowly decaying correlation and a liberal
+cut. Restricted to strict cuts, standardised 2.5 and above, the worst error falls to 0.005; at a
+mean within-block correlation of 0.15 or less it is 0.010. So this is usable for the strict
+thresholds published tables come from and is *not* a general substitute for a spatial model: for
+heavily smoothed data at a liberal cut the conditional multivariate-normal route is needed.
+Measured in ``experiments/exchangeable_block_error.py``, which states a 0.01 kill condition in
+advance and fails it.
+
 **This is a composite likelihood unless you say otherwise.** ``study_index`` groups blocks
 by the study they came from and makes the likelihood exact. Without it every block is treated as
 its own study, which overstates the information badly once a study contributes several blocks --
