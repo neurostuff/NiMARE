@@ -1062,6 +1062,17 @@ class CBES(Estimator):
        map. ``coordinate_share`` shows where the coordinate channel acted; 0 means the images
        carry the estimate alone.
 
+    **Prior work.** The premise is not new. MetaNSUE :footcite:p:`albajes2019metansue` makes the
+    same argument -- a study reporting only that an effect was not significant can be neither
+    dropped nor entered as zero, since both bias the pool -- and SDM-PSI
+    :footcite:p:`albajes2019meta` carries it into neuroimaging. ES-SDM
+    :footcite:p:`radua2012new` combines images with coordinates in one model. The difference
+    here is what happens to the bound: those methods impute values inside it and pool the
+    completed datasets, this one writes it into the likelihood and imputes nothing. Measured
+    against a brute-force MLE the two agree on the point estimate to three decimals. What
+    separates them is the interval, which the censored likelihood gets right with no tuning
+    where imputation needs enough draws and a degrees-of-freedom correction.
+
     The permutation null tests whether a voxel's magnitude is exchangeable with other voxels in
     the same studies. It does not test whether foci converge there, and a collection with no
     image cannot be tested at all.
