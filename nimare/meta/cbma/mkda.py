@@ -25,6 +25,7 @@ from nimare.utils import (
     _minimum_positive_float,
     _nlogp_to_logp_values,
     _p_to_logp_values,
+    _round2,
     vox2mm,
 )
 
@@ -1620,7 +1621,7 @@ class KDA(CBMAEstimator):
 
             # Compute output MA values, stat_hist indices, and probabilities
             stat_scores = np.add.outer(bin_centers[exp_idx], bin_centers[stat_idx]).ravel()
-            score_idx = np.round(stat_scores * inv_step_size).astype(int)
+            score_idx = _round2(stat_scores * inv_step_size)
             probabilities = np.outer(exp_hist[exp_idx], stat_hist[stat_idx]).ravel()
 
             # Reset histogram and set probabilities. Use at() because there can
