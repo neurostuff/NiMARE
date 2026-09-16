@@ -222,3 +222,120 @@ def fit_locations(
         out["upper"][index] = interval["upper"]
         out["touched_search_limit"][index] = bool(interval.get("touched_search_limit", False))
     return out
+
+
+def envelope_over_assumptions(
+    positions,
+    studies_at,
+    reaches,
+    retentions,
+    *,
+    fixed_between_variance=None,
+    level=0.95,
+    images_at=None,
+):
+    r"""Fit under every combination of reach and retention, and return the range.
+
+    Neither the reach nor the retention can honestly ship as a default. The reach stands in for
+    a cluster extent papers do not report, and the retention for the chance that an effect
+    clearing its threshold produced a printed peak within that reach. Measured on HCP
+    pseudo-studies, only a short reach with a low retention beats an equally regularised
+    image-only baseline at all: 12 mm and 20 mm never do, at any retention. A single number from
+    a single assumed pair would therefore be a number whose sign the assumption chose.
+
+    **Every combination is evaluated, and that is not a performance oversight.** The implied
+    magnitude in :func:`~nimare.meta.cbma.sensitivity.retention_envelope` is monotone in its
+    retention, so its endpoints suffice. This estimate is *not* monotone in the reach: its bias
+    runs -0.047, -0.026, +0.039, +0.245 across 4, 8, 12 and 20 mm, changing sign in the middle,
+    so evaluating the corners would report a range that excludes the interior it brackets. Any
+    reasoning by analogy to the other envelope is wrong here.
+
+    Parameters
+    ----------
+    positions, studies_at, images_at, fixed_between_variance, level
+        As :func:`fit_locations`.
+    reaches, retentions : sequence of :obj:`float`
+        The assumption grid. Both are swept in full.
+
+    Returns
+    -------
+    :obj:`dict`
+        ``lowest`` and ``highest`` estimates per location over the grid, ``interval_lower`` and
+        ``interval_upper`` as the union of the profile intervals, ``spread`` as
+        ``highest - lowest``, ``at_lowest`` and ``at_highest`` naming the ``(reach, retention)``
+        that produced each extreme, ``grid`` as the pairs evaluated, and
+        ``coverage_semantics``.
+
+        The union of intervals is **not** a confidence interval and its width does not shrink
+        with more studies: it is the set of answers the assumptions permit. Reporting it as one
+        would attach a coverage statement that nothing here establishes.
+    """
+    positions = np.asarray(positions, dtype=float).reshape(-1, 3)
+    count = positions.shape[0]
+    reaches = [float(value) for value in reaches]
+    retentions = [float(value) for value in retentions]
+    if not reaches or not retentions:
+        raise ValueError("Both reaches and retentions must be non-empty.")
+
+    lowest = np.full(count, np.inf)
+    highest = np.full(count, -np.inf)
+    interval_lower = np.full(count, np.inf)
+    interval_upper = np.full(count, -np.inf)
+    at_lowest = np.empty(count, dtype=object)
+    at_highest = np.empty(count, dtype=object)
+
+    grid = [(reach, retention) for reach in reaches for retention in retentions]
+    for reach, retention in grid:
+        fitted = fit_locations(
+            positions,
+            studies_at,
+            reach,
+            retention=retention,
+            fixed_between_variance=fixed_between_variance,
+            level=level,
+            images_at=images_at,
+        )
+        estimate = fitted["estimate"]
+        usable = np.isfinite(estimate)
+        improve_low = usable & (estimate < lowest)
+        improve_high = usable & (estimate > highest)
+        lowest = np.where(improve_low, estimate, lowest)
+        highest = np.where(improve_high, estimate, highest)
+        # Assigned per index rather than by mask: a list of tuples assigned into a boolean
+        # slice of an object array is read as a 2-D array by numpy and refused.
+        for index in np.flatnonzero(improve_low):
+            at_lowest[index] = (reach, retention)
+        for index in np.flatnonzero(improve_high):
+            at_highest[index] = (reach, retention)
+        interval_lower = np.where(
+            np.isfinite(fitted["lower"]) & (fitted["lower"] < interval_lower),
+            fitted["lower"],
+            interval_lower,
+        )
+        interval_upper = np.where(
+            np.isfinite(fitted["upper"]) & (fitted["upper"] > interval_upper),
+            fitted["upper"],
+            interval_upper,
+        )
+
+    unreached = ~np.isfinite(lowest)
+    lowest = np.where(unreached, np.nan, lowest)
+    highest = np.where(~np.isfinite(highest), np.nan, highest)
+    interval_lower = np.where(np.isfinite(interval_lower), interval_lower, np.nan)
+    interval_upper = np.where(np.isfinite(interval_upper), interval_upper, np.nan)
+    return {
+        "lowest": lowest,
+        "highest": highest,
+        "spread": highest - lowest,
+        "interval_lower": interval_lower,
+        "interval_upper": interval_upper,
+        "at_lowest": at_lowest,
+        "at_highest": at_highest,
+        "grid": grid,
+        "coverage_semantics": (
+            "The range of estimates the assumptions tried permit, and nothing more. It is not a "
+            "confidence interval, its width does not shrink with more studies, and it carries no "
+            "coverage statement unless the grid is asserted to contain the truth -- which this "
+            "function never infers."
+        ),
+    }

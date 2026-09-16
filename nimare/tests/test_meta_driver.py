@@ -188,3 +188,71 @@ def test_bounds_come_from_the_shared_state_machine():
     )
     assert lower == pytest.approx(expected_lower)
     assert upper == pytest.approx(expected_upper)
+
+
+def test_the_envelope_sweeps_the_whole_grid_because_the_estimate_is_not_monotone():
+    """Corners would not do, and the docstring says why, so the test holds it to that.
+
+    The implied magnitude in :mod:`nimare.meta.cbma.sensitivity` is monotone in its retention,
+    so its endpoints suffice. This estimate is not monotone in the reach -- its bias changes
+    sign between 8 mm and 12 mm on HCP pseudo-studies -- so an envelope built from the corners
+    would report a range excluding the interior it brackets. Here the extreme is found at an
+    interior reach, which a corners-only implementation would miss.
+    """
+    from nimare.meta.cbma.driver import envelope_over_assumptions
+
+    studies = [
+        {
+            "id": "near",
+            "peaks": np.array([[0.0, 0.0, 0.0]]),
+            "heights": np.array([1.9]),
+            "threshold": 0.6,
+            "variance": 0.09,
+        },
+        {
+            "id": "mid",
+            "peaks": np.array([[14.0, 0.0, 0.0]]),
+            "heights": np.array([2.2]),
+            "threshold": 0.6,
+            "variance": 0.09,
+        },
+        {
+            "id": "silent",
+            "peaks": np.zeros((0, 3)),
+            "heights": np.zeros(0),
+            "threshold": 0.6,
+            "variance": 0.09,
+        },
+    ]
+    reaches, retentions = [4.0, 8.0, 12.0, 20.0], [1.0, 0.43, 0.25]
+    out = envelope_over_assumptions(
+        np.array([[4.0, 0.0, 0.0]]),
+        lambda index: studies,
+        reaches,
+        retentions,
+        fixed_between_variance=0.0,
+        images_at=lambda index: ([0.5], [0.04]),
+    )
+    assert len(out["grid"]) == len(reaches) * len(retentions)
+    assert out["highest"][0] > out["lowest"][0]
+    assert out["spread"][0] == pytest.approx(out["highest"][0] - out["lowest"][0])
+    # The union of intervals must contain every point estimate the grid produced.
+    assert out["interval_lower"][0] <= out["lowest"][0]
+    assert out["interval_upper"][0] >= out["highest"][0]
+    # The extreme is attained at an interior reach, so corners alone would understate the range.
+    corners = {
+        (reaches[0], retentions[0]),
+        (reaches[0], retentions[-1]),
+        (reaches[-1], retentions[0]),
+        (reaches[-1], retentions[-1]),
+    }
+    assert out["at_highest"][0] not in corners, out["at_highest"][0]
+    assert "not a confidence interval" in out["coverage_semantics"]
+
+
+def test_the_envelope_refuses_an_empty_grid():
+    """An envelope over no assumptions is a point estimate wearing a range's name."""
+    from nimare.meta.cbma.driver import envelope_over_assumptions
+
+    with pytest.raises(ValueError, match="non-empty"):
+        envelope_over_assumptions(np.zeros((1, 3)), lambda index: _studies(), [], [1.0])
