@@ -35,12 +35,20 @@ blocks per study as it is given and imposes no limit.
 **The block is exchangeable, and real spatial correlation is not.** Conditioning on the study
 effect leaves the elements independent, so every pair within a block correlates equally. Measured
 against exact multivariate-normal orthant probabilities at matched mean correlation, the
-exchangeable model **understates a block's silence probability** -- so it overstates how often a
-block reports -- by up to 0.030 at nine elements with slowly decaying correlation and a liberal
-cut. Restricted to strict cuts, standardised 2.5 and above, the worst error falls to 0.005; at a
-mean within-block correlation of 0.15 or less it is 0.010. So this is usable for the strict
-thresholds published tables come from and is *not* a general substitute for a spatial model: for
-heavily smoothed data at a liberal cut the conditional multivariate-normal route is needed.
+exchangeable model is out by up to 0.030 in a block's silence probability at nine elements with
+slowly decaying correlation.
+
+An earlier version of this note said the error falls to 0.005 at strict cuts and concluded the
+model is usable there. **That conclusion is withdrawn.** The 0.005 is an *absolute* error on
+silence; the corresponding *relative* error on the report probability -- the rare outcome a
+likelihood weights most heavily -- is about 15%. Judging a rare-event approximation by absolute
+probability error flatters it. The honest statement is that the exchangeable block is adequate
+only where the within-block correlation is genuinely small, not merely where the cut is strict,
+and that settling it properly needs likelihood scores, estimator bias and interval coverage under
+the true covariance rather than a CDF comparison. Two further things the measurement makes clear:
+the standardised cut is relative to the field being modelled, so a cut that is strict against the
+null is not strict inside an active region; and for general covariance the conditional
+multivariate-normal route is the correct formulation, which this module does not implement.
 Measured in ``experiments/exchangeable_block_error.py``, which states a 0.01 kill condition in
 advance and fails it.
 
