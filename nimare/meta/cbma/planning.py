@@ -46,6 +46,25 @@ covariance.
 computed from a heterogeneity estimated on a handful of image studies inherits that estimate's
 uncertainty, which this does not propagate. Treat the output as conditional on the supplied
 predictive standard deviation, and vary it.
+
+**A mean and a variance are not a predictive distribution, and the difference is the ceiling.**
+:func:`assurance` integrates over a *normal* law, which is the right shape when every study has
+some effect here and the wrong shape when a share of them has none. If the literature is a
+mixture -- effect :math:`\mu` with prevalence :math:`\pi`, nothing otherwise -- then the
+meta-analytic mean is :math:`\pi\mu`, and a normal law matched to that mean and to the
+mixture's spread replaces the atom at zero with continuous mass. The directional ceiling moves
+with it: the mixture's is :math:`\pi + \tfrac{\alpha}{2}(1-\pi)`, near enough the prevalence,
+while the matched normal's is :math:`\Phi(\pi\mu/s)`. At :math:`\pi = 0.6` and
+:math:`\mu = 0.5` those are .610 and .879, so a target of 80% is unreachable at any sample size
+under the first and recommended at :math:`n = 587` under the second. Pass ``null_mass`` to
+:func:`assurance_ceiling` when the share is known.
+
+It usually is not. :math:`(\mu, \pi)` is not identified from reporting indicators at all --
+their expected information is rank one, with determinant identically zero, and only a spread of
+sample sizes across studies restores rank two -- so a prevalence taken from coordinate tables
+alone is not a measurement. Estimating it needs the image channel. Until it is estimated, read
+an assurance from this module as conditional on every future study having an effect at the
+location, and read its ceiling as an upper bound rather than a limit.
 """
 
 from __future__ import annotations
