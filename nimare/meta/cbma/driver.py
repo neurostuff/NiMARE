@@ -289,6 +289,11 @@ def records_from_bundle(bundle, position, reach, *, image_values=None, image_var
     return lower, upper, np.asarray(variances, dtype=float), retention_roles(states)
 
 
+#: Sentinel for :func:`location_records`'s ``sided``, so "not supplied" is distinguishable from
+#: "supplied as the default". Without it a caller passing ``sided="two"`` beside a one-sided
+#: bundle is indistinguishable from a caller passing nothing, and the mismatch goes unreported.
+_PROTOCOL_FROM_BUNDLE = "from-the-bundle"
+
 #: Keys of the mapping :func:`location_records` returns, in a fixed order so a caller can build
 #: a table from it without guessing.
 RECORD_FIELDS = (
@@ -310,7 +315,7 @@ def location_records(
     *,
     image_values=None,
     image_variances=None,
-    sided="two",
+    sided=_PROTOCOL_FROM_BUNDLE,
     bundle=None,
 ):
     r"""Every study's statement at one location, labelled, for reporting rather than fitting.
@@ -353,10 +358,11 @@ def location_records(
     ----------
     position, studies, reach, image_values, image_variances, sided
         As :func:`records_for_location`.
+    sided : ``{"one", "two"}``, default="two"
+        As :func:`records_for_location`. **Mutually exclusive with ``bundle``**, which already
+        carries each study's protocol: passing both raises rather than letting one win silently.
     bundle : :obj:`dict`, optional
         A pre-flattened bundle from :func:`bundle_studies`, to avoid re-flattening per location.
-        Must have been built with the same ``sided``; supplying one built with another is the
-        single mistake this signature allows, so it is checked.
 
     Returns
     -------
@@ -392,13 +398,23 @@ def location_records(
     >>> np.round(table["upper"], 3).tolist()
     [0.3, 0.8, 0.4]
     """
+    # **A bundle already carries the protocol, so ``sided`` alongside one is ambiguous.** The
+    # first version compared ``sided`` against every entry of ``bundle["sided"]`` and skipped
+    # the check whenever ``sided`` was its default -- which is the majority of calls and the
+    # exact hazard the check existed for. It was also wrong in principle: ``bundle["sided"]``
+    # is *per study*, since ``bundle_studies`` honours a study's own ``sided`` key, so entries
+    # differing from the argument is legal rather than a mistake. Refusing the ambiguous
+    # combination is the only check that is both sound and effective.
     if bundle is None:
-        bundle = bundle_studies(studies, sided=sided)
-    elif any(entry != sided for entry in bundle["sided"]) and sided != "two":
+        bundle = bundle_studies(
+            studies, sided="two" if sided is _PROTOCOL_FROM_BUNDLE else sided
+        )
+    elif sided is not _PROTOCOL_FROM_BUNDLE:
         raise ValueError(
-            "the supplied bundle was flattened under a different reporting protocol than "
-            f"sided={sided!r}; a table read one-sided and a silence read two-sided assert "
-            "disjoint intervals"
+            "supply either a bundle or `sided`, not both: a bundle already records each "
+            "study's reporting protocol, and a `sided` argument that disagreed with it would "
+            "read a table under one rule and its silences under another, which assert "
+            "disjoint intervals."
         )
 
     states, sources, values, thresholds, variances, distances = [], [], [], [], [], []

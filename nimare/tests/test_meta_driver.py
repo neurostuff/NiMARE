@@ -4,7 +4,12 @@ import numpy as np
 import pytest
 
 from nimare.meta.cbma.censored import ObservationState, bounds_from_states, fit_censored
-from nimare.meta.cbma.driver import fit_locations, location_records, records_for_location
+from nimare.meta.cbma.driver import (
+    bundle_studies,
+    fit_locations,
+    location_records,
+    records_for_location,
+)
 
 
 def _studies():
@@ -741,3 +746,40 @@ def test_location_records_counts_a_real_corpus_as_mostly_silence():
     assert states.count("NO_PEAK_NEARBY") == 20
     assert states.count("IMAGE") == 2
     assert np.count_nonzero(np.isfinite(table["value"])) == 2
+
+
+def test_location_records_refuses_a_bundle_and_a_protocol_together():
+    """Passing both is ambiguous, and the first guard for it could never fire.
+
+    The original check compared ``sided`` against every entry of ``bundle["sided"]`` and
+    skipped itself whenever ``sided`` held its own default -- which is most calls, and exactly
+    the case the check existed for. It was unsound as well as inert: ``bundle_studies`` honours
+    a per-study ``sided`` key, so entries differing from the argument are legal. Refusing the
+    combination is the check that works.
+    """
+    studies = [
+        {
+            "peaks": np.zeros((0, 3)),
+            "heights": np.zeros(0),
+            "threshold": 0.4,
+            "variance": 0.02,
+        }
+    ]
+    bundle = bundle_studies(studies, sided="one")
+
+    with pytest.raises(ValueError, match="either a bundle or"):
+        location_records(np.zeros(3), studies, 4.0, sided="two", bundle=bundle)
+    with pytest.raises(ValueError, match="either a bundle or"):
+        location_records(np.zeros(3), studies, 4.0, sided="one", bundle=bundle)
+
+    # A bundle on its own is honoured, and its protocol is the one that applies: a one-sided
+    # absence is bounded above only, so the lower bound stays at negative infinity.
+    from_bundle = location_records(np.zeros(3), studies, 4.0, bundle=bundle)
+    assert np.isneginf(from_bundle["lower"][0])
+    np.testing.assert_allclose(from_bundle["upper"][0], 0.4)
+
+    # And with no bundle the default is two-sided, which bounds both tails.
+    default = location_records(np.zeros(3), studies, 4.0)
+    np.testing.assert_allclose(
+        [default["lower"][0], default["upper"][0]], [-0.4, 0.4]
+    )
