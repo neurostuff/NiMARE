@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from nimare.meta.cbma.censored import ObservationState, bounds_from_states, fit_censored
-from nimare.meta.cbma.driver import fit_locations, records_for_location
+from nimare.meta.cbma.driver import fit_locations, location_records, records_for_location
 
 
 def _studies():
@@ -602,3 +602,142 @@ def test_a_protocol_change_is_not_masked_by_the_bundle_cache():
     two = fit_locations(positions, studies_at, 8.0, fixed_between_variance=0.0, sided="two")
     one = fit_locations(positions, studies_at, 8.0, fixed_between_variance=0.0, sided="one")
     assert one["estimate"][0] != two["estimate"][0]
+
+
+def test_location_records_labels_agree_with_the_fitting_path():
+    """The reporting vector and the likelihood's input must be the same records.
+
+    ``location_records`` exists so a reader can see which statement each record is, and the one
+    way it can go wrong is by drifting from ``records_for_location``. Pinned by comparing the
+    bounds and variances element for element, since a labelled table that describes different
+    records than the fit used would be worse than no table.
+    """
+    studies = [
+        {
+            "peaks": np.array([[3.0, 0.0, 0.0], [40.0, 0.0, 0.0]]),
+            "heights": np.array([0.9, 1.4]),
+            "threshold": 0.5,
+            "variance": 0.04,
+        },
+        {
+            "peaks": np.array([[0.0, 0.0, 0.0]]),
+            "heights": np.array([-0.7]),
+            "threshold": 0.45,
+            "variance": 0.03,
+        },
+        {
+            "peaks": np.zeros((0, 3)),
+            "heights": np.zeros(0),
+            "threshold": 0.6,
+            "variance": 0.05,
+        },
+    ]
+    position = np.zeros(3)
+    images = np.array([0.2, -0.1])
+    image_variances = np.array([0.01, 0.02])
+
+    lower, upper, variances, _ = records_for_location(
+        position, studies, 4.0, image_values=images, image_variances=image_variances
+    )
+    table = location_records(
+        position, studies, 4.0, image_values=images, image_variances=image_variances
+    )
+
+    np.testing.assert_allclose(table["lower"], lower)
+    np.testing.assert_allclose(table["upper"], upper)
+    np.testing.assert_allclose(table["variance"], variances)
+    assert [str(state) for state in table["state"]] == [
+        "IMAGE",
+        "IMAGE",
+        "CLUSTER_PEAK",
+        "EXACT",
+        "NO_PEAK_NEARBY",
+    ]
+    assert [str(source) for source in table["source"]] == [
+        "image",
+        "image",
+        "table",
+        "table",
+        "table",
+    ]
+
+
+def test_location_records_describes_a_silence_as_an_interval_not_a_value():
+    """A silence has no value, and reporting one as zero would invent an observation."""
+    studies = [
+        {
+            "peaks": np.zeros((0, 3)),
+            "heights": np.zeros(0),
+            "threshold": 0.35,
+            "variance": 0.02,
+        }
+    ]
+    table = location_records(np.zeros(3), studies, 4.0)
+    assert str(table["state"][0]) == "NO_PEAK_NEARBY"
+    assert np.isnan(table["value"][0])
+    assert np.isnan(table["distance_mm"][0])
+    # Two-sided silence is the symmetric interval, so it constrains both tails.
+    np.testing.assert_allclose([table["lower"][0], table["upper"][0]], [-0.35, 0.35])
+
+
+def test_location_records_reports_a_negative_peak_as_signed_and_never_as_an_absence():
+    """A printed deactivation is a signed report, and its bracket depends on the distance.
+
+    Written first with both states asserted to be ``[h, -c]``, which the code refused: a peak
+    *at* the location fixes the value there, so ``EXACT`` is a point and only ``CLUSTER_PEAK``
+    is a bracket. The estimator was right and the test was wrong; both are pinned here so the
+    distinction cannot be lost, since collapsing them would either invent precision at a
+    neighbour or discard it at a coincidence.
+    """
+    def one(peak, height):
+        studies = [
+            {
+                "peaks": np.array([peak], dtype=float),
+                "heights": np.array([height], dtype=float),
+                "threshold": 0.4,
+                "variance": 0.02,
+            }
+        ]
+        return location_records(np.zeros(3), studies, 4.0, sided="two")
+
+    at_voxel = one([0.0, 0.0, 0.0], -0.8)
+    assert str(at_voxel["state"][0]) == "EXACT"
+    np.testing.assert_allclose([at_voxel["lower"][0], at_voxel["upper"][0]], [-0.8, -0.8])
+
+    nearby = one([3.0, 0.0, 0.0], -0.8)
+    assert str(nearby["state"][0]) == "CLUSTER_PEAK"
+    np.testing.assert_allclose([nearby["lower"][0], nearby["upper"][0]], [-0.8, -0.4])
+
+    # Both are strictly negative, so neither can be read as the two-sided absence (-c, c).
+    for table in (at_voxel, nearby):
+        assert table["upper"][0] < 0.0
+
+
+def test_location_records_counts_a_real_corpus_as_mostly_silence():
+    """The composition is the point of the vector, so a regression on it is worth pinning.
+
+    Twenty studies whose peaks are scattered far from the location: every record must be a
+    silence, and the two images must be the only entries carrying a value. This is the shape of
+    a real corpus -- 98% silence on the faces tables -- in miniature.
+    """
+    rng = np.random.default_rng(11)
+    studies = [
+        {
+            "peaks": rng.uniform(40.0, 80.0, size=(3, 3)),
+            "heights": rng.uniform(0.6, 1.5, size=3),
+            "threshold": 0.5,
+            "variance": 0.04,
+        }
+        for _ in range(20)
+    ]
+    table = location_records(
+        np.zeros(3),
+        studies,
+        4.0,
+        image_values=[0.3, 0.1],
+        image_variances=[0.01, 0.02],
+    )
+    states = [str(state) for state in table["state"]]
+    assert states.count("NO_PEAK_NEARBY") == 20
+    assert states.count("IMAGE") == 2
+    assert np.count_nonzero(np.isfinite(table["value"])) == 2

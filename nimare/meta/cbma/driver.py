@@ -289,6 +289,168 @@ def records_from_bundle(bundle, position, reach, *, image_values=None, image_var
     return lower, upper, np.asarray(variances, dtype=float), retention_roles(states)
 
 
+#: Keys of the mapping :func:`location_records` returns, in a fixed order so a caller can build
+#: a table from it without guessing.
+RECORD_FIELDS = (
+    "state",
+    "source",
+    "lower",
+    "upper",
+    "value",
+    "threshold",
+    "variance",
+    "distance_mm",
+)
+
+
+def location_records(
+    position,
+    studies,
+    reach,
+    *,
+    image_values=None,
+    image_variances=None,
+    sided="two",
+    bundle=None,
+):
+    r"""Every study's statement at one location, labelled, for reporting rather than fitting.
+
+    :func:`records_for_location` returns what the likelihood needs -- bounds, variances and
+    retention roles -- and discards *which kind* of statement each record is, so a caller cannot
+    tell a printed peak from a silence. This returns the same records with their labels, for a
+    per-voxel table or forest plot.
+
+    **The entries are intervals and they are not commensurable.** A vector of "the effect sizes
+    at this voxel" does not exist, because only the image records are numbers:
+
+    ``IMAGE``
+        an unthresholded map's value, a point with a sampling variance, so ``lower == upper``.
+    ``EXACT``
+        a table printed a peak *at* this location, so its value there is known: ``lower ==
+        upper == h``, signed. A point, like an image record, but a **selected** one -- it is in
+        the table because it cleared the threshold, which is what the likelihood's censoring
+        term exists to undo.
+    ``CLUSTER_PEAK``
+        a table printed a peak within ``reach`` but not at the location. The value here is then
+        bracketed rather than known: :math:`[c, h]` for a positive peak and :math:`[h, -c]` for
+        a negative one, since the voxel is inside the reported cluster and so at least at the
+        threshold, but no larger than the peak. The study's threshold is the other end of what
+        a printed height tells you, and on a real corpus this is the common report state --
+        exact coincidence with a published coordinate is rare at 4 mm.
+    ``NO_PEAK_NEARBY``
+        the table printed nothing here -- :math:`|Y| < c` under a two-sided protocol, or
+        :math:`Y < c` under a one-sided one. On a real corpus this is almost every record: over a
+        3,267-voxel sample of a faces corpus of 3 images and 152 tables, 98% of records were this
+        state and 89% of voxels had no table record of any other kind.
+
+    That last figure is the reason the mean moves toward zero when the coordinate channel is
+    added, and it is not shrinkage applied to the images: a silence is an interval containing
+    zero, and a hundred of them are a hundred statements that the effect here is small. Whether
+    those statements are information or artefact rests on the assumed threshold, which the
+    ``threshold`` column reports per record so the reader can see its spread.
+
+    Parameters
+    ----------
+    position, studies, reach, image_values, image_variances, sided
+        As :func:`records_for_location`.
+    bundle : :obj:`dict`, optional
+        A pre-flattened bundle from :func:`bundle_studies`, to avoid re-flattening per location.
+        Must have been built with the same ``sided``; supplying one built with another is the
+        single mistake this signature allows, so it is checked.
+
+    Returns
+    -------
+    :obj:`dict`
+        Arrays keyed by :data:`RECORD_FIELDS`, one entry per record, images first. ``state`` and
+        ``source`` hold strings; ``distance_mm`` is the chosen peak's distance from ``position``
+        and is ``nan`` for images and silences.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> studies = [
+    ...     {
+    ...         "peaks": np.array([[2.0, 0.0, 0.0]]),
+    ...         "heights": np.array([0.8]),
+    ...         "threshold": 0.5,
+    ...         "variance": 0.04,
+    ...     },
+    ...     {
+    ...         "peaks": np.zeros((0, 3)),
+    ...         "heights": np.zeros(0),
+    ...         "threshold": 0.4,
+    ...         "variance": 0.05,
+    ...     },
+    ... ]
+    >>> table = location_records(
+    ...     np.zeros(3), studies, 4.0, image_values=[0.3], image_variances=[0.01]
+    ... )
+    >>> [str(state) for state in table["state"]]
+    ['IMAGE', 'CLUSTER_PEAK', 'NO_PEAK_NEARBY']
+    >>> np.round(table["lower"], 3).tolist()
+    [0.3, 0.5, -0.4]
+    >>> np.round(table["upper"], 3).tolist()
+    [0.3, 0.8, 0.4]
+    """
+    if bundle is None:
+        bundle = bundle_studies(studies, sided=sided)
+    elif any(entry != sided for entry in bundle["sided"]) and sided != "two":
+        raise ValueError(
+            "the supplied bundle was flattened under a different reporting protocol than "
+            f"sided={sided!r}; a table read one-sided and a silence read two-sided assert "
+            "disjoint intervals"
+        )
+
+    states, sources, values, thresholds, variances, distances = [], [], [], [], [], []
+    if image_values is not None:
+        image_values = np.asarray(image_values, dtype=float).reshape(-1)
+        image_variances = np.asarray(image_variances, dtype=float).reshape(-1)
+        for value, variance in zip(image_values, image_variances):
+            states.append(ObservationState.IMAGE)
+            sources.append("image")
+            values.append(float(value))
+            thresholds.append(0.0)
+            variances.append(float(variance))
+            distances.append(np.nan)
+
+    chosen, distance = _chosen_peaks(bundle, position, reach)
+    for index in range(bundle["n_studies"]):
+        pick = int(chosen[index])
+        sources.append("table")
+        if pick >= 0:
+            height = float(bundle["heights"][pick])
+            at_location = float(distance[pick]) <= COINCIDENT_MM
+            states.append(
+                ObservationState.EXACT if at_location else ObservationState.CLUSTER_PEAK
+            )
+            values.append(height)
+            distances.append(float(distance[pick]))
+        else:
+            states.append(ObservationState.NO_PEAK_NEARBY)
+            values.append(np.nan)
+            distances.append(np.nan)
+        thresholds.append(float(bundle["thresholds"][index]))
+        variances.append(float(bundle["variances"][index]))
+
+    lower, upper, variance_array, _ = records_from_bundle(
+        bundle,
+        position,
+        reach,
+        image_values=image_values,
+        image_variances=image_variances,
+    )
+    return {
+        "state": np.asarray([state.name for state in states]),
+        "source": np.asarray(sources),
+        "lower": lower,
+        "upper": upper,
+        "value": np.asarray(values, dtype=float),
+        "threshold": np.asarray(thresholds, dtype=float),
+        "variance": variance_array,
+        "distance_mm": np.asarray(distances, dtype=float),
+    }
+
+
 #: Points in the mean grid the fast path evaluates, over a range set by the data and refined
 #: quadratically around the maximum. Chosen by measuring the trade rather than by taste, against
 #: the exact optimiser on 120 locations of a 160-study corpus:
