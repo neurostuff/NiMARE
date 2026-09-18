@@ -265,6 +265,20 @@ def test_mm2vox():
     assert np.array_equal(utils.mm2vox(test, aff), true)
 
 
+def test_mm2vox_rounds_fractional_coordinates():
+    """Fractional millimetres go to the nearest voxel, not the one below.
+
+    Truncating instead of rounding shifts every focus toward the origin by up to
+    a full voxel, which is invisible on whole-millimetre coordinate tables and
+    systematic on anything reported at finer resolution or transformed from
+    Talairach.
+    """
+    aff = utils.get_template(space="mni152_2mm", mask=None).affine
+    # Exact voxel coordinates here are (46.85, 52.35, 57.95).
+    test = np.array([[3.7, -21.3, 43.9]])
+    assert np.array_equal(utils.mm2vox(test, aff), np.array([[47, 52, 58]]))
+
+
 def test_get_voxel_values_marks_out_of_bounds_indices():
     """Voxel lookup returns values and distinguishes clipped indices."""
     data = np.arange(27).reshape(3, 3, 3)

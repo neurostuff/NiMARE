@@ -26,6 +26,7 @@ from nimare.utils import (
     _minimum_positive_float,
     _nlogp_to_logp_values,
     _p_to_logp_values,
+    _round2,
     vox2mm,
 )
 
@@ -1803,8 +1804,7 @@ class KDA(CBMAEstimator):
         bin_centers = self.null_distributions_["histogram_bins"]
         step_size = bin_centers[1] - bin_centers[0]
         inv_step_size = 1 / step_size
-        bin_edges = bin_centers - (step_size / 2)
-        bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
+        bin_edges = np.append(bin_centers - (step_size / 2), bin_centers[-1] + (step_size / 2))
 
         n_exp = ma_maps.shape[0]
         n_bins = bin_centers.shape[0]
@@ -1839,7 +1839,7 @@ class KDA(CBMAEstimator):
 
             # Compute output MA values, stat_hist indices, and probabilities
             stat_scores = np.add.outer(bin_centers[exp_idx], bin_centers[stat_idx]).ravel()
-            score_idx = np.floor(stat_scores * inv_step_size).astype(int)
+            score_idx = _round2(stat_scores * inv_step_size)
             probabilities = np.outer(exp_hist[exp_idx], stat_hist[stat_idx]).ravel()
 
             # Reset histogram and set probabilities. Use at() because there can
