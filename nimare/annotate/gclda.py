@@ -368,7 +368,15 @@ class GCLDAModel(NiMAREBase):
         Whether or not to use symmetry constraint on subregions. Symmetry
         requires n_regions = 2. The default is False.
     seed_init : :obj:`int`, optional
-        Initial value of random seed. The default is 1.
+        Initial value of random seed. The default is 1. Every random draw the model makes,
+        during both initialization and sampling, derives from this value, so two models built
+        and fitted with the same ``seed_init`` and the same data are identical.
+
+        .. versionchanged:: 0.22.0
+
+            The draws are taken from the model's own random generators instead of NumPy's
+            global one, so fitting a model no longer resets the random state of other code in
+            the same session.
 
     Attributes
     ----------
@@ -519,15 +527,16 @@ class GCLDAModel(NiMAREBase):
             dtype=float, copy=False
         )
 
-        # Seed random number generator
-        np.random.seed(self.params["seed_init"])
+        # Seed a generator of this model's own, rather than the global one, so that fitting a
+        # GCLDAModel does not reset the random state of everything else in the session.
+        rng = np.random.RandomState(self.params["seed_init"])
 
         # Preallocate vectors of assignment indices
         # word->topic assignments
         self.topics["wtoken_topic_idx"] = np.zeros(len(self.data["wtoken_word_idx"]), dtype=int)
 
         # Randomly initialize peak->topic assignments (y) ~ unif(1...n_topics)
-        self.topics["peak_topic_idx"] = np.random.randint(
+        self.topics["peak_topic_idx"] = rng.randint(
             self.params["n_topics"],
             size=(len(self.data["ptoken_doc_idx"])),
         )
@@ -610,7 +619,7 @@ class GCLDAModel(NiMAREBase):
             #     if peak_val[0] > 0, r = 1, else r = 0
             # Namely, check whether x-coordinate is greater than zero.
             n_pairs = int(self.params["n_regions"] / 2)
-            initial_assignments = np.random.randint(
+            initial_assignments = rng.randint(
                 n_pairs,
                 size=(len(self.data["ptoken_doc_idx"])),
             )
@@ -618,7 +627,7 @@ class GCLDAModel(NiMAREBase):
             self.topics["peak_region_idx"][:] = (initial_assignments * 2) + signs
         else:
             # if asymmetric model, randomly sample r ~ unif(1...n_regions)
-            self.topics["peak_region_idx"][:] = np.random.randint(
+            self.topics["peak_region_idx"][:] = rng.randint(
                 self.params["n_regions"],
                 size=(len(self.data["ptoken_doc_idx"])),
             )
@@ -761,9 +770,10 @@ class GCLDAModel(NiMAREBase):
         randseed : :obj:`int`
             Random seed for this iteration.
         """
-        # --- Seed random number generator
-        np.random.seed(randseed)
-
+        # The sampler runs under numba, which keeps its own random state:
+        # _jit_update_word_topic_assignments seeds it with randseed. Seeding the global numpy
+        # generator here as well would have no effect on the sampling, and would reset the
+        # random state of any other code in the session.
         word_topic_idx = self.topics["wtoken_topic_idx"]
         word_by_topic = self.topics["n_word_tokens_word_by_topic"]
         total_word_by_topic = self.topics["total_n_word_tokens_by_topic"]
@@ -794,9 +804,8 @@ class GCLDAModel(NiMAREBase):
         randseed : :obj:`int`
             Random seed for this iteration.
         """
-        # Seed random number generator
-        np.random.seed(randseed)
-
+        # As in _update_word_topic_assignments, the seeding that matters happens inside the
+        # jitted sampler, on numba's own random state.
         # Retrieve p(x|r,y) for all subregions
         peak_probs = self._get_peak_probs(self)
         region_by_topic = self.topics["n_peak_tokens_region_by_topic"]

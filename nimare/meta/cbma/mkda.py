@@ -205,6 +205,13 @@ class MKDADensity(CBMAEstimator):
         This is only used if ``null_method=="montecarlo"``.
         If <=0, defaults to using all available cores.
         Default is 1.
+    random_state : :obj:`int`, :class:`numpy.random.Generator`, or None, optional
+        Seed for the Monte Carlo null distribution and for
+        :meth:`~nimare.meta.cbma.mkda.MKDADensity.correct_fwe_montecarlo`, so that their results
+        can be reproduced. If None, the permutations will differ between runs. Default is None.
+
+        .. versionadded:: 0.22.0
+
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -273,6 +280,7 @@ class MKDADensity(CBMAEstimator):
         memory=Memory(location=None, verbose=0),
         memory_level=0,
         n_cores=1,
+        random_state=None,
         **kwargs,
     ):
         if not (isinstance(kernel_transformer, MKDAKernel) or kernel_transformer == MKDAKernel):
@@ -287,6 +295,7 @@ class MKDADensity(CBMAEstimator):
             kernel_transformer=kernel_transformer,
             memory=memory,
             memory_level=memory_level,
+            random_state=random_state,
             **kwargs,
         )
         self.null_method = null_method
@@ -591,6 +600,16 @@ class MKDAChi2(PairwiseCBMAEstimator):
     memory_level : :obj:`int`, default=0
         Rough estimator of the amount of memory used by caching.
         Higher value means more memory for caching. Zero means no caching.
+    random_state : :obj:`int`, :class:`numpy.random.Generator`, or None, optional
+        Seed for the permutations run by
+        :meth:`~nimare.meta.cbma.mkda.MKDAChi2.correct_fwe_montecarlo`, so that its results can
+        be reproduced. With ``fwe_null_method="label-permutation"``, None means each permutation
+        is seeded with its own iteration index, as it was before this parameter existed; with
+        ``fwe_null_method="random-foci"``, None means the permutations differ between runs.
+        Default is None.
+
+        .. versionadded:: 0.22.0
+
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -653,6 +672,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         fwe_null_method="label-permutation",
         memory=Memory(location=None, verbose=0),
         memory_level=0,
+        random_state=None,
         **kwargs,
     ):
         if not (isinstance(kernel_transformer, MKDAKernel) or kernel_transformer == MKDAKernel):
@@ -673,6 +693,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             kernel_transformer=kernel_transformer,
             memory=memory,
             memory_level=memory_level,
+            random_state=random_state,
             **kwargs,
         )
 
@@ -985,7 +1006,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         )
 
     def _run_label_perm_fwe_permutation(
-        self, i_iter, pooled_maps, n_selected, n_unselected, conn, voxel_thresh
+        self, i_iter, pooled_maps, n_selected, n_unselected, conn, voxel_thresh, seed=None
     ):
         """Run a single label-permutation iteration of the Monte Carlo FWE correction procedure.
 
@@ -995,7 +1016,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         Parameters
         ----------
         i_iter : :obj:`int`
-            Iteration index used as the random seed (ensures reproducibility under joblib).
+            Iteration index.
         pooled_maps : :obj:`scipy.sparse.csr_matrix` of shape (n_studies, n_voxels)
             Binary per-study MA maps from both groups stacked row-wise.
         n_selected, n_unselected : :obj:`int`
@@ -1004,6 +1025,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
             Connectivity matrix for cluster labeling.
         voxel_thresh : :obj:`float`
             Summary-statistic cluster-defining threshold.
+        seed : :obj:`int`, :class:`numpy.random.SeedSequence`, or None, optional
+            Seed for this iteration's label permutation, which has to be drawn inside the
+            worker process (ensures reproducibility under joblib). If None, the iteration index
+            is used. Default is None.
 
         Returns
         -------
@@ -1029,7 +1054,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
         group1_idx, group2_idx = self._permute_pairwise_group_indices(
             n_total=n_selected + n_unselected,
             n_group1=n_selected,
-            seed=i_iter,
+            seed=i_iter if seed is None else seed,
         )
 
         perm_group1 = pooled_maps[group1_idx, :]
@@ -1260,6 +1285,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
             pooled_maps = sp_sparse.vstack([ma_maps1, ma_maps2], format="csr")
             del ma_maps1, ma_maps2
 
+            iter_seeds = self._iteration_seeds(n_iters, stream="chi2_label_permutations")
             perm_results = [
                 r
                 for r in tqdm(
@@ -1271,6 +1297,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
                             n_unselected=n_unselected,
                             conn=conn,
                             voxel_thresh=ss_thresh,
+                            seed=iter_seeds[i_iter],
                         )
                         for i_iter in range(n_iters)
                     ),
@@ -1282,10 +1309,11 @@ class MKDAChi2(PairwiseCBMAEstimator):
                 _mask_coverage_to_null_ijk(self.masker, mask_coverage=self.mask_coverage),
                 self.masker.mask_img.affine,
             )
-            rand_idx1 = np.random.choice(null_xyz.shape[0], size=(iter_df1.shape[0], n_iters))
+            rng = self._get_rng("chi2_random_foci")
+            rand_idx1 = rng.choice(null_xyz.shape[0], size=(iter_df1.shape[0], n_iters))
             rand_xyz1 = null_xyz[rand_idx1, :]
             iter_xyzs1 = np.split(rand_xyz1, rand_xyz1.shape[1], axis=1)
-            rand_idx2 = np.random.choice(null_xyz.shape[0], size=(iter_df2.shape[0], n_iters))
+            rand_idx2 = rng.choice(null_xyz.shape[0], size=(iter_df2.shape[0], n_iters))
             rand_xyz2 = null_xyz[rand_idx2, :]
             iter_xyzs2 = np.split(rand_xyz2, rand_xyz2.shape[1], axis=1)
 
@@ -1591,6 +1619,13 @@ class KDA(CBMAEstimator):
         This is only used if ``null_method=="montecarlo"``.
         If <=0, defaults to using all available cores.
         Default is 1.
+    random_state : :obj:`int`, :class:`numpy.random.Generator`, or None, optional
+        Seed for the Monte Carlo null distribution and for
+        :meth:`~nimare.meta.cbma.mkda.KDA.correct_fwe_montecarlo`, so that their results can be
+        reproduced. If None, the permutations will differ between runs. Default is None.
+
+        .. versionadded:: 0.22.0
+
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -1662,6 +1697,7 @@ class KDA(CBMAEstimator):
         memory=Memory(location=None, verbose=0),
         memory_level=0,
         n_cores=1,
+        random_state=None,
         **kwargs,
     ):
         LGR.warning(
@@ -1682,6 +1718,7 @@ class KDA(CBMAEstimator):
             kernel_transformer=kernel_transformer,
             memory=memory,
             memory_level=memory_level,
+            random_state=random_state,
             **kwargs,
         )
         self.null_method = null_method

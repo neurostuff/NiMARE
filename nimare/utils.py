@@ -2,6 +2,7 @@
 
 import datetime
 import gzip
+import hashlib
 import inspect
 import json
 import logging
@@ -230,6 +231,74 @@ def validate_coordinate_spaces(coordinates):
             "to harmonize coordinates, or convert coordinates to a common space before "
             "running a meta-analysis."
         )
+
+
+def _seed_sequence(random_state, stream=None):
+    """Build a :class:`numpy.random.SeedSequence` from a user-provided seed.
+
+    Parameters
+    ----------
+    random_state : :obj:`int`, :class:`numpy.random.SeedSequence`, or None
+        The seed to derive the sequence from. If None, the sequence is seeded from operating
+        system entropy, so draws will differ between runs.
+    stream : :obj:`str` or None, optional
+        Name of the stochastic step the sequence will be used for. When ``random_state`` is not
+        None, the name is mixed into the entropy, so that different steps of the same object
+        (e.g., an Estimator's uncorrected null and its FWE null) draw independent, but still
+        reproducible, sequences instead of reusing the same one.
+        Default is None.
+
+    Returns
+    -------
+    :class:`numpy.random.SeedSequence`
+    """
+    if isinstance(random_state, np.random.SeedSequence):
+        return random_state
+
+    if random_state is None:
+        return np.random.SeedSequence()
+
+    if not isinstance(random_state, (int, np.integer)) or isinstance(random_state, bool):
+        raise TypeError(
+            "random_state must be None, an integer, a numpy.random.SeedSequence, or a "
+            f"numpy.random.Generator; got {type(random_state)}."
+        )
+
+    # SeedSequence entropy must be non-negative, but negative seeds are common enough in the
+    # wild (and accepted by scikit-learn) that they are folded into the unsigned range instead
+    # of rejected.
+    entropy = int(random_state) % 2**64
+    if stream is not None:
+        # A stable hash: Python's built-in hash() is salted per process, which would make
+        # seeded results differ between sessions.
+        stream_key = int.from_bytes(hashlib.sha256(stream.encode("utf-8")).digest()[:8], "big")
+        entropy = [entropy, stream_key]
+
+    return np.random.SeedSequence(entropy)
+
+
+def _check_random_state(random_state, stream=None):
+    """Turn a user-provided seed into a :class:`numpy.random.Generator`.
+
+    Parameters
+    ----------
+    random_state : :obj:`int`, :class:`numpy.random.Generator`, \
+                   :class:`numpy.random.SeedSequence`, or None
+        Seed for the generator. If None, the generator is seeded from operating system entropy
+        and results will vary between runs. If a Generator is passed, it is returned unchanged
+        and ``stream`` is ignored.
+    stream : :obj:`str` or None, optional
+        Name of the stochastic step the generator will be used for. See :func:`_seed_sequence`.
+        Default is None.
+
+    Returns
+    -------
+    :class:`numpy.random.Generator`
+    """
+    if isinstance(random_state, np.random.Generator):
+        return random_state
+
+    return np.random.default_rng(_seed_sequence(random_state, stream=stream))
 
 
 def seed_torch(seed, device="cpu"):

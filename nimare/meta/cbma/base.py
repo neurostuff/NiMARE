@@ -25,11 +25,13 @@ from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _add_metadata_to_dataframe,
     _check_ncores,
+    _check_random_state,
     _check_type,
     _mask_coverage_to_null_ijk,
     _mask_img_to_bool,
     _nlogp_to_logp_values,
     _p_to_logp_values,
+    _seed_sequence,
     get_masker,
     get_masker_mask_image,
     mm2vox,
@@ -123,6 +125,13 @@ class CBMAEstimator(Estimator):
         map). ``"brain"`` uses every non-zero
         voxel in the mask. Has no effect when ``null_method="approximate"``.
         Default is ``"brain"``.
+    random_state : :obj:`int`, :class:`numpy.random.Generator`, or None, optional
+        Seed for the Monte Carlo procedures used by this Estimator, so that their results can
+        be reproduced. If None, the permutations are drawn from operating system entropy and
+        will differ between runs. Default is None.
+
+        .. versionadded:: 0.22.0
+
     *args
         Optional arguments to the :obj:`~nimare.base.Estimator` __init__
         (called automatically).
@@ -144,11 +153,13 @@ class CBMAEstimator(Estimator):
         *,
         mask=None,
         mask_coverage="brain",
+        random_state=None,
         **kwargs,
     ):
         if mask_coverage not in ("gm", "brain"):
             raise ValueError(f"mask_coverage must be 'gm' or 'brain'; got {mask_coverage!r}.")
         self.mask_coverage = mask_coverage
+        self.random_state = random_state
 
         if mask is not None:
             mask = get_masker(mask, memory=memory, memory_level=memory_level)
@@ -179,6 +190,50 @@ class CBMAEstimator(Estimator):
             memory_level=memory_level,
             generate_description=generate_description,
         )
+
+    def _get_rng(self, stream):
+        """Return the random generator for one stochastic step of this Estimator.
+
+        A fresh generator is built on every call, so running the same step twice on the same
+        seeded Estimator gives the same answer twice. Each ``stream`` gets its own independent
+        sequence, so that, for instance, the uncorrected Monte Carlo null and the FWE null are
+        not built from the very same permutations.
+
+        Parameters
+        ----------
+        stream : :obj:`str`
+            Name of the step drawing from the generator.
+
+        Returns
+        -------
+        :class:`numpy.random.Generator`
+        """
+        return _check_random_state(self.random_state, stream=stream)
+
+    def _iteration_seeds(self, n_iters, stream):
+        """Return one independent seed per permutation, for seeding inside parallel workers.
+
+        Permutations that draw their own randomness in the worker process cannot share a
+        generator with the parent, so each iteration is handed its own seed instead.
+
+        Parameters
+        ----------
+        n_iters : :obj:`int`
+            Number of permutations.
+        stream : :obj:`str`
+            Name of the step the seeds are for. See :meth:`_get_rng`.
+
+        Returns
+        -------
+        :obj:`list`
+            Seeds, one per iteration. When ``random_state`` is None, these are the iteration
+            indices themselves, which is what these procedures used before ``random_state``
+            existed; results therefore do not change unless a seed is given.
+        """
+        if self.random_state is None:
+            return list(range(n_iters))
+
+        return _seed_sequence(self.random_state, stream=stream).spawn(n_iters)
 
     def _preprocess_input(self, dataset):
         """Mask required input images using either the Dataset's mask or the Estimator's.
@@ -711,7 +766,8 @@ class CBMAEstimator(Estimator):
             ma_maps = ma_maps[:, mask_data]
 
         n_studies, n_voxels = ma_maps.shape
-        null_ijk = np.random.choice(np.arange(n_voxels), (n_iters, n_studies))
+        rng = self._get_rng("null_reduced_montecarlo")
+        null_ijk = rng.choice(np.arange(n_voxels), (n_iters, n_studies))
         iter_ma_values = ma_maps[np.arange(n_studies), tuple(null_ijk)].T
         null_dist = self._compute_summarystat(iter_ma_values)
         self.null_distributions_["values_corr-none_method-reducedMontecarlo"] = null_dist
@@ -802,7 +858,8 @@ class CBMAEstimator(Estimator):
 
         n_cores = _check_ncores(n_cores)
 
-        rand_idx = np.random.choice(
+        rng = self._get_rng("null_montecarlo")
+        rand_idx = rng.choice(
             null_ijk.shape[0],
             size=(self.inputs_["coordinates"].shape[0], n_iters),
         )
@@ -1010,7 +1067,8 @@ class CBMAEstimator(Estimator):
             # Identify summary statistic corresponding to intensity threshold
             ss_thresh = self._p_to_summarystat(voxel_thresh)
 
-            rand_idx = np.random.choice(
+            rng = self._get_rng("correct_fwe_montecarlo")
+            rand_idx = rng.choice(
                 null_ijk.shape[0],
                 size=(self.inputs_["coordinates"].shape[0], n_iters),
             )
@@ -1262,8 +1320,9 @@ class PairwiseCBMAEstimator(CBMAEstimator):
             Total number of studies in the pooled dataset.
         n_group1 : int
             Number of studies in the first group.
-        seed : int
-            Seed for the random generator.
+        seed : int or :class:`numpy.random.SeedSequence`
+            Seed for the random generator, as produced by
+            :meth:`CBMAEstimator._iteration_seeds`.
 
         Returns
         -------
