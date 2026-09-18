@@ -192,7 +192,31 @@ run_reports(res_sub, html_dir)
 #
 #     <iframe src="./08_subtraction/report.html" style="border:none;" seamless="seamless" \
 #        width="100%" height="1000px"></iframe>
+###############################################################################
+###############################################################################
+# Robustness Analysis of Subtraction Results
+# -----------------------------------------------------------------------------
+# To evaluate the stability and robustness of the subtraction clusters against
+# individual study dropouts, we can run a Jackknife diagnostic analysis
+# on the subtraction MetaResult.
+from nimare.diagnostics import Jackknife
 
+jackknife = Jackknife(
+    target_image="z_desc-group1MinusGroup2Size_level-cluster_corr-FWE_method-montecarlo",
+    voxel_thresh=None,
+    display_second_group=True,
+)
+sub_diagnostic_results = jackknife.transform(res_sub)
+
+###############################################################################
+# Subtraction Jackknife Table
+# -----------------------------------------------------------------------------
+# We can inspect the contribution table to see how individual studies from
+# both groups influence the resulting subtraction clusters.
+sub_jackknife_table = sub_diagnostic_results.tables[
+    "z_desc-group1MinusGroup2Size_level-cluster_corr-FWE_method-montecarlo_diag-Jackknife_tab-counts_tail-positive"
+]
+sub_jackknife_table.head(10)
 ###############################################################################
 # Conjunction analysis
 # -----------------------------------------------------------------------------
