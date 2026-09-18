@@ -78,14 +78,8 @@ sample size can be used:
 The weights are normalised to sum to the number of contrasts, so an unweighted analysis is
 exactly the case where all of them are 1.0, and the statistic stays on the same scale
 either way. Dividing by the contrast count recovers the weighted *proportion* of
-:footcite:t:`wager2009evaluating`.
-
-.. important::
-    Weighting requires a sample size for every contrast, and most coordinate corpora
-    record one for only a small fraction of their analyses. A contrast with a missing or
-    non-positive sample size raises by default; pass
-    ``StudyWeights(on_missing="impute")`` to give those contrasts the mean weight of the
-    rest instead, which is what the CANlab MATLAB implementation does.
+:footcite:t:`wager2009evaluating`. A contrast with a missing or non-positive sample size
+raises; pass ``StudyWeights(on_missing="impute")`` to give it the mean weight instead.
 
 .. note::
     The weighting applies to the density statistic. The chi-square tests of

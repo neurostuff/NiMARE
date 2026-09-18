@@ -19,8 +19,7 @@ weighting the contrast indicator maps before averaging them
 where :math:`N_c` is the contrast's sample size and :math:`\delta_c` optionally
 discounts contrasts analysed with a fixed-effects study-level model.
 
-This example shows how to turn the weighting on, what it changes in the map, and how
-NiMARE's weights compare against the reference MATLAB implementation.
+This example shows how to turn the weighting on and what it changes in the map.
 
 Weighting is opt-in: :class:`~nimare.meta.cbma.mkda.MKDADensity` with no arguments
 weights every contrast equally, so existing analyses are unaffected.
@@ -30,8 +29,7 @@ weights every contrast equally, so existing analyses are unaffected.
 # Load a Studyset
 # -----------------------------------------------------------------------------
 # Weighting needs a sample size for every contrast. The NIDM pain Studyset shipped
-# with NiMARE records one, which most coordinate corpora do not -- see the last
-# section.
+# with NiMARE records one.
 import os
 
 import numpy as np
@@ -123,8 +121,8 @@ for name, result in [("Unweighted", res_unweighted), ("sqrt(N) weighted", res_we
 
 ###############################################################################
 # The two maps are highly correlated -- weighting rescales the same contrasts rather
-# than changing which ones enter -- but the ranking of voxels does move, and any
-# threshold acts on that ranking.
+# than changing which ones enter -- but the ranking of voxels does move, and
+# as a consequence different voxels may survive the threshold.
 stat_u = unweighted.masker.transform(res_unweighted.get_map("stat")).ravel()
 stat_w = weighted.masker.transform(res_weighted.get_map("stat")).ravel()
 
@@ -164,77 +162,10 @@ for name, spec in [("sqrt(N)", StudyWeights()), ("linear N", linear), ("explicit
     print(f"{name:10s} min={w.min():.4f} max={w.max():.4f} sum={w.sum():.4f}")
 
 ###############################################################################
-# Does this match the reference implementation?
-# -----------------------------------------------------------------------------
-# NiMARE's weighting is meant to reproduce CanLab's ``Canlab_MKDA_MetaAnalysis``
-# MATLAB toolbox, so it is worth checking rather than assuming. The two compute the
-# same quantity and normalise it differently.
-#
-# CanLab, ``densityUtility3/Meta_Setup.m``::
-#
-#     DB.rootn = sqrt(DB.Subjects);
-#     w = DB.rootn .* DB.SubjectiveWeights(DB.pointind);   % or just DB.rootn
-#     DB.studyweight = w ./ sum(w);                        % sums to 1
-#
-# NiMARE, :func:`~nimare.meta.cbma.weights.normalize_weights`::
-#
-#     raw = discount * transform(sample_size)              # delta_c * sqrt(N_c)
-#     weight_vec = n_studies * raw / raw.sum()             # sums to n_studies
-#
-# So CanLab reports a weighted proportion and NiMARE a weighted sum. If the relative
-# weights agree, ``nimare_weight / n_contrasts`` should equal CanLab's ``studyweight``.
-# The values below were produced by running ``Meta_Setup`` on this same Studyset under
-# Octave and dumping ``DB.studyweight``; they are inlined so this example needs no
-# MATLAB.
-CANLAB_STUDYWEIGHT = {
-    "pain_01.nidm-1": 0.0606990726388009,
-    "pain_02.nidm-1": 0.0606990726388009,
-    "pain_03.nidm-1": 0.0542909010366226,
-    "pain_04.nidm-1": 0.0542909010366226,
-    "pain_05.nidm-1": 0.0364194435832806,
-    "pain_06.nidm-1": 0.0364194435832806,
-    "pain_07.nidm-1": 0.0364194435832806,
-    "pain_08.nidm-1": 0.0420535511130868,
-    "pain_09.nidm-1": 0.0420535511130868,
-    "pain_10.nidm-1": 0.0420535511130868,
-    "pain_11.nidm-1": 0.0420535511130868,
-    "pain_12.nidm-1": 0.0437707237544620,
-    "pain_13.nidm-1": 0.0686731613994095,
-    "pain_14.nidm-1": 0.0594727023300776,
-    "pain_15.nidm-1": 0.0454230267018595,
-    "pain_16.nidm-1": 0.0454230267018595,
-    "pain_17.nidm-1": 0.0420535511130868,
-    "pain_18.nidm-1": 0.0420535511130868,
-    "pain_19.nidm-1": 0.0485592581110407,
-    "pain_20.nidm-1": 0.0485592581110407,
-    "pain_21.nidm-1": 0.0485592581110407,
-}
-
-comparison = table.copy()
-comparison["nimare_proportion"] = comparison["weight"] / len(comparison)
-comparison["canlab"] = comparison["id"].map(CANLAB_STUDYWEIGHT)
-comparison["abs_diff"] = (comparison["nimare_proportion"] - comparison["canlab"]).abs()
-
-print(f"NiMARE weights sum to {comparison['weight'].sum():.12f}")
-print(f"CanLab weights sum to {comparison['canlab'].sum():.12f}")
-print(f"max |NiMARE/n - CanLab| = {comparison['abs_diff'].max():.3e}")
-print(f"machine epsilon         = {np.finfo(float).eps:.3e}")
-
-assert np.allclose(comparison["nimare_proportion"], comparison["canlab"], rtol=0, atol=1e-12)
-print("\nThe weights are identical up to the normalisation convention.")
-
-###############################################################################
-# That is a statement about the weights only, not about the rest of MKDA. The two
-# implementations still rasterise their spheres slightly differently, so the maps are
-# not bit-identical even though the weights are.
-
-###############################################################################
 # When sample sizes are missing
 # -----------------------------------------------------------------------------
-# Most coordinate corpora record a sample size for only a small fraction of their
-# analyses, so this is the common case rather than an edge case. A contrast with a
-# missing or non-positive sample size raises by default, because a substituted weight
-# is invisible in the output map.
+# A contrast with a missing or non-positive sample size raises
+# by default, because a substituted weight is invisible in the output map.
 incomplete = studyset.to_dict()
 incomplete["studies"][0]["analyses"][0]["metadata"]["sample_sizes"] = None
 incomplete = Studyset(incomplete, target="mni152_2mm")
@@ -252,10 +183,6 @@ except ValueError as exc:
 imputing = StudyWeights(on_missing="impute")
 raw = imputing.raw_weights(incomplete, list(incomplete.ids))
 print(f"{imputing.n_imputed_} contrast(s) imputed, weight {raw.iloc[0]:.4f}")
-
-###############################################################################
-# Sample size is also what ALE uses to set its kernel width and what SDM needs for
-# its effect-size conversion, so a corpus without it limits more than MKDA.
 
 ###############################################################################
 # References

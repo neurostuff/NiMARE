@@ -726,3 +726,25 @@ def test_uniform_bin_counts_matches_rounding_used_for_observed_map():
         expected[int(np.clip(np.rint(value / step), 0, n_bins - 1))] += 1
     np.testing.assert_array_equal(counts, expected)
     assert counts.sum() == values.size
+
+
+def test_get_last_bin_scans_from_the_end():
+    """The weighted null asks for this once per permutation on a 100k-bin histogram."""
+    from nimare.meta.utils import _get_last_bin
+
+    assert _get_last_bin(np.array([0, 0, 3, 0, 0])) == 2
+    assert _get_last_bin(np.array([4, 0, 0, 7])) == 3
+    # An all-zero or empty histogram has no last bin; both report the first.
+    assert _get_last_bin(np.zeros(5, dtype=np.int64)) == 0
+    assert _get_last_bin(np.array([], dtype=np.int64)) == 0
+
+
+def test_MKDADensity_subset_weights_reject_an_unknown_study():
+    """A subsample can only renormalise over contrasts the fit actually weighted."""
+    studyset = _sample_size_studyset([16, 25, 36])
+    meta = MKDADensity(weighting="sample_size", generate_description=False)
+    meta.fit(studyset)
+
+    ma_maps = meta._collect_ma_maps()
+    with pytest.raises(ValueError, match="was not weighted"):
+        meta._compute_weights(ma_maps, study_ids=["not-a-study"] * ma_maps.shape[0])

@@ -179,15 +179,13 @@ class MKDADensity(CBMAEstimator):
         Default is 5000.
     weighting : None, {"sample_size", "uniform"}, or \
 :obj:`~nimare.meta.cbma.weights.StudyWeights`, default=None
-        How to weight each study contrast map. ``None`` weights every contrast equally,
-        which is the historical behavior. ``"sample_size"`` applies the
-        :math:`\sqrt{N}` weighting of :footcite:t:`wager2009evaluating`; pass a
-        :class:`~nimare.meta.cbma.weights.StudyWeights` instance to discount
-        fixed-effects contrasts or to supply weights directly.
-
-        Note that this differs from how :class:`~nimare.meta.kernel.ALEKernel` uses
-        sample size, which sets the *width* of each study's kernel rather than the
-        study's contribution to the summary statistic.
+        How to weight each study contrast map. ``None`` and ``"uniform"`` both weight
+        every contrast equally, which is the historical behavior. ``"sample_size"``
+        applies the :math:`\sqrt{N}` weighting of :footcite:t:`wager2009evaluating`;
+        pass a :class:`~nimare.meta.cbma.weights.StudyWeights` instance to discount
+        fixed-effects contrasts or to supply weights directly. Unlike
+        :class:`~nimare.meta.kernel.ALEKernel`, sample size scales a contrast's
+        contribution to the summary statistic, not its kernel width.
     n_histogram_bins : int, default=100000
         Resolution of the null distribution when the weights are not uniform. The
         weighted summary statistic is continuous, so its null has to be evaluated on a
@@ -298,14 +296,22 @@ class MKDADensity(CBMAEstimator):
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
         self._raw_weights_ = None
+        self._weight_positions_ = None
 
     def _preprocess_input(self, dataset):
         """Collect the per-contrast weights alongside the Estimator's usual inputs."""
         super()._preprocess_input(dataset)
         if self.weighting is None:
             self._raw_weights_ = None
+            self._weight_positions_ = None
         else:
-            self._raw_weights_ = self.weighting.raw_weights(dataset, self.inputs_["id"])
+            raw = self.weighting.raw_weights(dataset, self.inputs_["id"])
+            # Kept as an array plus a position map rather than as the Series: the
+            # subsample path below runs once per leave-one-out replicate and per
+            # stability iteration, and a pandas label lookup there costs 600 us against
+            # 8 us for a dict lookup and a take.
+            self._raw_weights_ = raw.to_numpy(dtype=np.float64)
+            self._weight_positions_ = {study_id: i for i, study_id in enumerate(raw.index)}
 
     def _generate_description(self):
         """Generate a description of the fitted Estimator.
@@ -393,9 +399,20 @@ class MKDADensity(CBMAEstimator):
         if self._raw_weights_ is None:
             raw = np.ones(n_exp, dtype=np.float64)
         elif study_ids is None:
-            raw = self._raw_weights_.to_numpy(dtype=np.float64)
+            raw = self._raw_weights_
         else:
-            raw = self._raw_weights_.loc[list(study_ids)].to_numpy(dtype=np.float64)
+            positions = self._weight_positions_
+            try:
+                rows = np.fromiter(
+                    (positions[study_id] for study_id in study_ids),
+                    dtype=np.intp,
+                    count=len(study_ids),
+                )
+            except KeyError as exc:
+                raise ValueError(
+                    f"Study {exc} was not weighted when the Estimator was fit."
+                ) from exc
+            raw = self._raw_weights_[rows]
 
         if raw.shape[0] != n_exp:
             raise ValueError(

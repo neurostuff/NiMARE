@@ -63,15 +63,15 @@ def _nullhist_to_summarystat(hist_weights, bin_centers, p):
     The chosen bin is the last one whose tail probability still exceeds ``p``, so the
     threshold is conservative with respect to the requested rate.
     """
-    weights = np.asarray(hist_weights, dtype=np.float64)
-    total = np.sum(weights)
-    if total <= 0:
+    weights = np.asarray(hist_weights, dtype=np.float64).ravel()
+    if weights.sum() <= 0:
         return bin_centers[0]
 
-    tail = weights / total
-    tail = np.cumsum(tail[::-1])[::-1]
-    tail /= np.max(tail)
-    tail = np.squeeze(tail)
+    # Normalising after the accumulation rather than before saves a pass over the
+    # histogram, which MKDA's weighted null makes 100k bins long. The first entry of an
+    # upper-tail cumulative sum is the total, so it is the only divisor needed.
+    tail = np.cumsum(weights[::-1])[::-1]
+    tail /= tail[0]
 
     below = np.flatnonzero(tail <= p)
     if below.size == 0:

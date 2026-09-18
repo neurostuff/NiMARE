@@ -1,6 +1,7 @@
 """Tests for nimare.meta.cbma.weights."""
 
 import logging
+import os
 
 import numpy as np
 import pytest
@@ -11,6 +12,7 @@ from nimare.meta.cbma.weights import (
     resolve_weighting,
 )
 from nimare.studyset import Studyset
+from nimare.utils import get_resource_path
 
 
 def _studyset(sample_sizes, extra_metadata=None):
@@ -242,3 +244,44 @@ def test_counts_reset_between_calls():
     clean = _studyset([16, 25], extra_metadata=[{"inference": "rfx"}, {"inference": "rfx"}])
     weighting.raw_weights(clean, clean.ids)
     assert (weighting.n_fixed_effects_, weighting.n_imputed_) == (0, 0)
+
+
+#: ``DB.studyweight`` from CanLab's ``densityUtility3/Meta_Setup.m`` run on
+#: ``nidm_pain_studyset.json``. CanLab normalises ``sqrt(N)`` to sum to 1; NiMARE
+#: normalises it to sum to the contrast count, so the two agree after dividing by that
+#: count. Inlined so the test needs no MATLAB.
+CANLAB_STUDYWEIGHT = {
+    "pain_01.nidm-1": 0.0606990726388009,
+    "pain_02.nidm-1": 0.0606990726388009,
+    "pain_03.nidm-1": 0.0542909010366226,
+    "pain_04.nidm-1": 0.0542909010366226,
+    "pain_05.nidm-1": 0.0364194435832806,
+    "pain_06.nidm-1": 0.0364194435832806,
+    "pain_07.nidm-1": 0.0364194435832806,
+    "pain_08.nidm-1": 0.0420535511130868,
+    "pain_09.nidm-1": 0.0420535511130868,
+    "pain_10.nidm-1": 0.0420535511130868,
+    "pain_11.nidm-1": 0.0420535511130868,
+    "pain_12.nidm-1": 0.0437707237544620,
+    "pain_13.nidm-1": 0.0686731613994095,
+    "pain_14.nidm-1": 0.0594727023300776,
+    "pain_15.nidm-1": 0.0454230267018595,
+    "pain_16.nidm-1": 0.0454230267018595,
+    "pain_17.nidm-1": 0.0420535511130868,
+    "pain_18.nidm-1": 0.0420535511130868,
+    "pain_19.nidm-1": 0.0485592581110407,
+    "pain_20.nidm-1": 0.0485592581110407,
+    "pain_21.nidm-1": 0.0485592581110407,
+}
+
+
+def test_weights_match_the_canlab_reference_implementation():
+    """Relative weights reproduce CanLab's MATLAB ``Meta_Setup``."""
+    studyset = Studyset(os.path.join(get_resource_path(), "nidm_pain_studyset.json"))
+    ids = list(studyset.ids)
+
+    raw = StudyWeights().raw_weights(studyset, ids)
+    proportions = normalize_weights(raw.to_numpy(), len(ids)) / len(ids)
+    expected = [CANLAB_STUDYWEIGHT[study_id] for study_id in ids]
+
+    np.testing.assert_allclose(proportions, expected, rtol=0, atol=1e-12)
