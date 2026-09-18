@@ -2,6 +2,7 @@
 
 from .ale import ALE, SCALE, ALESubtraction, BalancedALESubtraction
 from .mkda import KDA, MKDAChi2, MKDADensity
+from .weights import StudyWeights
 
 __all__ = [
     "ALE",
@@ -11,4 +12,5 @@ __all__ = [
     "MKDADensity",
     "MKDAChi2",
     "KDA",
+    "StudyWeights",
 ]

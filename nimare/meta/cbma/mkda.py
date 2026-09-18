@@ -13,6 +13,7 @@ from tqdm.auto import tqdm
 from nimare import _version
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.cbma.utils import collect_csr_ma_maps, require_masked_csr
+from nimare.meta.cbma.weights import normalize_weights, resolve_weighting
 from nimare.meta.kernel import KDAKernel, MKDAKernel
 from nimare.meta.utils import _calculate_cluster_measures
 from nimare.stats import nlogp_fdr, null_to_p, one_way, two_way_counts
@@ -32,11 +33,114 @@ from nimare.utils import (
 LGR = logging.getLogger(__name__)
 __version__ = _version.get_versions()["version"]
 
+#: Grid resolution for the weighted MKDA null. See ``_weighted_histogram_bins``.
+DEFAULT_HISTOGRAM_BINS = 100_000
+
+
+def _weighted_grid_step(weights, n_bins):
+    """Return the grid spacing for a weighted MKDA null, and the weights as bin counts.
+
+    The weighted statistic is continuous, so the null has to live on a grid. Rounding each
+    weight to a whole number of bins costs at most ``step / 2`` per contrast.
+
+    A weight smaller than ``step`` is given one bin rather than none, which overstates it
+    by less than ``step``. Shrinking the step to fit it instead would let a single
+    negligible weight set the resolution for the whole grid: two explicit weights of 1e-9
+    and 5 would ask for five billion bins, or 40 GB per buffer. The clamp keeps the grid
+    within ``n_bins + n_contrasts`` however extreme the weights are.
+    """
+    weights = np.asarray(weights, dtype=np.float64).ravel()
+    n_bins = max(int(n_bins), 2)
+    step = weights.sum() / (n_bins - 1)
+    return step, np.maximum(np.rint(weights / step).astype(np.int64), 1)
+
+
+def _weighted_histogram_bins(weights, n_bins=DEFAULT_HISTOGRAM_BINS):
+    """Return uniformly spaced bin centres spanning ``[0, sum(weights)]``.
+
+    Uniform spacing is required: ``CBMAEstimator._compute_null_montecarlo`` reconstructs
+    the bin edges from the first two centres.
+    """
+    step, multiples = _weighted_grid_step(weights, n_bins)
+    # Rounding each weight down can leave the top of the grid just short of the largest
+    # attainable statistic, so extend it to cover the full range.
+    total = np.asarray(weights, dtype=np.float64).sum()
+    n_top = max(int(multiples.sum()), int(np.ceil(total / step)))
+    return np.arange(n_top + 1, dtype=np.float64) * step
+
+
+def _uniform_bin_counts(values, n_bins, step):
+    """Bin ``values`` onto ``n_bins`` uniformly spaced centres starting at zero.
+
+    ``np.histogram`` with an explicit edge array falls back to a binary search per value,
+    which costs 12 ms per permutation on a 100k-bin grid against 1 ms here. Rounding onto
+    a uniform grid is also the convention :func:`~nimare.stats.nullhist_to_p` uses to bin
+    the observed statistic map, so the permuted and observed maps agree on which bin a
+    value belongs to.
+    """
+    indices = np.rint(np.asarray(values, dtype=np.float64).ravel() / step)
+    np.clip(indices, 0, n_bins - 1, out=indices)
+    return np.bincount(indices.astype(np.intp), minlength=n_bins)
+
+
+def _weighted_null_histogram(weights, prop_active, bin_centers):
+    """Return the exact null distribution of ``sum_c w_c I_c`` on ``bin_centers``.
+
+    ``I_c`` is contrast ``c``'s binary indicator and ``prop_active[c]`` its probability of
+    covering a voxel under spatial uniformity, so the statistic is a weighted sum of
+    independent Bernoulli variables -- a weighted Poisson binomial. Convolving one
+    contrast at a time is exact up to the grid rounding in ``_weighted_grid_step``.
+
+    The loop only touches the occupied part of the histogram, which grows by ``m_c`` bins
+    per contrast, so the cost is about half of ``n_contrasts * n_bins``.
+    """
+    weights = np.asarray(weights, dtype=np.float64).ravel()
+    prop_active = np.asarray(prop_active, dtype=np.float64).ravel()
+    if weights.size != prop_active.size:
+        raise ValueError(f"Got {weights.size} weights for {prop_active.size} contrasts.")
+
+    step = bin_centers[1] - bin_centers[0]
+    multiples = np.maximum(np.rint(weights / step), 1).astype(np.int64)
+
+    size = bin_centers.size
+    if multiples.sum() >= size:
+        # The loop would clip, silently dropping mass off the top of the grid.
+        raise ValueError(
+            f"A grid of {size} bins cannot hold a statistic spanning "
+            f"{int(multiples.sum()) + 1} of them."
+        )
+    current = np.zeros(size, dtype=np.float64)
+    nxt = np.zeros(size, dtype=np.float64)
+    scratch = np.empty(size, dtype=np.float64)
+    current[0] = 1.0
+    occupied = 0
+
+    for m_c, p_c in zip(multiples, prop_active):
+        m_c = int(m_c)
+        grown = min(occupied + m_c, size - 1)
+        # Not-activating shifts nothing; activating shifts the mass up by m_c bins.
+        np.multiply(current[: occupied + 1], 1.0 - p_c, out=nxt[: occupied + 1])
+        nxt[occupied + 1 : grown + 1] = 0.0
+        np.multiply(current[: grown - m_c + 1], p_c, out=scratch[: grown - m_c + 1])
+        nxt[m_c : grown + 1] += scratch[: grown - m_c + 1]
+        current, nxt = nxt, current
+        occupied = grown
+
+    current[occupied + 1 :] = 0.0
+    return current
+
 
 class MKDADensity(CBMAEstimator):
     r"""Multilevel kernel density analysis- Density analysis.
 
     The MKDA density method was originally introduced in :footcite:t:`wager2007meta`.
+    Sample-size weighting follows :footcite:t:`wager2009evaluating`.
+
+    .. versionchanged:: 0.22.0
+
+        - New parameters: ``weighting``, which enables the sample-size weighting of
+          :footcite:t:`wager2009evaluating`, and ``n_histogram_bins``, which sets the
+          resolution of the resulting weighted null distribution.
 
     .. versionchanged:: 0.2.1
 
@@ -73,6 +177,23 @@ class MKDADensity(CBMAEstimator):
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
         Default is 5000.
+    weighting : None, {"sample_size", "uniform"}, or \
+:obj:`~nimare.meta.cbma.weights.StudyWeights`, default=None
+        How to weight each study contrast map. ``None`` and ``"uniform"`` both weight
+        every contrast equally, which is the historical behavior. ``"sample_size"``
+        applies the :math:`\sqrt{N}` weighting of :footcite:t:`wager2009evaluating`;
+        pass a :class:`~nimare.meta.cbma.weights.StudyWeights` instance to discount
+        fixed-effects contrasts or to supply weights directly. Unlike
+        :class:`~nimare.meta.kernel.ALEKernel`, sample size scales a contrast's
+        contribution to the summary statistic, not its kernel width.
+    n_histogram_bins : int, default=100000
+        Resolution of the null distribution when the weights are not uniform. The
+        weighted summary statistic is continuous, so its null has to be evaluated on a
+        grid, which rounds each contrast's weight by at most half a bin. At the default,
+        upper-tail probabilities match brute-force enumeration over all outcomes to
+        better than 2e-10. Lowering it speeds up ``null_method="montecarlo"`` slightly.
+        Ignored when every contrast has the same weight, in which case the statistic is
+        integer-valued and the null is exact.
     memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
         Used to cache the output of a function. By default, no caching is done.
         If a :obj:`str` is given, it is the path to the caching directory.
@@ -147,6 +268,8 @@ class MKDADensity(CBMAEstimator):
         kernel_transformer=MKDAKernel,
         null_method="approximate",
         n_iters=5000,
+        weighting=None,
+        n_histogram_bins=DEFAULT_HISTOGRAM_BINS,
         memory=Memory(location=None, verbose=0),
         memory_level=0,
         n_cores=1,
@@ -168,8 +291,27 @@ class MKDADensity(CBMAEstimator):
         )
         self.null_method = null_method
         self.n_iters = None if null_method == "approximate" else n_iters or 5000
+        self.weighting = resolve_weighting(weighting)
+        self.n_histogram_bins = n_histogram_bins
         self.n_cores = _check_ncores(n_cores)
         self.dataset = None
+        self._raw_weights_ = None
+        self._weight_positions_ = None
+
+    def _preprocess_input(self, dataset):
+        """Collect the per-contrast weights alongside the Estimator's usual inputs."""
+        super()._preprocess_input(dataset)
+        if self.weighting is None:
+            self._raw_weights_ = None
+            self._weight_positions_ = None
+        else:
+            raw = self.weighting.raw_weights(dataset, self.inputs_["id"])
+            # Kept as an array plus a position map rather than as the Series: the
+            # subsample path below runs once per leave-one-out replicate and per
+            # stability iteration, and a pandas label lookup there costs 600 us against
+            # 8 us for a dict lookup and a take.
+            self._raw_weights_ = raw.to_numpy(dtype=np.float64)
+            self._weight_positions_ = {study_id: i for i, study_id in enumerate(raw.index)}
 
     def _generate_description(self):
         """Generate a description of the fitted Estimator.
@@ -195,36 +337,88 @@ class MKDADensity(CBMAEstimator):
             "(RRID:SCR_017398; \\citealt{Salo2023}), using a(n) "
             f"{self.kernel_transformer.__class__.__name__.replace('Kernel', '')} kernel. "
             f"{self.kernel_transformer._generate_description()} "
+            f"{self._generate_weighting_description()}"
             f"Summary statistics (OF values) were converted to p-values using {null_method_str}. "
             f"The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
             f"{len(self.inputs_['id'])} experiments."
         )
         return description
 
-    def _compute_weights(self, ma_values):
-        """Determine experiment-wise weights per the conventional MKDA approach."""
-        # TODO: Incorporate sample-size and inference metadata extraction and
-        # merging into df.
-        # This will need to be distinct from the kernel_transformer-based kind
-        # done in CBMAEstimator._preprocess_input
-        ids_df = self.inputs_["coordinates"].groupby("id").first()
+    def _generate_weighting_description(self):
+        """Describe the weighting scheme, or return an empty string when unweighted."""
+        weights = getattr(self, "weight_vec_", None)
+        if self.weighting is None or weights is None:
+            return ""
 
-        n_exp = len(ids_df)
+        weights = np.asarray(weights, dtype=np.float64).ravel()
+        n_exp = weights.size
+        # Kish's effective sample size: how many equally weighted contrasts carry the
+        # same information. It is the number that says whether one study dominates.
+        ess = float(weights.sum() ** 2 / np.sum(weights**2))
 
-        # Default to unit weighting for missing inference or sample size
-        if "inference" not in ids_df.columns:
-            ids_df["inference"] = "rfx"
-        if "sample_size" not in ids_df.columns:
-            ids_df["sample_size"] = 1.0
+        transform_str = {
+            "sqrt": "the square root of the sample size",
+            "linear": "the sample size",
+            "none": "a constant",
+        }[self.weighting.transform]
+        description = (
+            "Each study contrast map was weighted by "
+            f"{transform_str} \\citep{{wager2009evaluating}}"
+        )
+        if self.weighting.inference_field is not None:
+            n_discounted = self.weighting.n_fixed_effects_
+            description += (
+                f", with {n_discounted} fixed-effects "
+                f"{'contrast' if n_discounted == 1 else 'contrasts'} discounted by a factor "
+                f"of {self.weighting.fixed_effects_discount}"
+            )
+        description += (
+            f". Weights were normalized across the {n_exp} contrasts, giving an effective "
+            f"sample size of {ess:.1f} contrasts"
+        )
+        n_imputed = self.weighting.n_imputed_
+        if n_imputed:
+            noun = "contrast was" if n_imputed == 1 else "contrasts were"
+            description += (
+                f"; {n_imputed} {noun} given the mean weight of the rest, having no usable "
+                "weight of their own"
+            )
+        description += ". "
+        return description
 
-        n = ids_df["sample_size"].astype(float).values
-        inf = ids_df["inference"].map({"ffx": 0.75, "rfx": 1.0}).values
+    def _compute_weights(self, ma_values, study_ids=None):
+        """Determine contrast-wise weights, normalised over the contrasts being analysed.
 
-        weight_vec = n_exp * ((np.sqrt(n) * inf) / np.sum(np.sqrt(n) * inf))
-        weight_vec = weight_vec[:, None]
+        ``_preprocess_input`` collects the raw weights against ``inputs_["id"]``, and the
+        kernel emits one MA-map row per study in that same order, so no realignment is
+        needed for a full analysis. A subsample passes the IDs of the rows it kept, which
+        is what makes leave-one-out renormalise over the studies it actually used.
+        """
+        n_exp = ma_values.shape[0]
 
-        assert weight_vec.shape[0] == ma_values.shape[0]
-        return weight_vec
+        if self._raw_weights_ is None:
+            raw = np.ones(n_exp, dtype=np.float64)
+        elif study_ids is None:
+            raw = self._raw_weights_
+        else:
+            positions = self._weight_positions_
+            try:
+                rows = np.fromiter(
+                    (positions[study_id] for study_id in study_ids),
+                    dtype=np.intp,
+                    count=len(study_ids),
+                )
+            except KeyError as exc:
+                raise ValueError(
+                    f"Study {exc} was not weighted when the Estimator was fit."
+                ) from exc
+            raw = self._raw_weights_[rows]
+
+        if raw.shape[0] != n_exp:
+            raise ValueError(
+                f"Computed {raw.shape[0]} weights for {n_exp} modeled activation maps."
+            )
+        return normalize_weights(raw, n_exp)[:, None]
 
     def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", return_type="sparse"):
         """Collect MKDA MA maps in masked CSR form."""
@@ -238,11 +432,20 @@ class MKDADensity(CBMAEstimator):
         return collect_csr_ma_maps(self, coords_key=coords_key, maps_key=maps_key)
 
     def _prepare_subsample_null(self, ma_maps, subset_study_ids=None):
-        """Recompute experiment weights for the active subset of studies."""
-        if subset_study_ids is not None:
-            subset_mask = self.inputs_["coordinates"]["id"].isin(subset_study_ids)
-            self.inputs_["coordinates"] = self.inputs_["coordinates"][subset_mask]
-        self.weight_vec_ = self._compute_weights(ma_maps)
+        """Recompute contrast weights for the active subset of studies."""
+        self.weight_vec_ = self._compute_weights(ma_maps, study_ids=subset_study_ids)
+
+    def _compute_null_montecarlo_permutation(self, iter_ijk, iter_df, bin_edges=None):
+        """Run one Monte Carlo permutation, binning onto the weighted grid when there is one."""
+        if bin_edges is None or self._weights_for_null() is None:
+            return super()._compute_null_montecarlo_permutation(iter_ijk, iter_df, bin_edges)
+
+        iter_ss_map = self._compute_permutation_summarystat(iter_ijk, iter_df)
+        return _uniform_bin_counts(
+            iter_ss_map,
+            n_bins=len(bin_edges) - 1,
+            step=bin_edges[1] - bin_edges[0],
+        )
 
     def _compute_summarystat(self, data):
         """Compute summary statistics from dense arrays or masked CSR matrices."""
@@ -287,11 +490,35 @@ class MKDADensity(CBMAEstimator):
         else:
             raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
 
-        self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
+        weights = self._weights_for_null()
+        if weights is None:
+            # Unit weights: the statistic counts activating contrasts, so it lands on the
+            # integers 0..k and the bins are exact.
+            self.null_distributions_["histogram_bins"] = np.arange(len(prop_active) + 1, step=1)
+        else:
+            self.null_distributions_["histogram_bins"] = _weighted_histogram_bins(
+                weights,
+                n_bins=self.n_histogram_bins,
+            )
 
         if self.null_method.startswith("approximate"):
             # To speed things up in _compute_null_approximate, we save the means too,
             self.null_distributions_["histogram_means"] = prop_active
+
+    def _weights_for_null(self):
+        """Return the weight vector when it is non-uniform, else None.
+
+        The null branches on whether the weights actually differ rather than on whether
+        weighting was requested, so a weighted analysis of an equal-N corpus takes the
+        same exact integer-bin path as an unweighted one.
+        """
+        weights = getattr(self, "weight_vec_", None)
+        if weights is None:
+            return None
+        weights = np.asarray(weights, dtype=np.float64).ravel()
+        if weights.size == 0 or np.all(weights == weights[0]):
+            return None
+        return weights
 
     def _compute_null_approximate(self, ma_maps):
         """Compute uncorrected null distribution using approximate solution.
@@ -307,15 +534,23 @@ class MKDADensity(CBMAEstimator):
         """
         assert "histogram_means" in self.null_distributions_.keys()
 
-        # MKDA maps are binary, so we only have k + 1 bins in the final
-        # histogram, where k is the number of studies. We can analytically
-        # compute the null distribution by convolution.
-        # prop_active contains the mean value per experiment
+        # MKDA maps are binary, so the summary statistic is a sum of independent
+        # Bernoulli indicators and its null distribution is available in closed form by
+        # convolution. prop_active holds each contrast's in-mask coverage fraction, which
+        # is its probability of activating a voxel under spatial uniformity.
         prop_active = self.null_distributions_["histogram_means"]
 
-        ss_hist = 1.0
-        for exp_prop in prop_active:
-            ss_hist = np.convolve(ss_hist, [1 - exp_prop, exp_prop])
+        weights = self._weights_for_null()
+        if weights is None:
+            ss_hist = 1.0
+            for exp_prop in prop_active:
+                ss_hist = np.convolve(ss_hist, [1 - exp_prop, exp_prop])
+        else:
+            ss_hist = _weighted_null_histogram(
+                weights,
+                prop_active,
+                self.null_distributions_["histogram_bins"],
+            )
 
         self.null_distributions_["histweights_corr-none_method-approximate"] = ss_hist
 
