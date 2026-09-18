@@ -26,10 +26,11 @@ INFORMATION_METHODS = ("closed_form", "autodiff")
 #: takes the path this warns about.
 _CLOSED_FORM_WARNING = (
     "CBMR is computing its observed information matrix -- and so its standard errors, p-values, "
-    "and hypothesis tests -- from closed-form formulas  to replace automatic differentiation of "
+    "and hypothesis tests -- from closed-form formulas added in "
+    "https://github.com/neurostuff/NiMARE/pull/1121 to replace automatic differentiation of "
     "the log-likelihood. The closed form formulas were derived and implemented with the help of "
     "a large language model. They are checked against symbolic proofs and against automatic "
-    "differentiation on a limited set of designs, but "
+    "differentiation on a limited set of designs (https://github.com/jdkent/cbmr-proofs), but "
     "have NOT been independently or exhaustively validated. To use the slower, more "
     "memory-intensive automatic-differentiation computation this replaced, pass "
     "information_method='autodiff' to CBMR(...)."
