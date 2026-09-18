@@ -29,14 +29,17 @@ from nimare.utils import get_masker, get_template
 RANDOM_SEED = 13
 
 
-@pytest.fixture(scope="session")
-def ml_studyset():
-    """Build the shared Studyset used by the ML tests.
+def _build_ml_studyset(studies_without_points=(), coordinate_offset=0.0):
+    """Build the Studyset used by the ML tests.
 
     The Studyset includes enough single-analysis studies for grouped train/test
     splitting, plus a masker, valid MNI coordinates, Studyset-style sample
     size metadata, numeric annotations, text fields, unique study IDs, and
     unique full analysis IDs.
+
+    A Studyset is immutable, so the variants some tests need -- a study whose
+    analysis carries no coordinates, or coordinates moved off the shared ones --
+    are built here rather than edited into a finished Studyset.
     """
     coordinate_groups = {
         "motor": [
@@ -75,7 +78,18 @@ def ml_studyset():
                                 "target_score": target_score,
                             },
                             "texts": {"abstract": f"Study {idx} abstract."},
-                            "points": [{"space": "MNI", "coordinates": coordinate}],
+                            "points": (
+                                []
+                                if study_id in studies_without_points
+                                else [
+                                    {
+                                        "space": "MNI",
+                                        "coordinates": [
+                                            axis + coordinate_offset for axis in coordinate
+                                        ],
+                                    }
+                                ]
+                            ),
                             "images": [],
                         }
                     ],
@@ -90,6 +104,12 @@ def ml_studyset():
         "studies": studies,
     }
     return Studyset(source, mask=source["masker"])
+
+
+@pytest.fixture(scope="session")
+def ml_studyset():
+    """Return the shared Studyset used by the ML tests."""
+    return _build_ml_studyset()
 
 
 @pytest.fixture
@@ -435,7 +455,7 @@ def test_ma_feature_extractor_selected_values_alignment(ml_studyset):
     studyset = ml_studyset
     extractor = MAFeatureExtractor(kernel_transformer=object())
 
-    expected_motor = [study.analyses[0].annotations["motor_label"] for study in studyset.studies]
+    expected_motor = [study.analyses[0].labels["motor_label"] for study in studyset.studies]
     expected_sample_sizes = [
         study.analyses[0].metadata["sample_sizes"] for study in studyset.studies
     ]
@@ -461,10 +481,10 @@ def test_ma_feature_extractor_transform(ml_studyset):
     descriptor_name = "motor_label"
     target_name = "target_score"
     descriptor_by_study = {
-        study.id: study.analyses[0].annotations[descriptor_name] for study in studyset.studies
+        study.id: study.analyses[0].labels[descriptor_name] for study in studyset.studies
     }
     target_by_study = {
-        study.id: study.analyses[0].annotations[target_name] for study in studyset.studies
+        study.id: study.analyses[0].labels[target_name] for study in studyset.studies
     }
     extractor = MAFeatureExtractor(
         kernel_transformer=MKDAKernel(r=4, value=1),
@@ -505,11 +525,9 @@ def test_ma_feature_extractor_handles_missing_coordinates(
     keep_missing,
 ):
     """Drop or retain analyses without coordinates."""
-    studyset = ml_studyset.copy()
+    studyset = _build_ml_studyset(studies_without_points={"study_2"})
     missing_study = studyset.studies[2]
-    missing_analysis = missing_study.analyses[0]
-    missing_id = f"{missing_study.id}-{missing_analysis.id}"
-    missing_analysis.points = []
+    missing_id = f"{missing_study.id}-{missing_study.analyses[0].id}"
 
     extractor = MAFeatureExtractor(
         kernel_transformer=MKDAKernel(r=4, value=1),
@@ -582,9 +600,9 @@ def test_ma_feature_extractor_reuses_map_cache(ml_studyset):
         second_bunch.data.toarray(),
     )
 
-    coordinates = studyset.coordinates.copy()
-    coordinates.loc[0, "x"] += 1
-    studyset.coordinates = coordinates
+    # Moving the coordinates must invalidate the cache. A Studyset is immutable, so the
+    # moved coordinates arrive as a second Studyset rather than an edit to this one.
+    studyset = _build_ml_studyset(coordinate_offset=1.0)
     extractor.transform(studyset)
     assert kernel.n_calls == 2
 
