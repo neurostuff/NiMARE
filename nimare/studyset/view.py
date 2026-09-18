@@ -24,6 +24,7 @@ import numpy as np
 from nimare.studyset import layout
 from nimare.studyset.columns import join_names, missing_names, sorted_ranges
 from nimare.studyset.store import derived
+from nimare.utils import _get_voxel_values
 
 __all__ = ["Context", "View"]
 
@@ -132,6 +133,30 @@ class View:
             self._cache["position_of_row"] = got
         return got
 
+    def analysis_flags(self):
+        """Per-store-row ``1``/``0`` for the analyses kept, or ``None`` for all of them.
+
+        One byte per analysis, memoised, because the reader is a nested walk
+        asking one row at a time. A ``bytes`` index is a C-level lookup.
+        ``None`` says this view narrows nothing, so the walk can skip
+        the lookup entirely.
+        """
+        if "analysis_flags" not in self._cache:
+            kept = self.position_of_row() >= 0
+            self._cache["analysis_flags"] = None if kept.all() else kept.view(np.uint8).tobytes()
+        return self._cache["analysis_flags"]
+
+    def point_flags(self):
+        """Per-store-row ``1``/``0`` for the foci kept, or ``None`` for all of them."""
+        if "point_flags" not in self._cache:
+            mask = self.point_mask
+            if mask is not None:
+                mask = np.ascontiguousarray(np.asarray(mask, dtype=bool))
+            self._cache["point_flags"] = (
+                None if mask is None or mask.all() else mask.view(np.uint8).tobytes()
+            )
+        return self._cache["point_flags"]
+
     def row_of_key(self):
         """``{full analysis id: position in this selection}``, memoised."""
         got = self._cache.get("row_of_key")
@@ -221,8 +246,19 @@ class View:
         return self.select(~per_analysis if exclude else per_analysis)
 
     def select_points(self, mask):
-        """Narrow to a subset of foci, keeping every analysis."""
+        """Narrow to a subset of foci, keeping every analysis.
+
+        ``mask`` is aligned to the store's foci, not to the foci this view can
+        already see, because that is what a point-level predicate is computed
+        over -- :meth:`points_in_mask` and :meth:`points_near` both return one.
+        """
         mask = np.asarray(mask, dtype=bool)
+        if len(mask) != self.store.n_points:
+            raise ValueError(
+                f"point mask has length {len(mask)}, expected one entry per focus in the "
+                f"studyset ({self.store.n_points}). A point mask is aligned to the studyset's "
+                "foci, not to the subset a previous selection kept."
+            )
         combined = mask if self.point_mask is None else (mask & self.point_mask)
         return View(self.store, self.index, combined, self.context)
 
@@ -288,10 +324,9 @@ class View:
         """
         xyz, _, _ = layout.harmonized_coordinates(self.store, self.context.space)
         inv = np.linalg.inv(affine)
-        with np.errstate(invalid="ignore"):
-            ijk = (xyz @ inv[:3, :3].T + inv[:3, 3]).astype(np.int32)
-        ijk = np.clip(ijk, 0, np.asarray(mask_data.shape) - 1)
-        return mask_data[ijk[:, 0], ijk[:, 1], ijk[:, 2]] > 0
+        ijk = xyz @ inv[:3, :3].T + inv[:3, 3]
+        values, in_bounds = _get_voxel_values(mask_data, ijk)
+        return (values > 0) & in_bounds
 
     def points_near(self, xyz, radius):
         """Point-level boolean for foci within ``radius`` mm of any of ``xyz``."""

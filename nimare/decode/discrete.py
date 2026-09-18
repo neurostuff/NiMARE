@@ -1,5 +1,7 @@
 """Methods for decoding subsets of voxels or experiments into text."""
 
+import logging
+
 import numpy as np
 import pandas as pd
 from nilearn.image import load_img
@@ -11,6 +13,26 @@ from nimare.meta.kernel import KernelTransformer, MKDAKernel
 from nimare.stats import nlogp_bonferroni, nlogp_fdr, one_way, pearson, two_way
 from nimare.transforms import chi2_to_nlogp, nlogp_to_z
 from nimare.utils import _check_type, _clip_p_values, _mask_img_to_bool, get_masker
+
+LGR = logging.getLogger(__name__)
+
+
+def _resolve_min_studies(min_studies, n_studies):
+    """Return ``min_studies`` as an absolute number of studies.
+
+    Mirrors the ``min_studies`` argument of Neurosynth's ``MetaAnalysis``: an integer is a
+    count of studies, while a float in (0, 1) is a proportion of ``n_studies``. Callers pass
+    the studies under analysis rather than the whole database, matching Neurosynth, which
+    scales by ``n_mappables`` and so also shrinks the floor when its ``ids2`` is given.
+    Neurosynth used a proportion of 0.03 for the maps in :footcite:t:`yarkoni2011large`.
+    """
+    if min_studies is None:
+        return 0
+    if isinstance(min_studies, float) and 0 < min_studies < 1:
+        return min_studies * n_studies
+    if min_studies < 0:
+        raise ValueError(f"min_studies must be non-negative; got {min_studies}.")
+    return min_studies
 
 
 def gclda_decode_roi(model, roi, topic_priors=None, prior_weight=1.0):
@@ -270,6 +292,12 @@ def brainmap_decode(
         label: 'pForward', 'zForward', 'likelihoodForward', 'pReverse',
         'zReverse', and 'probReverse'.
 
+    Notes
+    -----
+    Forward inference uses the upper tail of a binomial distribution, so it is a one-sided
+    test of enrichment and 'zForward' is a one-tailed, non-negative z-value. Forward
+    inference here cannot report depletion; 'zReverse' remains two-tailed and signed.
+
     See Also
     --------
     :func:`~nimare.decode.discrete.BrainMapDecoder`: The associated class for this method.
@@ -327,11 +355,17 @@ def brainmap_decode(
     p_term_g_selected = p_term_g_selected / np.nansum(p_term_g_selected)  # Normalize
 
     # Significance testing
-    # Forward inference significance is determined with a binomial distribution
-    nlogp_fi = binom.logsf(k=n_selected_term, n=n_term_foci, p=p_selected)
-    sign_fi = np.sign(
-        n_selected_term - np.mean(n_selected_term)
-    ).ravel()  # pylint: disable=no-member
+    # Forward inference significance is determined with a binomial distribution. ``logsf`` is
+    # the upper tail alone, so this is a one-sided test of enrichment: a small p-value can only
+    # mean more selected studies carry the label than the selection rate would predict. The
+    # z-value is therefore one-tailed and unsigned; there is no lower tail for it to report.
+    #
+    # ``logsf(k)`` is P(X > k), so the observation itself has to be put back in: the one-sided
+    # p-value for observing ``k`` is P(X >= k) == logsf(k - 1). Without the shift a label whose
+    # every focus falls inside the selection gets P(X > n) == 0 and an infinite z, and a label
+    # observed zero times gets P(X > 0), which is small whenever the label is rare. ``logsf(-1)``
+    # is log(1), so a zero count needs no special case.
+    nlogp_fi = binom.logsf(k=n_selected_term - 1, n=n_term_foci, p=p_selected)
 
     # Two-way chi-square test for association of activation
     cells = np.array(
@@ -364,7 +398,7 @@ def brainmap_decode(
     # Compute z-values
     p_corr_fi = _clip_p_values(np.exp(nlogp_corr_fi), dtype=np.float64, copy=False)
     p_corr_ri = _clip_p_values(np.exp(nlogp_corr_ri), dtype=np.float64, copy=False)
-    z_corr_fi = nlogp_to_z(nlogp_corr_fi, "two") * sign_fi
+    z_corr_fi = nlogp_to_z(nlogp_corr_fi, "one")
     z_corr_ri = nlogp_to_z(nlogp_corr_ri, "two") * sign_ri
 
     # Effect size
@@ -440,6 +474,26 @@ class NeurosynthDecoder(Decoder):
     correction : {None, "bh", "by", "bonferroni"}, optional
         Multiple comparisons correction method to apply.
         Default is 'bh' (Benjamini-Hochberg FDR correction).
+    min_studies : :obj:`int` or :obj:`float`, optional
+        Minimum number of studies in which a label must appear for it to be tested. An
+        integer is a count of studies; a float in (0, 1) is a proportion of the studies
+        under analysis, meaning ``ids`` plus the unselected set. Passing ``ids2`` narrows
+        that universe, and the floor narrows with it, because every other quantity here is
+        computed over the same union: ``n_term``, ``p_term`` and both chi-squared tests all
+        ignore studies outside it. Neurosynth's ``MetaAnalysis`` scales its own
+        ``min_studies`` by the same union. Labels below the floor are dropped from the
+        output. Default is 1, which only drops labels that appear in no studies at all.
+
+        .. versionadded:: 0.21.1
+
+    Notes
+    -----
+    The 'Forward' columns are Neurosynth's **uniformity test**, and the 'Reverse' columns its
+    **association test**; Neurosynth retired the "forward inference" and "reverse inference"
+    names as misleading. The uniformity test compares each label against the average label
+    rather than against the selection, so its ranking is driven largely by how common a label
+    is in the literature. Prefer the 'Reverse' columns, or
+    :class:`~nimare.decode.continuous.CorrelationDecoder`, for characterizing a region.
 
     See Also
     --------
@@ -463,6 +517,7 @@ class NeurosynthDecoder(Decoder):
         prior=0.5,
         u=0.05,
         correction="bh",
+        min_studies=1,
     ):
         self.feature_group = feature_group
         self.features = features
@@ -470,6 +525,7 @@ class NeurosynthDecoder(Decoder):
         self.prior = prior
         self.u = u
         self.correction = correction
+        self.min_studies = min_studies
 
     def _fit(self, dataset):
         pass
@@ -510,6 +566,7 @@ class NeurosynthDecoder(Decoder):
             prior=self.prior,
             u=self.u,
             correction=self.correction,
+            min_studies=self.min_studies,
         )
         return results
 
@@ -525,6 +582,7 @@ def neurosynth_decode(
     prior=0.5,
     u=0.05,
     correction="bh",
+    min_studies=1,
 ):
     """Perform discrete functional decoding according to Neurosynth's meta-analytic method.
 
@@ -572,6 +630,17 @@ def neurosynth_decode(
     correction : {None, "bh", "by", "bonferroni"}, optional
         Multiple comparisons correction method to apply.
         Default is 'bh' (Benjamini-Hochberg FDR correction).
+    min_studies : :obj:`int` or :obj:`float`, optional
+        Minimum number of studies in which a label must appear for it to be tested. An
+        integer is a count of studies; a float in (0, 1) is a proportion of the studies
+        under analysis, meaning ``ids`` plus the unselected set. Passing ``ids2`` narrows
+        that universe, and the floor narrows with it, because every other quantity here is
+        computed over the same union: ``n_term``, ``p_term`` and both chi-squared tests all
+        ignore studies outside it. Neurosynth's ``MetaAnalysis`` scales its own
+        ``min_studies`` by the same union. Labels below the floor are dropped from the
+        output. Default is 1, which only drops labels that appear in no studies at all.
+
+        .. versionadded:: 0.21.1
 
     Returns
     -------
@@ -579,6 +648,22 @@ def neurosynth_decode(
         Table with each label and the following values associated with each
         label: 'pForward', 'zForward', 'probForward', 'pReverse', 'zReverse',
         and 'probReverse'.
+
+    Notes
+    -----
+    The 'Forward' columns come from a one-way chi-squared test of whether a label is applied
+    to more of the selected studies than the average label is. Neurosynth calls the
+    equivalent voxel-wise map the **uniformity test** map, having retired the name "forward
+    inference" as misleading. Because the test compares each label against the average
+    label, its ranking is dominated by how common a label is in the literature rather than by
+    the selection: high-frequency boilerplate ("task", "magnetic resonance") tends to top the
+    list for any selection at all. The 'Reverse' columns, which Neurosynth calls the
+    **association test**, are the ones that test for a dependency between label and selection
+    and are usually what a decoding analysis wants.
+
+    ``min_studies`` exists because the chi-squared tests need adequate cell counts;
+    :footcite:t:`yarkoni2011large` excluded voxels active in fewer than 3% of studies for
+    this reason.
 
     See Also
     --------
@@ -609,10 +694,32 @@ def neurosynth_decode(
     n_selected_term = np.sum(sel_array, axis=0)
     n_unselected_term = np.sum(unsel_array, axis=0)
 
+    n_term = n_selected_term + n_unselected_term
+
+    # Drop labels that are too rare for the chi-squared tests to be valid. This must happen
+    # before the uniformity test below, because that test's expected count is the mean of
+    # ``n_selected_term`` across labels, so a rare label does not merely get an unstable
+    # statistic of its own -- it drags the reference count that every other label is
+    # compared against.
+    keep = n_term >= _resolve_min_studies(min_studies, n_selected + n_unselected)
+    if not np.any(keep):
+        raise ValueError(
+            f"No labels reach min_studies={min_studies}; all "
+            f"{len(features)} labels were excluded."
+        )
+    if not np.all(keep):
+        LGR.info(
+            f"Excluding {int(np.sum(~keep))} of {len(features)} labels that fall below "
+            f"min_studies={min_studies}."
+        )
+        features = [feature for feature, keep_it in zip(features, keep) if keep_it]
+        n_selected_term = n_selected_term[keep]
+        n_unselected_term = n_unselected_term[keep]
+        n_term = n_term[keep]
+
     n_selected_noterm = n_selected - n_selected_term
     n_unselected_noterm = n_unselected - n_unselected_term
 
-    n_term = n_selected_term + n_unselected_term
     n_noterm = n_selected_noterm + n_unselected_noterm
 
     p_term = n_term / (n_term + n_noterm)
@@ -626,8 +733,10 @@ def neurosynth_decode(
         prior = p_term
 
     # Significance testing
-    # One-way chi-square test for uniformity of term frequency across terms
-    chi2_fi = one_way(n_selected_term, n_term)
+    # One-way chi-square test for uniformity of label frequency across labels. ``one_way``
+    # expects ``n`` to be the number of trials each count in the first argument is drawn
+    # from; ``n_selected_term`` counts selected studies, so that is ``n_selected``.
+    chi2_fi = one_way(n_selected_term, n_selected)
     nlogp_fi = chi2_to_nlogp(chi2_fi, 1)
     sign_fi = np.sign(
         n_selected_term - np.mean(n_selected_term)
@@ -756,6 +865,14 @@ class ROIAssociationDecoder(Decoder):
         self.feature_group = feature_group
         self.features = features
         self.frequency_threshold = 0
+
+    def _preprocess_input(self, dataset):
+        """Retain ROI features with at least one strictly positive annotation."""
+        super()._preprocess_input(dataset)
+        annotations = self.inputs_["annotations"][self.features_]
+        self.features_ = annotations.columns[(annotations > 0).any(axis=0)].tolist()
+        if not self.features_:
+            raise Exception("No features identified in the input Studyset/Dataset collection!")
 
     def _fit(self, dataset):
         roi_values = self.kernel_transformer.transform(

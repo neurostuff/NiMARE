@@ -412,3 +412,24 @@ def test_convert_dataset_to_studyset_preserves_execution_context():
 
     view = normalize_collection(studyset)
     assert set(view.ids) == set(dset.ids)
+
+
+def test_sleuth_export_writes_only_the_selection(split_studyset, tmp_path):
+    """Sleuth export walks the nested accessors, so it must see the selection.
+
+    Exporting a sliced studyset used to write back the analyses the slice had
+    dropped, because the walk read the store rather than the view.
+    """
+    from nimare import nimads
+
+    sub = (
+        nimads.Studyset(split_studyset, target=None)
+        .slice(["S1-A1"])
+        .select_points([True, False, False])
+    )
+
+    convert_nimads_to_sleuth(studyset=sub, output_dir=tmp_path)
+
+    written = (tmp_path / "nimads_sleuth_file.txt").read_text()
+    assert "Analysis_A1" in written and "Analysis_A2" not in written
+    assert "1.00\t2.00\t3.00" in written and "4.00" not in written

@@ -38,6 +38,18 @@ from nimare.utils import (
 
 LGR = logging.getLogger(__name__)
 
+
+def _histogram_bin_edges(bin_centers):
+    """Edges halfway between the bin centres in ``bin_centers``.
+
+    ``null_distributions_["histogram_bins"]`` holds centres, so a value belongs
+    to the centre it is nearest to. Building edges from the centres themselves
+    instead floors every value into the bin below.
+    """
+    step_size = bin_centers[1] - bin_centers[0]
+    return np.append(bin_centers - (step_size / 2), bin_centers[-1] + (step_size / 2))
+
+
 #: Distinguishes "no plan applies" from "a plan has not been built yet".
 _UNSET = object()
 
@@ -743,10 +755,7 @@ class CBMAEstimator(Estimator):
 
         # Reuse shared histogram edges when available to avoid per-permutation allocation.
         if bin_edges is None:
-            bin_centers = self.null_distributions_["histogram_bins"]
-            step_size = bin_centers[1] - bin_centers[0]
-            bin_edges = bin_centers - (step_size / 2)
-            bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
+            bin_edges = _histogram_bin_edges(self.null_distributions_["histogram_bins"])
 
         counts, _ = np.histogram(iter_ss_map, bins=bin_edges, density=False)
         return counts
@@ -782,10 +791,7 @@ class CBMAEstimator(Estimator):
         if getattr(self, "_permutation_parallel_backend", None) is not None:
             parallel_kwargs["backend"] = self._permutation_parallel_backend
 
-        bin_centers = self.null_distributions_["histogram_bins"]
-        step_size = bin_centers[1] - bin_centers[0]
-        bin_edges = bin_centers - (step_size / 2)
-        bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
+        bin_edges = _histogram_bin_edges(self.null_distributions_["histogram_bins"])
 
         perm_histograms = Parallel(**parallel_kwargs)(
             delayed(self._compute_null_montecarlo_permutation)(

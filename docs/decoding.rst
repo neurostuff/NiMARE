@@ -289,6 +289,27 @@ the Neurosynth method produces both a p-value and a posterior probability of pre
 given selection and the prior probability of having the label. A detailed algorithm description is
 presented below.
 
+.. important::
+   The ``Forward`` columns of the output are the **uniformity test** and the ``Reverse`` columns
+   are the **association test**. Neurosynth renamed these maps, having concluded that the
+   "forward inference" and "reverse inference" labels were misleading, and NiMARE's column names
+   predate that change.
+
+   The uniformity test asks whether a label is applied to more of the selected studies than the
+   *average label* is. It never looks at the unselected studies, so its ranking is driven largely
+   by how common a label is in the literature: high-frequency boilerplate such as ``task`` or
+   ``magnetic resonance`` tends to reach the top for any selection at all. This is the label-wise
+   counterpart of the caveat Neurosynth gives for the voxel-wise map, that regions with a broad
+   role in cognition are consistently active for many terms despite lacking selectivity.
+
+   For characterizing a region, prefer the ``Reverse`` (association) columns, which test whether
+   label and selection are dependent, or
+   :class:`~nimare.decode.continuous.CorrelationDecoder`.
+
+   ``min_studies`` drops labels too rare for the chi-squared tests to be valid. Neurosynth
+   excluded voxels active in fewer than 3% of studies for the same reason; the equivalent here is
+   ``min_studies=0.03``.
+
 The Neurosynth method for discrete functional decoding performs both forward and reverse inference
 using an annotated coordinate-based database and a target sample of studies within that database.
 Unlike the BrainMap approach, the Neurosynth approach uses an *a priori* value as the prior
@@ -339,10 +360,12 @@ probability of any given experiment including a given label.
      given the prior probability of label.
    - :math:`P(l^{+}|s^{+}, p) = pP(s^{+}|l^{+}) / P(s^{+}|l^{+}, p)`
 
-10. Perform a one-way chi-square test to determine if the rate at which studies are selected for a
-    given label is significantly different from the average rate at which studies are selected
-    across labels.
+10. Perform a one-way chi-square test to determine if the number of selected studies carrying a
+    given label is significantly different from the average number of selected studies per label.
 
+    - The observed count is :math:`S_{s+l+}`, the expected count is the mean of
+      :math:`S_{s+l+}` across labels, and the number of trials is :math:`S_{s+}`, the number of
+      selected studies. This is the test Neurosynth calls the **uniformity test**.
     - Convert p-value to signed z-value using whether the number of studies selected for the
       label is greater than or less than the mean number of studies selected across labels to
       determine the sign.

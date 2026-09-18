@@ -219,6 +219,30 @@ def testdata_ibma_resample(tmp_path_factory):
     return dset
 
 
+@pytest.fixture
+def split_studyset():
+    """One study, two analyses, three foci: the smallest shape a selection can split."""
+    return {
+        "id": "example",
+        "studies": [
+            {
+                "id": "S1",
+                "name": "s1",
+                "analyses": [
+                    {
+                        "id": "A1",
+                        "points": [
+                            {"space": "MNI", "coordinates": [1, 2, 3]},
+                            {"space": "MNI", "coordinates": [4, 5, 6]},
+                        ],
+                    },
+                    {"id": "A2", "points": [{"space": "MNI", "coordinates": [7, 8, 9]}]},
+                ],
+            }
+        ],
+    }
+
+
 @pytest.fixture(scope="session")
 def sample_size_nimads_studyset():
     """Download/lookup example NiMADS studyset."""

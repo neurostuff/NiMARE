@@ -212,7 +212,7 @@ class CorrelationDecoder(Decoder):
             return
 
         n_ids = len(self.inputs_["id"])
-        counts = (self.inputs_["annotations"][self.features_] > self.frequency_threshold).sum(
+        counts = (self.inputs_["annotations"][self.features_] >= self.frequency_threshold).sum(
             axis=0
         )
         features = counts[counts < n_ids].index.tolist()

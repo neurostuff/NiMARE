@@ -117,15 +117,35 @@ def _iter_group_study_values(ma_values):
 
 
 @jit(nopython=True, cache=True)
+def _nearest_bin(value, inv_step_size, n_bins):
+    """Index of the bin centre nearest ``value``, clipped to the grid.
+
+    ``histogram_bins`` holds centres, so a value belongs to the centre nearest
+    it; truncating drops it into the bin below.
+
+    Ties go away from zero, matching :func:`nimare.utils._round2`, which
+    :func:`~nimare.stats.nullhist_to_p` uses to look a statistic up on this same
+    grid -- a value has to be read out of the bin it was counted into. The
+    fraction is taken by subtraction rather than by adding 0.5 and flooring,
+    because ``0.49999999999999994 + 0.5`` is exactly ``1.0`` in float64 and
+    would round a value that is below the halfway point as though it were above.
+    """
+    scaled = value * inv_step_size
+    floor = np.floor(scaled)
+    idx = int(floor) + int(scaled - floor >= 0.5)
+    if idx < 0:
+        return 0
+    elif idx >= n_bins:
+        return n_bins - 1
+    return idx
+
+
+@jit(nopython=True, cache=True)
 def _study_ma_histogram(study_ma_values, n_zero_voxels, mask_voxel_recip, inv_step_size, n_bins):
     """Bin one study's nonzero ALE values onto the fixed approximate-null grid."""
     exp_hist = np.zeros(n_bins, dtype=np.float64)
     for i_val in range(study_ma_values.shape[0]):
-        idx = int(study_ma_values[i_val] * inv_step_size)
-        if idx < 0:
-            idx = 0
-        elif idx >= n_bins:
-            idx = n_bins - 1
+        idx = _nearest_bin(study_ma_values[i_val], inv_step_size, n_bins)
         exp_hist[idx] += 1.0
 
     exp_hist[0] += n_zero_voxels
@@ -147,11 +167,7 @@ def _update_ale_histogram(
         exp_one_minus = 1.0 - exp_center
         for i_ale in range(ale_idx.shape[0]):
             score = 1.0 - exp_one_minus * (1.0 - bin_centers[ale_idx[i_ale]])
-            score_idx = int(score * inv_step_size)
-            if score_idx < 0:
-                score_idx = 0
-            elif score_idx >= n_bins:
-                score_idx = n_bins - 1
+            score_idx = _nearest_bin(score, inv_step_size, n_bins)
             out[score_idx] += exp_prob * ale_probs[i_ale]
 
     return out

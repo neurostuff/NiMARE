@@ -50,7 +50,7 @@ class Decoder(NiMAREBase):
         n_features_orig = len(features)
 
         # At least one study in the dataset much have each label
-        counts = (self.inputs_["annotations"][features] > self.frequency_threshold).sum(0)
+        counts = (self.inputs_["annotations"][features] >= self.frequency_threshold).sum(0)
         features = counts[counts > 0].index.tolist()
         if not len(features):
             raise Exception("No features identified in the input Studyset/Dataset collection!")

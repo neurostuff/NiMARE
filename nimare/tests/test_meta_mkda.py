@@ -12,6 +12,23 @@ from nimare.correct import FDRCorrector, FWECorrector
 from nimare.meta import KDA, MKDAChi2, MKDADensity, MKDAKernel
 
 
+def test_KDA_approximate_null_is_scale_invariant(testdata_cbma):
+    """KDA p-values do not depend on the kernel's value scaling.
+
+    Multiplying every kernel value by a constant scales the summary statistic
+    and the null identically, so the p-values must not move. They did: the
+    approximate null floored each convolved score onto the histogram instead of
+    rounding it, and built its bin edges from the centres rather than half a
+    step either side, so a bin width other than 1.0 misplaced the whole null.
+    """
+    unit = KDA(kernel__value=1, null_method="approximate").fit(testdata_cbma)
+    scaled = KDA(kernel__value=0.7, null_method="approximate").fit(testdata_cbma)
+
+    unit_p = unit.get_map("p", return_type="array")
+    scaled_p = scaled.get_map("p", return_type="array")
+    np.testing.assert_allclose(scaled_p, unit_p, rtol=1e-6)
+
+
 def test_MKDADensity_kernel_instance_with_kwargs(testdata_cbma):
     """Smoke test for MKDADensity with a kernel transformer object.
 

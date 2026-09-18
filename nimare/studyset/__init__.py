@@ -22,7 +22,9 @@ The layering, which the module boundaries enforce:
 
 ``nested``
     read-only ``Study``/``Analysis``/``Point``/``Image`` accessors over the
-    columns, for callers that want to walk the studyset as objects.
+    columns. A walk is
+    confined to the view it started from, so it reports what that view's frames
+    and blocks report.
 
 Data flows store -> view -> block and never back.
 

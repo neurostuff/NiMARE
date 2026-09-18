@@ -198,7 +198,7 @@ class Studyset:
         """Read-only nested accessors for the selected analyses."""
         from nimare.studyset.nested import Analysis
 
-        return [Analysis(self.store, r, self._view.context) for r in self._view.index]
+        return [Analysis(self._view, r) for r in self._view.index]
 
     def __len__(self):
         """Return the number of selected analyses."""
@@ -371,7 +371,11 @@ class Studyset:
         return Studyset._wrap(self._view.select(mask))
 
     def select_points(self, point_mask):
-        """Keep a subset of foci and every analysis."""
+        """Keep a subset of foci and every analysis.
+
+        ``point_mask`` has one entry per focus in the studyset, in the order
+        :attr:`coordinates` reports them for an unnarrowed studyset.
+        """
         return Studyset._wrap(self._view.select_points(point_mask))
 
     def with_context(self, **changes):
@@ -723,19 +727,23 @@ class Studyset:
 
     # ------------------------------------------------------------------- io
     def to_dict(self):
-        """Build the nested NIMADS document for the selected analyses."""
-        return to_nimads_dict(self.store, self._view.index)
+        """Build the nested NIMADS document for the selected analyses and foci.
+
+        An active point mask is materialised first: the document is built from a
+        store, and a mask lives on the view rather than in the columns.
+        """
+        selected = self.materialize_points()
+        return to_nimads_dict(selected.store, selected._view.index)
 
     def to_nimads(self, filename):
         """Write NIMADS JSON."""
-        write_nimads(self.store, filename, self._view.index)
+        selected = self.materialize_points()
+        write_nimads(selected.store, filename, selected._view.index)
 
     def to_parquet(self, directory):
         """Write a parquet studyset release directory."""
-        return write_parquet(
-            self.store if len(self._view) == self.store.n_analyses else _materialize(self),
-            directory,
-        )
+        whole = self._view.point_mask is None and len(self._view) == self.store.n_analyses
+        return write_parquet(self.store if whole else _materialize(self), directory)
 
     def to_dataset(self):
         """Convert to a legacy :class:`~nimare.dataset.Dataset`.
@@ -746,8 +754,9 @@ class Studyset:
         from nimare.io import convert_nimads_to_dataset
 
         # Resolved image paths: a Dataset has no base path of its own.
+        selected = self.materialize_points()
         return convert_nimads_to_dataset(
-            to_nimads_dict(self.store, self._view.index, basepath=self.basepath)
+            to_nimads_dict(selected.store, selected._view.index, basepath=selected.basepath)
         )
 
     def save(self, filename):

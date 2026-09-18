@@ -1,10 +1,13 @@
 """Read-only nested accessors over the columns.
 
 Convenient for inspection and for code that reads a studyset the way the document
-is shaped. These are *views*, not storage: they hold a store and a row, and every
-attribute is a column lookup. The previous implementation kept an equivalent
-object graph as a second copy of the data, which is what the revision counters
-and mutation tracking existed to keep in step.
+is shaped. An accessor is a view and a row, and
+every attribute is a column lookup.
+
+The view travels with the accessor rather than being applied once at the top: an
+analysis reached from a sliced studyset shows only its selected foci, the study
+reached back from that analysis hides the same analyses the slice did, and both
+read coordinates in the view's space.
 """
 
 from __future__ import annotations
@@ -14,15 +17,30 @@ import numpy as np
 __all__ = ["Analysis", "Image", "Point", "Study", "studies_of"]
 
 
-class _Row:
-    __slots__ = ("_store", "_row", "_context")
+def _kept(flags, lo, hi):
+    """Return the rows in ``[lo, hi)`` that ``flags`` keeps, all of them for ``None``.
 
-    def __init__(self, store, row, context=None):
-        self._store = store
+    The view's flag bytes are memoised and ``None`` when it narrows nothing, so a
+    walk over an unnarrowed studyset costs no lookups and a narrowed one costs
+    one per child.
+    """
+    if flags is None:
+        return range(lo, hi)
+    return [r for r in range(lo, hi) if flags[r]]
+
+
+class _Row:
+    __slots__ = ("_view", "_row", "_store", "_context")
+
+    def __init__(self, view, row):
+        # The view fixes which rows are visible and
+        # which space coordinates are read in. Every accessor this one produces
+        # gets the same view, so a walk cannot drift from the view's frames.
+        self._view = view
         self._row = int(row)
-        # Coordinates are stored raw and projected on demand, so an accessor
-        # needs to know which space it is being read in.
-        self._context = context
+        # Read off the view once: caches of it, not a second source of truth.
+        self._store = view.store
+        self._context = view.context
 
     #: The ColumnStore on the store that this accessor's attributes live in.
     _attrs = None
@@ -98,10 +116,11 @@ class Study(_Row):
 
     @property
     def analyses(self):
-        """Return this study's analyses."""
-        store = self._store
-        lo, hi = store.analysis_offsets[self._row], store.analysis_offsets[self._row + 1]
-        return [Analysis(store, r, self._context) for r in range(int(lo), int(hi))]
+        """Return this study's analyses that the selection keeps."""
+        offsets = self._store.analysis_offsets
+        lo, hi = offsets[self._row], offsets[self._row + 1]
+        rows = _kept(self._view.analysis_flags(), int(lo), int(hi))
+        return [Analysis(self._view, r) for r in rows]
 
     def __repr__(self):
         """Return a debugging representation naming the study."""
@@ -140,7 +159,7 @@ class Analysis(_Row):
     @property
     def study(self):
         """Return the study this analysis belongs to."""
-        return Study(self._store, int(self._store.study_idx[self._row]), self._context)
+        return Study(self._view, int(self._store.study_idx[self._row]))
 
     @property
     def metadata(self):
@@ -185,10 +204,11 @@ class Analysis(_Row):
 
     @property
     def points(self):
-        """Return this analysis' foci."""
-        store = self._store
-        lo, hi = store.point_offsets[self._row], store.point_offsets[self._row + 1]
-        return [Point(store, r, self._context) for r in range(int(lo), int(hi))]
+        """Return this analysis' foci that the selection keeps."""
+        offsets = self._store.point_offsets
+        lo, hi = offsets[self._row], offsets[self._row + 1]
+        rows = _kept(self._view.point_flags(), int(lo), int(hi))
+        return [Point(self._view, r) for r in rows]
 
     @property
     def images(self):
@@ -198,7 +218,7 @@ class Analysis(_Row):
         if ia is None or not ia.n_rows:
             return []
         rows = np.flatnonzero(ia.dense["analysis_idx"] == self._row)
-        return [Image(store, r, self._context) for r in rows]
+        return [Image(self._view, r) for r in rows]
 
     @property
     def conditions(self):
@@ -237,7 +257,7 @@ class Point(_Row):
     def _projected(self):
         from nimare.studyset.layout import harmonized_coordinates
 
-        target = getattr(self._context, "space", None)
+        target = self._context.space
         return harmonized_coordinates(self._store, target)
 
     @property
@@ -297,15 +317,26 @@ class Image(_Row):
         """Return what this image holds, such as ``z`` or ``varcope``."""
         return self._attr("value_type")
 
+    def _ref(self, name):
+        """Return one stored reference, resolved against the view's base path.
+
+        A reference is stored the way the document writes it, which is usually
+        relative, so a reader that is not sitting in the base path cannot open
+        it. The view resolves relative paths on export/edit.
+        """
+        from nimare.studyset.io.nimads import _resolve
+
+        return _resolve(self._attr(name), self._context.basepath)
+
     @property
     def url(self):
         """Return the URL this image was fetched from."""
-        return self._attr("url")
+        return self._ref("url")
 
     @property
     def filename(self):
         """Return the path this image is stored at."""
-        return self._attr("filename")
+        return self._ref("filename")
 
     @property
     def space(self):
@@ -320,7 +351,7 @@ class Image(_Row):
     @property
     def analysis(self):
         """Return the analysis this image belongs to."""
-        return Analysis(self._store, int(self._attr("analysis_idx")), self._context)
+        return Analysis(self._view, int(self._attr("analysis_idx")))
 
     def __repr__(self):
         """Return a debugging representation naming the image."""
@@ -334,13 +365,9 @@ def studies_of(view):
     so it is always present -- the same rule export uses.
     """
     store = view.store
-    selected = np.zeros(store.n_analyses, dtype=bool)
-    selected[view.index] = True
-    counts = np.diff(store.analysis_offsets)
-    rows = [
-        r
-        for r in range(store.n_studies)
-        if counts[r] == 0
-        or selected[store.analysis_offsets[r] : store.analysis_offsets[r + 1]].any()
-    ]
-    return [Study(store, r, view.context) for r in rows]
+    selected = view.position_of_row() >= 0
+    # bincount over the parent column rather than a reduce over the offsets
+    hits = np.bincount(store.study_idx[selected].astype(np.int64), minlength=store.n_studies) > 0
+    childless = np.diff(store.analysis_offsets) == 0
+    rows = np.flatnonzero(hits | childless)
+    return [Study(view, r) for r in rows]

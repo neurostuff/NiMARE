@@ -197,3 +197,93 @@ def test_log_corrections_reject_plain_p_values(correct):
     """Passing p-values would adjust every one of them to 1, so say so instead."""
     with pytest.raises(ValueError, match="natural logarithms"):
         correct(np.array([0.01, 0.5]))
+
+
+@pytest.mark.parametrize("method", ["bh", "by"])
+def test_nlogp_fdr_does_not_let_one_nan_erase_the_correction(method):
+    """A NaN is one unevaluated test, not a reason to discard every other result.
+
+    Regression test: NaN sorts last and wins every ``minimum.accumulate`` comparison, so a
+    single NaN used to turn the entire corrected array into NaN.
+    """
+    nlogp = np.array([-20.0, -10.0, -1.0, np.nan, -5.0])
+    corrected = nlogp_fdr(nlogp, method=method)
+
+    assert np.isnan(corrected[3])
+    assert np.all(np.isfinite(np.delete(corrected, 3)))
+
+
+@pytest.mark.parametrize("method", ["bh", "by"])
+def test_nlogp_fdr_matches_r_p_adjust_with_a_nan(method):
+    """A NaN leaves the procedure but stays in ``n``, as R's ``p.adjust`` has it."""
+    nlogp = np.array([-20.0, -10.0, -1.0, np.nan, -5.0])
+    corrected = nlogp_fdr(nlogp, method=method)
+
+    n_tests = nlogp.size  # 5, including the NaN
+    evaluated = nlogp[~np.isnan(nlogp)]
+    order = np.argsort(evaluated)
+    ranks = np.arange(1, evaluated.size + 1)  # 1..4, over the evaluated tests only
+    factor = np.log(ranks / n_tests)
+    if method == "by":
+        factor = factor - np.log(np.sum(1 / np.arange(1, n_tests + 1)))
+    expected = np.minimum.accumulate((evaluated[order] - factor)[::-1])[::-1]
+    expected = np.minimum(expected, 0.0)[np.argsort(order)]
+
+    np.testing.assert_allclose(corrected[~np.isnan(nlogp)], expected, rtol=1e-12)
+
+
+@pytest.mark.parametrize("method", ["bh", "by"])
+def test_nlogp_fdr_without_nans_is_unchanged(method):
+    """The NaN handling must not perturb the ordinary path."""
+    nlogp = np.array([-20.0, -10.0, -1.0, -3.0, -5.0])
+    corrected = nlogp_fdr(nlogp, method=method)
+
+    n_tests = nlogp.size
+    order = np.argsort(nlogp)
+    factor = np.log(np.arange(1, n_tests + 1) / n_tests)
+    if method == "by":
+        factor = factor - np.log(np.sum(1 / np.arange(1, n_tests + 1)))
+    expected = np.minimum.accumulate((nlogp[order] - factor)[::-1])[::-1]
+    expected = np.minimum(expected, 0.0)[np.argsort(order)]
+
+    np.testing.assert_array_equal(corrected, expected)
+
+
+def test_nlogp_fdr_all_nan():
+    """An array with nothing to correct comes back as it went in."""
+    corrected = nlogp_fdr(np.array([np.nan, np.nan]))
+    assert np.all(np.isnan(corrected))
+
+
+def test_nlogp_bonferroni_passes_nans_through():
+    """Bonferroni never compared across entries, so it only needs pinning."""
+    nlogp = np.array([-20.0, np.nan, -5.0])
+    corrected = nlogp_bonferroni(nlogp)
+
+    assert np.isnan(corrected[1])
+    np.testing.assert_allclose(
+        corrected[[0, 2]], np.minimum(nlogp[[0, 2]] + np.log(3), 0.0), rtol=1e-12
+    )
+
+
+@pytest.mark.parametrize("counts", [[0, 0, 0], [30, 30, 30]])
+def test_one_way_degenerate_counts_are_zero_not_nan(counts):
+    """When every count equals the expected count there is no deviation to measure.
+
+    Regression test: the expected count is the mean, so it reaches 0 or ``n`` only when
+    every count does. Both zero the variance term ``expected * (n - expected)`` and both
+    also zero the numerator, so the statistic used to come out as 0/0.
+    """
+    chi2 = one_way(np.array(counts), 30)
+
+    assert np.all(np.isfinite(chi2))
+    np.testing.assert_array_equal(chi2, np.zeros(len(counts)))
+
+
+def test_one_way_is_unchanged_away_from_the_boundary():
+    """The ordinary path must not move."""
+    counts, n = np.array([20, 0, 8]), 30
+    expected = counts.mean()
+    reference = (counts - expected) ** 2 * n / (expected * (n - expected))
+
+    np.testing.assert_allclose(one_way(counts, n), reference, rtol=1e-12)
