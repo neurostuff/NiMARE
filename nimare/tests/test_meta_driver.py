@@ -694,6 +694,7 @@ def test_location_records_reports_a_negative_peak_as_signed_and_never_as_an_abse
     distinction cannot be lost, since collapsing them would either invent precision at a
     neighbour or discard it at a coincidence.
     """
+
     def one(peak, height):
         studies = [
             {
@@ -780,6 +781,4 @@ def test_location_records_refuses_a_bundle_and_a_protocol_together():
 
     # And with no bundle the default is two-sided, which bounds both tails.
     default = location_records(np.zeros(3), studies, 4.0)
-    np.testing.assert_allclose(
-        [default["lower"][0], default["upper"][0]], [-0.4, 0.4]
-    )
+    np.testing.assert_allclose([default["lower"][0], default["upper"][0]], [-0.4, 0.4])

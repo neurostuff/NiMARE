@@ -57,6 +57,7 @@ from __future__ import annotations
 import enum
 
 import numpy as np
+from scipy.integrate import trapezoid
 from scipy.optimize import minimize
 from scipy.special import log_ndtr, ndtr
 from scipy.stats import chi2, norm
@@ -704,6 +705,14 @@ def censored_score(mean, between_variance, lower, upper, variances, *, retention
     return np.array([d_mean, d_between])
 
 
+#: Eigenvalue below this fraction of the largest counts as zero in the identification check.
+#: The information is assembled by central differences, so a structurally zero eigenvalue comes
+#: back as noise rather than as zero: on the rank-one design the two null directions land around
+#: 4e-8 of the largest eigenvalue, with a sign that varies by platform. This sits two orders of
+#: magnitude above that floor and far below any direction the data actually determine.
+_NEGLIGIBLE_EIGENVALUE = 1e-6
+
+
 def _identification_condition(fit, lower, upper, variances, roles):
     """Condition number of the observed information in the three parameters, by differences.
 
@@ -744,9 +753,17 @@ def _identification_condition(fit, lower, upper, variances, roles):
         hessian[:, index] = (gradient(forward) - gradient(backward)) / span
     information = -(hessian + hessian.T) / 2.0
     eigenvalues = np.linalg.eigvalsh(information)
-    if eigenvalues[0] <= 0:
+    largest = float(eigenvalues[-1])
+    if largest <= 0:
         return float("inf")
-    return float(eigenvalues[-1] / eigenvalues[0])
+    # A structurally zero eigenvalue arrives as plus-or-minus noise, so its *sign* cannot be what
+    # decides identification: on the rank-one design the smallest landed just below zero on Linux
+    # and at 1e-9 of the largest on Windows, reporting "unidentified" on one and merely "badly
+    # determined" on the other. Treating the whole noise band as zero makes the distinction this
+    # function draws a property of the design rather than of the platform.
+    if float(eigenvalues[0]) <= largest * _NEGLIGIBLE_EIGENVALUE:
+        return float("inf")
+    return largest / float(eigenvalues[0])
 
 
 def _informative_mask(lower, upper):
@@ -1511,7 +1528,7 @@ def restricted_between_variance(
         weights = np.exp(np.where(np.isfinite(terms), terms - highest, -np.inf))
         # Trapezoid rather than a plain sum: the integrand is peaked, and a rectangle rule over
         # a coarse grid biases the integral in a way that would move the maximiser.
-        integral = float(np.trapezoid(weights, dx=step))
+        integral = float(trapezoid(weights, dx=step))
         if integral <= 0:
             return -np.inf
         return highest + float(np.log(integral))

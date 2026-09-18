@@ -70,6 +70,7 @@ location, and read its ceiling as an upper bound rather than a limit.
 from __future__ import annotations
 
 import numpy as np
+from scipy.integrate import trapezoid
 from scipy.stats import nct, norm
 
 DESIGNS = ("one-sample", "two-sample")
@@ -302,7 +303,7 @@ def assurance(
     out = np.empty(sizes.shape, dtype=float)
     for index, size in enumerate(sizes):
         powers = power(grid, np.full(grid.shape, size))
-        out[index] = float(np.trapezoid(powers * weight, grid))
+        out[index] = float(trapezoid(powers * weight, grid))
     return out
 
 

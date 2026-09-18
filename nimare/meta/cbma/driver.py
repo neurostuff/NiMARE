@@ -406,9 +406,7 @@ def location_records(
     # differing from the argument is legal rather than a mistake. Refusing the ambiguous
     # combination is the only check that is both sound and effective.
     if bundle is None:
-        bundle = bundle_studies(
-            studies, sided="two" if sided is _PROTOCOL_FROM_BUNDLE else sided
-        )
+        bundle = bundle_studies(studies, sided="two" if sided is _PROTOCOL_FROM_BUNDLE else sided)
     elif sided is not _PROTOCOL_FROM_BUNDLE:
         raise ValueError(
             "supply either a bundle or `sided`, not both: a bundle already records each "
@@ -436,9 +434,7 @@ def location_records(
         if pick >= 0:
             height = float(bundle["heights"][pick])
             at_location = float(distance[pick]) <= COINCIDENT_MM
-            states.append(
-                ObservationState.EXACT if at_location else ObservationState.CLUSTER_PEAK
-            )
+            states.append(ObservationState.EXACT if at_location else ObservationState.CLUSTER_PEAK)
             values.append(height)
             distances.append(float(distance[pick]))
         else:
