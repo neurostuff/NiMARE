@@ -1,0 +1,174 @@
+# Implementation Plan: Masked Activation Feature Dataset
+
+**Branch**: `001-ma-feature-dataset` | **Date**: 2026-05-01 | **Spec**: `specs/001-ma-feature-dataset/spec.md`
+**Input**: Feature specification from `specs/001-ma-feature-dataset/spec.md`
+
+**Note**: This plan was refreshed after the 2026-05-20 clarification pass.
+
+## Summary
+
+Add a new additive public `nimare.ml` module that converts NiMARE Studyset
+objects into scikit-learn-compatible masked activation feature datasets. The
+module will use existing NiMARE kernel transformers to generate sparse modeled
+activation map features, preserve analysis-row provenance and study groups,
+export `data`, `target`, `groups`, and `feature_names` for scikit-learn
+workflows, and provide leakage-safe grouped splits plus convenience
+map-reduction workflows. Clarified defaults require numeric descriptor features
+unless the caller supplies an explicit transformer, scalar numeric or
+categorical targets unless the caller supplies explicit target handling, unique
+Studyset-provided study and analysis identifiers, `missing_coordinates="drop"`,
+and initial reducers for variance thresholding, sparse-compatible low-rank
+reduction such as truncated SVD, and atlas/label aggregation.
+Rows represent analyses, unreduced map columns represent masked voxels, and
+descriptor columns are appended only after numeric validation or explicit
+transformation. `MAFeatureExtractor.to_sklearn(studyset, ...)` is the one-call
+public export path, while `MAFeatureExtractor.transform(studyset)` returns
+`(train_dataset, test_dataset)` for advanced dataset-level workflows.
+`MAFeatureDataset` remains the authoritative NiMARE container: it exposes
+combined `features` for sklearn export, keeps internal `_map_features`
+separate from descriptors, retains the private `_masker` that defines voxel
+order, and exports `study_ids` as sklearn `groups`.
+
+## Technical Context
+
+**Language/Version**: Python 3.10 through 3.14, matching `setup.cfg` metadata and CI support.  
+**Primary Dependencies**: Existing NiMARE Studyset/kernel utilities first; nilearn `>=0.12.0,<0.14` for mask/image-aware operations; scikit-learn `>=1.0.0` for `Bunch`, group splitters, preprocessing, decomposition, and pipelines; numpy, pandas, scipy sparse, sparse, and joblib as already-declared runtime dependencies.
+**Data/Storage**: In-memory NiMARE Studyset objects, NIMADS-derived tabular views, pandas metadata/annotation/text tables, nilearn maskers or labels images, and analysis-by-feature sparse matrices. No new persistent storage format.
+**Testing**: Add targeted pytest coverage under `nimare/tests/test_ml.py` before implementation. First failing tests must cover conversion/provenance, grouped split leakage prevention, non-numeric descriptor rejection, scalar target export and unsupported target-shape rejection, missing-value diagnostics, reducer alignment, and the 1,000-study performance budget. Use existing markers, including `performance_smoke` for the scale check if needed.  
+**Target Platform**: NiMARE-supported Python and OS matrix; no network-dependent tests.  
+**Project Type**: Python scientific library public API plus Sphinx documentation examples.  
+**Public API Impact**: New additive `nimare.ml` module with `MAFeatureDataset`, `MAFeatureExtractor`, field-selector handling, grouped split helpers, dataset-level `to_sklearn()`, extractor-level `to_sklearn(studyset, ...)`, `apply_map_reducer()`, and map-reduction convenience constructors. Update `nimare/__init__.py`, `docs/api.rst`, and Numpydoc docstrings. No released public API is removed, renamed, or narrowed.
+**Extractor API Decision**: `MAFeatureExtractor` exposes `to_sklearn(studyset, ...)` as the one-call sklearn-ready export path and `transform(studyset)` as the advanced dataset-level path returning `(train_dataset, test_dataset)`; it does not expose `fit` or `fit_transform`.
+**Compatibility Baseline**: `0.16.0` from `git describe --tags --abbrev=0`. Released Studyset, kernel, metadata, annotation, and text access behavior must remain compatible.
+**Example Coverage**: Create Sphinx-Gallery examples `examples/05_machine_learning/01_plot_ma_feature_dataset.py` and `examples/05_machine_learning/02_plot_ma_feature_reduction.py`. Examples remain `.py` sources and are converted by the docs/Sphinx build.  
+**Scientific Validation**: Validate that one analysis row represents one analysis by default; MVP fixture Studysets provide unique study IDs and unique analysis IDs; coordinate-less analyses are dropped by default or included as all-zero sparse rows when requested; all analyses from one study share a study group; sklearn `groups` matches `study_ids`; map features are aligned to one mask/space; reducers operate on internal `_map_features` only and use the stored `_masker` for atlas/label aggregation; learned descriptor/reduction transforms fit only on training analyses; held-out transformations do not use held-out targets; and missing maps, missing values, and invalid targets are diagnosed.
+**Performance Goals**: A representative Studyset with at least 1,000 studies must convert and split in <=3 minutes with <=5 GB peak memory in the standard development environment.
+**Constraints**: Preserve latest-tag public behavior; prefer NiMARE utilities, then nilearn, then scikit-learn before new helpers; reject silent descriptor/target coercion; keep unreduced voxelwise map matrices sparse; allow dense output only after explicit reduction; tests and examples precede or accompany implementation; docs build must convert examples.
+**Scale/Scope**: New `nimare/ml.py`, tests under `nimare/tests`, API docs, two examples, and feature planning artifacts. Initial scope stops at dataset creation, target extraction, grouped splitting, and reusable reduction workflows; it does not train or evaluate predictive models.
+
+## Constitution Check
+
+*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+
+- **Scientific validity**: PASS. The plan uses existing kernel transformers for
+  modeled activation maps, records analysis-level sampling assumptions, enforces
+  mask/space alignment, and requires validation fixtures for grouping,
+  descriptors, targets, reductions, diagnostics, and performance.
+- **TDD**: PASS. Targeted first failing tests are specified before
+  implementation, including success paths, leakage prevention, error behavior,
+  and performance-sensitive behavior.
+- **API-first**: PASS. Public contracts are defined in
+  `specs/001-ma-feature-dataset/contracts/public-api.md` and
+  `specs/001-ma-feature-dataset/contracts/sklearn-compatibility.md` before
+  implementation.
+- **Example-driven**: PASS. Public API additions require
+  `examples/05_machine_learning/01_plot_ma_feature_dataset.py` and
+  `examples/05_machine_learning/02_plot_ma_feature_reduction.py`.
+- **Public API stability**: PASS. Baseline tag is `0.16.0`; this feature is
+  additive and does not alter released public methods/classes.
+- **Simplicity**: PASS. The selected design is one public module plus simple
+  containers/helpers, using existing NiMARE, nilearn, and scikit-learn utilities
+  before local helpers.
+- **Diagnostics**: PASS. Missing maps, unavailable fields, non-numeric
+  descriptors, unsupported targets, incompatible masks/spaces, insufficient
+  groups, and performance-budget failures are explicit test targets.
+- **Environment**: PASS. Supported Python range, dependencies, docs extras,
+  tests extras, and local verification commands are identified.
+- **Documentation**: PASS. Public API docs and executable Sphinx-Gallery
+  examples are required.
+
+**Post-Design Re-check**: PASS. Phase 0 and Phase 1 artifacts preserve the
+same additive API, test-first expectations, example coverage, compatibility
+baseline, diagnostics, and reuse order. No constitution violations are known.
+
+## Project Structure
+
+### Documentation (this feature)
+
+```text
+specs/001-ma-feature-dataset/
+|-- plan.md
+|-- research.md
+|-- data-model.md
+|-- quickstart.md
+|-- contracts/
+|   |-- public-api.md
+|   `-- sklearn-compatibility.md
+`-- tasks.md              # Created by /speckit-tasks, not /speckit-plan
+```
+
+### Source Code (repository root)
+
+```text
+nimare/
+|-- __init__.py           # Export additive ml module
+|-- ml.py                 # MAFeatureDataset, MAFeatureExtractor, reducers
+`-- tests/
+    `-- test_ml.py        # Contract, regression, diagnostics, performance tests
+
+docs/
+`-- api.rst               # Public API autosummary entry
+
+examples/
+`-- 05_machine_learning/
+    |-- 01_plot_ma_feature_dataset.py
+    `-- 02_plot_ma_feature_reduction.py
+```
+
+**Structure Decision**: Use a single additive `nimare/ml.py` module for the
+initial feature. The API surface is focused enough that a package hierarchy
+would add indirection without current need; if the unreleased implementation
+grows too large before tagging, it can be split while preserving the public
+`nimare.ml` import path.
+
+## Phase 0: Research
+
+Research decisions are captured in
+`specs/001-ma-feature-dataset/research.md`. All clarification outcomes are
+resolved there:
+
+- Kernel transformers provide sparse modeled activation map features.
+- Studyset access uses existing Studyset interfaces.
+- Study groups use Studyset-provided unique study IDs; MVP inputs also assume
+  unique analysis IDs.
+- Coordinate-less analyses are controlled by an explicit missing-coordinate
+  policy: drop before row construction by default or include as all-zero sparse
+  rows when requested.
+- Export uses a NiMARE container plus a scikit-learn `Bunch`; extractor-level
+  `to_sklearn(studyset, ...)` is the one-call public path.
+- Exported sklearn `groups` duplicates `study_ids` by design: `groups` is for
+  sklearn splitters, while `ids` and `study_ids` preserve row-level provenance.
+- Splits use scikit-learn group splitters.
+- `MAFeatureDataset` exposes combined `features` but keeps internal
+  `_map_features` separate from descriptor features so reducers select only
+  voxel/reduced-map columns.
+- Atlas/label reducers use the dataset masker to align atlas labels to sparse
+  voxel columns before reducing internal `_map_features`.
+- Descriptor features are numeric by default; non-numeric descriptors require
+  explicit transformers.
+- Targets are scalar numeric/categorical by default; free-text and multi-label
+  targets require explicit target handling.
+- Reduction helpers cover variance thresholding, sparse-compatible low-rank
+  reduction such as truncated SVD, and atlas/label aggregation.
+- Performance is budgeted at <=3 minutes and <=5 GB peak memory for 1,000
+  studies.
+
+## Phase 1: Design & Contracts
+
+Design artifacts are captured in:
+
+- `specs/001-ma-feature-dataset/data-model.md`
+- `specs/001-ma-feature-dataset/contracts/public-api.md`
+- `specs/001-ma-feature-dataset/contracts/sklearn-compatibility.md`
+- `specs/001-ma-feature-dataset/quickstart.md`
+
+`AGENTS.md` already points to this active plan between the Spec Kit markers.
+No `update-agent-context.sh` script exists in this checkout, so the agent
+context was verified manually.
+
+## Complexity Tracking
+
+No constitution violations or required complexity exceptions.
+
+| Violation | Why Needed | Simpler Alternative Rejected Because |
+|-----------|------------|-------------------------------------|
