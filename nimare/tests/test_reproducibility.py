@@ -8,6 +8,7 @@ from nimare.annotate.lda import LDAModel
 from nimare.annotate.text import generate_counts
 from nimare.correct import FWECorrector
 from nimare.meta.cbma.ale import ALE, SCALE, ALESubtraction
+from nimare.meta.cbma.base import PairwiseCBMAEstimator
 from nimare.meta.cbma.mkda import MKDAChi2, MKDADensity
 from nimare.utils import _check_random_state, _seed_sequence, vox2mm
 
@@ -31,21 +32,43 @@ def test_check_random_state_streams_are_independent():
     assert not np.array_equal(null, fwe)
 
 
-def test_check_random_state_accepts_negative_seeds_and_generators():
-    """Negative integers are valid seeds, and a Generator is passed straight through."""
+def test_check_random_state_accepts_negative_seeds():
+    """Negative integers are valid seeds, as they are in scikit-learn."""
     np.testing.assert_array_equal(
         _check_random_state(-7).integers(0, 1000, size=5),
         _check_random_state(-7).integers(0, 1000, size=5),
     )
-
-    generator = np.random.default_rng(3)
-    assert _check_random_state(generator, stream="ignored") is generator
 
 
 def test_check_random_state_rejects_unusable_seeds():
     """A seed NiMARE cannot interpret should fail loudly rather than silently vary."""
     with pytest.raises(TypeError, match="random_state must be"):
         _check_random_state("not-a-seed")
+
+
+@pytest.mark.parametrize(
+    "generator",
+    [np.random.default_rng(3), np.random.RandomState(3), np.random.SeedSequence(3)],
+    ids=["Generator", "RandomState", "SeedSequence"],
+)
+def test_check_random_state_rejects_generator_objects(generator):
+    """A generator carries advancing state, so it cannot back the per-call guarantee."""
+    with pytest.raises(TypeError, match="random_state=int"):
+        _check_random_state(generator, stream="null")
+
+
+@pytest.mark.parametrize(
+    "estimator", [ALE, ALESubtraction, MKDADensity, MKDAChi2], ids=lambda cls: cls.__name__
+)
+def test_estimators_reject_generator_objects_consistently(estimator):
+    """Every seeded path rejects a generator, not just the ones drawing in the parent."""
+    seeded = estimator(random_state=np.random.default_rng(3))
+
+    with pytest.raises(TypeError, match="random_state=int"):
+        seeded._get_rng("null_montecarlo")
+
+    with pytest.raises(TypeError, match="random_state=int"):
+        seeded._iteration_seeds(3, stream="permutations")
 
 
 def test_unseeded_random_state_varies_between_calls():
@@ -142,52 +165,110 @@ def test_correct_fwe_montecarlo_is_reproducible(testdata_cbma):
     )
 
 
+def _scale_sampled_voxels(monkeypatch, dset, xyz, random_state):
+    """Run SCALE and return the voxel indices its permutations actually sampled."""
+    drawn = []
+    original = SCALE._prepare_permutations
+
+    def _record(self, n_iters):
+        result = original(self, n_iters)
+        drawn.append(np.asarray(result[-1]).copy())
+        return result
+
+    monkeypatch.setattr(SCALE, "_prepare_permutations", _record)
+    SCALE(xyz, n_iters=3, n_cores=1, random_state=random_state).fit(dset)
+    return np.stack(drawn)
+
+
+def _pairwise_group_assignments(monkeypatch, fit, *args, **kwargs):
+    """Run a pairwise estimator and return the group assignments its permutations drew."""
+    drawn = []
+    original = PairwiseCBMAEstimator._permute_pairwise_group_indices
+
+    def _record(n_total, n_group1, seed):
+        group1_idx, group2_idx = original(n_total, n_group1, seed)
+        drawn.append(np.asarray(group1_idx).copy())
+        return group1_idx, group2_idx
+
+    monkeypatch.setattr(
+        PairwiseCBMAEstimator, "_permute_pairwise_group_indices", staticmethod(_record)
+    )
+    fit(*args, **kwargs)
+    return np.stack(drawn)
+
+
 def test_scale_is_reproducible(testdata_cbma):
     """A seeded SCALE analysis gives the same map twice."""
     mask_img = testdata_cbma.masker.mask_img
-    # Every 500th in-mask voxel: enough of a sampling space for the permutations to differ.
     xyz = vox2mm(np.vstack(np.where(mask_img.get_fdata())).T, mask_img.affine)[::500, :]
     dset = testdata_cbma.slice(testdata_cbma.ids[:5])
 
     first = SCALE(xyz, n_iters=5, n_cores=1, random_state=1).fit(dset)
     second = SCALE(xyz, n_iters=5, n_cores=1, random_state=1).fit(dset)
-    other = SCALE(xyz, n_iters=5, n_cores=1, random_state=2).fit(dset)
 
     np.testing.assert_array_equal(
         first.get_map("z", return_type="array"),
         second.get_map("z", return_type="array"),
     )
+
+
+def test_scale_random_state_selects_the_sampled_voxels(testdata_cbma, monkeypatch):
+    """The seed picks which voxels SCALE's permutations draw.
+
+    The sampled voxels are inspected directly rather than the output maps, which are too
+    degenerate at these test sizes to tell two sets of permutations apart.
+    """
+    mask_img = testdata_cbma.masker.mask_img
+    xyz = vox2mm(np.vstack(np.where(mask_img.get_fdata())).T, mask_img.affine)[::500, :]
+    dset = testdata_cbma.slice(testdata_cbma.ids[:5])
+
+    np.testing.assert_array_equal(
+        _scale_sampled_voxels(monkeypatch, dset, xyz, 1),
+        _scale_sampled_voxels(monkeypatch, dset, xyz, 1),
+    )
     assert not np.array_equal(
-        first.get_map("z", return_type="array"),
-        other.get_map("z", return_type="array"),
+        _scale_sampled_voxels(monkeypatch, dset, xyz, 1),
+        _scale_sampled_voxels(monkeypatch, dset, xyz, 2),
     )
 
 
-def test_alesubtraction_random_state_selects_the_permutations(testdata_cbma):
-    """Check that ALESubtraction stays reproducible with and without a seed."""
+def test_alesubtraction_is_reproducible(testdata_cbma):
+    """Repeated ALESubtraction runs give the same maps, seeded or not."""
+    dset1 = testdata_cbma.slice(testdata_cbma.ids[:4])
+    dset2 = testdata_cbma.slice(testdata_cbma.ids[4:8])
+    stat = "p_desc-group1MinusGroup2"
+
+    # Unseeded ALESubtraction was already deterministic, and stays that way.
+    np.testing.assert_array_equal(
+        ALESubtraction(n_iters=5, n_cores=1).fit(dset1, dset2).get_map(stat, return_type="array"),
+        ALESubtraction(n_iters=5, n_cores=1).fit(dset1, dset2).get_map(stat, return_type="array"),
+    )
+    np.testing.assert_array_equal(
+        ALESubtraction(n_iters=5, n_cores=1, random_state=6)
+        .fit(dset1, dset2)
+        .get_map(stat, return_type="array"),
+        ALESubtraction(n_iters=5, n_cores=1, random_state=6)
+        .fit(dset1, dset2)
+        .get_map(stat, return_type="array"),
+    )
+
+
+def test_alesubtraction_random_state_selects_the_permutations(testdata_cbma, monkeypatch):
+    """The seed picks which group assignments ALESubtraction permutes to.
+
+    As for SCALE, the permutations themselves are inspected: the ALE-difference p-values are
+    quantized to 1/n_iters and saturate on a dataset this small.
+    """
     dset1 = testdata_cbma.slice(testdata_cbma.ids[:4])
     dset2 = testdata_cbma.slice(testdata_cbma.ids[4:8])
 
-    unseeded = ALESubtraction(n_iters=5, n_cores=1).fit(dset1, dset2)
-    unseeded_again = ALESubtraction(n_iters=5, n_cores=1).fit(dset1, dset2)
-    seeded = ALESubtraction(n_iters=5, n_cores=1, random_state=6).fit(dset1, dset2)
-    seeded_again = ALESubtraction(n_iters=5, n_cores=1, random_state=6).fit(dset1, dset2)
+    def _assignments(random_state):
+        meta = ALESubtraction(n_iters=3, n_cores=1, random_state=random_state)
+        return _pairwise_group_assignments(monkeypatch, meta.fit, dset1, dset2)
 
-    stat = "p_desc-group1MinusGroup2"
-    # Unseeded ALESubtraction was already deterministic, and stays that way.
-    np.testing.assert_array_equal(
-        unseeded.get_map(stat, return_type="array"),
-        unseeded_again.get_map(stat, return_type="array"),
-    )
-    np.testing.assert_array_equal(
-        seeded.get_map(stat, return_type="array"),
-        seeded_again.get_map(stat, return_type="array"),
-    )
-    # A seed selects a different set of group assignments than the iteration-index default.
-    assert not np.array_equal(
-        unseeded.get_map(stat, return_type="array"),
-        seeded.get_map(stat, return_type="array"),
-    )
+    np.testing.assert_array_equal(_assignments(6), _assignments(6))
+    # Unseeded, each permutation is seeded with its iteration index; a seed departs from that.
+    assert not np.array_equal(_assignments(None), _assignments(6))
 
 
 def test_mkdachi2_label_permutation_fwe_is_reproducible(testdata_cbma):

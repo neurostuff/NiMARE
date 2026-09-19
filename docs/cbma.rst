@@ -240,6 +240,11 @@ To get the same numbers back, pass a ``random_state`` to the Estimator::
     corrector = FWECorrector(method="montecarlo", n_iters=10000)
     corrected = corrector.transform(result)
 
+``random_state`` takes an integer (or ``None``, the unseeded default).
+An already-built generator, such as a :class:`numpy.random.Generator`, is not accepted:
+it carries state that advances as it is drawn from, which cannot give the same answer twice.
+To seed from one, pass an integer drawn from it --- ``random_state=int(rng.integers(2**32))``.
+
 The seed covers every permutation the Estimator draws, including the ones run later by
 ``correct_fwe_montecarlo``, and each step draws from its own independent sequence,
 so the uncorrected null and the FWE null are never built from the same permutations.

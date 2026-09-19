@@ -15,6 +15,11 @@ class LDAModel(NiMAREBase):
 
     This class is a light wrapper around scikit-learn tools for tokenization and LDA.
 
+    .. versionchanged:: 0.22.0
+
+        - New parameter: ``random_state``, which seeds the model so that its topics can be
+          reproduced.
+
     Parameters
     ----------
     n_topics : :obj:`int`
@@ -42,8 +47,6 @@ class LDAModel(NiMAREBase):
         ``random_state`` parameter of
         :class:`~sklearn.decomposition.LatentDirichletAllocation`. If None, the topics will
         differ between runs. Default is None.
-
-        .. versionadded:: 0.22.0
 
     Attributes
     ----------

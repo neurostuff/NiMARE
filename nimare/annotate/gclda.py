@@ -325,6 +325,12 @@ class GCLDAModel(NiMAREBase):
 
     This model was originally described in :footcite:t:`rubin2017decoding`.
 
+    .. versionchanged:: 0.22.0
+
+        * [FIX] Draw from the model's own random generators rather than NumPy's global one,
+          so fitting a model no longer resets the random state of other code in the same
+          session. The draws themselves, and so the model, are unchanged.
+
     .. versionchanged:: 0.0.8
 
         * [ENH] Support symmetric GC-LDA topics with more than two subregions.
@@ -371,12 +377,6 @@ class GCLDAModel(NiMAREBase):
         Initial value of random seed. The default is 1. Every random draw the model makes,
         during both initialization and sampling, derives from this value, so two models built
         and fitted with the same ``seed_init`` and the same data are identical.
-
-        .. versionchanged:: 0.22.0
-
-            The draws are taken from the model's own random generators instead of NumPy's
-            global one, so fitting a model no longer resets the random state of other code in
-            the same session.
 
     Attributes
     ----------

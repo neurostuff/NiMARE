@@ -151,6 +151,11 @@ def _collect_ale_masked_ma_maps(estimator, coords_key="coordinates", maps_key="m
 class ALE(CBMAEstimator):
     """Activation likelihood estimation.
 
+    .. versionchanged:: 0.22.0
+
+        - New parameter: ``random_state``, which seeds the Monte Carlo null
+          distribution and the Monte Carlo FWE correction.
+
     .. versionchanged:: 0.2.1
 
         - New parameters: ``memory`` and ``memory_level`` for memory caching.
@@ -199,13 +204,10 @@ class ALE(CBMAEstimator):
         This is only used if ``null_method=="montecarlo"``.
         If <=0, defaults to using all available cores.
         Default is 1.
-    random_state : :obj:`int`, :class:`numpy.random.Generator`, or None, optional
+    random_state : :obj:`int` or None, optional
         Seed for the Monte Carlo null distribution and for
         :meth:`~nimare.meta.cbma.ale.ALE.correct_fwe_montecarlo`, so that their results can be
         reproduced. If None, the permutations will differ between runs. Default is None.
-
-        .. versionadded:: 0.22.0
-
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned here,
         with the prefix ``kernel__`` in the variable name.
@@ -582,6 +584,11 @@ class ALE(CBMAEstimator):
 class ALESubtraction(PairwiseCBMAEstimator):
     """ALE subtraction analysis.
 
+    .. versionchanged:: 0.22.0
+
+        - New parameter: ``random_state``, which selects the group-assignment
+          permutations used to build the null.
+
     .. versionchanged:: 0.9.0
 
         - New parameters: ``vfwe_only`` and ``voxel_thresh``
@@ -647,9 +654,6 @@ class ALESubtraction(PairwiseCBMAEstimator):
         its own iteration index, as it was before this parameter existed; the null is then
         identical from run to run, but cannot be varied. Pass an integer to draw a different,
         equally reproducible, set of permutations. Default is None.
-
-        .. versionadded:: 0.22.0
-
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned here,
         with the prefix ``kernel__`` in the variable name. Another optional argument is ``mask``.
@@ -1653,6 +1657,9 @@ class BalancedALESubtraction(PairwiseCBMAEstimator):
         Family-wise error rate for the per-group cluster threshold used inside
         ``_probabilistic_map`` and for the balanced-subtraction extrema
         percentiles in ``_fit``. Default is 0.05.
+    random_state : :obj:`int` or None, optional
+        Seed for the subsampling and for the null distribution, so that results can be
+        reproduced. If None, they will differ between runs. Default is None.
     """
 
     def __init__(
@@ -1959,6 +1966,11 @@ class SCALE(CBMAEstimator):
 
     This method was originally introduced in :footcite:t:`langner2014meta`.
 
+    .. versionchanged:: 0.22.0
+
+        - New parameter: ``random_state``, which seeds the permutations used
+          to build the null distribution.
+
     .. versionchanged:: 0.14.0
 
         Use direct empirical voxelwise permutation p-values and add voxel-level Monte Carlo
@@ -2008,12 +2020,9 @@ class SCALE(CBMAEstimator):
     memory_level : :obj:`int`, default=0
         Rough estimator of the amount of memory used by caching.
         Higher value means more memory for caching. Zero means no caching.
-    random_state : :obj:`int`, :class:`numpy.random.Generator`, or None, optional
+    random_state : :obj:`int` or None, optional
         Seed for the permutations used to build the null distribution, so that results can be
         reproduced. If None, the permutations will differ between runs. Default is None.
-
-        .. versionadded:: 0.22.0
-
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned here,
         with the prefix '\kernel__' in the variable name.

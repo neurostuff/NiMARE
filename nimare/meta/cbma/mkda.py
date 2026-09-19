@@ -141,6 +141,8 @@ class MKDADensity(CBMAEstimator):
         - New parameters: ``weighting``, which enables the sample-size weighting of
           :footcite:t:`wager2009evaluating`, and ``n_histogram_bins``, which sets the
           resolution of the resulting weighted null distribution.
+        - New parameter: ``random_state``, which seeds the Monte Carlo null distribution
+          and the Monte Carlo FWE correction.
 
     .. versionchanged:: 0.2.1
 
@@ -177,8 +179,7 @@ class MKDADensity(CBMAEstimator):
         Number of iterations to use to define the null distribution.
         This is only used if ``null_method=="montecarlo"``.
         Default is 5000.
-    weighting : None, {"sample_size", "uniform"}, or \
-:obj:`~nimare.meta.cbma.weights.StudyWeights`, default=None
+    weighting : None, {"sample_size", "uniform"}, or StudyWeights, default=None
         How to weight each study contrast map. ``None`` and ``"uniform"`` both weight
         every contrast equally, which is the historical behavior. ``"sample_size"``
         applies the :math:`\sqrt{N}` weighting of :footcite:t:`wager2009evaluating`;
@@ -205,13 +206,10 @@ class MKDADensity(CBMAEstimator):
         This is only used if ``null_method=="montecarlo"``.
         If <=0, defaults to using all available cores.
         Default is 1.
-    random_state : :obj:`int`, :class:`numpy.random.Generator`, or None, optional
+    random_state : :obj:`int` or None, optional
         Seed for the Monte Carlo null distribution and for
         :meth:`~nimare.meta.cbma.mkda.MKDADensity.correct_fwe_montecarlo`, so that their results
         can be reproduced. If None, the permutations will differ between runs. Default is None.
-
-        .. versionadded:: 0.22.0
-
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -569,6 +567,11 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
     The MKDA chi-square method was originally introduced in :footcite:t:`wager2007meta`.
 
+    .. versionchanged:: 0.22.0
+
+        - New parameter: ``random_state``, which seeds the permutations used by the Monte
+          Carlo FWE correction.
+
     .. versionchanged:: 0.2.1
 
         - Make `prior` parameter default to None, which controls if posterior probabilities
@@ -600,16 +603,13 @@ class MKDAChi2(PairwiseCBMAEstimator):
     memory_level : :obj:`int`, default=0
         Rough estimator of the amount of memory used by caching.
         Higher value means more memory for caching. Zero means no caching.
-    random_state : :obj:`int`, :class:`numpy.random.Generator`, or None, optional
+    random_state : :obj:`int` or None, optional
         Seed for the permutations run by
         :meth:`~nimare.meta.cbma.mkda.MKDAChi2.correct_fwe_montecarlo`, so that its results can
         be reproduced. With ``fwe_null_method="label-permutation"``, None means each permutation
         is seeded with its own iteration index, as it was before this parameter existed; with
         ``fwe_null_method="random-foci"``, None means the permutations differ between runs.
         Default is None.
-
-        .. versionadded:: 0.22.0
-
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.
@@ -1573,6 +1573,11 @@ class MKDAChi2(PairwiseCBMAEstimator):
 class KDA(CBMAEstimator):
     r"""Kernel density analysis.
 
+    .. versionchanged:: 0.22.0
+
+        - New parameter: ``random_state``, which seeds the Monte Carlo null distribution
+          and the Monte Carlo FWE correction.
+
     .. versionchanged:: 0.2.1
 
         - New parameters: ``memory`` and ``memory_level`` for memory caching.
@@ -1619,13 +1624,10 @@ class KDA(CBMAEstimator):
         This is only used if ``null_method=="montecarlo"``.
         If <=0, defaults to using all available cores.
         Default is 1.
-    random_state : :obj:`int`, :class:`numpy.random.Generator`, or None, optional
+    random_state : :obj:`int` or None, optional
         Seed for the Monte Carlo null distribution and for
         :meth:`~nimare.meta.cbma.mkda.KDA.correct_fwe_montecarlo`, so that their results can be
         reproduced. If None, the permutations will differ between runs. Default is None.
-
-        .. versionadded:: 0.22.0
-
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned
         here, with the prefix '\kernel__' in the variable name.

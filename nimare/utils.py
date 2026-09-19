@@ -238,9 +238,14 @@ def _seed_sequence(random_state, stream=None):
 
     Parameters
     ----------
-    random_state : :obj:`int`, :class:`numpy.random.SeedSequence`, or None
+    random_state : :obj:`int` or None
         The seed to derive the sequence from. If None, the sequence is seeded from operating
         system entropy, so draws will differ between runs.
+
+        Only an integer (or None) is accepted. An already-built generator, such as a
+        :class:`numpy.random.Generator`, is deliberately rejected: it carries mutable state
+        that advances as it is drawn from, which cannot provide either the fresh-per-call or
+        the independent-per-step behaviour described below.
     stream : :obj:`str` or None, optional
         Name of the stochastic step the sequence will be used for. When ``random_state`` is not
         None, the name is mixed into the entropy, so that different steps of the same object
@@ -252,16 +257,15 @@ def _seed_sequence(random_state, stream=None):
     -------
     :class:`numpy.random.SeedSequence`
     """
-    if isinstance(random_state, np.random.SeedSequence):
-        return random_state
-
     if random_state is None:
         return np.random.SeedSequence()
 
-    if not isinstance(random_state, (int, np.integer)) or isinstance(random_state, bool):
+    if isinstance(random_state, bool) or not isinstance(random_state, (int, np.integer)):
         raise TypeError(
-            "random_state must be None, an integer, a numpy.random.SeedSequence, or a "
-            f"numpy.random.Generator; got {type(random_state)}."
+            f"random_state must be None or an integer; got {type(random_state)}. "
+            "A generator object is not accepted, because NiMARE derives a fresh generator "
+            "for each stochastic step; to seed from an existing generator, pass an integer "
+            "drawn from it, e.g. random_state=int(rng.integers(2**32))."
         )
 
     # SeedSequence entropy must be non-negative, but negative seeds are common enough in the
@@ -280,13 +284,15 @@ def _seed_sequence(random_state, stream=None):
 def _check_random_state(random_state, stream=None):
     """Turn a user-provided seed into a :class:`numpy.random.Generator`.
 
+    A new generator is built on every call, so the same seed and ``stream`` always give the
+    same draws, however many times they are requested.
+
     Parameters
     ----------
-    random_state : :obj:`int`, :class:`numpy.random.Generator`, \
-                   :class:`numpy.random.SeedSequence`, or None
+    random_state : :obj:`int` or None
         Seed for the generator. If None, the generator is seeded from operating system entropy
-        and results will vary between runs. If a Generator is passed, it is returned unchanged
-        and ``stream`` is ignored.
+        and results will vary between runs. See :func:`_seed_sequence` for why generator
+        objects are not accepted.
     stream : :obj:`str` or None, optional
         Name of the stochastic step the generator will be used for. See :func:`_seed_sequence`.
         Default is None.
@@ -295,9 +301,6 @@ def _check_random_state(random_state, stream=None):
     -------
     :class:`numpy.random.Generator`
     """
-    if isinstance(random_state, np.random.Generator):
-        return random_state
-
     return np.random.default_rng(_seed_sequence(random_state, stream=stream))
 
 

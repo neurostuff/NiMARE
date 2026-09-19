@@ -89,6 +89,11 @@ class CBMAEstimator(Estimator):
         Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
         NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
 
+    .. versionchanged:: 0.22.0
+
+        * New parameter: ``random_state``, which seeds the Monte Carlo procedures so that
+          their results can be reproduced.
+
     .. versionchanged:: 0.12.0
 
         * Standardize sparse MA maps as 2D study-by-masked-voxel matrices across CBMA methods.
@@ -125,13 +130,10 @@ class CBMAEstimator(Estimator):
         map). ``"brain"`` uses every non-zero
         voxel in the mask. Has no effect when ``null_method="approximate"``.
         Default is ``"brain"``.
-    random_state : :obj:`int`, :class:`numpy.random.Generator`, or None, optional
+    random_state : :obj:`int` or None, optional
         Seed for the Monte Carlo procedures used by this Estimator, so that their results can
         be reproduced. If None, the permutations are drawn from operating system entropy and
         will differ between runs. Default is None.
-
-        .. versionadded:: 0.22.0
-
     *args
         Optional arguments to the :obj:`~nimare.base.Estimator` __init__
         (called automatically).
