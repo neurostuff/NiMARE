@@ -388,6 +388,13 @@ class FWECorrector(Corrector):
             raise ValueError(f"Unsupported FWE correction method '{method}'")
 
         if method == "montecarlo":
+            if n_iters is not None and (
+                isinstance(n_iters, (bool, np.bool_))
+                or not isinstance(n_iters, (int, np.integer))
+                or n_iters <= 0
+            ):
+                raise ValueError("n_iters must be a positive integer when method='montecarlo'.")
+
             # ``None`` is dropped by ``Corrector.__init__``, deferring to the estimator's own
             # default, which varies (e.g., MKDAChi2 vs. CBMAEstimator).
             kwargs["n_iters"] = n_iters
