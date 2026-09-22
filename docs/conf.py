@@ -223,6 +223,7 @@ def setup(app):
     """From https://github.com/rtfd/sphinx_rtd_theme/issues/117"""
     app.add_css_file("theme_overrides.css")
     app.add_css_file("nimare.css")
+    app.add_js_file("contact.js")
     app.connect("autodoc-process-docstring", generate_example_rst)
 
 
