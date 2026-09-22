@@ -256,7 +256,10 @@ div.deprecated > ul.simple {
 .nimare-contact {
   position: fixed;
   right: 1rem;
-  bottom: 1rem;
+  /* Read the Docs renders its own flyout menu in this corner. Default to an
+     offset that clears it, and tuck the widget back into the corner below
+     only when the flyout is known to be absent. */
+  bottom: 7rem;
   z-index: 1000;
   font-size: 0.85rem;
   font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
@@ -344,18 +347,20 @@ div.deprecated > ul.simple {
 @media screen and (max-width: 768px) {
   .nimare-contact {
     right: 0.5rem;
-    bottom: 0.5rem;
+    bottom: 6.5rem;
   }
 }
 
-/* Read the Docs injects its own flyout menu into the bottom-right corner,
-   so move the widget above it when it is present. */
-body:has(readthedocs-flyout) .nimare-contact {
-  bottom: 7rem;
+/* Builds that are not hosted on Read the Docs have no flyout to avoid, so move
+   the widget down into the corner. Browsers without :has() support cannot parse
+   this selector and drop the rule, falling back to the offset above, which is
+   the safe position in either case. */
+body:not(:has(readthedocs-flyout)) .nimare-contact {
+  bottom: 1rem;
 }
 
 @media screen and (max-width: 768px) {
-  body:has(readthedocs-flyout) .nimare-contact {
-    bottom: 6.5rem;
+  body:not(:has(readthedocs-flyout)) .nimare-contact {
+    bottom: 0.5rem;
   }
 }
