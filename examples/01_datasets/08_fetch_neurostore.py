@@ -23,9 +23,9 @@ downloads, checksums, and extracts one of those releases for you.
 
 .. warning::
     :func:`~nimare.extract.fetch_neurosynth` (see :ref:`datasets_databases`) downloads a frozen
-    2021 snapshot of Neurosynth, is deprecated, and will be removed in NiMARE 1.0.0. Keep using it
-    only to reproduce published Neurosynth analyses, or to get the Neurosynth term annotations that
-    NiMARE's Neurosynth-based decoders need.
+    snapshot of Neurosynth, whose coordinates were extracted in 2018. It is deprecated and will be
+    removed in NiMARE 1.0.0. Keep using it only to reproduce published Neurosynth analyses, or to
+    get the Neurosynth term annotations that NiMARE's Neurosynth-based decoders need.
 
 For information about where these files will be downloaded to on your machine,
 see :doc:`../../fetching`.

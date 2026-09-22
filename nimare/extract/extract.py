@@ -48,9 +48,9 @@ NEUROSTORE_RELEASES_URL = f"{NEUROSTORE_URL}/api/neurostore-studyset-releases/"
 
 NEUROSYNTH_DEPRECATION_MESSAGE = (
     "fetch_neurosynth downloads a frozen snapshot of the Neurosynth database "
-    "(last released in 2021) and is deprecated: it is kept only for reproducing "
-    "published Neurosynth analyses and for the term annotations Neurosynth-based "
-    "decoding needs. For up-to-date coordinate data, use "
+    "(data extracted in 2018; files last repackaged in 2021) and is deprecated: it is "
+    "kept only for reproducing published Neurosynth analyses and for the term "
+    "annotations Neurosynth-based decoding needs. For up-to-date coordinate data, use "
     "nimare.extract.fetch_neurostore(), which downloads a NeuroStore studyset release "
     f"from {NEUROSTORE_RELEASES_URL}. Silence this warning with "
     "warnings.filterwarnings('ignore', message='fetch_neurosynth downloads a frozen')."
@@ -515,7 +515,8 @@ def fetch_neurosynth(
 
     .. deprecated:: 0.22.0
 
-        Neurosynth's data files are a frozen 2021 snapshot. This function is kept for
+        Neurosynth's data files are a frozen snapshot: the data were extracted in
+        2018, and the files were last repackaged in 2021. This function is kept for
         reproducing published Neurosynth analyses (and for the term annotations that
         Neurosynth-based decoding needs), and will be removed in NiMARE 1.0.0. For
         up-to-date coordinate data, use :func:`~nimare.extract.fetch_neurostore`.

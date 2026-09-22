@@ -14,8 +14,9 @@ In this example, we download and convert the Neurosynth and NeuroQuery databases
 NiMARE.
 
 .. warning::
-    Both databases are **frozen snapshots** (Neurosynth's data files were last released in 2021),
-    and :func:`~nimare.extract.fetch_neurosynth` is deprecated: calling it emits a
+    Both databases are **frozen snapshots**: Neurosynth's coordinates were extracted in 2018,
+    and its data files were last repackaged in 2021.
+    :func:`~nimare.extract.fetch_neurosynth` is deprecated: calling it emits a
     ``FutureWarning``, and it will be removed in NiMARE 1.0.0.
 
     Use these fetchers only to reproduce published Neurosynth/NeuroQuery analyses, or to get the

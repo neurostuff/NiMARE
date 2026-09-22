@@ -44,7 +44,8 @@ which is rebuilt from the live NeuroStore database and returns a :class:`~nimare
 .. warning::
 
     :func:`~nimare.extract.fetch_neurosynth` and :func:`~nimare.extract.fetch_neuroquery`
-    download frozen snapshots of the Neurosynth (2021) and NeuroQuery databases.
+    download frozen snapshots of the Neurosynth and NeuroQuery databases. Neurosynth's
+    coordinates were extracted in 2018, and its data files were last repackaged in 2021.
     ``fetch_neurosynth`` is deprecated and will be removed in NiMARE 1.0.0; it is kept
     for reproducing published Neurosynth analyses and for the term annotations that
     Neurosynth-based :doc:`decoding <decoding>` needs. New coordinate-based analyses

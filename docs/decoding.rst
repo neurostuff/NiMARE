@@ -68,9 +68,9 @@ term annotations instead of the full release:
 .. note::
 
    :func:`~nimare.extract.fetch_neurosynth` is deprecated and emits a ``FutureWarning``: it
-   downloads a frozen 2021 snapshot of Neurosynth. It is still the way to get the term
-   annotations these decoders rely on, but for up-to-date coordinate data use
-   :func:`~nimare.extract.fetch_neurostore`, which downloads a
+   downloads a frozen snapshot of Neurosynth, whose data were extracted in 2018. It is still
+   the way to get the term annotations these decoders rely on, but for up-to-date coordinate
+   data use :func:`~nimare.extract.fetch_neurostore`, which downloads a
    `NeuroStore studyset release <https://neurostore.org/api/neurostore-studyset-releases/>`_.
 
 .. code-block:: python
