@@ -246,3 +246,116 @@ div.deprecated > ul.simple {
   content: var(--pst-icon-versionmodified-deprecated);
   color: rgba(var(--pst-color-versionmodified-deprecated), 1);
 }
+
+/*****************************************************************************
+* "Contact us" widget
+*
+* Rendered on every page by docs/_templates/contact.html.
+**/
+
+.nimare-contact {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 1000;
+  font-size: 0.85rem;
+  font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+}
+
+.nimare-contact-button {
+  display: inline-block;
+  padding: 0.5rem 0.9rem;
+  border-radius: 2rem;
+  background-color: #a589df;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+  box-shadow: 0 0.15rem 0.5rem rgba(0, 0, 0, 0.3);
+  user-select: none;
+}
+
+/* Hide the default disclosure triangle. */
+.nimare-contact-button::-webkit-details-marker {
+  display: none;
+}
+
+.nimare-contact-button:hover,
+.nimare-contact-details[open] > .nimare-contact-button {
+  background-color: #8a68d0;
+}
+
+.nimare-contact-button:focus-visible {
+  outline: 0.15rem solid #130654;
+  outline-offset: 0.15rem;
+}
+
+.nimare-contact-icon {
+  margin-right: 0.3rem;
+}
+
+.nimare-contact-menu {
+  position: absolute;
+  right: 0;
+  bottom: 2.9rem;
+  width: 20rem;
+  max-width: calc(100vw - 2rem);
+  padding: 0.8rem 1rem;
+  border: 1px solid #d0c6e8;
+  border-radius: 0.3rem;
+  background-color: #fff;
+  box-shadow: 0 0.2rem 0.8rem rgba(0, 0, 0, 0.25);
+}
+
+.nimare-contact-heading {
+  margin: 0 0 0.5rem 0;
+  font-weight: 700;
+  color: #333;
+}
+
+.nimare-contact-menu ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nimare-contact-menu li {
+  margin-bottom: 0.6rem;
+  list-style: none;
+}
+
+.nimare-contact-menu a {
+  font-weight: 700;
+}
+
+.nimare-contact-note {
+  display: block;
+  color: #555;
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+
+.nimare-contact-more {
+  display: inline-block;
+  margin-top: 0.2rem;
+}
+
+/* Keep the widget out of the way on narrow screens. */
+@media screen and (max-width: 768px) {
+  .nimare-contact {
+    right: 0.5rem;
+    bottom: 0.5rem;
+  }
+}
+
+/* Read the Docs injects its own flyout menu into the bottom-right corner,
+   so move the widget above it when it is present. */
+body:has(readthedocs-flyout) .nimare-contact {
+  bottom: 7rem;
+}
+
+@media screen and (max-width: 768px) {
+  body:has(readthedocs-flyout) .nimare-contact {
+    bottom: 6.5rem;
+  }
+}
