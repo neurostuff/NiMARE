@@ -292,6 +292,8 @@ For more information about fetching data from the internet, see :ref:`fetching t
    :toctree: generated/
    :template: function.rst
 
+   extract.fetch_neurostore
+   extract.fetch_neurostore_releases
    extract.fetch_neuroquery
    extract.fetch_neurosynth
    extract.download_nidm_pain

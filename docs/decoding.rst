@@ -65,6 +65,14 @@ The correlation-based decoding is implemented in NiMARE's `CorrelationDecoder` c
 When building ``ns_dset`` from Neurosynth for term-based decoding, fetch only the abstract-derived
 term annotations instead of the full release:
 
+.. note::
+
+   :func:`~nimare.extract.fetch_neurosynth` is deprecated and emits a ``FutureWarning``: it
+   downloads a frozen 2021 snapshot of Neurosynth. It is still the way to get the term
+   annotations these decoders rely on, but for up-to-date coordinate data use
+   :func:`~nimare.extract.fetch_neurostore`, which downloads a
+   `NeuroStore studyset release <https://neurostore.org/api/neurostore-studyset-releases/>`_.
+
 .. code-block:: python
 
    from nimare.extract import fetch_neurosynth

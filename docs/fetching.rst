@@ -25,3 +25,27 @@ NiMARE's ``extract`` module contains a number of functions for downloading resou
     Note that you can copy that folder to another user's computers to avoid the initial dataset download on the first fetching call.
 
     You can check in which directory NiMARE will store the data with the function :func:`~nimare.extract.utils.get_data_dirs`.
+
+Where should coordinate data come from?
+---------------------------------------
+
+Use :func:`~nimare.extract.fetch_neurostore` to download coordinate data.
+It fetches a `NeuroStore studyset release <https://neurostore.org/api/neurostore-studyset-releases/>`_,
+which is rebuilt from the live NeuroStore database and returns a :class:`~nimare.nimads.Studyset`::
+
+    from nimare.extract import fetch_neurostore, fetch_neurostore_releases
+
+    # See what is available (dated monthly releases plus a rolling nightly build).
+    for release in fetch_neurostore_releases():
+        print(release["version"], release["study_count"])
+
+    studyset = fetch_neurostore()  # the most recent dated release
+
+.. warning::
+
+    :func:`~nimare.extract.fetch_neurosynth` and :func:`~nimare.extract.fetch_neuroquery`
+    download frozen snapshots of the Neurosynth (2021) and NeuroQuery databases.
+    ``fetch_neurosynth`` is deprecated and will be removed in NiMARE 1.0.0; it is kept
+    for reproducing published Neurosynth analyses and for the term annotations that
+    Neurosynth-based :doc:`decoding <decoding>` needs. New coordinate-based analyses
+    should use :func:`~nimare.extract.fetch_neurostore` instead.
