@@ -226,6 +226,8 @@ def test_dataset_attributes(ma_feature_dataset):
     )
     assert "n_rows=6" in repr(dataset)
     assert "n_studies=3" in repr(dataset)
+    # Whether any of those columns are descriptors is worth seeing at a glance.
+    assert "n_descriptors=1" in repr(dataset)
 
 
 def test_dataset_features_are_built_once(ma_feature_dataset):
@@ -241,6 +243,7 @@ def test_dataset_without_descriptors(small_masker):
     dataset = FeatureSet(map_features, ids=list("abc"), study_ids=list("abc"))
 
     assert dataset.features is map_features
+    assert "n_descriptors" not in repr(dataset)
     assert dataset.descriptor_columns == slice(3, 3)
     assert dataset.feature_names == ["voxel_0", "voxel_1", "voxel_2"]
     assert dataset.to_sklearn().target is None
@@ -510,6 +513,24 @@ def test_make_preprocessor_rejects_things_that_are_not_reducers(ma_feature_datas
 
     with pytest.raises(TypeError, match="is not a map reducer"):
         ma_feature_dataset.make_preprocessor(object())
+
+
+def test_make_preprocessor_keeps_a_reducer_off_the_descriptor_columns(ma_feature_dataset):
+    """A bare reducer would decompose the descriptor columns along with the voxels."""
+    reducer = TruncatedSVD(n_components=1, random_state=RANDOM_SEED)
+    descriptors = ma_feature_dataset.descriptor_features.ravel()
+
+    scoped = ma_feature_dataset.make_preprocessor(reducer).fit_transform(
+        ma_feature_dataset.features
+    )
+    scoped = scoped.toarray() if sparse.issparse(scoped) else scoped
+    bare = clone(reducer).fit_transform(ma_feature_dataset.features)
+
+    # Scoped: the map block is reduced and the descriptor column passes through.
+    assert scoped.shape == (len(ma_feature_dataset), 2)
+    np.testing.assert_allclose(scoped[:, -1], descriptors)
+    # Bare: one component for everything, the descriptor folded into it.
+    assert bare.shape == (len(ma_feature_dataset), 1)
 
 
 def test_map_only_features_need_no_preprocessor(small_masker):

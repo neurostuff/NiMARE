@@ -100,6 +100,11 @@ print(f"Shared studies: {set(train.study_ids) & set(test.study_ids)}")
 # truncated SVD reduces them before the classifier sees them; putting the
 # reducer in the pipeline is what keeps it fitted on training rows only.
 # GroupKFold reads the same study labels the split used.
+#
+# Every column here is a voxel -- ``repr(features)`` says so, with no
+# ``n_descriptors`` -- so the reducer can see the whole matrix. The section
+# after next adds descriptor columns, which a bare reducer would decompose
+# along with the voxels.
 pipeline = make_pipeline(
     TruncatedSVD(n_components=50, random_state=RANDOM_SEED),
     LogisticRegression(max_iter=1000, class_weight="balanced", random_state=RANDOM_SEED),
@@ -153,9 +158,10 @@ preprocessor = with_descriptors.make_preprocessor(
     descriptor_transformer=SimpleImputer(strategy="median"),
 )
 
+print(with_descriptors)
 print(f"Descriptor columns: {with_descriptors.descriptor_columns}")
-print(f"Preprocessor: {type(preprocessor).__name__}")
-print(f"Map-only feature set: {type(features.make_preprocessor(TruncatedSVD(2))).__name__}")
+print(f"With descriptors: {type(preprocessor).__name__}")
+print(f"Map features only: {type(features.make_preprocessor(TruncatedSVD(2))).__name__}")
 
 ###############################################################################
 # Compare reduction workflows

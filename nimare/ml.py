@@ -473,11 +473,14 @@ class FeatureSet(NiMAREBase):
         ).transform(studyset, container=cls)
 
     def __repr__(self):
-        """Show the dataset's shape."""
+        """Show the shape, and whether any columns are descriptors."""
         n_rows, n_features = self.shape
+        descriptors = ""
+        if self._descriptor_features is not None:
+            descriptors = f", n_descriptors={self._descriptor_features.shape[1]}"
         return (
             f"{self.__class__.__name__}(n_rows={n_rows}, n_features={n_features}, "
-            f"n_studies={len(np.unique(self.study_ids))})"
+            f"n_studies={len(np.unique(self.study_ids))}{descriptors})"
         )
 
     def __len__(self):
@@ -654,6 +657,13 @@ class FeatureSet(NiMAREBase):
         reducer away from, so the reducer is returned as it is: put a
         scikit-learn transformer straight into your pipeline and this method is
         not needed at all.
+
+        Which is also the rule for when it *is* needed. A transformer placed
+        directly in a pipeline sees every column it is given, so once there are
+        descriptor columns a bare reducer decomposes them along with the
+        voxels, quietly. Going through this method costs nothing on a map-only
+        feature set and keeps a pipeline correct if descriptor fields are added
+        later.
 
         Parameters
         ----------
