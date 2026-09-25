@@ -99,6 +99,27 @@ test_reduced = test.transform_maps(svd)   # NotFittedError if svd is unfitted
 Anything that reads sparse input works: truncated SVD, sparse random
 projection, variance thresholding. Dense PCA will ask for dense data.
 
+## Select annotation labels
+
+An annotation is thousands of mostly-empty columns, so naming labels one at a
+time is not a workflow. A glob pattern takes them all, under their own names,
+and keeps the block sparse:
+
+```python
+features = ml.FeatureSet.from_studyset(
+    studyset,
+    kernel_transformer=MKDAKernel(r=10),
+    descriptor_fields=[("annotations", "Neurosynth_TFIDF__*")],
+    target_field=("annotations", "Neurosynth_TFIDF__pain"),
+)
+
+features.descriptor_names[:2]   # ['Neurosynth_TFIDF__001', 'Neurosynth_TFIDF__01']
+```
+
+A label no analysis carries is a zero rather than a gap, so `missing_values`
+has nothing to report about a pattern selection; an exactly named field keeps
+the usual value semantics, where absent means missing.
+
 ## Reduce over the regions of an atlas
 
 `AtlasAggregator` is the one reducer NiMARE adds, because it is the one that

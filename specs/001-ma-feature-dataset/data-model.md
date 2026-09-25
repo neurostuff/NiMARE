@@ -119,9 +119,8 @@ and an optional target.
 - `ids`: one full Studyset analysis identifier per retained row.
 - `study_ids`: one study-group label per retained row.
 - `map_features`: the analysis-by-voxel block; sparse while unreduced.
-- `descriptor_features`: the numeric descriptor block, or `None`.
-- `descriptors`: the selected descriptor values as read from the Studyset, as a
-  `DataFrame` indexed by `ids`, or `None`.
+- `descriptor_features`: the numeric descriptor block, sparse when it holds
+  annotation labels, or `None`.
 - `features`: the two blocks side by side, derived on first access.
 - `feature_names`: names for `features`, built on first access.
 - `target`: optional one-dimensional row-aligned prediction target.
@@ -153,8 +152,10 @@ than the sparse matrix has bytes.
 #### Descriptor Feature Set
 
 - Numeric descriptor fields are appended directly.
-- Text and categorical descriptor fields are rejected; their raw values stay on
-  `descriptors` so a pipeline can encode them per fold.
+- Annotation labels are selected one at a time by name or many at a time by
+  pattern, read from the sparse `LabelBlock`, under their real names.
+- Text and categorical descriptor fields are rejected, and the message names
+  the Studyset table their raw values are in.
 
 #### Prediction Target
 

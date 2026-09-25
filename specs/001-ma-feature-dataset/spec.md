@@ -34,10 +34,10 @@
   `FeatureSet.make_preprocessor()`, or is fitted on the training dataset
   with `fit_transform_maps` and reused through `transform_maps`, which raises
   rather than fitting on held-out rows.
-- Q: How are non-numeric descriptor fields handled? -> A: They are rejected, and
-  their raw values stay available on `FeatureSet.descriptors` for
-  encoding inside a pipeline. Fitting an encoder at extraction time would fit it
-  on the rows about to be held out, which FR-013 forbids.
+- Q: How are non-numeric descriptor fields handled? -> A: They are rejected,
+  and the message names the Studyset table their raw values are in, so they can
+  be encoded and selected as numbers. Fitting an encoder at extraction time
+  would fit it on the rows about to be held out, which FR-013 forbids.
 - Q: How are missing descriptor and target values handled? -> A: A
   `missing_values` option with `raise` (default), `drop` and `keep`, mirroring
   `missing_coordinates`; drop and keep are recorded in provenance.
@@ -169,7 +169,7 @@ A researcher wants convenient, reusable reduction workflows for high-dimensional
 - **FR-004**: The feature MUST expose study grouping information so that all analyses from the same study can be kept together during data splitting, assuming the input Studyset provides unique study identifiers and unique analysis identifiers.
 - **FR-005**: The feature MUST provide a train/test split workflow that prevents analyses from the same study from appearing in both training and testing partitions.
 - **FR-006**: The feature MUST support reproducible splits when the researcher supplies the same split configuration.
-- **FR-007**: The feature MUST allow selected numeric metadata and annotation fields to be added as additional model features.
+- **FR-007**: The feature MUST allow selected numeric metadata and annotation fields to be added as additional model features, one field at a time by name and many annotation labels at a time by pattern, keeping a label selection sparse and keeping every label's own name.
 - **FR-008**: The feature MUST reject non-numeric descriptor fields, including categorical metadata, annotations, titles, and descriptions, with a message naming the field, its kind, and the two supported routes: encode it and select the numeric result, or encode it inside a scikit-learn pipeline from the raw values the feature exposes on the dataset. The feature MUST NOT fit an encoder during extraction, which would fit it on analyses the researcher is about to hold out.
 - **FR-009**: The feature MUST allow one selected scalar numeric or categorical annotation or metadata value, or one value produced by an explicit target transformer or label extractor, to be exported as the prediction target y, and MUST reject raw free-text or multi-label targets unless such explicit target handling is supplied.
 - **FR-010**: The feature MUST keep the feature data, target values, analysis identifiers, and study groups aligned through conversion, augmentation, splitting, and reduction.

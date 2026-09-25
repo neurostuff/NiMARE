@@ -788,3 +788,44 @@ in a `ColumnTransformer` over every column. Both are gone:
 The example now leads with `make_pipeline(TruncatedSVD(50), LogisticRegression())`
 on `bunch.data`, and reaches for `make_preprocessor` only in the section that
 has descriptor columns to protect.
+
+---
+
+## 15. Follow-up: annotations as first-class descriptors (2026-09-25)
+
+`Neurosynth_TFIDF__pain` is one of 3,228 labels in the bundled Neurosynth
+Studyset, and one of 794 in the NeuroStore release over 115,747 analyses.
+Naming them one at a time was the only way to select them, which is to say
+there was no way to use an annotation at all. Three things changed:
+
+- **A field that reads as a glob pattern selects labels.**
+  `("annotations", "Neurosynth_TFIDF__*")` takes every match, in the Studyset's
+  order, each under its own name. A pattern matching nothing raises and shows
+  what the Studyset does annotate with; a pattern against metadata or texts
+  says patterns are for annotations.
+- **A label selection is read from the sparse `LabelBlock`**, not from
+  `annotations_df`, and the descriptor block is allowed to be sparse from there
+  on: through `features`, `split`, `select_analyses` and `to_sklearn`. The
+  bundled annotation is 1,167 non-zeros in 54,876 cells; the release annotation
+  is 3 million in 92 million. `FeatureSet.__init__` no longer coerces the
+  descriptor block through `np.asarray`.
+- **Absence means zero for a pattern selection**, which is what a sparse
+  annotation means, so `missing_values` has nothing to report about one. An
+  exactly named field keeps value semantics, where absent means missing. The
+  rule is *pattern gives a label matrix, name gives a value*, which is
+  predictable without knowing how many labels matched.
+
+Provenance keeps the selectors as given plus `n_descriptor_features`, rather
+than thousands of expanded names.
+
+Two things fell out of writing it. `FeatureSet.descriptors` -- the frame of
+raw descriptor values -- was **removed**: it held the same numbers as
+`descriptor_features` under the same names, it would have densified a label
+block, and the story it was documented for was wrong. A rejected categorical
+field never reached it, because rejection happens before any container exists,
+so the message telling users to read raw values from it could not be followed.
+The message now names the Studyset table the values are actually in. And the
+constant-target guard earned its place unprompted: asking for
+`Neurosynth_TFIDF__pain` as the target of the bundled 17-study set fails,
+because that set is motor and language studies and the label is zero
+throughout.

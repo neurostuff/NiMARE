@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 import nibabel as nib
 import numpy as np
@@ -28,7 +29,7 @@ from nimare.generate import create_coordinate_studyset
 from nimare.meta.kernel import MKDAKernel
 from nimare.ml import AtlasAggregator, FeatureSet
 from nimare.nimads import Studyset
-from nimare.utils import get_masker, get_template
+from nimare.utils import get_masker, get_resource_path, get_template
 
 RANDOM_SEED = 13
 
@@ -153,7 +154,6 @@ def ma_feature_dataset(small_masker):
         study_ids=study_ids,
         descriptor_features=descriptor_features,
         descriptor_names=["motor_label"],
-        descriptors=pd.DataFrame({"motor_label": descriptor_features.ravel()}, index=ids),
         target=target,
         provenance={"studyset_id": "fixture", "dropped_ids": []},
         masker=small_masker,
@@ -166,6 +166,11 @@ def _column(data, index):
     if sparse.issparse(column):
         return column.toarray().ravel()
     return np.asarray(column).ravel()
+
+
+def _dense(block):
+    """Return a dense copy of a feature block."""
+    return block.toarray() if sparse.issparse(block) else np.asarray(block)
 
 
 def _map_signature(dataset):
@@ -287,6 +292,7 @@ def test_dataset_to_sklearn(ma_feature_dataset):
     np.testing.assert_array_equal(bunch.groups, dataset.study_ids)
     np.testing.assert_array_equal(bunch.ids, dataset.ids)
     assert bunch.provenance is dataset.provenance
+    assert "descriptors" not in bunch
     assert bunch.map_columns == dataset.map_columns
 
     data, target = dataset.to_sklearn(return_X_y=True)
@@ -308,7 +314,6 @@ def test_dataset_split_keeps_studies_together(ma_feature_dataset):
         expected = [float(np.flatnonzero(dataset.ids == id_)[0]) for id_ in part.ids]
         np.testing.assert_array_equal(part.descriptor_features.ravel(), expected)
         np.testing.assert_array_equal(part.target, np.array(expected) + 0.5)
-        np.testing.assert_array_equal(part.descriptors.index, part.ids)
 
     again = dataset.split(test_size=0.34, random_state=RANDOM_SEED)
     np.testing.assert_array_equal(again[1].ids, test.ids)
@@ -348,7 +353,7 @@ def test_dataset_select_analyses(ma_feature_dataset):
     np.testing.assert_array_equal(by_mask.ids, by_position.ids)
     np.testing.assert_array_equal(by_mask.target, [0.5, 2.5, 4.5])
     np.testing.assert_array_equal(by_mask.map_features.toarray()[:, 0], [0.0, 2.0, 4.0])
-    np.testing.assert_array_equal(by_mask.descriptors["motor_label"], [0.0, 2.0, 4.0])
+    np.testing.assert_array_equal(by_mask.descriptor_features.ravel(), [0.0, 2.0, 4.0])
     assert by_mask.feature_names == dataset.feature_names
 
     reordered = dataset.select_analyses([2, 0])
@@ -1099,6 +1104,113 @@ def test_from_studyset_rejects_unusable_descriptors(ml_studyset, selector, messa
     """Descriptor fields have to be numeric, and have to exist."""
     with pytest.raises((ValueError, TypeError), match=message):
         FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4), descriptor_fields=[selector])
+
+
+@pytest.fixture(scope="session")
+def neurosynth_studyset():
+    """Return the bundled Neurosynth Studyset, which annotates with 3,228 labels."""
+    return Studyset(str(Path(get_resource_path()) / "neurosynth_laird_studyset.json"))
+
+
+def test_annotation_labels_are_selected_by_pattern(neurosynth_studyset):
+    """A pattern takes every matching label, under its own name."""
+    studyset = neurosynth_studyset
+    labels = [
+        column
+        for column in studyset.annotations_df.columns
+        if column.startswith("Neurosynth_TFIDF__pa")
+    ]
+
+    features = FeatureSet.from_studyset(
+        studyset, MKDAKernel(r=10), descriptor_fields=[("annotations", "Neurosynth_TFIDF__pa*")]
+    )
+
+    assert features.descriptor_names == labels
+    assert "Neurosynth_TFIDF__pain" in features.descriptor_names
+    assert features.descriptor_features.shape == (len(features), len(labels))
+    # The names survive whole, double underscores and all.
+    assert features.feature_names[-len(labels) :] == labels
+
+    expected = studyset.annotations_df.set_index("id").loc[features.ids, labels].to_numpy()
+    np.testing.assert_allclose(_dense(features.descriptor_features), expected)
+
+
+def test_annotation_labels_stay_sparse(neurosynth_studyset):
+    """A whole annotation is thousands of mostly-empty columns, and stays sparse."""
+    features = FeatureSet.from_studyset(
+        neurosynth_studyset,
+        MKDAKernel(r=10),
+        descriptor_fields=[("annotations", "Neurosynth_TFIDF__*")],
+    )
+
+    descriptors = features.descriptor_features
+    assert sparse.issparse(descriptors)
+    assert descriptors.shape[1] > 3000
+    assert descriptors.nnz < descriptors.shape[0] * descriptors.shape[1] / 10
+    assert sparse.issparse(features.features)
+    # Splitting and exporting keep it sparse too.
+    train, _ = features.split(test_size=0.25, random_state=RANDOM_SEED)
+    assert sparse.issparse(train.descriptor_features)
+    assert sparse.issparse(train.to_sklearn().data)
+
+
+def test_absent_annotation_labels_are_zero_not_missing(neurosynth_studyset):
+    """A label no analysis carries is a zero, so missing_values has nothing to say."""
+    features = FeatureSet.from_studyset(
+        neurosynth_studyset,
+        MKDAKernel(r=10),
+        descriptor_fields=[("annotations", "Neurosynth_TFIDF__*")],
+        missing_values="raise",
+    )
+
+    assert features.provenance["missing_value_ids"] == {}
+    assert np.isfinite(_dense(features.descriptor_features)).all()
+
+
+def test_annotation_pattern_mixes_with_other_descriptors(neurosynth_studyset):
+    """A pattern block and a scalar field sit side by side, in selection order."""
+    studyset = neurosynth_studyset.with_metadata(
+        "year", np.arange(len(neurosynth_studyset.ids), dtype=float)
+    )
+
+    features = FeatureSet.from_studyset(
+        studyset,
+        MKDAKernel(r=10),
+        descriptor_fields=[("annotations", "Neurosynth_TFIDF__pai*"), "year"],
+    )
+
+    assert features.descriptor_names[-1] == "year"
+    np.testing.assert_allclose(
+        _dense(features.descriptor_features)[:, -1], np.arange(len(features), dtype=float)
+    )
+
+
+@pytest.mark.parametrize(
+    ("selector", "message"),
+    [
+        (("annotations", "Neurosynth_NOPE__*"), "matches no annotation label"),
+        (("metadata", "sample_*"), "cannot come from metadata"),
+        ("no_such_prefix_*", "matches no annotation label"),
+    ],
+)
+def test_annotation_pattern_errors(neurosynth_studyset, selector, message):
+    """A pattern that names nothing says so, and patterns are for annotations."""
+    with pytest.raises(ValueError, match=message):
+        FeatureSet.from_studyset(
+            neurosynth_studyset, MKDAKernel(r=10), descriptor_fields=[selector]
+        )
+
+
+def test_annotation_pattern_records_what_was_asked_for(neurosynth_studyset):
+    """Provenance keeps the selector, not the thousands of names it expanded to."""
+    features = FeatureSet.from_studyset(
+        neurosynth_studyset,
+        MKDAKernel(r=10),
+        descriptor_fields=[("annotations", "Neurosynth_TFIDF__pai*")],
+    )
+
+    assert features.provenance["descriptor_fields"] == [["annotations", "Neurosynth_TFIDF__pai*"]]
+    assert features.provenance["n_descriptor_features"] == len(features.descriptor_names)
 
 
 def test_from_studyset_rejects_repeated_descriptor_fields(ml_studyset):

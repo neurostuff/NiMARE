@@ -16,6 +16,7 @@ NiMARE builds it; scikit-learn does the splitting, fitting and scoring.
 from pathlib import Path
 
 from nilearn.datasets import fetch_atlas_difumo
+from scipy import sparse
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.impute import SimpleImputer
@@ -168,6 +169,28 @@ print(with_descriptors)
 print(f"Descriptor columns: {with_descriptors.descriptor_columns}")
 print(f"With descriptors: {type(preprocessor).__name__}")
 print(f"Map features only: {type(features.make_preprocessor(TruncatedSVD(2))).__name__}")
+
+###############################################################################
+# Select annotation labels
+# -----------------------------------------------------------------------------
+# An annotation is thousands of mostly-empty columns -- the Neurosynth release
+# annotates 115,747 analyses with 794 labels -- so naming them one at a time is
+# not a workflow. A glob pattern takes them all, each under its own name, and
+# reads them from the Studyset's sparse label block rather than densifying
+# them. A label no analysis carries is a zero rather than a gap, so
+# ``missing_values`` has nothing to report about a pattern selection.
+neurosynth = Studyset(str(Path(get_resource_path()) / "neurosynth_laird_studyset.json"))
+annotated = FeatureSet.from_studyset(
+    neurosynth,
+    kernel_transformer=MKDAKernel(r=10),
+    descriptor_fields=[("annotations", "Neurosynth_TFIDF__*")],
+)
+
+labels = annotated.descriptor_features
+print(annotated)
+print(f"Label columns: {labels.shape[1]}, non-zero: {labels.nnz}")
+print(f"Names kept whole: {annotated.descriptor_names[:2]}")
+print(f"Still sparse after export: {sparse.issparse(annotated.to_sklearn().data)}")
 
 ###############################################################################
 # Compare reduction workflows

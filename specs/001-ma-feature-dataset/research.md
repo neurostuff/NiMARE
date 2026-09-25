@@ -369,3 +369,8 @@ map features are a sparse matrix, so scikit-learn's own transformers reduce
 them under their own names, and `AtlasAggregator` is the only reducer NiMARE
 adds. `interface-design.md` section 13 records why, including the caching
 gap that rename work uncovered.
+
+Annotations became first-class descriptors afterwards: a glob pattern selects
+every matching label from the sparse `LabelBlock`, under its own name, which is
+the only practical way to use an annotation that runs to thousands of labels.
+`interface-design.md` section 15 records it.

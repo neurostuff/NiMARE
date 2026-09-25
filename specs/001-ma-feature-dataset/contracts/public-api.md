@@ -104,8 +104,8 @@ The option vocabulary is validated before any work is done.
   construction and recorded in provenance.
 - Append numeric descriptor fields directly. Reject categorical and text
   descriptor fields, naming the field, its kind, and the two supported routes:
-  encode it and select the numeric result, or encode it inside a pipeline from
-  `FeatureSet.descriptors`.
+  encode it and select the numeric result, its raw values being in the Studyset
+  tables the message names.
 - Export scalar numeric and scalar categorical targets as a one-dimensional
   `y`. Reject raw free-text and multi-label targets unless `target_transformer`
   is supplied, and reject a target that has one value for every analysis.
@@ -124,9 +124,9 @@ and that order is preserved by every method.
 - `ids`: full Studyset analysis identifiers, `<study_id>-<analysis_id>`.
 - `study_ids`: one study-group label per row.
 - `map_features`: the analysis-by-voxel block. Sparse while unreduced.
-- `descriptor_features`: the numeric descriptor block, or `None`.
-- `descriptors`: the selected descriptor values as read from the Studyset, as a
-  `DataFrame` indexed by `ids`, or `None`.
+- `descriptor_features`: the numeric descriptor block, sparse when it holds
+  annotation labels, or `None`.
+- `descriptor_names`: the descriptor columns, in order, under their real names.
 - `features`: map features and descriptor features side by side, derived from
   the two blocks on first access so they cannot disagree.
 - `feature_names`: names for `features` in column order, built on first access
@@ -141,9 +141,9 @@ and that order is preserved by every method.
 ### Required methods
 
 - `to_sklearn(return_X_y=False)`: return a `sklearn.utils.Bunch` with `data`,
-  `target`, `groups`, `feature_names`, `ids`, `descriptors`, `provenance`,
-  `map_columns` and `descriptor_columns`; or `(data, target)`, following the
-  `sklearn.datasets` convention.
+  `target`, `groups`, `feature_names`, `ids`, `provenance`, `map_columns` and
+  `descriptor_columns`; or `(data, target)`, following the `sklearn.datasets`
+  convention.
 - `split(test_size=0.25, random_state=None)`: grouped holdout by study through
   `GroupShuffleSplit`, returning `(train, test)`. `test_size` is a fraction of
   *studies*. Validate the study count first and raise before returning anything
@@ -172,8 +172,9 @@ and that order is preserved by every method.
 
 ## Field Selectors
 
-A selector names one descriptor or target field, using the vocabulary NiMARE
-estimators already use in `_required_inputs`:
+A selector names one descriptor or target field, or a set of annotation
+labels, using the vocabulary NiMARE estimators already use in
+`_required_inputs`:
 
 - a bare field name (`"sample_sizes"`), looked up in metadata, annotations and
   texts in turn; an ambiguous name raises and asks for the explicit form;
@@ -183,6 +184,32 @@ estimators already use in `_required_inputs`:
 A tuple is one selector; a list holds several. Sources are `"metadata"`,
 `"annotations"` and `"texts"`, with `"annotations_df"` and `"text"` accepted as
 aliases.
+
+### Annotation labels
+
+A field that reads as a glob pattern -- `("annotations", "Neurosynth_TFIDF__*")`
+-- selects every annotation label matching it, in the Studyset's order, each
+under its own name. This is how an annotation is used at all: the Neurosynth
+release annotates 115,747 analyses with 794 labels, and naming them one at a
+time is not a workflow.
+
+Such a selection MUST be read from the Studyset's `LabelBlock` and MUST stay
+sparse through extraction, splitting and export, because a dense read of that
+annotation is 92 million cells holding 3 million values. Label names MUST
+survive whole, double underscores included, since `Neurosynth_TFIDF__pain` is
+the name of the thing; where a name has to be softened for a scikit-learn step
+name, the softening is internal and `descriptor_names` keeps the real one.
+
+A label no analysis carries is a zero, not a gap, so `missing_values` has
+nothing to report about a pattern selection. An exactly named field keeps the
+value semantics it has today, where an absent value is missing.
+
+A pattern matching no label MUST raise and show what the Studyset does
+annotate with. Patterns are for annotations; a pattern against another source
+MUST say so.
+
+Provenance records the selectors as they were given, plus
+`n_descriptor_features`, rather than thousands of expanded names.
 
 Numeric metadata is read through `nimare.studyset.requirements.PerAnalysis`, so
 study-level fields are inherited by their analyses and list-valued fields such

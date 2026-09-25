@@ -14,8 +14,8 @@ scikit-learn workflows. **Revised 2026-09-25** alongside
 - `groups`: one-dimensional study group array aligned to `data` rows; same as
   `FeatureSet.study_ids`.
 - `feature_names`: feature names aligned to `data` columns.
-- `ids`, `descriptors`, `provenance`, `map_columns`, `descriptor_columns`: the
-  NiMARE-side context a researcher needs to trace a row or build a pipeline.
+- `ids`, `provenance`, `map_columns`, `descriptor_columns`: the NiMARE-side
+  context a researcher needs to trace a row or build a pipeline.
 
 `to_sklearn(return_X_y=True)` returns `(data, target)` instead, following the
 `sklearn.datasets` convention, so the whole path from Studyset to scikit-learn
@@ -63,8 +63,8 @@ not guarantee.
 Grouped splitting uses study group labels. For any split:
 
 - `set(groups[train])` and `set(groups[test])` must be disjoint.
-- `data`, `target`, `groups`, `ids` and `descriptors` must be sliced with the
-  same analysis-row indices.
+- `data`, `target`, `groups` and `ids` must be sliced with the same
+  analysis-row indices.
 - The same dataset and `random_state` must produce the same split.
 - `test_size` is a fraction of studies, not of analyses.
 - Too few study groups, or a `test_size` that would empty a partition, must
@@ -81,8 +81,9 @@ Descriptor features must be aligned to `ids`.
 - Numeric descriptors are appended directly.
 - Categorical and text descriptors are rejected, because encoding them at
   extraction time would fit the encoder on every row, including held-out rows.
-  The raw values remain available on `FeatureSet.descriptors` for
-  encoding inside a pipeline.
+  The message names the Studyset table their raw values are in.
+- Annotation labels may be selected many at a time by pattern, and that block
+  stays sparse through export and splitting.
 - Missing descriptor values must be reported explicitly unless
   `missing_values` says to drop or keep them, and either choice must be
   recorded in provenance.

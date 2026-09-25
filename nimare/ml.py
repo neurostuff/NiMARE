@@ -28,8 +28,9 @@ import copy
 import logging
 import os
 from collections.abc import Mapping, Sequence
+from fnmatch import fnmatch
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -124,9 +125,40 @@ def _selectable_columns(studyset, source):
     return [col for col in _source_frame(studyset, source).columns if col not in ID_COLS]
 
 
+def _source_attribute(source):
+    """Return the Studyset attribute a source's raw values are read from."""
+    return "annotations_df" if source == "annotations" else source
+
+
+def _is_pattern(field):
+    """Report whether a field selector names a set of labels rather than one field."""
+    return any(character in field for character in "*?[")
+
+
+def _matching_labels(studyset, pattern):
+    """Return the annotation labels matching ``pattern``, in the Studyset's order."""
+    return [
+        label for label in _selectable_columns(studyset, "annotations") if fnmatch(label, pattern)
+    ]
+
+
 def _resolve_selector(studyset, selector, what="descriptor"):
     """Return ``(source, field)``, inferring the source from a bare field name."""
     source, field = _as_selector(selector)
+
+    if source is not None and _is_pattern(field):
+        if source != "annotations":
+            raise ValueError(
+                f"A pattern selects annotation labels, so {field!r} cannot come from "
+                f"{source}. Name a {source} field exactly."
+            )
+        if not _matching_labels(studyset, field):
+            raise ValueError(
+                f"{what.capitalize()} pattern {field!r} matches no annotation label. This "
+                f"Studyset annotates with "
+                f"{_preview(_selectable_columns(studyset, 'annotations'))}."
+            )
+        return source, field
 
     if source is not None:
         if field not in _selectable_columns(studyset, source):
@@ -136,6 +168,15 @@ def _resolve_selector(studyset, selector, what="descriptor"):
                 f"{_preview(_selectable_columns(studyset, source))}."
             )
         return source, field
+
+    if _is_pattern(field):
+        if not _matching_labels(studyset, field):
+            raise ValueError(
+                f"{what.capitalize()} pattern {field!r} matches no annotation label. This "
+                f"Studyset annotates with "
+                f"{_preview(_selectable_columns(studyset, 'annotations'))}."
+            )
+        return "annotations", field
 
     matches = [src for src in FIELD_SOURCES if field in _selectable_columns(studyset, src)]
     if not matches:
@@ -184,6 +225,28 @@ def _read_field(studyset, source, field):
         return raw.to_numpy(dtype=float), "numeric"
 
     return raw.to_numpy(dtype=object), "categorical"
+
+
+class _DescriptorBlock(NamedTuple):
+    """One descriptor selection: its column names, its values, what it lacks."""
+
+    names: list
+    values: Any  # (n_rows, n_names), dense for a field and sparse for labels
+    missing: Any  # boolean mask over rows, or None where absence means zero
+
+
+def _read_labels(studyset, pattern):
+    """Return ``(names, sparse values)`` for the annotation labels a pattern names.
+
+    Read from the Studyset's :class:`~nimare.studyset.blocks.LabelBlock`, which
+    is the sparse form the annotation is stored in: the Neurosynth release
+    annotates 115,747 analyses with 794 labels, and a dense read of that is
+    92 million cells holding 3 million values.
+    """
+    block = studyset.label_block()
+    names = _matching_labels(studyset, pattern)
+    columns = [block.col(name) for name in names]
+    return names, sparse.csc_matrix(block.values)[:, columns].tocsr()
 
 
 def _missing_mask(values, kind):
@@ -261,6 +324,13 @@ def _step_name(name, position, used):
     return safe
 
 
+def _hstack_blocks(blocks):
+    """Stack descriptor blocks side by side, staying sparse if any of them is."""
+    if any(sparse.issparse(block) for block in blocks):
+        return sparse.hstack([_as_sparse(block) for block in blocks], format="csr")
+    return np.hstack(blocks)
+
+
 def _hstack(left, right):
     """Stack two feature blocks, keeping the result sparse if either part is."""
     if right is None:
@@ -312,10 +382,6 @@ class FeatureSet(NiMAREBase):
         Numeric descriptor columns appended to :attr:`features`, by default None.
     descriptor_names : :obj:`list` of :obj:`str`, optional
         Names of the descriptor columns, by default None.
-    descriptors : :obj:`pandas.DataFrame`, optional
-        The selected descriptor values as they were read from the Studyset,
-        indexed by :attr:`ids`, by default None. Useful for encoding
-        non-numeric fields inside a scikit-learn pipeline.
     target : array_like, optional
         Row-aligned prediction target, by default None.
     provenance : :obj:`dict`, optional
@@ -348,7 +414,6 @@ class FeatureSet(NiMAREBase):
         *,
         descriptor_features: Any | None = None,
         descriptor_names: Sequence[str] | None = None,
-        descriptors: pd.DataFrame | None = None,
         target: Any | None = None,
         provenance: dict[str, Any] | None = None,
         masker: Any | None = None,
@@ -370,8 +435,9 @@ class FeatureSet(NiMAREBase):
                 f"target has {len(target)} entries but map_features has {n_rows} rows."
             )
         if descriptor_features is not None:
-            descriptor_features = np.asarray(descriptor_features)
-            if descriptor_features.ndim != 2:
+            if not sparse.issparse(descriptor_features):
+                descriptor_features = np.asarray(descriptor_features)
+            if len(descriptor_features.shape) != 2:
                 raise ValueError("descriptor_features must be two-dimensional.")
             if descriptor_features.shape[0] != n_rows:
                 raise ValueError(
@@ -394,7 +460,6 @@ class FeatureSet(NiMAREBase):
 
         self.ids = ids
         self.study_ids = study_ids
-        self.descriptors = descriptors
         self.target = None if target is None else np.asarray(target)
         self.provenance = {} if provenance is None else provenance
         self.masker = masker
@@ -478,12 +543,19 @@ class FeatureSet(NiMAREBase):
 
         Notes
         -----
-        Descriptor fields must be numeric, because the exported feature matrix is
-        numeric. A categorical or text field raises, and names the two ways to use
-        it: encode it yourself and select the numeric result, or leave it out of
-        the matrix and encode it inside your pipeline, reading the raw values from
-        :attr:`descriptors`. Encoding here would fit the encoder on
-        every row, including the rows you are about to hold out.
+        Descriptor fields must be numeric, because the exported feature matrix
+        is numeric. A categorical or text field raises and says where its raw
+        values are -- ``studyset.metadata``, ``studyset.annotations_df`` or
+        ``studyset.texts`` -- so that you can encode them and select the numeric
+        result. Encoding here would fit the encoder on every analysis, including
+        the ones you are about to hold out.
+
+        An annotation is selected a label at a time by name, or many at a time
+        by pattern: ``("annotations", "Neurosynth_TFIDF__*")`` takes every
+        matching label, under its own name, and keeps the block sparse, which
+        matters when an annotation runs to thousands of labels. A label no
+        analysis carries is a zero rather than a gap, so ``missing_values`` has
+        nothing to report about one.
 
         Generating the maps does not leak: an analysis's MA map is a function of
         that analysis's own foci, so it never sees ``y`` or another row. Everything
@@ -619,7 +691,6 @@ class FeatureSet(NiMAREBase):
             groups=self.study_ids,
             feature_names=self.feature_names,
             ids=self.ids,
-            descriptors=self.descriptors,
             provenance=self.provenance,
             map_columns=self.map_columns,
             descriptor_columns=self.descriptor_columns,
@@ -937,14 +1008,9 @@ class FeatureSet(NiMAREBase):
             rows = np.flatnonzero(rows)
         rows = rows.astype(int, copy=False)
 
-        descriptors = None
-        if self.descriptors is not None:
-            descriptors = self.descriptors.iloc[rows].copy()
-
         return self._rebuild(
             map_features=_take_rows(self._map_features, rows),
             descriptor_features=_take_rows(self._descriptor_features, rows),
-            descriptors=descriptors,
             ids=self.ids[rows],
             study_ids=self.study_ids[rows],
             target=None if self.target is None else self.target[rows],
@@ -963,7 +1029,6 @@ class FeatureSet(NiMAREBase):
             descriptor_features=(
                 None if self._descriptor_features is None else self._descriptor_features.copy()
             ),
-            descriptors=None if self.descriptors is None else self.descriptors.copy(),
             ids=self.ids.copy(),
             study_ids=self.study_ids.copy(),
             target=None if self.target is None else self.target.copy(),
@@ -978,7 +1043,6 @@ class FeatureSet(NiMAREBase):
             "study_ids": self.study_ids,
             "descriptor_features": self._descriptor_features,
             "descriptor_names": self._descriptor_names,
-            "descriptors": self.descriptors,
             "target": self.target,
             "provenance": self.provenance,
             "masker": self.masker,
@@ -1061,24 +1125,19 @@ class _FeatureExtractor(NiMAREBase):
         # decides which analyses can have a map at all.
         has_coordinates = studyset.coordinate_block().group_sizes() > 0
 
-        descriptors, descriptor_names = self._read_descriptors(studyset)
+        blocks = self._read_descriptors(studyset)
         target, target_missing = self._read_target(studyset)
 
-        retained, dropped = self._retained_rows(ids, has_coordinates, descriptors, target_missing)
+        retained, dropped = self._retained_rows(ids, has_coordinates, blocks, target_missing)
 
         studyset_rows = studyset.select_analyses(retained)
         map_features = self._map_matrix(studyset_rows, ids[retained], has_coordinates[retained])
 
-        descriptor_frame = None
+        descriptor_names = [name for block in blocks for name in block.names]
         descriptor_matrix = None
-        if descriptor_names:
-            descriptor_frame = pd.DataFrame(
-                {name: values[retained] for name, (values, _) in descriptors.items()},
-                index=pd.Index(ids[retained], name="id"),
-            )
-            descriptor_matrix = np.column_stack(
-                [descriptors[name][0][retained].astype(float) for name in descriptor_names]
-            )
+        if blocks:
+            kept = [_take_rows(block.values, retained) for block in blocks]
+            descriptor_matrix = kept[0] if len(kept) == 1 else _hstack_blocks(kept)
 
         return container(
             map_features,
@@ -1086,7 +1145,6 @@ class _FeatureExtractor(NiMAREBase):
             study_ids=study_ids[retained],
             descriptor_features=descriptor_matrix,
             descriptor_names=descriptor_names,
-            descriptors=descriptor_frame,
             target=None if target is None else target[retained],
             provenance=self._provenance(studyset, ids, retained, dropped, descriptor_names),
             masker=studyset.masker,
@@ -1110,32 +1168,47 @@ class _FeatureExtractor(NiMAREBase):
     # -------------------------------------------------------------- selection
 
     def _read_descriptors(self, studyset):
-        """Return ``({name: (values, kind)}, names)`` for the selected descriptors."""
+        """Return one :class:`_DescriptorBlock` per selector."""
         selectors = self.descriptor_fields
         if selectors is None:
-            return {}, []
+            return []
         # A tuple is one ``(source, field)`` selector; a list holds several.
         if isinstance(selectors, (str, Mapping, tuple)):
             selectors = [selectors]
 
-        descriptors, names = {}, []
+        blocks, seen = [], set()
         for selector in selectors:
             source, field = _resolve_selector(studyset, selector, what="descriptor")
-            values, kind = _read_field(studyset, source, field)
-            if kind != "numeric":
-                raise ValueError(
-                    f"Descriptor field {field!r} from {source} is {kind}, and the feature "
-                    "matrix is numeric. Either encode it yourself and select the numeric "
-                    "result, or leave it out of the matrix and encode it inside your "
-                    "pipeline from FeatureSet.descriptors, which keeps the encoder "
-                    "from being fitted on held-out analyses."
-                )
-            if field in descriptors:
-                raise ValueError(f"Descriptor field {field!r} was selected more than once.")
-            descriptors[field] = (values, kind)
-            names.append(field)
 
-        return descriptors, names
+            if _is_pattern(field):
+                names, values = _read_labels(studyset, field)
+                # An annotation is sparse by nature: a label no analysis carries is a
+                # zero, not a gap, so there is nothing for missing_values to report.
+                block = _DescriptorBlock(names, values, None)
+            else:
+                values, kind = _read_field(studyset, source, field)
+                if kind != "numeric":
+                    raise ValueError(
+                        f"Descriptor field {field!r} from {source} is {kind}, and the "
+                        "feature matrix is numeric. Encode it yourself -- its raw "
+                        f"values are in studyset.{_source_attribute(source)} -- and "
+                        "select the numeric result."
+                    )
+                block = _DescriptorBlock(
+                    [field],
+                    np.asarray(values, dtype=float).reshape(-1, 1),
+                    _missing_mask(values, kind),
+                )
+
+            repeated = [name for name in block.names if name in seen]
+            if repeated:
+                raise ValueError(
+                    f"Descriptor field {_preview(repeated)} was selected more than once."
+                )
+            seen.update(block.names)
+            blocks.append(block)
+
+        return blocks
 
     def _read_target(self, studyset):
         """Return ``(target values, missing mask)`` for the selected target."""
@@ -1189,7 +1262,7 @@ class _FeatureExtractor(NiMAREBase):
             f"not {type(transformer).__name__}."
         )
 
-    def _retained_rows(self, ids, has_coordinates, descriptors, target_missing):
+    def _retained_rows(self, ids, has_coordinates, blocks, target_missing):
         """Return the retained-row mask and a record of what was dropped."""
         retained = np.ones(len(ids), dtype=bool)
         dropped = {"no_coordinates": [], "missing_values": {}}
@@ -1199,10 +1272,9 @@ class _FeatureExtractor(NiMAREBase):
             dropped["no_coordinates"] = ids[~has_coordinates].tolist()
 
         missing_by_field = {}
-        for name, (values, kind) in descriptors.items():
-            missing = _missing_mask(values, kind)
-            if missing.any():
-                missing_by_field[name] = ids[missing].tolist()
+        for block in blocks:
+            if block.missing is not None and block.missing.any():
+                missing_by_field[block.names[0]] = ids[block.missing].tolist()
         if target_missing is not None and target_missing.any():
             missing_by_field["<target>"] = ids[target_missing].tolist()
 
@@ -1289,7 +1361,8 @@ class _FeatureExtractor(NiMAREBase):
             "dropped_ids": dropped["no_coordinates"],
             "missing_values": self.missing_values,
             "missing_value_ids": dropped["missing_values"],
-            "descriptor_fields": list(descriptor_names),
+            "descriptor_fields": _jsonable(self.descriptor_fields),
+            "n_descriptor_features": int(len(descriptor_names)),
             "target_field": None if self.target_field is None else _jsonable(self.target_field),
         }
 
