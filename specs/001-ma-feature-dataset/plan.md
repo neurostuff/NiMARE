@@ -25,9 +25,9 @@ and initial reducers for variance thresholding, sparse-compatible low-rank
 reduction such as truncated SVD, and atlas/label aggregation.
 Rows represent analyses, unreduced map columns represent masked voxels, and
 descriptor columns are appended only after numeric validation or explicit
-transformation. `extract_features(studyset, kernel_transformer, ...)` returns one `FeatureSet`,
-and `FeatureSet.to_sklearn()` exports it; the class that carries out a
-conversion is internal, so users meet one function and one container.
+transformation. `FeatureSet.from_studyset(studyset, kernel_transformer, ...)` returns one
+`FeatureSet`, and `FeatureSet.to_sklearn()` exports it; the helper that carries
+out a conversion is internal, so users meet one class.
 `FeatureSet` is the authoritative NiMARE container: it holds the map and
 descriptor blocks and derives `features` and `feature_names` from them on
 demand, keeps the `masker` that defines voxel order, exports `study_ids` as
@@ -42,10 +42,10 @@ sklearn `groups`, and carries the grouped `split()`, the pipeline
 **Testing**: Add targeted pytest coverage under `nimare/tests/test_ml.py` before implementation. First failing tests must cover conversion/provenance, grouped split leakage prevention, non-numeric descriptor rejection, scalar target export and unsupported target-shape rejection, missing-value diagnostics, reducer alignment, and the 1,000-study performance budget. Use existing markers, including `performance_smoke` for the scale check if needed.  
 **Target Platform**: NiMARE-supported Python and OS matrix; no network-dependent tests.  
 **Project Type**: Python scientific library public API plus Sphinx documentation examples.  
-**Public API Impact**: New additive `nimare.ml` module with `extract_features`, `FeatureSet`, `AtlasAggregator`, `make_map_reducer`, field-selector handling reusing the `_required_inputs` vocabulary, dataset-level `split()` and `make_preprocessor()`, and `fit_transform_maps()`/`transform_maps()`. Update `nimare/__init__.py`, `docs/api.rst`, and Numpydoc docstrings. No released public API is removed, renamed, or narrowed.
-**Extractor API Decision**: `extract_features(studyset, kernel_transformer, ...)` returns one `FeatureSet`; `FeatureSet.to_sklearn(return_X_y=False)` exports it; splitting lives on the container; no public object takes a Studyset and exposes `fit` or `fit_transform`.
+**Public API Impact**: New additive `nimare.ml` module with `FeatureSet` (including the `from_studyset` constructor), `AtlasAggregator`, `make_map_reducer`, field-selector handling reusing the `_required_inputs` vocabulary, dataset-level `split()` and `make_preprocessor()`, and `fit_transform_maps()`/`transform_maps()`. Update `nimare/__init__.py`, `docs/api.rst`, and Numpydoc docstrings. No released public API is removed, renamed, or narrowed.
+**Extractor API Decision**: `FeatureSet.from_studyset(studyset, kernel_transformer, ...)` returns one `FeatureSet`; `FeatureSet.to_sklearn(return_X_y=False)` exports it; splitting lives on the container; no public object takes a Studyset and exposes `fit` or `fit_transform`.
 **Compatibility Baseline**: `0.16.0` from `git describe --tags --abbrev=0`. Released Studyset, kernel, metadata, annotation, and text access behavior must remain compatible.
-**Example Coverage**: Create Sphinx-Gallery examples `examples/05_machine_learning/01_plot_ma_feature_dataset.py` and `examples/05_machine_learning/02_plot_ma_feature_reduction.py`. Examples remain `.py` sources and are converted by the docs/Sphinx build.  
+**Example Coverage**: Create the Sphinx-Gallery example `examples/05_machine_learning/01_plot_machine_learning_in_nimare.py`, which covers the whole workflow in one page. Examples remain `.py` sources and are converted by the docs/Sphinx build. The gallery executes files matching `NN_plot_`, which is why the single example keeps its numeric prefix.  
 **Scientific Validation**: Validate that one analysis row represents one analysis by default; MVP fixture Studysets provide unique study IDs and unique analysis IDs; coordinate-less analyses are dropped by default or included as all-zero sparse rows when requested; all analyses from one study share a study group; sklearn `groups` matches `study_ids`; map features are aligned to one mask/space; reducers operate on internal `_map_features` only and use the stored `_masker` for atlas/label aggregation; learned descriptor/reduction transforms fit only on training analyses; held-out transformations do not use held-out targets; and missing maps, missing values, and invalid targets are diagnosed.
 **Performance Goals**: A representative Studyset with at least 1,000 studies must convert and split in <=3 minutes with <=5 GB peak memory in the standard development environment.
 **Constraints**: Preserve latest-tag public behavior; prefer NiMARE utilities, then nilearn, then scikit-learn before new helpers; reject silent descriptor/target coercion; keep unreduced voxelwise map matrices sparse; allow dense output only after explicit reduction; tests and examples precede or accompany implementation; docs build must convert examples.
@@ -67,8 +67,7 @@ sklearn `groups`, and carries the grouped `split()`, the pipeline
   `specs/001-ma-feature-dataset/contracts/sklearn-compatibility.md` before
   implementation.
 - **Example-driven**: PASS. Public API additions require
-  `examples/05_machine_learning/01_plot_ma_feature_dataset.py` and
-  `examples/05_machine_learning/02_plot_ma_feature_reduction.py`.
+  `examples/05_machine_learning/01_plot_machine_learning_in_nimare.py`.
 - **Public API stability**: PASS. Baseline tag is `0.16.0`; this feature is
   additive and does not alter released public methods/classes.
 - **Simplicity**: PASS. The selected design is one public module plus simple
@@ -107,7 +106,7 @@ specs/001-ma-feature-dataset/
 ```text
 nimare/
 |-- __init__.py           # Export additive ml module
-|-- ml.py                 # FeatureSet, extract_features, reducers
+|-- ml.py                 # FeatureSet, FeatureSet.from_studyset, reducers
 `-- tests/
     `-- test_ml.py        # Contract, regression, diagnostics, performance tests
 
@@ -116,8 +115,7 @@ docs/
 
 examples/
 `-- 05_machine_learning/
-    |-- 01_plot_ma_feature_dataset.py
-    `-- 02_plot_ma_feature_reduction.py
+    `-- 01_plot_machine_learning_in_nimare.py
 ```
 
 **Structure Decision**: Use a single additive `nimare/ml.py` module for the
@@ -140,7 +138,7 @@ resolved there:
   policy: drop before row construction by default or include as all-zero sparse
   rows when requested.
 - Export uses a NiMARE container plus a scikit-learn `Bunch`; extractor-level
-  `extract_features(...)` is the one-call public path.
+  `FeatureSet.from_studyset(...)` is the one-call public path.
 - Map rows are aligned to analyses by identifier, because kernel transformers
   return them ordered by identifier and discard the identifiers.
 - Exported sklearn `groups` duplicates `study_ids` by design: `groups` is for

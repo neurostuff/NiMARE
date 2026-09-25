@@ -40,7 +40,7 @@ inventing a separate Studyset schema.
 
 **Used By**
 
-- `extract_features` reads IDs, grouping, coordinates,
+- `FeatureSet.from_studyset` reads IDs, grouping, coordinates,
   projected tables, and masker from this object.
 
 **Validation Rules**
@@ -52,10 +52,12 @@ inventing a separate Studyset schema.
 - Must expose a masker when map generation or reducer workflows require masked
   voxel ordering.
 
-## Function: `extract_features` New Public Entry Point
+## Constructor: `FeatureSet.from_studyset` New Public Entry Point
 
-Public function in `nimare.ml`. It converts one Studyset into one `FeatureSet`
-in a single call. Splitting is not part of extraction: it is an evaluation
+Named constructor on the container. It converts one Studyset into one
+`FeatureSet` in a single call, and is a classmethod rather than `__init__`
+because `split`, `select_analyses`, `copy` and the map-reduction methods build
+the same container from blocks that already exist. Splitting is not part of extraction: it is an evaluation
 choice, and lives on the container. The conversion logic lives in an internal
 `_FeatureExtractor` class, which keeps the stages as separate methods over
 shared configuration but is not part of the public surface; users meet one
@@ -235,7 +237,7 @@ aggregation strategy remain nilearn's. Reports region names through
 
 ```text
 nimare.nimads.Studyset  (existing input class)
-`-- extract_features
+`-- FeatureSet.from_studyset
   |-- transform(studyset)  -> FeatureSet
   `-- to_sklearn(studyset) -> sklearn Bunch (or (X, y))
 
@@ -259,14 +261,14 @@ make_map_reducer(reducer, masker=None, **kwargs) -> sklearn transformer
 
 **Pipeline workflow (recommended):**
 
-1. `Studyset` -> `extract_features(studyset, kernel_transformer, ...)`
+1. `Studyset` -> `FeatureSet.from_studyset(studyset, kernel_transformer, ...)`
 2. `dataset.make_preprocessor(...)` inside a `Pipeline`
 3. `cross_val_score(pipeline, bunch.data, bunch.target, cv=GroupKFold(...),
    groups=bunch.groups)`
 
 **Holdout workflow:**
 
-1. `Studyset` -> `extract_features(studyset, kernel_transformer, ...)`
+1. `Studyset` -> `FeatureSet.from_studyset(studyset, kernel_transformer, ...)`
 2. `train, test = dataset.split(test_size=0.25, random_state=13)`
 3. `train_reduced = train.fit_transform_maps(reducer)`;
    `test_reduced = test.transform_maps(reducer)`

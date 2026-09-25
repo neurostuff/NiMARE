@@ -12,9 +12,9 @@ row.
 `nimare.ml`
 
 The module is exported from `nimare/__init__.py` and documented in
-`docs/api.rst`. Its public names are `extract_features`, `FeatureSet`,
-`AtlasAggregator` and `make_map_reducer`: one function to call and one
-container to work with, plus the reduction helpers.
+`docs/api.rst`. Its public names are `FeatureSet`, `AtlasAggregator` and
+`make_map_reducer`: one container, which builds itself from a Studyset, plus
+the reduction helpers.
 
 ## Division of Responsibility
 
@@ -38,12 +38,18 @@ order before adding local helpers:
    decomposition, and pipelines.
 4. New local helpers only when none of the above provides the needed behavior.
 
-## `extract_features`
+## `FeatureSet.from_studyset`
 
-`extract_features(studyset, kernel_transformer, **options)` is the public entry
-point. It converts one Studyset and returns one `FeatureSet`. Conversion is a
-single call, not a configure-then-call pair: the settings are arguments, and
-what comes back is the thing the researcher works with.
+`FeatureSet.from_studyset(studyset, kernel_transformer, **options)` is the
+public entry point. It converts one Studyset and returns one `FeatureSet`.
+Conversion is a single call, not a configure-then-call pair: the settings are
+arguments, and what comes back is the thing the researcher works with.
+
+It is a named constructor rather than `__init__` because the container is also
+built from blocks that already exist -- by `split`, `select_analyses`, `copy`
+and the map-reduction methods -- and those must not go through a kernel. A
+constructor that ran a kernel would push every internal path onto a back door
+and put the container's validation there with it.
 
 The conversion logic lives in an internal `_FeatureExtractor` class, so that the
 stages -- field selection, target handling, row retention, map generation,
@@ -109,8 +115,7 @@ The option vocabulary is validated before any work is done.
 
 ## `FeatureSet`
 
-The aligned container, and the only class users construct nothing of: it is
-what `extract_features` returns. Row `i` is analysis `ids[i]` from study `study_ids[i]`,
+The aligned container, and the module's one class. Row `i` is analysis `ids[i]` from study `study_ids[i]`,
 and that order is preserved by every method.
 
 ### Required attributes
@@ -248,10 +253,12 @@ version is, which the docstring says.
 
 ## Documentation Contract
 
-Required public examples:
+Required public example, one page covering the whole workflow:
 
-- `examples/05_machine_learning/01_plot_ma_feature_dataset.py`
-- `examples/05_machine_learning/02_plot_ma_feature_reduction.py`
+- `examples/05_machine_learning/01_plot_machine_learning_in_nimare.py`
+
+The gallery only executes files matching `NN_plot_`, so the numeric prefix
+stays even with a single example.
 
 Required docs:
 

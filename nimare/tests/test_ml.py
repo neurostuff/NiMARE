@@ -26,7 +26,7 @@ from sklearn.utils import Bunch
 from nimare import ml
 from nimare.generate import create_coordinate_studyset
 from nimare.meta.kernel import MKDAKernel
-from nimare.ml import AtlasAggregator, FeatureSet, extract_features, make_map_reducer
+from nimare.ml import AtlasAggregator, FeatureSet, make_map_reducer
 from nimare.nimads import Studyset
 from nimare.utils import get_masker, get_template
 
@@ -759,25 +759,20 @@ def test_make_preprocessor_accepts_an_atlas(small_masker, atlas_features):
 # ------------------------------------------------------------------ extraction
 
 
-def test_public_surface_is_one_function_and_one_container():
-    """Users meet extract_features and FeatureSet; the extractor is internal."""
-    assert set(ml.__all__) == {
-        "AtlasAggregator",
-        "FeatureSet",
-        "extract_features",
-        "make_map_reducer",
-    }
+def test_public_surface_is_one_container_and_its_helpers():
+    """Users meet one container; the class that converts a Studyset is internal."""
+    assert set(ml.__all__) == {"AtlasAggregator", "FeatureSet", "make_map_reducer"}
     assert not any(name.endswith("Extractor") for name in dir(ml) if not name.startswith("_"))
     # The container is data, not an estimator: nothing here is fitted on a Studyset.
     assert not hasattr(FeatureSet, "fit")
     assert not hasattr(FeatureSet, "fit_transform")
 
 
-def test_extract_features(ml_studyset):
+def test_from_studyset(ml_studyset):
     """A Studyset becomes one row per analysis, with everything aligned."""
     studyset = ml_studyset
 
-    features = extract_features(
+    features = FeatureSet.from_studyset(
         studyset,
         MKDAKernel(r=4),
         descriptor_fields=["sample_sizes", ("annotations", "motor_label")],
@@ -807,9 +802,9 @@ def test_extract_features(ml_studyset):
     )
 
 
-def test_extract_features_to_sklearn(ml_studyset):
+def test_from_studyset_to_sklearn(ml_studyset):
     """The whole path from Studyset to scikit-learn arrays is two calls."""
-    features = extract_features(
+    features = FeatureSet.from_studyset(
         ml_studyset, MKDAKernel(r=4), target_field=("annotations", "target_score")
     )
 
@@ -821,9 +816,9 @@ def test_extract_features_to_sklearn(ml_studyset):
     np.testing.assert_array_equal(target, bunch.target)
 
 
-def test_extract_features_records_provenance(ml_studyset):
+def test_from_studyset_records_provenance(ml_studyset):
     """Every row can be traced back to its Studyset and its settings."""
-    provenance = extract_features(
+    provenance = FeatureSet.from_studyset(
         ml_studyset, MKDAKernel(r=4), descriptor_fields=["motor_label"]
     ).provenance
 
@@ -838,24 +833,24 @@ def test_extract_features_records_provenance(ml_studyset):
     assert provenance["masker"] == ml_studyset.masker.__class__.__name__
 
 
-def test_extract_features_aligns_maps_by_id_not_position(ml_studyset):
+def test_from_studyset_aligns_maps_by_id_not_position(ml_studyset):
     """Map rows follow the analysis they came from, whatever order the view is in.
 
     Kernel transformers return maps ordered by analysis id and drop the ids that
     name them, while ``Studyset.select_analyses`` accepts positions and so can
     hand back a view in any order.
     """
-    reference = extract_features(ml_studyset, MKDAKernel(r=4))
+    reference = FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4))
     expected = dict(zip(reference.ids, _map_signature(reference)))
 
     positions = np.array([5, 0, 7, 2, 6, 1, 4, 3])
-    reordered = extract_features(ml_studyset.select_analyses(positions), MKDAKernel(r=4))
+    reordered = FeatureSet.from_studyset(ml_studyset.select_analyses(positions), MKDAKernel(r=4))
 
     np.testing.assert_array_equal(reordered.ids, ml_studyset.ids[positions])
     assert _map_signature(reordered) == [expected[id_] for id_ in reordered.ids]
 
 
-def test_extract_features_rejects_duplicate_analysis_ids(ml_studyset):
+def test_from_studyset_rejects_duplicate_analysis_ids(ml_studyset):
     """Duplicate ids would collapse into one map row without being noticed."""
     doubled = ml_studyset.merge(_build_ml_studyset(coordinate_offset=1.0))
 
@@ -863,16 +858,16 @@ def test_extract_features_rejects_duplicate_analysis_ids(ml_studyset):
     duplicated = doubled.select_analyses(np.arange(len(doubled.ids) + 1) % len(doubled.ids))
 
     with pytest.raises(ValueError, match="must be unique"):
-        extract_features(duplicated, MKDAKernel(r=4))
+        FeatureSet.from_studyset(duplicated, MKDAKernel(r=4))
 
 
 @pytest.mark.parametrize("missing_coordinates", ["drop", "include"])
-def test_extract_features_missing_coordinates(ml_studyset, missing_coordinates):
+def test_from_studyset_missing_coordinates(ml_studyset, missing_coordinates):
     """Coordinate-less analyses are dropped, or kept as all-zero map rows."""
     missing_id = "study_2-task0"
     studyset = _build_ml_studyset(ids_without_points={missing_id})
 
-    features = extract_features(
+    features = FeatureSet.from_studyset(
         studyset,
         MKDAKernel(r=4),
         descriptor_fields=["motor_label"],
@@ -903,14 +898,14 @@ def test_extract_features_missing_coordinates(ml_studyset, missing_coordinates):
         ({"missing_values": "maybe"}, "missing_values must be"),
     ],
 )
-def test_extract_features_rejects_unknown_option_values(ml_studyset, kwargs, message):
+def test_from_studyset_rejects_unknown_option_values(ml_studyset, kwargs, message):
     """Option vocabularies are checked before any work is done."""
     with pytest.raises(ValueError, match=message):
-        extract_features(ml_studyset, MKDAKernel(r=4), **kwargs)
+        FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4), **kwargs)
 
 
 @pytest.mark.parametrize("missing_values", ["raise", "drop", "keep"])
-def test_extract_features_missing_descriptor_values(missing_values):
+def test_from_studyset_missing_descriptor_values(missing_values):
     """Missing values are reported, removed or left for a pipeline to impute."""
     missing_id = "study_3-task1"
     studyset = _build_ml_studyset(ids_without_score={missing_id})
@@ -922,10 +917,10 @@ def test_extract_features_missing_descriptor_values(missing_values):
 
     if missing_values == "raise":
         with pytest.raises(ValueError, match=f"Missing values in score .*{missing_id}"):
-            extract_features(studyset, **call)
+            FeatureSet.from_studyset(studyset, **call)
         return
 
-    features = extract_features(studyset, **call)
+    features = FeatureSet.from_studyset(studyset, **call)
     if missing_values == "drop":
         assert missing_id not in set(features.ids)
         assert len(features) == len(studyset.ids) - 1
@@ -938,12 +933,12 @@ def test_extract_features_missing_descriptor_values(missing_values):
         assert features.provenance["missing_value_ids"] == {"score": [missing_id]}
 
 
-def test_extract_features_missing_target_values_are_reported():
+def test_from_studyset_missing_target_values_are_reported():
     """A missing target is named the same way a missing descriptor is."""
     studyset = _build_ml_studyset(ids_without_score={"study_1-task0"})
 
     with pytest.raises(ValueError, match="study_1-task0"):
-        extract_features(studyset, MKDAKernel(r=4), target_field="score")
+        FeatureSet.from_studyset(studyset, MKDAKernel(r=4), target_field="score")
 
 
 @pytest.mark.parametrize(
@@ -957,31 +952,31 @@ def test_extract_features_missing_target_values_are_reported():
         (42, "must be a field name"),
     ],
 )
-def test_extract_features_rejects_unusable_descriptors(ml_studyset, selector, message):
+def test_from_studyset_rejects_unusable_descriptors(ml_studyset, selector, message):
     """Descriptor fields have to be numeric, and have to exist."""
     with pytest.raises((ValueError, TypeError), match=message):
-        extract_features(ml_studyset, MKDAKernel(r=4), descriptor_fields=[selector])
+        FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4), descriptor_fields=[selector])
 
 
-def test_extract_features_rejects_repeated_descriptor_fields(ml_studyset):
+def test_from_studyset_rejects_repeated_descriptor_fields(ml_studyset):
     """The same field twice is a mistake, not two features."""
     with pytest.raises(ValueError, match="selected more than once"):
-        extract_features(
+        FeatureSet.from_studyset(
             ml_studyset, MKDAKernel(r=4), descriptor_fields=["motor_label", "motor_label"]
         )
 
 
-def test_extract_features_reports_ambiguous_field_names(ml_studyset):
+def test_from_studyset_reports_ambiguous_field_names(ml_studyset):
     """A name in two sources asks which one was meant."""
     annotated = ml_studyset.with_metadata("motor_label", np.ones(len(ml_studyset.ids)))
 
     with pytest.raises(ValueError, match="is ambiguous"):
-        extract_features(annotated, MKDAKernel(r=4), descriptor_fields=["motor_label"])
+        FeatureSet.from_studyset(annotated, MKDAKernel(r=4), descriptor_fields=["motor_label"])
 
 
-def test_extract_features_reads_study_level_and_list_metadata(ml_studyset):
+def test_from_studyset_reads_study_level_and_list_metadata(ml_studyset):
     """Study-level fields are inherited and list-valued fields are reduced."""
-    features = extract_features(
+    features = FeatureSet.from_studyset(
         ml_studyset, MKDAKernel(r=4), descriptor_fields=["year", "sample_sizes"]
     )
 
@@ -992,9 +987,11 @@ def test_extract_features_reads_study_level_and_list_metadata(ml_studyset):
     )
 
 
-def test_extract_features_exports_categorical_targets(ml_studyset):
+def test_from_studyset_exports_categorical_targets(ml_studyset):
     """A categorical target reaches y as labels, ready for a classifier."""
-    features = extract_features(ml_studyset, MKDAKernel(r=4), target_field="comparison_task")
+    features = FeatureSet.from_studyset(
+        ml_studyset, MKDAKernel(r=4), target_field="comparison_task"
+    )
 
     assert sorted(set(features.target)) == ["flanker", "n-back"]
     np.testing.assert_array_equal(
@@ -1003,9 +1000,9 @@ def test_extract_features_exports_categorical_targets(ml_studyset):
     )
 
 
-def test_extract_features_applies_a_target_transformer(ml_studyset):
+def test_from_studyset_applies_a_target_transformer(ml_studyset):
     """A label extractor turns a text field into one label per analysis."""
-    features = extract_features(
+    features = FeatureSet.from_studyset(
         ml_studyset,
         MKDAKernel(r=4),
         target_field=("texts", "abstract"),
@@ -1017,9 +1014,9 @@ def test_extract_features_applies_a_target_transformer(ml_studyset):
     np.testing.assert_array_equal(features.target, [str(idx) for idx in range(len(features))])
 
 
-def test_extract_features_target_transformer_may_be_a_transformer(ml_studyset):
+def test_from_studyset_target_transformer_may_be_a_transformer(ml_studyset):
     """A stateless scikit-learn transformer works as a label extractor too."""
-    features = extract_features(
+    features = FeatureSet.from_studyset(
         ml_studyset,
         MKDAKernel(r=4),
         target_field=("annotations", "target_score"),
@@ -1036,18 +1033,18 @@ def test_extract_features_target_transformer_may_be_a_transformer(ml_studyset):
         ({"target_field": "year", "target_transformer": object()}, "must be callable"),
     ],
 )
-def test_extract_features_rejects_unusable_targets(ml_studyset, kwargs, message):
+def test_from_studyset_rejects_unusable_targets(ml_studyset, kwargs, message):
     """A target has to be one usable value per analysis."""
     with pytest.raises((ValueError, TypeError), match=message):
-        extract_features(ml_studyset, MKDAKernel(r=4), **kwargs)
+        FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4), **kwargs)
 
 
-def test_extract_features_rejects_constant_targets(ml_studyset):
+def test_from_studyset_rejects_constant_targets(ml_studyset):
     """A target with one value has nothing to predict."""
     constant = ml_studyset.with_metadata("only_value", np.ones(len(ml_studyset.ids)))
 
     with pytest.raises(ValueError, match="nothing to predict"):
-        extract_features(constant, MKDAKernel(r=4), target_field="only_value")
+        FeatureSet.from_studyset(constant, MKDAKernel(r=4), target_field="only_value")
 
 
 class _CountingKernel(MKDAKernel):
@@ -1060,70 +1057,76 @@ class _CountingKernel(MKDAKernel):
         return super()._transform(mask, coordinates, return_type=return_type)
 
 
-def test_extract_features_caches_maps_with_memory(ml_studyset, tmp_path):
+def test_from_studyset_caches_maps_with_memory(ml_studyset, tmp_path):
     """A cache location makes a repeated conversion reuse the maps it made."""
     _CountingKernel.calls = 0
 
-    first = extract_features(ml_studyset, _CountingKernel(r=4), memory=str(tmp_path))
-    second = extract_features(ml_studyset, _CountingKernel(r=4), memory=str(tmp_path))
+    first = FeatureSet.from_studyset(ml_studyset, _CountingKernel(r=4), memory=str(tmp_path))
+    second = FeatureSet.from_studyset(ml_studyset, _CountingKernel(r=4), memory=str(tmp_path))
 
     assert _CountingKernel.calls == 1
     np.testing.assert_array_equal(first.map_features.toarray(), second.map_features.toarray())
 
     # A different kernel configuration is a different cache entry, not a stale hit.
-    extract_features(ml_studyset, _CountingKernel(r=8), memory=str(tmp_path))
+    FeatureSet.from_studyset(ml_studyset, _CountingKernel(r=8), memory=str(tmp_path))
     assert _CountingKernel.calls == 2
 
     # Kernel transformers cache their maps at memory_level 2, so a lower level asks
     # for no caching at all.
     _CountingKernel.calls = 0
-    extract_features(ml_studyset, _CountingKernel(r=4), memory=str(tmp_path), memory_level=1)
-    extract_features(ml_studyset, _CountingKernel(r=4), memory=str(tmp_path), memory_level=1)
+    FeatureSet.from_studyset(
+        ml_studyset, _CountingKernel(r=4), memory=str(tmp_path), memory_level=1
+    )
+    FeatureSet.from_studyset(
+        ml_studyset, _CountingKernel(r=4), memory=str(tmp_path), memory_level=1
+    )
     assert _CountingKernel.calls == 2
 
 
-def test_extract_features_without_memory_does_not_cache(ml_studyset):
+def test_from_studyset_without_memory_does_not_cache(ml_studyset):
     """Without a cache location every conversion generates its own maps."""
     _CountingKernel.calls = 0
 
-    extract_features(ml_studyset, _CountingKernel(r=4))
-    extract_features(ml_studyset, _CountingKernel(r=4))
+    FeatureSet.from_studyset(ml_studyset, _CountingKernel(r=4))
+    FeatureSet.from_studyset(ml_studyset, _CountingKernel(r=4))
 
     assert _CountingKernel.calls == 2
 
 
-def test_extract_features_leaves_the_callers_kernel_alone(ml_studyset, tmp_path):
+def test_from_studyset_leaves_the_callers_kernel_alone(ml_studyset, tmp_path):
     """Wiring up a cache must not reconfigure the kernel that was passed in."""
     kernel_transformer = MKDAKernel(r=4)
 
-    extract_features(ml_studyset, kernel_transformer, memory=str(tmp_path))
+    FeatureSet.from_studyset(ml_studyset, kernel_transformer, memory=str(tmp_path))
 
     assert any(tmp_path.iterdir())
     assert kernel_transformer.memory.location is None
     assert kernel_transformer.memory_level == 0
 
 
-def test_extract_features_accepts_a_kernel_class(ml_studyset):
+def test_from_studyset_accepts_a_kernel_class(ml_studyset):
     """A kernel transformer may be given as a class, as elsewhere in NiMARE."""
-    features = extract_features(ml_studyset, MKDAKernel)
+    features = FeatureSet.from_studyset(ml_studyset, MKDAKernel)
 
     assert features.map_features.shape[0] == len(ml_studyset.ids)
     assert features.provenance["kernel_transformer"]["class"] == "MKDAKernel"
 
 
-def test_extract_features_rejects_an_empty_studyset(ml_studyset):
+def test_from_studyset_rejects_an_empty_studyset(ml_studyset):
     """There is nothing to convert without analyses."""
     empty = ml_studyset.select_analyses(np.zeros(len(ml_studyset.ids), dtype=bool))
 
     with pytest.raises(ValueError, match="no analyses"):
-        extract_features(empty, MKDAKernel(r=4))
+        FeatureSet.from_studyset(empty, MKDAKernel(r=4))
 
 
 def test_end_to_end_classification(ml_studyset):
     """The documented workflow runs from Studyset to grouped cross-validation."""
     from sklearn.linear_model import LogisticRegression
 
-    features = extract_features(ml_studyset, MKDAKernel(r=10), target_field="comparison_task")
+    features = FeatureSet.from_studyset(
+        ml_studyset, MKDAKernel(r=10), target_field="comparison_task"
+    )
     bunch = features.to_sklearn()
 
     pipeline = make_pipeline(
@@ -1139,7 +1142,7 @@ def test_end_to_end_classification(ml_studyset):
 
 
 @pytest.mark.performance_smoke
-def test_extract_features_meets_the_conversion_budget():
+def test_from_studyset_meets_the_conversion_budget():
     """A 1,000-study Studyset converts and splits inside the documented budget."""
     # resource is Unix-only, and importing it at module scope makes the whole module
     # uncollectable on Windows. Only this test needs it, and it runs on Linux.
@@ -1148,7 +1151,7 @@ def test_extract_features_meets_the_conversion_budget():
     _, studyset = create_coordinate_studyset(foci=5, n_studies=1000, sample_size=30, seed=42)
 
     start = time.time()
-    features = extract_features(studyset, MKDAKernel(r=10))
+    features = FeatureSet.from_studyset(studyset, MKDAKernel(r=10))
     train, test = features.split(test_size=0.25, random_state=RANDOM_SEED)
     elapsed = time.time() - start
     peak_gb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e6

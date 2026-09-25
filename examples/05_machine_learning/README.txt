@@ -4,6 +4,7 @@ Machine learning with Studysets
 -------------------------------
 
 NiMARE's machine-learning tools convert :class:`~nimare.nimads.Studyset`
-objects into scikit-learn-compatible feature datasets. The examples below
-demonstrate workflows that build masked activation features, split analyses by
-study, reduce voxelwise feature dimensionality, and fit downstream estimators.
+objects into scikit-learn-compatible feature sets. The example below builds
+modeled activation features, splits analyses by study so that none of a study's
+analyses land on both sides, reduces the voxelwise features, and fits a
+downstream estimator.

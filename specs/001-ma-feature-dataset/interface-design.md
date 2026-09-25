@@ -722,14 +722,19 @@ library uses as a prefix. The container is now **`FeatureSet`**.
 
 The extractor went further than a rename. It was a configure-then-call-once
 object, and the only things a class bought were applying identical settings to
-several Studysets and holding the in-process map memo. Conversion is now the
-function **`extract_features(studyset, kernel_transformer, ...)`**, which
-returns a `FeatureSet`; the conversion logic stays in an internal
-`_FeatureExtractor` class so the stages remain separate methods over shared
-configuration, but users never meet it. That also settles the question the
-naming review kept circling: with one class and one function there is no
-near-identical pair to confuse, and nothing public takes a Studyset and
-exposes `fit`.
+several Studysets and holding the in-process map memo. Conversion became a call rather than a
+configure-then-call pair, first as a module-level `extract_features` function
+and then, on reflection, as the named constructor
+**`FeatureSet.from_studyset(studyset, kernel_transformer, ...)`**: it belongs to
+the thing it builds, and it leaves one public name instead of two. It is a
+classmethod rather than `__init__` because `split`, `select_analyses`, `copy`
+and the map-reduction methods build the same container from blocks that already
+exist; a constructor that ran a kernel would push all of them onto a back door
+and take the container's validation with it. The conversion logic stays in an
+internal `_FeatureExtractor` class so the stages remain separate methods over
+shared configuration, but users never meet it. That also settles the question the
+naming review kept circling: with one class there is no near-identical pair to
+confuse, and nothing public takes a Studyset and exposes `fit`.
 
 Two consequences:
 
@@ -744,3 +749,10 @@ Two consequences:
   `memory_level` now defaults to 2 and is passed through unchanged, and a test
   counts the kernel's own `_transform` calls rather than asserting that the
   cache directory exists, which is what let the gap through the first time.
+
+The two gallery examples were merged into one,
+`examples/05_machine_learning/01_plot_machine_learning_in_nimare.py`: the
+workflow reads as one story -- convert, export, split, classify, reduce -- and
+splitting it across two pages made the second repeat the first's setup. The
+numeric prefix stays because the gallery only executes files matching
+`NN_plot_`.

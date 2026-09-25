@@ -18,7 +18,7 @@ python -m pip install -e .[tests,doc]
 from nimare import ml
 from nimare.meta.kernel import MKDAKernel
 
-features = ml.extract_features(
+features = ml.FeatureSet.from_studyset(
     studyset,
     kernel_transformer=MKDAKernel(r=10),
     descriptor_fields=["sample_sizes", ("annotations", "Neurosynth_TFIDF__pain")],
@@ -37,8 +37,8 @@ Expected result:
 - `bunch.feature_names`, `bunch.ids` and `bunch.provenance` describe them.
 
 `features.to_sklearn(return_X_y=True)` returns `(X, y)` for callers who want
-nothing else. There is no estimator to configure and no `fit` to call: one
-function converts, and the `FeatureSet` it returns is what you work with.
+nothing else. There is no estimator to configure and no `fit` to call: the container builds
+itself from a Studyset, and that container is what you work with.
 
 A field is named by a bare field name, by a `(source, field)` tuple, or by a
 mapping. A bare name is looked up in metadata, annotations and texts in turn,
@@ -133,7 +133,7 @@ analysis id -- and encode them inside your pipeline.
 For a target, pass a label extractor:
 
 ```python
-features = ml.extract_features(
+features = ml.FeatureSet.from_studyset(
     studyset,
     kernel_transformer=MKDAKernel(r=10),
     target_field=("texts", "abstract"),
@@ -160,8 +160,7 @@ make lint
 ## Documentation and examples
 
 ```text
-examples/05_machine_learning/01_plot_ma_feature_dataset.py
-examples/05_machine_learning/02_plot_ma_feature_reduction.py
+examples/05_machine_learning/01_plot_machine_learning_in_nimare.py
 ```
 
 ```bash

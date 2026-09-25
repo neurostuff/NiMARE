@@ -16,9 +16,9 @@ must be fit on training rows only, which is what a
 :class:`~sklearn.pipeline.Pipeline` is for;
 :meth:`FeatureSet.make_preprocessor` builds the piece that goes in it.
 
-The public surface is :func:`extract_features`, which returns a
-:class:`FeatureSet`, plus :func:`make_map_reducer` and :class:`AtlasAggregator`
-for reducing the voxelwise features.
+The public surface is :meth:`FeatureSet.from_studyset`, which builds the
+container, plus :func:`make_map_reducer` and :class:`AtlasAggregator` for
+reducing its voxelwise features.
 """
 
 from __future__ import annotations
@@ -57,7 +57,6 @@ LGR = logging.getLogger(__name__)
 __all__ = [
     "AtlasAggregator",
     "FeatureSet",
-    "extract_features",
     "make_map_reducer",
 ]
 
@@ -252,10 +251,15 @@ def _take_rows(value, rows):
 class FeatureSet(NiMAREBase):
     """Aligned modeled activation features, descriptors, target and provenance.
 
+    Build one from a Studyset with :meth:`from_studyset`. The constructor below
+    takes the blocks directly, which is how :meth:`split`,
+    :meth:`select_analyses`, :meth:`copy` and the map-reduction methods build
+    their results, and what to use for features generated some other way.
+
     Every array here shares one row order: row ``i`` is analysis ``ids[i]`` from
-    study ``study_ids[i]``. That order is fixed when the dataset is built and is
-    preserved by :meth:`split`, :meth:`select_analyses` and the map-reduction
-    methods.
+    study ``study_ids[i]``. That order is fixed when the feature set is built
+    and is preserved by :meth:`split`, :meth:`select_analyses` and the
+    map-reduction methods.
 
     Parameters
     ----------
@@ -295,7 +299,7 @@ class FeatureSet(NiMAREBase):
 
     See Also
     --------
-    extract_features : Builds this container from a Studyset.
+    make_map_reducer : Reduction workflows for the voxelwise map features.
     """
 
     def __init__(
@@ -356,6 +360,123 @@ class FeatureSet(NiMAREBase):
         self.target = None if target is None else np.asarray(target)
         self.provenance = {} if provenance is None else provenance
         self.masker = masker
+
+    @classmethod
+    def from_studyset(
+        cls,
+        studyset,
+        kernel_transformer,
+        *,
+        descriptor_fields=None,
+        target_field=None,
+        target_transformer=None,
+        missing_coordinates="drop",
+        missing_values="raise",
+        memory=None,
+        memory_level=2,
+    ):
+        """Build a feature set from a Studyset.
+
+        Generates one modeled activation (MA) map per analysis through the
+        kernel transformer, appends any numeric descriptor fields, extracts any
+        target, and returns them aligned to the analyses they came from, with
+        the study labels that keep analyses from one study out of two different
+        partitions.
+
+        The work happens here rather than in ``__init__``, which stays a plain
+        data constructor: it is also how :meth:`split`, :meth:`select_analyses`
+        and the map-reduction methods build their results, from blocks that
+        already exist.
+
+        Parameters
+        ----------
+        studyset : :class:`~nimare.nimads.Studyset`
+            The Studyset to convert. One analysis becomes one row.
+        kernel_transformer : :class:`~nimare.meta.kernel.KernelTransformer`
+            Kernel transformer instance or class used to generate the MA maps.
+            There is no default: the choice is scientific.
+        descriptor_fields : :obj:`list`, optional
+            Fields appended to the feature matrix as extra numeric columns, by
+            default None. Each is a field name, a ``(source, field)`` tuple, or a
+            mapping with ``source`` and ``field``; sources are ``"metadata"``,
+            ``"annotations"`` and ``"texts"``. A bare field name is looked up in
+            each source in turn, and an ambiguous name asks for the tuple form.
+            Non-numeric fields are rejected -- see the Notes.
+        target_field : :obj:`str` or :obj:`tuple` or :obj:`dict`, optional
+            Field exported as ``y``, by default None. Scalar numeric and scalar
+            categorical fields are supported directly.
+        target_transformer : :obj:`callable` or transformer, optional
+            Applied to the raw target values before they become ``y``, by default
+            None. Required for text fields, which have no scalar reading. Use a
+            row-wise transform such as a label extractor; a transform that learns
+            from the distribution of ``y`` belongs in
+            :class:`~sklearn.compose.TransformedTargetRegressor`.
+        missing_coordinates : {"drop", "include"}, default="drop"
+            What to do with analyses that report no coordinates. ``"drop"`` removes
+            them before rows are built and records their ids in provenance;
+            ``"include"`` keeps them as all-zero sparse map rows.
+        missing_values : {"raise", "drop", "keep"}, default="raise"
+            What to do when a selected descriptor or target value is missing.
+            ``"raise"`` reports the analyses and fields involved; ``"drop"`` removes
+            those analyses and records them in provenance; ``"keep"`` leaves NaN in
+            place for a pipeline to impute.
+        memory : :class:`joblib.Memory`, :obj:`str` or :class:`pathlib.Path`, optional
+            Cache location for MA map generation, by default None. Repeated calls
+            over the same Studyset then reuse the maps instead of regenerating
+            them, across processes as well as within one. Used only when the kernel
+            transformer does not define its own cache; the kernel's own ``memory``
+            always wins.
+        memory_level : :obj:`int`, default=2
+            How eagerly ``memory`` caches, following the NiMARE convention. Kernel
+            transformers cache their maps at level 2, which is why that is the
+            default here; a lower level asks for them not to be cached.
+
+        Returns
+        -------
+        :class:`FeatureSet`
+            One row per retained analysis, with map features, any descriptor
+            features, any target, study groups and provenance. Call
+            :meth:`to_sklearn` for the scikit-learn bundle.
+
+        Notes
+        -----
+        Descriptor fields must be numeric, because the exported feature matrix is
+        numeric. A categorical or text field raises, and names the two ways to use
+        it: encode it yourself and select the numeric result, or leave it out of
+        the matrix and encode it inside your pipeline, reading the raw values from
+        :attr:`descriptors`. Encoding here would fit the encoder on
+        every row, including the rows you are about to hold out.
+
+        Generating the maps does not leak: an analysis's MA map is a function of
+        that analysis's own foci, so it never sees ``y`` or another row. Everything
+        that learns *across* rows belongs in a
+        :class:`~sklearn.pipeline.Pipeline`, which :meth:`make_preprocessor`
+        builds the piece for.
+
+        Examples
+        --------
+        >>> features = FeatureSet.from_studyset(  # doctest: +SKIP
+        ...     studyset,
+        ...     kernel_transformer=MKDAKernel(r=10),
+        ...     target_field=("metadata", "comparison_task"),
+        ... )
+        >>> train, test = features.split(test_size=0.25, random_state=13)  # doctest: +SKIP
+        >>> bunch = features.to_sklearn()  # doctest: +SKIP
+
+        See Also
+        --------
+        make_map_reducer : Reduction workflows for the voxelwise map features.
+        """
+        return _FeatureExtractor(
+            kernel_transformer=kernel_transformer,
+            descriptor_fields=descriptor_fields,
+            target_field=target_field,
+            target_transformer=target_transformer,
+            missing_coordinates=missing_coordinates,
+            missing_values=missing_values,
+            memory=memory,
+            memory_level=memory_level,
+        ).transform(studyset, container=cls)
 
     def __repr__(self):
         """Show the dataset's shape."""
@@ -737,121 +858,11 @@ class FeatureSet(NiMAREBase):
 # ------------------------------------------------------------- the extractor
 
 
-def extract_features(
-    studyset,
-    kernel_transformer,
-    *,
-    descriptor_fields=None,
-    target_field=None,
-    target_transformer=None,
-    missing_coordinates="drop",
-    missing_values="raise",
-    memory=None,
-    memory_level=2,
-):
-    """Convert a Studyset into machine-learning-ready features.
-
-    Generates one modeled activation (MA) map per analysis through the kernel
-    transformer, appends any numeric descriptor fields, extracts any target,
-    and returns them aligned to the analyses they came from, with the study
-    labels that keep analyses from one study out of two different partitions.
-
-    Parameters
-    ----------
-    studyset : :class:`~nimare.nimads.Studyset`
-        The Studyset to convert. One analysis becomes one row.
-    kernel_transformer : :class:`~nimare.meta.kernel.KernelTransformer`
-        Kernel transformer instance or class used to generate the MA maps.
-        There is no default: the choice is scientific.
-    descriptor_fields : :obj:`list`, optional
-        Fields appended to the feature matrix as extra numeric columns, by
-        default None. Each is a field name, a ``(source, field)`` tuple, or a
-        mapping with ``source`` and ``field``; sources are ``"metadata"``,
-        ``"annotations"`` and ``"texts"``. A bare field name is looked up in
-        each source in turn, and an ambiguous name asks for the tuple form.
-        Non-numeric fields are rejected -- see the Notes.
-    target_field : :obj:`str` or :obj:`tuple` or :obj:`dict`, optional
-        Field exported as ``y``, by default None. Scalar numeric and scalar
-        categorical fields are supported directly.
-    target_transformer : :obj:`callable` or transformer, optional
-        Applied to the raw target values before they become ``y``, by default
-        None. Required for text fields, which have no scalar reading. Use a
-        row-wise transform such as a label extractor; a transform that learns
-        from the distribution of ``y`` belongs in
-        :class:`~sklearn.compose.TransformedTargetRegressor`.
-    missing_coordinates : {"drop", "include"}, default="drop"
-        What to do with analyses that report no coordinates. ``"drop"`` removes
-        them before rows are built and records their ids in provenance;
-        ``"include"`` keeps them as all-zero sparse map rows.
-    missing_values : {"raise", "drop", "keep"}, default="raise"
-        What to do when a selected descriptor or target value is missing.
-        ``"raise"`` reports the analyses and fields involved; ``"drop"`` removes
-        those analyses and records them in provenance; ``"keep"`` leaves NaN in
-        place for a pipeline to impute.
-    memory : :class:`joblib.Memory`, :obj:`str` or :class:`pathlib.Path`, optional
-        Cache location for MA map generation, by default None. Repeated calls
-        over the same Studyset then reuse the maps instead of regenerating
-        them, across processes as well as within one. Used only when the kernel
-        transformer does not define its own cache; the kernel's own ``memory``
-        always wins.
-    memory_level : :obj:`int`, default=2
-        How eagerly ``memory`` caches, following the NiMARE convention. Kernel
-        transformers cache their maps at level 2, which is why that is the
-        default here; a lower level asks for them not to be cached.
-
-    Returns
-    -------
-    :class:`FeatureSet`
-        One row per retained analysis, with map features, any descriptor
-        features, any target, study groups and provenance. Call
-        :meth:`FeatureSet.to_sklearn` for the scikit-learn bundle.
-
-    Notes
-    -----
-    Descriptor fields must be numeric, because the exported feature matrix is
-    numeric. A categorical or text field raises, and names the two ways to use
-    it: encode it yourself and select the numeric result, or leave it out of
-    the matrix and encode it inside your pipeline, reading the raw values from
-    :attr:`FeatureSet.descriptors`. Encoding here would fit the encoder on
-    every row, including the rows you are about to hold out.
-
-    Generating the maps does not leak: an analysis's MA map is a function of
-    that analysis's own foci, so it never sees ``y`` or another row. Everything
-    that learns *across* rows belongs in a :class:`~sklearn.pipeline.Pipeline`,
-    which :meth:`FeatureSet.make_preprocessor` builds the piece for.
-
-    Examples
-    --------
-    >>> features = extract_features(  # doctest: +SKIP
-    ...     studyset,
-    ...     kernel_transformer=MKDAKernel(r=10),
-    ...     target_field=("metadata", "comparison_task"),
-    ... )
-    >>> train, test = features.split(test_size=0.25, random_state=13)  # doctest: +SKIP
-    >>> bunch = features.to_sklearn()  # doctest: +SKIP
-
-    See Also
-    --------
-    FeatureSet : The container this returns.
-    make_map_reducer : Reduction workflows for the voxelwise map features.
-    """
-    return _FeatureExtractor(
-        kernel_transformer=kernel_transformer,
-        descriptor_fields=descriptor_fields,
-        target_field=target_field,
-        target_transformer=target_transformer,
-        missing_coordinates=missing_coordinates,
-        missing_values=missing_values,
-        memory=memory,
-        memory_level=memory_level,
-    ).transform(studyset)
-
-
 class _FeatureExtractor(NiMAREBase):
     """Carry out one conversion from a Studyset to a :class:`FeatureSet`.
 
-    Internal. :func:`extract_features` is the public entry point and documents
-    the parameters. The class exists so that the stages of one conversion --
+    Internal. :meth:`FeatureSet.from_studyset` is the public entry point and
+    documents the parameters. The class exists so that the stages of one conversion --
     field selection, target handling, row retention, map generation,
     provenance -- stay separate methods over shared configuration, rather than
     one long function threading nine arguments through itself.
@@ -879,13 +890,16 @@ class _FeatureExtractor(NiMAREBase):
 
     # ------------------------------------------------------------- public API
 
-    def transform(self, studyset):
-        """Convert a Studyset into a feature dataset.
+    def transform(self, studyset, container=None):
+        """Convert a Studyset into ``container``, by default a :class:`FeatureSet`.
 
         Parameters
         ----------
         studyset : :class:`~nimare.nimads.Studyset`
             The Studyset to convert.
+        container : :obj:`type`, optional
+            The class to build, so that a subclass calling
+            :meth:`FeatureSet.from_studyset` gets its own type back.
 
         Returns
         -------
@@ -893,6 +907,7 @@ class _FeatureExtractor(NiMAREBase):
             One row per retained analysis, with map features, any descriptor
             features, any target, study groups and provenance.
         """
+        container = FeatureSet if container is None else container
         studyset = normalize_collection(studyset)
         self._validate_options()
 
@@ -931,7 +946,7 @@ class _FeatureExtractor(NiMAREBase):
                 [descriptors[name][0][retained].astype(float) for name in descriptor_names]
             )
 
-        return FeatureSet(
+        return container(
             map_features,
             ids=ids[retained],
             study_ids=study_ids[retained],

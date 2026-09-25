@@ -19,7 +19,7 @@ scikit-learn workflows. **Revised 2026-09-25** alongside
 
 `to_sklearn(return_X_y=True)` returns `(data, target)` instead, following the
 `sklearn.datasets` convention, so the whole path from Studyset to scikit-learn
-arrays is `extract_features(studyset, ...).to_sklearn()`.
+arrays is `FeatureSet.from_studyset(studyset, ...).to_sklearn()`.
 
 Exported unreduced voxelwise feature data must remain a sparse numeric matrix.
 Dense feature data may be exported only after an explicit reducer produces a
