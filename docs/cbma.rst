@@ -40,6 +40,54 @@ The Estimator classes take a kernel object as a parameter, and use that kernel t
 (3) derive a transformation from summary statistic to z-score, and
 (4) estimate `uncorrected` significance of the summary statistics.
 
+.. _study weights:
+
+Study weights
+`````````````
+
+By default every Estimator weights each contrast equally, so a summary statistic map
+reflects how many contrasts report activation at a voxel, not how much evidence each one
+brings. :class:`~nimare.meta.cbma.mkda.MKDADensity` can instead weight each contrast by
+the square root of its sample size, which is the weighting Multilevel Kernel Density
+Analysis was defined with :footcite:p:`wager2007meta,wager2009evaluating`:
+
+.. math::
+
+    w_c \propto \delta_c \sqrt{N_c}
+
+where :math:`N_c` is the contrast's sample size and :math:`\delta_c` optionally discounts
+contrasts analysed with a fixed-effects study-level model.
+
+.. code-block:: python
+
+    from nimare.meta.cbma import MKDADensity
+
+    # sqrt(N) weighting, read from the collection's sample_sizes metadata
+    meta = MKDADensity(weighting="sample_size")
+
+For anything beyond the default, pass a :class:`~nimare.meta.cbma.weights.StudyWeights`,
+which also accepts explicit per-study weights so that study quality measures other than
+sample size can be used:
+
+.. code-block:: python
+
+    from nimare.meta.cbma.weights import StudyWeights
+
+    meta = MKDADensity(weighting=StudyWeights(inference_field="inference"))
+
+The weights are normalised to sum to the number of contrasts, so an unweighted analysis is
+exactly the case where all of them are 1.0, and the statistic stays on the same scale
+either way. Dividing by the contrast count recovers the weighted *proportion* of
+:footcite:t:`wager2009evaluating`. A contrast with a missing or non-positive sample size
+raises; pass ``StudyWeights(on_missing="impute")`` to give it the mean weight instead.
+
+.. note::
+    The weighting applies to the density statistic. The chi-square tests of
+    :class:`~nimare.meta.cbma.mkda.MKDAChi2` are unweighted, as they are in the original
+    method.
+
+Example: :ref:`metas_mkda_weighting`
+
 .. _null methods:
 
 Null methods
@@ -175,6 +223,54 @@ The Monte Carlo FWE correction approach implemented in NiMARE produces three new
 
     Seed Based *d* Mapping (SDM) is currently not implemented in NiMARE because the source code is not publicly available.
     To follow the current discussion on SDM in the context of NiMARE, see `#183 <https://github.com/neurostuff/NiMARE/issues/183>`_.
+
+Reproducible results
+--------------------
+
+Monte Carlo null distributions and Monte Carlo FWE correction draw random permutations, so by
+default they give slightly different numbers each time they are run.
+To get the same numbers back, pass a ``random_state`` to the Estimator::
+
+    from nimare.correct import FWECorrector
+    from nimare.meta.cbma.ale import ALE
+
+    meta = ALE(null_method="montecarlo", n_iters=10000, random_state=0)
+    result = meta.fit(dset)
+
+    corrector = FWECorrector(method="montecarlo", n_iters=10000)
+    corrected = corrector.transform(result)
+
+``random_state`` takes an integer (or ``None``, the unseeded default).
+An already-built generator, such as a :class:`numpy.random.Generator`, is not accepted:
+it carries state that advances as it is drawn from, which cannot give the same answer twice.
+To seed from one, pass an integer drawn from it --- ``random_state=int(rng.integers(2**32))``.
+
+The seed covers every permutation the Estimator draws, including the ones run later by
+``correct_fwe_montecarlo``, and each step draws from its own independent sequence,
+so the uncorrected null and the FWE null are never built from the same permutations.
+Re-running a seeded analysis --- in the same session or a later one --- reproduces the maps
+exactly, and the seed is recorded in ``result.estimator.get_params()`` alongside the other
+parameters.
+
+``random_state`` is accepted by :class:`~nimare.meta.cbma.ale.ALE`,
+:class:`~nimare.meta.cbma.ale.ALESubtraction`,
+:class:`~nimare.meta.cbma.ale.BalancedALESubtraction`,
+:class:`~nimare.meta.cbma.ale.SCALE`,
+:class:`~nimare.meta.cbma.mkda.MKDADensity`,
+:class:`~nimare.meta.cbma.mkda.MKDAChi2`, and
+:class:`~nimare.meta.cbma.mkda.KDA`.
+Among the image-based estimators, only :class:`~nimare.meta.ibma.PermutedOLS` is stochastic,
+and it takes the same parameter (seeded with ``42`` by default).
+Outside of meta-analysis, :class:`~nimare.annotate.lda.LDAModel` takes a ``random_state`` too,
+:class:`~nimare.annotate.gclda.GCLDAModel` is fixed by its ``seed_init``, and
+:func:`~nimare.generate.create_coordinate_dataset` by its ``seed``.
+
+.. note::
+    :class:`~nimare.meta.cbma.ale.ALESubtraction` and the label-permutation null of
+    :class:`~nimare.meta.cbma.mkda.MKDAChi2` were already deterministic before
+    ``random_state`` existed: each permutation was seeded with its own iteration index.
+    Leaving ``random_state`` unset keeps that behaviour, so existing results do not change;
+    setting it selects a different, equally reproducible set of permutations.
 
 References
 ----------

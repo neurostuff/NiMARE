@@ -53,8 +53,8 @@ def test_focus_positions_come_from_the_block():
     """Rows and columns are read off the block, not recomputed from a frame.
 
     ``group_of_point`` gives each focus's analysis position and ``ijk`` its matrix index, the
-    latter memoised on the block and documented to truncate exactly as ``mm2vox`` does. Both are
-    what CBMR used to derive itself from a coordinate DataFrame.
+    latter memoised on the block and documented to round to the nearest voxel exactly as
+    ``mm2vox`` does. Both are what CBMR used to derive itself from a coordinate DataFrame.
     """
     estimator = CBMR("~ 1")
     mask_data, mask_img = _unit_mask((3, 1, 1))

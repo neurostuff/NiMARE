@@ -22,6 +22,7 @@ For more information about the components of coordinate-based meta-analysis in N
    meta.ibma
    meta.cbma.ale
    meta.cbma.mkda
+   meta.cbma.weights
    meta.cbma.base
    meta.kernel
    meta.cbmr
@@ -312,6 +313,8 @@ For more information about fetching data from the internet, see :ref:`fetching t
    :toctree: generated/
    :template: function.rst
 
+   extract.fetch_neurostore
+   extract.fetch_neurostore_releases
    extract.fetch_neuroquery
    extract.fetch_neurosynth
    extract.download_nidm_pain
