@@ -1,18 +1,23 @@
 """Tools for downloading datasets."""
 
 import contextlib
+import hashlib
 import itertools
 import logging
 import os
 import os.path as op
 import shutil
+import tarfile
 import time
+import warnings
 import zipfile
 from glob import glob
+from urllib.parse import urljoin
 from urllib.request import urlopen
 
 import numpy as np
 import pandas as pd
+import requests
 
 from nimare.dataset import Dataset
 from nimare.extract.utils import (
@@ -35,6 +40,21 @@ VALID_ENTITIES = {
     "keys.tsv": ["data", "version", "vocab"],
 }
 VALID_FETCH_RETURN_TYPES = {"studyset", "dataset", "files"}
+
+#: Root of the NeuroStore API.
+NEUROSTORE_URL = "https://neurostore.org"
+#: Index of the NeuroStore studyset releases, the maintained source of coordinate data.
+NEUROSTORE_RELEASES_URL = f"{NEUROSTORE_URL}/api/neurostore-studyset-releases/"
+
+NEUROSYNTH_DEPRECATION_MESSAGE = (
+    "fetch_neurosynth downloads a frozen snapshot of the Neurosynth database "
+    "(data extracted in 2018; files last repackaged in 2021) and is deprecated: it is "
+    "kept only for reproducing published Neurosynth analyses and for the term "
+    "annotations Neurosynth-based decoding needs. For up-to-date coordinate data, use "
+    "nimare.extract.fetch_neurostore(), which downloads a NeuroStore studyset release "
+    f"from {NEUROSTORE_RELEASES_URL}. Silence this warning with "
+    "warnings.filterwarnings('ignore', message='fetch_neurosynth downloads a frozen')."
+)
 
 
 def _find_entities(filename, search_pairs, log=False):
@@ -232,6 +252,257 @@ def _materialize_found_databases(found_databases, return_type, target):
     return materialized
 
 
+def fetch_neurostore_releases(url=None, timeout=30):
+    """List the NeuroStore studyset releases available for download.
+
+    .. versionadded:: 0.22.0
+
+    Parameters
+    ----------
+    url : :obj:`str` or None, optional
+        Release index to query. Default is :data:`NEUROSTORE_RELEASES_URL`.
+    timeout : :obj:`int` or :obj:`float`, optional
+        Timeout, in seconds, for the request. Default is 30.
+
+    Returns
+    -------
+    releases : :obj:`list` of :obj:`dict`
+        One entry per release, as returned by the NeuroStore API. Each entry has at
+        least ``"version"`` (e.g. ``"2026-09"`` or ``"nightly"``), ``"release_type"``,
+        ``"built_at"``, ``"study_count"``, and ``"download_path"``.
+
+    See Also
+    --------
+    fetch_neurostore : Download one of these releases as a Studyset.
+    """
+    url = url or NEUROSTORE_RELEASES_URL
+
+    response = requests.get(url, timeout=timeout)
+    response.raise_for_status()
+    payload = response.json()
+
+    releases = payload.get("results", []) if isinstance(payload, dict) else payload
+    if not releases:
+        raise ValueError(f"No NeuroStore studyset releases were found at {url}.")
+
+    return list(releases)
+
+
+def _release_sort_key(release):
+    """Order releases by build time, falling back to the version string."""
+    return (str(release.get("built_at") or ""), str(release.get("version") or ""))
+
+
+def _select_neurostore_release(releases, version):
+    """Pick the requested release from the release index.
+
+    ``"latest"`` selects the most recently built dated release, ignoring the rolling
+    ``"nightly"`` build; ``"nightly"`` selects the nightly build; anything else is
+    matched against the releases' ``"version"`` fields.
+    """
+    if version == "latest":
+        dated = [rel for rel in releases if rel.get("release_type") != "nightly"]
+        candidates = dated or list(releases)
+        return max(candidates, key=_release_sort_key)
+
+    matches = [rel for rel in releases if str(rel.get("version")) == str(version)]
+    if not matches:
+        available = ", ".join(sorted(str(rel.get("version")) for rel in releases))
+        raise ValueError(
+            f"No NeuroStore studyset release named '{version}'. "
+            f"Available versions are: {available} (or 'latest')."
+        )
+
+    return max(matches, key=_release_sort_key)
+
+
+def _download_neurostore_archive(release, out_file, url, timeout=30, verify_checksum=True):
+    """Stream a release archive to disk, checking its checksum when one is published."""
+    download_path = release.get("download_url") or release.get("download_path")
+    if not download_path:
+        raise ValueError(
+            f"NeuroStore release '{release.get('version')}' does not advertise a download path."
+        )
+
+    download_url = urljoin(url, download_path)
+    LGR.info(f"Downloading NeuroStore studyset release from {download_url}")
+
+    digest = hashlib.sha256()
+    with requests.get(download_url, stream=True, timeout=timeout) as response:
+        response.raise_for_status()
+        with open(out_file, "wb") as fo:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if not chunk:  # filter out keep-alive chunks
+                    continue
+                digest.update(chunk)
+                fo.write(chunk)
+
+    expected_checksum = release.get("archive_checksum")
+    if verify_checksum and expected_checksum and digest.hexdigest() != expected_checksum:
+        os.remove(out_file)
+        raise ValueError(
+            f"Checksum mismatch for NeuroStore release '{release.get('version')}': "
+            f"expected {expected_checksum}, got {digest.hexdigest()}."
+        )
+
+    return out_file
+
+
+def _extract_neurostore_archive(archive_file, out_dir):
+    """Extract a release archive and return the directory holding ``studyset.json``."""
+    if op.isdir(out_dir):
+        shutil.rmtree(out_dir)
+    os.makedirs(out_dir)
+
+    with tarfile.open(archive_file, "r:gz") as tf:
+        # ``data`` refuses absolute paths and paths escaping the destination.
+        if hasattr(tarfile, "data_filter"):
+            tf.extractall(out_dir, filter="data")
+        else:  # pragma: no cover - Python builds without PEP 706 filters
+            tf.extractall(out_dir)
+
+    return _find_parquet_studyset_dir(out_dir)
+
+
+def _find_parquet_studyset_dir(root):
+    """Return the directory containing ``studyset.json``, which archives nest one level."""
+    if op.isfile(op.join(root, "studyset.json")):
+        return root
+
+    candidates = [
+        op.join(root, entry)
+        for entry in sorted(os.listdir(root))
+        if op.isfile(op.join(root, entry, "studyset.json"))
+    ]
+    if len(candidates) != 1:
+        raise ValueError(
+            f"Could not find a parquet studyset (a directory with studyset.json) in {root}."
+        )
+
+    return candidates[0]
+
+
+def fetch_neurostore(
+    version="latest",
+    data_dir=None,
+    overwrite=False,
+    return_type="studyset",
+    target="mni152_2mm",
+    url=None,
+    timeout=30,
+    verify_checksum=True,
+):
+    """Download a NeuroStore studyset release.
+
+    .. versionadded:: 0.22.0
+
+    NeuroStore releases are the maintained source of coordinate data for NiMARE, and
+    should be preferred over the frozen Neurosynth and NeuroQuery snapshots downloaded
+    by :func:`~nimare.extract.fetch_neurosynth` and
+    :func:`~nimare.extract.fetch_neuroquery`. Releases are published as archives of
+    parquet tables at https://neurostore.org/api/neurostore-studyset-releases/ and load
+    directly into the columnar tables a :class:`~nimare.nimads.Studyset` stores.
+
+    Parameters
+    ----------
+    version : :obj:`str`, optional
+        Release to download. ``"latest"`` (the default) takes the most recent dated
+        release, ``"nightly"`` takes the rolling nightly build, and any other value is
+        matched against the published version strings (e.g. ``"2026-09"``).
+        Call :func:`~nimare.extract.fetch_neurostore_releases` to see what is available.
+    data_dir : :obj:`pathlib.Path` or :obj:`str`, optional
+        Path where data should be downloaded. By default, files are downloaded in the
+        home directory. A subfolder, named ``neurostore``, will be created in
+        ``data_dir``, with one subfolder per downloaded release.
+    overwrite : :obj:`bool`, optional
+        Whether to re-download and re-extract a release that is already on disk.
+        Default is False.
+    return_type : {"studyset", "files"}, optional
+        Type of object to return. The default, ``"studyset"``, returns a
+        :class:`~nimare.nimads.Studyset`; ``"files"`` returns the path to the extracted
+        release directory without loading it.
+    target : :obj:`str`, optional
+        Target template space for the returned Studyset. Default is ``"mni152_2mm"``.
+        Ignored when ``return_type="files"``.
+    url : :obj:`str` or None, optional
+        Release index to query. Default is :data:`NEUROSTORE_RELEASES_URL`.
+    timeout : :obj:`int` or :obj:`float`, optional
+        Timeout, in seconds, for each request. Default is 30.
+    verify_checksum : :obj:`bool`, optional
+        Whether to check the downloaded archive against the checksum published with the
+        release. Default is True.
+
+    Returns
+    -------
+    :class:`~nimare.nimads.Studyset` or :obj:`str`
+        The downloaded studyset, or the path to the extracted release directory when
+        ``return_type="files"``.
+
+    Notes
+    -----
+    Reading the parquet tables requires ``pyarrow``, which NiMARE declares as the
+    ``parquet`` extra (``pip install nimare[parquet]``). ``return_type="files"`` works
+    without it.
+
+    Examples
+    --------
+    Download the most recent release and run a meta-analysis on part of it::
+
+        studyset = fetch_neurostore()
+        print(studyset)
+
+    See Also
+    --------
+    fetch_neurostore_releases : List the releases available for download.
+    nimare.io.fetch_neurostore_studyset : Download a single studyset from NeuroStore.
+    """
+    valid_return_types = {"studyset", "files"}
+    if return_type not in valid_return_types:
+        raise ValueError(
+            f"Invalid return_type '{return_type}'. "
+            f"Expected one of: {', '.join(sorted(valid_return_types))}."
+        )
+
+    url = url or NEUROSTORE_RELEASES_URL
+    releases = fetch_neurostore_releases(url=url, timeout=timeout)
+    release = _select_neurostore_release(releases, version)
+    release_version = str(release.get("version"))
+
+    data_dir = _get_dataset_dir("neurostore", data_dir=data_dir)
+    release_dir = op.join(data_dir, release_version)
+
+    if op.isdir(release_dir) and not overwrite:
+        studyset_dir = _find_parquet_studyset_dir(release_dir)
+        LGR.info(f"Using cached NeuroStore release '{release_version}' in {studyset_dir}.")
+    else:
+        # basename: the name is taken from the API response, and only ever names a
+        # file inside the download directory.
+        archive_name = op.basename(
+            release.get("archive_name") or f"neurostore-studyset-{release_version}.tar.gz"
+        )
+        archive_file = op.join(data_dir, archive_name)
+        try:
+            _download_neurostore_archive(
+                release,
+                archive_file,
+                url=url,
+                timeout=timeout,
+                verify_checksum=verify_checksum,
+            )
+            studyset_dir = _extract_neurostore_archive(archive_file, release_dir)
+        finally:
+            # The extracted tables are what callers use; the archive is just transport.
+            if op.isfile(archive_file):
+                os.remove(archive_file)
+
+    if return_type == "files":
+        return studyset_dir
+
+    from nimare.nimads import Studyset
+
+    return Studyset(studyset_dir, target=target)
+
+
 def fetch_neurosynth(
     data_dir=None,
     version="7",
@@ -240,7 +511,15 @@ def fetch_neurosynth(
     target="mni152_2mm",
     **kwargs,
 ):
-    """Download the latest data files from NeuroSynth.
+    """Download the frozen Neurosynth database files.
+
+    .. deprecated:: 0.22.0
+
+        Neurosynth's data files are a frozen snapshot: the data were extracted in
+        2018, and the files were last repackaged in 2021. This function is kept for
+        reproducing published Neurosynth analyses (and for the term annotations that
+        Neurosynth-based decoding needs), and will be removed in NiMARE 1.0.0. For
+        up-to-date coordinate data, use :func:`~nimare.extract.fetch_neurostore`.
 
     .. versionchanged:: 0.0.10
 
@@ -324,7 +603,13 @@ def fetch_neurosynth(
     .. warning::
         Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file
         format. Old code using this function **will not work** with the new version.
+
+    See Also
+    --------
+    fetch_neurostore : Download an up-to-date NeuroStore studyset release.
     """
+    warnings.warn(NEUROSYNTH_DEPRECATION_MESSAGE, FutureWarning, stacklevel=2)
+
     URL = (
         "https://github.com/neurosynth/neurosynth-data/blob/"
         "209c33cd009d0b069398a802198b41b9c488b9b7/"
@@ -390,6 +675,14 @@ def fetch_neuroquery(
     .. warning::
         ``return_type="dataset"`` is deprecated and will be removed in NiMARE 1.0.0.
         Prefer the default ``return_type="studyset"``.
+
+    .. note::
+        Like Neurosynth's, NeuroQuery's data files are a frozen snapshot. For up-to-date
+        coordinate data, use :func:`~nimare.extract.fetch_neurostore`.
+
+    See Also
+    --------
+    fetch_neurostore : Download an up-to-date NeuroStore studyset release.
     """
     URL = (
         "https://github.com/neuroquery/neuroquery_data/blob/"

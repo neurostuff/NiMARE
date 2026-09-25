@@ -205,6 +205,32 @@ def test_parameter_budget_is_logged(studyset, caplog):
     assert "distinct spatial map" in logged
 
 
+def test_information_method_reaches_the_model_and_warns_only_for_closed_form(studyset, caplog):
+    """``information_method`` should reach ``CBMRModel`` and gate the closed-form warning.
+
+    Default behavior (the fast path added by
+    https://github.com/neurostuff/NiMARE/pull/1121) warns; asking for the older
+    automatic-differentiation computation should not, since that is the computation the warning
+    says has not been fully validated.
+    """
+    with caplog.at_level(logging.WARNING, logger="nimare.meta.cbmr.model"):
+        result_fast = _fit("~ s(diagnosis)", studyset)
+    assert any("pull/1121" in message for message in caplog.messages)
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="nimare.meta.cbmr.model"):
+        result_slow = _fit("~ s(diagnosis)", studyset, information_method="autodiff")
+    assert not caplog.messages
+    assert result_slow.estimator.cbmr_model.information_method == "autodiff"
+    assert result_fast.estimator.cbmr_model.information_method == "closed_form"
+
+
+def test_unknown_information_method_is_rejected_before_fitting(studyset):
+    """A typo in ``information_method`` should fail fast, like an unknown formula column does."""
+    with pytest.raises(ValueError, match="information_method"):
+        _fit("~ s(diagnosis)", studyset, information_method="exact")
+
+
 def test_unknown_column_is_reported_before_fitting(studyset):
     """A typo should fail with the available columns, not deep inside patsy."""
     with pytest.raises(FormulaError, match="Available columns"):

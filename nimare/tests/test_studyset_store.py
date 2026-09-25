@@ -621,6 +621,27 @@ def test_points_outside_mask_volume_are_not_clipped_to_edge():
     assert not inside[1]
 
 
+def test_points_off_the_voxel_grid_go_to_the_nearest_voxel():
+    """A fractional focus belongs to the voxel it is closest to, not the one below it.
+
+    Truncating would send both 0.6 mm and 1.6 mm to the voxel below them, shifting every
+    off-grid focus toward the origin and reversing both answers here.
+    :func:`nimare.utils.mm2vox` rounds, and this path -- which is what ``get_analyses_by_mask``
+    runs on -- has to agree with it.
+    """
+    document = selection_document()
+    document["studies"][0]["analyses"][0]["points"][0]["coordinates"] = [0.6, 0, 0]
+    document["studies"][0]["analyses"][1]["points"][0]["coordinates"] = [1.6, 0, 0]
+    studyset = Studyset(document, target=None)
+    mask = np.zeros((3, 3, 3), dtype=bool)
+    mask[1, 0, 0] = True
+
+    inside = studyset.view.points_in_mask(mask, np.eye(4))
+
+    assert inside[0]
+    assert not inside[1]
+
+
 def test_a_short_analysis_id_selects_every_analysis_that_declares_it():
     """Check that a short id shared across studies keeps all of its analyses."""
     studyset = Studyset(selection_document())

@@ -25,11 +25,13 @@ from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
     _add_metadata_to_dataframe,
     _check_ncores,
+    _check_random_state,
     _check_type,
     _mask_coverage_to_null_ijk,
     _mask_img_to_bool,
     _nlogp_to_logp_values,
     _p_to_logp_values,
+    _seed_sequence,
     get_masker,
     get_masker_mask_image,
     mm2vox,
@@ -54,12 +56,43 @@ def _histogram_bin_edges(bin_centers):
 _UNSET = object()
 
 
+def _nullhist_to_summarystat(hist_weights, bin_centers, p):
+    """Return the summary-statistic value whose upper-tail probability first falls to ``p``.
+
+    ``hist_weights`` is an unnormalised histogram over ``bin_centers``: analytic masses
+    from the approximate null, or voxel counts from the Monte Carlo null. Both have to be
+    accumulated into an upper-tail probability before they can be compared against ``p``.
+    The chosen bin is the last one whose tail probability still exceeds ``p``, so the
+    threshold is conservative with respect to the requested rate.
+    """
+    weights = np.asarray(hist_weights, dtype=np.float64).ravel()
+    if weights.sum() <= 0:
+        return bin_centers[0]
+
+    # Normalising after the accumulation rather than before saves a pass over the
+    # histogram, which MKDA's weighted null makes 100k bins long. The first entry of an
+    # upper-tail cumulative sum is the total, so it is the only divisor needed.
+    tail = np.cumsum(weights[::-1])[::-1]
+    tail /= tail[0]
+
+    below = np.flatnonzero(tail <= p)
+    if below.size == 0:
+        # Even the largest attainable statistic is more likely than p.
+        return bin_centers[-1]
+    return bin_centers[np.maximum(0, below[0] - 1)]
+
+
 class CBMAEstimator(Estimator):
     """Base class for coordinate-based meta-analysis methods.
 
     .. warning::
         Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed in
         NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
+
+    .. versionchanged:: 0.22.0
+
+        * New parameter: ``random_state``, which seeds the Monte Carlo procedures so that
+          their results can be reproduced.
 
     .. versionchanged:: 0.12.0
 
@@ -97,6 +130,10 @@ class CBMAEstimator(Estimator):
         map). ``"brain"`` uses every non-zero
         voxel in the mask. Has no effect when ``null_method="approximate"``.
         Default is ``"brain"``.
+    random_state : :obj:`int` or None, optional
+        Seed for the Monte Carlo procedures used by this Estimator, so that their results can
+        be reproduced. If None, the permutations are drawn from operating system entropy and
+        will differ between runs. Default is None.
     *args
         Optional arguments to the :obj:`~nimare.base.Estimator` __init__
         (called automatically).
@@ -118,11 +155,13 @@ class CBMAEstimator(Estimator):
         *,
         mask=None,
         mask_coverage="brain",
+        random_state=None,
         **kwargs,
     ):
         if mask_coverage not in ("gm", "brain"):
             raise ValueError(f"mask_coverage must be 'gm' or 'brain'; got {mask_coverage!r}.")
         self.mask_coverage = mask_coverage
+        self.random_state = random_state
 
         if mask is not None:
             mask = get_masker(mask, memory=memory, memory_level=memory_level)
@@ -153,6 +192,50 @@ class CBMAEstimator(Estimator):
             memory_level=memory_level,
             generate_description=generate_description,
         )
+
+    def _get_rng(self, stream):
+        """Return the random generator for one stochastic step of this Estimator.
+
+        A fresh generator is built on every call, so running the same step twice on the same
+        seeded Estimator gives the same answer twice. Each ``stream`` gets its own independent
+        sequence, so that, for instance, the uncorrected Monte Carlo null and the FWE null are
+        not built from the very same permutations.
+
+        Parameters
+        ----------
+        stream : :obj:`str`
+            Name of the step drawing from the generator.
+
+        Returns
+        -------
+        :class:`numpy.random.Generator`
+        """
+        return _check_random_state(self.random_state, stream=stream)
+
+    def _iteration_seeds(self, n_iters, stream):
+        """Return one independent seed per permutation, for seeding inside parallel workers.
+
+        Permutations that draw their own randomness in the worker process cannot share a
+        generator with the parent, so each iteration is handed its own seed instead.
+
+        Parameters
+        ----------
+        n_iters : :obj:`int`
+            Number of permutations.
+        stream : :obj:`str`
+            Name of the step the seeds are for. See :meth:`_get_rng`.
+
+        Returns
+        -------
+        :obj:`list`
+            Seeds, one per iteration. When ``random_state`` is None, these are the iteration
+            indices themselves, which is what these procedures used before ``random_state``
+            existed; results therefore do not change unless a seed is given.
+        """
+        if self.random_state is None:
+            return list(range(n_iters))
+
+        return _seed_sequence(self.random_state, stream=stream).spawn(n_iters)
 
     def _preprocess_input(self, dataset):
         """Mask required input images using either the Dataset's mask or the Estimator's.
@@ -351,12 +434,16 @@ class CBMAEstimator(Estimator):
 
         return MetaResult(self, mask=masker, maps=maps, tables=tables, description=description)
 
-    def _compute_weights(self, ma_values):
+    def _compute_weights(self, ma_values, study_ids=None):
         """Perform optional weight computation routine.
 
         Takes an array of meta-analysis values as input and returns an array
         of the same shape, weighted as desired.
         Can be ignored by algorithms that don't support weighting.
+
+        ``study_ids`` names the studies behind the rows of *ma_values* when they are a
+        subset of those fitted, so that a weighting scheme can renormalise over them.
+        ``None`` means every fitted study is represented, in ``inputs_["id"]`` order.
         """
         return None
 
@@ -618,29 +705,21 @@ class CBMAEstimator(Estimator):
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histweights_corr-none_method-approximate" in self.null_distributions_.keys()
 
-            # Convert unnormalized histogram weights to null distribution
-            histogram_weights = self.null_distributions_[
-                "histweights_corr-none_method-approximate"
-            ]
-            null_distribution = histogram_weights / np.sum(histogram_weights)
-            null_distribution = np.cumsum(null_distribution[::-1])[::-1]
-            null_distribution /= np.max(null_distribution)
-            null_distribution = np.squeeze(null_distribution)
-
-            # Desired bin is the first one _before_ the target p-value (for uniformity
-            # with the montecarlo null).
-            ss_idx = np.maximum(0, np.where(null_distribution <= p)[0][0] - 1)
-            ss = self.null_distributions_["histogram_bins"][ss_idx]
+            ss = _nullhist_to_summarystat(
+                self.null_distributions_["histweights_corr-none_method-approximate"],
+                self.null_distributions_["histogram_bins"],
+                p,
+            )
 
         elif null_method == "montecarlo":
             assert "histogram_bins" in self.null_distributions_.keys()
             assert "histweights_corr-none_method-montecarlo" in self.null_distributions_.keys()
 
-            hist_weights = self.null_distributions_["histweights_corr-none_method-montecarlo"]
-            # Desired bin is the first one _before_ the target p-value (for uniformity
-            # with the montecarlo null).
-            ss_idx = np.maximum(0, np.where(hist_weights <= p)[0][0] - 1)
-            ss = self.null_distributions_["histogram_bins"][ss_idx]
+            ss = _nullhist_to_summarystat(
+                self.null_distributions_["histweights_corr-none_method-montecarlo"],
+                self.null_distributions_["histogram_bins"],
+                p,
+            )
 
         elif null_method == "reduced_montecarlo":
             assert "values_corr-none_method-reducedMontecarlo" in self.null_distributions_.keys()
@@ -689,7 +768,8 @@ class CBMAEstimator(Estimator):
             ma_maps = ma_maps[:, mask_data]
 
         n_studies, n_voxels = ma_maps.shape
-        null_ijk = np.random.choice(np.arange(n_voxels), (n_iters, n_studies))
+        rng = self._get_rng("null_reduced_montecarlo")
+        null_ijk = rng.choice(np.arange(n_voxels), (n_iters, n_studies))
         iter_ma_values = ma_maps[np.arange(n_studies), tuple(null_ijk)].T
         null_dist = self._compute_summarystat(iter_ma_values)
         self.null_distributions_["values_corr-none_method-reducedMontecarlo"] = null_dist
@@ -780,7 +860,8 @@ class CBMAEstimator(Estimator):
 
         n_cores = _check_ncores(n_cores)
 
-        rand_idx = np.random.choice(
+        rng = self._get_rng("null_montecarlo")
+        rand_idx = rng.choice(
             null_ijk.shape[0],
             size=(self.inputs_["coordinates"].shape[0], n_iters),
         )
@@ -988,7 +1069,8 @@ class CBMAEstimator(Estimator):
             # Identify summary statistic corresponding to intensity threshold
             ss_thresh = self._p_to_summarystat(voxel_thresh)
 
-            rand_idx = np.random.choice(
+            rng = self._get_rng("correct_fwe_montecarlo")
+            rand_idx = rng.choice(
                 null_ijk.shape[0],
                 size=(self.inputs_["coordinates"].shape[0], n_iters),
             )
@@ -1240,8 +1322,9 @@ class PairwiseCBMAEstimator(CBMAEstimator):
             Total number of studies in the pooled dataset.
         n_group1 : int
             Number of studies in the first group.
-        seed : int
-            Seed for the random generator.
+        seed : int or :class:`numpy.random.SeedSequence`
+            Seed for the random generator, as produced by
+            :meth:`CBMAEstimator._iteration_seeds`.
 
         Returns
         -------
