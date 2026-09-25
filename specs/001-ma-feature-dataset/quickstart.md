@@ -142,6 +142,27 @@ pipeline = make_pipeline(
 )
 ```
 
+That applies one transformer to every descriptor. When they want different
+treatment, pass a mapping from descriptor name to transformer:
+
+```python
+from sklearn.preprocessing import StandardScaler
+
+features.make_preprocessor(
+    TruncatedSVD(n_components=50, random_state=13),
+    descriptor_transformer={
+        "sample_sizes": SimpleImputer(strategy="median"),
+        "year": StandardScaler(),
+    },
+)
+```
+
+Descriptors the mapping does not name are passed through, and the columns come
+out in the order they went in. `features.descriptor_names` lists them.
+Transformers are handed the descriptor columns dense, which is what most of
+them expect of a few numeric columns -- `StandardScaler` will not centre sparse
+data at all -- while the map block stays sparse.
+
 `features.map_columns` and `features.descriptor_columns` are public, so the
 same thing can be written out:
 

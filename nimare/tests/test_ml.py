@@ -19,7 +19,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.linear_model import Ridge
 from sklearn.model_selection import GridSearchCV, GroupKFold, cross_val_score
 from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import FunctionTransformer
+from sklearn.preprocessing import FunctionTransformer, StandardScaler
 from sklearn.random_projection import SparseRandomProjection
 from sklearn.utils import Bunch
 
@@ -414,7 +414,8 @@ def test_make_preprocessor_accepts_transformers_and_passthrough(ma_feature_datas
         TruncatedSVD(n_components=1), descriptor_transformer=SimpleImputer()
     )
     assert isinstance(built.transformers[0][1], TruncatedSVD)
-    assert isinstance(built.transformers[1][1], SimpleImputer)
+    # The descriptor step densifies its columns before handing them over.
+    assert isinstance(built.transformers[1][1].named_steps["transform"], SimpleImputer)
 
     passthrough = dataset.make_preprocessor(None)
     assert passthrough.transformers[0][1] == "passthrough"
@@ -531,6 +532,89 @@ def test_make_preprocessor_keeps_a_reducer_off_the_descriptor_columns(ma_feature
     np.testing.assert_allclose(scoped[:, -1], descriptors)
     # Bare: one component for everything, the descriptor folded into it.
     assert bare.shape == (len(ma_feature_dataset), 1)
+
+
+@pytest.fixture
+def descriptor_dataset(small_masker):
+    """Return a feature set with three descriptors that want different treatment."""
+    descriptors = np.array(
+        [
+            [10.0, 1.0, 5.0],
+            [np.nan, 0.0, 6.0],
+            [30.0, 1.0, 7.0],
+            [40.0, np.nan, 8.0],
+            [50.0, 0.0, 9.0],
+            [60.0, 1.0, 10.0],
+        ]
+    )
+    ids = [f"study_{idx}-task0" for idx in range(6)]
+    return FeatureSet(
+        sparse.csr_matrix(np.random.default_rng(0).random((6, 5))),
+        ids=ids,
+        study_ids=ids,
+        descriptor_features=descriptors,
+        # The middle name is the shape NeuroStore annotations come in, and a
+        # ColumnTransformer step may not be named with a double underscore.
+        descriptor_names=["sample_sizes", "Neurosynth_TFIDF__pain", "year"],
+        masker=small_masker,
+    )
+
+
+def test_descriptors_can_take_one_transformer_each(descriptor_dataset):
+    """A mapping treats each descriptor differently and keeps the column order."""
+    preprocessor = descriptor_dataset.make_preprocessor(
+        TruncatedSVD(n_components=2, random_state=RANDOM_SEED),
+        descriptor_transformer={
+            "sample_sizes": SimpleImputer(strategy="median"),
+            "year": StandardScaler(),
+        },
+    )
+
+    out = preprocessor.fit_transform(descriptor_dataset.features)
+    out = out.toarray() if sparse.issparse(out) else out
+    imputed, untouched, scaled = out[:, -3], out[:, -2], out[:, -1]
+
+    assert descriptor_dataset.descriptor_names == [
+        "sample_sizes",
+        "Neurosynth_TFIDF__pain",
+        "year",
+    ]
+    assert imputed[1] == 40.0  # the median of the column, in place of its NaN
+    assert np.isnan(untouched[3])  # not named, so passed through as it was
+    np.testing.assert_allclose(scaled.mean(), 0.0, atol=1e-12)
+    np.testing.assert_allclose(scaled.std(), 1.0)
+
+
+def test_descriptor_transformers_are_handed_dense_columns(descriptor_dataset):
+    """A scaler refuses to centre sparse data, and descriptors are not sparse."""
+    preprocessor = descriptor_dataset.make_preprocessor(
+        TruncatedSVD(n_components=2, random_state=RANDOM_SEED),
+        descriptor_transformer=StandardScaler(),
+    )
+
+    out = preprocessor.fit_transform(descriptor_dataset.features)
+    out = out.toarray() if sparse.issparse(out) else out
+
+    assert out.shape == (6, 5)
+
+
+def test_descriptor_mapping_rejects_names_that_are_not_descriptors(descriptor_dataset):
+    """A typo names the descriptors this feature set actually has."""
+    with pytest.raises(ValueError, match="No descriptor called 'nope'"):
+        descriptor_dataset.make_preprocessor(
+            TruncatedSVD(n_components=2), descriptor_transformer={"nope": StandardScaler()}
+        )
+
+
+def test_descriptor_transformer_without_descriptors_is_an_error(small_masker):
+    """Asking for descriptor handling on a map-only feature set is a mistake."""
+    ids = [f"s{idx}-t" for idx in range(4)]
+    map_only = FeatureSet(
+        sparse.csr_matrix(np.eye(4)), ids=ids, study_ids=ids, masker=small_masker
+    )
+
+    with pytest.raises(ValueError, match="no descriptor columns"):
+        map_only.make_preprocessor(TruncatedSVD(n_components=2), SimpleImputer())
 
 
 def test_map_only_features_need_no_preprocessor(small_masker):

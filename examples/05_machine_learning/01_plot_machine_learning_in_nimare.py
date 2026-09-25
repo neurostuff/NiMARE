@@ -146,6 +146,12 @@ except ValueError as exc:
 # :attr:`~nimare.ml.FeatureSet.descriptor_columns` are public if you would
 # rather write it out. With map features alone, as above, there is nothing to
 # keep the reducer away from and the method hands the reducer straight back.
+#
+# One transformer covers every descriptor. When they want different treatment,
+# pass a mapping instead -- ``{"sample_sizes": SimpleImputer(), "year":
+# StandardScaler()}`` -- and the descriptors it does not name are passed
+# through, in the order they came in. Descriptor columns are handed over dense,
+# which is what most transformers expect of a few numeric columns.
 with_descriptors = FeatureSet.from_studyset(
     studyset,
     kernel_transformer=MKDAKernel(r=10),

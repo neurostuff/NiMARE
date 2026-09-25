@@ -246,14 +246,25 @@ map block denser than scikit-learn's default threshold is not quietly
 densified. It accepts a transformer, a transformer class built from
 `**reducer_params`, or an atlas.
 
+`descriptor_transformer` takes one transformer for the whole descriptor block,
+or a mapping from descriptor name to transformer when the descriptors need
+different treatment. Descriptors the mapping does not name are passed through,
+the column order is the one they came in with, and a name that is not a
+descriptor raises and lists the ones that are. Descriptor transformers are
+handed their columns dense -- the block is stored dense and is a few numeric
+columns, and `StandardScaler` will not centre sparse data -- while the map
+block stays sparse. Asking for descriptor handling on a feature set that has no
+descriptor columns must raise rather than be ignored.
+
 **When there are no descriptor columns it must return the reducer itself.**
 There is nothing to keep the reducer away from, and a pipeline step that wraps
 one transformer in a `ColumnTransformer` over every column is ceremony. The
 documented workflow for map-only feature sets is to put a scikit-learn
 transformer straight into the pipeline.
 
-`map_columns` and `descriptor_columns` are public so that the two-block recipe
-can be written by hand, and the docstring shows it written out.
+`map_columns`, `descriptor_columns` and `descriptor_names` are public so that
+the two-block recipe can be written by hand, and the docstring shows it written
+out.
 
 `fit_transform_maps` requires a built transformer: passing an atlas must raise
 and name `AtlasAggregator(atlas, masker=features.masker)`, because the fitted

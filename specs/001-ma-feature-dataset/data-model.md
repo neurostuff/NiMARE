@@ -128,6 +128,7 @@ and an optional target.
 - `masker`: the masker defining voxel order for unreduced map features.
 - `provenance`: conversion settings and source Studyset details.
 - `map_columns`, `descriptor_columns`, `shape`: column slices and dimensions.
+- `descriptor_names`: the descriptor columns, in order.
 
 The blocks are the source of truth and `features` is derived from them, so the
 combined matrix cannot disagree with its parts. `features` and `feature_names`
@@ -186,6 +187,9 @@ returning anything, when the study count cannot serve the request.
 Returns an unfitted `ColumnTransformer` that reduces the map columns and
 handles the descriptor columns separately, with `sparse_threshold=1.0`, and
 the reducer itself when there are no descriptor columns to keep it away from.
+`descriptor_transformer` is one transformer for the whole block, or a mapping
+from descriptor name to transformer; either way those columns are handed over
+dense.
 `map_columns` and `descriptor_columns` are public, so the same thing can be
 written by hand.
 

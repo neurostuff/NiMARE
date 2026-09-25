@@ -43,6 +43,8 @@ from sklearn.base import BaseEstimator, TransformerMixin, clone
 from sklearn.compose import ColumnTransformer
 from sklearn.exceptions import NotFittedError
 from sklearn.model_selection import GroupShuffleSplit
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import FunctionTransformer
 from sklearn.utils import Bunch
 from sklearn.utils.validation import check_is_fitted
 
@@ -215,6 +217,48 @@ def _jsonable(value):
 
 
 # ------------------------------------------------------------- the container
+
+
+def _to_dense(block):
+    """Return a dense view of a feature block."""
+    return block.toarray() if sparse.issparse(block) else block
+
+
+def _dense_step(transformer):
+    """Wrap a descriptor transformer so that it is handed dense columns.
+
+    The descriptor block is stored dense and is a handful of numeric columns,
+    but it arrives here sparse because it sits beside the voxels in one matrix.
+    Most scikit-learn transformers expect dense input for this kind of column --
+    ``StandardScaler`` refuses to centre sparse data at all -- so the block is
+    densified for them. The map block stays sparse.
+    """
+    if isinstance(transformer, str):
+        return transformer
+    return Pipeline(
+        [
+            ("to_dense", FunctionTransformer(_to_dense, accept_sparse=True)),
+            ("transform", transformer),
+        ]
+    )
+
+
+def _is_passthrough(transformer):
+    """Report whether a transformer argument asks for nothing to be done."""
+    return isinstance(transformer, str) and transformer == "passthrough"
+
+
+def _step_name(name, position, used):
+    """Return a ColumnTransformer step name, which may not contain ``__``.
+
+    Annotation fields often do -- ``Neurosynth_TFIDF__pain`` -- so the name is
+    softened, and disambiguated by position if softening made it collide.
+    """
+    safe = name.replace("__", "_") or f"descriptor_{position}"
+    if safe in used:
+        safe = f"{safe}_{position}"
+    used.add(safe)
+    return safe
 
 
 def _hstack(left, right):
@@ -525,6 +569,11 @@ class FeatureSet(NiMAREBase):
         return slice(self._map_features.shape[1], self.shape[1])
 
     @property
+    def descriptor_names(self):
+        """:obj:`list` of :obj:`str`: the descriptor columns, in order."""
+        return list(self._descriptor_names or [])
+
+    @property
     def feature_names(self):
         """:obj:`list` of :obj:`str`: names for :attr:`features`, in column order.
 
@@ -672,10 +721,15 @@ class FeatureSet(NiMAREBase):
             ``**reducer_params``, any atlas :class:`AtlasAggregator` accepts
             (this feature set supplies the voxel order), or None to leave the
             map columns alone.
-        descriptor_transformer : estimator or :obj:`str`, default="passthrough"
-            What to apply to the descriptor columns, for example
-            :class:`~sklearn.impute.SimpleImputer` when descriptors were kept
-            with missing values.
+        descriptor_transformer : estimator, :obj:`str` or :obj:`dict`, default="passthrough"
+            What to apply to the descriptor columns: one transformer for all of
+            them, for example :class:`~sklearn.impute.SimpleImputer` when
+            descriptors were kept with missing values, or a mapping from
+            descriptor name to transformer when they need different treatment.
+            Descriptors the mapping does not name are passed through, and the
+            column order is the one they came in with. Transformers are handed
+            the descriptor columns dense, since that is what most of them
+            expect of a handful of numeric columns; the map block stays sparse.
         **reducer_params
             Passed to ``map_reducer`` when it is a class.
 
@@ -694,6 +748,13 @@ class FeatureSet(NiMAREBase):
         >>> pipeline = make_pipeline(  # doctest: +SKIP
         ...     features.make_preprocessor(fetch_atlas_difumo(dimension=64)),
         ...     LogisticRegression(),
+        ... )
+        >>> preprocessor = features.make_preprocessor(  # doctest: +SKIP
+        ...     TruncatedSVD(n_components=50),
+        ...     descriptor_transformer={
+        ...         "sample_sizes": SimpleImputer(strategy="median"),
+        ...         "year": StandardScaler(),
+        ...     },
         ... )
 
         Notes
@@ -716,15 +777,53 @@ class FeatureSet(NiMAREBase):
             reducer = _resolve_map_reducer(map_reducer, masker=self.masker, **reducer_params)
 
         if self._descriptor_features is None:
+            if not _is_passthrough(descriptor_transformer):
+                raise ValueError(
+                    "This feature set has no descriptor columns, so there is nothing for "
+                    "descriptor_transformer to act on."
+                )
             return reducer
 
         return ColumnTransformer(
             [
                 ("maps", reducer, self.map_columns),
-                ("descriptors", descriptor_transformer, self.descriptor_columns),
+                (
+                    "descriptors",
+                    self._descriptor_step(descriptor_transformer),
+                    self.descriptor_columns,
+                ),
             ],
             sparse_threshold=1.0,
         )
+
+    def _descriptor_step(self, descriptor_transformer):
+        """Return the step applied to the descriptor block."""
+        if not isinstance(descriptor_transformer, Mapping):
+            return _dense_step(descriptor_transformer)
+
+        names = self.descriptor_names
+        unknown = [name for name in descriptor_transformer if name not in names]
+        if unknown:
+            raise ValueError(
+                f"No descriptor called {_preview(unknown)}. This feature set has "
+                f"{_preview(names)}."
+            )
+
+        # Column indices here are relative to the descriptor block, and every
+        # descriptor gets a step of its own so the columns come out in the order they
+        # went in rather than in the order the mapping happened to name them.
+        used = set()
+        steps = []
+        for position, name in enumerate(names):
+            steps.append(
+                (
+                    _step_name(name, position, used),
+                    _dense_step(descriptor_transformer.get(name, "passthrough")),
+                    [position],
+                )
+            )
+
+        return ColumnTransformer(steps, sparse_threshold=1.0)
 
     # -------------------------------------------------------- map reduction
 
