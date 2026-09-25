@@ -364,5 +364,8 @@ does.
 
 The same review also replaced the names: the container is `FeatureSet` and
 conversion is its named constructor `FeatureSet.from_studyset`, with the
-conversion helper class internal. `interface-design.md` section 13 records why, including the caching
+conversion helper class internal. The reducer factory was dropped afterwards:
+map features are a sparse matrix, so scikit-learn's own transformers reduce
+them under their own names, and `AtlasAggregator` is the only reducer NiMARE
+adds. `interface-design.md` section 13 records why, including the caching
 gap that rename work uncovered.

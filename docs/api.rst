@@ -292,9 +292,6 @@ historical import path and adds nothing of its own.
 
    ml.FeatureSet
    ml.AtlasAggregator
-   :template: function.rst
-
-   ml.make_map_reducer
 
 
 .. _api_extract_ref:

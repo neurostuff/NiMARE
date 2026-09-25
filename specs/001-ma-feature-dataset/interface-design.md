@@ -756,3 +756,35 @@ workflow reads as one story -- convert, export, split, classify, reduce -- and
 splitting it across two pages made the second repeat the first's setup. The
 numeric prefix stays because the gallery only executes files matching
 `NN_plot_`.
+
+---
+
+## 14. Follow-up: stop re-naming scikit-learn (2026-09-25)
+
+`make_map_reducer("truncated_svd", n_components=50)` was a second vocabulary
+for `TruncatedSVD(n_components=50)`, and `features.make_preprocessor(...)` read
+as required ceremony in the example even where it wrapped a single transformer
+in a `ColumnTransformer` over every column. Both are gone:
+
+- **`make_map_reducer` is removed**, along with the workflow names. Map
+  features are a sparse matrix; scikit-learn's transformers reduce them, under
+  scikit-learn's names, imported from scikit-learn. The module's public surface
+  is `FeatureSet` and `AtlasAggregator` -- the latter because it is the one
+  reducer that has to know which voxel each column is, and because resolving an
+  atlas (fetched Bunch, image, path, fetcher name, masker) is work nilearn does
+  not do for you.
+- **`make_preprocessor` returns the reducer itself when there are no descriptor
+  columns.** It is a `ColumnTransformer` helper, and a `ColumnTransformer` over
+  one block is not worth the indirection. It keeps the two things worth keeping
+  for the two-block case: the column boundary, and `sparse_threshold=1.0`,
+  since scikit-learn's default of 0.3 would densify a map block above 30%
+  density -- about 1.6 GB at 228k columns. `map_columns` and
+  `descriptor_columns` stay public so the recipe can be written by hand, and
+  the docstring writes it out.
+- `fit_transform_maps` rejects a bare atlas with a message naming
+  `AtlasAggregator(atlas, masker=features.masker)`, since `transform_maps`
+  needs the fitted aggregator for the held-out rows.
+
+The example now leads with `make_pipeline(TruncatedSVD(50), LogisticRegression())`
+on `bunch.data`, and reaches for `make_preprocessor` only in the section that
+has descriptor columns to protect.

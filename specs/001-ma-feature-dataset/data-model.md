@@ -184,9 +184,10 @@ returning anything, when the study count cannot serve the request.
 #### `make_preprocessor(map_reducer, descriptor_transformer, **reducer_params)`
 
 Returns an unfitted `ColumnTransformer` that reduces the map columns and
-handles the descriptor columns separately, with `sparse_threshold=1.0`. This is
-the piece that goes into a `Pipeline`, where scikit-learn fits it on training
-rows only.
+handles the descriptor columns separately, with `sparse_threshold=1.0`, and
+the reducer itself when there are no descriptor columns to keep it away from.
+`map_columns` and `descriptor_columns` are public, so the same thing can be
+written by hand.
 
 #### `fit_transform_maps(reducer)` / `transform_maps(reducer)`
 
@@ -200,38 +201,34 @@ reduction is recorded in `provenance["map_reductions"]`.
 
 Row selection by boolean mask or positions, and an independent copy.
 
-## Function: `make_map_reducer(reducer, masker=None, **kwargs)`
+## Reduction: scikit-learn transformers, plus one class
 
-Public function in `nimare.ml` returning an unfitted scikit-learn transformer
-for whatever names or describes a reduction:
-
-- a named workflow: `variance_threshold` (`VarianceThreshold`; sparse in,
-  sparse out), `truncated_svd` (`TruncatedSVD`), or `atlas_aggregation`, whose
-  atlas arrives through the `atlas` keyword;
-- any scikit-learn transformer, used as given, or transformer class, built from
-  `**kwargs`;
-- any atlas nilearn can load, wrapped in an `AtlasAggregator`.
+Map features are an ordinary sparse matrix, so ordinary scikit-learn
+transformers reduce them -- `TruncatedSVD`, `VarianceThreshold`,
+`SparseRandomProjection`, anything that accepts sparse input -- imported from
+scikit-learn and used as scikit-learn documents them. The module adds no names
+for them.
 
 **Validation Rules**
 
-- A string that is not a workflow raises `ValueError`; an object that is neither
-  a transformer nor an atlas raises `TypeError`.
-- Parameters alongside a built transformer raise rather than being ignored.
-- Atlas aggregation requires the source masker, which
-  `FeatureSet.make_preprocessor` supplies from the dataset.
-- Unreduced map features are sparse; a reducer that cannot read sparse input
-  says so when it is fitted.
+- A reducer that cannot read sparse input says so when it is fitted.
+- `FeatureSet.make_preprocessor` keeps a reducer off the descriptor columns,
+  and returns the reducer itself when there are none.
+- `fit_transform_maps` requires a built transformer; an atlas passed there
+  raises and names `AtlasAggregator`.
 
 ## Class: `AtlasAggregator`
 
-Public scikit-learn transformer in `nimare.ml`. Takes any atlas nilearn can
-load -- a fetched atlas `Bunch`, a 3D or 4D atlas image, a path, the name of a
-`nilearn.datasets.fetch_atlas_*` function with its `atlas_kwargs`, or a masker
-the caller configured -- resolves it to a `NiftiMapsMasker` (4D) or
-`NiftiLabelsMasker` (3D), fits it in the source mask's space, and summarises
-batches of rows back through nilearn, so region definitions, resampling and
-aggregation strategy remain nilearn's. Reports region names through
-`get_feature_names_out()`, preferring the atlas's own labels.
+Public scikit-learn transformer in `nimare.ml`, and the one reducer NiMARE
+adds, because it is the one that has to know which voxel each column is. Takes
+any atlas nilearn can load -- a fetched atlas `Bunch`, a 3D or 4D atlas image, a
+path, the name of a `nilearn.datasets.fetch_atlas_*` function with its
+`atlas_kwargs`, or a masker the caller configured -- resolves it to a
+`NiftiMapsMasker` (4D) or `NiftiLabelsMasker` (3D), fits it in the source
+mask's space, and summarises batches of rows back through nilearn, so region
+definitions, resampling and aggregation strategy remain nilearn's. Reports
+region names through `get_feature_names_out()`, preferring the atlas's own
+labels, and counting the columns the masker actually returns.
 
 ## Hierarchy Summary
 
@@ -252,9 +249,9 @@ FeatureSet
 |-- fit_transform_maps(reducer) / transform_maps(reducer)
 `-- select_analyses(rows) / copy()
 
-make_map_reducer(reducer, masker=None, **kwargs) -> sklearn transformer
-|-- a named workflow, or any sklearn transformer or transformer class
-`-- any nilearn atlas -> AtlasAggregator
+Reduction
+|-- any scikit-learn transformer that reads sparse input, used directly
+`-- AtlasAggregator(atlas, masker=features.masker) for atlas regions
 ```
 
 ## State Transitions

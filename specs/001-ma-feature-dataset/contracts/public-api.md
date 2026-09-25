@@ -12,9 +12,10 @@ row.
 `nimare.ml`
 
 The module is exported from `nimare/__init__.py` and documented in
-`docs/api.rst`. Its public names are `FeatureSet`, `AtlasAggregator` and
-`make_map_reducer`: one container, which builds itself from a Studyset, plus
-the reduction helpers.
+`docs/api.rst`. Its public names are `FeatureSet`, which builds itself from a
+Studyset, and `AtlasAggregator`. Every other reduction is an ordinary
+scikit-learn transformer: the module must not re-export scikit-learn under
+NiMARE names.
 
 ## Division of Responsibility
 
@@ -196,34 +197,19 @@ Default field behavior:
   fields, require an explicit `target_transformer` to become a target, and
   cannot become descriptor features.
 
-## Reduction Helpers
+## Reduction
 
-`make_map_reducer(reducer, masker=None, **kwargs)` returns an unfitted
-scikit-learn transformer. It is deliberately permissive about what names a
-reduction, because the module should not stand between a researcher and either
-of the libraries underneath it:
+Map features are an ordinary sparse matrix, so ordinary scikit-learn
+transformers reduce them: `TruncatedSVD`, `VarianceThreshold`,
+`SparseRandomProjection` and anything else that accepts sparse input, used as
+scikit-learn documents them and imported from scikit-learn. A reducer that
+cannot read sparse input (`PCA`, for one) fails when it is fitted, with
+scikit-learn's own message. There is no NiMARE vocabulary for any of this, and
+no factory that re-names it.
 
-- a named workflow -- `"variance_threshold"` (`VarianceThreshold`),
-  `"truncated_svd"` (`TruncatedSVD`), or `"atlas_aggregation"`, which takes its
-  atlas through the `atlas` keyword;
-- any scikit-learn transformer, used as given;
-- any scikit-learn transformer class, built from `**kwargs`;
-- any atlas nilearn can load, wrapped in an `AtlasAggregator`.
-
-A name that is not a workflow raises `ValueError` and names the workflows and
-the alternatives to a name. An object that is neither a transformer nor an
-atlas raises `TypeError`. Parameters passed alongside an already-built
-transformer raise, rather than being silently ignored.
-
-`FeatureSet.make_preprocessor` takes the same forms and supplies the
-dataset's masker, so an atlas needs nothing else from the caller.
-
-Unreduced map features are sparse, so a reducer that cannot read sparse input
-(`PCA`, for one) fails when it is fitted, with scikit-learn's own message.
-That is documented rather than guarded: which reducers are appropriate is the
-researcher's call.
-
-`AtlasAggregator` is public and accepts any atlas nilearn can load:
+`AtlasAggregator` is the one reducer the module adds, because it is the one
+that has to know which voxel each column is. It accepts any atlas nilearn can
+load:
 
 - a `Bunch` from a `nilearn.datasets.fetch_atlas_*` function, read for its
   `maps` and, when present, its `labels`;
@@ -250,6 +236,28 @@ them rather than trusting either attribute, and must fall back to positional
 names when the atlas's own labels cannot be matched to the surviving regions.
 A feature matrix is comparable across environments only when the nilearn
 version is, which the docstring says.
+
+### Applying a reducer to the map columns only
+
+`FeatureSet.make_preprocessor(map_reducer, descriptor_transformer="passthrough",
+**reducer_params)` is a `ColumnTransformer` with the column boundary filled in,
+the masker bound into an atlas reducer, and `sparse_threshold=1.0` so that a
+map block denser than scikit-learn's default threshold is not quietly
+densified. It accepts a transformer, a transformer class built from
+`**reducer_params`, or an atlas.
+
+**When there are no descriptor columns it must return the reducer itself.**
+There is nothing to keep the reducer away from, and a pipeline step that wraps
+one transformer in a `ColumnTransformer` over every column is ceremony. The
+documented workflow for map-only feature sets is to put a scikit-learn
+transformer straight into the pipeline.
+
+`map_columns` and `descriptor_columns` are public so that the two-block recipe
+can be written by hand, and the docstring shows it written out.
+
+`fit_transform_maps` requires a built transformer: passing an atlas must raise
+and name `AtlasAggregator(atlas, masker=features.masker)`, because the fitted
+aggregator is what `transform_maps` needs for the held-out rows.
 
 ## Documentation Contract
 

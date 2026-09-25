@@ -12,7 +12,7 @@ from nilearn.maskers import NiftiLabelsMasker, NiftiMapsMasker
 from scipy import sparse
 from sklearn.base import clone
 from sklearn.compose import ColumnTransformer
-from sklearn.decomposition import PCA, TruncatedSVD
+from sklearn.decomposition import TruncatedSVD
 from sklearn.exceptions import NotFittedError
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.impute import SimpleImputer
@@ -26,7 +26,7 @@ from sklearn.utils import Bunch
 from nimare import ml
 from nimare.generate import create_coordinate_studyset
 from nimare.meta.kernel import MKDAKernel
-from nimare.ml import AtlasAggregator, FeatureSet, make_map_reducer
+from nimare.ml import AtlasAggregator, FeatureSet
 from nimare.nimads import Studyset
 from nimare.utils import get_masker, get_template
 
@@ -379,7 +379,7 @@ def test_make_preprocessor_reduces_only_map_columns(ma_feature_dataset):
     """Descriptor columns pass through the preprocessor untouched."""
     dataset = ma_feature_dataset
     preprocessor = dataset.make_preprocessor(
-        "truncated_svd", n_components=1, random_state=RANDOM_SEED
+        TruncatedSVD(n_components=1, random_state=RANDOM_SEED)
     )
 
     assert isinstance(preprocessor, ColumnTransformer)
@@ -396,7 +396,7 @@ def test_make_preprocessor_reduces_only_map_columns(ma_feature_dataset):
 def test_make_preprocessor_keeps_unreduced_features_sparse(ma_feature_dataset):
     """A sparse-preserving reducer must not be densified on the way through."""
     dataset = ma_feature_dataset
-    preprocessor = dataset.make_preprocessor("variance_threshold", threshold=0.0)
+    preprocessor = dataset.make_preprocessor(VarianceThreshold(threshold=0.0))
 
     transformed = preprocessor.fit_transform(dataset.features)
 
@@ -417,7 +417,7 @@ def test_make_preprocessor_accepts_transformers_and_passthrough(ma_feature_datas
     assert passthrough.transformers[0][1] == "passthrough"
     assert passthrough.fit_transform(dataset.features).shape == dataset.features.shape
 
-    with pytest.raises(ValueError, match="only used when the reducer is named"):
+    with pytest.raises(ValueError, match="only used when the reducer is given as a class"):
         dataset.make_preprocessor(TruncatedSVD(), n_components=1)
 
 
@@ -425,7 +425,7 @@ def test_dataset_works_in_sklearn_model_selection(ma_feature_dataset):
     """The exported arrays drive grouped cross-validation and a grid search."""
     dataset = ma_feature_dataset
     pipeline = make_pipeline(
-        dataset.make_preprocessor("truncated_svd", n_components=1, random_state=RANDOM_SEED),
+        dataset.make_preprocessor(TruncatedSVD(n_components=1, random_state=RANDOM_SEED)),
         Ridge(),
     )
     cv = GroupKFold(n_splits=3)
@@ -443,7 +443,7 @@ def test_fit_transform_maps_then_transform_maps(ma_feature_dataset):
     """A reducer is fitted on train rows and reused on held-out rows."""
     dataset = ma_feature_dataset
     train, test = dataset.split(test_size=0.34, random_state=RANDOM_SEED)
-    reducer = make_map_reducer("truncated_svd", n_components=1, random_state=RANDOM_SEED)
+    reducer = TruncatedSVD(n_components=1, random_state=RANDOM_SEED)
 
     reduced_train = train.fit_transform_maps(reducer)
     reduced_test = test.transform_maps(reducer)
@@ -476,50 +476,89 @@ def test_fit_transform_maps_rejects_row_changes(ma_feature_dataset):
 @pytest.mark.parametrize(
     ("reducer", "kwargs", "expected_type"),
     [
-        ("variance_threshold", {"threshold": 0.0}, VarianceThreshold),
-        ("truncated_svd", {"n_components": 2}, TruncatedSVD),
+        (VarianceThreshold(threshold=0.0), {}, VarianceThreshold),
+        (TruncatedSVD(n_components=2), {}, TruncatedSVD),
         (SparseRandomProjection, {"n_components": 2}, SparseRandomProjection),
-        (PCA(n_components=2), {}, PCA),
     ],
 )
-def test_make_map_reducer_builds_sklearn_transformers(reducer, kwargs, expected_type):
-    """A workflow name, a transformer class and a transformer all resolve."""
-    built = make_map_reducer(reducer, **kwargs)
+def test_make_preprocessor_takes_scikit_learn_transformers(
+    ma_feature_dataset, reducer, kwargs, expected_type
+):
+    """A transformer, or a transformer class plus its parameters, both resolve."""
+    preprocessor = ma_feature_dataset.make_preprocessor(reducer, **kwargs)
 
+    built = preprocessor.transformers[0][1]
     assert isinstance(built, expected_type)
-    assert clone(built) is not built
-    if kwargs:
-        assert built.get_params()[next(iter(kwargs))] == next(iter(kwargs.values()))
+    for name, value in kwargs.items():
+        assert built.get_params()[name] == value
 
 
-def test_make_map_reducer_returns_a_built_transformer_unchanged():
-    """An instance is used as given, and cannot be reconfigured in passing."""
+def test_make_preprocessor_uses_a_built_transformer_as_given(ma_feature_dataset):
+    """An instance is used as it is, and cannot be reconfigured in passing."""
     reducer = SparseRandomProjection(n_components=3)
 
-    assert make_map_reducer(reducer) is reducer
+    assert ma_feature_dataset.make_preprocessor(reducer).transformers[0][1] is reducer
 
-    with pytest.raises(ValueError, match="only used when the reducer is named"):
-        make_map_reducer(reducer, n_components=4)
+    with pytest.raises(ValueError, match="only used when the reducer is given as a class"):
+        ma_feature_dataset.make_preprocessor(reducer, n_components=4)
 
 
-def test_make_map_reducer_rejects_unknown_workflows():
-    """A typo names the workflows that do exist, and the alternatives to a name."""
-    with pytest.raises(ValueError, match="Unknown map reducer"):
-        make_map_reducer("pca")
+def test_make_preprocessor_rejects_things_that_are_not_reducers(ma_feature_dataset):
+    """The message names what a reducer can be, including the workflows it replaced."""
+    with pytest.raises(TypeError, match="TruncatedSVD"):
+        ma_feature_dataset.make_preprocessor("truncated_svd")
 
     with pytest.raises(TypeError, match="is not a map reducer"):
-        make_map_reducer(object())
+        ma_feature_dataset.make_preprocessor(object())
 
 
-def test_make_map_reducer_atlas_requires_source_masker(small_masker):
-    """Atlas aggregation needs the masker that defines the voxel order."""
+def test_map_only_features_need_no_preprocessor(small_masker):
+    """With nothing to keep the reducer away from, the reducer is returned as it is."""
+    map_only = FeatureSet(
+        sparse.csr_matrix(np.eye(4)),
+        ids=[f"s{idx}-t" for idx in range(4)],
+        study_ids=[f"s{idx}" for idx in range(4)],
+        masker=small_masker,
+    )
+    reducer = TruncatedSVD(n_components=2)
+
+    assert map_only.make_preprocessor(reducer) is reducer
+
+
+def test_atlas_reducer_takes_the_maskers_voxel_order_from_the_feature_set(
+    ma_feature_dataset, small_masker
+):
+    """An atlas, or an aggregator built without one, gets the feature set's masker."""
     atlas = nib.Nifti1Image(np.ones((4, 4, 4), dtype=np.int16), small_masker.mask_img.affine)
 
-    with pytest.raises(ValueError, match="source masker"):
-        make_map_reducer(atlas)
+    from_atlas = ma_feature_dataset.make_preprocessor(atlas).transformers[0][1]
+    unbound = AtlasAggregator(atlas=atlas)
+    from_aggregator = ma_feature_dataset.make_preprocessor(unbound).transformers[0][1]
 
-    with pytest.raises(ValueError, match="source masker"):
-        make_map_reducer("atlas_aggregation", atlas=atlas)
+    assert from_atlas.masker is ma_feature_dataset.masker
+    assert from_aggregator.masker is ma_feature_dataset.masker
+    assert unbound.masker is None  # the caller's object is left alone
+
+
+def test_atlas_reduction_needs_a_masker_somewhere(small_masker):
+    """A feature set without a masker cannot place an atlas over its columns."""
+    atlas = nib.Nifti1Image(np.ones((4, 4, 4), dtype=np.int16), small_masker.mask_img.affine)
+    maskerless = FeatureSet(
+        sparse.csr_matrix(np.eye(4)),
+        ids=[f"s{idx}-t" for idx in range(4)],
+        study_ids=[f"s{idx}" for idx in range(4)],
+    )
+
+    with pytest.raises(ValueError, match="voxel order"):
+        maskerless.make_preprocessor(atlas)
+
+
+def test_fit_transform_maps_asks_for_a_built_aggregator(ma_feature_dataset, small_masker):
+    """An atlas has to become an aggregator first, so the fitted one can be reused."""
+    atlas = nib.Nifti1Image(np.ones((4, 4, 4), dtype=np.int16), small_masker.mask_img.affine)
+
+    with pytest.raises(TypeError, match="AtlasAggregator"):
+        ma_feature_dataset.fit_transform_maps(atlas)
 
 
 def _atlas_images(affine):
@@ -556,7 +595,7 @@ def test_atlas_aggregator_matches_nilearn(small_masker, atlas_features, atlas_ki
         atlas_img = maps_img
         reference = NiftiMapsMasker(maps_img=maps_img, resampling_target="data", reports=False)
 
-    reducer = clone(make_map_reducer(atlas_img, masker=small_masker, batch_size=2))
+    reducer = clone(AtlasAggregator(atlas=atlas_img, masker=small_masker, batch_size=2))
     transformed = reducer.fit_transform(atlas_features)
 
     reference.set_params(mask_img=small_masker.mask_img)
@@ -574,7 +613,7 @@ def test_atlas_aggregator_accepts_a_fetched_atlas(small_masker, atlas_features):
     _, maps_img = _atlas_images(small_masker.mask_img.affine)
     atlas = Bunch(maps=maps_img, labels=["Background", "left", "right"])
 
-    reducer = make_map_reducer(atlas, masker=small_masker).fit(atlas_features)
+    reducer = AtlasAggregator(atlas=atlas, masker=small_masker).fit(atlas_features)
 
     assert isinstance(reducer.atlas_masker_, NiftiMapsMasker)
     np.testing.assert_array_equal(reducer.get_feature_names_out(), ["left", "right"])
@@ -585,7 +624,7 @@ def test_atlas_aggregator_accepts_a_labels_frame(small_masker, atlas_features):
     _, maps_img = _atlas_images(small_masker.mask_img.affine)
     labels = pd.DataFrame({"component": [1, 2], "difumo_names": ["first", "second"]})
 
-    reducer = make_map_reducer(Bunch(maps=maps_img, labels=labels), masker=small_masker)
+    reducer = AtlasAggregator(atlas=Bunch(maps=maps_img, labels=labels), masker=small_masker)
 
     np.testing.assert_array_equal(
         reducer.fit(atlas_features).get_feature_names_out(), ["first", "second"]
@@ -599,7 +638,7 @@ def test_atlas_aggregator_accepts_a_path(small_masker, atlas_features, tmp_path)
     labels_img.to_filename(path)
 
     for atlas in (path, str(path)):
-        reducer = make_map_reducer("atlas_aggregation", masker=small_masker, atlas=atlas)
+        reducer = AtlasAggregator(atlas=atlas, masker=small_masker)
         assert reducer.fit_transform(atlas_features).shape == (6, 2)
         assert isinstance(reducer.atlas_masker_, NiftiLabelsMasker)
 
@@ -617,11 +656,8 @@ def test_atlas_aggregator_accepts_a_fetcher_name(small_masker, atlas_features, m
 
     monkeypatch.setattr(datasets, "fetch_atlas_pretend", fake_fetcher, raising=False)
 
-    reducer = make_map_reducer(
-        "atlas_aggregation",
-        masker=small_masker,
-        atlas="pretend",
-        atlas_kwargs={"dimension": 2},
+    reducer = AtlasAggregator(
+        atlas="pretend", masker=small_masker, atlas_kwargs={"dimension": 2}
     ).fit(atlas_features)
 
     assert calls == {"dimension": 2}
@@ -642,7 +678,7 @@ def test_atlas_aggregator_accepts_a_prebuilt_masker(small_masker, atlas_features
         reports=False,
     )
 
-    reducer = make_map_reducer(atlas_masker, masker=small_masker).fit(atlas_features)
+    reducer = AtlasAggregator(atlas=atlas_masker, masker=small_masker).fit(atlas_features)
 
     assert reducer.atlas_masker_.strategy == "sum"
     assert atlas_masker.mask_img is None
@@ -702,7 +738,7 @@ def test_atlas_aggregator_names_match_the_columns_it_returns(
         maps[3, 3, 3, 2] = 1.0  # outside the mask
         atlas = Bunch(maps=nib.Nifti1Image(maps, affine), labels=["in_a", "in_b", "outside"])
 
-    reducer = make_map_reducer(atlas, masker=small_masker).fit(atlas_features)
+    reducer = AtlasAggregator(atlas=atlas, masker=small_masker).fit(atlas_features)
     names = reducer.get_feature_names_out()
 
     assert len(names) == reducer.transform(atlas_features).shape[1]
@@ -719,7 +755,7 @@ def test_atlas_aggregator_names_reduced_features(small_masker, atlas_features):
     )
 
     reduced = dataset.fit_transform_maps(
-        make_map_reducer(Bunch(maps=labels_img, labels=["one", "two"]), masker=small_masker)
+        AtlasAggregator(atlas=Bunch(maps=labels_img, labels=["one", "two"]), masker=small_masker)
     )
 
     assert reduced.map_features.shape == (6, 2)
@@ -741,7 +777,7 @@ def test_dataset_reduces_with_any_sklearn_transformer(ma_feature_dataset):
 
 
 def test_make_preprocessor_accepts_an_atlas(small_masker, atlas_features):
-    """The dataset supplies the voxel order, so an atlas needs nothing else."""
+    """The feature set supplies the voxel order, so an atlas needs nothing else."""
     labels_img, _ = _atlas_images(small_masker.mask_img.affine)
     dataset = FeatureSet(
         atlas_features,
@@ -750,10 +786,12 @@ def test_make_preprocessor_accepts_an_atlas(small_masker, atlas_features):
         masker=small_masker,
     )
 
-    preprocessor = dataset.make_preprocessor(labels_img)
+    # Map-only features: there is nothing to keep the aggregator away from.
+    reducer = dataset.make_preprocessor(labels_img)
 
-    assert isinstance(preprocessor.transformers[0][1], AtlasAggregator)
-    assert preprocessor.fit_transform(dataset.features).shape == (6, 2)
+    assert isinstance(reducer, AtlasAggregator)
+    assert reducer.masker is small_masker
+    assert reducer.fit_transform(dataset.features).shape == (6, 2)
 
 
 # ------------------------------------------------------------------ extraction
@@ -761,7 +799,7 @@ def test_make_preprocessor_accepts_an_atlas(small_masker, atlas_features):
 
 def test_public_surface_is_one_container_and_its_helpers():
     """Users meet one container; the class that converts a Studyset is internal."""
-    assert set(ml.__all__) == {"AtlasAggregator", "FeatureSet", "make_map_reducer"}
+    assert set(ml.__all__) == {"AtlasAggregator", "FeatureSet"}
     assert not any(name.endswith("Extractor") for name in dir(ml) if not name.startswith("_"))
     # The container is data, not an estimator: nothing here is fitted on a Studyset.
     assert not hasattr(FeatureSet, "fit")
@@ -1130,7 +1168,7 @@ def test_end_to_end_classification(ml_studyset):
     bunch = features.to_sklearn()
 
     pipeline = make_pipeline(
-        features.make_preprocessor("truncated_svd", n_components=2, random_state=RANDOM_SEED),
+        features.make_preprocessor(TruncatedSVD(n_components=2, random_state=RANDOM_SEED)),
         LogisticRegression(max_iter=500),
     )
     scores = cross_val_score(

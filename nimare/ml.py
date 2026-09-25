@@ -17,8 +17,9 @@ must be fit on training rows only, which is what a
 :meth:`FeatureSet.make_preprocessor` builds the piece that goes in it.
 
 The public surface is :meth:`FeatureSet.from_studyset`, which builds the
-container, plus :func:`make_map_reducer` and :class:`AtlasAggregator` for
-reducing its voxelwise features.
+container, and :class:`AtlasAggregator`, which reduces its voxelwise features
+over the regions of an atlas. Every other reduction is an ordinary
+scikit-learn transformer, used as scikit-learn documents it.
 """
 
 from __future__ import annotations
@@ -40,9 +41,7 @@ from nilearn.masking import unmask
 from scipy import sparse
 from sklearn.base import BaseEstimator, TransformerMixin, clone
 from sklearn.compose import ColumnTransformer
-from sklearn.decomposition import TruncatedSVD
 from sklearn.exceptions import NotFittedError
-from sklearn.feature_selection import VarianceThreshold
 from sklearn.model_selection import GroupShuffleSplit
 from sklearn.utils import Bunch
 from sklearn.utils.validation import check_is_fitted
@@ -57,15 +56,10 @@ LGR = logging.getLogger(__name__)
 __all__ = [
     "AtlasAggregator",
     "FeatureSet",
-    "make_map_reducer",
 ]
 
 #: Studyset tables a descriptor or target field may be selected from.
 FIELD_SOURCES = ("metadata", "annotations", "texts")
-
-#: Reduction workflows :func:`make_map_reducer` knows by name. Any other
-#: scikit-learn transformer, and any nilearn atlas, can be passed directly.
-MAP_REDUCERS = ("variance_threshold", "truncated_svd", "atlas_aggregation")
 
 _SOURCE_ALIASES = {
     "annotations_df": "annotations",
@@ -299,7 +293,7 @@ class FeatureSet(NiMAREBase):
 
     See Also
     --------
-    make_map_reducer : Reduction workflows for the voxelwise map features.
+    AtlasAggregator : Reduce the voxelwise features over the regions of an atlas.
     """
 
     def __init__(
@@ -465,7 +459,7 @@ class FeatureSet(NiMAREBase):
 
         See Also
         --------
-        make_map_reducer : Reduction workflows for the voxelwise map features.
+        AtlasAggregator : Reduce the map features over the regions of an atlas.
         """
         return _FeatureExtractor(
             kernel_transformer=kernel_transformer,
@@ -645,58 +639,82 @@ class FeatureSet(NiMAREBase):
 
     def make_preprocessor(
         self,
-        map_reducer="truncated_svd",
+        map_reducer,
         descriptor_transformer="passthrough",
         **reducer_params,
     ):
-        """Build the unfitted preprocessing step for a scikit-learn pipeline.
+        """Apply a reducer to the map columns and something else to the rest.
 
-        The returned transformer reduces the map columns and handles the
-        descriptor columns separately, so a pipeline fits both on training rows
-        only and no information reaches held-out rows.
+        This is :class:`~sklearn.compose.ColumnTransformer`, with the column
+        boundary filled in, the masker bound into an atlas reducer, and
+        ``sparse_threshold=1.0`` so that a map block denser than scikit-learn's
+        default threshold is not quietly densified.
+
+        When there are no descriptor columns there is nothing to keep the
+        reducer away from, so the reducer is returned as it is: put a
+        scikit-learn transformer straight into your pipeline and this method is
+        not needed at all.
 
         Parameters
         ----------
-        map_reducer : :obj:`str`, estimator, :obj:`type`, atlas or None, default="truncated_svd"
-            Anything :func:`make_map_reducer` accepts -- a named workflow, a
-            scikit-learn transformer or transformer class, or a nilearn atlas,
-            for which this dataset's masker supplies the voxel order -- or
-            None/``"passthrough"`` to leave the map columns alone.
+        map_reducer : estimator, :obj:`type`, atlas or None
+            A scikit-learn transformer, a transformer class built here from
+            ``**reducer_params``, any atlas :class:`AtlasAggregator` accepts
+            (this feature set supplies the voxel order), or None to leave the
+            map columns alone.
         descriptor_transformer : estimator or :obj:`str`, default="passthrough"
             What to apply to the descriptor columns, for example
             :class:`~sklearn.impute.SimpleImputer` when descriptors were kept
             with missing values.
         **reducer_params
-            Passed to :func:`make_map_reducer`, when ``map_reducer`` is
-            something it has to build.
+            Passed to ``map_reducer`` when it is a class.
 
         Returns
         -------
-        :class:`sklearn.compose.ColumnTransformer`
-            Unfitted, with ``sparse_threshold=1.0`` so that unreduced voxelwise
-            features are never densified on the way through.
+        estimator
+            A :class:`~sklearn.compose.ColumnTransformer` when there are
+            descriptor columns, and the reducer itself when there are not.
 
         Examples
         --------
         >>> pipeline = make_pipeline(  # doctest: +SKIP
-        ...     dataset.make_preprocessor("truncated_svd", n_components=50),
+        ...     features.make_preprocessor(TruncatedSVD(n_components=50)),
         ...     LogisticRegression(),
         ... )
         >>> pipeline = make_pipeline(  # doctest: +SKIP
-        ...     dataset.make_preprocessor(fetch_atlas_difumo(dimension=64)),
+        ...     features.make_preprocessor(fetch_atlas_difumo(dimension=64)),
         ...     LogisticRegression(),
         ... )
+
+        Notes
+        -----
+        Written out, the two-block case is the ordinary scikit-learn recipe,
+        and :attr:`map_columns` and :attr:`descriptor_columns` are public so
+        that you can write it yourself::
+
+            ColumnTransformer(
+                [
+                    ("maps", TruncatedSVD(n_components=50), features.map_columns),
+                    ("descriptors", SimpleImputer(), features.descriptor_columns),
+                ],
+                sparse_threshold=1.0,
+            )
         """
         if map_reducer is None or (isinstance(map_reducer, str) and map_reducer == "passthrough"):
             reducer = "passthrough"
         else:
             reducer = _resolve_map_reducer(map_reducer, masker=self.masker, **reducer_params)
 
-        transformers = [("maps", reducer, self.map_columns)]
-        if self._descriptor_features is not None:
-            transformers.append(("descriptors", descriptor_transformer, self.descriptor_columns))
+        if self._descriptor_features is None:
+            return reducer
 
-        return ColumnTransformer(transformers, sparse_threshold=1.0)
+        return ColumnTransformer(
+            [
+                ("maps", reducer, self.map_columns),
+                ("descriptors", descriptor_transformer, self.descriptor_columns),
+            ],
+            sparse_threshold=1.0,
+        )
 
     # -------------------------------------------------------- map reduction
 
@@ -709,14 +727,21 @@ class FeatureSet(NiMAREBase):
         Parameters
         ----------
         reducer : estimator
-            A scikit-learn transformer, for example one from
-            :func:`make_map_reducer`.
+            A scikit-learn transformer, or an :class:`AtlasAggregator` built
+            with this feature set's masker.
 
         Returns
         -------
         :class:`FeatureSet`
-            A dataset with reduced map features and everything else unchanged.
+            A feature set with reduced map features and everything else
+            unchanged.
         """
+        if _is_atlas_like(reducer):
+            raise TypeError(
+                "Build the aggregator first, as AtlasAggregator(atlas, "
+                "masker=features.masker), so that the fitted one can be reused on "
+                "held-out rows with transform_maps."
+            )
         return self._with_map_features(reducer.fit_transform(self._map_features), reducer)
 
     def transform_maps(self, reducer):
@@ -1521,121 +1546,44 @@ def _is_transformer(reducer):
 
 
 def _resolve_map_reducer(reducer, masker=None, **kwargs):
-    """Return an unfitted transformer for whatever names or describes a reduction."""
-    if isinstance(reducer, str):
-        if reducer not in MAP_REDUCERS:
-            raise ValueError(
-                f"Unknown map reducer {reducer!r}. The named workflows are "
-                f"{', '.join(MAP_REDUCERS)}; any other scikit-learn transformer, and any "
-                "nilearn atlas, can be passed in place of a name."
-            )
-        if reducer == "variance_threshold":
-            return VarianceThreshold(**kwargs)
-        if reducer == "truncated_svd":
-            return TruncatedSVD(**kwargs)
-        return _make_atlas_aggregator(masker=masker, **kwargs)
+    """Return an unfitted transformer for whatever describes a map reduction.
 
+    A scikit-learn transformer is used as given, a transformer class is built
+    from ``kwargs``, and an atlas is wrapped in an :class:`AtlasAggregator`
+    bound to ``masker``.
+    """
     if isinstance(reducer, type):
         reducer, kwargs = reducer(**kwargs), {}
 
+    if isinstance(reducer, AtlasAggregator) and reducer.masker is None:
+        # Built without a masker, which the feature set can supply.
+        reducer = clone(reducer)
+        reducer.set_params(masker=_required_masker(masker))
+        return reducer
+
     if _is_atlas_like(reducer):
-        return _make_atlas_aggregator(atlas=reducer, masker=masker, **kwargs)
+        return AtlasAggregator(atlas=reducer, masker=_required_masker(masker), **kwargs)
 
     if _is_transformer(reducer):
         if kwargs:
             raise ValueError(
-                "Reducer parameters are only used when the reducer is named by workflow, "
-                "given as a class, or given as an atlas; set them on the transformer "
-                "instead."
+                "Reducer parameters are only used when the reducer is given as a class "
+                "or as an atlas; set them on the transformer instead."
             )
         return reducer
 
     raise TypeError(
-        f"{reducer!r} is not a map reducer. Pass the name of a workflow, a scikit-learn "
-        "transformer or transformer class, or a nilearn atlas."
+        f"{reducer!r} is not a map reducer. Pass a scikit-learn transformer such as "
+        "TruncatedSVD(n_components=50) or VarianceThreshold(), a transformer class, or "
+        "an atlas for AtlasAggregator to summarise."
     )
 
 
-def _make_atlas_aggregator(masker=None, **kwargs):
-    """Build an :class:`AtlasAggregator`, insisting on the source masker."""
+def _required_masker(masker):
+    """Return the masker an atlas reduction needs, or explain that it is missing."""
     if masker is None:
         raise ValueError(
-            "Atlas aggregation needs the source masker that defines the voxel order "
-            "of the map features, normally FeatureSet.masker."
+            "Atlas aggregation needs the masker that defines the voxel order of the map "
+            "features, normally FeatureSet.masker."
         )
-    return AtlasAggregator(masker=masker, **kwargs)
-
-
-def make_map_reducer(reducer, masker=None, **kwargs):
-    """Build a reduction workflow for voxelwise map features.
-
-    Whatever it is handed, it gives back an ordinary scikit-learn transformer:
-    put one in a pipeline through :meth:`FeatureSet.make_preprocessor`, or
-    fit it on a training dataset with
-    :meth:`FeatureSet.fit_transform_maps`.
-
-    Parameters
-    ----------
-    reducer : :obj:`str`, estimator, :obj:`type` or atlas
-        One of:
-
-        - a named workflow: ``"variance_threshold"`` drops map features that
-          barely vary and keeps the matrix sparse, ``"truncated_svd"`` is a
-          sparse-compatible low-rank decomposition, and ``"atlas_aggregation"``
-          summarises each map over the regions of the ``atlas`` keyword;
-        - any scikit-learn transformer, ready to use;
-        - any scikit-learn transformer class, built here from ``**kwargs``;
-        - any atlas nilearn can load, which is wrapped in an
-          :class:`AtlasAggregator`. See its ``atlas`` parameter for the forms.
-    masker : :class:`~nilearn.maskers.NiftiMasker`, optional
-        The masker defining the voxel order of the features, normally
-        :attr:`FeatureSet.masker`, by default None. Required for atlas
-        aggregation and ignored otherwise.
-    **kwargs
-        Passed to the transformer being built, for example ``n_components`` for
-        ``"truncated_svd"`` or ``atlas`` and ``batch_size`` for
-        ``"atlas_aggregation"``. Not accepted alongside an already-built
-        transformer.
-
-    Returns
-    -------
-    estimator
-        An unfitted scikit-learn transformer.
-
-    Raises
-    ------
-    :obj:`ValueError`
-        If a name is not one of the workflows, if atlas aggregation is
-        requested without the source masker, or if parameters are passed
-        alongside a built transformer.
-    :obj:`TypeError`
-        If ``reducer`` is neither a transformer nor an atlas.
-
-    Notes
-    -----
-    Unreduced map features are sparse, so a reducer that cannot accept sparse
-    input -- :class:`~sklearn.decomposition.PCA`, for one -- will say so when it
-    is fitted. :class:`~sklearn.decomposition.TruncatedSVD`,
-    :class:`~sklearn.random_projection.SparseRandomProjection`,
-    :class:`~sklearn.feature_selection.VarianceThreshold` and atlas aggregation
-    all read sparse input directly.
-
-    Examples
-    --------
-    >>> make_map_reducer("truncated_svd", n_components=50)  # doctest: +SKIP
-    >>> make_map_reducer(SparseRandomProjection(n_components=50))  # doctest: +SKIP
-    >>> make_map_reducer(fetch_atlas_difumo(dimension=64), masker=dataset.masker)  # doctest: +SKIP
-    >>> make_map_reducer(  # doctest: +SKIP
-    ...     "atlas_aggregation",
-    ...     masker=dataset.masker,
-    ...     atlas="harvard_oxford",
-    ...     atlas_kwargs={"atlas_name": "cort-maxprob-thr25-2mm"},
-    ... )
-
-    See Also
-    --------
-    AtlasAggregator
-    sklearn.feature_selection.VarianceThreshold
-    sklearn.decomposition.TruncatedSVD
-    """
-    return _resolve_map_reducer(reducer, masker=masker, **kwargs)
+    return masker

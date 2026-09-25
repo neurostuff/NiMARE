@@ -68,16 +68,18 @@ For cross-validation, hand `bunch.groups` to any scikit-learn group splitter.
 
 ## Reduce voxelwise map features
 
-Inside a pipeline, which is what keeps the reducer fitted on training rows
-only:
+Map features are an ordinary sparse matrix, so ordinary scikit-learn
+transformers reduce them. Inside a pipeline, which is what keeps the reducer
+fitted on training rows only:
 
 ```python
+from sklearn.decomposition import TruncatedSVD
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupKFold, cross_val_score
 from sklearn.pipeline import make_pipeline
 
 pipeline = make_pipeline(
-    features.make_preprocessor("truncated_svd", n_components=50, random_state=13),
+    TruncatedSVD(n_components=50, random_state=13),
     LogisticRegression(max_iter=1000),
 )
 scores = cross_val_score(
@@ -88,28 +90,28 @@ scores = cross_val_score(
 Or by hand, where the fitted reducer carries the fit:
 
 ```python
-svd = ml.make_map_reducer("truncated_svd", n_components=25, random_state=13)
+svd = TruncatedSVD(n_components=25, random_state=13)
 
 train_reduced = train.fit_transform_maps(svd)
 test_reduced = test.transform_maps(svd)   # NotFittedError if svd is unfitted
 ```
 
-`make_map_reducer` -- and `make_preprocessor`, which passes what it is given
-straight through -- takes more than the three workflow names:
+Anything that reads sparse input works: truncated SVD, sparse random
+projection, variance thresholding. Dense PCA will ask for dense data.
+
+## Reduce over the regions of an atlas
+
+`AtlasAggregator` is the one reducer NiMARE adds, because it is the one that
+has to know which voxel each column is:
 
 ```python
 from nilearn.datasets import fetch_atlas_difumo
-from sklearn.random_projection import SparseRandomProjection
 
-ml.make_map_reducer("variance_threshold", threshold=0.01)        # a named workflow
-ml.make_map_reducer(SparseRandomProjection(n_components=64))     # any transformer
-ml.make_map_reducer(SparseRandomProjection, n_components=64)     # or its class
-ml.make_map_reducer(fetch_atlas_difumo(dimension=64), masker=features.masker)
-ml.make_map_reducer("atlas_aggregation", masker=features.masker,
-                    atlas="harvard_oxford",
-                    atlas_kwargs={"atlas_name": "cort-maxprob-thr25-2mm"})
+ml.AtlasAggregator(fetch_atlas_difumo(dimension=64), masker=features.masker)
+ml.AtlasAggregator("harvard_oxford", masker=features.masker,
+                   atlas_kwargs={"atlas_name": "cort-maxprob-thr25-2mm"})
 
-features.make_preprocessor(fetch_atlas_difumo(dimension=64))      # masker supplied
+features.make_preprocessor(fetch_atlas_difumo(dimension=64))   # masker supplied
 ```
 
 An atlas is anything nilearn can load: a fetched atlas, an atlas image or file,
@@ -118,9 +120,45 @@ the name of a `fetch_atlas_*` function, or a `NiftiLabelsMasker` or
 masker and a 3D one with a labels masker, and the atlas's own region names
 become the reduced feature names.
 
-Map features are sparse, so a reducer has to read sparse input. Truncated SVD,
-sparse random projection, variance thresholding and atlas aggregation do; dense
-PCA will ask for dense data.
+## Keep a reducer off the descriptor columns
+
+With map features alone there is nothing to keep a reducer away from, so a
+transformer goes straight into the pipeline. Once descriptor columns are there,
+they need separate treatment, which is what
+[`ColumnTransformer`](https://scikit-learn.org/stable/modules/generated/sklearn.compose.ColumnTransformer.html)
+is for. `make_preprocessor` builds one with the column boundary filled in, the
+masker bound into an atlas reducer, and `sparse_threshold=1.0` so a wide sparse
+map block is never quietly densified:
+
+```python
+from sklearn.impute import SimpleImputer
+
+pipeline = make_pipeline(
+    features.make_preprocessor(
+        TruncatedSVD(n_components=50, random_state=13),
+        descriptor_transformer=SimpleImputer(strategy="median"),
+    ),
+    LogisticRegression(max_iter=1000),
+)
+```
+
+`features.map_columns` and `features.descriptor_columns` are public, so the
+same thing can be written out:
+
+```python
+from sklearn.compose import ColumnTransformer
+
+ColumnTransformer(
+    [
+        ("maps", TruncatedSVD(n_components=50), features.map_columns),
+        ("descriptors", SimpleImputer(), features.descriptor_columns),
+    ],
+    sparse_threshold=1.0,
+)
+```
+
+With no descriptor columns, `make_preprocessor` hands the reducer straight
+back.
 
 ## Use non-numeric fields
 

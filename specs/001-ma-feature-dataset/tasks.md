@@ -8,7 +8,8 @@
 > from `transform` refers to the superseded shape. The public names have also
 > changed since: the container is `FeatureSet` and conversion is its named
 > constructor `FeatureSet.from_studyset`, with the conversion helper class
-> internal.
+> internal, and `make_map_reducer` is gone: reduction uses scikit-learn's
+> transformers directly, plus `AtlasAggregator`.
 
 **Input**: Design documents from `specs/001-ma-feature-dataset/`
 **Prerequisites**: `plan.md`, `spec.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md`
