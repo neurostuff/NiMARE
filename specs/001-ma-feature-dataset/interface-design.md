@@ -708,3 +708,39 @@ has been transformed yet -- and falls back to positional names when the atlas's
 labels cannot be matched to the regions that survived. Guessing would have
 meant labelling a column with a region that is not in it. The tests run against
 both nilearn 0.12.0 and 0.13.1.
+
+---
+
+## 13. Follow-up: one function and one container (2026-09-25)
+
+The names above (`MAFeatureExtractor`, `MAFeatureDataset`) were reviewed once
+more and replaced, for two reasons that are worth separating.
+
+`MAFeatureDataset` collided with `nimare.dataset.Dataset`, the legacy studyset
+container users already know, and `MA` was jargon no other public class in the
+library uses as a prefix. The container is now **`FeatureSet`**.
+
+The extractor went further than a rename. It was a configure-then-call-once
+object, and the only things a class bought were applying identical settings to
+several Studysets and holding the in-process map memo. Conversion is now the
+function **`extract_features(studyset, kernel_transformer, ...)`**, which
+returns a `FeatureSet`; the conversion logic stays in an internal
+`_FeatureExtractor` class so the stages remain separate methods over shared
+configuration, but users never meet it. That also settles the question the
+naming review kept circling: with one class and one function there is no
+near-identical pair to confuse, and nothing public takes a Studyset and
+exposes `fit`.
+
+Two consequences:
+
+- `cache_maps` is gone. A per-instance memo cannot be hit when every call
+  builds its own extractor, and the workflow it existed for -- comparing
+  reducers over one Studyset -- reuses the returned `FeatureSet` instead.
+  `memory` remains as the one caching story.
+- Wiring `memory` up turned out never to have worked. Kernel transformers cache
+  their maps through nilearn's `CacheMixin` at `func_memory_level=2`, and the
+  extractor was handing them `memory_level=1`, which the cache reads as a
+  request not to cache; two conversions of one Studyset regenerated every map.
+  `memory_level` now defaults to 2 and is passed through unchanged, and a test
+  counts the kernel's own `_transform` calls rather than asserting that the
+  cache directory exists, which is what let the gap through the first time.

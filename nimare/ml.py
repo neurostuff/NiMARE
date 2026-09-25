@@ -14,7 +14,11 @@ so building the whole matrix before splitting leaks nothing. Everything that
 learns *across* rows (decomposition, feature selection, imputation, scaling)
 must be fit on training rows only, which is what a
 :class:`~sklearn.pipeline.Pipeline` is for;
-:meth:`MAFeatureDataset.make_preprocessor` builds the piece that goes in it.
+:meth:`FeatureSet.make_preprocessor` builds the piece that goes in it.
+
+The public surface is :func:`extract_features`, which returns a
+:class:`FeatureSet`, plus :func:`make_map_reducer` and :class:`AtlasAggregator`
+for reducing the voxelwise features.
 """
 
 from __future__ import annotations
@@ -29,7 +33,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from joblib import Memory
-from joblib import hash as joblib_hash
 from nibabel.spatialimages import SpatialImage
 from nilearn.image import load_img
 from nilearn.maskers import BaseMasker, NiftiLabelsMasker, NiftiMapsMasker
@@ -53,8 +56,8 @@ LGR = logging.getLogger(__name__)
 
 __all__ = [
     "AtlasAggregator",
-    "MAFeatureDataset",
-    "MAFeatureExtractor",
+    "FeatureSet",
+    "extract_features",
     "make_map_reducer",
 ]
 
@@ -246,7 +249,7 @@ def _take_rows(value, rows):
     return np.asarray(value)[rows]
 
 
-class MAFeatureDataset(NiMAREBase):
+class FeatureSet(NiMAREBase):
     """Aligned modeled activation features, descriptors, target and provenance.
 
     Every array here shares one row order: row ``i`` is analysis ``ids[i]`` from
@@ -292,7 +295,7 @@ class MAFeatureDataset(NiMAREBase):
 
     See Also
     --------
-    MAFeatureExtractor : Builds this container from a Studyset.
+    extract_features : Builds this container from a Studyset.
     """
 
     def __init__(
@@ -471,7 +474,7 @@ class MAFeatureDataset(NiMAREBase):
 
         Returns
         -------
-        (:class:`MAFeatureDataset`, :class:`MAFeatureDataset`)
+        (:class:`FeatureSet`, :class:`FeatureSet`)
             Train and test datasets. No study appears in both.
 
         Raises
@@ -590,7 +593,7 @@ class MAFeatureDataset(NiMAREBase):
 
         Returns
         -------
-        :class:`MAFeatureDataset`
+        :class:`FeatureSet`
             A dataset with reduced map features and everything else unchanged.
         """
         return self._with_map_features(reducer.fit_transform(self._map_features), reducer)
@@ -606,7 +609,7 @@ class MAFeatureDataset(NiMAREBase):
 
         Returns
         -------
-        :class:`MAFeatureDataset`
+        :class:`FeatureSet`
             A dataset with reduced map features and everything else unchanged.
 
         Raises
@@ -667,7 +670,7 @@ class MAFeatureDataset(NiMAREBase):
 
         Returns
         -------
-        :class:`MAFeatureDataset`
+        :class:`FeatureSet`
             A dataset holding the selected rows, in the order they were given.
         """
         rows = np.asarray(rows)
@@ -697,7 +700,7 @@ class MAFeatureDataset(NiMAREBase):
 
         Returns
         -------
-        :class:`MAFeatureDataset`
+        :class:`FeatureSet`
             A copy that shares no mutable state with this dataset.
         """
         return self._rebuild(
@@ -728,22 +731,35 @@ class MAFeatureDataset(NiMAREBase):
         }
         kwargs.update(changes)
         positional = (kwargs.pop("map_features"), kwargs.pop("ids"), kwargs.pop("study_ids"))
-        return MAFeatureDataset(*positional, **kwargs)
+        return FeatureSet(*positional, **kwargs)
 
 
 # ------------------------------------------------------------- the extractor
 
 
-class MAFeatureExtractor(NiMAREBase):
-    """Convert a Studyset into modeled activation feature data.
+def extract_features(
+    studyset,
+    kernel_transformer,
+    *,
+    descriptor_fields=None,
+    target_field=None,
+    target_transformer=None,
+    missing_coordinates="drop",
+    missing_values="raise",
+    memory=None,
+    memory_level=2,
+):
+    """Convert a Studyset into machine-learning-ready features.
 
-    This is a NiMARE conversion helper, not a scikit-learn estimator: it has no
-    ``fit``. Call :meth:`transform` for the NiMARE container or
-    :meth:`to_sklearn` for the scikit-learn bundle, then let a
-    :class:`~sklearn.pipeline.Pipeline` own everything that learns from the data.
+    Generates one modeled activation (MA) map per analysis through the kernel
+    transformer, appends any numeric descriptor fields, extracts any target,
+    and returns them aligned to the analyses they came from, with the study
+    labels that keep analyses from one study out of two different partitions.
 
     Parameters
     ----------
+    studyset : :class:`~nimare.nimads.Studyset`
+        The Studyset to convert. One analysis becomes one row.
     kernel_transformer : :class:`~nimare.meta.kernel.KernelTransformer`
         Kernel transformer instance or class used to generate the MA maps.
         There is no default: the choice is scientific.
@@ -772,15 +788,23 @@ class MAFeatureExtractor(NiMAREBase):
         ``"raise"`` reports the analyses and fields involved; ``"drop"`` removes
         those analyses and records them in provenance; ``"keep"`` leaves NaN in
         place for a pipeline to impute.
-    cache_maps : :obj:`bool`, default=True
-        Whether to hold the most recently generated map matrix in memory, so
-        that comparing several reducers over one Studyset generates maps once.
     memory : :class:`joblib.Memory`, :obj:`str` or :class:`pathlib.Path`, optional
-        Cache location for MA map generation across processes. Used only when
-        the kernel transformer does not define its own; the kernel's own
-        ``memory`` always wins.
-    memory_level : :obj:`int`, default=1
-        How eagerly ``memory`` caches, following the NiMARE convention.
+        Cache location for MA map generation, by default None. Repeated calls
+        over the same Studyset then reuse the maps instead of regenerating
+        them, across processes as well as within one. Used only when the kernel
+        transformer does not define its own cache; the kernel's own ``memory``
+        always wins.
+    memory_level : :obj:`int`, default=2
+        How eagerly ``memory`` caches, following the NiMARE convention. Kernel
+        transformers cache their maps at level 2, which is why that is the
+        default here; a lower level asks for them not to be cached.
+
+    Returns
+    -------
+    :class:`FeatureSet`
+        One row per retained analysis, with map features, any descriptor
+        features, any target, study groups and provenance. Call
+        :meth:`FeatureSet.to_sklearn` for the scikit-learn bundle.
 
     Notes
     -----
@@ -788,22 +812,49 @@ class MAFeatureExtractor(NiMAREBase):
     numeric. A categorical or text field raises, and names the two ways to use
     it: encode it yourself and select the numeric result, or leave it out of
     the matrix and encode it inside your pipeline, reading the raw values from
-    :attr:`MAFeatureDataset.descriptors`. Encoding at extraction time would fit
-    the encoder on every row, including the rows you are about to hold out.
+    :attr:`FeatureSet.descriptors`. Encoding here would fit the encoder on
+    every row, including the rows you are about to hold out.
+
+    Generating the maps does not leak: an analysis's MA map is a function of
+    that analysis's own foci, so it never sees ``y`` or another row. Everything
+    that learns *across* rows belongs in a :class:`~sklearn.pipeline.Pipeline`,
+    which :meth:`FeatureSet.make_preprocessor` builds the piece for.
 
     Examples
     --------
-    >>> extractor = MAFeatureExtractor(  # doctest: +SKIP
+    >>> features = extract_features(  # doctest: +SKIP
+    ...     studyset,
     ...     kernel_transformer=MKDAKernel(r=10),
     ...     target_field=("metadata", "comparison_task"),
     ... )
-    >>> data = extractor.transform(studyset)  # doctest: +SKIP
-    >>> train, test = data.split(test_size=0.25, random_state=13)  # doctest: +SKIP
+    >>> train, test = features.split(test_size=0.25, random_state=13)  # doctest: +SKIP
+    >>> bunch = features.to_sklearn()  # doctest: +SKIP
 
     See Also
     --------
-    MAFeatureDataset : The container this returns.
+    FeatureSet : The container this returns.
     make_map_reducer : Reduction workflows for the voxelwise map features.
+    """
+    return _FeatureExtractor(
+        kernel_transformer=kernel_transformer,
+        descriptor_fields=descriptor_fields,
+        target_field=target_field,
+        target_transformer=target_transformer,
+        missing_coordinates=missing_coordinates,
+        missing_values=missing_values,
+        memory=memory,
+        memory_level=memory_level,
+    ).transform(studyset)
+
+
+class _FeatureExtractor(NiMAREBase):
+    """Carry out one conversion from a Studyset to a :class:`FeatureSet`.
+
+    Internal. :func:`extract_features` is the public entry point and documents
+    the parameters. The class exists so that the stages of one conversion --
+    field selection, target handling, row retention, map generation,
+    provenance -- stay separate methods over shared configuration, rather than
+    one long function threading nine arguments through itself.
     """
 
     def __init__(
@@ -814,9 +865,8 @@ class MAFeatureExtractor(NiMAREBase):
         target_transformer: Any | None = None,
         missing_coordinates: str = "drop",
         missing_values: str = "raise",
-        cache_maps: bool = True,
         memory: Any = None,
-        memory_level: int = 1,
+        memory_level: int = 2,
     ):
         self.kernel_transformer = kernel_transformer
         self.descriptor_fields = descriptor_fields
@@ -824,10 +874,8 @@ class MAFeatureExtractor(NiMAREBase):
         self.target_transformer = target_transformer
         self.missing_coordinates = missing_coordinates
         self.missing_values = missing_values
-        self.cache_maps = cache_maps
         self.memory = memory
         self.memory_level = memory_level
-        self._map_memo = None
 
     # ------------------------------------------------------------- public API
 
@@ -841,7 +889,7 @@ class MAFeatureExtractor(NiMAREBase):
 
         Returns
         -------
-        :class:`MAFeatureDataset`
+        :class:`FeatureSet`
             One row per retained analysis, with map features, any descriptor
             features, any target, study groups and provenance.
         """
@@ -883,7 +931,7 @@ class MAFeatureExtractor(NiMAREBase):
                 [descriptors[name][0][retained].astype(float) for name in descriptor_names]
             )
 
-        return MAFeatureDataset(
+        return FeatureSet(
             map_features,
             ids=ids[retained],
             study_ids=study_ids[retained],
@@ -894,23 +942,6 @@ class MAFeatureExtractor(NiMAREBase):
             provenance=self._provenance(studyset, ids, retained, dropped, descriptor_names),
             masker=studyset.masker,
         )
-
-    def to_sklearn(self, studyset, return_X_y=False):
-        """Convert a Studyset straight into the scikit-learn bundle.
-
-        Parameters
-        ----------
-        studyset : :class:`~nimare.nimads.Studyset`
-            The Studyset to convert.
-        return_X_y : :obj:`bool`, default=False
-            If True, return ``(data, target)`` instead of a Bunch.
-
-        Returns
-        -------
-        :class:`sklearn.utils.Bunch` or :obj:`tuple`
-            See :meth:`MAFeatureDataset.to_sklearn`.
-        """
-        return self.transform(studyset).to_sklearn(return_X_y=return_X_y)
 
     # ------------------------------------------------------------- validation
 
@@ -947,7 +978,7 @@ class MAFeatureExtractor(NiMAREBase):
                     f"Descriptor field {field!r} from {source} is {kind}, and the feature "
                     "matrix is numeric. Either encode it yourself and select the numeric "
                     "result, or leave it out of the matrix and encode it inside your "
-                    "pipeline from MAFeatureDataset.descriptors, which keeps the encoder "
+                    "pipeline from FeatureSet.descriptors, which keeps the encoder "
                     "from being fitted on held-out analyses."
                 )
             if field in descriptors:
@@ -1054,18 +1085,8 @@ class MAFeatureExtractor(NiMAREBase):
 
     def _map_matrix(self, studyset, ids, has_coordinates):
         """Return the analysis-by-voxel matrix, aligned row for row to ``ids``."""
-        kernel_transformer = self._resolve_kernel()
-        key = self._memo_key(studyset, kernel_transformer) if self.cache_maps else None
-
-        if key is not None and self._map_memo is not None and self._map_memo[0] == key:
-            maps = self._map_memo[1]
-        else:
-            maps = kernel_transformer.transform(studyset, return_type="sparse")
-            maps = _as_sparse(maps).tocsr()
-            if key is not None:
-                self._map_memo = (key, maps)
-
-        return _align_map_rows(maps, ids, has_coordinates)
+        maps = self._resolve_kernel().transform(studyset, return_type="sparse")
+        return _align_map_rows(_as_sparse(maps).tocsr(), ids, has_coordinates)
 
     def _resolve_kernel(self):
         """Return a kernel transformer instance, with caching wired up if asked."""
@@ -1081,26 +1102,14 @@ class MAFeatureExtractor(NiMAREBase):
 
         kernel_transformer = copy.deepcopy(kernel_transformer)
         kernel_transformer.memory = (
-            self.memory if isinstance(self.memory, Memory) else Memory(location=self.memory)
+            self.memory
+            if isinstance(self.memory, Memory)
+            else Memory(location=self.memory, verbose=0)
         )
-        kernel_transformer.memory_level = max(int(self.memory_level), 1)
+        # Passed through as given: a kernel transformer caches its maps at level 2, so a
+        # lower level is a request not to cache them.
+        kernel_transformer.memory_level = int(self.memory_level)
         return kernel_transformer
-
-    @staticmethod
-    def _memo_key(studyset, kernel_transformer):
-        """Fingerprint everything the generated maps depend on."""
-        mask_img = getattr(studyset.masker, "mask_img", None)
-        return joblib_hash(
-            (
-                np.asarray(studyset.ids, dtype=str),
-                studyset.coordinates[["id", "x", "y", "z"]].to_numpy(),
-                studyset.sample_sizes(),
-                None if mask_img is None else (mask_img.shape, mask_img.affine),
-                type(kernel_transformer).__module__,
-                type(kernel_transformer).__qualname__,
-                _kernel_params(kernel_transformer),
-            )
-        )
 
     # -------------------------------------------------------------- provenance
 
@@ -1217,7 +1226,7 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
         with ``resampling_target="data"``.
     masker : :class:`~nilearn.maskers.NiftiMasker` or img_like, optional
         The masker defining the voxel order of the incoming features, normally
-        :attr:`MAFeatureDataset.masker`, by default None.
+        :attr:`FeatureSet.masker`, by default None.
     atlas_kwargs : :obj:`dict`, optional
         Arguments for the nilearn fetcher when ``atlas`` names one, by default
         None.
@@ -1282,7 +1291,7 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
         if self.masker is None:
             raise ValueError(
                 "AtlasAggregator requires the masker that defines the voxel order of the "
-                "features, normally MAFeatureDataset.masker."
+                "features, normally FeatureSet.masker."
             )
 
         from nimare.utils import get_masker
@@ -1537,7 +1546,7 @@ def _make_atlas_aggregator(masker=None, **kwargs):
     if masker is None:
         raise ValueError(
             "Atlas aggregation needs the source masker that defines the voxel order "
-            "of the map features, normally MAFeatureDataset.masker."
+            "of the map features, normally FeatureSet.masker."
         )
     return AtlasAggregator(masker=masker, **kwargs)
 
@@ -1546,9 +1555,9 @@ def make_map_reducer(reducer, masker=None, **kwargs):
     """Build a reduction workflow for voxelwise map features.
 
     Whatever it is handed, it gives back an ordinary scikit-learn transformer:
-    put one in a pipeline through :meth:`MAFeatureDataset.make_preprocessor`, or
+    put one in a pipeline through :meth:`FeatureSet.make_preprocessor`, or
     fit it on a training dataset with
-    :meth:`MAFeatureDataset.fit_transform_maps`.
+    :meth:`FeatureSet.fit_transform_maps`.
 
     Parameters
     ----------
@@ -1565,7 +1574,7 @@ def make_map_reducer(reducer, masker=None, **kwargs):
           :class:`AtlasAggregator`. See its ``atlas`` parameter for the forms.
     masker : :class:`~nilearn.maskers.NiftiMasker`, optional
         The masker defining the voxel order of the features, normally
-        :attr:`MAFeatureDataset.masker`, by default None. Required for atlas
+        :attr:`FeatureSet.masker`, by default None. Required for atlas
         aggregation and ignored otherwise.
     **kwargs
         Passed to the transformer being built, for example ``n_components`` for

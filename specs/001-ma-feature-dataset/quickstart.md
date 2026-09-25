@@ -18,14 +18,14 @@ python -m pip install -e .[tests,doc]
 from nimare import ml
 from nimare.meta.kernel import MKDAKernel
 
-extractor = ml.MAFeatureExtractor(
+features = ml.extract_features(
+    studyset,
     kernel_transformer=MKDAKernel(r=10),
     descriptor_fields=["sample_sizes", ("annotations", "Neurosynth_TFIDF__pain")],
     target_field=("annotations", "Neurosynth_TFIDF__emotion"),
-)
+)                                        # a FeatureSet
 
-data = extractor.transform(studyset)     # an MAFeatureDataset
-bunch = data.to_sklearn()                # or extractor.to_sklearn(studyset)
+bunch = features.to_sklearn()
 ```
 
 Expected result:
@@ -36,9 +36,9 @@ Expected result:
 - `bunch.groups` holds the study each analysis came from.
 - `bunch.feature_names`, `bunch.ids` and `bunch.provenance` describe them.
 
-`extractor.to_sklearn(studyset, return_X_y=True)` returns `(X, y)` for callers
-who want nothing else. `MAFeatureExtractor` is not a trainable scikit-learn
-estimator and has no `fit`.
+`features.to_sklearn(return_X_y=True)` returns `(X, y)` for callers who want
+nothing else. There is no estimator to configure and no `fit` to call: one
+function converts, and the `FeatureSet` it returns is what you work with.
 
 A field is named by a bare field name, by a `(source, field)` tuple, or by a
 mapping. A bare name is looked up in metadata, annotations and texts in turn,
@@ -52,10 +52,13 @@ them as all-zero sparse map rows. Missing descriptor and target values follow
 `missing_values`: `"raise"` (the default) names the fields and analyses,
 `"drop"` removes those analyses, `"keep"` leaves them for a pipeline to impute.
 
+Pass `memory="/path/to/cache"` to have repeated conversions of the same
+Studyset reuse the maps they already generated, in this process and the next.
+
 ## Split without study leakage
 
 ```python
-train, test = data.split(test_size=0.25, random_state=13)
+train, test = features.split(test_size=0.25, random_state=13)
 
 assert set(train.study_ids).isdisjoint(test.study_ids)
 ```
@@ -74,7 +77,7 @@ from sklearn.model_selection import GroupKFold, cross_val_score
 from sklearn.pipeline import make_pipeline
 
 pipeline = make_pipeline(
-    data.make_preprocessor("truncated_svd", n_components=50, random_state=13),
+    features.make_preprocessor("truncated_svd", n_components=50, random_state=13),
     LogisticRegression(max_iter=1000),
 )
 scores = cross_val_score(
@@ -101,12 +104,12 @@ from sklearn.random_projection import SparseRandomProjection
 ml.make_map_reducer("variance_threshold", threshold=0.01)        # a named workflow
 ml.make_map_reducer(SparseRandomProjection(n_components=64))     # any transformer
 ml.make_map_reducer(SparseRandomProjection, n_components=64)     # or its class
-ml.make_map_reducer(fetch_atlas_difumo(dimension=64), masker=data.masker)
-ml.make_map_reducer("atlas_aggregation", masker=data.masker,
+ml.make_map_reducer(fetch_atlas_difumo(dimension=64), masker=features.masker)
+ml.make_map_reducer("atlas_aggregation", masker=features.masker,
                     atlas="harvard_oxford",
                     atlas_kwargs={"atlas_name": "cort-maxprob-thr25-2mm"})
 
-data.make_preprocessor(fetch_atlas_difumo(dimension=64))          # masker supplied
+features.make_preprocessor(fetch_atlas_difumo(dimension=64))      # masker supplied
 ```
 
 An atlas is anything nilearn can load: a fetched atlas, an atlas image or file,
@@ -124,13 +127,14 @@ PCA will ask for dense data.
 Categorical and text fields are not appended to the feature matrix, because
 encoding them during extraction would fit the encoder on the analyses you are
 about to hold out. Either encode the field yourself and select the numeric
-result, or read the raw values from `data.descriptors` -- a DataFrame indexed by
+result, or read the raw values from `features.descriptors` -- a DataFrame indexed by
 analysis id -- and encode them inside your pipeline.
 
 For a target, pass a label extractor:
 
 ```python
-extractor = ml.MAFeatureExtractor(
+features = ml.extract_features(
+    studyset,
     kernel_transformer=MKDAKernel(r=10),
     target_field=("texts", "abstract"),
     target_transformer=lambda texts: [classify(text) for text in texts],

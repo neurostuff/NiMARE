@@ -25,9 +25,10 @@ and initial reducers for variance thresholding, sparse-compatible low-rank
 reduction such as truncated SVD, and atlas/label aggregation.
 Rows represent analyses, unreduced map columns represent masked voxels, and
 descriptor columns are appended only after numeric validation or explicit
-transformation. `MAFeatureExtractor.transform(studyset)` returns one `MAFeatureDataset` and
-`MAFeatureExtractor.to_sklearn(studyset, ...)` converts and exports in one call.
-`MAFeatureDataset` is the authoritative NiMARE container: it holds the map and
+transformation. `extract_features(studyset, kernel_transformer, ...)` returns one `FeatureSet`,
+and `FeatureSet.to_sklearn()` exports it; the class that carries out a
+conversion is internal, so users meet one function and one container.
+`FeatureSet` is the authoritative NiMARE container: it holds the map and
 descriptor blocks and derives `features` and `feature_names` from them on
 demand, keeps the `masker` that defines voxel order, exports `study_ids` as
 sklearn `groups`, and carries the grouped `split()`, the pipeline
@@ -41,8 +42,8 @@ sklearn `groups`, and carries the grouped `split()`, the pipeline
 **Testing**: Add targeted pytest coverage under `nimare/tests/test_ml.py` before implementation. First failing tests must cover conversion/provenance, grouped split leakage prevention, non-numeric descriptor rejection, scalar target export and unsupported target-shape rejection, missing-value diagnostics, reducer alignment, and the 1,000-study performance budget. Use existing markers, including `performance_smoke` for the scale check if needed.  
 **Target Platform**: NiMARE-supported Python and OS matrix; no network-dependent tests.  
 **Project Type**: Python scientific library public API plus Sphinx documentation examples.  
-**Public API Impact**: New additive `nimare.ml` module with `MAFeatureExtractor`, `MAFeatureDataset`, `AtlasAggregator`, `make_map_reducer`, field-selector handling reusing the `_required_inputs` vocabulary, dataset-level `split()` and `make_preprocessor()`, and `fit_transform_maps()`/`transform_maps()`. Update `nimare/__init__.py`, `docs/api.rst`, and Numpydoc docstrings. No released public API is removed, renamed, or narrowed.
-**Extractor API Decision**: `MAFeatureExtractor.transform(studyset)` returns one `MAFeatureDataset`; `to_sklearn(studyset, return_X_y=False)` converts and exports in one call; splitting lives on the container; it does not expose `fit` or `fit_transform`.
+**Public API Impact**: New additive `nimare.ml` module with `extract_features`, `FeatureSet`, `AtlasAggregator`, `make_map_reducer`, field-selector handling reusing the `_required_inputs` vocabulary, dataset-level `split()` and `make_preprocessor()`, and `fit_transform_maps()`/`transform_maps()`. Update `nimare/__init__.py`, `docs/api.rst`, and Numpydoc docstrings. No released public API is removed, renamed, or narrowed.
+**Extractor API Decision**: `extract_features(studyset, kernel_transformer, ...)` returns one `FeatureSet`; `FeatureSet.to_sklearn(return_X_y=False)` exports it; splitting lives on the container; no public object takes a Studyset and exposes `fit` or `fit_transform`.
 **Compatibility Baseline**: `0.16.0` from `git describe --tags --abbrev=0`. Released Studyset, kernel, metadata, annotation, and text access behavior must remain compatible.
 **Example Coverage**: Create Sphinx-Gallery examples `examples/05_machine_learning/01_plot_ma_feature_dataset.py` and `examples/05_machine_learning/02_plot_ma_feature_reduction.py`. Examples remain `.py` sources and are converted by the docs/Sphinx build.  
 **Scientific Validation**: Validate that one analysis row represents one analysis by default; MVP fixture Studysets provide unique study IDs and unique analysis IDs; coordinate-less analyses are dropped by default or included as all-zero sparse rows when requested; all analyses from one study share a study group; sklearn `groups` matches `study_ids`; map features are aligned to one mask/space; reducers operate on internal `_map_features` only and use the stored `_masker` for atlas/label aggregation; learned descriptor/reduction transforms fit only on training analyses; held-out transformations do not use held-out targets; and missing maps, missing values, and invalid targets are diagnosed.
@@ -106,7 +107,7 @@ specs/001-ma-feature-dataset/
 ```text
 nimare/
 |-- __init__.py           # Export additive ml module
-|-- ml.py                 # MAFeatureDataset, MAFeatureExtractor, reducers
+|-- ml.py                 # FeatureSet, extract_features, reducers
 `-- tests/
     `-- test_ml.py        # Contract, regression, diagnostics, performance tests
 
@@ -139,13 +140,13 @@ resolved there:
   policy: drop before row construction by default or include as all-zero sparse
   rows when requested.
 - Export uses a NiMARE container plus a scikit-learn `Bunch`; extractor-level
-  `to_sklearn(studyset, ...)` is the one-call public path.
+  `extract_features(...)` is the one-call public path.
 - Map rows are aligned to analyses by identifier, because kernel transformers
   return them ordered by identifier and discard the identifiers.
 - Exported sklearn `groups` duplicates `study_ids` by design: `groups` is for
   sklearn splitters, while `ids` and `study_ids` preserve row-level provenance.
 - Splits use scikit-learn group splitters.
-- `MAFeatureDataset` holds the map and descriptor blocks separately and derives
+- `FeatureSet` holds the map and descriptor blocks separately and derives
   `features` from them, so reducers select only voxel/reduced-map columns and
   the combined matrix cannot disagree with its parts.
 - Atlas/label reducers use the dataset masker to align atlas labels to sparse

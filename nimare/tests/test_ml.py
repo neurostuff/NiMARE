@@ -23,14 +23,10 @@ from sklearn.preprocessing import FunctionTransformer
 from sklearn.random_projection import SparseRandomProjection
 from sklearn.utils import Bunch
 
+from nimare import ml
 from nimare.generate import create_coordinate_studyset
 from nimare.meta.kernel import MKDAKernel
-from nimare.ml import (
-    AtlasAggregator,
-    MAFeatureDataset,
-    MAFeatureExtractor,
-    make_map_reducer,
-)
+from nimare.ml import AtlasAggregator, FeatureSet, extract_features, make_map_reducer
 from nimare.nimads import Studyset
 from nimare.utils import get_masker, get_template
 
@@ -141,7 +137,7 @@ def small_masker():
 
 @pytest.fixture
 def ma_feature_dataset(small_masker):
-    """Build a small MAFeatureDataset directly, without running a kernel."""
+    """Build a small FeatureSet directly, without running a kernel."""
     n_rows = 6
     ids = np.array([f"study_{idx // 2}-task{idx % 2}" for idx in range(n_rows)])
     study_ids = np.array([f"study_{idx // 2}" for idx in range(n_rows)])
@@ -151,7 +147,7 @@ def ma_feature_dataset(small_masker):
     )
     descriptor_features = np.arange(n_rows, dtype=float)[:, None]
 
-    return MAFeatureDataset(
+    return FeatureSet(
         map_features,
         ids=ids,
         study_ids=study_ids,
@@ -242,7 +238,7 @@ def test_dataset_features_are_built_once(ma_feature_dataset):
 def test_dataset_without_descriptors(small_masker):
     """A map-only dataset has no descriptor columns and needs no hstack."""
     map_features = sparse.csr_matrix(np.eye(3))
-    dataset = MAFeatureDataset(map_features, ids=list("abc"), study_ids=list("abc"))
+    dataset = FeatureSet(map_features, ids=list("abc"), study_ids=list("abc"))
 
     assert dataset.features is map_features
     assert dataset.descriptor_columns == slice(3, 3)
@@ -276,7 +272,7 @@ def test_dataset_rejects_misaligned_inputs(kwargs, message):
     map_features = base.pop("map_features")
 
     with pytest.raises(ValueError, match=message):
-        MAFeatureDataset(map_features, **base)
+        FeatureSet(map_features, **base)
 
 
 def test_dataset_to_sklearn(ma_feature_dataset):
@@ -715,7 +711,7 @@ def test_atlas_aggregator_names_match_the_columns_it_returns(
 def test_atlas_aggregator_names_reduced_features(small_masker, atlas_features):
     """Region names survive into the reduced dataset's feature names."""
     labels_img, _ = _atlas_images(small_masker.mask_img.affine)
-    dataset = MAFeatureDataset(
+    dataset = FeatureSet(
         atlas_features,
         ids=[f"study_{idx}-task0" for idx in range(6)],
         study_ids=[f"study_{idx}" for idx in range(6)],
@@ -747,7 +743,7 @@ def test_dataset_reduces_with_any_sklearn_transformer(ma_feature_dataset):
 def test_make_preprocessor_accepts_an_atlas(small_masker, atlas_features):
     """The dataset supplies the voxel order, so an atlas needs nothing else."""
     labels_img, _ = _atlas_images(small_masker.mask_img.affine)
-    dataset = MAFeatureDataset(
+    dataset = FeatureSet(
         atlas_features,
         ids=[f"study_{idx}-task0" for idx in range(6)],
         study_ids=[f"study_{idx}" for idx in range(6)],
@@ -760,84 +756,76 @@ def test_make_preprocessor_accepts_an_atlas(small_masker, atlas_features):
     assert preprocessor.fit_transform(dataset.features).shape == (6, 2)
 
 
-# ---------------------------------------------------------------- extractor
+# ------------------------------------------------------------------ extraction
 
 
-def test_extractor_stores_its_configuration():
-    """Parameters are stored, and the extractor is not an sklearn estimator."""
-    kernel_transformer = MKDAKernel(r=4)
-    extractor = MAFeatureExtractor(
-        kernel_transformer=kernel_transformer,
-        descriptor_fields=["motor_label"],
-        target_field=("annotations", "target_score"),
-    )
-
-    assert extractor.kernel_transformer is kernel_transformer
-    assert extractor.descriptor_fields == ["motor_label"]
-    assert extractor.target_field == ("annotations", "target_score")
-    assert extractor.missing_coordinates == "drop"
-    assert extractor.missing_values == "raise"
-    assert extractor.cache_maps is True
-    assert extractor.memory is None
-    assert not hasattr(extractor, "fit")
-    assert not hasattr(extractor, "fit_transform")
+def test_public_surface_is_one_function_and_one_container():
+    """Users meet extract_features and FeatureSet; the extractor is internal."""
+    assert set(ml.__all__) == {
+        "AtlasAggregator",
+        "FeatureSet",
+        "extract_features",
+        "make_map_reducer",
+    }
+    assert not any(name.endswith("Extractor") for name in dir(ml) if not name.startswith("_"))
+    # The container is data, not an estimator: nothing here is fitted on a Studyset.
+    assert not hasattr(FeatureSet, "fit")
+    assert not hasattr(FeatureSet, "fit_transform")
 
 
-def test_extractor_transform(ml_studyset):
+def test_extract_features(ml_studyset):
     """A Studyset becomes one row per analysis, with everything aligned."""
     studyset = ml_studyset
-    extractor = MAFeatureExtractor(
-        kernel_transformer=MKDAKernel(r=4),
+
+    features = extract_features(
+        studyset,
+        MKDAKernel(r=4),
         descriptor_fields=["sample_sizes", ("annotations", "motor_label")],
         target_field=("annotations", "target_score"),
     )
 
-    dataset = extractor.transform(studyset)
+    np.testing.assert_array_equal(features.ids, studyset.ids)
+    np.testing.assert_array_equal(features.study_ids, studyset.metadata["study_id"])
+    assert sparse.issparse(features.map_features)
+    assert features.map_features.shape == (len(studyset.ids), studyset.masker.n_elements_)
+    assert features.feature_names[-2:] == ["sample_sizes", "motor_label"]
+    assert "target_score" not in features.feature_names
 
-    np.testing.assert_array_equal(dataset.ids, studyset.ids)
-    np.testing.assert_array_equal(dataset.study_ids, studyset.metadata["study_id"])
-    assert sparse.issparse(dataset.map_features)
-    assert dataset.map_features.shape == (len(studyset.ids), studyset.masker.n_elements_)
-    assert dataset.feature_names[-2:] == ["sample_sizes", "motor_label"]
-    assert "target_score" not in dataset.feature_names
-
-    annotations = studyset.annotations_df.set_index("id").loc[dataset.ids]
-    np.testing.assert_array_equal(dataset.target, annotations["target_score"])
+    annotations = studyset.annotations_df.set_index("id").loc[features.ids]
+    np.testing.assert_array_equal(features.target, annotations["target_score"])
     np.testing.assert_array_equal(
-        _column(dataset.features, dataset.feature_names.index("motor_label")),
+        _column(features.features, features.feature_names.index("motor_label")),
         annotations["motor_label"],
     )
     np.testing.assert_array_equal(
-        _column(dataset.features, dataset.feature_names.index("sample_sizes")),
+        _column(features.features, features.feature_names.index("sample_sizes")),
         [20 + idx for idx in range(len(studyset.ids))],
     )
 
     assert_sklearn_bunch_valid(
-        dataset.to_sklearn(), expected_rows=len(studyset.ids), expected_sparse=True
+        features.to_sklearn(), expected_rows=len(studyset.ids), expected_sparse=True
     )
 
 
-def test_extractor_to_sklearn(ml_studyset):
-    """The one-call export returns the same arrays the container would."""
-    extractor = MAFeatureExtractor(
-        kernel_transformer=MKDAKernel(r=4), target_field=("annotations", "target_score")
+def test_extract_features_to_sklearn(ml_studyset):
+    """The whole path from Studyset to scikit-learn arrays is two calls."""
+    features = extract_features(
+        ml_studyset, MKDAKernel(r=4), target_field=("annotations", "target_score")
     )
 
-    bunch = extractor.to_sklearn(ml_studyset)
-    data, target = extractor.to_sklearn(ml_studyset, return_X_y=True)
+    bunch = features.to_sklearn()
+    data, target = features.to_sklearn(return_X_y=True)
 
     assert_sklearn_bunch_valid(bunch, expected_rows=len(ml_studyset.ids), expected_sparse=True)
     assert data.shape == bunch.data.shape
     np.testing.assert_array_equal(target, bunch.target)
 
 
-def test_extractor_records_provenance(ml_studyset):
+def test_extract_features_records_provenance(ml_studyset):
     """Every row can be traced back to its Studyset and its settings."""
-    extractor = MAFeatureExtractor(
-        kernel_transformer=MKDAKernel(r=4), descriptor_fields=["motor_label"]
-    )
-
-    provenance = extractor.transform(ml_studyset).provenance
+    provenance = extract_features(
+        ml_studyset, MKDAKernel(r=4), descriptor_fields=["motor_label"]
+    ).provenance
 
     assert provenance["studyset_id"] == ml_studyset.id
     assert provenance["studyset_name"] == ml_studyset.name
@@ -850,66 +838,62 @@ def test_extractor_records_provenance(ml_studyset):
     assert provenance["masker"] == ml_studyset.masker.__class__.__name__
 
 
-def test_extractor_aligns_maps_by_id_not_position(ml_studyset):
+def test_extract_features_aligns_maps_by_id_not_position(ml_studyset):
     """Map rows follow the analysis they came from, whatever order the view is in.
 
     Kernel transformers return maps ordered by analysis id and drop the ids that
     name them, while ``Studyset.select_analyses`` accepts positions and so can
     hand back a view in any order.
     """
-    extractor = MAFeatureExtractor(kernel_transformer=MKDAKernel(r=4))
-    reference = extractor.transform(ml_studyset)
+    reference = extract_features(ml_studyset, MKDAKernel(r=4))
     expected = dict(zip(reference.ids, _map_signature(reference)))
 
     positions = np.array([5, 0, 7, 2, 6, 1, 4, 3])
-    reordered = MAFeatureExtractor(kernel_transformer=MKDAKernel(r=4)).transform(
-        ml_studyset.select_analyses(positions)
-    )
+    reordered = extract_features(ml_studyset.select_analyses(positions), MKDAKernel(r=4))
 
     np.testing.assert_array_equal(reordered.ids, ml_studyset.ids[positions])
     assert _map_signature(reordered) == [expected[id_] for id_ in reordered.ids]
 
 
-def test_extractor_rejects_duplicate_analysis_ids(ml_studyset):
+def test_extract_features_rejects_duplicate_analysis_ids(ml_studyset):
     """Duplicate ids would collapse into one map row without being noticed."""
     doubled = ml_studyset.merge(_build_ml_studyset(coordinate_offset=1.0))
-    extractor = MAFeatureExtractor(kernel_transformer=MKDAKernel(r=4))
 
     # The merge keeps one analysis per id, so build the duplicate explicitly.
     duplicated = doubled.select_analyses(np.arange(len(doubled.ids) + 1) % len(doubled.ids))
 
     with pytest.raises(ValueError, match="must be unique"):
-        extractor.transform(duplicated)
+        extract_features(duplicated, MKDAKernel(r=4))
 
 
 @pytest.mark.parametrize("missing_coordinates", ["drop", "include"])
-def test_extractor_missing_coordinates(ml_studyset, missing_coordinates):
+def test_extract_features_missing_coordinates(ml_studyset, missing_coordinates):
     """Coordinate-less analyses are dropped, or kept as all-zero map rows."""
     missing_id = "study_2-task0"
     studyset = _build_ml_studyset(ids_without_points={missing_id})
-    extractor = MAFeatureExtractor(
-        kernel_transformer=MKDAKernel(r=4),
+
+    features = extract_features(
+        studyset,
+        MKDAKernel(r=4),
         descriptor_fields=["motor_label"],
         target_field=("annotations", "target_score"),
         missing_coordinates=missing_coordinates,
     )
 
-    dataset = extractor.transform(studyset)
-
     if missing_coordinates == "drop":
-        assert missing_id not in set(dataset.ids)
-        assert len(dataset) == len(studyset.ids) - 1
-        assert dataset.provenance["dropped_ids"] == [missing_id]
+        assert missing_id not in set(features.ids)
+        assert len(features) == len(studyset.ids) - 1
+        assert features.provenance["dropped_ids"] == [missing_id]
     else:
-        assert len(dataset) == len(studyset.ids)
-        assert dataset.provenance["dropped_ids"] == []
-        row = int(np.flatnonzero(dataset.ids == missing_id)[0])
-        assert dataset.map_features[row].nnz == 0
-        assert dataset.map_features[row - 1].nnz > 0
+        assert len(features) == len(studyset.ids)
+        assert features.provenance["dropped_ids"] == []
+        row = int(np.flatnonzero(features.ids == missing_id)[0])
+        assert features.map_features[row].nnz == 0
+        assert features.map_features[row - 1].nnz > 0
 
-    annotations = studyset.annotations_df.set_index("id").loc[dataset.ids]
-    np.testing.assert_array_equal(dataset.target, annotations["target_score"])
-    np.testing.assert_array_equal(dataset.descriptor_features.ravel(), annotations["motor_label"])
+    annotations = studyset.annotations_df.set_index("id").loc[features.ids]
+    np.testing.assert_array_equal(features.target, annotations["target_score"])
+    np.testing.assert_array_equal(features.descriptor_features.ravel(), annotations["motor_label"])
 
 
 @pytest.mark.parametrize(
@@ -919,20 +903,18 @@ def test_extractor_missing_coordinates(ml_studyset, missing_coordinates):
         ({"missing_values": "maybe"}, "missing_values must be"),
     ],
 )
-def test_extractor_rejects_unknown_option_values(ml_studyset, kwargs, message):
+def test_extract_features_rejects_unknown_option_values(ml_studyset, kwargs, message):
     """Option vocabularies are checked before any work is done."""
-    extractor = MAFeatureExtractor(kernel_transformer=MKDAKernel(r=4), **kwargs)
-
     with pytest.raises(ValueError, match=message):
-        extractor.transform(ml_studyset)
+        extract_features(ml_studyset, MKDAKernel(r=4), **kwargs)
 
 
 @pytest.mark.parametrize("missing_values", ["raise", "drop", "keep"])
-def test_extractor_missing_descriptor_values(missing_values):
+def test_extract_features_missing_descriptor_values(missing_values):
     """Missing values are reported, removed or left for a pipeline to impute."""
     missing_id = "study_3-task1"
     studyset = _build_ml_studyset(ids_without_score={missing_id})
-    extractor = MAFeatureExtractor(
+    call = dict(
         kernel_transformer=MKDAKernel(r=4),
         descriptor_fields=["score"],
         missing_values=missing_values,
@@ -940,29 +922,28 @@ def test_extractor_missing_descriptor_values(missing_values):
 
     if missing_values == "raise":
         with pytest.raises(ValueError, match=f"Missing values in score .*{missing_id}"):
-            extractor.transform(studyset)
+            extract_features(studyset, **call)
         return
 
-    dataset = extractor.transform(studyset)
+    features = extract_features(studyset, **call)
     if missing_values == "drop":
-        assert missing_id not in set(dataset.ids)
-        assert len(dataset) == len(studyset.ids) - 1
-        assert dataset.provenance["missing_value_ids"] == {"score": [missing_id]}
-        assert np.isfinite(dataset.descriptor_features).all()
+        assert missing_id not in set(features.ids)
+        assert len(features) == len(studyset.ids) - 1
+        assert features.provenance["missing_value_ids"] == {"score": [missing_id]}
+        assert np.isfinite(features.descriptor_features).all()
     else:
-        assert len(dataset) == len(studyset.ids)
-        row = int(np.flatnonzero(dataset.ids == missing_id)[0])
-        assert np.isnan(dataset.descriptor_features[row, 0])
-        assert dataset.provenance["missing_value_ids"] == {"score": [missing_id]}
+        assert len(features) == len(studyset.ids)
+        row = int(np.flatnonzero(features.ids == missing_id)[0])
+        assert np.isnan(features.descriptor_features[row, 0])
+        assert features.provenance["missing_value_ids"] == {"score": [missing_id]}
 
 
-def test_extractor_missing_target_values_are_reported():
+def test_extract_features_missing_target_values_are_reported():
     """A missing target is named the same way a missing descriptor is."""
     studyset = _build_ml_studyset(ids_without_score={"study_1-task0"})
-    extractor = MAFeatureExtractor(kernel_transformer=MKDAKernel(r=4), target_field="score")
 
     with pytest.raises(ValueError, match="study_1-task0"):
-        extractor.transform(studyset)
+        extract_features(studyset, MKDAKernel(r=4), target_field="score")
 
 
 @pytest.mark.parametrize(
@@ -976,92 +957,76 @@ def test_extractor_missing_target_values_are_reported():
         (42, "must be a field name"),
     ],
 )
-def test_extractor_rejects_unusable_descriptors(ml_studyset, selector, message):
+def test_extract_features_rejects_unusable_descriptors(ml_studyset, selector, message):
     """Descriptor fields have to be numeric, and have to exist."""
-    extractor = MAFeatureExtractor(
-        kernel_transformer=MKDAKernel(r=4), descriptor_fields=[selector]
-    )
-
     with pytest.raises((ValueError, TypeError), match=message):
-        extractor.transform(ml_studyset)
+        extract_features(ml_studyset, MKDAKernel(r=4), descriptor_fields=[selector])
 
 
-def test_extractor_rejects_repeated_descriptor_fields(ml_studyset):
+def test_extract_features_rejects_repeated_descriptor_fields(ml_studyset):
     """The same field twice is a mistake, not two features."""
-    extractor = MAFeatureExtractor(
-        kernel_transformer=MKDAKernel(r=4), descriptor_fields=["motor_label", "motor_label"]
-    )
-
     with pytest.raises(ValueError, match="selected more than once"):
-        extractor.transform(ml_studyset)
+        extract_features(
+            ml_studyset, MKDAKernel(r=4), descriptor_fields=["motor_label", "motor_label"]
+        )
 
 
-def test_extractor_reports_ambiguous_field_names(ml_studyset):
+def test_extract_features_reports_ambiguous_field_names(ml_studyset):
     """A name in two sources asks which one was meant."""
     annotated = ml_studyset.with_metadata("motor_label", np.ones(len(ml_studyset.ids)))
-    extractor = MAFeatureExtractor(
-        kernel_transformer=MKDAKernel(r=4), descriptor_fields=["motor_label"]
-    )
 
     with pytest.raises(ValueError, match="is ambiguous"):
-        extractor.transform(annotated)
+        extract_features(annotated, MKDAKernel(r=4), descriptor_fields=["motor_label"])
 
 
-def test_extractor_reads_study_level_and_list_metadata(ml_studyset):
+def test_extract_features_reads_study_level_and_list_metadata(ml_studyset):
     """Study-level fields are inherited and list-valued fields are reduced."""
-    extractor = MAFeatureExtractor(
-        kernel_transformer=MKDAKernel(r=4), descriptor_fields=["year", "sample_sizes"]
+    features = extract_features(
+        ml_studyset, MKDAKernel(r=4), descriptor_fields=["year", "sample_sizes"]
     )
 
-    dataset = extractor.transform(ml_studyset)
-
-    years = ml_studyset.metadata.set_index("id").loc[dataset.ids, "year"]
-    np.testing.assert_array_equal(dataset.descriptor_features[:, 0], years)
+    years = ml_studyset.metadata.set_index("id").loc[features.ids, "year"]
+    np.testing.assert_array_equal(features.descriptor_features[:, 0], years)
     np.testing.assert_array_equal(
-        dataset.descriptor_features[:, 1], [20 + idx for idx in range(len(dataset))]
+        features.descriptor_features[:, 1], [20 + idx for idx in range(len(features))]
     )
 
 
-def test_extractor_exports_categorical_targets(ml_studyset):
+def test_extract_features_exports_categorical_targets(ml_studyset):
     """A categorical target reaches y as labels, ready for a classifier."""
-    extractor = MAFeatureExtractor(
-        kernel_transformer=MKDAKernel(r=4), target_field="comparison_task"
-    )
+    features = extract_features(ml_studyset, MKDAKernel(r=4), target_field="comparison_task")
 
-    dataset = extractor.transform(ml_studyset)
-
-    assert sorted(set(dataset.target)) == ["flanker", "n-back"]
+    assert sorted(set(features.target)) == ["flanker", "n-back"]
     np.testing.assert_array_equal(
-        dataset.target, ml_studyset.metadata.set_index("id").loc[dataset.ids, "comparison_task"]
+        features.target,
+        ml_studyset.metadata.set_index("id").loc[features.ids, "comparison_task"],
     )
 
 
-def test_extractor_applies_a_target_transformer(ml_studyset):
+def test_extract_features_applies_a_target_transformer(ml_studyset):
     """A label extractor turns a text field into one label per analysis."""
-    extractor = MAFeatureExtractor(
-        kernel_transformer=MKDAKernel(r=4),
+    features = extract_features(
+        ml_studyset,
+        MKDAKernel(r=4),
         target_field=("texts", "abstract"),
         target_transformer=lambda values: np.array(
             [text.split()[1] for text in values], dtype=str
         ),
     )
 
-    dataset = extractor.transform(ml_studyset)
-
-    np.testing.assert_array_equal(dataset.target, [str(idx) for idx in range(len(dataset))])
+    np.testing.assert_array_equal(features.target, [str(idx) for idx in range(len(features))])
 
 
-def test_extractor_target_transformer_may_be_a_transformer(ml_studyset):
+def test_extract_features_target_transformer_may_be_a_transformer(ml_studyset):
     """A stateless scikit-learn transformer works as a label extractor too."""
-    extractor = MAFeatureExtractor(
-        kernel_transformer=MKDAKernel(r=4),
+    features = extract_features(
+        ml_studyset,
+        MKDAKernel(r=4),
         target_field=("annotations", "target_score"),
         target_transformer=FunctionTransformer(lambda values: np.round(values)),
     )
 
-    dataset = extractor.transform(ml_studyset)
-
-    np.testing.assert_array_equal(dataset.target, np.round(np.arange(8) + 0.5))
+    np.testing.assert_array_equal(features.target, np.round(np.arange(8) + 0.5))
 
 
 @pytest.mark.parametrize(
@@ -1071,96 +1036,98 @@ def test_extractor_target_transformer_may_be_a_transformer(ml_studyset):
         ({"target_field": "year", "target_transformer": object()}, "must be callable"),
     ],
 )
-def test_extractor_rejects_unusable_targets(ml_studyset, kwargs, message):
+def test_extract_features_rejects_unusable_targets(ml_studyset, kwargs, message):
     """A target has to be one usable value per analysis."""
-    extractor = MAFeatureExtractor(kernel_transformer=MKDAKernel(r=4), **kwargs)
-
     with pytest.raises((ValueError, TypeError), match=message):
-        extractor.transform(ml_studyset)
+        extract_features(ml_studyset, MKDAKernel(r=4), **kwargs)
 
 
-def test_extractor_rejects_constant_targets(ml_studyset):
+def test_extract_features_rejects_constant_targets(ml_studyset):
     """A target with one value has nothing to predict."""
     constant = ml_studyset.with_metadata("only_value", np.ones(len(ml_studyset.ids)))
-    extractor = MAFeatureExtractor(kernel_transformer=MKDAKernel(r=4), target_field="only_value")
 
     with pytest.raises(ValueError, match="nothing to predict"):
-        extractor.transform(constant)
+        extract_features(constant, MKDAKernel(r=4), target_field="only_value")
 
 
-def test_extractor_reuses_generated_maps(ml_studyset):
-    """Comparing reducers over one Studyset generates the maps once."""
+class _CountingKernel(MKDAKernel):
+    """An MKDA kernel that counts how often the maps are really computed."""
 
-    class CountingKernel(MKDAKernel):
-        calls = 0
+    calls = 0
 
-        def transform(self, studyset, masker=None, return_type="image"):
-            type(self).calls += 1
-            return super().transform(studyset, masker=masker, return_type=return_type)
+    def _transform(self, mask, coordinates, return_type="sparse"):
+        type(self).calls += 1
+        return super()._transform(mask, coordinates, return_type=return_type)
 
-    extractor = MAFeatureExtractor(kernel_transformer=CountingKernel(r=4))
-    first = extractor.transform(ml_studyset)
-    second = extractor.transform(ml_studyset)
 
-    assert CountingKernel.calls == 1
+def test_extract_features_caches_maps_with_memory(ml_studyset, tmp_path):
+    """A cache location makes a repeated conversion reuse the maps it made."""
+    _CountingKernel.calls = 0
+
+    first = extract_features(ml_studyset, _CountingKernel(r=4), memory=str(tmp_path))
+    second = extract_features(ml_studyset, _CountingKernel(r=4), memory=str(tmp_path))
+
+    assert _CountingKernel.calls == 1
     np.testing.assert_array_equal(first.map_features.toarray(), second.map_features.toarray())
 
-    # Moved coordinates and changed kernel parameters both invalidate the memo.
-    extractor.transform(_build_ml_studyset(coordinate_offset=6.0))
-    assert CountingKernel.calls == 2
+    # A different kernel configuration is a different cache entry, not a stale hit.
+    extract_features(ml_studyset, _CountingKernel(r=8), memory=str(tmp_path))
+    assert _CountingKernel.calls == 2
 
-    extractor.kernel_transformer = CountingKernel(r=8)
-    extractor.transform(ml_studyset)
-    assert CountingKernel.calls == 3
-
-    without_memo = MAFeatureExtractor(kernel_transformer=CountingKernel(r=4), cache_maps=False)
-    without_memo.transform(ml_studyset)
-    without_memo.transform(ml_studyset)
-    assert CountingKernel.calls == 5
+    # Kernel transformers cache their maps at memory_level 2, so a lower level asks
+    # for no caching at all.
+    _CountingKernel.calls = 0
+    extract_features(ml_studyset, _CountingKernel(r=4), memory=str(tmp_path), memory_level=1)
+    extract_features(ml_studyset, _CountingKernel(r=4), memory=str(tmp_path), memory_level=1)
+    assert _CountingKernel.calls == 2
 
 
-def test_extractor_memory_is_passed_to_the_kernel(ml_studyset, tmp_path):
-    """A cache location is wired up without touching the caller's kernel."""
+def test_extract_features_without_memory_does_not_cache(ml_studyset):
+    """Without a cache location every conversion generates its own maps."""
+    _CountingKernel.calls = 0
+
+    extract_features(ml_studyset, _CountingKernel(r=4))
+    extract_features(ml_studyset, _CountingKernel(r=4))
+
+    assert _CountingKernel.calls == 2
+
+
+def test_extract_features_leaves_the_callers_kernel_alone(ml_studyset, tmp_path):
+    """Wiring up a cache must not reconfigure the kernel that was passed in."""
     kernel_transformer = MKDAKernel(r=4)
-    extractor = MAFeatureExtractor(
-        kernel_transformer=kernel_transformer, memory=str(tmp_path), memory_level=1
-    )
 
-    extractor.transform(ml_studyset)
+    extract_features(ml_studyset, kernel_transformer, memory=str(tmp_path))
 
     assert any(tmp_path.iterdir())
     assert kernel_transformer.memory.location is None
     assert kernel_transformer.memory_level == 0
 
 
-def test_extractor_accepts_a_kernel_class(ml_studyset):
+def test_extract_features_accepts_a_kernel_class(ml_studyset):
     """A kernel transformer may be given as a class, as elsewhere in NiMARE."""
-    dataset = MAFeatureExtractor(kernel_transformer=MKDAKernel).transform(ml_studyset)
+    features = extract_features(ml_studyset, MKDAKernel)
 
-    assert dataset.map_features.shape[0] == len(ml_studyset.ids)
-    assert dataset.provenance["kernel_transformer"]["class"] == "MKDAKernel"
+    assert features.map_features.shape[0] == len(ml_studyset.ids)
+    assert features.provenance["kernel_transformer"]["class"] == "MKDAKernel"
 
 
-def test_extractor_rejects_an_empty_studyset(ml_studyset):
+def test_extract_features_rejects_an_empty_studyset(ml_studyset):
     """There is nothing to convert without analyses."""
     empty = ml_studyset.select_analyses(np.zeros(len(ml_studyset.ids), dtype=bool))
 
     with pytest.raises(ValueError, match="no analyses"):
-        MAFeatureExtractor(kernel_transformer=MKDAKernel(r=4)).transform(empty)
+        extract_features(empty, MKDAKernel(r=4))
 
 
-def test_extractor_end_to_end_classification(ml_studyset):
+def test_end_to_end_classification(ml_studyset):
     """The documented workflow runs from Studyset to grouped cross-validation."""
     from sklearn.linear_model import LogisticRegression
 
-    extractor = MAFeatureExtractor(
-        kernel_transformer=MKDAKernel(r=10), target_field="comparison_task"
-    )
-    dataset = extractor.transform(ml_studyset)
-    bunch = dataset.to_sklearn()
+    features = extract_features(ml_studyset, MKDAKernel(r=10), target_field="comparison_task")
+    bunch = features.to_sklearn()
 
     pipeline = make_pipeline(
-        dataset.make_preprocessor("truncated_svd", n_components=2, random_state=RANDOM_SEED),
+        features.make_preprocessor("truncated_svd", n_components=2, random_state=RANDOM_SEED),
         LogisticRegression(max_iter=500),
     )
     scores = cross_val_score(
@@ -1172,7 +1139,7 @@ def test_extractor_end_to_end_classification(ml_studyset):
 
 
 @pytest.mark.performance_smoke
-def test_extractor_meets_the_conversion_budget():
+def test_extract_features_meets_the_conversion_budget():
     """A 1,000-study Studyset converts and splits inside the documented budget."""
     # resource is Unix-only, and importing it at module scope makes the whole module
     # uncollectable on Windows. Only this test needs it, and it runs on Linux.
@@ -1181,13 +1148,13 @@ def test_extractor_meets_the_conversion_budget():
     _, studyset = create_coordinate_studyset(foci=5, n_studies=1000, sample_size=30, seed=42)
 
     start = time.time()
-    dataset = MAFeatureExtractor(kernel_transformer=MKDAKernel(r=10)).transform(studyset)
-    train, test = dataset.split(test_size=0.25, random_state=RANDOM_SEED)
+    features = extract_features(studyset, MKDAKernel(r=10))
+    train, test = features.split(test_size=0.25, random_state=RANDOM_SEED)
     elapsed = time.time() - start
     peak_gb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e6
 
-    assert len(dataset) == len(studyset.ids)
+    assert len(features) == len(studyset.ids)
     assert set(train.study_ids).isdisjoint(test.study_ids)
-    assert sparse.issparse(dataset.features)
+    assert sparse.issparse(features.features)
     assert elapsed <= 180, f"conversion and split took {elapsed:.0f}s"
     assert peak_gb <= 5, f"peak memory was {peak_gb:.1f} GB"

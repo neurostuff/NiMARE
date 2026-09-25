@@ -361,3 +361,8 @@ though kernel transformers order them by identifier, and the documented
 `sample_sizes` descriptor could not be read because it is list-valued.
 `nimare.studyset.requirements.PerAnalysis` reads it the way the rest of NiMARE
 does.
+
+The same review also replaced the names: the container is `FeatureSet`, and
+conversion is the function `extract_features`, with the conversion helper class
+internal. `interface-design.md` section 13 records why, including the caching
+gap that rename work uncovered.

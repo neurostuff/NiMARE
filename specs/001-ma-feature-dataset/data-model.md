@@ -3,7 +3,7 @@
 This data model is organized around the classes and public functions the
 module provides. **Revised 2026-09-25** alongside `contracts/public-api.md`;
 `interface-design.md` records why each shape was chosen. Some conceptual pieces are not standalone classes;
-they are attributes or derived views on `MAFeatureDataset`.
+they are attributes or derived views on `FeatureSet`.
 
 Terminology: in this feature, each dataset row represents one analysis. Any
 references to dataset rows, indices, or grouping refer to analysis rows.
@@ -40,7 +40,7 @@ inventing a separate Studyset schema.
 
 **Used By**
 
-- `MAFeatureExtractor.transform(studyset)` reads IDs, grouping, coordinates,
+- `extract_features` reads IDs, grouping, coordinates,
   projected tables, and masker from this object.
 
 **Validation Rules**
@@ -52,15 +52,18 @@ inventing a separate Studyset schema.
 - Must expose a masker when map generation or reducer workflows require masked
   voxel ordering.
 
-## Class: `MAFeatureExtractor` New Conversion Helper
+## Function: `extract_features` New Public Entry Point
 
-Public class in `nimare.ml`. It stores conversion configuration and converts one
-Studyset into one `MAFeatureDataset`. It is not a scikit-learn estimator and
-does not expose `fit` or `fit_transform`. Splitting is not part of extraction:
-it is an evaluation choice, and lives on the container.
+Public function in `nimare.ml`. It converts one Studyset into one `FeatureSet`
+in a single call. Splitting is not part of extraction: it is an evaluation
+choice, and lives on the container. The conversion logic lives in an internal
+`_FeatureExtractor` class, which keeps the stages as separate methods over
+shared configuration but is not part of the public surface; users meet one
+function and one container.
 
-**Constructor Configuration**
+**Arguments**
 
+- `studyset`: the Studyset to convert, positionally first.
 - `kernel_transformer`: existing NiMARE kernel transformer instance or class.
 - `descriptor_fields`: optional selectors for metadata, annotations, or texts.
 - `target_field`: optional selector for one prediction target.
@@ -68,9 +71,9 @@ it is an evaluation choice, and lives on the container.
   the raw target values, for fields with no scalar reading.
 - `missing_coordinates`: `"drop"` (default) or `"include"`.
 - `missing_values`: `"raise"` (default), `"drop"` or `"keep"`.
-- `cache_maps`: keep the most recent map matrix in memory. Default `True`.
 - `memory`, `memory_level`: joblib cache location for MA map generation,
-  applied to the kernel transformer when it does not define its own.
+  applied to a copy of the kernel transformer when it does not define its own.
+  Kernel transformers cache at memory level 2, so that is the default here.
 
 **Behavior**
 
@@ -87,8 +90,7 @@ it is an evaluation choice, and lives on the container.
   non-numeric descriptors and unusable targets.
 - Applies `missing_coordinates` and `missing_values` to decide which analyses
   are retained, and records both decisions in provenance.
-- `transform(studyset)` returns one `MAFeatureDataset`.
-- `to_sklearn(studyset, return_X_y=False)` converts and exports in one call.
+- Returns one `FeatureSet`; `FeatureSet.to_sklearn()` exports it.
 
 **Validation Rules**
 
@@ -99,11 +101,12 @@ it is an evaluation choice, and lives on the container.
   must raise.
 - Retained rows keep alignment among map features, descriptors, target, `ids`
   and `study_ids`.
-- Cached map features are invalidated whenever the analyses, their coordinates,
-  their sample sizes, the mask geometry or the kernel configuration change.
+- Cached map features are keyed by the kernel transformer and the coordinates
+  it is given, so a changed configuration is a new entry rather than a stale
+  hit.
 - The caller's kernel transformer is never mutated.
 
-## Class: `MAFeatureDataset` New Container
+## Class: `FeatureSet` New Container
 
 Public class in `nimare.ml`. The authoritative NiMARE container for
 machine-learning-ready map features, provenance, grouping, optional descriptors,
@@ -172,7 +175,7 @@ Returns a `sklearn.utils.Bunch` with `data`, `target`, `groups`,
 
 #### `split(test_size=0.25, random_state=None)`
 
-Returns train/test `MAFeatureDataset` slices through `GroupShuffleSplit` over
+Returns train/test `FeatureSet` slices through `GroupShuffleSplit` over
 `study_ids`. `test_size` is a fraction of studies. Fails clearly, and before
 returning anything, when the study count cannot serve the request.
 
@@ -213,7 +216,7 @@ for whatever names or describes a reduction:
   a transformer nor an atlas raises `TypeError`.
 - Parameters alongside a built transformer raise rather than being ignored.
 - Atlas aggregation requires the source masker, which
-  `MAFeatureDataset.make_preprocessor` supplies from the dataset.
+  `FeatureSet.make_preprocessor` supplies from the dataset.
 - Unreduced map features are sparse; a reducer that cannot read sparse input
   says so when it is fitted.
 
@@ -232,11 +235,11 @@ aggregation strategy remain nilearn's. Reports region names through
 
 ```text
 nimare.nimads.Studyset  (existing input class)
-`-- MAFeatureExtractor
-  |-- transform(studyset)  -> MAFeatureDataset
+`-- extract_features
+  |-- transform(studyset)  -> FeatureSet
   `-- to_sklearn(studyset) -> sklearn Bunch (or (X, y))
 
-MAFeatureDataset
+FeatureSet
 |-- ids, study_ids, masker, provenance
 |-- map_features + descriptor_features -> features, feature_names
 |-- descriptors (raw values for pipeline-side encoding)
@@ -256,14 +259,14 @@ make_map_reducer(reducer, masker=None, **kwargs) -> sklearn transformer
 
 **Pipeline workflow (recommended):**
 
-1. `Studyset` + configured `MAFeatureExtractor` -> `transform(studyset)`
+1. `Studyset` -> `extract_features(studyset, kernel_transformer, ...)`
 2. `dataset.make_preprocessor(...)` inside a `Pipeline`
 3. `cross_val_score(pipeline, bunch.data, bunch.target, cv=GroupKFold(...),
    groups=bunch.groups)`
 
 **Holdout workflow:**
 
-1. `Studyset` -> `transform(studyset)`
+1. `Studyset` -> `extract_features(studyset, kernel_transformer, ...)`
 2. `train, test = dataset.split(test_size=0.25, random_state=13)`
 3. `train_reduced = train.fit_transform_maps(reducer)`;
    `test_reduced = test.transform_maps(reducer)`

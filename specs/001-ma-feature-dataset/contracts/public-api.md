@@ -12,8 +12,9 @@ row.
 `nimare.ml`
 
 The module is exported from `nimare/__init__.py` and documented in
-`docs/api.rst`. Its public names are `MAFeatureExtractor`, `MAFeatureDataset`,
-`AtlasAggregator` and `make_map_reducer`.
+`docs/api.rst`. Its public names are `extract_features`, `FeatureSet`,
+`AtlasAggregator` and `make_map_reducer`: one function to call and one
+container to work with, plus the reduction helpers.
 
 ## Division of Responsibility
 
@@ -37,20 +38,29 @@ order before adding local helpers:
    decomposition, and pipelines.
 4. New local helpers only when none of the above provides the needed behavior.
 
-## `MAFeatureExtractor`
+## `extract_features`
 
-Converts a Studyset into feature data. It is a NiMARE conversion helper, not a
-trainable scikit-learn estimator, and must not expose `fit` or `fit_transform`.
+`extract_features(studyset, kernel_transformer, **options)` is the public entry
+point. It converts one Studyset and returns one `FeatureSet`. Conversion is a
+single call, not a configure-then-call pair: the settings are arguments, and
+what comes back is the thing the researcher works with.
 
-### Construction
+The conversion logic lives in an internal `_FeatureExtractor` class, so that the
+stages -- field selection, target handling, row retention, map generation,
+provenance -- stay separate methods over shared configuration. That class is not
+exported, not documented, and not part of the public surface. No public object
+in this module takes a Studyset and exposes `fit` or `fit_transform`.
 
-Required parameter:
+### Signature
 
+Required, positionally:
+
+- `studyset`: the Studyset to convert. One analysis becomes one row.
 - `kernel_transformer`: existing NiMARE kernel transformer instance or class.
   No implicit scientific default is selected; public examples must pass an
   explicit kernel transformer.
 
-Optional parameters:
+Keyword-only:
 
 - `descriptor_fields`: field selectors appended to the feature matrix as extra
   numeric columns.
@@ -61,23 +71,14 @@ Optional parameters:
 - `missing_coordinates`: `"drop"` (default) or `"include"`.
 - `missing_values`: `"raise"` (default), `"drop"` or `"keep"`, for missing
   descriptor and target values.
-- `cache_maps`: keep the most recently generated map matrix in memory, so that
-  comparing reducers over one Studyset generates the maps once. Default `True`.
 - `memory`, `memory_level`: joblib cache location for MA map generation,
-  applied to the kernel transformer when it does not define its own, following
-  the NiMARE `CacheMixin` convention.
+  applied to a copy of the kernel transformer when it does not define its own,
+  following the NiMARE `CacheMixin` convention. Kernel transformers cache their
+  maps at memory level 2, so `memory_level` defaults to 2 here; a lower level
+  is a request not to cache. Repeated conversions of the same Studyset then
+  reuse the maps, across processes as well as within one.
 
-The constructor must not raise for option values it can check later;
-`transform` validates the option vocabulary before doing any work.
-
-### Required methods
-
-- `transform(studyset)`: validate the Studyset, extract map features,
-  descriptors and target, and return one `MAFeatureDataset`. Splitting is not
-  part of extraction.
-- `to_sklearn(studyset, return_X_y=False)`: convert and export in one call,
-  returning the `Bunch` (or `(data, target)`) that
-  `MAFeatureDataset.to_sklearn` returns.
+The option vocabulary is validated before any work is done.
 
 ### Required behavior
 
@@ -97,7 +98,7 @@ The constructor must not raise for option values it can check later;
 - Append numeric descriptor fields directly. Reject categorical and text
   descriptor fields, naming the field, its kind, and the two supported routes:
   encode it and select the numeric result, or encode it inside a pipeline from
-  `MAFeatureDataset.descriptors`.
+  `FeatureSet.descriptors`.
 - Export scalar numeric and scalar categorical targets as a one-dimensional
   `y`. Reject raw free-text and multi-label targets unless `target_transformer`
   is supplied, and reject a target that has one value for every analysis.
@@ -106,9 +107,10 @@ The constructor must not raise for option values it can check later;
   under `"drop"` and `"keep"`.
 - Never mutate the caller's kernel transformer.
 
-## `MAFeatureDataset`
+## `FeatureSet`
 
-The aligned container. Row `i` is analysis `ids[i]` from study `study_ids[i]`,
+The aligned container, and the only class users construct nothing of: it is
+what `extract_features` returns. Row `i` is analysis `ids[i]` from study `study_ids[i]`,
 and that order is preserved by every method.
 
 ### Required attributes
@@ -208,7 +210,7 @@ the alternatives to a name. An object that is neither a transformer nor an
 atlas raises `TypeError`. Parameters passed alongside an already-built
 transformer raise, rather than being silently ignored.
 
-`MAFeatureDataset.make_preprocessor` takes the same forms and supplies the
+`FeatureSet.make_preprocessor` takes the same forms and supplies the
 dataset's masker, so an atlas needs nothing else from the caller.
 
 Unreduced map features are sparse, so a reducer that cannot read sparse input

@@ -5,7 +5,9 @@
 > `data-model.md`, `quickstart.md` and `spec.md` were revised to match. The task
 > list below records the original decomposition; task-level wording that names
 > `apply_map_reducer`, extractor-level `test_size`, or a `(train, test)` return
-> from `transform` refers to the superseded shape.
+> from `transform` refers to the superseded shape. The public names have also
+> changed since: conversion is the function `extract_features` and the
+> container is `FeatureSet`, with the conversion helper class internal.
 
 **Input**: Design documents from `specs/001-ma-feature-dataset/`
 **Prerequisites**: `plan.md`, `spec.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md`

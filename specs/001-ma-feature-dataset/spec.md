@@ -17,25 +17,25 @@
 
 ### Session 2026-05-20
 
-- Q: Should `MAFeatureExtractor` expose an sklearn-style `fit`/`fit_transform` API? -> A: No; use `transform(studyset)` for dataset-level conversion and `to_sklearn(studyset, ...)` for one-call sklearn export.
+- Q: Should `extract_features` expose an sklearn-style `fit`/`fit_transform` API? -> A: No; use `transform(studyset)` for dataset-level conversion and `to_sklearn(studyset, ...)` for one-call sklearn export.
 - Q: When may feature data be represented densely? -> A: Unreduced voxelwise feature data must remain sparse; dense output is allowed only after an explicit reducer creates a reduced representation, and dense PCA over unreduced voxels is not required.
 - Q: How should the MVP handle study and analysis identifier ambiguity? -> A: Assume input Studysets provide unique study IDs and unique analysis IDs; duplicate or missing identifiers are out of scope for the MVP.
 - Q: How should analyses with no coordinates be handled? -> A: Provide `missing_coordinates` with `include` and `drop` modes; default `drop` removes them before row construction and records dropped IDs in provenance, while `include` keeps them as all-zero sparse map rows.
 
 ### Session 2026-09-25 (interface review)
 
-- Q: Should `MAFeatureExtractor.transform` return a train/test tuple? -> A: No.
-  `transform(studyset)` returns one `MAFeatureDataset`; splitting is an
+- Q: Should `extract_features.transform` return a train/test tuple? -> A: No.
+  `transform(studyset)` returns one `FeatureSet`; splitting is an
   evaluation choice and lives on the container as `split()`. Returning
   `(dataset, None)` for the common unsplit case was ergonomics nobody wanted.
 - Q: Where is leakage prevented? -> A: In scikit-learn. Kernel transformation is
   row-independent, so eager extraction leaks nothing; every step that learns
   across rows goes in a `Pipeline` built from
-  `MAFeatureDataset.make_preprocessor()`, or is fitted on the training dataset
+  `FeatureSet.make_preprocessor()`, or is fitted on the training dataset
   with `fit_transform_maps` and reused through `transform_maps`, which raises
   rather than fitting on held-out rows.
 - Q: How are non-numeric descriptor fields handled? -> A: They are rejected, and
-  their raw values stay available on `MAFeatureDataset.descriptors` for
+  their raw values stay available on `FeatureSet.descriptors` for
   encoding inside a pipeline. Fitting an encoder at extraction time would fit it
   on the rows about to be held out, which FR-013 forbids.
 - Q: How are missing descriptor and target values handled? -> A: A
@@ -176,11 +176,11 @@ A researcher wants convenient, reusable reduction workflows for high-dimensional
 - **FR-011**: The feature MUST report missing or unusable map, descriptor, and target values with enough detail for the researcher to correct inputs or choose an explicit handling strategy.
 - **FR-012**: The feature MUST provide sparse-safe convenience reduction workflows for voxelwise modeled activation map features while preserving analysis-row alignment and study grouping, including variance thresholding, truncated SVD or equivalent sparse-compatible low-rank reduction, and atlas or label aggregation when a masker or labels image is supplied.
 - **FR-013**: The feature MUST prevent data leakage by ensuring any learned reduction or descriptor transformation is fit only on training data before being applied to held-out data.
-- **FR-014**: The feature MUST expose Studyset conversion through `MAFeatureExtractor.transform(studyset)`, returning one `MAFeatureDataset`, and MUST provide the one-call sklearn-ready export through `MAFeatureExtractor.to_sklearn(studyset, return_X_y=False)`. Grouped splitting MUST be available on the container as `MAFeatureDataset.split(test_size, random_state)`. `MAFeatureExtractor` MUST NOT expose `fit` or `fit_transform`.
+- **FR-014**: The feature MUST expose Studyset conversion through one public function, `extract_features(studyset, kernel_transformer, ...)`, returning one `FeatureSet`, and the sklearn-ready export through `FeatureSet.to_sklearn(return_X_y=False)`. Grouped splitting MUST be available on the container as `FeatureSet.split(test_size, random_state)`. The conversion helper class MUST remain internal, and no public object in the module may take a Studyset and expose `fit` or `fit_transform`.
 - **FR-015**: The feature MUST represent unreduced voxelwise feature data as sparse numeric matrices throughout conversion, export, and splitting; dense feature data is allowed only after an explicit reducer creates a reduced representation.
 - **FR-016**: The feature MUST provide a user-facing example that demonstrates Studyset conversion, grouped splitting, descriptor features, target extraction, and at least one reduction workflow.
 - **FR-017**: The feature MUST be additive with respect to released NiMARE public behavior; existing Studyset, kernel, metadata, annotation, and documentation workflows must continue to work.
-- **FR-018**: The feature MUST provide an explicit `missing_coordinates` option on `MAFeatureExtractor` with `include` and `drop` modes. `drop` MUST be the default and MUST remove coordinate-less analyses before row construction while recording dropped IDs in provenance; `include` MUST retain coordinate-less analyses as all-zero sparse map rows.
+- **FR-018**: The feature MUST provide an explicit `missing_coordinates` option on `extract_features` with `include` and `drop` modes. `drop` MUST be the default and MUST remove coordinate-less analyses before row construction while recording dropped IDs in provenance; `include` MUST retain coordinate-less analyses as all-zero sparse map rows.
 - **FR-019**: The feature MUST provide an explicit `missing_values` option with `raise`, `drop` and `keep` modes for missing descriptor and target values. `raise` MUST be the default and MUST name the affected fields and analysis identifiers; `drop` MUST remove those analyses and `keep` MUST leave the values missing, both recording what happened in provenance.
 - **FR-020**: The feature MUST align generated map rows to analyses by analysis identifier rather than by position, and MUST reject duplicate analysis identifiers, because kernel transformers return maps ordered by identifier and discard the identifiers that name them.
 
@@ -198,7 +198,7 @@ A researcher wants convenient, reusable reduction workflows for high-dimensional
 ### Public API & Compatibility *(mandatory for code changes)*
 
 - **Latest Release Baseline**: 0.16.0
-- **Public API Surface**: New additive public surface for creating machine-learning-ready outputs from existing NiMARE Studysets: `MAFeatureExtractor` (`transform`, `to_sklearn`), `MAFeatureDataset` (`to_sklearn`, `split`, `make_preprocessor`, `fit_transform_maps`, `transform_maps`, `select_analyses`, `copy`), `AtlasAggregator`, and `make_map_reducer`.
+- **Public API Surface**: New additive public surface for creating machine-learning-ready outputs from existing NiMARE Studysets: `extract_features`, `FeatureSet` (`to_sklearn`, `split`, `make_preprocessor`, `fit_transform_maps`, `transform_maps`, `select_analyses`, `copy`), `AtlasAggregator`, and `make_map_reducer`.
 - **Compatibility Requirement**: Preserve existing released public behavior for Studysets, modeled activation map generation, metadata, annotations, and text access. New functionality is expected to be additive.
 - **Migration/Deprecation Notes**: No migration or deprecation is expected for existing released APIs.
 - **Sphinx-Gallery Example**: `examples/05_machine_learning/01_plot_ma_feature_dataset.py` and `examples/05_machine_learning/02_plot_ma_feature_reduction.py` created or edited.
@@ -230,13 +230,13 @@ A researcher wants convenient, reusable reduction workflows for high-dimensional
 - The MVP assumes input Studysets provide unique study IDs and unique analysis IDs; deriving study groups from ambiguous or missing identifiers is out of scope.
 - Study-level metadata may be repeated across that study's analyses, but grouped splitting prevents study-level leakage between training and testing partitions.
 - "Scikit-learn-compatible" means the exported data can be consumed by common estimator workflows that expect aligned feature values, target values, and grouping labels.
-- `MAFeatureExtractor` is a NiMARE conversion helper, not a trainable scikit-learn estimator; downstream scikit-learn models consume the output of `MAFeatureExtractor.to_sklearn(studyset, ...)` or of `MAFeatureDataset.to_sklearn()`.
+- Conversion is a function, not a trainable scikit-learn estimator; downstream scikit-learn models consume `FeatureSet.to_sklearn()`. Users meet one function and one container, and the class that carries out a conversion is internal.
 - Kernel transformation is row-independent, so generating every analysis's map before splitting leaks nothing; only steps that learn across rows have to be fitted inside a split.
-- Repeated reducer experiments reuse the most recently generated MA map matrix whenever the Studyset and extraction settings are unchanged, and a `memory` location extends that reuse across processes through the kernel transformer's own cache.
+- Repeated reducer experiments reuse one `FeatureSet` rather than converting again, and a `memory` location makes repeated conversions of the same Studyset reuse their maps through the kernel transformer's own joblib cache.
 - Unreduced voxelwise feature data is sparse-only; dense data is permitted only after explicit reduction, such as a low-rank component matrix or parcel-level aggregate.
 - The feature will not train or evaluate predictive models itself beyond providing data structures, split helpers, and reduction workflows needed by researchers.
 - Missing descriptor or outcome values fail clearly by default unless the researcher explicitly selects a handling strategy.
 - Study grouping is mandatory for split helpers and is read from the Studyset's study IDs.
 - Existing kernel and Studyset behavior from the latest release remains the compatibility baseline.
 - Coordinate-less analyses are not an error by themselves; they are handled by
-  `MAFeatureExtractor.missing_coordinates`.
+  `the missing-coordinate option`.

@@ -290,11 +290,11 @@ historical import path and adds nothing of its own.
    :toctree: generated/
    :template: class.rst
 
-   ml.MAFeatureExtractor
-   ml.MAFeatureDataset
+   ml.FeatureSet
    ml.AtlasAggregator
    :template: function.rst
 
+   ml.extract_features
    ml.make_map_reducer
 
 

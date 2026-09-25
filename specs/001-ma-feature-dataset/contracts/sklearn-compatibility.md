@@ -6,20 +6,20 @@ scikit-learn workflows. **Revised 2026-09-25** alongside
 
 ## Dataset Export
 
-`MAFeatureDataset.to_sklearn()` returns a `sklearn.utils.Bunch` with:
+`FeatureSet.to_sklearn()` returns a `sklearn.utils.Bunch` with:
 
 - `data`: two-dimensional analysis-by-feature matrix accepted by scikit-learn
-  estimators; same as `MAFeatureDataset.features`.
+  estimators; same as `FeatureSet.features`.
 - `target`: one-dimensional target array or `None`.
 - `groups`: one-dimensional study group array aligned to `data` rows; same as
-  `MAFeatureDataset.study_ids`.
+  `FeatureSet.study_ids`.
 - `feature_names`: feature names aligned to `data` columns.
 - `ids`, `descriptors`, `provenance`, `map_columns`, `descriptor_columns`: the
   NiMARE-side context a researcher needs to trace a row or build a pipeline.
 
 `to_sklearn(return_X_y=True)` returns `(data, target)` instead, following the
-`sklearn.datasets` convention. `MAFeatureExtractor.to_sklearn(studyset, ...)`
-converts and exports in one call.
+`sklearn.datasets` convention, so the whole path from Studyset to scikit-learn
+arrays is `extract_features(studyset, ...).to_sklearn()`.
 
 Exported unreduced voxelwise feature data must remain a sparse numeric matrix.
 Dense feature data may be exported only after an explicit reducer produces a
@@ -70,7 +70,7 @@ Grouped splitting uses study group labels. For any split:
 - Too few study groups, or a `test_size` that would empty a partition, must
   raise before returning any split.
 
-`MAFeatureDataset.split` covers the holdout case; `groups` goes straight to
+`FeatureSet.split` covers the holdout case; `groups` goes straight to
 `GroupKFold`, `StratifiedGroupKFold` or `GroupShuffleSplit` for
 cross-validation.
 
@@ -81,7 +81,7 @@ Descriptor features must be aligned to `ids`.
 - Numeric descriptors are appended directly.
 - Categorical and text descriptors are rejected, because encoding them at
   extraction time would fit the encoder on every row, including held-out rows.
-  The raw values remain available on `MAFeatureDataset.descriptors` for
+  The raw values remain available on `FeatureSet.descriptors` for
   encoding inside a pipeline.
 - Missing descriptor values must be reported explicitly unless
   `missing_values` says to drop or keep them, and either choice must be
