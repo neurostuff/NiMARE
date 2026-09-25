@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import resource
 import time
 
 import nibabel as nib
@@ -637,13 +636,21 @@ def test_atlas_aggregator_accepts_a_prebuilt_masker(small_masker, atlas_features
     """A masker built by the caller is used as configured, and not modified."""
     labels_img, _ = _atlas_images(small_masker.mask_img.affine)
     atlas_masker = NiftiLabelsMasker(
-        labels_img=labels_img, strategy="sum", resampling_target="data", reports=False
+        labels_img=labels_img,
+        # Named explicitly: left unnamed, nilearn invents a name per region and the
+        # convention has changed between 0.12 ("0", the position) and 0.13 ("1", the
+        # label value), which would pin the assertion below to one nilearn version.
+        labels=["Background", "region_a", "region_b"],
+        strategy="sum",
+        resampling_target="data",
+        reports=False,
     )
 
     reducer = make_map_reducer(atlas_masker, masker=small_masker).fit(atlas_features)
 
     assert reducer.atlas_masker_.strategy == "sum"
     assert atlas_masker.mask_img is None
+    np.testing.assert_array_equal(reducer.get_feature_names_out(), ["region_a", "region_b"])
 
 
 @pytest.mark.parametrize(
@@ -672,6 +679,37 @@ def test_atlas_aggregator_requires_the_source_masker(small_masker):
 
     with pytest.raises(ValueError, match="voxel order"):
         AtlasAggregator(atlas=labels_img).fit(np.zeros((2, 8)))
+
+
+@pytest.mark.parametrize("atlas_kind", ["labels", "maps"])
+def test_atlas_aggregator_names_match_the_columns_it_returns(
+    small_masker, atlas_features, atlas_kind
+):
+    """Names follow the regions nilearn actually returns, not the ones it was given.
+
+    nilearn 0.12 keeps a region that falls outside the mask and 0.13 drops it,
+    and for a maps atlas 0.13 drops it from the output without dropping it from
+    ``maps_img_`` or ``n_elements_``. Counting the columns is the only reading
+    that holds on both.
+    """
+    affine = small_masker.mask_img.affine
+    if atlas_kind == "labels":
+        labels = np.zeros((4, 4, 4), dtype=np.int16)
+        labels[0, :2, :2] = 1
+        labels[1, :2, :2] = 2
+        labels[3, 3, 3] = 3  # outside the mask
+        atlas = Bunch(maps=nib.Nifti1Image(labels, affine), labels=["in_a", "in_b", "outside"])
+    else:
+        maps = np.zeros((4, 4, 4, 3), dtype=float)
+        maps[0, :2, :2, 0] = 1.0
+        maps[1, :2, :2, 1] = 1.0
+        maps[3, 3, 3, 2] = 1.0  # outside the mask
+        atlas = Bunch(maps=nib.Nifti1Image(maps, affine), labels=["in_a", "in_b", "outside"])
+
+    reducer = make_map_reducer(atlas, masker=small_masker).fit(atlas_features)
+    names = reducer.get_feature_names_out()
+
+    assert len(names) == reducer.transform(atlas_features).shape[1]
 
 
 def test_atlas_aggregator_names_reduced_features(small_masker, atlas_features):
@@ -1136,6 +1174,10 @@ def test_extractor_end_to_end_classification(ml_studyset):
 @pytest.mark.performance_smoke
 def test_extractor_meets_the_conversion_budget():
     """A 1,000-study Studyset converts and splits inside the documented budget."""
+    # resource is Unix-only, and importing it at module scope makes the whole module
+    # uncollectable on Windows. Only this test needs it, and it runs on Linux.
+    import resource
+
     _, studyset = create_coordinate_studyset(foci=5, n_studies=1000, sample_size=30, seed=42)
 
     start = time.time()

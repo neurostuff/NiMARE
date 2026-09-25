@@ -1232,6 +1232,17 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
         The fitted nilearn masker doing the aggregation.
     region_names_ : :obj:`list` of :obj:`str` or None
         Region names read from the atlas, when it carries any.
+    n_features_out_ : :obj:`int`
+        How many regions the fitted masker actually reports, known once
+        anything has been transformed or named.
+
+    Notes
+    -----
+    How many regions an atlas yields depends on the nilearn version as well as
+    on the atlas: regions that fall outside the mask are kept by nilearn 0.12
+    and dropped by 0.13. The region count and names reported here follow
+    whichever nilearn is installed, so a feature matrix is comparable across
+    environments only when the nilearn version is.
 
     Examples
     --------
@@ -1306,7 +1317,9 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
                 batch = batch.toarray()
             batches.append(self.atlas_masker_.transform(unmask(batch, self.mask_img_)))
 
-        return np.vstack(batches)
+        aggregated = np.vstack(batches)
+        self.n_features_out_ = aggregated.shape[1]
+        return aggregated
 
     def get_feature_names_out(self, input_features=None):
         """Return the region names, from the atlas or from the masker.
@@ -1321,26 +1334,29 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
             One name per region column.
         """
         check_is_fitted(self, ["atlas_masker_"])
-        n_regions = self._n_regions()
+        n_regions = self._n_features_out()
 
         for candidate in _name_candidates(self.region_names_):
             if len(candidate) == n_regions:
                 return np.asarray(candidate, dtype=str)
 
         names = _masker_region_names(self.atlas_masker_)
-        if names is not None and (not n_regions or len(names) == n_regions):
+        if names is not None and len(names) == n_regions:
             return np.asarray(names, dtype=str)
 
         return np.asarray([f"region_{idx}" for idx in range(n_regions)], dtype=str)
 
-    def _n_regions(self):
-        """Return how many regions the fitted atlas masker produces."""
-        maps_img = getattr(self.atlas_masker_, "maps_img_", None)
-        if maps_img is not None:
-            return maps_img.shape[-1]
-        labels = list(getattr(self.atlas_masker_, "labels_", []) or [])
-        background = getattr(self.atlas_masker_, "background_label", 0)
-        return len([label for label in labels if label != background])
+    def _n_features_out(self):
+        """Return how many regions the fitted masker reports, asking it if need be.
+
+        Neither ``n_elements_`` nor the atlas image answers this on nilearn
+        0.13, where a region that falls outside the mask is dropped from the
+        output but not from either of them. One all-zero row costs a single
+        masker call and is exact.
+        """
+        if not hasattr(self, "n_features_out_"):
+            self.transform(np.zeros((1, self.n_features_in_), dtype=float))
+        return self.n_features_out_
 
 
 def _resolve_atlas(atlas, atlas_kwargs=None):

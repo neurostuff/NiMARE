@@ -234,6 +234,16 @@ expected. Region definitions, resampling and the aggregation strategy stay
 nilearn's business; `get_feature_names_out()` reports region names from the
 atlas when it carries them, and from the masker otherwise.
 
+How many regions an atlas yields is nilearn's answer, not NiMARE's, and it
+differs by version: a region falling outside the mask is kept by nilearn 0.12
+and dropped by 0.13, and for a maps atlas 0.13 drops it from the output without
+dropping it from `maps_img_` or `n_elements_`. `get_feature_names_out()` must
+therefore report exactly as many names as the masker returns columns, counting
+them rather than trusting either attribute, and must fall back to positional
+names when the atlas's own labels cannot be matched to the surviving regions.
+A feature matrix is comparable across environments only when the nilearn
+version is, which the docstring says.
+
 ## Documentation Contract
 
 Required public examples:

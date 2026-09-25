@@ -697,3 +697,14 @@ fetchers as they are rather than for a normalised form none of them produce.
 Strings mean a workflow name in the reducer slot and a file or fetcher in the
 `atlas` slot, which keeps one overload per slot instead of one string that
 could be three things.
+
+Generalising the atlas slot surfaced one cross-version difference worth
+recording. Regions that fall outside the mask are kept by nilearn 0.12 and
+dropped by 0.13, and for a probabilistic atlas 0.13 drops them from the
+transform output without dropping them from `maps_img_` or `n_elements_`, so no
+fitted attribute predicts the width. `AtlasAggregator.get_feature_names_out()`
+counts the columns instead -- transforming a single all-zero row when nothing
+has been transformed yet -- and falls back to positional names when the atlas's
+labels cannot be matched to the regions that survived. Guessing would have
+meant labelling a column with a region that is not in it. The tests run against
+both nilearn 0.12.0 and 0.13.1.
