@@ -1,4 +1,4 @@
-# Research: Masked Activation Feature Dataset
+# Research: Modeled Activation Feature Dataset
 
 ## Decision: Reuse NiMARE kernel transformers for map feature extraction
 
@@ -323,3 +323,41 @@ containers. Two candidate representations were considered:
 - A bundle object may become valuable if future workflows need richer lifecycle
   management (metadata about splits, pipeline state snapshots, chained
   operations). For MVP, tuple simplicity and lower overhead are preferred.
+
+---
+
+## Addendum: 2026-09-25 interface review
+
+The decisions above record what Phase 0 considered. Five of them were revised
+by the interface review in `interface-design.md`, which weighed the options
+again against the implementation and the data the module is actually pointed
+at. The rest stand as written.
+
+- **Container plus Bunch** stands, but `transform(studyset)` returns one
+  `MAFeatureDataset` rather than `(train_dataset, test_dataset)`. A tuple with
+  `None` in it is what every caller who did not want a split had to unpack.
+- **Orchestrating the full pipeline in `MAFeatureExtractor`** was dropped.
+  Splitting is an evaluation choice, so it lives on the container as `split()`,
+  and the leakage-safe fitting the extractor was going to orchestrate is what
+  `Pipeline` already does, through
+  `MAFeatureDataset.make_preprocessor()`. `apply_map_reducer(reducer,
+  fit=False)` became `fit_transform_maps` / `transform_maps`, so a fitted
+  reducer carries its own fittedness and leaking is an error rather than a
+  keyword argument.
+- **Descriptor transformers** were dropped from extraction. Fitting an encoder
+  while converting the Studyset fits it on every row, including the rows about
+  to be held out, which contradicts FR-013. Non-numeric descriptor fields are
+  rejected with their raw values left on `MAFeatureDataset.descriptors` for a
+  pipeline to encode per fold.
+- **Caching** moved to the kernel transformer's own `CacheMixin`, which NiMARE
+  already has, rather than a second cache in the extractor. `cache_maps` is now
+  the one-entry in-process memo that serves the reducer-comparison loop.
+- **The tuple vs. split-pair bundle discussion** is moot: nothing returns a
+  pair except `split()`, where a tuple is exactly right.
+
+Two findings from the review were not decisions at all, but defects the
+implementation had to fix: map rows were paired with analyses by position
+though kernel transformers order them by identifier, and the documented
+`sample_sizes` descriptor could not be read because it is list-valued.
+`nimare.studyset.requirements.PerAnalysis` reads it the way the rest of NiMARE
+does.

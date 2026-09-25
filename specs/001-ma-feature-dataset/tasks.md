@@ -1,4 +1,11 @@
-# Tasks: Masked Activation Feature Dataset
+# Tasks: Modeled Activation Feature Dataset
+
+> **Status (2026-09-25)**: superseded in part. The module was implemented
+> against the interface in `interface-design.md`, which the contracts,
+> `data-model.md`, `quickstart.md` and `spec.md` were revised to match. The task
+> list below records the original decomposition; task-level wording that names
+> `apply_map_reducer`, extractor-level `test_size`, or a `(train, test)` return
+> from `transform` refers to the superseded shape.
 
 **Input**: Design documents from `specs/001-ma-feature-dataset/`
 **Prerequisites**: `plan.md`, `spec.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md`
@@ -289,5 +296,5 @@ Task: "Implement missing-coordinate handling in nimare/ml.py after the tests are
 
 - Preserve released public behavior from tag `0.16.0`.
 - Prefer existing NiMARE utilities first, then nilearn, then scikit-learn before adding helpers.
-- Keep unreduced voxelwise masked activation matrices sparse; dense output is allowed only after explicit reduction.
+- Keep unreduced voxelwise modeled activation matrices sparse; dense output is allowed only after explicit reduction.
 - Treat Studyset as the only supported input type for this MVP.

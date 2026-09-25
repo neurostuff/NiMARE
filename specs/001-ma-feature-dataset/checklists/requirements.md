@@ -1,4 +1,4 @@
-# Specification Quality Checklist: Masked Activation Feature Dataset
+# Specification Quality Checklist: Modeled Activation Feature Dataset
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-05-01

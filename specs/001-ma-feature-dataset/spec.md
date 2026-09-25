@@ -1,4 +1,4 @@
-# Feature Specification: Masked Activation Feature Dataset
+# Feature Specification: Modeled Activation Feature Dataset
 
 **Feature Branch**: `001-ma-feature-dataset`  
 **Created**: 2026-05-01  
@@ -22,22 +22,48 @@
 - Q: How should the MVP handle study and analysis identifier ambiguity? -> A: Assume input Studysets provide unique study IDs and unique analysis IDs; duplicate or missing identifiers are out of scope for the MVP.
 - Q: How should analyses with no coordinates be handled? -> A: Provide `missing_coordinates` with `include` and `drop` modes; default `drop` removes them before row construction and records dropped IDs in provenance, while `include` keeps them as all-zero sparse map rows.
 
+### Session 2026-09-25 (interface review)
+
+- Q: Should `MAFeatureExtractor.transform` return a train/test tuple? -> A: No.
+  `transform(studyset)` returns one `MAFeatureDataset`; splitting is an
+  evaluation choice and lives on the container as `split()`. Returning
+  `(dataset, None)` for the common unsplit case was ergonomics nobody wanted.
+- Q: Where is leakage prevented? -> A: In scikit-learn. Kernel transformation is
+  row-independent, so eager extraction leaks nothing; every step that learns
+  across rows goes in a `Pipeline` built from
+  `MAFeatureDataset.make_preprocessor()`, or is fitted on the training dataset
+  with `fit_transform_maps` and reused through `transform_maps`, which raises
+  rather than fitting on held-out rows.
+- Q: How are non-numeric descriptor fields handled? -> A: They are rejected, and
+  their raw values stay available on `MAFeatureDataset.descriptors` for
+  encoding inside a pipeline. Fitting an encoder at extraction time would fit it
+  on the rows about to be held out, which FR-013 forbids.
+- Q: How are missing descriptor and target values handled? -> A: A
+  `missing_values` option with `raise` (default), `drop` and `keep`, mirroring
+  `missing_coordinates`; drop and keep are recorded in provenance.
+- Q: How are map rows matched to analyses? -> A: By analysis identifier. Kernel
+  transformers return maps ordered by id and drop the ids that name them, so
+  positional pairing silently mismatches rows whenever a Studyset is not in
+  sorted order.
+
+Rationale and the options weighed are recorded in `interface-design.md`.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Convert Studysets into feature data (Priority: P1)
 
-A meta-analysis researcher wants to turn an existing NiMARE Studyset into a machine-learning-ready dataset where each analysis has masked activation map features, identifiers, and study grouping information.
+A meta-analysis researcher wants to turn an existing NiMARE Studyset into a machine-learning-ready dataset where each analysis has modeled activation map features, identifiers, and study grouping information.
 
 **Why this priority**: This is the core value of the feature. Without reliable conversion from existing NiMARE Studysets, no downstream modeling workflow can use the generated activation map features.
 
-**Independent Test**: Given a Studyset with multiple studies and analyses, the researcher can produce a feature dataset with one analysis row per retained analysis, voxelwise masked activation values, stable analysis identifiers, stable study identifiers, missing-coordinate option provenance, and enough provenance to trace each analysis row back to its source.
+**Independent Test**: Given a Studyset with multiple studies and analyses, the researcher can produce a feature dataset with one analysis row per retained analysis, voxelwise modeled activation values, stable analysis identifiers, stable study identifiers, missing-coordinate option provenance, and enough provenance to trace each analysis row back to its source.
 **First Failing Test**: A failing regression test demonstrates that converting a representative Studyset produces the expected analysis-row count, feature count, identifiers, study groups, and provenance.
 **Public Example**: `examples/05_machine_learning/01_plot_ma_feature_dataset.py`
 
 **Acceptance Scenarios**:
 
 1. **Given** a Studyset with three studies and multiple analyses per study, **When** the researcher converts it into feature data, **Then** every analysis appears exactly once as an analysis row with its study identifier attached.
-2. **Given** a Studyset and a selected activation-map generation strategy, **When** conversion completes, **Then** the feature data contains masked activation map values aligned to the same mask for every analysis row.
+2. **Given** a Studyset and a selected activation-map generation strategy, **When** conversion completes, **Then** the feature data contains modeled activation map values aligned to the same mask for every analysis row.
 3. **Given** a converted feature dataset, **When** the researcher inspects analysis-row metadata, **Then** they can identify the original study, analysis, and activation-map generation settings for each analysis row.
 4. **Given** a Studyset with analyses that have no coordinates, **When** the researcher converts with missing coordinates set to include, **Then** coordinate-less analyses remain as analysis rows with all-zero sparse map rows.
 5. **Given** a Studyset with analyses that have no coordinates, **When** the researcher converts with missing coordinates set to drop, **Then** coordinate-less analyses are removed before row construction and their analysis IDs are recorded in provenance.
@@ -64,7 +90,7 @@ A researcher wants training and testing partitions that keep all analyses from t
 
 ### User Story 3 - Combine activation maps with study information (Priority: P2)
 
-A researcher wants to add selected metadata, annotations, titles, or descriptions as additional model features alongside masked activation map features.
+A researcher wants to add selected metadata, annotations, titles, or descriptions as additional model features alongside modeled activation map features.
 
 **Why this priority**: Many useful prediction tasks need both neuroimaging-derived features and study-level or analysis-level descriptors.
 
@@ -101,7 +127,7 @@ A researcher wants to use an annotation, metadata field, title-derived label, or
 
 ### User Story 5 - Reduce voxelwise feature dimensionality (Priority: P3)
 
-A researcher wants convenient, reusable reduction workflows for high-dimensional masked activation map features before using them in a predictive model.
+A researcher wants convenient, reusable reduction workflows for high-dimensional modeled activation map features before using them in a predictive model.
 
 **Why this priority**: Voxelwise activation map features can be too large for efficient or stable modeling without common reduction options.
 
@@ -125,7 +151,7 @@ A researcher wants convenient, reusable reduction workflows for high-dimensional
 - A Studyset has too few studies to support the requested split ratio or cross-validation design.
 - Analyses have no coordinates and must follow the selected missing-coordinate
   policy.
-- Analyses with coordinates cannot produce a valid masked activation map.
+- Analyses with coordinates cannot produce a valid modeled activation map.
 - Input Studysets mix spaces or masks in a way that prevents aligned map features.
 - Selected metadata, annotation, title, or description fields are absent, duplicated, or only available for some analyses.
 - Selected outcomes have missing values, constant values, rare classes, or multiple labels per analysis.
@@ -138,46 +164,48 @@ A researcher wants convenient, reusable reduction workflows for high-dimensional
 ### Functional Requirements
 
 - **FR-001**: The feature MUST accept existing NiMARE Studysets as input and create a machine-learning-ready dataset with one analysis row per analysis by default.
-- **FR-002**: The feature MUST generate or consume masked activation map values for each analysis and align those values to a common feature space.
+- **FR-002**: The feature MUST generate or consume modeled activation map values for each analysis and align those values to a common feature space.
 - **FR-003**: The feature MUST preserve source provenance for every analysis row, including study identifier, analysis identifier, and activation-map generation settings.
 - **FR-004**: The feature MUST expose study grouping information so that all analyses from the same study can be kept together during data splitting, assuming the input Studyset provides unique study identifiers and unique analysis identifiers.
 - **FR-005**: The feature MUST provide a train/test split workflow that prevents analyses from the same study from appearing in both training and testing partitions.
 - **FR-006**: The feature MUST support reproducible splits when the researcher supplies the same split configuration.
 - **FR-007**: The feature MUST allow selected numeric metadata and annotation fields to be added as additional model features.
-- **FR-008**: The feature MUST reject non-numeric descriptor fields, including categorical metadata, annotations, titles, and descriptions, unless the researcher supplies an explicit transformer or vectorizer for converting them into numeric features.
+- **FR-008**: The feature MUST reject non-numeric descriptor fields, including categorical metadata, annotations, titles, and descriptions, with a message naming the field, its kind, and the two supported routes: encode it and select the numeric result, or encode it inside a scikit-learn pipeline from the raw values the feature exposes on the dataset. The feature MUST NOT fit an encoder during extraction, which would fit it on analyses the researcher is about to hold out.
 - **FR-009**: The feature MUST allow one selected scalar numeric or categorical annotation or metadata value, or one value produced by an explicit target transformer or label extractor, to be exported as the prediction target y, and MUST reject raw free-text or multi-label targets unless such explicit target handling is supplied.
 - **FR-010**: The feature MUST keep the feature data, target values, analysis identifiers, and study groups aligned through conversion, augmentation, splitting, and reduction.
 - **FR-011**: The feature MUST report missing or unusable map, descriptor, and target values with enough detail for the researcher to correct inputs or choose an explicit handling strategy.
-- **FR-012**: The feature MUST provide sparse-safe convenience reduction workflows for voxelwise masked activation map features while preserving analysis-row alignment and study grouping, including variance thresholding, truncated SVD or equivalent sparse-compatible low-rank reduction, and atlas or label aggregation when a masker or labels image is supplied.
+- **FR-012**: The feature MUST provide sparse-safe convenience reduction workflows for voxelwise modeled activation map features while preserving analysis-row alignment and study grouping, including variance thresholding, truncated SVD or equivalent sparse-compatible low-rank reduction, and atlas or label aggregation when a masker or labels image is supplied.
 - **FR-013**: The feature MUST prevent data leakage by ensuring any learned reduction or descriptor transformation is fit only on training data before being applied to held-out data.
-- **FR-014**: The feature MUST expose Studyset conversion through `MAFeatureExtractor.transform(studyset)` as the advanced dataset-level pathway returning `(train_dataset, test_dataset)` where `test_dataset` is `None` when no split is requested; `MAFeatureExtractor.to_sklearn(studyset, ...)` MUST provide the one-call sklearn-ready export pathway. `MAFeatureExtractor` MUST NOT expose `fit` or `fit_transform` in the initial public API.
+- **FR-014**: The feature MUST expose Studyset conversion through `MAFeatureExtractor.transform(studyset)`, returning one `MAFeatureDataset`, and MUST provide the one-call sklearn-ready export through `MAFeatureExtractor.to_sklearn(studyset, return_X_y=False)`. Grouped splitting MUST be available on the container as `MAFeatureDataset.split(test_size, random_state)`. `MAFeatureExtractor` MUST NOT expose `fit` or `fit_transform`.
 - **FR-015**: The feature MUST represent unreduced voxelwise feature data as sparse numeric matrices throughout conversion, export, and splitting; dense feature data is allowed only after an explicit reducer creates a reduced representation.
 - **FR-016**: The feature MUST provide a user-facing example that demonstrates Studyset conversion, grouped splitting, descriptor features, target extraction, and at least one reduction workflow.
 - **FR-017**: The feature MUST be additive with respect to released NiMARE public behavior; existing Studyset, kernel, metadata, annotation, and documentation workflows must continue to work.
 - **FR-018**: The feature MUST provide an explicit `missing_coordinates` option on `MAFeatureExtractor` with `include` and `drop` modes. `drop` MUST be the default and MUST remove coordinate-less analyses before row construction while recording dropped IDs in provenance; `include` MUST retain coordinate-less analyses as all-zero sparse map rows.
+- **FR-019**: The feature MUST provide an explicit `missing_values` option with `raise`, `drop` and `keep` modes for missing descriptor and target values. `raise` MUST be the default and MUST name the affected fields and analysis identifiers; `drop` MUST remove those analyses and `keep` MUST leave the values missing, both recording what happened in provenance.
+- **FR-020**: The feature MUST align generated map rows to analyses by analysis identifier rather than by position, and MUST reject duplicate analysis identifiers, because kernel transformers return maps ordered by identifier and discard the identifiers that name them.
 
 ### Key Entities *(include if feature involves data)*
 
 - **Studyset**: A NiMARE Studyset containing studies and analyses that can provide coordinates, metadata, annotations, and text fields.
 - **Analysis Row**: One analysis represented as a single machine-learning row with stable identifiers and provenance.
-- **Masked Activation Feature Matrix**: The aligned map-derived feature values for all analysis rows.
+- **Modeled Activation Feature Matrix**: The aligned map-derived feature values for all analysis rows.
 - **Descriptor Feature Set**: Optional metadata, annotation, title, or description information added as additional numeric analysis-row features, with non-numeric inputs requiring an explicit transformer or vectorizer.
 - **Prediction Target**: A selected scalar numeric or categorical metadata or annotation value, or a value produced from title or description text by an explicit target transformer or label extractor, aligned to analysis rows as y; raw free-text and multi-label targets require explicit target handling.
 - **Study Group**: The grouping key that keeps all analyses from the same study together in splits.
 - **Split Plan**: The train/test or validation partition assignment that preserves study groups.
-- **Reduction Workflow**: A reusable transformation that reduces masked activation map feature dimensionality while preserving analysis-row order and metadata alignment; required initial workflows are variance thresholding, truncated SVD or equivalent sparse-compatible low-rank reduction, and atlas or label aggregation when a masker or labels image is supplied.
+- **Reduction Workflow**: A reusable transformation that reduces modeled activation map feature dimensionality while preserving analysis-row order and metadata alignment; required initial workflows are variance thresholding, truncated SVD or equivalent sparse-compatible low-rank reduction, and atlas or label aggregation when a masker or labels image is supplied.
 
 ### Public API & Compatibility *(mandatory for code changes)*
 
 - **Latest Release Baseline**: 0.16.0
-- **Public API Surface**: New additive public surface for creating machine-learning-ready outputs from existing NiMARE Studysets through `MAFeatureExtractor.to_sklearn(studyset, ...)`, adding descriptor features, extracting targets, performing grouped splits, and applying reduction workflows. `MAFeatureExtractor.transform(studyset)` is retained as the advanced dataset-level pathway for reducer iteration.
-- **Compatibility Requirement**: Preserve existing released public behavior for Studysets, masked activation map generation, metadata, annotations, and text access. New functionality is expected to be additive.
+- **Public API Surface**: New additive public surface for creating machine-learning-ready outputs from existing NiMARE Studysets: `MAFeatureExtractor` (`transform`, `to_sklearn`), `MAFeatureDataset` (`to_sklearn`, `split`, `make_preprocessor`, `fit_transform_maps`, `transform_maps`, `select_analyses`, `copy`), `AtlasAggregator`, and `make_map_reducer`.
+- **Compatibility Requirement**: Preserve existing released public behavior for Studysets, modeled activation map generation, metadata, annotations, and text access. New functionality is expected to be additive.
 - **Migration/Deprecation Notes**: No migration or deprecation is expected for existing released APIs.
 - **Sphinx-Gallery Example**: `examples/05_machine_learning/01_plot_ma_feature_dataset.py` and `examples/05_machine_learning/02_plot_ma_feature_reduction.py` created or edited.
 
 ### Scientific & Reproducibility Requirements *(include if results can change)*
 
-- **Scientific Assumptions**: Analysis rows represent analyses by default; analyses from the same study are statistically related and must be grouped during model evaluation; masked activation map features are comparable only when aligned to a common mask/space.
+- **Scientific Assumptions**: Analysis rows represent analyses by default; analyses from the same study are statistically related and must be grouped during model evaluation; modeled activation map features are comparable only when aligned to a common mask/space.
 - **Validation Evidence**: Validation must include fixture Studysets with multiple analyses per study, known study group assignments, selected descriptor fields, selected targets, missing-field cases, and expected reduced feature shapes.
 - **Diagnostics**: Invalid or degraded inputs must produce clear messages for unavailable fields, incompatible masks/spaces, insufficient studies for splitting, missing or unusable outcomes, and analyses dropped by the missing-coordinate option.
 
@@ -202,8 +230,9 @@ A researcher wants convenient, reusable reduction workflows for high-dimensional
 - The MVP assumes input Studysets provide unique study IDs and unique analysis IDs; deriving study groups from ambiguous or missing identifiers is out of scope.
 - Study-level metadata may be repeated across that study's analyses, but grouped splitting prevents study-level leakage between training and testing partitions.
 - "Scikit-learn-compatible" means the exported data can be consumed by common estimator workflows that expect aligned feature values, target values, and grouping labels.
-- `MAFeatureExtractor` is a NiMARE conversion helper, not a trainable scikit-learn estimator; downstream scikit-learn models consume the output of `MAFeatureExtractor.to_sklearn(studyset, ...)`.
-- Repeated reducer experiments should reuse cached MA map generation whenever Studyset and extraction settings are unchanged.
+- `MAFeatureExtractor` is a NiMARE conversion helper, not a trainable scikit-learn estimator; downstream scikit-learn models consume the output of `MAFeatureExtractor.to_sklearn(studyset, ...)` or of `MAFeatureDataset.to_sklearn()`.
+- Kernel transformation is row-independent, so generating every analysis's map before splitting leaks nothing; only steps that learn across rows have to be fitted inside a split.
+- Repeated reducer experiments reuse the most recently generated MA map matrix whenever the Studyset and extraction settings are unchanged, and a `memory` location extends that reuse across processes through the kernel transformer's own cache.
 - Unreduced voxelwise feature data is sparse-only; dense data is permitted only after explicit reduction, such as a low-rank component matrix or parcel-level aggregate.
 - The feature will not train or evaluate predictive models itself beyond providing data structures, split helpers, and reduction workflows needed by researchers.
 - Missing descriptor or outcome values fail clearly by default unless the researcher explicitly selects a handling strategy.

@@ -1,6 +1,8 @@
 # Interface Design Review: `nimare.ml`
 
-**Status**: Proposal, awaiting decision
+**Status**: Implemented on 2026-09-25. The contracts, `data-model.md`,
+`quickstart.md` and `spec.md` were revised to match; §11 records where the
+implementation departed from this proposal.
 **Branch**: `001-ma-feature-dataset`
 **Reviewed artifacts**: `spec.md`, `plan.md`, `research.md`, `data-model.md`,
 `contracts/public-api.md`, `contracts/sklearn-compatibility.md`, `quickstart.md`,
@@ -575,6 +577,11 @@ can corrupt results land first.
 Steps 1–2 are strictly bug fixes against the current code and could land ahead
 of the interface decision.
 
+**All ten steps landed together.** The 1,000-study budget is met with room to
+spare: conversion and a grouped split take **0.6 s** and **0.58 GB** peak RSS
+against budgets of 3 minutes and 5 GB, and gallery example 01 reproduces its
+previous cross-validation accuracy (0.625 ± 0.019) through the new API.
+
 ---
 
 ## 10. Deferred, and explicitly not in v1
@@ -606,3 +613,52 @@ All against `nimare/resources/nback_vs_flanker_studyset_2026-07` (906 analyses,
 | `ColumnTransformer` default `sparse_threshold=0.3` | densifies a dense-valued sparse block |
 | `GroupShuffleSplit` with 1 group | `ValueError: With n_samples=1, …` (does not mention studies) |
 | Kernel row order vs `select_analyses([2, 0, 1])` | mismatched (D-1) |
+
+---
+
+## 11. Where the implementation departed from this proposal
+
+Written after the fact, so the proposal and the code can be read together.
+
+1. **The atlas reducer keeps nilearn's slow path.** §5.3 proposed a sparse
+   matmul fast path for `NiftiLabelsMasker` with mean/sum. It was dropped:
+   no requirement asks for it, and reproducing nilearn's resampling, background
+   handling, region ordering and strategy semantics exactly is how a
+   performance optimisation turns into a silent numerical divergence from the
+   library the tests compare against. `AtlasAggregator` batches rows back
+   through nilearn and `batch_size` is the documented memory/speed dial
+   (gallery example 02 raises it to 64, which pays nilearn's per-call
+   least-squares setup 6× less often than the default 10).
+2. **`MAFeatureDataset` takes the blocks, not the combined matrix.** The
+   constructor takes `map_features` and `descriptor_features` and derives
+   `features` and `feature_names` from them on first access. Passing a
+   prebuilt `features` *and* its parts, as the old code did, makes
+   "the matrix disagrees with its blocks" a state the container has to
+   validate against; deriving it makes that state unrepresentable.
+3. **`map_features` and `descriptor_features` are public too**, not just
+   `masker`. The reduction methods, the examples and the tests all read them;
+   an underscore that everything touches is not privacy.
+4. **An unknown reducer name raises `ValueError`, not `NotImplementedError`.**
+   With all three workflows implemented, an unrecognised name is a typo, and
+   the message names the alternatives.
+5. **Selector forms follow Python's own convention**: a tuple is one
+   `(source, field)` selector, a list holds several. A bare field name is
+   resolved across metadata, annotations and texts, and an ambiguous one raises
+   naming the sources it matched. Mappings are still accepted.
+6. **Caching hands a location to a copy of the kernel transformer** rather than
+   adding a second cache to the extractor. `KernelTransformer` already inherits
+   nilearn's `CacheMixin`, so `memory`/`memory_level` reuse the cache NiMARE
+   already has, across processes; `cache_maps` is the one-entry in-process memo
+   for the reducer-comparison loop. The caller's kernel is never mutated.
+7. **A constant target raises** rather than warning: there is nothing to
+   predict, and finding out after a cross-validation run is worse than finding
+   out now.
+8. **Extra guardrails**, each with a test: an empty Studyset, a field selected
+   twice, a reducer that changes the row count, a boolean mask of the wrong
+   length, and a target transformer that returns something other than one value
+   per analysis.
+9. **`descriptors` travels in the exported Bunch**, so the pipeline route for
+   categorical and text fields is reachable from the bundle alone.
+10. **Gallery example 02 evaluates on one grouped holdout**, as its predecessor
+    did, instead of three splits: nilearn's maps-masker least squares makes
+    each additional split expensive in a documentation build.

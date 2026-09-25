@@ -1,19 +1,23 @@
-# Implementation Plan: Masked Activation Feature Dataset
+# Implementation Plan: Modeled Activation Feature Dataset
 
 **Branch**: `001-ma-feature-dataset` | **Date**: 2026-05-01 | **Spec**: `specs/001-ma-feature-dataset/spec.md`
 **Input**: Feature specification from `specs/001-ma-feature-dataset/spec.md`
 
-**Note**: This plan was refreshed after the 2026-05-20 clarification pass.
+**Note**: This plan was refreshed after the 2026-05-20 clarification pass, and
+again on 2026-09-25 after the interface review recorded in
+`interface-design.md`.
 
 ## Summary
 
 Add a new additive public `nimare.ml` module that converts NiMARE Studyset
-objects into scikit-learn-compatible masked activation feature datasets. The
-module will use existing NiMARE kernel transformers to generate sparse modeled
-activation map features, preserve analysis-row provenance and study groups,
-export `data`, `target`, `groups`, and `feature_names` for scikit-learn
-workflows, and provide leakage-safe grouped splits plus convenience
-map-reduction workflows. Clarified defaults require numeric descriptor features
+objects into scikit-learn-compatible modeled activation feature datasets. The
+module uses existing NiMARE kernel transformers to generate sparse modeled
+activation map features, preserves analysis-row provenance and study groups,
+exports `data`, `target`, `groups`, and `feature_names` for scikit-learn
+workflows, and provides leakage-safe grouped splits plus convenience
+map-reduction workflows. NiMARE owns extraction; scikit-learn owns evaluation,
+because kernel transformation is row-independent and everything that learns
+across rows belongs in a `Pipeline`. Clarified defaults require numeric descriptor features
 unless the caller supplies an explicit transformer, scalar numeric or
 categorical targets unless the caller supplies explicit target handling, unique
 Studyset-provided study and analysis identifiers, `missing_coordinates="drop"`,
@@ -21,13 +25,13 @@ and initial reducers for variance thresholding, sparse-compatible low-rank
 reduction such as truncated SVD, and atlas/label aggregation.
 Rows represent analyses, unreduced map columns represent masked voxels, and
 descriptor columns are appended only after numeric validation or explicit
-transformation. `MAFeatureExtractor.to_sklearn(studyset, ...)` is the one-call
-public export path, while `MAFeatureExtractor.transform(studyset)` returns
-`(train_dataset, test_dataset)` for advanced dataset-level workflows.
-`MAFeatureDataset` remains the authoritative NiMARE container: it exposes
-combined `features` for sklearn export, keeps internal `_map_features`
-separate from descriptors, retains the private `_masker` that defines voxel
-order, and exports `study_ids` as sklearn `groups`.
+transformation. `MAFeatureExtractor.transform(studyset)` returns one `MAFeatureDataset` and
+`MAFeatureExtractor.to_sklearn(studyset, ...)` converts and exports in one call.
+`MAFeatureDataset` is the authoritative NiMARE container: it holds the map and
+descriptor blocks and derives `features` and `feature_names` from them on
+demand, keeps the `masker` that defines voxel order, exports `study_ids` as
+sklearn `groups`, and carries the grouped `split()`, the pipeline
+`make_preprocessor()` and the fitted-state map reduction methods.
 
 ## Technical Context
 
@@ -37,8 +41,8 @@ order, and exports `study_ids` as sklearn `groups`.
 **Testing**: Add targeted pytest coverage under `nimare/tests/test_ml.py` before implementation. First failing tests must cover conversion/provenance, grouped split leakage prevention, non-numeric descriptor rejection, scalar target export and unsupported target-shape rejection, missing-value diagnostics, reducer alignment, and the 1,000-study performance budget. Use existing markers, including `performance_smoke` for the scale check if needed.  
 **Target Platform**: NiMARE-supported Python and OS matrix; no network-dependent tests.  
 **Project Type**: Python scientific library public API plus Sphinx documentation examples.  
-**Public API Impact**: New additive `nimare.ml` module with `MAFeatureDataset`, `MAFeatureExtractor`, field-selector handling, grouped split helpers, dataset-level `to_sklearn()`, extractor-level `to_sklearn(studyset, ...)`, `apply_map_reducer()`, and map-reduction convenience constructors. Update `nimare/__init__.py`, `docs/api.rst`, and Numpydoc docstrings. No released public API is removed, renamed, or narrowed.
-**Extractor API Decision**: `MAFeatureExtractor` exposes `to_sklearn(studyset, ...)` as the one-call sklearn-ready export path and `transform(studyset)` as the advanced dataset-level path returning `(train_dataset, test_dataset)`; it does not expose `fit` or `fit_transform`.
+**Public API Impact**: New additive `nimare.ml` module with `MAFeatureExtractor`, `MAFeatureDataset`, `AtlasAggregator`, `make_map_reducer`, field-selector handling reusing the `_required_inputs` vocabulary, dataset-level `split()` and `make_preprocessor()`, and `fit_transform_maps()`/`transform_maps()`. Update `nimare/__init__.py`, `docs/api.rst`, and Numpydoc docstrings. No released public API is removed, renamed, or narrowed.
+**Extractor API Decision**: `MAFeatureExtractor.transform(studyset)` returns one `MAFeatureDataset`; `to_sklearn(studyset, return_X_y=False)` converts and exports in one call; splitting lives on the container; it does not expose `fit` or `fit_transform`.
 **Compatibility Baseline**: `0.16.0` from `git describe --tags --abbrev=0`. Released Studyset, kernel, metadata, annotation, and text access behavior must remain compatible.
 **Example Coverage**: Create Sphinx-Gallery examples `examples/05_machine_learning/01_plot_ma_feature_dataset.py` and `examples/05_machine_learning/02_plot_ma_feature_reduction.py`. Examples remain `.py` sources and are converted by the docs/Sphinx build.  
 **Scientific Validation**: Validate that one analysis row represents one analysis by default; MVP fixture Studysets provide unique study IDs and unique analysis IDs; coordinate-less analyses are dropped by default or included as all-zero sparse rows when requested; all analyses from one study share a study group; sklearn `groups` matches `study_ids`; map features are aligned to one mask/space; reducers operate on internal `_map_features` only and use the stored `_masker` for atlas/label aggregation; learned descriptor/reduction transforms fit only on training analyses; held-out transformations do not use held-out targets; and missing maps, missing values, and invalid targets are diagnosed.
@@ -136,16 +140,20 @@ resolved there:
   rows when requested.
 - Export uses a NiMARE container plus a scikit-learn `Bunch`; extractor-level
   `to_sklearn(studyset, ...)` is the one-call public path.
+- Map rows are aligned to analyses by identifier, because kernel transformers
+  return them ordered by identifier and discard the identifiers.
 - Exported sklearn `groups` duplicates `study_ids` by design: `groups` is for
   sklearn splitters, while `ids` and `study_ids` preserve row-level provenance.
 - Splits use scikit-learn group splitters.
-- `MAFeatureDataset` exposes combined `features` but keeps internal
-  `_map_features` separate from descriptor features so reducers select only
-  voxel/reduced-map columns.
+- `MAFeatureDataset` holds the map and descriptor blocks separately and derives
+  `features` from them, so reducers select only voxel/reduced-map columns and
+  the combined matrix cannot disagree with its parts.
 - Atlas/label reducers use the dataset masker to align atlas labels to sparse
   voxel columns before reducing internal `_map_features`.
-- Descriptor features are numeric by default; non-numeric descriptors require
-  explicit transformers.
+- Descriptor features are numeric; non-numeric descriptor fields are rejected
+  and their raw values are exposed for encoding inside a pipeline.
+- Missing descriptor and target values are reported by default, with `drop` and
+  `keep` recorded in provenance.
 - Targets are scalar numeric/categorical by default; free-text and multi-label
   targets require explicit target handling.
 - Reduction helpers cover variance thresholding, sparse-compatible low-rank

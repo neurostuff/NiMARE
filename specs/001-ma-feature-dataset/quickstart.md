@@ -1,7 +1,7 @@
-# Quickstart: Masked Activation Feature Dataset
+# Quickstart: Modeled Activation Feature Dataset
 
-This quickstart describes the intended public workflow for the feature. It is
-used as planning guidance and later as a basis for Sphinx-Gallery examples.
+The public workflow for `nimare.ml`. **Revised 2026-09-25** alongside
+`contracts/public-api.md`.
 
 ## Setup
 
@@ -20,100 +20,103 @@ from nimare.meta.kernel import MKDAKernel
 
 extractor = ml.MAFeatureExtractor(
     kernel_transformer=MKDAKernel(r=10),
-    missing_coordinates="drop",
-    descriptor_fields=[
-        {"source": "metadata", "field": "sample_sizes", "kind": "numeric"},
-        {"source": "annotations", "field": "Neurosynth_TFIDF__pain", "kind": "numeric"},
-    ],
-    target_field={
-        "source": "annotations",
-        "field": "Neurosynth_TFIDF__emotion",
-        "kind": "numeric",
-    },
+    descriptor_fields=["sample_sizes", ("annotations", "Neurosynth_TFIDF__pain")],
+    target_field=("annotations", "Neurosynth_TFIDF__emotion"),
 )
 
-train_sklearn, test_sklearn = extractor.to_sklearn(studyset)
+data = extractor.transform(studyset)     # an MAFeatureDataset
+bunch = data.to_sklearn()                # or extractor.to_sklearn(studyset)
 ```
 
 Expected result:
 
-- `train_sklearn.data` is analysis-by-feature data.
-- `train_sklearn.target` is aligned to rows in `data`.
-- `train_sklearn.groups` contains study IDs for grouped splitting.
-- `test_sklearn` is either another Bunch or `None` when no split is requested.
+- `bunch.data` is the analysis-by-feature matrix, sparse while the map features
+  are unreduced.
+- `bunch.target` is aligned to the rows of `data`.
+- `bunch.groups` holds the study each analysis came from.
+- `bunch.feature_names`, `bunch.ids` and `bunch.provenance` describe them.
 
-`MAFeatureExtractor` provides `to_sklearn(studyset, ...)` as the one-call
-public workflow and returns sklearn-ready `(train_bunch, test_bunch)` outputs.
-`transform(studyset)` is the advanced workflow that returns
-`(train_dataset, test_dataset)` for manual iteration over different reducers.
-`MAFeatureExtractor` is not a trainable scikit-learn estimator and does not
-expose `fit` or `fit_transform`.
+`extractor.to_sklearn(studyset, return_X_y=True)` returns `(X, y)` for callers
+who want nothing else. `MAFeatureExtractor` is not a trainable scikit-learn
+estimator and has no `fit`.
 
-Descriptor fields must be numeric by default. Categorical metadata, annotations,
-titles, abstracts, and descriptions require an explicit transformer or
-vectorizer before they can be appended to `data`.
+A field is named by a bare field name, by a `(source, field)` tuple, or by a
+mapping. A bare name is looked up in metadata, annotations and texts in turn,
+and an ambiguous one asks which was meant. Numeric metadata is read the way the
+rest of NiMARE reads it, so study-level fields are inherited by their analyses
+and `sample_sizes` is reduced rather than rejected.
 
-Analyses without coordinates are controlled by `missing_coordinates`. Use
-`"drop"` to remove them before row construction and record dropped IDs in
-provenance, or `"include"` to keep them as all-zero sparse map rows.
-
-## Use explicit preprocessing for non-numeric fields
-
-```python
-from sklearn.feature_extraction.text import TfidfVectorizer
-
-extractor = ml.MAFeatureExtractor(
-    kernel_transformer=MKDAKernel(r=10),
-    descriptor_fields=[
-        {"source": "texts", "field": "abstract", "kind": "text"},
-    ],
-    descriptor_transformers={
-        ("texts", "abstract"): TfidfVectorizer(max_features=100),
-    },
-)
-```
-
-Raw free-text and multi-label fields are not valid targets unless the caller
-provides an explicit target transformer or label extractor. Scalar numeric and
-scalar categorical metadata or annotation targets can be exported as `y`.
+Analyses without coordinates follow `missing_coordinates`: `"drop"` (the
+default) removes them and records their ids in provenance, `"include"` keeps
+them as all-zero sparse map rows. Missing descriptor and target values follow
+`missing_values`: `"raise"` (the default) names the fields and analyses,
+`"drop"` removes those analyses, `"keep"` leaves them for a pipeline to impute.
 
 ## Split without study leakage
 
 ```python
-train_data, test_data = feature_dataset.split(test_size=0.25, random_state=13)
+train, test = data.split(test_size=0.25, random_state=13)
 
-assert set(train_data.study_ids).isdisjoint(test_data.study_ids)
+assert set(train.study_ids).isdisjoint(test.study_ids)
 ```
 
-The split must keep all analyses from one study in one partition.
+`test_size` is a fraction of *studies*, so analysis counts only approximate it.
+For cross-validation, hand `bunch.groups` to any scikit-learn group splitter.
 
 ## Reduce voxelwise map features
 
-```python
-variance_reducer = ml.make_map_reducer(method="variance_threshold", threshold=0.0)
-svd_reducer = ml.make_map_reducer(method="truncated_svd", n_components=25, random_state=13)
+Inside a pipeline, which is what keeps the reducer fitted on training rows
+only:
 
-train_reduced = train_data.apply_map_reducer(svd_reducer, fit=True)
-test_reduced = test_data.apply_map_reducer(svd_reducer, fit=False)
+```python
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GroupKFold, cross_val_score
+from sklearn.pipeline import make_pipeline
+
+pipeline = make_pipeline(
+    data.make_preprocessor("truncated_svd", n_components=50, random_state=13),
+    LogisticRegression(max_iter=1000),
+)
+scores = cross_val_score(
+    pipeline, bunch.data, bunch.target, cv=GroupKFold(5), groups=bunch.groups
+)
 ```
 
-The reducer is fit on training data only, then applied to held-out data.
-Unreduced voxelwise map matrices remain sparse. A reducer such as truncated SVD
-or atlas aggregation may return a smaller dense matrix only after reducing the
-voxel space. Atlas or label aggregation requires a masker or labels image
-compatible with the map feature space.
+Or by hand, where the fitted reducer carries the fit:
+
+```python
+svd = ml.make_map_reducer("truncated_svd", n_components=25, random_state=13)
+
+train_reduced = train.fit_transform_maps(svd)
+test_reduced = test.transform_maps(svd)   # NotFittedError if svd is unfitted
+```
+
+`make_map_reducer` also builds `"variance_threshold"`, which keeps the matrix
+sparse, and `"atlas_aggregation"`, which needs `masker=data.masker` and a
+nilearn `atlas_masker`.
+
+## Use non-numeric fields
+
+Categorical and text fields are not appended to the feature matrix, because
+encoding them during extraction would fit the encoder on the analyses you are
+about to hold out. Either encode the field yourself and select the numeric
+result, or read the raw values from `data.descriptors` -- a DataFrame indexed by
+analysis id -- and encode them inside your pipeline.
+
+For a target, pass a label extractor:
+
+```python
+extractor = ml.MAFeatureExtractor(
+    kernel_transformer=MKDAKernel(r=10),
+    target_field=("texts", "abstract"),
+    target_transformer=lambda texts: [classify(text) for text in texts],
+)
+```
 
 ## Tests
 
-Targeted tests for implementation:
-
 ```bash
 python -m pytest nimare/tests/test_ml.py
-```
-
-Performance-sensitive verification for the clarified scale target:
-
-```bash
 python -m pytest -m performance_smoke nimare/tests/test_ml.py
 ```
 
@@ -128,14 +131,10 @@ make lint
 
 ## Documentation and examples
 
-Public API examples must be created as Sphinx-Gallery `.py` files:
-
 ```text
 examples/05_machine_learning/01_plot_ma_feature_dataset.py
 examples/05_machine_learning/02_plot_ma_feature_reduction.py
 ```
-
-Validate docs conversion with existing infrastructure:
 
 ```bash
 make -C docs html
