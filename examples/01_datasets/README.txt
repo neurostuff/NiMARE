@@ -9,6 +9,9 @@ while the legacy :class:`~nimare.dataset.Dataset` class remains available for ba
 and migration workflows.
 
 Additionally, NiMARE contains fetching and conversion tools for a number of meta-analytic resources,
-including Neurosynth, NeuroQuery, NeuroVault, and, to a limited extent, BrainMap.
+including NeuroStore, Neurosynth, NeuroQuery, NeuroVault, and, to a limited extent, BrainMap.
+For coordinate data, prefer :func:`~nimare.extract.fetch_neurostore`: it downloads a NeuroStore
+studyset release, which is rebuilt from the live database, while the Neurosynth and NeuroQuery
+fetchers download frozen snapshots and ``fetch_neurosynth`` is deprecated.
 In the examples below, we show how to work with Studysets in NiMARE, along with
 legacy Dataset-specific examples for interoperability and migration.

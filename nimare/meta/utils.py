@@ -539,14 +539,17 @@ def get_ale_kernel(img, sample_size=None, fwhm=None):
 
 
 def _get_last_bin(arr1d):
-    """Index the last location in a 1D array with a non-zero value."""
-    if np.any(arr1d):
-        last_bin = np.where(arr1d)[0][-1]
+    """Index the last location in a 1D array with a non-zero value.
 
-    else:
-        last_bin = 0
+    Scanning from the end stops at the first non-zero entry, where ``np.where`` builds
+    the index of every one of them. MKDA's weighted null makes this array 100k long and
+    looks it up once per permutation.
+    """
+    if arr1d.size == 0:
+        return 0
 
-    return last_bin
+    last_bin = arr1d.size - 1 - int(np.argmax(arr1d[::-1] != 0))
+    return last_bin if arr1d[last_bin] else 0
 
 
 def _calculate_cluster_measures(arr3d, threshold, conn, tail="upper"):

@@ -321,10 +321,13 @@ class View:
 
         Uses the coordinates in the context's space: a Talairach focus and its
         MNI projection are not the same voxel.
+
+        Rounds to the nearest voxel, matching :func:`nimare.utils.mm2vox`, so that this and
+        :class:`~nimare.diagnostics.FocusFilter` agree on which foci a mask contains.
         """
         xyz, _, _ = layout.harmonized_coordinates(self.store, self.context.space)
         inv = np.linalg.inv(affine)
-        ijk = xyz @ inv[:3, :3].T + inv[:3, 3]
+        ijk = np.round(xyz @ inv[:3, :3].T + inv[:3, 3])
         values, in_bounds = _get_voxel_values(mask_data, ijk)
         return (values > 0) & in_bounds
 
