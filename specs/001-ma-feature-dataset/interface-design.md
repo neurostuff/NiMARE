@@ -579,8 +579,11 @@ of the interface decision.
 
 **All ten steps landed together.** The 1,000-study budget is met with room to
 spare: conversion and a grouped split take **0.6 s** and **0.58 GB** peak RSS
-against budgets of 3 minutes and 5 GB, and gallery example 01 reproduces its
-previous cross-validation accuracy (0.625 ± 0.019) through the new API.
+against budgets of 3 minutes and 5 GB, and gallery example 01 reproduced its
+previous cross-validation accuracy (0.625 ± 0.019) through the new API. After
+merging the branch's upstream, which rounds millimetre coordinates to the
+nearest voxel (#1142), the same example reads 0.623 ± 0.030: a different map,
+not a different pipeline.
 
 ---
 
