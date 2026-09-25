@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import resource
 import time
 
 import nibabel as nib
@@ -996,6 +995,10 @@ def test_extractor_end_to_end_classification(ml_studyset):
 @pytest.mark.performance_smoke
 def test_extractor_meets_the_conversion_budget():
     """A 1,000-study Studyset converts and splits inside the documented budget."""
+    # resource is Unix-only, and importing it at module scope makes the whole module
+    # uncollectable on Windows. Only this test needs it, and it runs on Linux.
+    import resource
+
     _, studyset = create_coordinate_studyset(foci=5, n_studies=1000, sample_size=30, seed=42)
 
     start = time.time()
