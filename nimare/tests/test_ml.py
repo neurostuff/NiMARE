@@ -561,8 +561,12 @@ def test_atlas_aggregator_names_reduced_features(ma_feature_dataset, small_maske
     """Region names survive into the reduced dataset's feature names."""
     labels = np.zeros((4, 4, 4), dtype=np.int16)
     labels[:2, :2, :2] = 1
+    # Name the regions explicitly. Left unnamed, nilearn invents a name per region and the
+    # convention has changed: 0.12 reports the region's position ("0") and 0.13 its label
+    # value ("1"), so an unnamed atlas pins this assertion to one nilearn version.
     atlas_masker = NiftiLabelsMasker(
         labels_img=nib.Nifti1Image(labels, small_masker.mask_img.affine),
+        labels=["Background", "region_a"],
         resampling_target="data",
         reports=False,
     )
@@ -578,7 +582,7 @@ def test_atlas_aggregator_names_reduced_features(ma_feature_dataset, small_maske
     )
 
     assert reduced.map_features.shape == (4, 1)
-    assert reduced.feature_names == ["1"]
+    assert reduced.feature_names == ["region_a"]
 
 
 # ---------------------------------------------------------------- extractor
