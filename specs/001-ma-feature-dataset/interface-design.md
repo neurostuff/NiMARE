@@ -665,3 +665,35 @@ Written after the fact, so the proposal and the code can be read together.
 10. **Gallery example 02 evaluates on one grouped holdout**, as its predecessor
     did, instead of three splits: nilearn's maps-masker least squares makes
     each additional split expensive in a documentation build.
+
+---
+
+## 12. Follow-up: generalising the two reducer slots (2026-09-25)
+
+The reducers shipped as three named workflows plus an `AtlasAggregator` that
+required a caller-built nilearn masker, which made DiFuMo and truncated SVD
+read as *the* two choices rather than as two examples. Both slots are now open:
+
+- **Any scikit-learn transformer.** `make_map_reducer` takes a workflow name, a
+  transformer, or a transformer class it builds from `**kwargs`;
+  `make_preprocessor` passes whatever it is given through the same resolver.
+  The named workflows stay, because a name is the shortest way to say the
+  common thing, and an unknown name now says what the alternatives to a name
+  are. Sparse-readability is documented rather than guarded: scikit-learn's own
+  message for `PCA` on sparse input names the fix (`TruncatedSVD`), and which
+  reducer suits a question is the researcher's call, not the module's.
+- **Any atlas nilearn can load.** `AtlasAggregator(atlas=...)` accepts a fetched
+  atlas `Bunch`, a 3D or 4D image, a path, the name of a `fetch_atlas_*`
+  function with its `atlas_kwargs`, or a masker the caller configured. It picks
+  `NiftiMapsMasker` for 4D and `NiftiLabelsMasker` for 3D, and reads the
+  atlas's `labels` -- a list, or a frame like DiFuMo's -- for the reduced
+  feature names, dropping a leading `Background` entry when the region count
+  says to. A `NiftiMasker` as the atlas is refused: it extracts voxels, not
+  regions.
+
+The dispatch is on what nilearn's fetchers actually return (`maps` plus
+`labels`, `maps` being a path more often than an image), so it works for the
+fetchers as they are rather than for a normalised form none of them produce.
+Strings mean a workflow name in the reducer slot and a file or fetcher in the
+`atlas` slot, which keeps one overload per slot instead of one string that
+could be three things.

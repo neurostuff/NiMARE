@@ -21,13 +21,18 @@ from __future__ import annotations
 
 import copy
 import logging
+import os
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 from joblib import Memory
 from joblib import hash as joblib_hash
+from nibabel.spatialimages import SpatialImage
+from nilearn.image import load_img
+from nilearn.maskers import BaseMasker, NiftiLabelsMasker, NiftiMapsMasker
 from nilearn.masking import unmask
 from scipy import sparse
 from sklearn.base import BaseEstimator, TransformerMixin, clone
@@ -56,7 +61,8 @@ __all__ = [
 #: Studyset tables a descriptor or target field may be selected from.
 FIELD_SOURCES = ("metadata", "annotations", "texts")
 
-#: Reduction workflows :func:`make_map_reducer` knows by name.
+#: Reduction workflows :func:`make_map_reducer` knows by name. Any other
+#: scikit-learn transformer, and any nilearn atlas, can be passed directly.
 MAP_REDUCERS = ("variance_threshold", "truncated_svd", "atlas_aggregation")
 
 _SOURCE_ALIASES = {
@@ -527,16 +533,18 @@ class MAFeatureDataset(NiMAREBase):
 
         Parameters
         ----------
-        map_reducer : :obj:`str` or estimator or None, default="truncated_svd"
-            A name :func:`make_map_reducer` knows, an already-built
-            scikit-learn transformer, or None/``"passthrough"`` to leave the map
-            columns alone.
+        map_reducer : :obj:`str`, estimator, :obj:`type`, atlas or None, default="truncated_svd"
+            Anything :func:`make_map_reducer` accepts -- a named workflow, a
+            scikit-learn transformer or transformer class, or a nilearn atlas,
+            for which this dataset's masker supplies the voxel order -- or
+            None/``"passthrough"`` to leave the map columns alone.
         descriptor_transformer : estimator or :obj:`str`, default="passthrough"
             What to apply to the descriptor columns, for example
             :class:`~sklearn.impute.SimpleImputer` when descriptors were kept
             with missing values.
         **reducer_params
-            Passed to :func:`make_map_reducer` when ``map_reducer`` is a name.
+            Passed to :func:`make_map_reducer`, when ``map_reducer`` is
+            something it has to build.
 
         Returns
         -------
@@ -550,18 +558,15 @@ class MAFeatureDataset(NiMAREBase):
         ...     dataset.make_preprocessor("truncated_svd", n_components=50),
         ...     LogisticRegression(),
         ... )
+        >>> pipeline = make_pipeline(  # doctest: +SKIP
+        ...     dataset.make_preprocessor(fetch_atlas_difumo(dimension=64)),
+        ...     LogisticRegression(),
+        ... )
         """
         if map_reducer is None or (isinstance(map_reducer, str) and map_reducer == "passthrough"):
             reducer = "passthrough"
-        elif isinstance(map_reducer, str):
-            reducer = make_map_reducer(map_reducer, masker=self.masker, **reducer_params)
         else:
-            if reducer_params:
-                raise ValueError(
-                    "Reducer parameters are only used when map_reducer names a workflow; "
-                    "set them on the transformer instead."
-                )
-            reducer = map_reducer
+            reducer = _resolve_map_reducer(map_reducer, masker=self.masker, **reducer_params)
 
         transformers = [("maps", reducer, self.map_columns)]
         if self._descriptor_features is not None:
@@ -632,7 +637,8 @@ class MAFeatureDataset(NiMAREBase):
             )
 
         try:
-            names = list(reducer.get_feature_names_out())
+            # str(), because numpy's str_ prints as np.str_('...') in numpy 2.
+            names = [str(name) for name in reducer.get_feature_names_out()]
         except (AttributeError, NotFittedError, ValueError):
             names = [f"component_{idx}" for idx in range(reduced.shape[1])]
         if len(names) != reduced.shape[1]:
@@ -1183,40 +1189,67 @@ def _align_map_rows(maps, ids, has_coordinates):
 
 
 class AtlasAggregator(TransformerMixin, BaseEstimator):
-    """Aggregate masked voxel features into atlas regions.
+    """Aggregate masked voxel features into the regions of a nilearn atlas.
 
-    Turns each row back into an image in the source masker's space and lets a
-    nilearn masker summarise it, so region definitions, resampling and the
-    aggregation strategy stay nilearn's business.
+    Takes any atlas nilearn can load -- a fetched atlas, an image, a file, the
+    name of a nilearn fetcher, or a masker you built yourself -- and turns each
+    row of map features into one value per region. Rows are converted back into
+    images in the source mask's space in batches and summarised by a nilearn
+    masker, so region definitions, resampling and the aggregation strategy stay
+    nilearn's business.
 
     Parameters
     ----------
-    atlas_masker : :class:`nilearn.maskers.NiftiLabelsMasker` or \
-:class:`nilearn.maskers.NiftiMapsMasker`
-        The masker defining the regions. It is cloned and fitted in the source
-        mask's space, so the instance passed in is left alone.
-    masker : :class:`nilearn.maskers.NiftiMasker`, optional
+    atlas : object, optional
+        The atlas, in any of these forms, by default None:
+
+        - a :class:`~sklearn.utils.Bunch` from a ``nilearn.datasets.fetch_atlas_*``
+          function, whose ``maps`` and ``labels`` are read;
+        - a 3D (deterministic) or 4D (probabilistic) atlas image, or a path to one;
+        - the name of a nilearn fetcher, such as ``"harvard_oxford"``, with any
+          arguments it needs in ``atlas_kwargs``;
+        - a fitted or unfitted :class:`~nilearn.maskers.NiftiLabelsMasker` or
+          :class:`~nilearn.maskers.NiftiMapsMasker`, when the defaults chosen
+          here are not the ones you want. It is cloned, never modified.
+
+        A 4D atlas is summarised with a :class:`~nilearn.maskers.NiftiMapsMasker`
+        and a 3D one with a :class:`~nilearn.maskers.NiftiLabelsMasker`, both
+        with ``resampling_target="data"``.
+    masker : :class:`~nilearn.maskers.NiftiMasker` or img_like, optional
         The masker defining the voxel order of the incoming features, normally
         :attr:`MAFeatureDataset.masker`, by default None.
+    atlas_kwargs : :obj:`dict`, optional
+        Arguments for the nilearn fetcher when ``atlas`` names one, by default
+        None.
     batch_size : :obj:`int`, default=10
         How many rows are held in dense image form at once. Ten rows of a 2 mm
-        whole-brain mask is roughly 18 MB.
+        whole-brain mask is roughly 18 MB; larger batches use more memory and
+        call nilearn fewer times.
+
+    Attributes
+    ----------
+    atlas_masker_ : :class:`~nilearn.maskers.BaseMasker`
+        The fitted nilearn masker doing the aggregation.
+    region_names_ : :obj:`list` of :obj:`str` or None
+        Region names read from the atlas, when it carries any.
 
     Examples
     --------
+    >>> from nilearn.datasets import fetch_atlas_difumo  # doctest: +SKIP
     >>> reducer = AtlasAggregator(  # doctest: +SKIP
-    ...     atlas_masker=NiftiLabelsMasker(labels_img=atlas.maps),
+    ...     atlas=fetch_atlas_difumo(dimension=64),
     ...     masker=dataset.masker,
     ... )
     """
 
-    def __init__(self, atlas_masker=None, masker=None, batch_size=10):
-        self.atlas_masker = atlas_masker
+    def __init__(self, atlas=None, masker=None, atlas_kwargs=None, batch_size=10):
+        self.atlas = atlas
         self.masker = masker
+        self.atlas_kwargs = atlas_kwargs
         self.batch_size = batch_size
 
     def fit(self, X, y=None):
-        """Fit the atlas masker in the source mask's space.
+        """Resolve the atlas and fit its masker in the source mask's space.
 
         Parameters
         ----------
@@ -1229,18 +1262,25 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
         :class:`AtlasAggregator`
             The fitted aggregator.
         """
-        if self.atlas_masker is None:
-            raise ValueError("AtlasAggregator requires an atlas_masker.")
+        if self.atlas is None:
+            raise ValueError(
+                "AtlasAggregator requires an atlas: a fetched nilearn atlas, an atlas "
+                "image or file, the name of a nilearn fetcher, or a nilearn labels or "
+                "maps masker."
+            )
         if self.masker is None:
             raise ValueError(
                 "AtlasAggregator requires the masker that defines the voxel order of the "
                 "features, normally MAFeatureDataset.masker."
             )
 
-        self.mask_img_ = self.masker.mask_img
-        atlas_masker = clone(self.atlas_masker)
+        from nimare.utils import get_masker
+
+        self.mask_img_ = get_masker(self.masker).mask_img
+        atlas_masker, region_names = _resolve_atlas(self.atlas, self.atlas_kwargs)
         atlas_masker.set_params(mask_img=self.mask_img_)
         self.atlas_masker_ = atlas_masker.fit(self.mask_img_)
+        self.region_names_ = region_names
         self.n_features_in_ = X.shape[1]
         return self
 
@@ -1269,7 +1309,7 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
         return np.vstack(batches)
 
     def get_feature_names_out(self, input_features=None):
-        """Return the region names, as the atlas masker reports them.
+        """Return the region names, from the atlas or from the masker.
 
         Parameters
         ----------
@@ -1281,10 +1321,17 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
             One name per region column.
         """
         check_is_fitted(self, ["atlas_masker_"])
-        names = _region_names(self.atlas_masker_)
-        if names is None:
-            names = [f"region_{idx}" for idx in range(self._n_regions())]
-        return np.asarray(names, dtype=str)
+        n_regions = self._n_regions()
+
+        for candidate in _name_candidates(self.region_names_):
+            if len(candidate) == n_regions:
+                return np.asarray(candidate, dtype=str)
+
+        names = _masker_region_names(self.atlas_masker_)
+        if names is not None and (not n_regions or len(names) == n_regions):
+            return np.asarray(names, dtype=str)
+
+        return np.asarray([f"region_{idx}" for idx in range(n_regions)], dtype=str)
 
     def _n_regions(self):
         """Return how many regions the fitted atlas masker produces."""
@@ -1296,7 +1343,112 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
         return len([label for label in labels if label != background])
 
 
-def _region_names(atlas_masker):
+def _resolve_atlas(atlas, atlas_kwargs=None):
+    """Return ``(unfitted nilearn masker, region names or None)`` for an atlas.
+
+    Accepts whatever nilearn hands back: a fetched atlas, an image, a path, a
+    fetcher name, or a masker built by the caller.
+    """
+    region_names = None
+
+    if isinstance(atlas, (str, Path)):
+        atlas = _load_atlas(atlas, atlas_kwargs)
+
+    if isinstance(atlas, BaseMasker):
+        if not (hasattr(atlas, "labels_img") or hasattr(atlas, "maps_img")):
+            raise ValueError(
+                f"{type(atlas).__name__} extracts voxels rather than regions. Pass a "
+                "labels or maps atlas, or a NiftiLabelsMasker or NiftiMapsMasker."
+            )
+        return clone(atlas), None
+
+    if hasattr(atlas, "maps"):
+        # A Bunch from nilearn.datasets.fetch_atlas_*.
+        region_names = _atlas_region_names(atlas)
+        atlas = atlas.maps
+
+    if not isinstance(atlas, (SpatialImage, str, Path)):
+        raise TypeError(
+            f"{atlas!r} is not an atlas. Pass a fetched nilearn atlas, an atlas image "
+            "or file, the name of a nilearn fetcher, or a nilearn labels or maps masker."
+        )
+
+    image = load_img(atlas)
+    if image.ndim == 4:
+        masker = NiftiMapsMasker(maps_img=image, resampling_target="data", reports=False)
+    elif image.ndim == 3:
+        masker = NiftiLabelsMasker(labels_img=image, resampling_target="data", reports=False)
+    else:
+        raise ValueError(
+            "An atlas image must be 3D, holding one integer per region, or 4D, holding "
+            f"one map per region, not {image.ndim}D."
+        )
+
+    return masker, region_names
+
+
+def _load_atlas(atlas, atlas_kwargs=None):
+    """Return the atlas a path or a nilearn fetcher name refers to."""
+    name = str(atlas)
+    if os.path.exists(name):
+        return name
+
+    from nilearn import datasets
+
+    fetcher = getattr(
+        datasets, name if name.startswith("fetch_atlas_") else f"fetch_atlas_{name}", None
+    )
+    if fetcher is None:
+        available = sorted(
+            attr[len("fetch_atlas_") :]
+            for attr in dir(datasets)
+            if attr.startswith("fetch_atlas_")
+        )
+        raise ValueError(
+            f"{name!r} is neither a file nor a nilearn atlas fetcher. nilearn fetches: "
+            f"{', '.join(available)}."
+        )
+
+    return fetcher(**(atlas_kwargs or {}))
+
+
+def _atlas_region_names(atlas):
+    """Return the region names a fetched nilearn atlas carries, or None."""
+    labels = getattr(atlas, "labels", None)
+    if labels is None:
+        return None
+
+    if hasattr(labels, "columns"):
+        # A frame of region attributes, as DiFuMo returns.
+        named = [column for column in labels.columns if "name" in str(column).lower()]
+        if not named:
+            named = [
+                column
+                for column in labels.columns
+                if pd.api.types.is_object_dtype(labels[column])
+                or pd.api.types.is_string_dtype(labels[column])
+            ]
+        if not named:
+            return None
+        labels = labels[named[0]].tolist()
+    elif getattr(getattr(labels, "dtype", None), "names", None):
+        fields = [field for field in labels.dtype.names if "name" in field.lower()]
+        labels = labels[(fields or list(labels.dtype.names))[0]].tolist()
+
+    names = [str(label) for label in labels]
+    return names or None
+
+
+def _name_candidates(region_names):
+    """Yield the readings of an atlas's names, with and without a background entry."""
+    if not region_names:
+        return
+    yield region_names
+    if str(region_names[0]).strip().lower() == "background":
+        yield region_names[1:]
+
+
+def _masker_region_names(atlas_masker):
     """Return the region names a fitted nilearn masker reports, or None."""
     try:
         names = atlas_masker.get_feature_names_out()
@@ -1318,26 +1470,92 @@ def _region_names(atlas_masker):
     return None
 
 
-def make_map_reducer(method, masker=None, **kwargs):
+def _is_atlas_like(reducer):
+    """Report whether an object describes an atlas rather than a reducer."""
+    return isinstance(reducer, (BaseMasker, SpatialImage)) or hasattr(reducer, "maps")
+
+
+def _is_transformer(reducer):
+    """Report whether an object is a scikit-learn transformer."""
+    return hasattr(reducer, "fit") and hasattr(reducer, "transform")
+
+
+def _resolve_map_reducer(reducer, masker=None, **kwargs):
+    """Return an unfitted transformer for whatever names or describes a reduction."""
+    if isinstance(reducer, str):
+        if reducer not in MAP_REDUCERS:
+            raise ValueError(
+                f"Unknown map reducer {reducer!r}. The named workflows are "
+                f"{', '.join(MAP_REDUCERS)}; any other scikit-learn transformer, and any "
+                "nilearn atlas, can be passed in place of a name."
+            )
+        if reducer == "variance_threshold":
+            return VarianceThreshold(**kwargs)
+        if reducer == "truncated_svd":
+            return TruncatedSVD(**kwargs)
+        return _make_atlas_aggregator(masker=masker, **kwargs)
+
+    if isinstance(reducer, type):
+        reducer, kwargs = reducer(**kwargs), {}
+
+    if _is_atlas_like(reducer):
+        return _make_atlas_aggregator(atlas=reducer, masker=masker, **kwargs)
+
+    if _is_transformer(reducer):
+        if kwargs:
+            raise ValueError(
+                "Reducer parameters are only used when the reducer is named by workflow, "
+                "given as a class, or given as an atlas; set them on the transformer "
+                "instead."
+            )
+        return reducer
+
+    raise TypeError(
+        f"{reducer!r} is not a map reducer. Pass the name of a workflow, a scikit-learn "
+        "transformer or transformer class, or a nilearn atlas."
+    )
+
+
+def _make_atlas_aggregator(masker=None, **kwargs):
+    """Build an :class:`AtlasAggregator`, insisting on the source masker."""
+    if masker is None:
+        raise ValueError(
+            "Atlas aggregation needs the source masker that defines the voxel order "
+            "of the map features, normally MAFeatureDataset.masker."
+        )
+    return AtlasAggregator(masker=masker, **kwargs)
+
+
+def make_map_reducer(reducer, masker=None, **kwargs):
     """Build a reduction workflow for voxelwise map features.
 
-    All three workflows are ordinary scikit-learn transformers: put one in a
-    pipeline, or fit it on a training dataset with
+    Whatever it is handed, it gives back an ordinary scikit-learn transformer:
+    put one in a pipeline through :meth:`MAFeatureDataset.make_preprocessor`, or
+    fit it on a training dataset with
     :meth:`MAFeatureDataset.fit_transform_maps`.
 
     Parameters
     ----------
-    method : {"variance_threshold", "truncated_svd", "atlas_aggregation"}
-        ``"variance_threshold"`` drops map features that barely vary and keeps
-        the matrix sparse; ``"truncated_svd"`` is a sparse-compatible low-rank
-        decomposition; ``"atlas_aggregation"`` summarises each map over the
-        regions of an atlas.
-    masker : :class:`nilearn.maskers.NiftiMasker`, optional
-        The masker defining the voxel order of the features, by default None.
-        Required for ``"atlas_aggregation"``.
+    reducer : :obj:`str`, estimator, :obj:`type` or atlas
+        One of:
+
+        - a named workflow: ``"variance_threshold"`` drops map features that
+          barely vary and keeps the matrix sparse, ``"truncated_svd"`` is a
+          sparse-compatible low-rank decomposition, and ``"atlas_aggregation"``
+          summarises each map over the regions of the ``atlas`` keyword;
+        - any scikit-learn transformer, ready to use;
+        - any scikit-learn transformer class, built here from ``**kwargs``;
+        - any atlas nilearn can load, which is wrapped in an
+          :class:`AtlasAggregator`. See its ``atlas`` parameter for the forms.
+    masker : :class:`~nilearn.maskers.NiftiMasker`, optional
+        The masker defining the voxel order of the features, normally
+        :attr:`MAFeatureDataset.masker`, by default None. Required for atlas
+        aggregation and ignored otherwise.
     **kwargs
-        Passed to the underlying transformer, for example ``n_components`` for
-        ``"truncated_svd"`` or ``atlas_masker`` for ``"atlas_aggregation"``.
+        Passed to the transformer being built, for example ``n_components`` for
+        ``"truncated_svd"`` or ``atlas`` and ``batch_size`` for
+        ``"atlas_aggregation"``. Not accepted alongside an already-built
+        transformer.
 
     Returns
     -------
@@ -1347,30 +1565,37 @@ def make_map_reducer(method, masker=None, **kwargs):
     Raises
     ------
     :obj:`ValueError`
-        If ``method`` is not one of the supported workflows, or if atlas
-        aggregation is requested without the source masker.
+        If a name is not one of the workflows, if atlas aggregation is
+        requested without the source masker, or if parameters are passed
+        alongside a built transformer.
+    :obj:`TypeError`
+        If ``reducer`` is neither a transformer nor an atlas.
+
+    Notes
+    -----
+    Unreduced map features are sparse, so a reducer that cannot accept sparse
+    input -- :class:`~sklearn.decomposition.PCA`, for one -- will say so when it
+    is fitted. :class:`~sklearn.decomposition.TruncatedSVD`,
+    :class:`~sklearn.random_projection.SparseRandomProjection`,
+    :class:`~sklearn.feature_selection.VarianceThreshold` and atlas aggregation
+    all read sparse input directly.
+
+    Examples
+    --------
+    >>> make_map_reducer("truncated_svd", n_components=50)  # doctest: +SKIP
+    >>> make_map_reducer(SparseRandomProjection(n_components=50))  # doctest: +SKIP
+    >>> make_map_reducer(fetch_atlas_difumo(dimension=64), masker=dataset.masker)  # doctest: +SKIP
+    >>> make_map_reducer(  # doctest: +SKIP
+    ...     "atlas_aggregation",
+    ...     masker=dataset.masker,
+    ...     atlas="harvard_oxford",
+    ...     atlas_kwargs={"atlas_name": "cort-maxprob-thr25-2mm"},
+    ... )
 
     See Also
     --------
+    AtlasAggregator
     sklearn.feature_selection.VarianceThreshold
     sklearn.decomposition.TruncatedSVD
-    AtlasAggregator
     """
-    if method == "variance_threshold":
-        return VarianceThreshold(**kwargs)
-
-    if method == "truncated_svd":
-        return TruncatedSVD(**kwargs)
-
-    if method == "atlas_aggregation":
-        if masker is None:
-            raise ValueError(
-                "Atlas aggregation needs the source masker that defines the voxel order "
-                "of the map features, normally MAFeatureDataset.masker."
-            )
-        return AtlasAggregator(masker=masker, **kwargs)
-
-    raise ValueError(
-        f"Unknown map reducer {method!r}. Supported workflows are "
-        f"{', '.join(MAP_REDUCERS)}, or pass a scikit-learn transformer directly."
-    )
+    return _resolve_map_reducer(reducer, masker=masker, **kwargs)

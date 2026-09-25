@@ -195,25 +195,38 @@ reduction is recorded in `provenance["map_reductions"]`.
 
 Row selection by boolean mask or positions, and an independent copy.
 
-## Function: `make_map_reducer(method, masker=None, **kwargs)`
+## Function: `make_map_reducer(reducer, masker=None, **kwargs)`
 
-Public function in `nimare.ml` returning an unfitted scikit-learn transformer.
+Public function in `nimare.ml` returning an unfitted scikit-learn transformer
+for whatever names or describes a reduction:
 
-**Reducer Types**
+- a named workflow: `variance_threshold` (`VarianceThreshold`; sparse in,
+  sparse out), `truncated_svd` (`TruncatedSVD`), or `atlas_aggregation`, whose
+  atlas arrives through the `atlas` keyword;
+- any scikit-learn transformer, used as given, or transformer class, built from
+  `**kwargs`;
+- any atlas nilearn can load, wrapped in an `AtlasAggregator`.
 
-- `variance_threshold`: `VarianceThreshold`; sparse in, sparse out.
-- `truncated_svd`: `TruncatedSVD`; sparse-compatible low-rank reduction.
-- `atlas_aggregation`: `AtlasAggregator`; needs the source masker and a nilearn
-  atlas masker.
+**Validation Rules**
 
-An unknown name raises `ValueError` naming the supported workflows.
+- A string that is not a workflow raises `ValueError`; an object that is neither
+  a transformer nor an atlas raises `TypeError`.
+- Parameters alongside a built transformer raise rather than being ignored.
+- Atlas aggregation requires the source masker, which
+  `MAFeatureDataset.make_preprocessor` supplies from the dataset.
+- Unreduced map features are sparse; a reducer that cannot read sparse input
+  says so when it is fitted.
 
 ## Class: `AtlasAggregator`
 
-Public scikit-learn transformer in `nimare.ml`. Clones the caller's nilearn
-masker, fits it in the source mask's space, and summarises batches of rows back
-through nilearn, so region definitions, resampling and aggregation strategy
-remain nilearn's. Reports region names through `get_feature_names_out()`.
+Public scikit-learn transformer in `nimare.ml`. Takes any atlas nilearn can
+load -- a fetched atlas `Bunch`, a 3D or 4D atlas image, a path, the name of a
+`nilearn.datasets.fetch_atlas_*` function with its `atlas_kwargs`, or a masker
+the caller configured -- resolves it to a `NiftiMapsMasker` (4D) or
+`NiftiLabelsMasker` (3D), fits it in the source mask's space, and summarises
+batches of rows back through nilearn, so region definitions, resampling and
+aggregation strategy remain nilearn's. Reports region names through
+`get_feature_names_out()`, preferring the atlas's own labels.
 
 ## Hierarchy Summary
 
@@ -234,8 +247,9 @@ MAFeatureDataset
 |-- fit_transform_maps(reducer) / transform_maps(reducer)
 `-- select_analyses(rows) / copy()
 
-make_map_reducer(method, masker=None, **kwargs) -> sklearn transformer
-`-- AtlasAggregator, TruncatedSVD, VarianceThreshold
+make_map_reducer(reducer, masker=None, **kwargs) -> sklearn transformer
+|-- a named workflow, or any sklearn transformer or transformer class
+`-- any nilearn atlas -> AtlasAggregator
 ```
 
 ## State Transitions

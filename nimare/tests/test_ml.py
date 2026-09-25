@@ -13,7 +13,7 @@ from nilearn.maskers import NiftiLabelsMasker, NiftiMapsMasker
 from scipy import sparse
 from sklearn.base import clone
 from sklearn.compose import ColumnTransformer
-from sklearn.decomposition import TruncatedSVD
+from sklearn.decomposition import PCA, TruncatedSVD
 from sklearn.exceptions import NotFittedError
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.impute import SimpleImputer
@@ -21,6 +21,7 @@ from sklearn.linear_model import Ridge
 from sklearn.model_selection import GridSearchCV, GroupKFold, cross_val_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import FunctionTransformer
+from sklearn.random_projection import SparseRandomProjection
 from sklearn.utils import Bunch
 
 from nimare.generate import create_coordinate_studyset
@@ -421,7 +422,7 @@ def test_make_preprocessor_accepts_transformers_and_passthrough(ma_feature_datas
     assert passthrough.transformers[0][1] == "passthrough"
     assert passthrough.fit_transform(dataset.features).shape == dataset.features.shape
 
-    with pytest.raises(ValueError, match="only used when map_reducer names a workflow"):
+    with pytest.raises(ValueError, match="only used when the reducer is named"):
         dataset.make_preprocessor(TruncatedSVD(), n_components=1)
 
 
@@ -478,108 +479,247 @@ def test_fit_transform_maps_rejects_row_changes(ma_feature_dataset):
 
 
 @pytest.mark.parametrize(
-    ("method", "kwargs", "expected_type"),
+    ("reducer", "kwargs", "expected_type"),
     [
         ("variance_threshold", {"threshold": 0.0}, VarianceThreshold),
         ("truncated_svd", {"n_components": 2}, TruncatedSVD),
+        (SparseRandomProjection, {"n_components": 2}, SparseRandomProjection),
+        (PCA(n_components=2), {}, PCA),
     ],
 )
-def test_make_map_reducer_builds_sklearn_transformers(method, kwargs, expected_type):
-    """Each named workflow returns an unfitted scikit-learn transformer."""
-    reducer = make_map_reducer(method, **kwargs)
+def test_make_map_reducer_builds_sklearn_transformers(reducer, kwargs, expected_type):
+    """A workflow name, a transformer class and a transformer all resolve."""
+    built = make_map_reducer(reducer, **kwargs)
 
-    assert isinstance(reducer, expected_type)
-    assert clone(reducer) is not reducer
+    assert isinstance(built, expected_type)
+    assert clone(built) is not built
+    if kwargs:
+        assert built.get_params()[next(iter(kwargs))] == next(iter(kwargs.values()))
+
+
+def test_make_map_reducer_returns_a_built_transformer_unchanged():
+    """An instance is used as given, and cannot be reconfigured in passing."""
+    reducer = SparseRandomProjection(n_components=3)
+
+    assert make_map_reducer(reducer) is reducer
+
+    with pytest.raises(ValueError, match="only used when the reducer is named"):
+        make_map_reducer(reducer, n_components=4)
 
 
 def test_make_map_reducer_rejects_unknown_workflows():
-    """A typo names the workflows that do exist."""
+    """A typo names the workflows that do exist, and the alternatives to a name."""
     with pytest.raises(ValueError, match="Unknown map reducer"):
         make_map_reducer("pca")
 
+    with pytest.raises(TypeError, match="is not a map reducer"):
+        make_map_reducer(object())
 
-def test_make_map_reducer_atlas_requires_source_masker():
+
+def test_make_map_reducer_atlas_requires_source_masker(small_masker):
     """Atlas aggregation needs the masker that defines the voxel order."""
+    atlas = nib.Nifti1Image(np.ones((4, 4, 4), dtype=np.int16), small_masker.mask_img.affine)
+
     with pytest.raises(ValueError, match="source masker"):
-        make_map_reducer("atlas_aggregation", atlas_masker=NiftiLabelsMasker(labels_img=None))
+        make_map_reducer(atlas)
+
+    with pytest.raises(ValueError, match="source masker"):
+        make_map_reducer("atlas_aggregation", atlas=atlas)
 
 
-@pytest.mark.parametrize("atlas", ["labels", "maps"])
-def test_atlas_aggregator_matches_nilearn(small_masker, atlas):
-    """Aggregation gives what the nilearn masker gives, batch by batch."""
+def _atlas_images(affine):
+    """Return a 3D labels atlas and an equivalent 4D probabilistic atlas."""
+    labels = np.zeros((4, 4, 4), dtype=np.int16)
+    labels[0, :2, :2] = 1
+    labels[1, :2, :2] = 2
+
+    maps = np.zeros((4, 4, 4, 2), dtype=float)
+    maps[0, :2, :2, 0] = 1.0
+    maps[1, :2, :2, 1] = 1.0
+
+    return nib.Nifti1Image(labels, affine), nib.Nifti1Image(maps, affine)
+
+
+@pytest.fixture
+def atlas_features(small_masker):
+    """Return sparse map features over the small mask."""
     n_voxels = int(small_masker.mask_img.get_fdata().sum())
-    features = sparse.csr_matrix(np.arange(6 * n_voxels, dtype=float).reshape(6, n_voxels))
-    affine = small_masker.mask_img.affine
+    return sparse.csr_matrix(np.arange(6 * n_voxels, dtype=float).reshape(6, n_voxels))
 
-    if atlas == "labels":
-        labels = np.zeros((4, 4, 4), dtype=np.int16)
-        labels[0, :2, :2] = 1
-        labels[1, :2, :2] = 2
-        atlas_masker = NiftiLabelsMasker(
-            labels_img=nib.Nifti1Image(labels, affine), resampling_target="data", reports=False
+
+@pytest.mark.parametrize("atlas_kind", ["labels", "maps"])
+def test_atlas_aggregator_matches_nilearn(small_masker, atlas_features, atlas_kind):
+    """Aggregation gives what the nilearn masker gives, batch by batch."""
+    labels_img, maps_img = _atlas_images(small_masker.mask_img.affine)
+
+    if atlas_kind == "labels":
+        atlas_img = labels_img
+        reference = NiftiLabelsMasker(
+            labels_img=labels_img, resampling_target="data", reports=False
         )
     else:
-        maps = np.zeros((4, 4, 4, 2), dtype=float)
-        maps[0, :2, :2, 0] = 1.0
-        maps[1, :2, :2, 1] = 1.0
-        atlas_masker = NiftiMapsMasker(
-            maps_img=nib.Nifti1Image(maps, affine), resampling_target="data", reports=False
-        )
+        atlas_img = maps_img
+        reference = NiftiMapsMasker(maps_img=maps_img, resampling_target="data", reports=False)
 
-    reducer = clone(
-        make_map_reducer(
-            "atlas_aggregation", masker=small_masker, atlas_masker=atlas_masker, batch_size=2
-        )
-    )
-    transformed = reducer.fit_transform(features)
+    reducer = clone(make_map_reducer(atlas_img, masker=small_masker, batch_size=2))
+    transformed = reducer.fit_transform(atlas_features)
 
-    reference = clone(atlas_masker)
     reference.set_params(mask_img=small_masker.mask_img)
     expected = reference.fit(small_masker.mask_img).transform(
-        small_masker.inverse_transform(features.toarray())
+        small_masker.inverse_transform(atlas_features.toarray())
     )
 
     assert transformed.shape == (6, 2)
     np.testing.assert_allclose(transformed, expected)
     assert len(reducer.get_feature_names_out()) == 2
-    # The caller's masker is cloned before it is fitted in the source mask's space.
+
+
+def test_atlas_aggregator_accepts_a_fetched_atlas(small_masker, atlas_features):
+    """A Bunch from a nilearn fetcher is read for its maps and its labels."""
+    _, maps_img = _atlas_images(small_masker.mask_img.affine)
+    atlas = Bunch(maps=maps_img, labels=["Background", "left", "right"])
+
+    reducer = make_map_reducer(atlas, masker=small_masker).fit(atlas_features)
+
+    assert isinstance(reducer.atlas_masker_, NiftiMapsMasker)
+    np.testing.assert_array_equal(reducer.get_feature_names_out(), ["left", "right"])
+
+
+def test_atlas_aggregator_accepts_a_labels_frame(small_masker, atlas_features):
+    """DiFuMo-style label frames are read for their name column."""
+    _, maps_img = _atlas_images(small_masker.mask_img.affine)
+    labels = pd.DataFrame({"component": [1, 2], "difumo_names": ["first", "second"]})
+
+    reducer = make_map_reducer(Bunch(maps=maps_img, labels=labels), masker=small_masker)
+
+    np.testing.assert_array_equal(
+        reducer.fit(atlas_features).get_feature_names_out(), ["first", "second"]
+    )
+
+
+def test_atlas_aggregator_accepts_a_path(small_masker, atlas_features, tmp_path):
+    """An atlas on disk is loaded rather than refused."""
+    labels_img, _ = _atlas_images(small_masker.mask_img.affine)
+    path = tmp_path / "atlas.nii.gz"
+    labels_img.to_filename(path)
+
+    for atlas in (path, str(path)):
+        reducer = make_map_reducer("atlas_aggregation", masker=small_masker, atlas=atlas)
+        assert reducer.fit_transform(atlas_features).shape == (6, 2)
+        assert isinstance(reducer.atlas_masker_, NiftiLabelsMasker)
+
+
+def test_atlas_aggregator_accepts_a_fetcher_name(small_masker, atlas_features, monkeypatch):
+    """A nilearn fetcher can be named, and its arguments passed through."""
+    from nilearn import datasets
+
+    _, maps_img = _atlas_images(small_masker.mask_img.affine)
+    calls = {}
+
+    def fake_fetcher(dimension=None):
+        calls["dimension"] = dimension
+        return Bunch(maps=maps_img, labels=["left", "right"])
+
+    monkeypatch.setattr(datasets, "fetch_atlas_pretend", fake_fetcher, raising=False)
+
+    reducer = make_map_reducer(
+        "atlas_aggregation",
+        masker=small_masker,
+        atlas="pretend",
+        atlas_kwargs={"dimension": 2},
+    ).fit(atlas_features)
+
+    assert calls == {"dimension": 2}
+    np.testing.assert_array_equal(reducer.get_feature_names_out(), ["left", "right"])
+
+
+def test_atlas_aggregator_accepts_a_prebuilt_masker(small_masker, atlas_features):
+    """A masker built by the caller is used as configured, and not modified."""
+    labels_img, _ = _atlas_images(small_masker.mask_img.affine)
+    atlas_masker = NiftiLabelsMasker(
+        labels_img=labels_img, strategy="sum", resampling_target="data", reports=False
+    )
+
+    reducer = make_map_reducer(atlas_masker, masker=small_masker).fit(atlas_features)
+
+    assert reducer.atlas_masker_.strategy == "sum"
     assert atlas_masker.mask_img is None
 
 
-def test_atlas_aggregator_requires_both_maskers(small_masker):
-    """Neither masker can be guessed."""
-    with pytest.raises(ValueError, match="atlas_masker"):
-        AtlasAggregator(masker=small_masker).fit(np.zeros((2, 8)))
+@pytest.mark.parametrize(
+    ("atlas", "message"),
+    [
+        (None, "requires an atlas"),
+        ("not_an_atlas_anywhere", "neither a file nor a nilearn atlas fetcher"),
+        (42, "is not an atlas"),
+    ],
+)
+def test_atlas_aggregator_rejects_unusable_atlases(small_masker, atlas, message):
+    """Whatever the atlas is not, the message says what it could be."""
+    with pytest.raises((ValueError, TypeError), match=message):
+        AtlasAggregator(atlas=atlas, masker=small_masker).fit(np.zeros((2, 8)))
 
-    labels_img = nib.Nifti1Image(np.ones((4, 4, 4), dtype=np.int16), small_masker.mask_img.affine)
+
+def test_atlas_aggregator_rejects_a_voxel_masker(small_masker):
+    """A NiftiMasker extracts voxels, which is not an aggregation."""
+    with pytest.raises(ValueError, match="rather than regions"):
+        AtlasAggregator(atlas=small_masker, masker=small_masker).fit(np.zeros((2, 8)))
+
+
+def test_atlas_aggregator_requires_the_source_masker(small_masker):
+    """The voxel order of the incoming features cannot be guessed."""
+    labels_img, _ = _atlas_images(small_masker.mask_img.affine)
+
     with pytest.raises(ValueError, match="voxel order"):
-        AtlasAggregator(atlas_masker=NiftiLabelsMasker(labels_img=labels_img)).fit(
-            np.zeros((2, 8))
-        )
+        AtlasAggregator(atlas=labels_img).fit(np.zeros((2, 8)))
 
 
-def test_atlas_aggregator_names_reduced_features(ma_feature_dataset, small_masker):
+def test_atlas_aggregator_names_reduced_features(small_masker, atlas_features):
     """Region names survive into the reduced dataset's feature names."""
-    labels = np.zeros((4, 4, 4), dtype=np.int16)
-    labels[:2, :2, :2] = 1
-    atlas_masker = NiftiLabelsMasker(
-        labels_img=nib.Nifti1Image(labels, small_masker.mask_img.affine),
-        resampling_target="data",
-        reports=False,
-    )
+    labels_img, _ = _atlas_images(small_masker.mask_img.affine)
     dataset = MAFeatureDataset(
-        sparse.csr_matrix(np.random.default_rng(0).random((4, 8))),
-        ids=[f"study_{idx}-task0" for idx in range(4)],
-        study_ids=[f"study_{idx}" for idx in range(4)],
+        atlas_features,
+        ids=[f"study_{idx}-task0" for idx in range(6)],
+        study_ids=[f"study_{idx}" for idx in range(6)],
         masker=small_masker,
     )
 
     reduced = dataset.fit_transform_maps(
-        make_map_reducer("atlas_aggregation", masker=small_masker, atlas_masker=atlas_masker)
+        make_map_reducer(Bunch(maps=labels_img, labels=["one", "two"]), masker=small_masker)
     )
 
-    assert reduced.map_features.shape == (4, 1)
-    assert reduced.feature_names == ["1"]
+    assert reduced.map_features.shape == (6, 2)
+    assert reduced.feature_names == ["one", "two"]
+    assert all(type(name) is str for name in reduced.feature_names)
+
+
+def test_dataset_reduces_with_any_sklearn_transformer(ma_feature_dataset):
+    """A reducer NiMARE has never heard of works like the named ones."""
+    reducer = SparseRandomProjection(n_components=1, random_state=RANDOM_SEED)
+    train, test = ma_feature_dataset.split(test_size=0.34, random_state=RANDOM_SEED)
+
+    reduced_train = train.fit_transform_maps(reducer)
+    reduced_test = test.transform_maps(reducer)
+
+    assert reduced_train.map_features.shape == (len(train), 1)
+    assert reduced_test.map_features.shape == (len(test), 1)
+    np.testing.assert_array_equal(reduced_train.ids, train.ids)
+
+
+def test_make_preprocessor_accepts_an_atlas(small_masker, atlas_features):
+    """The dataset supplies the voxel order, so an atlas needs nothing else."""
+    labels_img, _ = _atlas_images(small_masker.mask_img.affine)
+    dataset = MAFeatureDataset(
+        atlas_features,
+        ids=[f"study_{idx}-task0" for idx in range(6)],
+        study_ids=[f"study_{idx}" for idx in range(6)],
+        masker=small_masker,
+    )
+
+    preprocessor = dataset.make_preprocessor(labels_img)
+
+    assert isinstance(preprocessor.transformers[0][1], AtlasAggregator)
+    assert preprocessor.fit_transform(dataset.features).shape == (6, 2)
 
 
 # ---------------------------------------------------------------- extractor

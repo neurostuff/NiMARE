@@ -191,20 +191,48 @@ Default field behavior:
 
 ## Reduction Helpers
 
-`make_map_reducer(method, masker=None, **kwargs)` returns an unfitted
-scikit-learn transformer for:
+`make_map_reducer(reducer, masker=None, **kwargs)` returns an unfitted
+scikit-learn transformer. It is deliberately permissive about what names a
+reduction, because the module should not stand between a researcher and either
+of the libraries underneath it:
 
-- `"variance_threshold"`: `VarianceThreshold`, which keeps the matrix sparse.
-- `"truncated_svd"`: `TruncatedSVD`, sparse-compatible low-rank reduction.
-- `"atlas_aggregation"`: `AtlasAggregator`, which needs `masker` and an
-  `atlas_masker`.
+- a named workflow -- `"variance_threshold"` (`VarianceThreshold`),
+  `"truncated_svd"` (`TruncatedSVD`), or `"atlas_aggregation"`, which takes its
+  atlas through the `atlas` keyword;
+- any scikit-learn transformer, used as given;
+- any scikit-learn transformer class, built from `**kwargs`;
+- any atlas nilearn can load, wrapped in an `AtlasAggregator`.
 
-An unknown name raises `ValueError` and names the supported workflows.
+A name that is not a workflow raises `ValueError` and names the workflows and
+the alternatives to a name. An object that is neither a transformer nor an
+atlas raises `TypeError`. Parameters passed alongside an already-built
+transformer raise, rather than being silently ignored.
 
-`AtlasAggregator` is public. It clones and fits the caller's nilearn masker in
-the source mask's space, converts rows back to images in batches, and reports
-region names through `get_feature_names_out()`. Region definitions, resampling
-and the aggregation strategy stay nilearn's business.
+`MAFeatureDataset.make_preprocessor` takes the same forms and supplies the
+dataset's masker, so an atlas needs nothing else from the caller.
+
+Unreduced map features are sparse, so a reducer that cannot read sparse input
+(`PCA`, for one) fails when it is fitted, with scikit-learn's own message.
+That is documented rather than guarded: which reducers are appropriate is the
+researcher's call.
+
+`AtlasAggregator` is public and accepts any atlas nilearn can load:
+
+- a `Bunch` from a `nilearn.datasets.fetch_atlas_*` function, read for its
+  `maps` and, when present, its `labels`;
+- a 3D (deterministic) or 4D (probabilistic) atlas image, or a path to one;
+- the name of a nilearn fetcher, such as `"harvard_oxford"`, with any arguments
+  it needs in `atlas_kwargs`;
+- a `NiftiLabelsMasker` or `NiftiMapsMasker` the caller configured, which is
+  cloned rather than modified.
+
+A 4D atlas is summarised with a `NiftiMapsMasker` and a 3D one with a
+`NiftiLabelsMasker`, both with `resampling_target="data"`. A masker that
+extracts voxels rather than regions, an image that is neither 3D nor 4D, and a
+string that names neither a file nor a fetcher must each raise and say what was
+expected. Region definitions, resampling and the aggregation strategy stay
+nilearn's business; `get_feature_names_out()` reports region names from the
+atlas when it carries them, and from the masker otherwise.
 
 ## Documentation Contract
 

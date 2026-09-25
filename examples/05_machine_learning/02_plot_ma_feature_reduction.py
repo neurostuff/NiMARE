@@ -5,19 +5,19 @@
 Modeled activation feature reduction workflow
 =============================================
 
-Compare the reduction workflows :func:`~nimare.ml.make_map_reducer` provides:
-truncated SVD, DiFuMo atlas aggregation, and variance thresholding. The first
-two produce 64 features each, and all three are evaluated on the same
-study-grouped splits of one Studyset.
+Reduce voxelwise modeled activation (MA) features with any scikit-learn
+transformer, or over the regions of any atlas nilearn can load. This example
+compares truncated SVD, a sparse random projection, DiFuMo atlas aggregation
+and variance thresholding on the same study-grouped split of one Studyset.
 """
 
 from pathlib import Path
 
 from nilearn.datasets import fetch_atlas_difumo
-from nilearn.maskers import NiftiMapsMasker
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupShuffleSplit, cross_val_score
 from sklearn.pipeline import make_pipeline
+from sklearn.random_projection import SparseRandomProjection
 
 from nimare.meta.kernel import MKDAKernel
 from nimare.ml import MAFeatureExtractor, make_map_reducer
@@ -47,27 +47,30 @@ print(f"Voxelwise feature shape: {data.features.shape}")
 ###############################################################################
 # Configure the reduction workflows
 # -----------------------------------------------------------------------------
-# Atlas aggregation summarizes each voxelwise MA map with one feature for each
-# of the 64 DiFuMo components. Variance thresholding keeps the matrix sparse
-# and simply drops the voxels that barely vary across analyses.
+# :func:`~nimare.ml.make_map_reducer` takes a workflow name, any scikit-learn
+# transformer or transformer class, or any atlas: what a
+# ``nilearn.datasets.fetch_atlas_*`` function returns, an atlas image or file, a
+# fetcher name such as ``atlas="harvard_oxford"``, or a nilearn masker you
+# configured yourself. A 4D atlas is summarised with a ``NiftiMapsMasker`` and a
+# 3D one with a ``NiftiLabelsMasker``, and region names come along for the ride.
+#
+# Reducers see the sparse voxel matrix, so they have to accept sparse input:
+# truncated SVD, sparse random projection, variance thresholding and atlas
+# aggregation all do, while dense PCA would ask to be given dense data.
 difumo = fetch_atlas_difumo(dimension=N_COMPONENTS, resolution_mm=2)
-atlas_masker = NiftiMapsMasker(
-    maps_img=difumo.maps,
-    standardize=False,
-    resampling_target="data",
-    reports=False,
-)
 
 reducers = {
     "Truncated SVD": make_map_reducer(
         "truncated_svd", n_components=N_COMPONENTS, random_state=RANDOM_SEED
     ),
+    "Sparse random projection": make_map_reducer(
+        SparseRandomProjection, n_components=N_COMPONENTS, random_state=RANDOM_SEED
+    ),
     "DiFuMo atlas": make_map_reducer(
+        difumo,
+        masker=data.masker,
         # Bigger batches hold more rows in dense image form at once, and pay
         # nilearn's per-call least-squares setup fewer times.
-        "atlas_aggregation",
-        masker=data.masker,
-        atlas_masker=atlas_masker,
         batch_size=64,
     ),
     "Variance threshold": make_map_reducer("variance_threshold", threshold=0.01),
@@ -83,6 +86,9 @@ bunch = data.to_sklearn()
 
 for name, reducer in reducers.items():
     pipeline = make_pipeline(
+        # An atlas can go straight in here too: the dataset knows the masker
+        # that defines its voxel order, so `data.make_preprocessor(difumo)`
+        # builds the same aggregator.
         data.make_preprocessor(reducer),
         LogisticRegression(max_iter=1000, class_weight="balanced", random_state=RANDOM_SEED),
     )
@@ -110,3 +116,15 @@ test_reduced = test.transform_maps(svd)
 print(f"Reduced train features: {train_reduced.features.shape}")
 print(f"Reduced test features:  {test_reduced.features.shape}")
 print(f"First feature names: {train_reduced.feature_names[:3]}")
+
+###############################################################################
+# Region names come from the atlas
+# -----------------------------------------------------------------------------
+# When the atlas carries names, the reduced dataset's features are named after
+# the regions rather than by position.
+atlas_reduced = train.fit_transform_maps(
+    make_map_reducer(difumo, masker=data.masker, batch_size=64)
+)
+
+print(f"Atlas features: {atlas_reduced.map_features.shape[1]}")
+print(f"First region names: {atlas_reduced.feature_names[:3]}")

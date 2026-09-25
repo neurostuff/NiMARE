@@ -91,9 +91,33 @@ train_reduced = train.fit_transform_maps(svd)
 test_reduced = test.transform_maps(svd)   # NotFittedError if svd is unfitted
 ```
 
-`make_map_reducer` also builds `"variance_threshold"`, which keeps the matrix
-sparse, and `"atlas_aggregation"`, which needs `masker=data.masker` and a
-nilearn `atlas_masker`.
+`make_map_reducer` -- and `make_preprocessor`, which passes what it is given
+straight through -- takes more than the three workflow names:
+
+```python
+from nilearn.datasets import fetch_atlas_difumo
+from sklearn.random_projection import SparseRandomProjection
+
+ml.make_map_reducer("variance_threshold", threshold=0.01)        # a named workflow
+ml.make_map_reducer(SparseRandomProjection(n_components=64))     # any transformer
+ml.make_map_reducer(SparseRandomProjection, n_components=64)     # or its class
+ml.make_map_reducer(fetch_atlas_difumo(dimension=64), masker=data.masker)
+ml.make_map_reducer("atlas_aggregation", masker=data.masker,
+                    atlas="harvard_oxford",
+                    atlas_kwargs={"atlas_name": "cort-maxprob-thr25-2mm"})
+
+data.make_preprocessor(fetch_atlas_difumo(dimension=64))          # masker supplied
+```
+
+An atlas is anything nilearn can load: a fetched atlas, an atlas image or file,
+the name of a `fetch_atlas_*` function, or a `NiftiLabelsMasker` or
+`NiftiMapsMasker` you configured yourself. A 4D atlas is summarised with a maps
+masker and a 3D one with a labels masker, and the atlas's own region names
+become the reduced feature names.
+
+Map features are sparse, so a reducer has to read sparse input. Truncated SVD,
+sparse random projection, variance thresholding and atlas aggregation do; dense
+PCA will ask for dense data.
 
 ## Use non-numeric fields
 
