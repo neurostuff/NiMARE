@@ -166,7 +166,13 @@ and that order is preserved by every method.
   and return a reduced dataset.
 - `transform_maps(reducer)`: apply an already fitted reducer, raising
   `NotFittedError` otherwise, because fitting it there would use held-out data.
-- `select_analyses(rows)`: restrict to a boolean mask or an array of positions.
+- `select_analyses(rows)`: restrict to a boolean mask or an array of positions,
+  the way `Studyset.select_analyses` indexes rows.
+- `slice(ids)`: restrict to the analyses named, in the order named, the way
+  `Studyset.slice` does. An id naming no analysis MUST raise rather than
+  silently yield fewer rows. Indexing by position and naming by id MUST stay
+  separate methods: they are different questions, and `select_analyses` MUST
+  NOT accept ids.
 - `copy()`: return an independent dataset copy.
 
 ### Errors
@@ -186,8 +192,13 @@ labels, using the vocabulary NiMARE estimators already use in
 
 - a bare field name (`"sample_sizes"`), looked up in metadata, annotations and
   texts in turn; an ambiguous name raises and asks for the explicit form;
-- a `(source, field)` tuple (`("annotations", "motor_label")`);
-- a mapping with `source` and `field`.
+- a `(source, field)` tuple (`("annotations", "motor_label")`), for the names a
+  bare selector cannot express.
+
+These are one spelling per situation, not two for the same one, and there MUST
+NOT be a third: the `{"source": ..., "field": ...}` mapping §5.4 kept as an
+undocumented alias is removed, since `nimare.ml` has never been released and
+the alias was courtesy to nobody.
 
 A tuple is one selector; a list holds several. Sources are `"metadata"`,
 `"annotations"` and `"texts"`, with `"annotations_df"` and `"text"` accepted as

@@ -1001,14 +1001,33 @@ A pattern spanning both kinds still raises, because a categorical label cannot
 enter a numeric matrix, but the message now names `describe_fields` as the way
 to take the numeric ones.
 
-### 3. `select_analyses` took positions while the rest of NiMARE took ids
+### 3. There was no way to select rows by id
 
-`Studyset.slice(analyses=...)` selects by analysis id, and ids are what
-`provenance['dropped_ids']`, `FeatureSet.ids` and a `describe_fields` query all
-hand back, but `FeatureSet.select_analyses` cast its argument to `int` and
-failed on them. It now accepts ids as well as masks and positions; strings are
-never positions, so nothing is ambiguous, and an id the dataset does not hold
-is named rather than silently dropped.
+Reapplying a split saved earlier means naming analyses by id: a position is
+only meaningful against the exact rows it was taken from, and does not survive
+a rebuild, a reorder or another object. `FeatureSet.select_analyses` cast its
+argument to `int` and failed on ids.
+
+The first fix was to make `select_analyses` accept ids too. That was wrong, and
+is reverted. NiMARE already distinguishes the two concepts, with one method
+each:
+
+| Concept | Studyset | FeatureSet |
+| --- | --- | --- |
+| Row index (mask or positions) | `select_analyses` | `select_analyses` |
+| Stable key (analysis ids) | `slice` | `slice` |
+
+`Studyset.select_analyses(ids)` raises `invalid literal for int()` -- exactly
+what `FeatureSet.select_analyses` did -- because ids are `slice`'s business,
+and `Studyset.slice` has refused an id naming nothing since 0.21.0. Overloading
+one parameter with both concepts made two same-named sibling methods mean
+different things, which is worse than the gap it closed. `FeatureSet.slice(ids)`
+now mirrors `Studyset.slice`, raise-on-unknown included, and `select_analyses`
+indexes rows as it always did.
+
+This is the `.loc`/`.iloc` distinction, and the reason pandas keeps them apart:
+a key and an index are different questions, and a parameter that answers either
+depending on dtype answers neither clearly.
 
 ### 4. One `missing_values` could not serve both roles
 

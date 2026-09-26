@@ -194,12 +194,12 @@ class FeatureSet(NiMAREBase):
             There is no default: the choice is scientific.
         descriptor_fields : :obj:`list`, optional
             Fields appended to the feature matrix as extra numeric columns, by
-            default None. Each is a field name, a ``(source, field)`` tuple, or
-            a mapping with ``source`` and ``field``; sources are
+            default None. Each is a field name, or a ``(source, field)`` tuple
+            when the name appears in more than one source; sources are
             ``"metadata"``, ``"annotations"`` and ``"texts"``. A field that
             reads as a glob pattern, such as ``"Neurosynth_TFIDF__*"``, selects
             every annotation label matching it. Non-numeric fields are refused.
-        target_field : :obj:`str` or :obj:`tuple` or :obj:`dict`, optional
+        target_field : :obj:`str` or :obj:`tuple`, optional
             Field exported as ``y``, by default None. Scalar numeric and scalar
             categorical fields are supported directly.
         target_transformer : :obj:`callable` or transformer, optional
@@ -625,15 +625,43 @@ class FeatureSet(NiMAREBase):
 
     # -------------------------------------------------------------- plumbing
 
+    def slice(self, ids):
+        """Return the dataset restricted to the analyses ``ids`` names.
+
+        The counterpart of :meth:`select_analyses`, which indexes rows by
+        position. An id names the same analysis whatever order the rows are in
+        and whoever built them, so it is what to use to reapply a split saved
+        earlier, or one taken from another object. It mirrors
+        :meth:`~nimare.nimads.Studyset.slice`, down to refusing an id that
+        names nothing rather than quietly returning fewer rows.
+
+        Parameters
+        ----------
+        ids : array_like of :obj:`str`
+            Analysis ids, as :attr:`ids` lists them.
+
+        Returns
+        -------
+        :class:`FeatureSet`
+            A dataset holding those analyses, in the order they were named.
+
+        Raises
+        ------
+        :obj:`KeyError`
+            If an id does not name an analysis in this dataset.
+        """
+        return self.select_analyses(self._rows_for_ids(np.asarray(ids)))
+
     def select_analyses(self, rows):
-        """Return the dataset restricted to the analyses selected.
+        """Return the dataset restricted to the analyses a mask or positions select.
+
+        Rows are indexed the way :meth:`~nimare.nimads.Studyset.select_analyses`
+        indexes them. To select by analysis id instead, use :meth:`slice`.
 
         Parameters
         ----------
         rows : array_like
-            Analysis ids, a boolean mask over the rows, or row positions.
-            Ids are what :meth:`~nimare.nimads.Studyset.slice` and
-            ``provenance['dropped_ids']`` deal in, so they are accepted here.
+            A boolean mask over the rows, or an array of row positions.
 
         Returns
         -------
@@ -647,8 +675,6 @@ class FeatureSet(NiMAREBase):
                     f"A boolean mask must have one entry per analysis row ({len(self)})."
                 )
             rows = np.flatnonzero(rows)
-        elif rows.dtype.kind in "USO":
-            rows = self._rows_for_ids(rows)
         rows = rows.astype(int, copy=False)
 
         return self._rebuild(
@@ -660,7 +686,7 @@ class FeatureSet(NiMAREBase):
         )
 
     def _rows_for_ids(self, ids):
-        """Return the row positions of ``ids``, in the order they were given."""
+        """Return the row positions of ``ids``, in the order they were named."""
         position = {str(name): row for row, name in enumerate(self.ids)}
         unknown = [str(name) for name in ids if str(name) not in position]
         if unknown:

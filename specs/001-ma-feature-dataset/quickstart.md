@@ -40,9 +40,10 @@ Expected result:
 nothing else. There is no estimator to configure and no `fit` to call: the container builds
 itself from a Studyset, and that container is what you work with.
 
-A field is named by a bare field name, by a `(source, field)` tuple, or by a
-mapping. A bare name is looked up in metadata, annotations and texts in turn,
-and an ambiguous one asks which was meant. Numeric metadata is read the way the
+A field is named by a bare field name, or by a `(source, field)` tuple. A bare
+name is looked up in metadata, annotations and texts in turn, and an ambiguous
+one asks which was meant, so the tuple is for the case a bare name cannot
+express. Numeric metadata is read the way the
 rest of NiMARE reads it, so study-level fields are inherited by their analyses
 and `sample_sizes` is reduced rather than rejected.
 
@@ -61,6 +62,16 @@ missing_values={"target": "drop", "descriptors": "keep"}
 
 Pass `memory="/path/to/cache"` to have repeated conversions of the same
 Studyset reuse the maps they already generated, in this process and the next.
+
+## Select rows
+
+```python
+features.select_analyses(features.target == "n-back")   # mask or positions
+features.slice(["study_0-task0", "study_1-task0"])      # analysis ids
+```
+
+`select_analyses` indexes rows and `slice` names analyses, the same split
+`Studyset` makes between the two. An id naming nothing raises.
 
 ## Split without study leakage
 

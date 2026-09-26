@@ -1652,12 +1652,12 @@ def test_a_character_class_pattern_still_selects_as_one():
     assert features.descriptor_names == ["motor_label", "target_score"]
 
 
-def test_select_analyses_accepts_ids_as_well_as_positions(ml_studyset):
-    """Ids are what the rest of NiMARE selects analyses with, so they work here."""
+def test_slice_selects_by_id_and_select_analyses_by_position(ml_studyset):
+    """The two name different things, and agree when pointed at the same rows."""
     features = FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4))
     wanted = [features.ids[2], features.ids[0]]
 
-    by_id = features.select_analyses(wanted)
+    by_id = features.slice(wanted)
     by_position = features.select_analyses([2, 0])
 
     np.testing.assert_array_equal(by_id.ids, wanted)
@@ -1665,12 +1665,31 @@ def test_select_analyses_accepts_ids_as_well_as_positions(ml_studyset):
     np.testing.assert_array_equal(by_id.map_features.toarray(), by_position.map_features.toarray())
 
 
-def test_select_analyses_names_an_id_it_does_not_hold(ml_studyset):
-    """An id from another Studyset is a mistake worth naming."""
+def test_slice_names_an_id_it_does_not_hold(ml_studyset):
+    """An id naming nothing raises, as it does for Studyset.slice."""
     features = FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4))
 
     with pytest.raises(KeyError, match="not in this dataset"):
-        features.select_analyses([features.ids[0], "no-such-analysis"])
+        features.slice([features.ids[0], "no-such-analysis"])
+
+
+def test_select_analyses_still_refuses_ids(ml_studyset):
+    """Indexing by position and naming by id stay separate, as on a Studyset."""
+    features = FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4))
+
+    with pytest.raises(ValueError, match="invalid literal for int"):
+        features.select_analyses([features.ids[0]])
+
+
+def test_slice_survives_a_subclass(ml_studyset):
+    """A derivation keeps the caller's type, as every other one does."""
+
+    class Mine(FeatureSet):
+        pass
+
+    features = Mine.from_studyset(ml_studyset, MKDAKernel(r=4))
+
+    assert type(features.slice([features.ids[0]])) is Mine
 
 
 def test_describe_fields_of_an_empty_studyset_is_an_empty_report(ml_studyset):

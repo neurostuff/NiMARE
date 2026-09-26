@@ -56,10 +56,11 @@ some other way.
 Selecting fields
 ----------------
 
-Descriptor and target fields are named by a bare field name, by a
-``(source, field)`` tuple, or by a mapping. The sources are ``"metadata"``,
-``"annotations"`` and ``"texts"``. A bare name is looked up in each in turn,
-and an ambiguous one asks for the tuple form.
+Descriptor and target fields are named by a bare field name, or by a
+``(source, field)`` tuple. The sources are ``"metadata"``, ``"annotations"``
+and ``"texts"``. A bare name is looked up in each in turn, and an ambiguous one
+asks for the tuple form, so the tuple is for the case the bare name cannot
+express rather than a second way to spell the same thing.
 
 Metadata is read so that study-level fields are inherited by their analyses,
 and list-valued fields such as ``sample_sizes`` are reduced the way the rest of
@@ -183,6 +184,25 @@ The ``field`` column, filtered to ``kind == "numeric"``, is the
         descriptor_fields=[("annotations", name) for name in numeric],
         missing_values="keep",
     )
+
+Selecting rows
+--------------
+
+Two methods, because a row position and an analysis id answer different
+questions, and NiMARE already keeps them apart on a Studyset:
+
+.. code-block:: python
+
+    features.select_analyses(features.target == "n-back")   # mask or positions
+    features.slice(["study_0-task0", "study_1-task0"])      # analysis ids
+
+:meth:`~nimare.ml.FeatureSet.select_analyses` indexes rows, which is what a
+mask from a comparison or an array of positions from a splitter gives, and is
+what :meth:`~nimare.studyset.Studyset.select_analyses` takes.
+:meth:`~nimare.ml.FeatureSet.slice` names analyses, which is what survives a
+rebuild, a reorder, or a split saved to disk and read back, and is what
+:meth:`~nimare.studyset.Studyset.slice` takes. Naming an id the dataset does
+not hold raises, rather than quietly returning fewer rows.
 
 Splitting without leaking a study
 ---------------------------------

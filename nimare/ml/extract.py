@@ -51,23 +51,19 @@ _SOURCE_ALIASES = {
 def _as_selector(selector):
     """Return ``(source, field)`` for a field selector, with ``source`` optional.
 
-    A selector is a bare field name, a ``(source, field)`` pair matching the
+    A selector is a bare field name, or a ``(source, field)`` pair matching the
     ``(kind, field)`` vocabulary NiMARE estimators already use in
-    ``_required_inputs``, or the equivalent mapping.
+    ``_required_inputs``. The pair is needed only when a bare name is ambiguous,
+    which the resolver says when it is.
     """
     source, field = None, None
     if isinstance(selector, str):
         field = selector
-    elif isinstance(selector, Mapping):
-        source, field = selector.get("source"), selector.get("field")
-        if not field:
-            raise ValueError(f"Field selector {selector!r} must define 'field'.")
     elif isinstance(selector, Sequence) and len(selector) == 2:
         source, field = selector
     else:
         raise TypeError(
-            f"Field selector {selector!r} must be a field name, a (source, field) pair, "
-            "or a mapping with 'source' and 'field'."
+            f"Field selector {selector!r} must be a field name or a (source, field) pair."
         )
 
     if source is not None:
