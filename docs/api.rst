@@ -293,6 +293,12 @@ historical import path and adds nothing of its own.
    ml.FeatureSet
    ml.AtlasAggregator
 
+.. autosummary::
+   :toctree: generated/
+   :template: function.rst
+
+   ml.describe_fields
+
 
 .. _api_extract_ref:
 

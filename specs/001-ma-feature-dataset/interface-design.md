@@ -950,3 +950,126 @@ so `from nimare.ml import ...` is unchanged and the public surface is still two
 names. The one import cycle the split creates — `FeatureSet.from_studyset`
 needs the extractor, and the extractor defaults its container to `FeatureSet` —
 is broken with a function-local import on each side.
+
+## 18. The release-scale Studyset, and what it broke (2026-09-26)
+
+Everything before this was designed against the bundled 906-analysis Studyset
+and the 17-study Neurosynth sample. Running the module against a published
+NeuroStore release -- 115,748 analyses from 32,444 studies, 2026-09 -- found
+five things, four of them fixed here.
+
+### What the release actually offers
+
+| | Count | Usable |
+| --- | --- | --- |
+| Metadata columns | 76 | 12 above 1% coverage; 8 of those are id or title strings |
+| Annotation labels | 924 | 41 above 10% coverage; 133 carried by no analysis |
+| Text fields | 0 | `texts` holds only id columns |
+
+875 of the 997 fields are reported by fewer than one analysis in a hundred,
+and the long tail is curation debris: `control_sampeslize`, `old sample size`,
+`young sampel size`, `jian`. The fields worth modelling are annotation labels
+written by LLM extractors, named `ParticipantDemographicsExtractor.groups[0].count`
+and `TaskExtractor.fMRITasks[0].RestingState`.
+
+### 1. There was no way to find a usable field
+
+Picking a target meant reading 997 names, or writing pandas against
+`annotation.columns.entries()` and the private `_is_numeric` to work out which
+held numbers and how often. That is the idiosyncrasy-specific code this module
+exists to avoid, so `describe_fields(studyset, source=None, min_coverage=0.0)`
+is now public. It reports `source`, `field`, `kind`, `coverage`, `n_unique`
+and `example` for every field a selector may name, ordered by coverage, and
+cuts 997 fields to 29 at `min_coverage=0.5`. It reads through the same
+`_Fields` extraction uses, so a field it calls numeric cannot then be refused
+as non-numeric -- the property that makes it worth having rather than a
+docs table.
+
+It costs about thirteen seconds on the full release, which is a one-off
+exploration cost, not a per-model one.
+
+### 2. An indexed label was unselectable by pattern
+
+An extractor names repeated fields `groups[0].count`, and `[0]` is an
+`fnmatch` character class, so `*groups[0].*` -- the obvious way to ask for
+group zero -- matched **nothing**. `matching()` now retries a pattern that
+matched nothing with its brackets taken literally. A pattern that already
+matches is untouched, so `[mt]*` still means a character class, which makes
+this a strict rescue of a failing case rather than a change of semantics.
+
+A pattern spanning both kinds still raises, because a categorical label cannot
+enter a numeric matrix, but the message now names `describe_fields` as the way
+to take the numeric ones.
+
+### 3. `select_analyses` took positions while the rest of NiMARE took ids
+
+`Studyset.slice(analyses=...)` selects by analysis id, and ids are what
+`provenance['dropped_ids']`, `FeatureSet.ids` and a `describe_fields` query all
+hand back, but `FeatureSet.select_analyses` cast its argument to `int` and
+failed on them. It now accepts ids as well as masks and positions; strings are
+never positions, so nothing is ambiguous, and an id the dataset does not hold
+is named rather than silently dropped.
+
+### 4. One `missing_values` could not serve both roles
+
+The realistic release workflow -- predict a field 81% of analyses report, from
+demographics 70% of them report -- has gaps on both sides, and the two sides
+want opposite treatment. `"keep"` leaves a `NaN` target that fails deep inside
+the estimator as `Input y contains NaN`, and `"drop"` throws away every row
+that merely lacks a descriptor an imputer could have filled. Nothing in the
+API expressed "drop what I cannot impute, keep what I can", and the failure
+arrived far from its cause.
+
+`missing_values` now also takes a mapping from role to policy:
+
+```python
+missing_values={"target": "drop", "descriptors": "keep"}
+```
+
+A role the mapping does not name is `"raise"`, so the default is unchanged and
+the strict behaviour is still what you get by saying nothing. The mapping form
+follows `descriptor_transformer`, which already accepts one, so this is a
+second use of a shape the API had rather than a new one. The refusal under
+`"raise"` names it, since that is where a user meets the problem.
+
+This was found by the gallery example failing, not by a test -- the bundled
+Studysets report their fields densely enough that the two roles never
+disagreed.
+
+### 5. The whole release does not convert, and nothing said so
+
+Conversion is linear in analyses, but an MA row is much denser than a Studyset
+row:
+
+| Analyses | Time | Non-zeros | Peak |
+| --- | --- | --- | --- |
+| 500 | 3.8 s | 1,350,169 | 63 MB |
+| 2,000 | 3.2 s | 6,045,930 | 105 MB |
+| 8,000 | 10.2 s | 33,437,983 | 549 MB |
+| 20,000 | 27.7 s | 91,017,001 | 1,483 MB |
+
+At the observed ~4,700 non-zeros per row, all 115,748 analyses are roughly
+6 GB of sparse data and about twice that at peak, so the release does not
+convert on a 16 GB machine. This is documented rather than fixed: chunking the
+kernel would mean owning a partial-matrix representation, and slicing the
+Studyset first is both simpler and what a modelling question implies anyway.
+
+### What the use cases showed
+
+Run on 40,000 analyses with grouped holdout splits:
+
+| Question | Target | Accuracy | Baseline |
+| --- | --- | --- | --- |
+| Resting-state vs task | `fMRITasks[0].RestingState` | 0.835 ± 0.005 | 0.869 |
+| Patients vs healthy | `groups[0].group_name` | 0.549 ± 0.006 | 0.570 |
+
+Neither beats its majority-class baseline, which is the honest result: where a
+study reports coordinates says little about whether its sample was clinical,
+and the resting-state contrast is carried by which analyses exist rather than
+by where their foci fall. The module's job here was to make those questions
+askable in three lines; it is not evidence that the answers are interesting.
+
+Both targets are imbalanced enough that accuracy against a majority baseline
+is the wrong summary -- one analysis in seven is resting-state -- so the
+gallery example reports ROC AUC instead, which is the question actually being
+put to the model.

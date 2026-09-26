@@ -11,10 +11,12 @@ See :doc:`the machine learning documentation </machine_learning>` for what the
 module does and does not take responsibility for.
 """
 
+from nimare.ml.extract import describe_fields
 from nimare.ml.features import FeatureSet
 from nimare.ml.reduce import AtlasAggregator
 
 __all__ = [
     "AtlasAggregator",
     "FeatureSet",
+    "describe_fields",
 ]

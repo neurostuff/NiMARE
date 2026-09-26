@@ -15,6 +15,7 @@ NiMARE builds it; scikit-learn does the splitting, fitting and scoring.
 
 from pathlib import Path
 
+import numpy as np
 from nilearn.datasets import fetch_atlas_difumo
 from scipy import sparse
 from sklearn.decomposition import TruncatedSVD
@@ -25,8 +26,9 @@ from sklearn.model_selection import GroupKFold, GroupShuffleSplit, cross_val_sco
 from sklearn.pipeline import make_pipeline
 from sklearn.random_projection import SparseRandomProjection
 
+from nimare.extract import fetch_neurostore
 from nimare.meta.kernel import MKDAKernel
-from nimare.ml import AtlasAggregator, FeatureSet
+from nimare.ml import AtlasAggregator, FeatureSet, describe_fields
 from nimare.nimads import Studyset
 from nimare.utils import get_resource_path
 
@@ -251,3 +253,104 @@ model = LogisticRegression(max_iter=1000, class_weight="balanced", random_state=
 model.fit(train_reduced.features, train_reduced.target)
 
 print(f"DiFuMo holdout accuracy: {model.score(test_reduced.features, test_reduced.target):.3f}")
+
+###############################################################################
+# Work with a release-scale Studyset
+# -----------------------------------------------------------------------------
+# :func:`~nimare.extract.fetch_neurostore` downloads a published NeuroStore
+# release: 115,748 analyses from 32,444 studies, annotated with 924 labels by
+# LLM extractors. Nothing below is specific to that release -- the same three
+# steps work on any Studyset large enough that reading its field list is not
+# an option.
+studyset = fetch_neurostore(version="2026-09")
+
+print(f"Analyses: {len(studyset.ids)} from {len(set(studyset.study_ids))} studies")
+
+###############################################################################
+# Ask what is usable, rather than reading 997 field names
+# -----------------------------------------------------------------------------
+# :func:`~nimare.ml.describe_fields` reports every field a selector may name,
+# with the kind :meth:`~nimare.ml.FeatureSet.from_studyset` will read it as and
+# the fraction of analyses reporting it. Most of a release is a long tail that
+# no analysis fills in, so picking a field becomes a query.
+all_fields = describe_fields(studyset)
+fields = all_fields[all_fields.coverage >= 0.5]
+targets = fields[fields.n_unique.between(2, 12)]
+
+print(f"Fields at >=50% coverage: {len(fields)} of {len(all_fields)}")
+print(targets[["source", "field", "kind", "coverage", "n_unique"]].to_string(index=False))
+
+###############################################################################
+# Convert the part you are modelling
+# -----------------------------------------------------------------------------
+# An MA row is denser than a Studyset row -- about 4,700 voxels at a 10 mm
+# radius -- so the whole release is roughly 6 GB of sparse data and does not
+# convert on a 16 GB machine. :meth:`~nimare.nimads.Studyset.slice` takes
+# analysis ids, so take the part being modelled first. ``missing_values="drop"``
+# removes the analyses the extractor could not fill in.
+subset = studyset.slice(analyses=list(studyset.ids)[:4000])
+resting = FeatureSet.from_studyset(
+    subset,
+    kernel_transformer=MKDAKernel(r=10),
+    target_field=("annotations", "TaskExtractor.fMRITasks[0].RestingState"),
+    missing_values="drop",
+)
+
+print(resting)
+print(f"Kept {len(resting)} of {len(subset.ids)} analyses")
+print(f"Resting-state rows: {int(np.sum(np.asarray(resting.target) == 1.0))}")
+
+###############################################################################
+# An extractor's repeated fields are indexed, and a bracket is a glob character
+# class, so ``*groups[0].*`` would ordinarily match nothing. A pattern that
+# matches nothing is retried with its brackets taken literally, so it selects
+# group zero as intended. That group mixes numeric and categorical labels, and
+# only numbers go into a feature matrix, so the ``field`` column filtered to
+# ``kind == "numeric"`` is the descriptor list that was meant.
+demographics = fields[
+    (fields.kind == "numeric") & fields.field.str.contains("groups[0].", regex=False)
+]
+with_demographics = FeatureSet.from_studyset(
+    subset,
+    kernel_transformer=MKDAKernel(r=10),
+    target_field=("annotations", "TaskExtractor.fMRITasks[0].RestingState"),
+    descriptor_fields=[("annotations", name) for name in demographics.field],
+    # A descriptor gap an imputer can fill; a target gap it cannot, so the two
+    # roles get different policies.
+    missing_values={"target": "drop", "descriptors": "keep"},
+)
+
+print(with_demographics)
+print(f"Descriptors: {[name.split('.')[-1] for name in with_demographics.descriptor_names]}")
+
+###############################################################################
+# Classify resting-state against task
+# -----------------------------------------------------------------------------
+# From here it is the workflow above: a grouped split so no study spans both
+# sides, and an imputer for the descriptor gaps the ``"descriptors": "keep"``
+# policy left for the pipeline.
+#
+# Only one analysis in seven is resting-state, so accuracy would reward always
+# answering "task"; ``roc_auc`` asks the question actually being put, which is
+# whether the foci rank a resting-state analysis above a task one.
+release_pipeline = make_pipeline(
+    with_demographics.make_preprocessor(
+        TruncatedSVD(n_components=50, random_state=RANDOM_SEED),
+        descriptor_transformer=SimpleImputer(strategy="median"),
+    ),
+    LogisticRegression(max_iter=1000, class_weight="balanced", random_state=RANDOM_SEED),
+)
+release_bunch = with_demographics.to_sklearn()
+release_scores = cross_val_score(
+    release_pipeline,
+    release_bunch.data,
+    release_bunch.target,
+    cv=GroupKFold(5),
+    groups=release_bunch.groups,
+    scoring="roc_auc",
+)
+
+n_resting = int(np.sum(release_bunch.target == 1.0))
+
+print(f"Resting-state rows: {n_resting} of {len(release_bunch.target)}")
+print(f"Resting-state ROC AUC: {release_scores.mean():.3f} +/- {release_scores.std():.3f}")

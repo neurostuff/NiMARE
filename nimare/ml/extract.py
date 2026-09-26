@@ -29,6 +29,14 @@ from nimare.studyset.requirements import PerAnalysis
 
 FIELD_SOURCES = ("metadata", "annotations", "texts")
 
+FIELD_REPORT_COLUMNS = ("source", "field", "kind", "coverage", "n_unique", "example")
+
+TARGET_KEY = "<target>"
+
+MISSING_POLICIES = ("raise", "drop", "keep")
+
+MISSING_ROLES = ("target", "descriptors")
+
 
 _SOURCE_ALIASES = {
     "annotations_df": "annotations",
@@ -112,8 +120,18 @@ class _Fields:
         return [column for column in self.frame(source).columns if column not in ID_COLS]
 
     def matching(self, pattern):
-        """Return the annotation labels a pattern names, in the Studyset's order."""
-        return [label for label in self.names("annotations") if fnmatch(label, pattern)]
+        """Return the annotation labels a pattern names, in the Studyset's order.
+
+        A pattern that matches nothing is retried with its brackets escaped,
+        because an extractor names its repeated fields ``groups[0].count`` and
+        a bracket is a character class to :mod:`fnmatch`.
+        """
+        labels = self.names("annotations")
+        hits = [label for label in labels if fnmatch(label, pattern)]
+        if hits or "[" not in pattern:
+            return hits
+        literal = _escape_brackets(pattern)
+        return [label for label in labels if fnmatch(label, literal)]
 
     # ------------------------------------------------------------- resolution
     def resolve(self, selector, what):
@@ -201,7 +219,10 @@ class _Fields:
             raise ValueError(
                 f"Pattern {pattern!r} matches {len(unusable)} label(s) that are not "
                 f"numeric, and the feature matrix is numeric: {_preview(unusable)}. "
-                "Narrow the pattern, or encode those labels and select the result."
+                "Narrow the pattern, or encode those labels and select the result. "
+                "describe_fields(studyset, source='annotations') reports every label's "
+                "kind, so its 'field' column filtered to kind == 'numeric' is a "
+                "descriptor_fields list."
             )
 
         block = self.label_block
@@ -238,9 +259,78 @@ class _Fields:
         return columns.get_numeric(label, sel=self._studyset.view.index)
 
 
+def _escape_brackets(pattern):
+    """Return ``pattern`` with ``[`` and ``]`` taken literally rather than as a class.
+
+    One pass, because escaping each bracket introduces brackets of its own.
+    ``*`` and ``?`` are left alone: they are why the caller wrote a pattern.
+    """
+    escaped = {"[": "[[]", "]": "[]]"}
+    return "".join(escaped.get(character, character) for character in pattern)
+
+
 def _looks_like_pattern(field):
     """Report whether a field selector reads as a glob."""
     return any(character in field for character in "*?[")
+
+
+def describe_fields(studyset, source=None, min_coverage=0.0):
+    """Return the fields a :class:`~nimare.ml.FeatureSet` can read from a Studyset.
+
+    A release-scale Studyset offers hundreds of metadata columns and hundreds
+    of annotation labels, most of which no analysis fills in. This reports what
+    each one holds, using the same reader
+    :meth:`~nimare.ml.FeatureSet.from_studyset` uses, so a field described as
+    numeric here is numeric there.
+
+    Parameters
+    ----------
+    studyset : :class:`~nimare.nimads.Studyset`
+        The Studyset to describe.
+    source : {"metadata", "annotations", "texts"}, optional
+        Restrict the report to one source, by default None, meaning all three.
+    min_coverage : :obj:`float`, optional
+        Drop fields reported by a smaller fraction of analyses than this, by
+        default 0.0, which keeps every field.
+
+    Returns
+    -------
+    :class:`pandas.DataFrame`
+        One row per field, ordered by coverage, with columns ``source``,
+        ``field``, ``kind``, ``coverage``, ``n_unique`` and ``example``.
+
+    Examples
+    --------
+    >>> fields = describe_fields(studyset, min_coverage=0.5)  # doctest: +SKIP
+    >>> fields[fields.kind == "numeric"].head()               # doctest: +SKIP
+    """
+    studyset = normalize_collection(studyset)
+    fields = _Fields(studyset)
+    sources = FIELD_SOURCES if source is None else (_as_selector((source, "x"))[0],)
+
+    n_rows = len(studyset.ids)
+    rows = []
+    for name in sources:
+        for field in fields.names(name):
+            values, kind = fields.value(name, field)
+            missing = _missing_mask(values, kind)
+            coverage = 0.0 if not n_rows else float((~missing).sum()) / n_rows
+            if coverage < min_coverage:
+                continue
+            present = np.asarray(values, dtype=object)[~missing]
+            rows.append(
+                {
+                    "source": name,
+                    "field": field,
+                    "kind": kind,
+                    "coverage": coverage,
+                    "n_unique": len({str(value) for value in present}),
+                    "example": None if not len(present) else str(present[0])[:60],
+                }
+            )
+
+    table = pd.DataFrame(rows, columns=FIELD_REPORT_COLUMNS)
+    return table.sort_values(["coverage", "source", "field"], ascending=[False, True, True])
 
 
 class _DescriptorBlock(NamedTuple):
@@ -258,7 +348,7 @@ def _missing_by_field(ids, blocks, target_missing, retained):
     missing from.
     """
     fields = [(block.names[0], block.missing) for block in blocks]
-    fields.append(("<target>", target_missing))
+    fields.append((TARGET_KEY, target_missing))
 
     return {
         field: ids[missing & retained].tolist()
@@ -376,11 +466,24 @@ class _FeatureExtractor(NiMAREBase):
                 "missing_coordinates must be 'drop' or 'include', not "
                 f"{self.missing_coordinates!r}."
             )
-        if self.missing_values not in ("raise", "drop", "keep"):
-            raise ValueError(
-                "missing_values must be 'raise', 'drop' or 'keep', not "
-                f"{self.missing_values!r}."
-            )
+        policies = (
+            self.missing_values.values()
+            if isinstance(self.missing_values, Mapping)
+            else (self.missing_values,)
+        )
+        if isinstance(self.missing_values, Mapping):
+            unknown = set(self.missing_values) - set(MISSING_ROLES)
+            if unknown:
+                raise ValueError(
+                    f"missing_values names {_preview(sorted(unknown))}, but a mapping "
+                    f"sets a policy per role: {', '.join(MISSING_ROLES)}."
+                )
+        for policy in policies:
+            if policy not in MISSING_POLICIES:
+                raise ValueError(
+                    "missing_values must be 'raise', 'drop' or 'keep', or a mapping "
+                    f"from role to one of those, not {policy!r}."
+                )
 
     # -------------------------------------------------------------- selection
 
@@ -498,19 +601,25 @@ class _FeatureExtractor(NiMAREBase):
             "missing_values": _missing_by_field(ids, blocks, target_missing, retained),
         }
 
-        if dropped["missing_values"] and self.missing_values == "raise":
+        by_policy = {policy: {} for policy in MISSING_POLICIES}
+        for field, affected in dropped["missing_values"].items():
+            by_policy[self._missing_policy(field)][field] = affected
+
+        if by_policy["raise"]:
             raise ValueError(
                 "Missing values in "
                 + "; ".join(
                     f"{field} ({len(affected)} analyses: {_preview(affected, 3)})"
-                    for field, affected in dropped["missing_values"].items()
+                    for field, affected in by_policy["raise"].items()
                 )
                 + ". Fix the Studyset, or choose missing_values='drop' to remove those "
-                "analyses or missing_values='keep' to impute them in your pipeline."
+                "analyses or missing_values='keep' to impute them in your pipeline. "
+                "A mapping sets the two roles apart, as in "
+                "{'target': 'drop', 'descriptors': 'keep'}, since a target cannot be "
+                "imputed."
             )
-        if self.missing_values == "drop":
-            for affected in dropped["missing_values"].values():
-                retained &= ~np.isin(ids, affected)
+        for affected in by_policy["drop"].values():
+            retained &= ~np.isin(ids, affected)
 
         if not retained.any():
             raise ValueError(
@@ -521,6 +630,13 @@ class _FeatureExtractor(NiMAREBase):
         return retained, dropped
 
     # ------------------------------------------------------------ map features
+
+    def _missing_policy(self, field):
+        """Return the missing-value policy that governs one field."""
+        if not isinstance(self.missing_values, Mapping):
+            return self.missing_values
+        role = "target" if field == TARGET_KEY else "descriptors"
+        return self.missing_values.get(role, "raise")
 
     def _map_matrix(self, studyset, ids, has_coordinates):
         """Return the analysis-by-voxel matrix, aligned row for row to ``ids``."""

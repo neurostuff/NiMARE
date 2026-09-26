@@ -69,9 +69,10 @@ Annotation labels
 ~~~~~~~~~~~~~~~~~
 
 An annotation is usually thousands of mostly-empty columns: the bundled
-Neurosynth studyset carries 3,228 labels, and the NeuroStore release annotates
-115,747 analyses with 794. Naming them one at a time is not a workflow, so a
-field that reads as a glob pattern selects every label matching it:
+Neurosynth studyset carries 3,228 labels, and the 2026-09 NeuroStore release
+annotates 115,748 analyses with 924. Naming them one at a time is not a
+workflow, so a field that reads as a glob pattern selects every label matching
+it:
 
 .. code-block:: python
 
@@ -89,6 +90,13 @@ brackets included.
 An exact name always wins over pattern matching, so a label named
 ``ParticipantDemographicsExtractor.groups[0].BMI`` is selectable even though
 its name reads as a glob.
+
+A pattern's brackets are a :mod:`fnmatch` character class, which is not what
+they mean in an extractor's repeated fields: ``*groups[0].*`` asks for a name
+containing ``groups0``, and matches none of them. A pattern that matches
+nothing is therefore retried with its brackets taken literally, so
+``*groups[0].*`` selects group zero and nothing else. A pattern that already
+matches is left alone, so ``[mt]*`` still means a character class.
 
 The two forms mean different things about absence, deliberately:
 
@@ -111,6 +119,18 @@ Nothing is filled in silently.
   fields and the analyses, ``"drop"`` removes those analyses, ``"keep"`` leaves
   the gaps for an imputer in a pipeline. It speaks only for analyses that
   survive ``missing_coordinates``.
+* A mapping sets that policy per role, because the two roles differ in what
+  can be done about a gap. A descriptor gap an imputer in the pipeline can
+  fill; a target gap it cannot, and a ``NaN`` target fails inside the estimator
+  rather than at extraction:
+
+  .. code-block:: python
+
+      missing_values={"target": "drop", "descriptors": "keep"}
+
+  A role the mapping does not name is ``"raise"``. This is the usual setting
+  on a release, where the field being predicted and the fields describing the
+  analyses are reported by different subsets of it.
 * Categorical and text fields are refused as descriptors, because the feature
   matrix is numeric and encoding them during extraction would fit the encoder
   on the analyses about to be held out. Their raw values are in the Studyset's
@@ -119,6 +139,50 @@ Nothing is filled in silently.
   refused, since there is nothing to predict. The check runs after
   ``missing_coordinates``, because the minority class can leave with the
   analyses that had no coordinates.
+
+Finding the fields worth using
+------------------------------
+
+A release-scale Studyset offers more fields than anyone can read. The 2026-09
+NeuroStore release has 76 metadata columns and 924 annotation labels, and 875
+of the 997 are reported by fewer than one analysis in a hundred --
+``control_sampeslize`` and ``young sampel size`` among them.
+:func:`~nimare.ml.describe_fields` reports what each one holds, using the same
+reader :meth:`~nimare.ml.FeatureSet.from_studyset` uses, so a field it calls
+numeric is numeric there:
+
+.. code-block:: python
+
+    from nimare.extract import fetch_neurostore
+    from nimare.ml import describe_fields
+
+    studyset = fetch_neurostore()
+    fields = describe_fields(studyset, min_coverage=0.5)
+
+    fields[fields.n_unique.between(2, 12)]      # classification targets
+    fields[fields.kind == "numeric"]            # descriptors and regression targets
+
+It returns a :class:`~pandas.DataFrame` of ``source``, ``field``, ``kind``,
+``coverage``, ``n_unique`` and ``example``, ordered by coverage, so picking a
+field is a query rather than a search. On the full release it takes about
+thirteen seconds, and cuts 997 fields to the 29 reported by at least half the
+analyses.
+
+This is also how to answer a pattern that spans both kinds. ``*groups[0].*``
+names six categorical labels as well as the numeric ones, and a categorical
+label cannot go into a numeric feature matrix, so the selection is refused.
+The ``field`` column, filtered to ``kind == "numeric"``, is the
+``descriptor_fields`` list that was meant:
+
+.. code-block:: python
+
+    numeric = fields[fields.kind == "numeric"].field
+    features = FeatureSet.from_studyset(
+        studyset,
+        kernel_transformer=MKDAKernel(r=10),
+        descriptor_fields=[("annotations", name) for name in numeric],
+        missing_values="keep",
+    )
 
 Splitting without leaking a study
 ---------------------------------
@@ -215,6 +279,27 @@ against a target of three minutes and five gigabytes. Unreduced voxelwise
 features are sparse everywhere -- in the container, in the exported bundle, and
 through :meth:`~nimare.ml.FeatureSet.make_preprocessor` -- and only an explicit
 reducer produces a dense representation.
+
+Conversion is linear in analyses, and an MA row is denser than a Studyset row:
+against the 2026-09 NeuroStore release at a 10 mm MKDA radius, measured on a
+2 mm whole-brain mask,
+
+=================  ========  ===========  =============
+Analyses           Time      Non-zeros    Peak memory
+=================  ========  ===========  =============
+500                  3.8 s     1,350,169        63 MB
+2,000                3.2 s     6,045,930       105 MB
+8,000               10.2 s    33,437,983       549 MB
+20,000              27.7 s    91,017,001      1,483 MB
+=================  ========  ===========  =============
+
+Extrapolating the observed 4,700 non-zeros per row, all 115,748 analyses would
+be roughly 6 GB of sparse data and about twice that at peak, so the whole
+release does not convert on a 16 GB machine. Take the part being modelled
+first -- :meth:`~nimare.nimads.Studyset.slice` selects analyses by id, and
+``describe_fields`` says which ones carry the field of interest -- and pass
+``memory=`` so a second pass over the same analyses reuses the maps it already
+generated.
 
 .. seealso::
 

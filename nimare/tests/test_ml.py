@@ -59,7 +59,11 @@ STUDY_LAYOUT = [
 
 
 def _build_ml_studyset(
-    ids_without_points=(), ids_without_score=(), coordinate_offset=0.0, text_annotation=False
+    ids_without_points=(),
+    ids_without_score=(),
+    coordinate_offset=0.0,
+    text_annotation=False,
+    indexed_annotation=False,
 ):
     """Build the Studyset the ML tests read.
 
@@ -88,6 +92,14 @@ def _build_ml_studyset(
                         "motor_label": float(position < 4),
                         "target_score": float(position) + 0.5,
                         **({"task_name": f"task {position}"} if text_annotation else {}),
+                        **(
+                            {
+                                "groups[0].count": float(position),
+                                "groups[1].count": float(position) * 2,
+                            }
+                            if indexed_annotation
+                            else {}
+                        ),
                     },
                     "texts": {"abstract": f"Analysis {position} abstract."},
                     "points": (
@@ -912,7 +924,7 @@ def test_make_preprocessor_accepts_an_atlas(small_masker, atlas_features):
 
 def test_public_surface_is_one_container_and_its_helpers():
     """Users meet one container; the class that converts a Studyset is internal."""
-    assert set(ml.__all__) == {"AtlasAggregator", "FeatureSet"}
+    assert set(ml.__all__) == {"AtlasAggregator", "FeatureSet", "describe_fields"}
     assert not any(name.endswith("Extractor") for name in dir(ml) if not name.startswith("_"))
     # The container is data, not an estimator: nothing here is fitted on a Studyset.
     assert not hasattr(FeatureSet, "fit")
@@ -1561,3 +1573,178 @@ def test_from_studyset_meets_the_conversion_budget():
     assert sparse.issparse(features.features)
     assert elapsed <= 180, f"conversion and split took {elapsed:.0f}s"
     assert peak_gb <= 5, f"peak memory was {peak_gb:.1f} GB"
+
+
+def test_describe_fields_reports_every_source(ml_studyset):
+    """Every field a selector may name is reported, with the kind extraction will use."""
+    fields = ml.describe_fields(ml_studyset)
+
+    assert set(fields.columns) == {
+        "source",
+        "field",
+        "kind",
+        "coverage",
+        "n_unique",
+        "example",
+    }
+    assert set(fields.source) == {"metadata", "annotations", "texts"}
+
+    by_field = fields.set_index("field")
+    assert by_field.loc["sample_sizes", "kind"] == "numeric"
+    assert by_field.loc["comparison_task", "kind"] == "categorical"
+    assert by_field.loc["abstract", "kind"] == "text"
+    assert by_field.loc["motor_label", "source"] == "annotations"
+    # study-level metadata is inherited, so every analysis reports a year
+    assert by_field.loc["year", "coverage"] == pytest.approx(1.0)
+
+
+def test_describe_fields_agrees_with_what_extraction_reads():
+    """A field described as numeric is one from_studyset appends as a number."""
+    studyset = _build_ml_studyset(ids_without_score=("study_0-task0",))
+    fields = ml.describe_fields(studyset).set_index("field")
+
+    assert fields.loc["score", "kind"] == "numeric"
+    assert fields.loc["score", "coverage"] < 1.0
+
+    features = FeatureSet.from_studyset(
+        studyset,
+        kernel_transformer=MKDAKernel(r=1),
+        descriptor_fields=["score"],
+        missing_values="keep",
+    )
+    column = features.descriptor_features
+    column = column.toarray() if sparse.issparse(column) else np.asarray(column)
+    reported = np.isfinite(column[:, 0]).mean()
+    assert reported == pytest.approx(fields.loc["score", "coverage"])
+
+
+def test_describe_fields_can_drop_the_long_tail(ml_studyset):
+    """min_coverage removes the fields too sparse to model on."""
+    everything = ml.describe_fields(ml_studyset)
+    covered = ml.describe_fields(ml_studyset, min_coverage=1.0)
+
+    assert len(covered) < len(everything)
+    assert (covered.coverage == 1.0).all()
+    assert set(ml.describe_fields(ml_studyset, source="annotations").source) == {"annotations"}
+
+
+def test_an_indexed_label_is_selectable_by_pattern():
+    """``groups[0].*`` names group zero, though fnmatch reads brackets as a class."""
+    studyset = _build_ml_studyset(indexed_annotation=True)
+    features = FeatureSet.from_studyset(
+        studyset,
+        kernel_transformer=MKDAKernel(r=1),
+        descriptor_fields=[("annotations", "groups[0].*")],
+    )
+
+    assert features.descriptor_names == ["groups[0].count"]
+
+
+def test_a_character_class_pattern_still_selects_as_one():
+    """Escaping is a fallback, so a pattern that already matches is left alone."""
+    studyset = _build_ml_studyset(indexed_annotation=True)
+    features = FeatureSet.from_studyset(
+        studyset,
+        kernel_transformer=MKDAKernel(r=1),
+        descriptor_fields=[("annotations", "[mt]*")],
+    )
+
+    assert features.descriptor_names == ["motor_label", "target_score"]
+
+
+def test_select_analyses_accepts_ids_as_well_as_positions(ml_studyset):
+    """Ids are what the rest of NiMARE selects analyses with, so they work here."""
+    features = FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4))
+    wanted = [features.ids[2], features.ids[0]]
+
+    by_id = features.select_analyses(wanted)
+    by_position = features.select_analyses([2, 0])
+
+    np.testing.assert_array_equal(by_id.ids, wanted)
+    np.testing.assert_array_equal(by_id.ids, by_position.ids)
+    np.testing.assert_array_equal(by_id.map_features.toarray(), by_position.map_features.toarray())
+
+
+def test_select_analyses_names_an_id_it_does_not_hold(ml_studyset):
+    """An id from another Studyset is a mistake worth naming."""
+    features = FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4))
+
+    with pytest.raises(KeyError, match="not in this dataset"):
+        features.select_analyses([features.ids[0], "no-such-analysis"])
+
+
+def test_describe_fields_of_an_empty_studyset_is_an_empty_report(ml_studyset):
+    """No analyses is a report with no coverage, not an error."""
+    fields = ml.describe_fields(ml_studyset.slice(analyses=[]))
+
+    assert list(fields.columns) == [
+        "source",
+        "field",
+        "kind",
+        "coverage",
+        "n_unique",
+        "example",
+    ]
+    assert (fields.coverage == 0.0).all()
+
+
+def test_missing_values_can_differ_between_target_and_descriptors():
+    """A descriptor gap is imputable and a target gap is not, so they can differ."""
+    studyset = _build_ml_studyset(ids_without_score=("study_0-task0",))
+
+    features = FeatureSet.from_studyset(
+        studyset,
+        kernel_transformer=MKDAKernel(r=1),
+        descriptor_fields=["score"],
+        target_field=("annotations", "target_score"),
+        missing_values={"target": "drop", "descriptors": "keep"},
+    )
+
+    # the analysis with no score is kept, because only its descriptor is missing
+    assert "study_0-task0" in set(features.ids)
+    column = features.descriptor_features
+    column = column.toarray() if sparse.issparse(column) else np.asarray(column)
+    assert not np.isfinite(column).all()
+    assert np.isfinite(np.asarray(features.target, dtype=float)).all()
+
+
+def test_a_missing_target_is_dropped_while_descriptors_are_kept():
+    """The role mapping drops the rows whose target is missing, and only those."""
+    studyset = _build_ml_studyset(ids_without_score=("study_0-task0",))
+
+    features = FeatureSet.from_studyset(
+        studyset,
+        kernel_transformer=MKDAKernel(r=1),
+        target_field="score",
+        descriptor_fields=[("annotations", "motor_label")],
+        missing_values={"target": "drop", "descriptors": "keep"},
+    )
+
+    assert "study_0-task0" not in set(features.ids)
+    assert np.isfinite(np.asarray(features.target, dtype=float)).all()
+
+
+def test_missing_values_rejects_a_role_it_does_not_know():
+    """A mapping key that is not a role is a mistake worth naming."""
+    studyset = _build_ml_studyset()
+
+    with pytest.raises(ValueError, match="sets a policy per role"):
+        FeatureSet.from_studyset(
+            studyset,
+            kernel_transformer=MKDAKernel(r=1),
+            target_field="score",
+            missing_values={"targets": "drop"},
+        )
+
+
+def test_missing_values_rejects_an_unknown_policy_in_a_mapping():
+    """The policies are the same three whether or not a mapping is used."""
+    studyset = _build_ml_studyset()
+
+    with pytest.raises(ValueError, match="must be 'raise', 'drop' or 'keep'"):
+        FeatureSet.from_studyset(
+            studyset,
+            kernel_transformer=MKDAKernel(r=1),
+            target_field="score",
+            missing_values={"target": "impute"},
+        )

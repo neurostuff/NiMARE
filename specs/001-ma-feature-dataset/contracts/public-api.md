@@ -13,9 +13,9 @@ row.
 
 The module is exported from `nimare/__init__.py` and documented in
 `docs/api.rst`. Its public names are `FeatureSet`, which builds itself from a
-Studyset, and `AtlasAggregator`. Every other reduction is an ordinary
-scikit-learn transformer: the module must not re-export scikit-learn under
-NiMARE names.
+Studyset, `AtlasAggregator`, and `describe_fields`. Every other reduction is an
+ordinary scikit-learn transformer: the module must not re-export scikit-learn
+under NiMARE names.
 
 ## Division of Responsibility
 
@@ -203,7 +203,7 @@ all; 878 of the labels in the bundled NeuroStore studyset are named that way.
 A pattern MUST refuse the non-numeric labels it matches, the way an exactly
 named field is refused, rather than reading them as zeros. This is how an annotation is used at all: the Neurosynth
 release annotates 115,747 analyses with 794 labels, and naming them one at a
-time is not a workflow.
+time is not a workflow; the 2026-09 release carries 924.
 
 Such a selection MUST be read through `label_block_for`, which is also what
 decides what the labels are called, so that selection and extraction cannot
@@ -221,6 +221,13 @@ A pattern matching no label MUST raise and show what the Studyset does
 annotate with. Patterns are for annotations; a pattern against another source
 MUST say so.
 
+A pattern's brackets are an `fnmatch` character class, which is not what they
+mean in an extractor's repeated fields (`groups[0].count`). A pattern matching
+no label MUST therefore be retried with its brackets taken literally before it
+raises; a pattern that already matches MUST be left alone, so that a deliberate
+character class such as `[mt]*` keeps working. Where a pattern spans both kinds,
+the refusal MUST name `describe_fields` as the way to select the numeric ones.
+
 Provenance records the selectors as they were given, plus
 `n_descriptor_features`, rather than thousands of expanded names.
 
@@ -236,6 +243,41 @@ Default field behavior:
 - Raw title, abstract, description, and other free-text fields, and multi-label
   fields, require an explicit `target_transformer` to become a target, and
   cannot become descriptor features.
+
+### Missing values per role
+
+`missing_values` MUST accept a mapping from role to policy, with roles
+`target` and `descriptors` and the same three policies. A role the mapping
+does not name is `raise`. An unknown role or policy MUST be refused by name.
+
+This exists because the roles differ in what can be done about a gap: a
+descriptor gap is imputable inside a pipeline and a target gap is not, so a
+single setting forces either dropping rows that only lack a descriptor, or
+producing a `NaN` target that fails inside the estimator rather than at
+extraction. The refusal under `raise` MUST mention the mapping form.
+
+## `describe_fields`
+
+```python
+describe_fields(studyset, source=None, min_coverage=0.0) -> pandas.DataFrame
+```
+
+Reports the fields a selector may name, so that choosing one on a
+release-scale Studyset is a query rather than a search. The 2026-09 NeuroStore
+release offers 997 of them, and 875 are reported by fewer than one analysis in
+a hundred.
+
+### Required behavior
+
+- Returns one row per field, with columns `source`, `field`, `kind`,
+  `coverage`, `n_unique` and `example`, ordered by descending coverage.
+- `kind` MUST be the kind `from_studyset` reads the field as. Both MUST share
+  one reader, so a field described as numeric cannot then be refused as
+  non-numeric by extraction.
+- `coverage` is the fraction of analyses reporting a value, by the same
+  definition of absence `missing_values` uses.
+- `source` restricts the report to one source; `min_coverage` drops fields
+  below a coverage.
 
 ## Reduction
 

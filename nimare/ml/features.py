@@ -209,10 +209,13 @@ class FeatureSet(NiMAREBase):
         missing_coordinates : {"drop", "include"}, default="drop"
             Whether analyses reporting no coordinates are removed before rows
             are built, or kept as all-zero sparse map rows.
-        missing_values : {"raise", "drop", "keep"}, default="raise"
+        missing_values : {"raise", "drop", "keep"} or :obj:`dict`, default="raise"
             What to do when a selected descriptor or target value is missing:
             report the analyses and fields, remove those analyses, or leave the
-            gaps for a pipeline to impute.
+            gaps for a pipeline to impute. A mapping sets a policy per role --
+            ``{"target": "drop", "descriptors": "keep"}`` -- because a
+            descriptor gap can be imputed in a pipeline and a target gap
+            cannot. A role the mapping does not name is ``"raise"``.
         memory : :class:`joblib.Memory`, :obj:`str` or :class:`pathlib.Path`, optional
             Cache location for MA map generation, by default None. Used only
             when the kernel transformer does not define its own.
@@ -623,12 +626,14 @@ class FeatureSet(NiMAREBase):
     # -------------------------------------------------------------- plumbing
 
     def select_analyses(self, rows):
-        """Return the dataset restricted to the analyses a mask or positions select.
+        """Return the dataset restricted to the analyses selected.
 
         Parameters
         ----------
         rows : array_like
-            A boolean mask over the rows, or an array of row positions.
+            Analysis ids, a boolean mask over the rows, or row positions.
+            Ids are what :meth:`~nimare.nimads.Studyset.slice` and
+            ``provenance['dropped_ids']`` deal in, so they are accepted here.
 
         Returns
         -------
@@ -642,6 +647,8 @@ class FeatureSet(NiMAREBase):
                     f"A boolean mask must have one entry per analysis row ({len(self)})."
                 )
             rows = np.flatnonzero(rows)
+        elif rows.dtype.kind in "USO":
+            rows = self._rows_for_ids(rows)
         rows = rows.astype(int, copy=False)
 
         return self._rebuild(
@@ -651,6 +658,16 @@ class FeatureSet(NiMAREBase):
             study_ids=self.study_ids[rows],
             target=None if self.target is None else self.target[rows],
         )
+
+    def _rows_for_ids(self, ids):
+        """Return the row positions of ``ids``, in the order they were given."""
+        position = {str(name): row for row, name in enumerate(self.ids)}
+        unknown = [str(name) for name in ids if str(name) not in position]
+        if unknown:
+            raise KeyError(
+                f"{len(unknown)} analysis id(s) are not in this dataset: " f"{_preview(unknown)}."
+            )
+        return np.array([position[str(name)] for name in ids], dtype=int)
 
     def copy(self):
         """Return an independent copy of the dataset.

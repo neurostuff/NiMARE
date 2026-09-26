@@ -52,6 +52,13 @@ them as all-zero sparse map rows. Missing descriptor and target values follow
 `missing_values`: `"raise"` (the default) names the fields and analyses,
 `"drop"` removes those analyses, `"keep"` leaves them for a pipeline to impute.
 
+A mapping sets that per role, since a descriptor gap can be imputed and a
+target gap cannot:
+
+```python
+missing_values={"target": "drop", "descriptors": "keep"}
+```
+
 Pass `memory="/path/to/cache"` to have repeated conversions of the same
 Studyset reuse the maps they already generated, in this process and the next.
 
@@ -99,6 +106,35 @@ test_reduced = test.transform_maps(svd)   # NotFittedError if svd is unfitted
 Anything that reads sparse input works: truncated SVD, sparse random
 projection, variance thresholding. Dense PCA will ask for dense data.
 
+## Find the fields worth using
+
+A release-scale Studyset offers more fields than anyone can read. The 2026-09
+NeuroStore release has 76 metadata columns and 924 annotation labels, 875 of
+which fewer than one analysis in a hundred reports. `describe_fields` reports
+what each one holds, using the reader `from_studyset` uses:
+
+```python
+from nimare.extract import fetch_neurostore
+
+studyset = fetch_neurostore()                      # 115,748 analyses, 32,444 studies
+fields = ml.describe_fields(studyset, min_coverage=0.5)   # 997 fields -> 29
+
+fields[fields.n_unique.between(2, 12)]             # classification targets
+fields[fields.kind == "numeric"].field             # a descriptor_fields list
+```
+
+Columns are `source`, `field`, `kind`, `coverage`, `n_unique` and `example`,
+ordered by coverage. A field it calls numeric is numeric to `from_studyset`,
+because both read it the same way.
+
+Conversion is linear in analyses and an MA row is denser than a Studyset row
+(~4,700 non-zeros at a 10 mm radius), so the whole release is roughly 6 GB of
+sparse data and does not convert on a 16 GB machine. Slice first:
+
+```python
+subset = studyset.slice(analyses=list(studyset.ids)[:4000])
+```
+
 ## Select annotation labels
 
 An annotation is thousands of mostly-empty columns, so naming labels one at a
@@ -119,6 +155,11 @@ features.descriptor_names[:2]   # ['Neurosynth_TFIDF__001', 'Neurosynth_TFIDF__0
 A label no analysis carries is a zero rather than a gap, so `missing_values`
 has nothing to report about a pattern selection; an exactly named field keeps
 the usual value semantics, where absent means missing.
+
+A pattern's brackets are an `fnmatch` character class, which is not what they
+mean in an extractor's repeated fields. A pattern matching nothing is retried
+with its brackets taken literally, so `*groups[0].*` selects group zero;
+`[mt]*`, which already matches, still means a character class.
 
 ## Reduce over the regions of an atlas
 
