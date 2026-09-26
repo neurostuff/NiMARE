@@ -345,7 +345,7 @@ at. The rest stand as written.
   Splitting is an evaluation choice, so it lives on the container as `split()`,
   and the leakage-safe fitting the extractor was going to orchestrate is what
   `Pipeline` already does, through
-  `MAFeatureDataset.make_preprocessor()`. `apply_map_reducer(reducer,
+  `MAFeatureDataset.make_nimare_column_transformer()`. `apply_map_reducer(reducer,
   fit=False)` became `fit_transform_maps` / `transform_maps`, so a fitted
   reducer carries its own fittedness and leaking is an error rather than a
   keyword argument.

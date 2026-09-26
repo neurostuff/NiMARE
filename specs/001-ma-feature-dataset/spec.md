@@ -39,7 +39,7 @@
 - Q: Where is leakage prevented? -> A: In scikit-learn. Kernel transformation is
   row-independent, so eager extraction leaks nothing; every step that learns
   across rows goes in a `Pipeline` built from
-  `FeatureSet.make_preprocessor()`, or is fitted on the training dataset
+  `FeatureSet.make_nimare_column_transformer()`, or is fitted on the training dataset
   with `fit_transform_maps` and reused through `transform_maps`, which raises
   rather than fitting on held-out rows.
 - Q: How are non-numeric descriptor fields handled? -> A: They are rejected,
@@ -206,7 +206,7 @@ A researcher wants convenient, reusable reduction workflows for high-dimensional
 ### Public API & Compatibility *(mandatory for code changes)*
 
 - **Latest Release Baseline**: 0.16.0
-- **Public API Surface** *(amended 2026-09-26)*: `Studyset.to_bunch(...)`, plus `nimare.ml`'s `describe_fields`, `make_preprocessor` and `AtlasAggregator`. Reduction otherwise uses scikit-learn's own transformers directly.
+- **Public API Surface** *(amended 2026-09-26)*: `Studyset.to_bunch(...)`, plus `nimare.ml`'s `describe_fields`, `make_nimare_column_transformer` and `AtlasAggregator`. Reduction otherwise uses scikit-learn's own transformers directly.
 - **Compatibility Requirement**: Preserve existing released public behavior for Studysets, modeled activation map generation, metadata, annotations, and text access. New functionality is expected to be additive.
 - **Migration/Deprecation Notes**: No migration or deprecation is expected for existing released APIs.
 - **Sphinx-Gallery Example**: `examples/05_machine_learning/01_plot_machine_learning_in_nimare.py` created or edited.

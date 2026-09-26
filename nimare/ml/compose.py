@@ -118,7 +118,7 @@ def _descriptor_step(bunch, descriptor_transformer):
     return ColumnTransformer(steps, sparse_threshold=1.0, verbose_feature_names_out=False)
 
 
-def make_preprocessor(
+def make_nimare_column_transformer(
     bunch,
     map_reducer,
     descriptor_transformer="passthrough",
@@ -161,10 +161,16 @@ def make_preprocessor(
         if it is given for a bundle with no descriptor columns, or if
         parameters are passed alongside a built transformer.
 
+    See Also
+    --------
+    sklearn.compose.make_column_transformer : The scikit-learn shorthand this
+        follows. Write that one out with ``bunch.map_columns`` and
+        ``bunch.descriptor_columns`` for anything this does not cover.
+
     Examples
     --------
     >>> pipeline = make_pipeline(  # doctest: +SKIP
-    ...     make_preprocessor(bunch, TruncatedSVD(n_components=50)),
+    ...     make_nimare_column_transformer(bunch, TruncatedSVD(n_components=50)),
     ...     LogisticRegression(),
     ... )
     """

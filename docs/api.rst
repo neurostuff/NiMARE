@@ -297,7 +297,7 @@ historical import path and adds nothing of its own.
    :template: function.rst
 
    ml.describe_fields
-   ml.make_preprocessor
+   ml.make_nimare_column_transformer
 
 
 .. _api_extract_ref:

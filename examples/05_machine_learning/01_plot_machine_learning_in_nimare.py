@@ -30,7 +30,7 @@ from sklearn.random_projection import SparseRandomProjection
 
 from nimare.extract import fetch_neurostore
 from nimare.meta.kernel import MKDAKernel
-from nimare.ml import AtlasAggregator, describe_fields, make_preprocessor
+from nimare.ml import AtlasAggregator, describe_fields, make_nimare_column_transformer
 from nimare.nimads import Studyset
 from nimare.utils import get_resource_path
 
@@ -146,7 +146,7 @@ except ValueError as exc:
 ###############################################################################
 # Once there are descriptor columns, the reducer has to be kept off them, which
 # is what :class:`~sklearn.compose.ColumnTransformer` is for.
-# :func:`~nimare.ml.make_preprocessor` builds one with the column boundary read
+# :func:`~nimare.ml.make_nimare_column_transformer` builds one with the column boundary read
 # off the bundle and ``sparse_threshold=1.0``, so a wide sparse map block is
 # never quietly densified. ``bunch.map_columns`` and
 # ``bunch.descriptor_columns`` are right there if you would rather write it
@@ -164,7 +164,7 @@ with_descriptors = studyset.to_bunch(
     descriptor_fields=["sample_sizes"],
     missing_values="keep",
 )
-preprocessor = make_preprocessor(
+preprocessor = make_nimare_column_transformer(
     with_descriptors,
     TruncatedSVD(n_components=50, random_state=RANDOM_SEED),
     descriptor_transformer=SimpleImputer(strategy="median"),
@@ -173,7 +173,9 @@ preprocessor = make_preprocessor(
 print(f"Descriptors: {with_descriptors.descriptor_names}")
 print(f"Descriptor columns: {with_descriptors.descriptor_columns}")
 print(f"With descriptors: {type(preprocessor).__name__}")
-print(f"Map features only: {type(make_preprocessor(bunch, TruncatedSVD(2))).__name__}")
+print(
+    f"Map features only: {type(make_nimare_column_transformer(bunch, TruncatedSVD(2))).__name__}"
+)
 
 ###############################################################################
 # Select annotation labels
@@ -340,7 +342,7 @@ print(f"Descriptors: {[name.split('.')[-1] for name in with_demographics.descrip
 # answering "task"; ``roc_auc`` asks the question actually being put, which is
 # whether the foci rank a resting-state analysis above a task one.
 release_pipeline = make_pipeline(
-    make_preprocessor(
+    make_nimare_column_transformer(
         with_demographics,
         TruncatedSVD(n_components=50, random_state=RANDOM_SEED),
         descriptor_transformer=SimpleImputer(strategy="median"),

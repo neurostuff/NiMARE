@@ -70,14 +70,14 @@ contract still describes "a NiMARE container that splits and reduces itself".
 | `MAFeatureExtractor.to_sklearn` | required, one-call export | **missing** | contract right |
 | `test_size` / `random_state` on the extractor | required | **absent** | implementation right (§5.2) |
 | `MAFeatureDataset.split()` | required | **missing** | contract right (§5.2) |
-| `MAFeatureDataset.apply_map_reducer(reducer, fit=False)` | required | **missing**, replaced by `make_preprocessor()` | implementation right, but incomplete (§5.3) |
+| `MAFeatureDataset.apply_map_reducer(reducer, fit=False)` | required | **missing**, replaced by `make_nimare_column_transformer()` | implementation right, but incomplete (§5.3) |
 | `make_map_reducer("variance_threshold")` | required (FR-012) | **raises `NotImplementedError`** | contract right; one-line fix (§5.3) |
 | `descriptor_transformers`, `target_transformer`, `memory`, `memory_level` | required | **all four raise `NotImplementedError` in `__init__`** | see §5.4, §5.5, §5.6 |
 | `texts` as a descriptor/target source | required | **rejected**: `Unsupported field selector source: texts` | contract right (§5.4) |
 | Non-numeric descriptor rejection with a clear message (FR-008) | required | raises numpy's `could not convert string to float: 'flanker'` | contract right (§5.4) |
 | Missing-value reporting (FR-011, SC-007) | required | **absent** | contract right (§5.4) |
 | `MAFeatureDataset` exported | `docs/api.rst` lists `ml.MAFeatureDataset` | **not in `ml.__all__`** | inconsistency (§5.1) |
-| Sparse-only unreduced features (FR-015) | required | held on export, **not** through `make_preprocessor` | gap (§5.3) |
+| Sparse-only unreduced features (FR-015) | required | held on export, **not** through `make_nimare_column_transformer` | gap (§5.3) |
 | 1,000-study budget (SC-008) | ≤3 min, ≤5 GB | no test, no benchmark | gap (§9) |
 
 ### Defects found while reading, with evidence
@@ -123,7 +123,7 @@ already inherits nilearn's `CacheMixin`: `MKDAKernel(r=10, memory=…,
 memory_level=1)` gives cross-process caching for free (measured 0.4 s warm vs
 1.0 s cold, including from a fresh kernel instance in a fresh process).
 
-**D-6. `make_preprocessor()` can silently densify.** `ColumnTransformer`
+**D-6. `make_nimare_column_transformer()` can silently densify.** `ColumnTransformer`
 defaults to `sparse_threshold=0.3`: a sparse block whose density exceeds 30%
 is returned dense. With 228k voxel columns that is the failure mode FR-015
 exists to prevent. Verified: a 100%-dense-valued sparse block comes back as a
@@ -177,7 +177,7 @@ splitter.
 
 - ✅ Leakage safety comes from `Pipeline` + `GroupKFold`, which are correct by
   construction and already understood by the audience.
-- ✅ Cheap: `make_preprocessor` is ~10 lines around `ColumnTransformer`.
+- ✅ Cheap: `make_nimare_column_transformer` is ~10 lines around `ColumnTransformer`.
 - ✅ Matches U6: one extraction, many reducers.
 - ❌ `transform()` returning a `Bunch` conflates NiMARE's container with the
   sklearn export (and strands `MAFeatureDataset`, which the current code does
@@ -256,14 +256,14 @@ descriptors a real answer instead of a `NotImplementedError`.
 ### 5.3 Reduction: a preprocessor for pipelines, fitted-state for manual work
 
 - **Options**: (a) `apply_map_reducer(reducer, fit=False)` [contract];
-  (b) `make_preprocessor()` only [current code]; (c) `make_preprocessor()` plus
+  (b) `make_nimare_column_transformer()` only [current code]; (c) `make_nimare_column_transformer()` plus
   `fit_transform_maps` / `transform_maps`.
 - **Recommendation: (c).** Drop the `fit=` boolean — the fitted-ness belongs to
   the reducer, not to a flag on the data. `fit_transform_maps(reducer)` fits and
   returns a reduced dataset; `transform_maps(reducer)` requires an already
   fitted reducer and raises `NotFittedError` otherwise. Leakage becomes the
   *error* case rather than a keyword argument.
-- `make_preprocessor` gains `sparse_threshold=1.0` (fixes D-6) and a
+- `make_nimare_column_transformer` gains `sparse_threshold=1.0` (fixes D-6) and a
   `descriptor_transformer=` slot (so an imputer or scaler can be applied to the
   descriptor block per fold — the common need under U7, given how much
   NeuroStore metadata is missing).
@@ -422,7 +422,7 @@ class MAFeatureDataset(NiMAREBase):
         """Grouped holdout by study. ``test_size`` is a fraction of *studies*.
         Raises before returning anything if the study count cannot serve it."""
 
-    def make_preprocessor(
+    def make_nimare_column_transformer(
         self,
         map_reducer="truncated_svd",
         descriptor_transformer="passthrough",
@@ -459,7 +459,7 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
    `target`, `ids`, `study_ids`, `descriptors`, and every derived dataset.
 2. Map rows are matched to analysis ids **by id**, never by position (D-1).
 3. Unreduced voxel features are sparse everywhere: in `features`, in the
-   exported `data`, and out of `make_preprocessor()` (D-6).
+   exported `data`, and out of `make_nimare_column_transformer()` (D-6).
 4. `groups` is `study_ids`; no study appears in both sides of any split.
 5. Nothing is silently imputed, coerced, or dropped: missing descriptors and
    targets raise by default and name the analyses involved.
@@ -479,7 +479,7 @@ data = extractor.transform(studyset)          # MAFeatureDataset
 bunch = data.to_sklearn()                     # or extractor.to_sklearn(studyset)
 
 pipeline = make_pipeline(
-    data.make_preprocessor("truncated_svd", n_components=50, random_state=13),
+    data.make_nimare_column_transformer("truncated_svd", n_components=50, random_state=13),
     LogisticRegression(max_iter=1000, class_weight="balanced"),
 )
 scores = cross_val_score(
@@ -517,7 +517,7 @@ extractor = MAFeatureExtractor(
 )
 data = extractor.transform(studyset)
 pipeline = make_pipeline(
-    data.make_preprocessor("truncated_svd", n_components=50,
+    data.make_nimare_column_transformer("truncated_svd", n_components=50,
                            descriptor_transformer=SimpleImputer()),
     Ridge(),
 )
@@ -541,7 +541,7 @@ first time.
    `MAFeatureDataset.split()`; `split()` loses `cv=`.
 3. `apply_map_reducer(reducer, fit=False)` → `fit_transform_maps(reducer)` /
    `transform_maps(fitted_reducer)`.
-4. `make_preprocessor(...)` is added to the container's required methods, with
+4. `make_nimare_column_transformer(...)` is added to the container's required methods, with
    `sparse_threshold=1.0` named as the FR-015 guarantee.
 5. Field selectors become `str` / `(source, field)`; the dict form is an alias.
    `texts` is a valid source.
@@ -568,7 +568,7 @@ can corrupt results land first.
 | 3 | `transform → MAFeatureDataset`, `to_sklearn(studyset, return_X_y=)` on both classes | export-contract assertions (existing helper covers most) |
 | 4 | `split()` with group-count pre-validation | disjointness, determinism, and the clear too-few-studies error |
 | 5 | Selectors via `requirements`; `texts`; FR-008 message; `missing_values` | `sample_sizes`, categorical rejection, missing reporting (names the ids) |
-| 6 | `make_preprocessor` (`sparse_threshold=1.0`, `descriptor_transformer=`); `variance_threshold`; public `AtlasAggregator` + labels fast path + `get_feature_names_out` | sparsity preserved through CT; labels fast path == nilearn's output; pipeline + `GroupKFold` end-to-end |
+| 6 | `make_nimare_column_transformer` (`sparse_threshold=1.0`, `descriptor_transformer=`); `variance_threshold`; public `AtlasAggregator` + labels fast path + `get_feature_names_out` | sparsity preserved through CT; labels fast path == nilearn's output; pipeline + `GroupKFold` end-to-end |
 | 7 | `fit_transform_maps` / `transform_maps` | `NotFittedError` on the unfitted path; alignment preserved |
 | 8 | Caching via `CacheMixin` + one-entry memo | kernel called once across reducers; invalidation on changed coordinates/params |
 | 9 | Rewrite both gallery examples; `docs/api.rst`; provenance schema | docs build converts both examples |
@@ -675,7 +675,7 @@ read as *the* two choices rather than as two examples. Both slots are now open:
 
 - **Any scikit-learn transformer.** `make_map_reducer` takes a workflow name, a
   transformer, or a transformer class it builds from `**kwargs`;
-  `make_preprocessor` passes whatever it is given through the same resolver.
+  `make_nimare_column_transformer` passes whatever it is given through the same resolver.
   The named workflows stay, because a name is the shortest way to say the
   common thing, and an unknown name now says what the alternatives to a name
   are. Sparse-readability is documented rather than guarded: scikit-learn's own
@@ -761,7 +761,7 @@ numeric prefix stays because the gallery only executes files matching
 ## 14. Follow-up: stop re-naming scikit-learn (2026-09-25)
 
 `make_map_reducer("truncated_svd", n_components=50)` was a second vocabulary
-for `TruncatedSVD(n_components=50)`, and `features.make_preprocessor(...)` read
+for `TruncatedSVD(n_components=50)`, and `features.make_nimare_column_transformer(...)` read
 as required ceremony in the example even where it wrapped a single transformer
 in a `ColumnTransformer` over every column. Both are gone:
 
@@ -772,7 +772,7 @@ in a `ColumnTransformer` over every column. Both are gone:
   reducer that has to know which voxel each column is, and because resolving an
   atlas (fetched Bunch, image, path, fetcher name, masker) is work nilearn does
   not do for you.
-- **`make_preprocessor` returns the reducer itself when there are no descriptor
+- **`make_nimare_column_transformer` returns the reducer itself when there are no descriptor
   columns.** It is a `ColumnTransformer` helper, and a `ColumnTransformer` over
   one block is not worth the indirection. It keeps the two things worth keeping
   for the two-block case: the column boundary, and `sparse_threshold=1.0`,
@@ -785,7 +785,7 @@ in a `ColumnTransformer` over every column. Both are gone:
   needs the fitted aggregator for the held-out rows.
 
 The example now leads with `make_pipeline(TruncatedSVD(50), LogisticRegression())`
-on `bunch.data`, and reaches for `make_preprocessor` only in the section that
+on `bunch.data`, and reaches for `make_nimare_column_transformer` only in the section that
 has descriptor columns to protect.
 
 ---
@@ -1098,7 +1098,7 @@ put to the model.
 `FeatureSet` is removed. Conversion is now
 `Studyset.to_bunch(kernel_transformer, **options)`, returning a
 `sklearn.utils.Bunch`, and `nimare.ml` keeps only what a Studyset cannot
-answer on its own: `describe_fields`, `make_preprocessor`, `AtlasAggregator`.
+answer on its own: `describe_fields`, `make_nimare_column_transformer`, `AtlasAggregator`.
 
 ### What the container was actually doing
 
@@ -1207,3 +1207,46 @@ row positions to the one `Bunch` it already returns.
 The split reproduces the container's old one exactly -- 686 train and 220 test
 analyses from 240 and 80 studies -- so nothing about the partition changed,
 only where it is asked for.
+
+## 21. Naming the column transformer, and the "mark the voxels" question (2026-09-26)
+
+### Why `make_preprocessor` was the wrong name
+
+Three findings, none of them taste:
+
+- **scikit-learn's `make_*` names the object it returns.** `make_pipeline` →
+  `Pipeline`, `make_column_transformer` → `ColumnTransformer`, `make_scorer` →
+  a scorer, `make_column_selector` → a selector. "Preprocessor" is not a
+  scikit-learn object, so the name said nothing about what came back.
+- **nilearn uses the prefix the same way**: `make_first_level_design_matrix`,
+  `make_glm_report`, `make_second_level_design_matrix`.
+- **NiMARE does not use it at all.** `make_preprocessor` was the only `make_*`
+  in the library; its neighbours are `fetch_*`, `download_*`, `convert_*`,
+  `describe_fields`, `conjunction_analysis`.
+
+It is now `make_nimare_column_transformer`, which names what it returns and
+says whose it is, without shadowing `sklearn.compose.make_column_transformer`
+for anyone importing both bare. The module it lives in is `compose.py`, beside
+the scikit-learn module of the same name.
+
+### Should something mark the voxel columns instead?
+
+No, and the reason is structural rather than a preference.
+
+- **scikit-learn has no mechanism for a column to opt out of a transformer.**
+  Every transformer is handed the whole of `X`. The nearest thing is the
+  *column spec* a `ColumnTransformer` takes, which is what
+  `make_column_selector` builds for a frame, and what `bunch.map_columns`
+  already is for this array: an ordinary `slice`, accepted directly.
+- **"Untargeted by default" is the opposite of the ColumnTransformer default**,
+  which is `remainder="drop"`: a column nobody claims is discarded, not passed
+  through.
+- **The helper is already unnecessary for the common case.** `descriptor_fields`
+  defaults to None, `descriptor_columns` is then empty, and the function returns
+  the reducer unchanged, which is a tested no-op. A plain pipeline is correct
+  whenever nobody asked for descriptors.
+
+The one shape that would remove the helper outright -- keeping descriptors out
+of `data` and beside it -- was rejected: `cross_val_score(pipe, bunch.data,
+bunch.target)` would then silently ignore descriptors the caller explicitly
+asked for, trading a trap that raises for one that quietly answers wrong.

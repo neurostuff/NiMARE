@@ -108,7 +108,7 @@ Reduction workflows must be compatible with scikit-learn estimator workflows.
 
 - Reducers expose `fit`, `transform` and `fit_transform`, and support `clone`.
 - Reducers must not densify unreduced voxelwise inputs as an intermediary.
-  `make_preprocessor` sets `sparse_threshold=1.0` for the same reason.
+  `make_nimare_column_transformer` sets `sparse_threshold=1.0` for the same reason.
 - Reduced output must preserve row order and row count.
 - Fitting on training rows only is enforced by the pipeline, or by
   `fit_transform_maps` on train and `transform_maps` on test; the latter raises
@@ -131,6 +131,6 @@ The following checks must pass in tests:
 - Raw free-text and multi-label targets fail without explicit target handling.
 - Map rows stay with their own analysis when the Studyset is not in sorted
   order.
-- Unreduced voxelwise data survives `make_preprocessor` still sparse.
+- Unreduced voxelwise data survives `make_nimare_column_transformer` still sparse.
 - A representative 1,000-study conversion and grouped split meets the <=3
   minute and <=5 GB peak memory budget under the `performance_smoke` check.

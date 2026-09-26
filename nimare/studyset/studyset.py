@@ -845,7 +845,7 @@ class Studyset:
         See Also
         --------
         nimare.ml.describe_fields : What fields this studyset offers.
-        nimare.ml.make_preprocessor : Reduce the map columns and not the rest.
+        nimare.ml.make_nimare_column_transformer : Reduce the map columns and not the rest.
 
         Examples
         --------

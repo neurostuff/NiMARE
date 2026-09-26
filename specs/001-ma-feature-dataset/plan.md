@@ -37,7 +37,7 @@ out a conversion is internal, so users meet one class.
 descriptor blocks and derives `features` and `feature_names` from them on
 demand, keeps the `masker` that defines voxel order, exports `study_ids` as
 sklearn `groups`, and carries the grouped `split()`, the pipeline
-`make_preprocessor()` and the fitted-state map reduction methods.
+`make_nimare_column_transformer()` and the fitted-state map reduction methods.
 
 ## Technical Context
 
@@ -47,7 +47,7 @@ sklearn `groups`, and carries the grouped `split()`, the pipeline
 **Testing**: Add targeted pytest coverage under `nimare/tests/test_ml.py` before implementation. First failing tests must cover conversion/provenance, grouped split leakage prevention, non-numeric descriptor rejection, scalar target export and unsupported target-shape rejection, missing-value diagnostics, reducer alignment, and the 1,000-study performance budget. Use existing markers, including `performance_smoke` for the scale check if needed.  
 **Target Platform**: NiMARE-supported Python and OS matrix; no network-dependent tests.  
 **Project Type**: Python scientific library public API plus Sphinx documentation examples.  
-**Public API Impact**: New additive `nimare.ml` module with `FeatureSet` (including the `from_studyset` constructor), `AtlasAggregator`, field-selector handling reusing the `_required_inputs` vocabulary, dataset-level `split()` and `make_preprocessor()`, and `fit_transform_maps()`/`transform_maps()`. Update `nimare/__init__.py`, `docs/api.rst`, and Numpydoc docstrings. No released public API is removed, renamed, or narrowed.
+**Public API Impact**: New additive `nimare.ml` module with `FeatureSet` (including the `from_studyset` constructor), `AtlasAggregator`, field-selector handling reusing the `_required_inputs` vocabulary, dataset-level `split()` and `make_nimare_column_transformer()`, and `fit_transform_maps()`/`transform_maps()`. Update `nimare/__init__.py`, `docs/api.rst`, and Numpydoc docstrings. No released public API is removed, renamed, or narrowed.
 **Extractor API Decision**: `FeatureSet.from_studyset(studyset, kernel_transformer, ...)` returns one `FeatureSet`; `FeatureSet.to_sklearn(return_X_y=False)` exports it; splitting lives on the container; no public object takes a Studyset and exposes `fit` or `fit_transform`.
 **Compatibility Baseline**: `0.16.0` from `git describe --tags --abbrev=0`. Released Studyset, kernel, metadata, annotation, and text access behavior must remain compatible.
 **Example Coverage**: Create the Sphinx-Gallery example `examples/05_machine_learning/01_plot_machine_learning_in_nimare.py`, which covers the whole workflow in one page. Examples remain `.py` sources and are converted by the docs/Sphinx build. The gallery executes files matching `NN_plot_`, which is why the single example keeps its numeric prefix.  

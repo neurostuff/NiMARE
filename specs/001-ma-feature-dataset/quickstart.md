@@ -189,7 +189,7 @@ ml.AtlasAggregator(fetch_atlas_difumo(dimension=64), masker=bunch.masker)
 ml.AtlasAggregator("harvard_oxford", masker=bunch.masker,
                    atlas_kwargs={"atlas_name": "cort-maxprob-thr25-2mm"})
 
-ml.make_preprocessor(bunch, fetch_atlas_difumo(dimension=64))  # masker supplied
+ml.make_nimare_column_transformer(bunch, fetch_atlas_difumo(dimension=64))  # masker supplied
 ```
 
 An atlas is anything nilearn can load: a fetched atlas, an atlas image or file,
@@ -204,7 +204,7 @@ With map features alone there is nothing to keep a reducer away from, so a
 transformer goes straight into the pipeline. Once descriptor columns are there,
 they need separate treatment, which is what
 [`ColumnTransformer`](https://scikit-learn.org/stable/modules/generated/sklearn.compose.ColumnTransformer.html)
-is for. `make_preprocessor` builds one with the column boundary filled in, the
+is for. `make_nimare_column_transformer` builds one with the column boundary filled in, the
 masker bound into an atlas reducer, and `sparse_threshold=1.0` so a wide sparse
 map block is never quietly densified:
 
@@ -212,7 +212,7 @@ map block is never quietly densified:
 from sklearn.impute import SimpleImputer
 
 pipeline = make_pipeline(
-    ml.make_preprocessor(
+    ml.make_nimare_column_transformer(
         bunch,
         TruncatedSVD(n_components=50, random_state=13),
         descriptor_transformer=SimpleImputer(strategy="median"),
@@ -227,7 +227,7 @@ treatment, pass a mapping from descriptor name to transformer:
 ```python
 from sklearn.preprocessing import StandardScaler
 
-ml.make_preprocessor(
+ml.make_nimare_column_transformer(
     bunch,
     TruncatedSVD(n_components=50, random_state=13),
     descriptor_transformer={
@@ -258,7 +258,7 @@ ColumnTransformer(
 )
 ```
 
-With no descriptor columns, `make_preprocessor` hands the reducer straight
+With no descriptor columns, `make_nimare_column_transformer` hands the reducer straight
 back.
 
 ## Use non-numeric fields

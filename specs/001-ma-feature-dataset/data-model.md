@@ -188,7 +188,7 @@ Returns train/test `FeatureSet` slices through `GroupShuffleSplit` over
 `study_ids`. `test_size` is a fraction of studies. Fails clearly, and before
 returning anything, when the study count cannot serve the request.
 
-#### `make_preprocessor(map_reducer, descriptor_transformer, **reducer_params)`
+#### `make_nimare_column_transformer(map_reducer, descriptor_transformer, **reducer_params)`
 
 Returns an unfitted `ColumnTransformer` that reduces the map columns and
 handles the descriptor columns separately, with `sparse_threshold=1.0`, and
@@ -222,7 +222,7 @@ for them.
 **Validation Rules**
 
 - A reducer that cannot read sparse input says so when it is fitted.
-- `FeatureSet.make_preprocessor` keeps a reducer off the descriptor columns,
+- `FeatureSet.make_nimare_column_transformer` keeps a reducer off the descriptor columns,
   and returns the reducer itself when there are none.
 - `fit_transform_maps` requires a built transformer; an atlas passed there
   raises and names `AtlasAggregator`.
@@ -255,7 +255,7 @@ FeatureSet
 |-- target
 |-- to_sklearn(return_X_y=False)
 |-- split(test_size, random_state) -> (train, test)
-|-- make_preprocessor(...) -> ColumnTransformer for a Pipeline
+|-- make_nimare_column_transformer(...) -> ColumnTransformer for a Pipeline
 |-- fit_transform_maps(reducer) / transform_maps(reducer)
 `-- select_analyses(rows) / copy()
 
@@ -269,7 +269,7 @@ Reduction
 **Pipeline workflow (recommended):**
 
 1. `Studyset` -> `FeatureSet.from_studyset(studyset, kernel_transformer, ...)`
-2. `dataset.make_preprocessor(...)` inside a `Pipeline`
+2. `dataset.make_nimare_column_transformer(...)` inside a `Pipeline`
 3. `cross_val_score(pipeline, bunch.data, bunch.target, cv=GroupKFold(...),
    groups=bunch.groups)`
 

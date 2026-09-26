@@ -20,7 +20,7 @@ study out of two different partitions.
 
 :mod:`nimare.ml` holds what a Studyset cannot answer on its own:
 :func:`~nimare.ml.describe_fields` reports which of its fields are worth
-modelling, :func:`~nimare.ml.make_preprocessor` keeps a reducer off the
+modelling, :func:`~nimare.ml.make_nimare_column_transformer` keeps a reducer off the
 descriptor columns, and :class:`~nimare.ml.AtlasAggregator` reduces voxels over
 an atlas.
 
@@ -257,14 +257,15 @@ A transformer placed directly in a pipeline sees every column it is given. With
 map features alone that is the whole matrix and nothing else is needed. Once
 there are descriptor columns, a bare reducer would decompose them along with
 the voxels, which is what :class:`~sklearn.compose.ColumnTransformer` exists to
-prevent. :func:`~nimare.ml.make_preprocessor` builds one with the
+prevent. :func:`~nimare.ml.make_nimare_column_transformer` builds one with the
 column boundary filled in, the masker bound into an atlas reducer, and
 ``sparse_threshold=1.0`` -- scikit-learn's default of ``0.3`` would densify a
 map block above 30% density, about 1.6 GB at 228,000 columns:
 
 .. code-block:: python
 
-    preprocessor = features.make_preprocessor(
+    preprocessor = make_nimare_column_transformer(
+        bunch,
         TruncatedSVD(n_components=50),
         descriptor_transformer={
             "sample_sizes": SimpleImputer(strategy="median"),
@@ -273,14 +274,33 @@ map block above 30% density, about 1.6 GB at 228,000 columns:
     )
 
 Descriptors the mapping does not name are passed through, and the columns come
-out in the order they went in. Transformers are handed the descriptor columns
-dense, which is what most of them expect of a few numeric columns; the map
-block stays sparse.
+out in the order they went in.
 
-``features.map_columns``, ``features.descriptor_columns`` and
-``features.descriptor_names`` are public, so the same thing can be written out
-by hand. With no descriptor columns, ``make_preprocessor`` hands the reducer
-straight back.
+**It is not needed until there are descriptors.** ``descriptor_fields`` is
+None by default, and then ``descriptor_columns`` is empty, the whole matrix is
+voxels, and the function hands the reducer straight back. A plain
+``make_pipeline(TruncatedSVD(50), LogisticRegression())`` is already correct
+for that case.
+
+There is no way to mark a column so that a transformer skips it: scikit-learn
+hands every transformer the whole of ``X``, and a
+:class:`~sklearn.compose.ColumnTransformer` names what each group gets --
+indeed its default ``remainder="drop"`` *discards* the columns nobody claimed.
+What stands in for marking is the column spec, which is what
+:func:`~sklearn.compose.make_column_selector` builds for a frame and what
+``bunch.map_columns`` already is for this array: an ordinary
+:class:`slice` that a ColumnTransformer accepts. So the same thing can be
+written out by hand, and should be for anything this function does not cover:
+
+.. code-block:: python
+
+    ColumnTransformer(
+        [
+            ("maps", TruncatedSVD(n_components=50), bunch.map_columns),
+            ("descriptors", SimpleImputer(), bunch.descriptor_columns),
+        ],
+        sparse_threshold=1.0,
+    )
 
 Sparse descriptors and scaling
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -292,7 +312,7 @@ implicit zeros. :class:`~sklearn.preprocessing.StandardScaler` says so and
 names the fix, ``with_mean=False``, and
 :class:`~sklearn.preprocessing.MaxAbsScaler` is the sparse-safe scaler.
 
-:func:`~nimare.ml.make_preprocessor` decides per transformer, by fitting a
+:func:`~nimare.ml.make_nimare_column_transformer` decides per transformer, by fitting a
 clone on a tiny sparse probe: the answer is a property of the arguments rather
 than the class, since ``StandardScaler()`` refuses sparse input and
 ``StandardScaler(with_mean=False)`` does not, and no estimator tag separates
@@ -320,7 +340,7 @@ coefficient can be read back to the thing it weighs:
 A :class:`~sklearn.compose.ColumnTransformer` selects these columns by
 position, because the feature matrix is an array rather than a frame, so a
 descriptor would otherwise come out as ``x228483``.
-:func:`~nimare.ml.make_preprocessor` restores the real names, including for
+:func:`~nimare.ml.make_nimare_column_transformer` restores the real names, including for
 descriptors left at ``"passthrough"``.
 
 Atlas aggregation
@@ -369,7 +389,7 @@ A Studyset of 1,000 studies converts and splits in well under the budget the
 feature was designed to: roughly a second, and under a gigabyte of peak memory,
 against a target of three minutes and five gigabytes. Unreduced voxelwise
 features are sparse everywhere -- in the container, in the exported bundle, and
-through :func:`~nimare.ml.make_preprocessor` -- and only an explicit
+through :func:`~nimare.ml.make_nimare_column_transformer` -- and only an explicit
 reducer produces a dense representation.
 
 Conversion is linear in analyses, and an MA row is denser than a Studyset row:

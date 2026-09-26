@@ -14,7 +14,7 @@ row.
 Conversion is `Studyset.to_bunch`, a method on the collection being converted.
 `nimare.ml` holds only what a Studyset cannot answer on its own, and is
 exported from `nimare/__init__.py` and documented in `docs/api.rst`: its public
-names are `AtlasAggregator`, `describe_fields` and `make_preprocessor`. There is
+names are `AtlasAggregator`, `describe_fields` and `make_nimare_column_transformer`. There is
 no container class. Every other reduction is an ordinary scikit-learn
 transformer: the module must not re-export scikit-learn under NiMARE names.
 
@@ -127,53 +127,32 @@ The option vocabulary is validated before any work is done.
 The aligned container, and the module's one class. Row `i` is analysis `ids[i]` from study `study_ids[i]`,
 and that order is preserved by every method.
 
-### Required attributes
+### Required keys
 
-- `ids`: full Studyset analysis identifiers, `<study_id>-<analysis_id>`.
-- `study_ids`: one study-group label per row.
-- `map_features`: the analysis-by-voxel block. Sparse while unreduced.
-- `descriptor_features`: the numeric descriptor block, sparse when it holds
-  annotation labels, or `None`.
-- `descriptor_names`: the descriptor columns, in order, under their real names.
-- `features`: map features and descriptor features side by side, derived from
-  the two blocks on first access so they cannot disagree.
-- `feature_names`: names for `features` in column order, built on first access
-  because naming every voxel eagerly costs more memory than the matrix.
+- `data`: the analysis-by-feature matrix, map columns then descriptor columns.
+  Sparse while the map features are unreduced.
 - `target`: optional row-aligned prediction target.
-- `masker`: the masker defining voxel order for unreduced map features.
+- `groups`: one study label per row, for a group-aware splitter.
+- `ids`: full Studyset analysis identifiers, `<study_id>-<analysis_id>`.
+- `feature_names`: names for `data` in column order.
+- `map_columns`, `descriptor_columns`: the column slices of `data`. A slice is
+  what a `ColumnTransformer` takes, so these are the column spec, and no other
+  marking of the voxel columns is possible: scikit-learn hands every
+  transformer the whole of `X`.
+- `descriptor_names`: the descriptor columns, in order, under their real names.
+- `masker`: the masker defining voxel order for unreduced map features. An
+  atlas reducer cannot work this out from `data`, which is why the bundle
+  carries it.
 - `provenance`: conversion settings and source Studyset details, including
-  `missing_coordinates`, `dropped_ids`, `missing_value_ids`, the kernel
-  transformer and its parameters, and any map reductions applied.
-- `map_columns`, `descriptor_columns`: the column slices of `features`.
+  `missing_coordinates`, `dropped_ids`, `missing_value_ids`, and the kernel
+  transformer and its parameters.
+- `train`, `test`: row positions of a grouped holdout. Present only when
+  `test_size` was given.
 
-### Required methods
-
-- `to_sklearn(return_X_y=False)`: return a `sklearn.utils.Bunch` with `data`,
-  `target`, `groups`, `feature_names`, `ids`, `provenance`, `map_columns` and
-  `descriptor_columns`; or `(data, target)`, following the `sklearn.datasets`
-  convention.
-- Every derivation -- `split`, `select_analyses`, `copy`, the map-reduction
-  methods -- MUST return the caller's own type and give its result an
-  independent `provenance` whose `n_rows` describes that result.
-- `split(test_size=0.25, random_state=None)`: grouped holdout by study through
-  `GroupShuffleSplit`, returning `(train, test)`. `test_size` is a fraction of
-  *studies*. Validate the study count first and raise before returning anything
-  partial.
-- `make_preprocessor(map_reducer="truncated_svd", descriptor_transformer="passthrough", **reducer_params)`:
-  return an unfitted `ColumnTransformer` that reduces the map columns and
-  handles the descriptor columns separately, with `sparse_threshold=1.0` so
-  unreduced voxelwise features are never densified on the way through.
-  `map_reducer` may be a workflow name, an already-built transformer, or
-  `None`/`"passthrough"`.
-- `fit_transform_maps(reducer)`: fit the reducer on this dataset's map features
-  and return a reduced dataset.
-- `transform_maps(reducer)`: apply an already fitted reducer, raising
-  `NotFittedError` otherwise, because fitting it there would use held-out data.
 Row selection happens on the Studyset, before conversion, with the
 `select_analyses` / `slice` pair it already has. A bundle is subset by indexing
-its aligned fields together, which is scikit-learn's own idiom and needs no
+its aligned keys together, which is scikit-learn's own idiom and needs no
 NiMARE API.
-- `copy()`: return an independent dataset copy.
 
 ### Errors
 
@@ -350,7 +329,7 @@ version is, which the docstring says.
 
 ### Applying a reducer to the map columns only
 
-`make_preprocessor(bunch, map_reducer, descriptor_transformer="passthrough",
+`make_nimare_column_transformer(bunch, map_reducer, descriptor_transformer="passthrough",
 **reducer_params)` is a `ColumnTransformer` with the column boundary read off
 the bundle,
 the masker bound into an atlas reducer, and `sparse_threshold=1.0` so that a

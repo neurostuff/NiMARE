@@ -323,10 +323,10 @@ def test_dataset_without_descriptors(small_masker):
 # ---------------------------------------------------------------- reduction
 
 
-def test_make_preprocessor_reduces_only_map_columns(ma_bunch):
+def test_column_transformer_reduces_only_map_columns(ma_bunch):
     """Descriptor columns pass through the preprocessor untouched."""
     dataset = ma_bunch
-    preprocessor = ml.make_preprocessor(
+    preprocessor = ml.make_nimare_column_transformer(
         dataset, TruncatedSVD(n_components=1, random_state=RANDOM_SEED)
     )
 
@@ -341,40 +341,42 @@ def test_make_preprocessor_reduces_only_map_columns(ma_bunch):
     np.testing.assert_array_equal(transformed[:, 1], _descriptors(dataset).ravel())
 
 
-def test_make_preprocessor_keeps_unreduced_features_sparse(ma_bunch):
+def test_column_transformer_keeps_unreduced_features_sparse(ma_bunch):
     """A sparse-preserving reducer must not be densified on the way through."""
     dataset = ma_bunch
-    preprocessor = ml.make_preprocessor(dataset, VarianceThreshold(threshold=0.0))
+    preprocessor = ml.make_nimare_column_transformer(dataset, VarianceThreshold(threshold=0.0))
 
     transformed = preprocessor.fit_transform(dataset.data)
 
     assert sparse.issparse(transformed)
 
 
-def test_make_preprocessor_accepts_transformers_and_passthrough(ma_bunch):
+def test_column_transformer_accepts_transformers_and_passthrough(ma_bunch):
     """The reducer may be an instance, a name, or nothing at all."""
     dataset = ma_bunch
 
-    built = ml.make_preprocessor(
+    built = ml.make_nimare_column_transformer(
         dataset, TruncatedSVD(n_components=1), descriptor_transformer=SimpleImputer()
     )
     assert isinstance(built.transformers[0][1], TruncatedSVD)
     # The descriptor step densifies its columns before handing them over.
     assert isinstance(built.transformers[1][1].named_steps["transform"], SimpleImputer)
 
-    passthrough = ml.make_preprocessor(dataset, None)
+    passthrough = ml.make_nimare_column_transformer(dataset, None)
     assert passthrough.transformers[0][1] == "passthrough"
     assert passthrough.fit_transform(dataset.data).shape == dataset.data.shape
 
     with pytest.raises(ValueError, match="only used when the reducer is given as a class"):
-        ml.make_preprocessor(dataset, TruncatedSVD(), n_components=1)
+        ml.make_nimare_column_transformer(dataset, TruncatedSVD(), n_components=1)
 
 
 def test_dataset_works_in_sklearn_model_selection(ma_bunch):
     """The exported arrays drive grouped cross-validation and a grid search."""
     dataset = ma_bunch
     pipeline = make_pipeline(
-        ml.make_preprocessor(dataset, TruncatedSVD(n_components=1, random_state=RANDOM_SEED)),
+        ml.make_nimare_column_transformer(
+            dataset, TruncatedSVD(n_components=1, random_state=RANDOM_SEED)
+        ),
         Ridge(),
     )
     cv = GroupKFold(n_splits=3)
@@ -396,11 +398,11 @@ def test_dataset_works_in_sklearn_model_selection(ma_bunch):
         (SparseRandomProjection, {"n_components": 2}, SparseRandomProjection),
     ],
 )
-def test_make_preprocessor_takes_scikit_learn_transformers(
+def test_column_transformer_takes_scikit_learn_transformers(
     ma_bunch, reducer, kwargs, expected_type
 ):
     """A transformer, or a transformer class plus its parameters, both resolve."""
-    preprocessor = ml.make_preprocessor(ma_bunch, reducer, **kwargs)
+    preprocessor = ml.make_nimare_column_transformer(ma_bunch, reducer, **kwargs)
 
     built = preprocessor.transformers[0][1]
     assert isinstance(built, expected_type)
@@ -408,31 +410,31 @@ def test_make_preprocessor_takes_scikit_learn_transformers(
         assert built.get_params()[name] == value
 
 
-def test_make_preprocessor_uses_a_built_transformer_as_given(ma_bunch):
+def test_column_transformer_uses_a_built_transformer_as_given(ma_bunch):
     """An instance is used as it is, and cannot be reconfigured in passing."""
     reducer = SparseRandomProjection(n_components=3)
 
-    assert ml.make_preprocessor(ma_bunch, reducer).transformers[0][1] is reducer
+    assert ml.make_nimare_column_transformer(ma_bunch, reducer).transformers[0][1] is reducer
 
     with pytest.raises(ValueError, match="only used when the reducer is given as a class"):
-        ml.make_preprocessor(ma_bunch, reducer, n_components=4)
+        ml.make_nimare_column_transformer(ma_bunch, reducer, n_components=4)
 
 
-def test_make_preprocessor_rejects_things_that_are_not_reducers(ma_bunch):
+def test_column_transformer_rejects_things_that_are_not_reducers(ma_bunch):
     """The message names what a reducer can be, including the workflows it replaced."""
     with pytest.raises(TypeError, match="TruncatedSVD"):
-        ml.make_preprocessor(ma_bunch, "truncated_svd")
+        ml.make_nimare_column_transformer(ma_bunch, "truncated_svd")
 
     with pytest.raises(TypeError, match="is not a map reducer"):
-        ml.make_preprocessor(ma_bunch, object())
+        ml.make_nimare_column_transformer(ma_bunch, object())
 
 
-def test_make_preprocessor_keeps_a_reducer_off_the_descriptor_columns(ma_bunch):
+def test_column_transformer_keeps_a_reducer_off_the_descriptor_columns(ma_bunch):
     """A bare reducer would decompose the descriptor columns along with the voxels."""
     reducer = TruncatedSVD(n_components=1, random_state=RANDOM_SEED)
     descriptors = _descriptors(ma_bunch).ravel()
 
-    scoped = ml.make_preprocessor(ma_bunch, reducer).fit_transform(ma_bunch.data)
+    scoped = ml.make_nimare_column_transformer(ma_bunch, reducer).fit_transform(ma_bunch.data)
     scoped = scoped.toarray() if sparse.issparse(scoped) else scoped
     bare = clone(reducer).fit_transform(ma_bunch.data)
 
@@ -470,7 +472,7 @@ def descriptor_dataset(small_masker):
 
 def test_descriptors_can_take_one_transformer_each(descriptor_dataset):
     """A mapping treats each descriptor differently and keeps the column order."""
-    preprocessor = ml.make_preprocessor(
+    preprocessor = ml.make_nimare_column_transformer(
         descriptor_dataset,
         TruncatedSVD(n_components=2, random_state=RANDOM_SEED),
         descriptor_transformer={
@@ -496,7 +498,7 @@ def test_descriptors_can_take_one_transformer_each(descriptor_dataset):
 
 def test_descriptor_transformers_are_handed_dense_columns(descriptor_dataset):
     """A scaler refuses to centre sparse data, and descriptors are not sparse."""
-    preprocessor = ml.make_preprocessor(
+    preprocessor = ml.make_nimare_column_transformer(
         descriptor_dataset,
         TruncatedSVD(n_components=2, random_state=RANDOM_SEED),
         descriptor_transformer=StandardScaler(),
@@ -511,7 +513,7 @@ def test_descriptor_transformers_are_handed_dense_columns(descriptor_dataset):
 def test_descriptor_mapping_rejects_names_that_are_not_descriptors(descriptor_dataset):
     """A typo names the descriptors this feature set actually has."""
     with pytest.raises(ValueError, match="No descriptor called 'nope'"):
-        ml.make_preprocessor(
+        ml.make_nimare_column_transformer(
             descriptor_dataset,
             TruncatedSVD(n_components=2),
             descriptor_transformer={"nope": StandardScaler()},
@@ -524,7 +526,7 @@ def test_descriptor_transformer_without_descriptors_is_an_error(small_masker):
     map_only = _bunch(sparse.csr_matrix(np.eye(4)), ids=ids, masker=small_masker)
 
     with pytest.raises(ValueError, match="no descriptor columns"):
-        ml.make_preprocessor(map_only, TruncatedSVD(n_components=2), SimpleImputer())
+        ml.make_nimare_column_transformer(map_only, TruncatedSVD(n_components=2), SimpleImputer())
 
 
 def test_map_only_features_need_no_preprocessor(small_masker):
@@ -537,16 +539,16 @@ def test_map_only_features_need_no_preprocessor(small_masker):
     )
     reducer = TruncatedSVD(n_components=2)
 
-    assert ml.make_preprocessor(map_only, reducer) is reducer
+    assert ml.make_nimare_column_transformer(map_only, reducer) is reducer
 
 
 def test_atlas_reducer_takes_the_maskers_voxel_order_from_the_feature_set(ma_bunch, small_masker):
     """An atlas, or an aggregator built without one, gets the feature set's masker."""
     atlas = nib.Nifti1Image(np.ones((4, 4, 4), dtype=np.int16), small_masker.mask_img.affine)
 
-    from_atlas = ml.make_preprocessor(ma_bunch, atlas).transformers[0][1]
+    from_atlas = ml.make_nimare_column_transformer(ma_bunch, atlas).transformers[0][1]
     unbound = AtlasAggregator(atlas=atlas)
-    from_aggregator = ml.make_preprocessor(ma_bunch, unbound).transformers[0][1]
+    from_aggregator = ml.make_nimare_column_transformer(ma_bunch, unbound).transformers[0][1]
 
     assert from_atlas.masker is ma_bunch.masker
     assert from_aggregator.masker is ma_bunch.masker
@@ -563,7 +565,7 @@ def test_atlas_reduction_needs_a_masker_somewhere(small_masker):
     )
 
     with pytest.raises(ValueError, match="voxel order"):
-        ml.make_preprocessor(maskerless, atlas)
+        ml.make_nimare_column_transformer(maskerless, atlas)
 
 
 def _atlas_images(affine):
@@ -759,7 +761,9 @@ def test_atlas_aggregator_names_reduced_features(small_masker, atlas_features):
         masker=small_masker,
     )
 
-    reducer = ml.make_preprocessor(dataset, Bunch(maps=labels_img, labels=["one", "two"]))
+    reducer = ml.make_nimare_column_transformer(
+        dataset, Bunch(maps=labels_img, labels=["one", "two"])
+    )
     reduced = reducer.fit_transform(dataset.data)
     names = reducer.get_feature_names_out()
 
@@ -785,7 +789,7 @@ def test_dataset_reduces_with_any_sklearn_transformer(ma_bunch):
         clone(reducer).transform(_maps(test))
 
 
-def test_make_preprocessor_accepts_an_atlas(small_masker, atlas_features):
+def test_column_transformer_accepts_an_atlas(small_masker, atlas_features):
     """The feature set supplies the voxel order, so an atlas needs nothing else."""
     labels_img, _ = _atlas_images(small_masker.mask_img.affine)
     dataset = _bunch(
@@ -796,7 +800,7 @@ def test_make_preprocessor_accepts_an_atlas(small_masker, atlas_features):
     )
 
     # Map-only features: there is nothing to keep the aggregator away from.
-    reducer = ml.make_preprocessor(dataset, labels_img)
+    reducer = ml.make_nimare_column_transformer(dataset, labels_img)
 
     assert isinstance(reducer, AtlasAggregator)
     assert reducer.masker is small_masker
@@ -808,7 +812,11 @@ def test_make_preprocessor_accepts_an_atlas(small_masker, atlas_features):
 
 def test_public_surface_is_a_studyset_method_and_three_helpers():
     """Conversion belongs to the Studyset; nimare.ml holds what it cannot answer."""
-    assert set(ml.__all__) == {"AtlasAggregator", "describe_fields", "make_preprocessor"}
+    assert set(ml.__all__) == {
+        "AtlasAggregator",
+        "describe_fields",
+        "make_nimare_column_transformer",
+    }
     assert not any(name.endswith("Extractor") for name in dir(ml) if not name.startswith("_"))
     # There is no container class left to meet.
     assert not hasattr(ml, "FeatureSet")
@@ -1365,7 +1373,9 @@ def test_end_to_end_classification(ml_studyset):
     bunch = features
 
     pipeline = make_pipeline(
-        ml.make_preprocessor(features, TruncatedSVD(n_components=2, random_state=RANDOM_SEED)),
+        ml.make_nimare_column_transformer(
+            features, TruncatedSVD(n_components=2, random_state=RANDOM_SEED)
+        ),
         LogisticRegression(max_iter=500),
     )
     scores = cross_val_score(
@@ -1612,9 +1622,9 @@ def test_to_bunch_split_needs_two_studies(ml_studyset):
         pytest.param("passthrough", id="passthrough"),
     ],
 )
-def test_preprocessor_names_descriptors_after_their_fields(ma_bunch, descriptor_transformer):
+def test_column_transformer_names_descriptors_after_their_fields(ma_bunch, descriptor_transformer):
     """A fitted coefficient has to be readable back to the field it belongs to."""
-    preprocessor = ml.make_preprocessor(
+    preprocessor = ml.make_nimare_column_transformer(
         ma_bunch,
         TruncatedSVD(n_components=1, random_state=RANDOM_SEED),
         descriptor_transformer=descriptor_transformer,
@@ -1629,10 +1639,10 @@ def test_preprocessor_names_descriptors_after_their_fields(ma_bunch, descriptor_
     assert len(names) == 2
 
 
-def test_preprocessor_feature_names_reach_the_estimator(ma_bunch):
+def test_column_transformer_feature_names_reach_the_estimator(ma_bunch):
     """The names line up with the coefficients a fitted model exposes."""
     pipeline = make_pipeline(
-        ml.make_preprocessor(
+        ml.make_nimare_column_transformer(
             ma_bunch,
             TruncatedSVD(n_components=1, random_state=RANDOM_SEED),
             descriptor_transformer=SimpleImputer(strategy="median"),
@@ -1667,7 +1677,7 @@ def test_only_transformers_that_need_dense_columns_get_them(
     block = bunch.data[:, bunch.descriptor_columns]
     assert block.shape[1] > 1000
 
-    preprocessor = ml.make_preprocessor(
+    preprocessor = ml.make_nimare_column_transformer(
         bunch,
         TruncatedSVD(n_components=2, random_state=RANDOM_SEED),
         descriptor_transformer=transformer,
@@ -1681,7 +1691,7 @@ def test_only_transformers_that_need_dense_columns_get_them(
 
 def test_a_descriptor_transformer_that_centres_still_works(ma_bunch):
     """Densifying is the fallback, so a centring scaler is not refused."""
-    preprocessor = ml.make_preprocessor(
+    preprocessor = ml.make_nimare_column_transformer(
         ma_bunch,
         TruncatedSVD(n_components=1, random_state=RANDOM_SEED),
         descriptor_transformer=StandardScaler(),
