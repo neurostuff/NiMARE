@@ -260,16 +260,16 @@ def test_dataset_without_descriptors(small_masker):
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
-        ({"ids": ["a"]}, "ids has 1 entries"),
-        ({"study_ids": ["a"]}, "study_ids has 1 entries"),
-        ({"target": [1.0]}, "target has 1 entries"),
-        ({"descriptor_features": np.zeros((1, 1))}, "descriptor_features has 1 rows"),
+        ({"ids": ["a"]}, "ids covers 1 analyses"),
+        ({"study_ids": ["a"]}, "study_ids covers 1 analyses"),
+        ({"target": [1.0]}, "target covers 1 analyses"),
+        ({"descriptor_features": np.zeros((1, 1))}, "descriptor_features covers 1 analyses"),
         ({"descriptor_features": np.zeros(2)}, "must be two-dimensional"),
         (
             {"descriptor_features": np.zeros((2, 2)), "descriptor_names": ["one"]},
-            "must name every descriptor column",
+            "descriptor_names names 1 columns, but there are 2",
         ),
-        ({"map_feature_names": ["one"]}, "must name every map column"),
+        ({"map_feature_names": ["one"]}, "map_feature_names names 1 columns, but there are 2"),
     ],
 )
 def test_dataset_rejects_misaligned_inputs(kwargs, message):

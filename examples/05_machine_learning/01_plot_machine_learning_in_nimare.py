@@ -238,13 +238,7 @@ for name, reducer in reducers.items():
 # :meth:`~nimare.ml.FeatureSet.transform_maps` raises, because fitting it there
 # would use the held-out analyses.
 difumo = fetch_atlas_difumo(dimension=N_COMPONENTS, resolution_mm=2)
-atlas_reducer = AtlasAggregator(
-    difumo,
-    masker=features.masker,
-    # Bigger batches hold more rows in dense image form at once, and pay
-    # nilearn's per-call least-squares setup fewer times.
-    batch_size=64,
-)
+atlas_reducer = AtlasAggregator(difumo, masker=features.masker)
 
 train_reduced = train.fit_transform_maps(atlas_reducer)
 test_reduced = test.transform_maps(atlas_reducer)

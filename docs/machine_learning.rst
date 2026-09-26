@@ -199,6 +199,13 @@ reducer to :meth:`~nimare.ml.FeatureSet.transform_maps` for the held-out one.
 Passing an unfitted reducer to the latter raises, because fitting it there
 would use the held-out analyses.
 
+Rows are converted back into images in batches, because nilearn's maskers
+aggregate an image rather than a row. Most of the cost is per call rather than
+per row, so ``batch_size`` trades memory for speed steeply at first and then
+hardly at all: against a 2 mm whole-brain mask, a batch of 8 costs 436 ms per
+row, 32 costs 178 ms, and 128 costs 141 ms for four times the dense working
+set. The default of 32 sits at the knee, at roughly 60 MB.
+
 Scale
 -----
 

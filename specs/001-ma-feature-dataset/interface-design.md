@@ -630,8 +630,7 @@ Written after the fact, so the proposal and the code can be read together.
    performance optimisation turns into a silent numerical divergence from the
    library the tests compare against. `AtlasAggregator` batches rows back
    through nilearn and `batch_size` is the documented memory/speed dial
-   (gallery example 02 raises it to 64, which pays nilearn's per-call
-   least-squares setup 6× less often than the default 10).
+   (§17 measures the curve and sets the default at its knee).
 2. **`MAFeatureDataset` takes the blocks, not the combined matrix.** The
    constructor takes `map_features` and `descriptor_features` and derives
    `features` and `feature_names` from them on first access. Passing a
@@ -877,3 +876,77 @@ docstrings -- 33% of the module -- because `nimare.ml` had no narrative
 documentation page at all, only an autosummary stub. `docs/machine_learning.rst`
 now sits beside `cbma` and `decoding` in the methods toctree and holds the
 reasoning; the docstrings are back to parameters, returns and raises.
+
+## 17. Complexity, growth lines, and what they changed (2026-09-26)
+
+Measured rather than guessed: radon for complexity, and micro-benchmarks over
+synthetic Studysets of 50 / 100 / 250 / 500 / 1,000 analyses, fitting an
+exponent to each stage's log-log growth line.
+
+### Growth lines
+
+| Stage | Exponent | Reading |
+| --- | --- | --- |
+| Whole conversion | +0.96 | Linear in analyses, as it must be. |
+| Kernel transform | +0.92 | Dominates the total; it is NiMARE's own cost. |
+| Row alignment | **+1.53 → +0.47** | Superlinear. Fixed; see below. |
+| Names, export, split, metadata | ~0 | Flat; not worth touching. |
+| Annotation selection | +0.73 | Pattern resolution, sub-linear in analyses. |
+| Annotation matrix | +0.83 | Slicing the sparse label block. |
+
+Two hot spots came out of this, and one latent bug.
+
+1. **`_align_map_rows` was superlinear** — 27 ms at n=1,000 and climbing at
+   +1.53, because it built two full sparse copies whatever the input. The
+   kernel already returns rows in sorted-id order, which is the order the
+   container wants in the common case where nothing was dropped, so the
+   permutation is the identity and both copies are waste. A `np.array_equal`
+   check against `arange` returns the matrix untouched: +0.47, and no
+   measurable time at n=1,000. The permuting path is unchanged.
+
+2. **`AtlasAggregator.batch_size` defaulted to the steep part of its curve.**
+   Nilearn's maskers aggregate an image, not a row, so most of the cost is per
+   call. Against a 2 mm whole-brain mask:
+
+   | `batch_size` | ms/row | dense working set |
+   | --- | --- | --- |
+   | 1 | 2,992 | 1.8 MB |
+   | 8 | 436 | 14.6 MB |
+   | 32 | **178** | 58.5 MB |
+   | 64 | 147 | 117 MB |
+   | 128 | 142 | 234 MB |
+
+   The knee is at 32: 2.4× faster than the old default of 10, and within 26%
+   of the asymptote for a quarter of its memory. The default is now 32, and
+   the gallery example no longer has to override it.
+
+3. **A label empty across the whole Studyset was classed non-numeric**, which
+   silently excluded it from pattern selection. Found by the benchmark rather
+   than by a test, because only a generated Studyset had such a label. An
+   empty column is now numeric.
+
+`feature_names` was also measured, since it materialises 228,483 strings: the
+list comprehension already beats `np.char.add` (26 ms vs 48 ms) and matches
+`arange().astype(str)`, and it is built lazily. Left alone.
+
+### Structure
+
+`nimare/ml.py` had reached 1,734 lines, which is what held its maintainability
+index at C (0.59) while `kernel.py` sat at A (53.39) — size, not tangle, since
+no block scored worse than B. It is now a package of four modules along the
+seams the code already had:
+
+| Module | Lines | Holds |
+| --- | --- | --- |
+| `features.py` | 693 | `FeatureSet`: the container and its derivations. |
+| `extract.py` | 640 | `_Fields`, `_FeatureExtractor`: reading a Studyset. |
+| `reduce.py` | 366 | `AtlasAggregator` and atlas resolution. |
+| `_helpers.py` | 100 | Sparse/dense and validation helpers both sides use. |
+
+Every module now scores A (28.6–100), against `kernel.py`'s 53.39 and
+`frames.py`'s 47.05. Average cyclomatic complexity is A (4.06) with nothing
+above B. `nimare/ml/__init__.py` re-exports `FeatureSet` and `AtlasAggregator`,
+so `from nimare.ml import ...` is unchanged and the public surface is still two
+names. The one import cycle the split creates — `FeatureSet.from_studyset`
+needs the extractor, and the extractor defaults its container to `FeatureSet` —
+is broken with a function-local import on each side.
