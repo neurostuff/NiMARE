@@ -411,19 +411,7 @@ def _summarize_cluster_values(values, masker, cluster_summary_context):
         stat_prop_values = cluster_summary_context["cluster_masker"].transform(stat_prop_img)
         raw_means = stat_prop_values.flatten()
 
-    # --- GUARDRAIL PATCH FOR NON-FINITE VALUES ---
-    if not np.isfinite(raw_means).all():
-        logging.warning(
-            "Non-finite (NaN/inf) values detected in Jackknife cluster contributions. "
-            "Imputing with safe baseline defaults to prevent hierarchical clustering crashes."
-        )
-        finite_values = raw_means[np.isfinite(raw_means)]
-        valid_median = np.median(finite_values) if finite_values.size else np.nan
-        fallback_value = 0.0 if not np.isfinite(valid_median) else valid_median
-        raw_means = np.nan_to_num(raw_means, nan=fallback_value, posinf=fallback_value, neginf=fallback_value)
-
     return raw_means
-
 
 def _infer_label_map_tails(label_maps, clusters_table, n_clusters):
     """Infer tail labels from label maps and cluster statistics."""
