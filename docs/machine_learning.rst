@@ -244,7 +244,11 @@ documents them:
     pipeline = make_pipeline(TruncatedSVD(n_components=50), LogisticRegression())
 
 Anything that reads sparse input works: truncated SVD, sparse random
-projection, variance thresholding. Dense PCA will ask for dense data.
+projection, variance thresholding. :class:`~sklearn.decomposition.PCA` also
+accepts sparse input, but only with its ``arpack`` or ``covariance_eigh``
+solvers -- the default ``auto`` picks a dense one and refuses -- and it centres
+the data, so :class:`~sklearn.decomposition.TruncatedSVD` remains the better
+fit for a matrix this wide.
 
 Keeping a reducer off the descriptor columns
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -277,6 +281,28 @@ block stays sparse.
 ``features.descriptor_names`` are public, so the same thing can be written out
 by hand. With no descriptor columns, ``make_preprocessor`` hands the reducer
 straight back.
+
+Sparse descriptors and scaling
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Descriptor columns sit inside the same matrix as the voxels, so they arrive
+sparse. scikit-learn handles sparse input widely; what it refuses is
+*centring* it, because subtracting a mean from every entry fills in the
+implicit zeros. :class:`~sklearn.preprocessing.StandardScaler` says so and
+names the fix, ``with_mean=False``, and
+:class:`~sklearn.preprocessing.MaxAbsScaler` is the sparse-safe scaler.
+
+:func:`~nimare.ml.make_preprocessor` decides per transformer, by fitting a
+clone on a tiny sparse probe: the answer is a property of the arguments rather
+than the class, since ``StandardScaler()`` refuses sparse input and
+``StandardScaler(with_mean=False)`` does not, and no estimator tag separates
+them. A transformer that passes keeps the block sparse; one that fails is
+handed dense columns, which always works.
+
+That matters most for a pattern selection. Scaling the Neurosynth release's
+3,228 labels over 115,748 analyses would be 2.8 GB dense and is 2% filled, so
+``MaxAbsScaler`` stays sparse while ``StandardScaler()`` -- which was asked to
+centre -- does not.
 
 Reading a model back
 ~~~~~~~~~~~~~~~~~~~~

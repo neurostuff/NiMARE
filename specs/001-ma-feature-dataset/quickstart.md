@@ -119,7 +119,9 @@ test_reduced = svd.transform(maps[test])
 ```
 
 Anything that reads sparse input works: truncated SVD, sparse random
-projection, variance thresholding. Dense PCA will ask for dense data.
+projection, variance thresholding. `PCA` takes sparse input too, but only with
+its `arpack` or `covariance_eigh` solvers, and it centres, so `TruncatedSVD`
+suits a matrix this wide better.
 
 ## Find the fields worth using
 

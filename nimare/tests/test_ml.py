@@ -25,7 +25,12 @@ from sklearn.model_selection import (
     cross_val_score,
 )
 from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import FunctionTransformer, StandardScaler
+from sklearn.preprocessing import (
+    FunctionTransformer,
+    MaxAbsScaler,
+    MinMaxScaler,
+    StandardScaler,
+)
 from sklearn.random_projection import SparseRandomProjection
 from sklearn.utils import Bunch
 
@@ -1639,3 +1644,51 @@ def test_preprocessor_feature_names_reach_the_estimator(ma_bunch):
     names = pipeline[:-1].get_feature_names_out()
 
     assert len(names) == len(pipeline[-1].coef_)
+
+
+@pytest.mark.parametrize(
+    ("transformer", "stays_sparse"),
+    [
+        pytest.param("passthrough", True, id="passthrough"),
+        pytest.param(MaxAbsScaler(), True, id="sparse-safe-scaler"),
+        pytest.param(StandardScaler(with_mean=False), True, id="scaler-told-not-to-centre"),
+        pytest.param(SimpleImputer(strategy="median"), True, id="imputer"),
+        pytest.param(StandardScaler(), False, id="scaler-that-centres"),
+        pytest.param(MinMaxScaler(), False, id="scaler-that-refuses-sparse"),
+    ],
+)
+def test_only_transformers_that_need_dense_columns_get_them(
+    neurosynth_studyset, transformer, stays_sparse
+):
+    """A label block thousands wide must not be densified to please a scaler."""
+    bunch = neurosynth_studyset.to_bunch(
+        MKDAKernel(r=10), descriptor_fields=[("annotations", "Neurosynth_TFIDF__*")]
+    )
+    block = bunch.data[:, bunch.descriptor_columns]
+    assert block.shape[1] > 1000
+
+    preprocessor = ml.make_preprocessor(
+        bunch,
+        TruncatedSVD(n_components=2, random_state=RANDOM_SEED),
+        descriptor_transformer=transformer,
+    )
+    preprocessor.fit(bunch.data)
+    out = preprocessor.named_transformers_["descriptors"].transform(block)
+
+    assert sparse.issparse(out) is stays_sparse
+    assert out.shape == block.shape
+
+
+def test_a_descriptor_transformer_that_centres_still_works(ma_bunch):
+    """Densifying is the fallback, so a centring scaler is not refused."""
+    preprocessor = ml.make_preprocessor(
+        ma_bunch,
+        TruncatedSVD(n_components=1, random_state=RANDOM_SEED),
+        descriptor_transformer=StandardScaler(),
+    )
+
+    out = preprocessor.fit_transform(ma_bunch.data)
+    out = out.toarray() if sparse.issparse(out) else out
+
+    # centred, which is what StandardScaler was asked for
+    assert out[:, -1].mean() == pytest.approx(0.0, abs=1e-9)

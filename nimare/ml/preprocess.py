@@ -5,12 +5,31 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 import numpy as np
+from scipy import sparse
+from sklearn.base import clone
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
 
 from nimare.ml._helpers import _preview, _to_dense
 from nimare.ml.reduce import _resolve_map_reducer
+
+
+def _handles_sparse(transformer):
+    """Report whether ``transformer`` can be fitted on a sparse block.
+
+    Asked by fitting a clone on a tiny sparse probe, because the answer is a
+    property of the arguments rather than of the class: ``StandardScaler()``
+    refuses sparse input while ``StandardScaler(with_mean=False)`` does not,
+    and no estimator tag separates them. Anything that fails the probe is
+    handed dense columns, which always works.
+    """
+    probe = sparse.csr_matrix(np.array([[1.0], [0.0], [2.0], [3.0]]))
+    try:
+        clone(transformer).fit(probe)
+    except Exception:
+        return False
+    return True
 
 
 def _dense_step(transformer, names):
@@ -25,13 +44,18 @@ def _dense_step(transformer, names):
     as ``x228483`` and a fitted coefficient cannot be read back to the field it
     belongs to.
     """
+    named = FunctionTransformer(
+        accept_sparse=True,
+        feature_names_out=lambda _, __: np.asarray(names, dtype=object),
+    )
     if isinstance(transformer, str):
         # identity, so the column keeps whatever sparsity it arrived with, but
         # named rather than positional
-        return FunctionTransformer(
-            accept_sparse=True,
-            feature_names_out=lambda _, __: np.asarray(names, dtype=object),
-        )
+        return named
+    if _handles_sparse(transformer):
+        # a sparse-safe transformer keeps the block sparse, which matters when
+        # the descriptors are a pattern selection thousands of labels wide
+        return Pipeline([("name", named), ("transform", transformer)])
     return Pipeline(
         [
             (

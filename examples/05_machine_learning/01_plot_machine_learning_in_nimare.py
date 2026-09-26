@@ -201,8 +201,10 @@ print(f"Still sparse: {sparse.issparse(annotated.data)}")
 # -----------------------------------------------------------------------------
 # Any scikit-learn transformer will do. They see the sparse voxel matrix, so
 # they have to accept sparse input: truncated SVD, sparse random projection,
-# variance thresholding and atlas aggregation all do, while dense PCA would ask
-# to be given dense data.
+# variance thresholding and atlas aggregation all do. ``PCA`` accepts sparse
+# input as well, but only through its ``arpack`` or ``covariance_eigh``
+# solvers, and it centres the data, which is why truncated SVD is the usual
+# choice for a matrix this wide.
 reducers = {
     "Truncated SVD": TruncatedSVD(n_components=N_COMPONENTS, random_state=RANDOM_SEED),
     "Sparse random projection": SparseRandomProjection(
