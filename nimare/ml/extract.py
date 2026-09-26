@@ -1,4 +1,4 @@
-"""Reading a Studyset into the blocks a :class:`~nimare.ml.FeatureSet` holds."""
+"""Reading a Studyset into the bundle :meth:`~nimare.studyset.Studyset.to_bunch` returns."""
 
 from __future__ import annotations
 
@@ -11,10 +11,12 @@ import numpy as np
 import pandas as pd
 from joblib import Memory
 from scipy import sparse
+from sklearn.utils import Bunch
 
 from nimare.base import NiMAREBase
 from nimare.ml._helpers import (
     _as_sparse,
+    _hstack,
     _hstack_blocks,
     _jsonable,
     _missing_mask,
@@ -271,12 +273,12 @@ def _looks_like_pattern(field):
 
 
 def describe_fields(studyset, source=None, min_coverage=0.0):
-    """Return the fields a :class:`~nimare.ml.FeatureSet` can read from a Studyset.
+    """Return the fields :meth:`~nimare.studyset.Studyset.to_bunch` can read.
 
     A release-scale Studyset offers hundreds of metadata columns and hundreds
     of annotation labels, most of which no analysis fills in. This reports what
     each one holds, using the same reader
-    :meth:`~nimare.ml.FeatureSet.from_studyset` uses, so a field described as
+    :meth:`~nimare.studyset.Studyset.to_bunch` uses, so a field described as
     numeric here is numeric there.
 
     Parameters
@@ -354,10 +356,10 @@ def _missing_by_field(ids, blocks, target_missing, retained):
 
 
 class _FeatureExtractor(NiMAREBase):
-    """Carry out one conversion from a Studyset to a :class:`FeatureSet`.
+    """Carry out one conversion from a Studyset to a scikit-learn bundle.
 
-    Internal. :meth:`FeatureSet.from_studyset` is the public entry point and
-    documents the parameters. The class exists so that the stages of one conversion --
+    Internal. :meth:`~nimare.studyset.Studyset.to_bunch` is the public entry
+    point and documents the parameters. The class exists so that the stages of one conversion --
     field selection, target handling, row retention, map generation,
     provenance -- stay separate methods over shared configuration, rather than
     one long function threading nine arguments through itself.
@@ -385,27 +387,20 @@ class _FeatureExtractor(NiMAREBase):
 
     # ------------------------------------------------------------- public API
 
-    def transform(self, studyset, container=None):
-        """Convert a Studyset into ``container``, by default a :class:`FeatureSet`.
+    def transform(self, studyset):
+        """Convert a Studyset into the bundle scikit-learn expects.
 
         Parameters
         ----------
         studyset : :class:`~nimare.nimads.Studyset`
             The Studyset to convert.
-        container : :obj:`type`, optional
-            The class to build, so that a subclass calling
-            :meth:`FeatureSet.from_studyset` gets its own type back.
 
         Returns
         -------
-        :class:`FeatureSet`
-            One row per retained analysis, with map features, any descriptor
-            features, any target, study groups and provenance.
+        :class:`sklearn.utils.Bunch`
+            One row per retained analysis. See
+            :meth:`~nimare.studyset.Studyset.to_bunch`, which documents it.
         """
-        if container is None:
-            from nimare.ml.features import FeatureSet
-
-            container = FeatureSet
         studyset = normalize_collection(studyset)
         self._validate_options()
 
@@ -442,15 +437,19 @@ class _FeatureExtractor(NiMAREBase):
             kept = [_take_rows(block.values, retained) for block in blocks]
             descriptor_matrix = kept[0] if len(kept) == 1 else _hstack_blocks(kept)
 
-        return container(
-            map_features,
-            ids=ids[retained],
-            study_ids=study_ids[retained],
-            descriptor_features=descriptor_matrix,
-            descriptor_names=descriptor_names,
+        n_map = map_features.shape[1]
+        n_descriptors = 0 if descriptor_matrix is None else descriptor_matrix.shape[1]
+        return Bunch(
+            data=_hstack(map_features, descriptor_matrix),
             target=None if target is None else target[retained],
-            provenance=self._provenance(studyset, ids, retained, dropped, descriptor_names),
+            groups=study_ids[retained],
+            ids=ids[retained],
+            feature_names=[f"voxel_{index}" for index in range(n_map)] + list(descriptor_names),
+            map_columns=slice(0, n_map),
+            descriptor_columns=slice(n_map, n_map + n_descriptors),
+            descriptor_names=list(descriptor_names),
             masker=studyset.masker,
+            provenance=self._provenance(studyset, ids, retained, dropped, descriptor_names),
         )
 
     # ------------------------------------------------------------- validation

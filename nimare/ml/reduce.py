@@ -40,7 +40,7 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
         a labels masker.
     masker : :class:`~nilearn.maskers.NiftiMasker` or img_like, optional
         The masker defining the voxel order of the incoming features, normally
-        :attr:`FeatureSet.masker`, by default None.
+        the ``masker`` a bundle carries, by default None.
     atlas_kwargs : :obj:`dict`, optional
         Arguments for the nilearn fetcher when ``atlas`` names one, by default
         None.
@@ -96,7 +96,7 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
         if self.masker is None:
             raise ValueError(
                 "AtlasAggregator requires the masker that defines the voxel order of the "
-                "features, normally FeatureSet.masker."
+                "features, normally the masker a bundle carries."
             )
 
         from nimare.utils import get_masker
@@ -359,6 +359,6 @@ def _required_masker(masker):
     if masker is None:
         raise ValueError(
             "Atlas aggregation needs the masker that defines the voxel order of the map "
-            "features, normally FeatureSet.masker."
+            "features, normally the masker a bundle carries."
         )
     return masker

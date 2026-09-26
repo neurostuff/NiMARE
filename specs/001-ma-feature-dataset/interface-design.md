@@ -1092,3 +1092,79 @@ Both targets are imbalanced enough that accuracy against a majority baseline
 is the wrong summary -- one analysis in seven is resting-state -- so the
 gallery example reports ROC AUC instead, which is the question actually being
 put to the model.
+
+## 19. Dropping the container for `Studyset.to_bunch` (2026-09-26)
+
+`FeatureSet` is removed. Conversion is now
+`Studyset.to_bunch(kernel_transformer, **options)`, returning a
+`sklearn.utils.Bunch`, and `nimare.ml` keeps only what a Studyset cannot
+answer on its own: `describe_fields`, `make_preprocessor`, `AtlasAggregator`.
+
+### What the container was actually doing
+
+Every workflow was written both ways and run. All five produced identical
+results, so this was never a question of capability:
+
+| Workflow | With the container | With the bundle |
+| --- | --- | --- |
+| Build and cross-validate | 3 lines | **2 lines** |
+| Grouped train/test split | `features.split(...)` | `GroupShuffleSplit`, same rows |
+| Subset by analysis id | one call | rebuild the aligned fields |
+| Reduce on train, apply to test | keeps names and provenance | rebuild names |
+| Descriptors and preprocessor | one call | a free function on the bundle |
+
+The main path is shorter without the container. It earned its keep only on the
+derivations that keep parallel arrays aligned -- and in the release workflow
+those happen on the *Studyset*, before conversion, because conversion is the
+expensive step and `Studyset.slice` already selects rows.
+
+The bundle was already carrying almost everything: `to_sklearn` returned
+`data`, `target`, `groups`, `feature_names`, `ids`, `provenance`,
+`map_columns` and `descriptor_columns`. Only `masker` and `descriptor_names`
+had to be added for it to stand alone.
+
+### Why on the Studyset
+
+The objection to `to_bunch` as a method was that every other `to_*` on a
+Studyset -- `to_dict`, `to_nimads`, `to_parquet`, `to_dataset` -- is a cheap,
+lossless format conversion with no required arguments, while this one takes a
+required kernel and runs for half a minute. That is the same complaint §11
+recorded against running a kernel in `__init__`.
+
+It is a method anyway, because the alternative -- a free function in
+`nimare.ml` taking a Studyset -- puts the verb further from the noun for no
+gain, and the docstring can say plainly that this one computes. The layering
+objection is answered by importing scikit-learn inside the method: `nimare/
+studyset/` has no module-level scikit-learn import. That buys layering, not
+import time, since `nimare.annotate` already imports scikit-learn at
+`import nimare`.
+
+### What was lost, and the replacement
+
+| Gone | Replacement |
+| --- | --- |
+| `split` | `GroupShuffleSplit` over `bunch.groups` |
+| `slice`, `select_analyses` | the Studyset's own pair, before conversion |
+| `fit_transform_maps` / `transform_maps` | a transformer on `data[:, map_columns]` |
+| `to_sklearn` | the bundle is the bundle |
+| `copy`, `__repr__`, `__len__`, subclass preservation | dict semantics |
+| `feature_names` built lazily | eager, ~13 MB for a 2 mm mask |
+
+The laziness was worth measuring rather than assuming: naming 228,483 voxels
+eagerly is 13.4 MB and 62 ms, against a 29.7 MB matrix for the bundled
+906-analysis Studyset and a far larger one for anything bigger. The share
+shrinks as the Studyset grows, so it is paid once and never dominates.
+
+One cosmetic loss: `AtlasAggregator.get_feature_names_out` returns
+scikit-learn's array of numpy strings, which the container used to convert to
+`str`. Region names now need `.tolist()` to print plainly, which the gallery
+example does and says why.
+
+### Verification
+
+The gallery example reproduces every number from before the change --
+cross-validation 0.623 ± 0.030, truncated SVD 0.605, sparse random projection
+0.593, variance threshold 0.679, DiFuMo holdout 0.559, and the release section
+keeping 3,141 of 4,000 analyses with the same six demographic descriptors --
+so the refactor is behaviour-preserving. The suite went from 139 tests to 96:
+43 covered container methods that no longer exist.

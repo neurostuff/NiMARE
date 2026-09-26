@@ -18,7 +18,12 @@ from sklearn.exceptions import NotFittedError
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import Ridge
-from sklearn.model_selection import GridSearchCV, GroupKFold, cross_val_score
+from sklearn.model_selection import (
+    GridSearchCV,
+    GroupKFold,
+    GroupShuffleSplit,
+    cross_val_score,
+)
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import FunctionTransformer, StandardScaler
 from sklearn.random_projection import SparseRandomProjection
@@ -27,7 +32,7 @@ from sklearn.utils import Bunch
 from nimare import ml
 from nimare.generate import create_coordinate_studyset
 from nimare.meta.kernel import MKDAKernel
-from nimare.ml import AtlasAggregator, FeatureSet
+from nimare.ml import AtlasAggregator
 from nimare.nimads import Studyset
 from nimare.utils import get_masker, get_resource_path, get_template
 
@@ -152,27 +157,96 @@ def small_masker():
 
 
 @pytest.fixture
-def ma_feature_dataset(small_masker):
-    """Build a small FeatureSet directly, without running a kernel."""
+def ma_bunch(small_masker):
+    """Build a small bundle directly, without running a kernel."""
     n_rows = 6
-    ids = np.array([f"study_{idx // 2}-task{idx % 2}" for idx in range(n_rows)])
-    study_ids = np.array([f"study_{idx // 2}" for idx in range(n_rows)])
-    target = np.arange(n_rows, dtype=float) + 0.5
-    map_features = sparse.csr_matrix(
+    maps = sparse.csr_matrix(
         np.column_stack([np.arange(n_rows, dtype=float), np.arange(n_rows, dtype=float) * 2.0])
     )
-    descriptor_features = np.arange(n_rows, dtype=float)[:, None]
+    descriptors = sparse.csr_matrix(np.arange(n_rows, dtype=float)[:, None])
 
-    return FeatureSet(
-        map_features,
-        ids=ids,
-        study_ids=study_ids,
-        descriptor_features=descriptor_features,
+    return Bunch(
+        data=sparse.hstack([maps, descriptors], format="csr"),
+        target=np.arange(n_rows, dtype=float) + 0.5,
+        groups=np.array([f"study_{idx // 2}" for idx in range(n_rows)]),
+        ids=np.array([f"study_{idx // 2}-task{idx % 2}" for idx in range(n_rows)]),
+        feature_names=["voxel_0", "voxel_1", "motor_label"],
+        map_columns=slice(0, 2),
+        descriptor_columns=slice(2, 3),
         descriptor_names=["motor_label"],
-        target=target,
-        provenance={"studyset_id": "fixture", "dropped_ids": []},
         masker=small_masker,
+        provenance={"studyset_id": "fixture", "dropped_ids": []},
     )
+
+
+def _maps(bunch):
+    """Return the map block of a bundle."""
+    return bunch.data[:, bunch.map_columns]
+
+
+def _descriptor_block(bunch):
+    """Return the descriptor block as stored, or None when there is none."""
+    columns = bunch.descriptor_columns
+    return None if columns.stop <= columns.start else bunch.data[:, columns]
+
+
+def _descriptors(bunch):
+    """Return the descriptor block densely, for comparing values."""
+    block = _descriptor_block(bunch)
+    return None if block is None else _dense(block)
+
+
+def _bunch(
+    map_features,
+    ids,
+    groups=None,
+    descriptors=None,
+    descriptor_names=None,
+    target=None,
+    masker=None,
+):
+    """Build a bundle from blocks, the way to_bunch assembles one."""
+    n_map = map_features.shape[1]
+    n_descriptors = 0 if descriptors is None else descriptors.shape[1]
+    data = (
+        map_features
+        if descriptors is None
+        else sparse.hstack(
+            [sparse.csr_matrix(map_features), sparse.csr_matrix(descriptors)], format="csr"
+        )
+    )
+    return Bunch(
+        data=data,
+        target=target,
+        groups=np.asarray(ids if groups is None else groups),
+        ids=np.asarray(ids),
+        feature_names=[f"voxel_{idx}" for idx in range(n_map)] + list(descriptor_names or []),
+        map_columns=slice(0, n_map),
+        descriptor_columns=slice(n_map, n_map + n_descriptors),
+        descriptor_names=list(descriptor_names or []),
+        masker=masker,
+        provenance={},
+    )
+
+
+def _subset(bunch, rows):
+    """Return the bundle restricted to ``rows``, every aligned field together."""
+    out = Bunch(**bunch)
+    out.data = bunch.data[rows]
+    out.ids = np.asarray(bunch.ids)[rows]
+    out.groups = np.asarray(bunch.groups)[rows]
+    out.target = None if bunch.target is None else np.asarray(bunch.target)[rows]
+    return out
+
+
+def _split(bunch, test_size, random_state):
+    """Return a grouped holdout, the way a caller splits a bundle."""
+    train, test = next(
+        GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state).split(
+            bunch.data, bunch.target, bunch.groups
+        )
+    )
+    return _subset(bunch, train), _subset(bunch, test)
 
 
 def _column(data, index):
@@ -190,7 +264,7 @@ def _dense(block):
 
 def _map_signature(dataset):
     """Return the first non-zero map column of each row, which names its focus."""
-    maps = dataset.map_features
+    maps = _maps(dataset)
     return [int(maps[row].indices.min()) for row in range(maps.shape[0])]
 
 
@@ -229,231 +303,77 @@ def assert_sklearn_bunch_valid(
 # ---------------------------------------------------------------- container
 
 
-def test_dataset_attributes(ma_feature_dataset):
-    """The container exposes aligned blocks and derives the combined matrix."""
-    dataset = ma_feature_dataset
-
-    assert len(dataset) == 6
-    assert dataset.shape == (6, 3)
-    assert dataset.map_columns == slice(0, 2)
-    assert dataset.descriptor_columns == slice(2, 3)
-    assert dataset.feature_names == ["voxel_0", "voxel_1", "motor_label"]
-    assert sparse.issparse(dataset.features)
-    assert dataset.features.shape == (6, 3)
-    np.testing.assert_array_equal(
-        dataset.features.toarray()[:, dataset.descriptor_columns],
-        dataset.descriptor_features,
-    )
-    assert "n_rows=6" in repr(dataset)
-    assert "n_studies=3" in repr(dataset)
-    # Whether any of those columns are descriptors is worth seeing at a glance.
-    assert "n_descriptors=1" in repr(dataset)
-
-
-def test_dataset_features_are_built_once(ma_feature_dataset):
-    """The combined matrix is derived from the blocks and cached."""
-    assert ma_feature_dataset._features is None
-    first = ma_feature_dataset.features
-    assert ma_feature_dataset.features is first
-
-
 def test_dataset_without_descriptors(small_masker):
     """A map-only dataset has no descriptor columns and needs no hstack."""
     map_features = sparse.csr_matrix(np.eye(3))
-    dataset = FeatureSet(map_features, ids=list("abc"), study_ids=list("abc"))
+    dataset = _bunch(map_features, ids=list("abc"))
 
-    assert dataset.features is map_features
-    assert "n_descriptors" not in repr(dataset)
+    assert dataset.data is map_features
     assert dataset.descriptor_columns == slice(3, 3)
+    assert dataset.descriptor_names == []
     assert dataset.feature_names == ["voxel_0", "voxel_1", "voxel_2"]
-    assert dataset.to_sklearn().target is None
-
-
-@pytest.mark.parametrize(
-    ("kwargs", "message"),
-    [
-        ({"ids": ["a"]}, "ids covers 1 analyses"),
-        ({"study_ids": ["a"]}, "study_ids covers 1 analyses"),
-        ({"target": [1.0]}, "target covers 1 analyses"),
-        ({"descriptor_features": np.zeros((1, 1))}, "descriptor_features covers 1 analyses"),
-        ({"descriptor_features": np.zeros(2)}, "must be two-dimensional"),
-        (
-            {"descriptor_features": np.zeros((2, 2)), "descriptor_names": ["one"]},
-            "descriptor_names names 1 columns, but there are 2",
-        ),
-        ({"map_feature_names": ["one"]}, "map_feature_names names 1 columns, but there are 2"),
-    ],
-)
-def test_dataset_rejects_misaligned_inputs(kwargs, message):
-    """Every block has to describe the same analyses."""
-    base = {
-        "map_features": np.zeros((2, 2)),
-        "ids": ["a", "b"],
-        "study_ids": ["s", "s"],
-    }
-    base.update(kwargs)
-    map_features = base.pop("map_features")
-
-    with pytest.raises(ValueError, match=message):
-        FeatureSet(map_features, **base)
-
-
-def test_dataset_to_sklearn(ma_feature_dataset):
-    """Export carries the arrays scikit-learn workflows need."""
-    dataset = ma_feature_dataset
-    bunch = dataset.to_sklearn()
-
-    assert_sklearn_bunch_valid(bunch, expected_rows=6, expected_columns=3, expected_sparse=True)
-    np.testing.assert_array_equal(bunch.groups, dataset.study_ids)
-    np.testing.assert_array_equal(bunch.ids, dataset.ids)
-    assert bunch.provenance is dataset.provenance
-    assert "descriptors" not in bunch
-    assert bunch.map_columns == dataset.map_columns
-
-    data, target = dataset.to_sklearn(return_X_y=True)
-    assert data is dataset.features
-    assert target is dataset.target
-
-
-def test_dataset_split_keeps_studies_together(ma_feature_dataset):
-    """No study is split across partitions, and the split is reproducible."""
-    dataset = ma_feature_dataset
-
-    train, test = dataset.split(test_size=0.34, random_state=RANDOM_SEED)
-
-    assert set(train.study_ids).isdisjoint(test.study_ids)
-    assert len(train) + len(test) == len(dataset)
-    assert set(train.ids) | set(test.ids) == set(dataset.ids)
-    # Rows keep their own descriptors and targets.
-    for part in (train, test):
-        expected = [float(np.flatnonzero(dataset.ids == id_)[0]) for id_ in part.ids]
-        np.testing.assert_array_equal(part.descriptor_features.ravel(), expected)
-        np.testing.assert_array_equal(part.target, np.array(expected) + 0.5)
-
-    again = dataset.split(test_size=0.34, random_state=RANDOM_SEED)
-    np.testing.assert_array_equal(again[1].ids, test.ids)
-
-
-@pytest.mark.parametrize(
-    ("test_size", "message"),
-    [
-        (0.9, "leaves one partition empty"),
-        (0.0, "must be between 0 and 1"),
-        (1.0, "must be between 0 and 1"),
-        (3, "leaves one partition empty"),
-        ("half", "must be a float or an int"),
-    ],
-)
-def test_dataset_split_rejects_impossible_requests(ma_feature_dataset, test_size, message):
-    """An unservable split is explained instead of half-returned."""
-    with pytest.raises(ValueError, match=message):
-        ma_feature_dataset.split(test_size=test_size, random_state=RANDOM_SEED)
-
-
-def test_dataset_split_needs_two_studies(ma_feature_dataset):
-    """One study cannot be split without splitting the study."""
-    single = ma_feature_dataset.select_analyses(ma_feature_dataset.study_ids == "study_0")
-
-    with pytest.raises(ValueError, match="at least 2 studies"):
-        single.split()
-
-
-def test_dataset_select_analyses(ma_feature_dataset):
-    """Mask and position selections both keep every block aligned."""
-    dataset = ma_feature_dataset
-
-    by_mask = dataset.select_analyses(np.arange(len(dataset)) % 2 == 0)
-    by_position = dataset.select_analyses([0, 2, 4])
-
-    np.testing.assert_array_equal(by_mask.ids, by_position.ids)
-    np.testing.assert_array_equal(by_mask.target, [0.5, 2.5, 4.5])
-    np.testing.assert_array_equal(by_mask.map_features.toarray()[:, 0], [0.0, 2.0, 4.0])
-    np.testing.assert_array_equal(by_mask.descriptor_features.ravel(), [0.0, 2.0, 4.0])
-    assert by_mask.feature_names == dataset.feature_names
-
-    reordered = dataset.select_analyses([2, 0])
-    np.testing.assert_array_equal(reordered.ids, dataset.ids[[2, 0]])
-    np.testing.assert_array_equal(reordered.target, dataset.target[[2, 0]])
-
-    with pytest.raises(ValueError, match="one entry per analysis row"):
-        dataset.select_analyses(np.ones(2, dtype=bool))
-
-
-def test_dataset_copy_is_independent(ma_feature_dataset):
-    """A copy shares no mutable state with the original."""
-    dataset = ma_feature_dataset
-    copied = dataset.copy()
-
-    np.testing.assert_array_equal(copied.features.toarray(), dataset.features.toarray())
-    copied.provenance["dropped_ids"].append("study_9-task0")
-    copied.target[0] = 99.0
-    copied.map_features.data[0] = 99.0
-
-    assert dataset.provenance["dropped_ids"] == []
-    assert dataset.target[0] == 0.5
-    assert dataset.map_features.data[0] != 99.0
-    assert copied.masker is dataset.masker
+    assert dataset.target is None
 
 
 # ---------------------------------------------------------------- reduction
 
 
-def test_make_preprocessor_reduces_only_map_columns(ma_feature_dataset):
+def test_make_preprocessor_reduces_only_map_columns(ma_bunch):
     """Descriptor columns pass through the preprocessor untouched."""
-    dataset = ma_feature_dataset
-    preprocessor = dataset.make_preprocessor(
-        TruncatedSVD(n_components=1, random_state=RANDOM_SEED)
+    dataset = ma_bunch
+    preprocessor = ml.make_preprocessor(
+        dataset, TruncatedSVD(n_components=1, random_state=RANDOM_SEED)
     )
 
     assert isinstance(preprocessor, ColumnTransformer)
     assert not hasattr(preprocessor, "transformers_")
 
-    transformed = preprocessor.fit_transform(dataset.features)
+    transformed = preprocessor.fit_transform(dataset.data)
     if sparse.issparse(transformed):
         transformed = transformed.toarray()
 
-    assert transformed.shape == (len(dataset), 2)
-    np.testing.assert_array_equal(transformed[:, 1], dataset.descriptor_features.ravel())
+    assert transformed.shape == (dataset.data.shape[0], 2)
+    np.testing.assert_array_equal(transformed[:, 1], _descriptors(dataset).ravel())
 
 
-def test_make_preprocessor_keeps_unreduced_features_sparse(ma_feature_dataset):
+def test_make_preprocessor_keeps_unreduced_features_sparse(ma_bunch):
     """A sparse-preserving reducer must not be densified on the way through."""
-    dataset = ma_feature_dataset
-    preprocessor = dataset.make_preprocessor(VarianceThreshold(threshold=0.0))
+    dataset = ma_bunch
+    preprocessor = ml.make_preprocessor(dataset, VarianceThreshold(threshold=0.0))
 
-    transformed = preprocessor.fit_transform(dataset.features)
+    transformed = preprocessor.fit_transform(dataset.data)
 
     assert sparse.issparse(transformed)
 
 
-def test_make_preprocessor_accepts_transformers_and_passthrough(ma_feature_dataset):
+def test_make_preprocessor_accepts_transformers_and_passthrough(ma_bunch):
     """The reducer may be an instance, a name, or nothing at all."""
-    dataset = ma_feature_dataset
+    dataset = ma_bunch
 
-    built = dataset.make_preprocessor(
-        TruncatedSVD(n_components=1), descriptor_transformer=SimpleImputer()
+    built = ml.make_preprocessor(
+        dataset, TruncatedSVD(n_components=1), descriptor_transformer=SimpleImputer()
     )
     assert isinstance(built.transformers[0][1], TruncatedSVD)
     # The descriptor step densifies its columns before handing them over.
     assert isinstance(built.transformers[1][1].named_steps["transform"], SimpleImputer)
 
-    passthrough = dataset.make_preprocessor(None)
+    passthrough = ml.make_preprocessor(dataset, None)
     assert passthrough.transformers[0][1] == "passthrough"
-    assert passthrough.fit_transform(dataset.features).shape == dataset.features.shape
+    assert passthrough.fit_transform(dataset.data).shape == dataset.data.shape
 
     with pytest.raises(ValueError, match="only used when the reducer is given as a class"):
-        dataset.make_preprocessor(TruncatedSVD(), n_components=1)
+        ml.make_preprocessor(dataset, TruncatedSVD(), n_components=1)
 
 
-def test_dataset_works_in_sklearn_model_selection(ma_feature_dataset):
+def test_dataset_works_in_sklearn_model_selection(ma_bunch):
     """The exported arrays drive grouped cross-validation and a grid search."""
-    dataset = ma_feature_dataset
+    dataset = ma_bunch
     pipeline = make_pipeline(
-        dataset.make_preprocessor(TruncatedSVD(n_components=1, random_state=RANDOM_SEED)),
+        ml.make_preprocessor(dataset, TruncatedSVD(n_components=1, random_state=RANDOM_SEED)),
         Ridge(),
     )
     cv = GroupKFold(n_splits=3)
-    bunch = dataset.to_sklearn()
+    bunch = dataset
 
     scores = cross_val_score(pipeline, bunch.data, bunch.target, cv=cv, groups=bunch.groups)
     assert scores.shape == (3,)
@@ -461,40 +381,6 @@ def test_dataset_works_in_sklearn_model_selection(ma_feature_dataset):
     search = GridSearchCV(pipeline, {"ridge__alpha": [0.5, 1.0]}, cv=cv)
     search.fit(bunch.data, bunch.target, groups=bunch.groups)
     assert search.best_estimator_ is not None
-
-
-def test_fit_transform_maps_then_transform_maps(ma_feature_dataset):
-    """A reducer is fitted on train rows and reused on held-out rows."""
-    dataset = ma_feature_dataset
-    train, test = dataset.split(test_size=0.34, random_state=RANDOM_SEED)
-    reducer = TruncatedSVD(n_components=1, random_state=RANDOM_SEED)
-
-    reduced_train = train.fit_transform_maps(reducer)
-    reduced_test = test.transform_maps(reducer)
-
-    assert reduced_train.map_features.shape == (len(train), 1)
-    assert reduced_test.map_features.shape == (len(test), 1)
-    assert reduced_train.feature_names == ["truncatedsvd0", "motor_label"]
-    np.testing.assert_array_equal(reduced_train.ids, train.ids)
-    np.testing.assert_array_equal(reduced_train.target, train.target)
-    np.testing.assert_array_equal(reduced_train.descriptor_features, train.descriptor_features)
-    np.testing.assert_allclose(reduced_test.map_features, reducer.transform(test.map_features))
-    assert reduced_train.provenance["map_reductions"][0]["reducer"] == "TruncatedSVD"
-    assert "map_reductions" not in dataset.provenance
-
-
-def test_transform_maps_requires_a_fitted_reducer(ma_feature_dataset):
-    """Transforming held-out data with an unfitted reducer would fit on it."""
-    with pytest.raises(NotFittedError, match="fit_transform_maps"):
-        ma_feature_dataset.transform_maps(TruncatedSVD(n_components=1))
-
-
-def test_fit_transform_maps_rejects_row_changes(ma_feature_dataset):
-    """A reducer that drops rows breaks the alignment everything else relies on."""
-    dropper = FunctionTransformer(lambda X: X[:-1])
-
-    with pytest.raises(ValueError, match="must preserve the analysis rows"):
-        ma_feature_dataset.fit_transform_maps(dropper)
 
 
 @pytest.mark.parametrize(
@@ -506,10 +392,10 @@ def test_fit_transform_maps_rejects_row_changes(ma_feature_dataset):
     ],
 )
 def test_make_preprocessor_takes_scikit_learn_transformers(
-    ma_feature_dataset, reducer, kwargs, expected_type
+    ma_bunch, reducer, kwargs, expected_type
 ):
     """A transformer, or a transformer class plus its parameters, both resolve."""
-    preprocessor = ma_feature_dataset.make_preprocessor(reducer, **kwargs)
+    preprocessor = ml.make_preprocessor(ma_bunch, reducer, **kwargs)
 
     built = preprocessor.transformers[0][1]
     assert isinstance(built, expected_type)
@@ -517,41 +403,39 @@ def test_make_preprocessor_takes_scikit_learn_transformers(
         assert built.get_params()[name] == value
 
 
-def test_make_preprocessor_uses_a_built_transformer_as_given(ma_feature_dataset):
+def test_make_preprocessor_uses_a_built_transformer_as_given(ma_bunch):
     """An instance is used as it is, and cannot be reconfigured in passing."""
     reducer = SparseRandomProjection(n_components=3)
 
-    assert ma_feature_dataset.make_preprocessor(reducer).transformers[0][1] is reducer
+    assert ml.make_preprocessor(ma_bunch, reducer).transformers[0][1] is reducer
 
     with pytest.raises(ValueError, match="only used when the reducer is given as a class"):
-        ma_feature_dataset.make_preprocessor(reducer, n_components=4)
+        ml.make_preprocessor(ma_bunch, reducer, n_components=4)
 
 
-def test_make_preprocessor_rejects_things_that_are_not_reducers(ma_feature_dataset):
+def test_make_preprocessor_rejects_things_that_are_not_reducers(ma_bunch):
     """The message names what a reducer can be, including the workflows it replaced."""
     with pytest.raises(TypeError, match="TruncatedSVD"):
-        ma_feature_dataset.make_preprocessor("truncated_svd")
+        ml.make_preprocessor(ma_bunch, "truncated_svd")
 
     with pytest.raises(TypeError, match="is not a map reducer"):
-        ma_feature_dataset.make_preprocessor(object())
+        ml.make_preprocessor(ma_bunch, object())
 
 
-def test_make_preprocessor_keeps_a_reducer_off_the_descriptor_columns(ma_feature_dataset):
+def test_make_preprocessor_keeps_a_reducer_off_the_descriptor_columns(ma_bunch):
     """A bare reducer would decompose the descriptor columns along with the voxels."""
     reducer = TruncatedSVD(n_components=1, random_state=RANDOM_SEED)
-    descriptors = ma_feature_dataset.descriptor_features.ravel()
+    descriptors = _descriptors(ma_bunch).ravel()
 
-    scoped = ma_feature_dataset.make_preprocessor(reducer).fit_transform(
-        ma_feature_dataset.features
-    )
+    scoped = ml.make_preprocessor(ma_bunch, reducer).fit_transform(ma_bunch.data)
     scoped = scoped.toarray() if sparse.issparse(scoped) else scoped
-    bare = clone(reducer).fit_transform(ma_feature_dataset.features)
+    bare = clone(reducer).fit_transform(ma_bunch.data)
 
     # Scoped: the map block is reduced and the descriptor column passes through.
-    assert scoped.shape == (len(ma_feature_dataset), 2)
+    assert scoped.shape == (ma_bunch.data.shape[0], 2)
     np.testing.assert_allclose(scoped[:, -1], descriptors)
     # Bare: one component for everything, the descriptor folded into it.
-    assert bare.shape == (len(ma_feature_dataset), 1)
+    assert bare.shape == (ma_bunch.data.shape[0], 1)
 
 
 @pytest.fixture
@@ -568,11 +452,10 @@ def descriptor_dataset(small_masker):
         ]
     )
     ids = [f"study_{idx}-task0" for idx in range(6)]
-    return FeatureSet(
+    return _bunch(
         sparse.csr_matrix(np.random.default_rng(0).random((6, 5))),
         ids=ids,
-        study_ids=ids,
-        descriptor_features=descriptors,
+        descriptors=descriptors,
         # The middle name is the shape NeuroStore annotations come in, and a
         # ColumnTransformer step may not be named with a double underscore.
         descriptor_names=["sample_sizes", "Neurosynth_TFIDF__pain", "year"],
@@ -582,7 +465,8 @@ def descriptor_dataset(small_masker):
 
 def test_descriptors_can_take_one_transformer_each(descriptor_dataset):
     """A mapping treats each descriptor differently and keeps the column order."""
-    preprocessor = descriptor_dataset.make_preprocessor(
+    preprocessor = ml.make_preprocessor(
+        descriptor_dataset,
         TruncatedSVD(n_components=2, random_state=RANDOM_SEED),
         descriptor_transformer={
             "sample_sizes": SimpleImputer(strategy="median"),
@@ -590,7 +474,7 @@ def test_descriptors_can_take_one_transformer_each(descriptor_dataset):
         },
     )
 
-    out = preprocessor.fit_transform(descriptor_dataset.features)
+    out = preprocessor.fit_transform(descriptor_dataset.data)
     out = out.toarray() if sparse.issparse(out) else out
     imputed, untouched, scaled = out[:, -3], out[:, -2], out[:, -1]
 
@@ -607,12 +491,13 @@ def test_descriptors_can_take_one_transformer_each(descriptor_dataset):
 
 def test_descriptor_transformers_are_handed_dense_columns(descriptor_dataset):
     """A scaler refuses to centre sparse data, and descriptors are not sparse."""
-    preprocessor = descriptor_dataset.make_preprocessor(
+    preprocessor = ml.make_preprocessor(
+        descriptor_dataset,
         TruncatedSVD(n_components=2, random_state=RANDOM_SEED),
         descriptor_transformer=StandardScaler(),
     )
 
-    out = preprocessor.fit_transform(descriptor_dataset.features)
+    out = preprocessor.fit_transform(descriptor_dataset.data)
     out = out.toarray() if sparse.issparse(out) else out
 
     assert out.shape == (6, 5)
@@ -621,69 +506,59 @@ def test_descriptor_transformers_are_handed_dense_columns(descriptor_dataset):
 def test_descriptor_mapping_rejects_names_that_are_not_descriptors(descriptor_dataset):
     """A typo names the descriptors this feature set actually has."""
     with pytest.raises(ValueError, match="No descriptor called 'nope'"):
-        descriptor_dataset.make_preprocessor(
-            TruncatedSVD(n_components=2), descriptor_transformer={"nope": StandardScaler()}
+        ml.make_preprocessor(
+            descriptor_dataset,
+            TruncatedSVD(n_components=2),
+            descriptor_transformer={"nope": StandardScaler()},
         )
 
 
 def test_descriptor_transformer_without_descriptors_is_an_error(small_masker):
     """Asking for descriptor handling on a map-only feature set is a mistake."""
     ids = [f"s{idx}-t" for idx in range(4)]
-    map_only = FeatureSet(
-        sparse.csr_matrix(np.eye(4)), ids=ids, study_ids=ids, masker=small_masker
-    )
+    map_only = _bunch(sparse.csr_matrix(np.eye(4)), ids=ids, masker=small_masker)
 
     with pytest.raises(ValueError, match="no descriptor columns"):
-        map_only.make_preprocessor(TruncatedSVD(n_components=2), SimpleImputer())
+        ml.make_preprocessor(map_only, TruncatedSVD(n_components=2), SimpleImputer())
 
 
 def test_map_only_features_need_no_preprocessor(small_masker):
     """With nothing to keep the reducer away from, the reducer is returned as it is."""
-    map_only = FeatureSet(
+    map_only = _bunch(
         sparse.csr_matrix(np.eye(4)),
         ids=[f"s{idx}-t" for idx in range(4)],
-        study_ids=[f"s{idx}" for idx in range(4)],
+        groups=[f"s{idx}" for idx in range(4)],
         masker=small_masker,
     )
     reducer = TruncatedSVD(n_components=2)
 
-    assert map_only.make_preprocessor(reducer) is reducer
+    assert ml.make_preprocessor(map_only, reducer) is reducer
 
 
-def test_atlas_reducer_takes_the_maskers_voxel_order_from_the_feature_set(
-    ma_feature_dataset, small_masker
-):
+def test_atlas_reducer_takes_the_maskers_voxel_order_from_the_feature_set(ma_bunch, small_masker):
     """An atlas, or an aggregator built without one, gets the feature set's masker."""
     atlas = nib.Nifti1Image(np.ones((4, 4, 4), dtype=np.int16), small_masker.mask_img.affine)
 
-    from_atlas = ma_feature_dataset.make_preprocessor(atlas).transformers[0][1]
+    from_atlas = ml.make_preprocessor(ma_bunch, atlas).transformers[0][1]
     unbound = AtlasAggregator(atlas=atlas)
-    from_aggregator = ma_feature_dataset.make_preprocessor(unbound).transformers[0][1]
+    from_aggregator = ml.make_preprocessor(ma_bunch, unbound).transformers[0][1]
 
-    assert from_atlas.masker is ma_feature_dataset.masker
-    assert from_aggregator.masker is ma_feature_dataset.masker
+    assert from_atlas.masker is ma_bunch.masker
+    assert from_aggregator.masker is ma_bunch.masker
     assert unbound.masker is None  # the caller's object is left alone
 
 
 def test_atlas_reduction_needs_a_masker_somewhere(small_masker):
     """A feature set without a masker cannot place an atlas over its columns."""
     atlas = nib.Nifti1Image(np.ones((4, 4, 4), dtype=np.int16), small_masker.mask_img.affine)
-    maskerless = FeatureSet(
+    maskerless = _bunch(
         sparse.csr_matrix(np.eye(4)),
         ids=[f"s{idx}-t" for idx in range(4)],
-        study_ids=[f"s{idx}" for idx in range(4)],
+        groups=[f"s{idx}" for idx in range(4)],
     )
 
     with pytest.raises(ValueError, match="voxel order"):
-        maskerless.make_preprocessor(atlas)
-
-
-def test_fit_transform_maps_asks_for_a_built_aggregator(ma_feature_dataset, small_masker):
-    """An atlas has to become an aggregator first, so the fitted one can be reused."""
-    atlas = nib.Nifti1Image(np.ones((4, 4, 4), dtype=np.int16), small_masker.mask_img.affine)
-
-    with pytest.raises(TypeError, match="AtlasAggregator"):
-        ma_feature_dataset.fit_transform_maps(atlas)
+        ml.make_preprocessor(maskerless, atlas)
 
 
 def _atlas_images(affine):
@@ -872,107 +747,106 @@ def test_atlas_aggregator_names_match_the_columns_it_returns(
 def test_atlas_aggregator_names_reduced_features(small_masker, atlas_features):
     """Region names survive into the reduced dataset's feature names."""
     labels_img, _ = _atlas_images(small_masker.mask_img.affine)
-    dataset = FeatureSet(
+    dataset = _bunch(
         atlas_features,
         ids=[f"study_{idx}-task0" for idx in range(6)],
-        study_ids=[f"study_{idx}" for idx in range(6)],
+        groups=[f"study_{idx}" for idx in range(6)],
         masker=small_masker,
     )
 
-    reduced = dataset.fit_transform_maps(
-        AtlasAggregator(atlas=Bunch(maps=labels_img, labels=["one", "two"]), masker=small_masker)
-    )
+    reducer = ml.make_preprocessor(dataset, Bunch(maps=labels_img, labels=["one", "two"]))
+    reduced = reducer.fit_transform(dataset.data)
+    names = reducer.get_feature_names_out()
 
-    assert reduced.map_features.shape == (6, 2)
-    assert reduced.feature_names == ["one", "two"]
-    assert all(type(name) is str for name in reduced.feature_names)
+    assert reduced.shape == (6, 2)
+    assert list(names) == ["one", "two"]
+    # scikit-learn's contract: an array of strings, which renders without a repr
+    assert np.issubdtype(names.dtype, np.str_)
+    assert [f"{name}" for name in names] == ["one", "two"]
 
 
-def test_dataset_reduces_with_any_sklearn_transformer(ma_feature_dataset):
+def test_dataset_reduces_with_any_sklearn_transformer(ma_bunch):
     """A reducer NiMARE has never heard of works like the named ones."""
     reducer = SparseRandomProjection(n_components=1, random_state=RANDOM_SEED)
-    train, test = ma_feature_dataset.split(test_size=0.34, random_state=RANDOM_SEED)
+    train, test = _split(ma_bunch, 0.34, RANDOM_SEED)
 
-    reduced_train = train.fit_transform_maps(reducer)
-    reduced_test = test.transform_maps(reducer)
+    # Fitted on the training rows only, then applied to the held-out ones.
+    reduced_train = reducer.fit_transform(_maps(train))
+    reduced_test = reducer.transform(_maps(test))
 
-    assert reduced_train.map_features.shape == (len(train), 1)
-    assert reduced_test.map_features.shape == (len(test), 1)
-    np.testing.assert_array_equal(reduced_train.ids, train.ids)
+    assert reduced_train.shape == (train.data.shape[0], 1)
+    assert reduced_test.shape == (test.data.shape[0], 1)
+    with pytest.raises(NotFittedError):
+        clone(reducer).transform(_maps(test))
 
 
 def test_make_preprocessor_accepts_an_atlas(small_masker, atlas_features):
     """The feature set supplies the voxel order, so an atlas needs nothing else."""
     labels_img, _ = _atlas_images(small_masker.mask_img.affine)
-    dataset = FeatureSet(
+    dataset = _bunch(
         atlas_features,
         ids=[f"study_{idx}-task0" for idx in range(6)],
-        study_ids=[f"study_{idx}" for idx in range(6)],
+        groups=[f"study_{idx}" for idx in range(6)],
         masker=small_masker,
     )
 
     # Map-only features: there is nothing to keep the aggregator away from.
-    reducer = dataset.make_preprocessor(labels_img)
+    reducer = ml.make_preprocessor(dataset, labels_img)
 
     assert isinstance(reducer, AtlasAggregator)
     assert reducer.masker is small_masker
-    assert reducer.fit_transform(dataset.features).shape == (6, 2)
+    assert reducer.fit_transform(dataset.data).shape == (6, 2)
 
 
 # ------------------------------------------------------------------ extraction
 
 
-def test_public_surface_is_one_container_and_its_helpers():
-    """Users meet one container; the class that converts a Studyset is internal."""
-    assert set(ml.__all__) == {"AtlasAggregator", "FeatureSet", "describe_fields"}
+def test_public_surface_is_a_studyset_method_and_three_helpers():
+    """Conversion belongs to the Studyset; nimare.ml holds what it cannot answer."""
+    assert set(ml.__all__) == {"AtlasAggregator", "describe_fields", "make_preprocessor"}
     assert not any(name.endswith("Extractor") for name in dir(ml) if not name.startswith("_"))
-    # The container is data, not an estimator: nothing here is fitted on a Studyset.
-    assert not hasattr(FeatureSet, "fit")
-    assert not hasattr(FeatureSet, "fit_transform")
+    # There is no container class left to meet.
+    assert not hasattr(ml, "FeatureSet")
+    assert callable(Studyset.to_bunch)
 
 
 def test_from_studyset(ml_studyset):
     """A Studyset becomes one row per analysis, with everything aligned."""
     studyset = ml_studyset
 
-    features = FeatureSet.from_studyset(
-        studyset,
+    features = studyset.to_bunch(
         MKDAKernel(r=4),
         descriptor_fields=["sample_sizes", ("annotations", "motor_label")],
         target_field=("annotations", "target_score"),
     )
 
     np.testing.assert_array_equal(features.ids, studyset.ids)
-    np.testing.assert_array_equal(features.study_ids, studyset.metadata["study_id"])
-    assert sparse.issparse(features.map_features)
-    assert features.map_features.shape == (len(studyset.ids), studyset.masker.n_elements_)
+    np.testing.assert_array_equal(features.groups, studyset.metadata["study_id"])
+    assert sparse.issparse(_maps(features))
+    assert _maps(features).shape == (len(studyset.ids), studyset.masker.n_elements_)
     assert features.feature_names[-2:] == ["sample_sizes", "motor_label"]
     assert "target_score" not in features.feature_names
 
     annotations = studyset.annotations_df.set_index("id").loc[features.ids]
     np.testing.assert_array_equal(features.target, annotations["target_score"])
     np.testing.assert_array_equal(
-        _column(features.features, features.feature_names.index("motor_label")),
+        _column(features.data, features.feature_names.index("motor_label")),
         annotations["motor_label"],
     )
     np.testing.assert_array_equal(
-        _column(features.features, features.feature_names.index("sample_sizes")),
+        _column(features.data, features.feature_names.index("sample_sizes")),
         [20 + idx for idx in range(len(studyset.ids))],
     )
 
-    assert_sklearn_bunch_valid(
-        features.to_sklearn(), expected_rows=len(studyset.ids), expected_sparse=True
-    )
+    assert_sklearn_bunch_valid(features, expected_rows=len(studyset.ids), expected_sparse=True)
 
 
 def test_from_studyset_to_sklearn(ml_studyset):
     """The whole path from Studyset to scikit-learn arrays is two calls."""
-    features = FeatureSet.from_studyset(
-        ml_studyset, MKDAKernel(r=4), target_field=("annotations", "target_score")
-    )
+    features = ml_studyset.to_bunch(MKDAKernel(r=4), target_field=("annotations", "target_score"))
 
-    bunch = features.to_sklearn()
-    data, target = features.to_sklearn(return_X_y=True)
+    bunch = features
+    data, target = (features.data, features.target)
 
     assert_sklearn_bunch_valid(bunch, expected_rows=len(ml_studyset.ids), expected_sparse=True)
     assert data.shape == bunch.data.shape
@@ -981,8 +855,8 @@ def test_from_studyset_to_sklearn(ml_studyset):
 
 def test_from_studyset_records_provenance(ml_studyset):
     """Every row can be traced back to its Studyset and its settings."""
-    provenance = FeatureSet.from_studyset(
-        ml_studyset, MKDAKernel(r=4), descriptor_fields=["motor_label"]
+    provenance = ml_studyset.to_bunch(
+        MKDAKernel(r=4), descriptor_fields=["motor_label"]
     ).provenance
 
     assert provenance["studyset_id"] == ml_studyset.id
@@ -1003,11 +877,11 @@ def test_from_studyset_aligns_maps_by_id_not_position(ml_studyset):
     name them, while ``Studyset.select_analyses`` accepts positions and so can
     hand back a view in any order.
     """
-    reference = FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4))
+    reference = ml_studyset.to_bunch(MKDAKernel(r=4))
     expected = dict(zip(reference.ids, _map_signature(reference)))
 
     positions = np.array([5, 0, 7, 2, 6, 1, 4, 3])
-    reordered = FeatureSet.from_studyset(ml_studyset.select_analyses(positions), MKDAKernel(r=4))
+    reordered = ml_studyset.select_analyses(positions).to_bunch(MKDAKernel(r=4))
 
     np.testing.assert_array_equal(reordered.ids, ml_studyset.ids[positions])
     assert _map_signature(reordered) == [expected[id_] for id_ in reordered.ids]
@@ -1021,7 +895,7 @@ def test_from_studyset_rejects_duplicate_analysis_ids(ml_studyset):
     duplicated = doubled.select_analyses(np.arange(len(doubled.ids) + 1) % len(doubled.ids))
 
     with pytest.raises(ValueError, match="must be unique"):
-        FeatureSet.from_studyset(duplicated, MKDAKernel(r=4))
+        duplicated.to_bunch(MKDAKernel(r=4))
 
 
 @pytest.mark.parametrize("missing_coordinates", ["drop", "include"])
@@ -1030,8 +904,7 @@ def test_from_studyset_missing_coordinates(ml_studyset, missing_coordinates):
     missing_id = "study_2-task0"
     studyset = _build_ml_studyset(ids_without_points={missing_id})
 
-    features = FeatureSet.from_studyset(
-        studyset,
+    features = studyset.to_bunch(
         MKDAKernel(r=4),
         descriptor_fields=["motor_label"],
         target_field=("annotations", "target_score"),
@@ -1040,18 +913,18 @@ def test_from_studyset_missing_coordinates(ml_studyset, missing_coordinates):
 
     if missing_coordinates == "drop":
         assert missing_id not in set(features.ids)
-        assert len(features) == len(studyset.ids) - 1
+        assert features.data.shape[0] == len(studyset.ids) - 1
         assert features.provenance["dropped_ids"] == [missing_id]
     else:
-        assert len(features) == len(studyset.ids)
+        assert features.data.shape[0] == len(studyset.ids)
         assert features.provenance["dropped_ids"] == []
         row = int(np.flatnonzero(features.ids == missing_id)[0])
-        assert features.map_features[row].nnz == 0
-        assert features.map_features[row - 1].nnz > 0
+        assert _maps(features)[row].nnz == 0
+        assert _maps(features)[row - 1].nnz > 0
 
     annotations = studyset.annotations_df.set_index("id").loc[features.ids]
     np.testing.assert_array_equal(features.target, annotations["target_score"])
-    np.testing.assert_array_equal(features.descriptor_features.ravel(), annotations["motor_label"])
+    np.testing.assert_array_equal(_descriptors(features).ravel(), annotations["motor_label"])
 
 
 @pytest.mark.parametrize(
@@ -1064,7 +937,7 @@ def test_from_studyset_missing_coordinates(ml_studyset, missing_coordinates):
 def test_from_studyset_rejects_unknown_option_values(ml_studyset, kwargs, message):
     """Option vocabularies are checked before any work is done."""
     with pytest.raises(ValueError, match=message):
-        FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4), **kwargs)
+        ml_studyset.to_bunch(MKDAKernel(r=4), **kwargs)
 
 
 @pytest.mark.parametrize("missing_values", ["raise", "drop", "keep"])
@@ -1080,19 +953,19 @@ def test_from_studyset_missing_descriptor_values(missing_values):
 
     if missing_values == "raise":
         with pytest.raises(ValueError, match=f"Missing values in score .*{missing_id}"):
-            FeatureSet.from_studyset(studyset, **call)
+            studyset.to_bunch(**call)
         return
 
-    features = FeatureSet.from_studyset(studyset, **call)
+    features = studyset.to_bunch(**call)
     if missing_values == "drop":
         assert missing_id not in set(features.ids)
-        assert len(features) == len(studyset.ids) - 1
+        assert features.data.shape[0] == len(studyset.ids) - 1
         assert features.provenance["missing_value_ids"] == {"score": [missing_id]}
-        assert np.isfinite(features.descriptor_features).all()
+        assert np.isfinite(_descriptors(features)).all()
     else:
-        assert len(features) == len(studyset.ids)
+        assert features.data.shape[0] == len(studyset.ids)
         row = int(np.flatnonzero(features.ids == missing_id)[0])
-        assert np.isnan(features.descriptor_features[row, 0])
+        assert np.isnan(_descriptors(features)[row, 0])
         assert features.provenance["missing_value_ids"] == {"score": [missing_id]}
 
 
@@ -1101,7 +974,7 @@ def test_from_studyset_missing_target_values_are_reported():
     studyset = _build_ml_studyset(ids_without_score={"study_1-task0"})
 
     with pytest.raises(ValueError, match="study_1-task0"):
-        FeatureSet.from_studyset(studyset, MKDAKernel(r=4), target_field="score")
+        studyset.to_bunch(MKDAKernel(r=4), target_field="score")
 
 
 @pytest.mark.parametrize(
@@ -1118,7 +991,7 @@ def test_from_studyset_missing_target_values_are_reported():
 def test_from_studyset_rejects_unusable_descriptors(ml_studyset, selector, message):
     """Descriptor fields have to be numeric, and have to exist."""
     with pytest.raises((ValueError, TypeError), match=message):
-        FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4), descriptor_fields=[selector])
+        ml_studyset.to_bunch(MKDAKernel(r=4), descriptor_fields=[selector])
 
 
 @pytest.fixture(scope="session")
@@ -1136,50 +1009,48 @@ def test_annotation_labels_are_selected_by_pattern(neurosynth_studyset):
         if column.startswith("Neurosynth_TFIDF__pa")
     ]
 
-    features = FeatureSet.from_studyset(
-        studyset, MKDAKernel(r=10), descriptor_fields=[("annotations", "Neurosynth_TFIDF__pa*")]
+    features = studyset.to_bunch(
+        MKDAKernel(r=10), descriptor_fields=[("annotations", "Neurosynth_TFIDF__pa*")]
     )
 
     assert features.descriptor_names == labels
     assert "Neurosynth_TFIDF__pain" in features.descriptor_names
-    assert features.descriptor_features.shape == (len(features), len(labels))
+    assert _descriptors(features).shape == (features.data.shape[0], len(labels))
     # The names survive whole, double underscores and all.
     assert features.feature_names[-len(labels) :] == labels
 
     expected = studyset.annotations_df.set_index("id").loc[features.ids, labels].to_numpy()
-    np.testing.assert_allclose(_dense(features.descriptor_features), expected)
+    np.testing.assert_allclose(_dense(_descriptors(features)), expected)
 
 
 def test_annotation_labels_stay_sparse(neurosynth_studyset):
     """A whole annotation is thousands of mostly-empty columns, and stays sparse."""
-    features = FeatureSet.from_studyset(
-        neurosynth_studyset,
+    features = neurosynth_studyset.to_bunch(
         MKDAKernel(r=10),
         descriptor_fields=[("annotations", "Neurosynth_TFIDF__*")],
     )
 
-    descriptors = features.descriptor_features
+    descriptors = _descriptor_block(features)
     assert sparse.issparse(descriptors)
     assert descriptors.shape[1] > 3000
     assert descriptors.nnz < descriptors.shape[0] * descriptors.shape[1] / 10
-    assert sparse.issparse(features.features)
+    assert sparse.issparse(features.data)
     # Splitting and exporting keep it sparse too.
-    train, _ = features.split(test_size=0.25, random_state=RANDOM_SEED)
-    assert sparse.issparse(train.descriptor_features)
-    assert sparse.issparse(train.to_sklearn().data)
+    train, _ = _split(features, 0.25, RANDOM_SEED)
+    assert sparse.issparse(_descriptor_block(train))
+    assert sparse.issparse(train.data)
 
 
 def test_absent_annotation_labels_are_zero_not_missing(neurosynth_studyset):
     """A label no analysis carries is a zero, so missing_values has nothing to say."""
-    features = FeatureSet.from_studyset(
-        neurosynth_studyset,
+    features = neurosynth_studyset.to_bunch(
         MKDAKernel(r=10),
         descriptor_fields=[("annotations", "Neurosynth_TFIDF__*")],
         missing_values="raise",
     )
 
     assert features.provenance["missing_value_ids"] == {}
-    assert np.isfinite(_dense(features.descriptor_features)).all()
+    assert np.isfinite(_dense(_descriptors(features))).all()
 
 
 def test_annotation_pattern_mixes_with_other_descriptors(neurosynth_studyset):
@@ -1188,15 +1059,14 @@ def test_annotation_pattern_mixes_with_other_descriptors(neurosynth_studyset):
         "year", np.arange(len(neurosynth_studyset.ids), dtype=float)
     )
 
-    features = FeatureSet.from_studyset(
-        studyset,
+    features = studyset.to_bunch(
         MKDAKernel(r=10),
         descriptor_fields=[("annotations", "Neurosynth_TFIDF__pai*"), "year"],
     )
 
     assert features.descriptor_names[-1] == "year"
     np.testing.assert_allclose(
-        _dense(features.descriptor_features)[:, -1], np.arange(len(features), dtype=float)
+        _dense(_descriptors(features))[:, -1], np.arange(features.data.shape[0], dtype=float)
     )
 
 
@@ -1211,15 +1081,12 @@ def test_annotation_pattern_mixes_with_other_descriptors(neurosynth_studyset):
 def test_annotation_pattern_errors(neurosynth_studyset, selector, message):
     """A pattern that names nothing says so, and patterns are for annotations."""
     with pytest.raises(ValueError, match=message):
-        FeatureSet.from_studyset(
-            neurosynth_studyset, MKDAKernel(r=10), descriptor_fields=[selector]
-        )
+        neurosynth_studyset.to_bunch(MKDAKernel(r=10), descriptor_fields=[selector])
 
 
 def test_annotation_pattern_records_what_was_asked_for(neurosynth_studyset):
     """Provenance keeps the selector, not the thousands of names it expanded to."""
-    features = FeatureSet.from_studyset(
-        neurosynth_studyset,
+    features = neurosynth_studyset.to_bunch(
         MKDAKernel(r=10),
         descriptor_fields=[("annotations", "Neurosynth_TFIDF__pai*")],
     )
@@ -1248,8 +1115,7 @@ def test_exact_field_names_win_over_pattern_matching(neurostore_studyset):
         if "[" in column and pd.api.types.is_numeric_dtype(frame[column])
     )
 
-    features = FeatureSet.from_studyset(
-        studyset,
+    features = studyset.to_bunch(
         MKDAKernel(r=10),
         descriptor_fields=[("annotations", label)],
         missing_values="keep",
@@ -1257,7 +1123,7 @@ def test_exact_field_names_win_over_pattern_matching(neurostore_studyset):
 
     assert features.descriptor_names == [label]
     np.testing.assert_allclose(
-        _dense(features.descriptor_features).ravel(),
+        _dense(_descriptors(features)).ravel(),
         frame.set_index("id").loc[features.ids, label].to_numpy(dtype=float),
     )
 
@@ -1267,15 +1133,11 @@ def test_pattern_refuses_non_numeric_labels():
     studyset = _build_ml_studyset(text_annotation=True)
 
     with pytest.raises(ValueError, match="not numeric"):
-        FeatureSet.from_studyset(
-            studyset, MKDAKernel(r=4), descriptor_fields=[("annotations", "task_nam*")]
-        )
+        studyset.to_bunch(MKDAKernel(r=4), descriptor_fields=[("annotations", "task_nam*")])
 
     # Named exactly, the same label is refused for the same reason.
     with pytest.raises(ValueError, match="is categorical"):
-        FeatureSet.from_studyset(
-            studyset, MKDAKernel(r=4), descriptor_fields=[("annotations", "task_name")]
-        )
+        studyset.to_bunch(MKDAKernel(r=4), descriptor_fields=[("annotations", "task_name")])
 
 
 def test_patterns_span_several_annotations(ml_studyset):
@@ -1284,9 +1146,7 @@ def test_patterns_span_several_annotations(ml_studyset):
         "second", ["extra_term"], np.arange(len(ml_studyset.ids), dtype=float)[:, None]
     )
 
-    features = FeatureSet.from_studyset(
-        studyset, MKDAKernel(r=4), descriptor_fields=[("annotations", "*_term")]
-    )
+    features = studyset.to_bunch(MKDAKernel(r=4), descriptor_fields=[("annotations", "*_term")])
 
     assert features.descriptor_names == ["extra_term"]
 
@@ -1296,42 +1156,12 @@ def test_a_dropped_analysis_cannot_also_be_missing():
     missing_id = "study_2-task0"
     studyset = _build_ml_studyset(ids_without_points={missing_id}, ids_without_score={missing_id})
 
-    features = FeatureSet.from_studyset(
-        studyset, MKDAKernel(r=4), descriptor_fields=["score"], missing_values="raise"
+    features = studyset.to_bunch(
+        MKDAKernel(r=4), descriptor_fields=["score"], missing_values="raise"
     )
 
     assert features.provenance["dropped_ids"] == [missing_id]
     assert features.provenance["missing_value_ids"] == {}
-
-
-def test_a_slice_owns_its_provenance(ma_feature_dataset):
-    """Train, test and parent must not share one dict, nor one row count."""
-    dataset = ma_feature_dataset
-    dataset.provenance["n_rows"] = len(dataset)
-    train, test = dataset.split(test_size=0.34, random_state=RANDOM_SEED)
-
-    train.provenance["dropped_ids"].append("leaked")
-
-    assert dataset.provenance["dropped_ids"] == []
-    assert test.provenance["dropped_ids"] == []
-    assert train.provenance["n_rows"] == len(train)
-    assert test.provenance["n_rows"] == len(test)
-
-
-def test_a_subclass_survives_every_derivation(ma_feature_dataset):
-    """A container that derives a plain FeatureSet loses whatever a subclass added."""
-
-    class Mine(FeatureSet):
-        pass
-
-    mine = ma_feature_dataset._rebuild()
-    mine.__class__ = Mine
-
-    train, test = mine.split(test_size=0.34, random_state=RANDOM_SEED)
-    assert type(train) is Mine and type(test) is Mine
-    assert type(mine.copy()) is Mine
-    assert type(mine.select_analyses([0, 1])) is Mine
-    assert type(mine.fit_transform_maps(TruncatedSVD(n_components=1))) is Mine
 
 
 def test_a_target_is_constant_only_over_the_rows_that_are_kept():
@@ -1341,16 +1171,16 @@ def test_a_target_is_constant_only_over_the_rows_that_are_kept():
     studyset = studyset.with_metadata("grp", np.array(labels, dtype=object))
 
     with pytest.raises(ValueError, match="single value 'common' for every analysis that was kept"):
-        FeatureSet.from_studyset(studyset, MKDAKernel(r=4), target_field="grp")
+        studyset.to_bunch(MKDAKernel(r=4), target_field="grp")
 
 
 def test_study_level_metadata_is_inherited_even_when_an_analysis_declares_it(ml_studyset):
     """One analysis declaring a field must not hide the study-level value from its siblings."""
-    features = FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4), descriptor_fields=["year"])
+    features = ml_studyset.to_bunch(MKDAKernel(r=4), descriptor_fields=["year"])
 
     years = ml_studyset.metadata.set_index("id").loc[features.ids, "year"]
-    np.testing.assert_array_equal(features.descriptor_features[:, 0], years)
-    assert np.isfinite(features.descriptor_features[:, 0]).all()
+    np.testing.assert_array_equal(_descriptors(features)[:, 0], years)
+    assert np.isfinite(_descriptors(features)[:, 0]).all()
 
 
 def test_atlas_aggregator_forgets_the_previous_atlas(atlas_features, small_masker):
@@ -1373,9 +1203,7 @@ def test_atlas_aggregator_forgets_the_previous_atlas(atlas_features, small_maske
 def test_from_studyset_rejects_repeated_descriptor_fields(ml_studyset):
     """The same field twice is a mistake, not two features."""
     with pytest.raises(ValueError, match="selected more than once"):
-        FeatureSet.from_studyset(
-            ml_studyset, MKDAKernel(r=4), descriptor_fields=["motor_label", "motor_label"]
-        )
+        ml_studyset.to_bunch(MKDAKernel(r=4), descriptor_fields=["motor_label", "motor_label"])
 
 
 def test_from_studyset_reports_ambiguous_field_names(ml_studyset):
@@ -1383,27 +1211,23 @@ def test_from_studyset_reports_ambiguous_field_names(ml_studyset):
     annotated = ml_studyset.with_metadata("motor_label", np.ones(len(ml_studyset.ids)))
 
     with pytest.raises(ValueError, match="is ambiguous"):
-        FeatureSet.from_studyset(annotated, MKDAKernel(r=4), descriptor_fields=["motor_label"])
+        annotated.to_bunch(MKDAKernel(r=4), descriptor_fields=["motor_label"])
 
 
 def test_from_studyset_reads_study_level_and_list_metadata(ml_studyset):
     """Study-level fields are inherited and list-valued fields are reduced."""
-    features = FeatureSet.from_studyset(
-        ml_studyset, MKDAKernel(r=4), descriptor_fields=["year", "sample_sizes"]
-    )
+    features = ml_studyset.to_bunch(MKDAKernel(r=4), descriptor_fields=["year", "sample_sizes"])
 
     years = ml_studyset.metadata.set_index("id").loc[features.ids, "year"]
-    np.testing.assert_array_equal(features.descriptor_features[:, 0], years)
+    np.testing.assert_array_equal(_descriptors(features)[:, 0], years)
     np.testing.assert_array_equal(
-        features.descriptor_features[:, 1], [20 + idx for idx in range(len(features))]
+        _descriptors(features)[:, 1], [20 + idx for idx in range(features.data.shape[0])]
     )
 
 
 def test_from_studyset_exports_categorical_targets(ml_studyset):
     """A categorical target reaches y as labels, ready for a classifier."""
-    features = FeatureSet.from_studyset(
-        ml_studyset, MKDAKernel(r=4), target_field="comparison_task"
-    )
+    features = ml_studyset.to_bunch(MKDAKernel(r=4), target_field="comparison_task")
 
     assert sorted(set(features.target)) == ["flanker", "n-back"]
     np.testing.assert_array_equal(
@@ -1414,8 +1238,7 @@ def test_from_studyset_exports_categorical_targets(ml_studyset):
 
 def test_from_studyset_applies_a_target_transformer(ml_studyset):
     """A label extractor turns a text field into one label per analysis."""
-    features = FeatureSet.from_studyset(
-        ml_studyset,
+    features = ml_studyset.to_bunch(
         MKDAKernel(r=4),
         target_field=("texts", "abstract"),
         target_transformer=lambda values: np.array(
@@ -1423,13 +1246,14 @@ def test_from_studyset_applies_a_target_transformer(ml_studyset):
         ),
     )
 
-    np.testing.assert_array_equal(features.target, [str(idx) for idx in range(len(features))])
+    np.testing.assert_array_equal(
+        features.target, [str(idx) for idx in range(features.data.shape[0])]
+    )
 
 
 def test_from_studyset_target_transformer_may_be_a_transformer(ml_studyset):
     """A stateless scikit-learn transformer works as a label extractor too."""
-    features = FeatureSet.from_studyset(
-        ml_studyset,
+    features = ml_studyset.to_bunch(
         MKDAKernel(r=4),
         target_field=("annotations", "target_score"),
         target_transformer=FunctionTransformer(lambda values: np.round(values)),
@@ -1448,7 +1272,7 @@ def test_from_studyset_target_transformer_may_be_a_transformer(ml_studyset):
 def test_from_studyset_rejects_unusable_targets(ml_studyset, kwargs, message):
     """A target has to be one usable value per analysis."""
     with pytest.raises((ValueError, TypeError), match=message):
-        FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4), **kwargs)
+        ml_studyset.to_bunch(MKDAKernel(r=4), **kwargs)
 
 
 def test_from_studyset_rejects_constant_targets(ml_studyset):
@@ -1456,7 +1280,7 @@ def test_from_studyset_rejects_constant_targets(ml_studyset):
     constant = ml_studyset.with_metadata("only_value", np.ones(len(ml_studyset.ids)))
 
     with pytest.raises(ValueError, match="nothing to predict"):
-        FeatureSet.from_studyset(constant, MKDAKernel(r=4), target_field="only_value")
+        constant.to_bunch(MKDAKernel(r=4), target_field="only_value")
 
 
 class _CountingKernel(MKDAKernel):
@@ -1473,25 +1297,21 @@ def test_from_studyset_caches_maps_with_memory(ml_studyset, tmp_path):
     """A cache location makes a repeated conversion reuse the maps it made."""
     _CountingKernel.calls = 0
 
-    first = FeatureSet.from_studyset(ml_studyset, _CountingKernel(r=4), memory=str(tmp_path))
-    second = FeatureSet.from_studyset(ml_studyset, _CountingKernel(r=4), memory=str(tmp_path))
+    first = ml_studyset.to_bunch(_CountingKernel(r=4), memory=str(tmp_path))
+    second = ml_studyset.to_bunch(_CountingKernel(r=4), memory=str(tmp_path))
 
     assert _CountingKernel.calls == 1
-    np.testing.assert_array_equal(first.map_features.toarray(), second.map_features.toarray())
+    np.testing.assert_array_equal(_maps(first).toarray(), _maps(second).toarray())
 
     # A different kernel configuration is a different cache entry, not a stale hit.
-    FeatureSet.from_studyset(ml_studyset, _CountingKernel(r=8), memory=str(tmp_path))
+    ml_studyset.to_bunch(_CountingKernel(r=8), memory=str(tmp_path))
     assert _CountingKernel.calls == 2
 
     # Kernel transformers cache their maps at memory_level 2, so a lower level asks
     # for no caching at all.
     _CountingKernel.calls = 0
-    FeatureSet.from_studyset(
-        ml_studyset, _CountingKernel(r=4), memory=str(tmp_path), memory_level=1
-    )
-    FeatureSet.from_studyset(
-        ml_studyset, _CountingKernel(r=4), memory=str(tmp_path), memory_level=1
-    )
+    ml_studyset.to_bunch(_CountingKernel(r=4), memory=str(tmp_path), memory_level=1)
+    ml_studyset.to_bunch(_CountingKernel(r=4), memory=str(tmp_path), memory_level=1)
     assert _CountingKernel.calls == 2
 
 
@@ -1499,8 +1319,8 @@ def test_from_studyset_without_memory_does_not_cache(ml_studyset):
     """Without a cache location every conversion generates its own maps."""
     _CountingKernel.calls = 0
 
-    FeatureSet.from_studyset(ml_studyset, _CountingKernel(r=4))
-    FeatureSet.from_studyset(ml_studyset, _CountingKernel(r=4))
+    ml_studyset.to_bunch(_CountingKernel(r=4))
+    ml_studyset.to_bunch(_CountingKernel(r=4))
 
     assert _CountingKernel.calls == 2
 
@@ -1509,7 +1329,7 @@ def test_from_studyset_leaves_the_callers_kernel_alone(ml_studyset, tmp_path):
     """Wiring up a cache must not reconfigure the kernel that was passed in."""
     kernel_transformer = MKDAKernel(r=4)
 
-    FeatureSet.from_studyset(ml_studyset, kernel_transformer, memory=str(tmp_path))
+    ml_studyset.to_bunch(kernel_transformer, memory=str(tmp_path))
 
     assert any(tmp_path.iterdir())
     assert kernel_transformer.memory.location is None
@@ -1518,9 +1338,9 @@ def test_from_studyset_leaves_the_callers_kernel_alone(ml_studyset, tmp_path):
 
 def test_from_studyset_accepts_a_kernel_class(ml_studyset):
     """A kernel transformer may be given as a class, as elsewhere in NiMARE."""
-    features = FeatureSet.from_studyset(ml_studyset, MKDAKernel)
+    features = ml_studyset.to_bunch(MKDAKernel)
 
-    assert features.map_features.shape[0] == len(ml_studyset.ids)
+    assert _maps(features).shape[0] == len(ml_studyset.ids)
     assert features.provenance["kernel_transformer"]["class"] == "MKDAKernel"
 
 
@@ -1529,20 +1349,18 @@ def test_from_studyset_rejects_an_empty_studyset(ml_studyset):
     empty = ml_studyset.select_analyses(np.zeros(len(ml_studyset.ids), dtype=bool))
 
     with pytest.raises(ValueError, match="no analyses"):
-        FeatureSet.from_studyset(empty, MKDAKernel(r=4))
+        empty.to_bunch(MKDAKernel(r=4))
 
 
 def test_end_to_end_classification(ml_studyset):
     """The documented workflow runs from Studyset to grouped cross-validation."""
     from sklearn.linear_model import LogisticRegression
 
-    features = FeatureSet.from_studyset(
-        ml_studyset, MKDAKernel(r=10), target_field="comparison_task"
-    )
-    bunch = features.to_sklearn()
+    features = ml_studyset.to_bunch(MKDAKernel(r=10), target_field="comparison_task")
+    bunch = features
 
     pipeline = make_pipeline(
-        features.make_preprocessor(TruncatedSVD(n_components=2, random_state=RANDOM_SEED)),
+        ml.make_preprocessor(features, TruncatedSVD(n_components=2, random_state=RANDOM_SEED)),
         LogisticRegression(max_iter=500),
     )
     scores = cross_val_score(
@@ -1563,14 +1381,14 @@ def test_from_studyset_meets_the_conversion_budget():
     _, studyset = create_coordinate_studyset(foci=5, n_studies=1000, sample_size=30, seed=42)
 
     start = time.time()
-    features = FeatureSet.from_studyset(studyset, MKDAKernel(r=10))
-    train, test = features.split(test_size=0.25, random_state=RANDOM_SEED)
+    features = studyset.to_bunch(MKDAKernel(r=10))
+    train, test = _split(features, 0.25, RANDOM_SEED)
     elapsed = time.time() - start
     peak_gb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e6
 
-    assert len(features) == len(studyset.ids)
-    assert set(train.study_ids).isdisjoint(test.study_ids)
-    assert sparse.issparse(features.features)
+    assert features.data.shape[0] == len(studyset.ids)
+    assert set(train.groups).isdisjoint(test.groups)
+    assert sparse.issparse(features.data)
     assert elapsed <= 180, f"conversion and split took {elapsed:.0f}s"
     assert peak_gb <= 5, f"peak memory was {peak_gb:.1f} GB"
 
@@ -1606,13 +1424,12 @@ def test_describe_fields_agrees_with_what_extraction_reads():
     assert fields.loc["score", "kind"] == "numeric"
     assert fields.loc["score", "coverage"] < 1.0
 
-    features = FeatureSet.from_studyset(
-        studyset,
+    features = studyset.to_bunch(
         kernel_transformer=MKDAKernel(r=1),
         descriptor_fields=["score"],
         missing_values="keep",
     )
-    column = features.descriptor_features
+    column = _descriptors(features)
     column = column.toarray() if sparse.issparse(column) else np.asarray(column)
     reported = np.isfinite(column[:, 0]).mean()
     assert reported == pytest.approx(fields.loc["score", "coverage"])
@@ -1631,8 +1448,7 @@ def test_describe_fields_can_drop_the_long_tail(ml_studyset):
 def test_an_indexed_label_is_selectable_by_pattern():
     """``groups[0].*`` names group zero, though fnmatch reads brackets as a class."""
     studyset = _build_ml_studyset(indexed_annotation=True)
-    features = FeatureSet.from_studyset(
-        studyset,
+    features = studyset.to_bunch(
         kernel_transformer=MKDAKernel(r=1),
         descriptor_fields=[("annotations", "groups[0].*")],
     )
@@ -1643,119 +1459,12 @@ def test_an_indexed_label_is_selectable_by_pattern():
 def test_a_character_class_pattern_still_selects_as_one():
     """Escaping is a fallback, so a pattern that already matches is left alone."""
     studyset = _build_ml_studyset(indexed_annotation=True)
-    features = FeatureSet.from_studyset(
-        studyset,
+    features = studyset.to_bunch(
         kernel_transformer=MKDAKernel(r=1),
         descriptor_fields=[("annotations", "[mt]*")],
     )
 
     assert features.descriptor_names == ["motor_label", "target_score"]
-
-
-SLICE_CALLS = [
-    pytest.param({"ids": "study_1-task0"}, id="one-full-id-as-a-string"),
-    pytest.param({"ids": ["study_1-task0", "study_0-task0"]}, id="several-full-ids"),
-    pytest.param({"ids": ["study_2-task0", "study_0-task1"]}, id="named-out-of-row-order"),
-    pytest.param({"ids": ["study_0-task0", "study_0-task0"]}, id="repeated-id"),
-    pytest.param({"ids": "task0"}, id="short-id-shared-by-several"),
-    pytest.param({"ids": ["study_0-task0", "task1"]}, id="full-and-short-together"),
-    pytest.param({"ids": []}, id="nothing-named"),
-    pytest.param({"analyses": ["study_3-task1"]}, id="analyses-alias"),
-    pytest.param({"ids": ["study_0"], "filter_level": "study"}, id="by-study"),
-    pytest.param({"ids": ["study_0", "study_3"], "filter_level": "study"}, id="several-studies"),
-]
-
-
-@pytest.mark.parametrize("call", SLICE_CALLS)
-def test_slice_selects_what_studyset_slice_selects(ml_studyset, call):
-    """An id selects the same analyses here as it does on the Studyset."""
-    features = FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4))
-
-    np.testing.assert_array_equal(
-        features.slice(**call).ids,
-        np.asarray(ml_studyset.slice(**call).ids, dtype=str),
-    )
-
-
-@pytest.mark.parametrize(
-    ("call", "on_studyset", "on_features"),
-    [
-        (
-            {"ids": ["no-such-analysis"]},
-            "No analysis in this studyset matches",
-            "No analysis in this dataset matches",
-        ),
-        (
-            {"ids": ["study_9"], "filter_level": "study"},
-            "No study in this studyset matches",
-            "No study in this dataset matches",
-        ),
-        (
-            {"ids": ["study_0-task0"], "filter_level": "bogus"},
-            "filter_level must be",
-            "filter_level must be",
-        ),
-    ],
-)
-def test_slice_refuses_what_studyset_slice_refuses(ml_studyset, call, on_studyset, on_features):
-    """The same calls raise the same way, each message naming the object called."""
-    features = FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4))
-
-    with pytest.raises(ValueError, match=on_studyset):
-        ml_studyset.slice(**call)
-    with pytest.raises(ValueError, match=on_features):
-        features.slice(**call)
-
-
-def test_slice_without_ids_is_a_type_error(ml_studyset):
-    """Naming neither ``ids`` nor ``analyses`` is the mistake Studyset calls it."""
-    features = FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4))
-
-    with pytest.raises(TypeError, match="requires 'ids'"):
-        features.slice()
-
-
-def test_slice_keeps_row_order_while_select_analyses_takes_the_order_given(ml_studyset):
-    """Naming analyses and indexing rows differ exactly here."""
-    features = FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4))
-    wanted = [features.ids[3], features.ids[1]]
-
-    np.testing.assert_array_equal(features.slice(wanted).ids, [features.ids[1], features.ids[3]])
-    np.testing.assert_array_equal(features.select_analyses([3, 1]).ids, wanted)
-
-
-def test_slice_carries_the_rows_it_names(ml_studyset):
-    """The selected rows keep their own maps and targets."""
-    features = FeatureSet.from_studyset(
-        ml_studyset, MKDAKernel(r=4), target_field=("annotations", "target_score")
-    )
-    wanted = [features.ids[3], features.ids[1]]
-
-    sliced = features.slice(wanted)
-    expected = features.select_analyses([1, 3])
-
-    np.testing.assert_array_equal(sliced.ids, expected.ids)
-    np.testing.assert_array_equal(sliced.target, expected.target)
-    np.testing.assert_array_equal(sliced.map_features.toarray(), expected.map_features.toarray())
-
-
-def test_select_analyses_still_refuses_ids(ml_studyset):
-    """Indexing by position and naming by id stay separate, as on a Studyset."""
-    features = FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4))
-
-    with pytest.raises(ValueError, match="invalid literal for int"):
-        features.select_analyses([features.ids[0]])
-
-
-def test_slice_survives_a_subclass(ml_studyset):
-    """A derivation keeps the caller's type, as every other one does."""
-
-    class Mine(FeatureSet):
-        pass
-
-    features = Mine.from_studyset(ml_studyset, MKDAKernel(r=4))
-
-    assert type(features.slice([features.ids[0]])) is Mine
 
 
 def test_describe_fields_of_an_empty_studyset_is_an_empty_report(ml_studyset):
@@ -1777,8 +1486,7 @@ def test_missing_values_can_differ_between_target_and_descriptors():
     """A descriptor gap is imputable and a target gap is not, so they can differ."""
     studyset = _build_ml_studyset(ids_without_score=("study_0-task0",))
 
-    features = FeatureSet.from_studyset(
-        studyset,
+    features = studyset.to_bunch(
         kernel_transformer=MKDAKernel(r=1),
         descriptor_fields=["score"],
         target_field=("annotations", "target_score"),
@@ -1787,7 +1495,7 @@ def test_missing_values_can_differ_between_target_and_descriptors():
 
     # the analysis with no score is kept, because only its descriptor is missing
     assert "study_0-task0" in set(features.ids)
-    column = features.descriptor_features
+    column = _descriptors(features)
     column = column.toarray() if sparse.issparse(column) else np.asarray(column)
     assert not np.isfinite(column).all()
     assert np.isfinite(np.asarray(features.target, dtype=float)).all()
@@ -1797,8 +1505,7 @@ def test_a_missing_target_is_dropped_while_descriptors_are_kept():
     """The role mapping drops the rows whose target is missing, and only those."""
     studyset = _build_ml_studyset(ids_without_score=("study_0-task0",))
 
-    features = FeatureSet.from_studyset(
-        studyset,
+    features = studyset.to_bunch(
         kernel_transformer=MKDAKernel(r=1),
         target_field="score",
         descriptor_fields=[("annotations", "motor_label")],
@@ -1814,8 +1521,7 @@ def test_missing_values_rejects_a_role_it_does_not_know():
     studyset = _build_ml_studyset()
 
     with pytest.raises(ValueError, match="sets a policy per role"):
-        FeatureSet.from_studyset(
-            studyset,
+        studyset.to_bunch(
             kernel_transformer=MKDAKernel(r=1),
             target_field="score",
             missing_values={"targets": "drop"},
@@ -1827,8 +1533,7 @@ def test_missing_values_rejects_an_unknown_policy_in_a_mapping():
     studyset = _build_ml_studyset()
 
     with pytest.raises(ValueError, match="must be 'raise', 'drop' or 'keep'"):
-        FeatureSet.from_studyset(
-            studyset,
+        studyset.to_bunch(
             kernel_transformer=MKDAKernel(r=1),
             target_field="score",
             missing_values={"target": "impute"},

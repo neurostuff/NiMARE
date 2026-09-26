@@ -3,22 +3,26 @@
 Machine learning with Studysets
 ===============================
 
-:mod:`nimare.ml` turns a :class:`~nimare.nimads.Studyset` into the arrays a
-scikit-learn workflow expects: a sparse analysis-by-voxel matrix of modeled
-activation (MA) features, an optional target, and the study labels that keep
-analyses from one study out of two different partitions.
+:meth:`~nimare.studyset.Studyset.to_bunch` turns a
+:class:`~nimare.nimads.Studyset` into the arrays a scikit-learn workflow
+expects: a sparse analysis-by-voxel matrix of modeled activation (MA)
+features, an optional target, and the study labels that keep analyses from one
+study out of two different partitions.
 
 .. code-block:: python
 
     from nimare.meta.kernel import MKDAKernel
-    from nimare.ml import FeatureSet
 
-    features = FeatureSet.from_studyset(
-        studyset,
-        kernel_transformer=MKDAKernel(r=10),
+    bunch = studyset.to_bunch(
+        MKDAKernel(r=10),
         target_field=("metadata", "comparison_task"),
     )
-    bunch = features.to_sklearn()
+
+:mod:`nimare.ml` holds what a Studyset cannot answer on its own:
+:func:`~nimare.ml.describe_fields` reports which of its fields are worth
+modelling, :func:`~nimare.ml.make_preprocessor` keeps a reducer off the
+descriptor columns, and :class:`~nimare.ml.AtlasAggregator` reduces voxels over
+an atlas.
 
 Who does what
 -------------
@@ -40,18 +44,26 @@ one row per analysis that has coordinates, ordered by id, and
 position is only correct while the Studyset happens to be in sorted order --
 which :meth:`~nimare.studyset.Studyset.select_analyses` does not guarantee.
 
-Why a named constructor
------------------------
+What the bundle holds
+---------------------
 
-:meth:`~nimare.ml.FeatureSet.from_studyset` is a classmethod rather than
-``__init__`` because the container is also built from blocks that already
-exist, by :meth:`~nimare.ml.FeatureSet.split`,
-:meth:`~nimare.ml.FeatureSet.select_analyses`,
-:meth:`~nimare.ml.FeatureSet.copy` and the map-reduction methods. A
-constructor that ran a kernel would push all of those onto a back door, and
-would make a twenty-second kernel run look like a cheap wrap. ``__init__``
-takes the blocks directly, which is also what to use for features generated
-some other way.
+A :class:`~sklearn.utils.Bunch`, which is a dict whose keys are also
+attributes, holding ``data`` (sparse while the map features are unreduced),
+``target``, ``groups`` (the study each analysis came from), ``ids``,
+``feature_names``, ``map_columns``, ``descriptor_columns``,
+``descriptor_names``, the ``masker`` the voxels came from, and ``provenance``.
+
+There is no container class and no estimator to configure. Everything after
+conversion is scikit-learn working on ordinary arrays: a grouped split is
+:class:`~sklearn.model_selection.GroupShuffleSplit` over ``groups``, a subset
+is an index into ``data``, ``ids`` and ``target`` together, and a reduction is
+a transformer applied to ``data[:, bunch.map_columns]``.
+
+``to_bunch`` is the only ``to_*`` method on a Studyset that computes rather
+than reformats: a release of 40,000 analyses takes about half a minute and a
+few gigabytes, because it runs a kernel over every analysis. It is also the
+only one that needs scikit-learn, which it imports when called rather than at
+module load, so :mod:`nimare.studyset` does not depend on it.
 
 Selecting fields
 ----------------
@@ -77,9 +89,8 @@ it:
 
 .. code-block:: python
 
-    features = FeatureSet.from_studyset(
-        studyset,
-        kernel_transformer=MKDAKernel(r=10),
+    bunch = studyset.to_bunch(
+        MKDAKernel(r=10),
         descriptor_fields=[("annotations", "Neurosynth_TFIDF__*")],
     )
 
@@ -149,7 +160,7 @@ NeuroStore release has 76 metadata columns and 924 annotation labels, and 875
 of the 997 are reported by fewer than one analysis in a hundred --
 ``control_sampeslize`` and ``young sampel size`` among them.
 :func:`~nimare.ml.describe_fields` reports what each one holds, using the same
-reader :meth:`~nimare.ml.FeatureSet.from_studyset` uses, so a field it calls
+reader :meth:`~nimare.studyset.Studyset.to_bunch` uses, so a field it calls
 numeric is numeric there:
 
 .. code-block:: python
@@ -178,39 +189,39 @@ The ``field`` column, filtered to ``kind == "numeric"``, is the
 .. code-block:: python
 
     numeric = fields[fields.kind == "numeric"].field
-    features = FeatureSet.from_studyset(
-        studyset,
-        kernel_transformer=MKDAKernel(r=10),
+    bunch = studyset.to_bunch(
+        MKDAKernel(r=10),
         descriptor_fields=[("annotations", name) for name in numeric],
         missing_values="keep",
     )
 
-Selecting rows
---------------
+Selecting rows and splitting
+----------------------------
 
-Two methods, because a row position and an analysis id answer different
-questions, and NiMARE already keeps them apart on a Studyset:
+Subsetting a bundle is indexing, done to every aligned field together. Select
+rows on the Studyset when you can -- :meth:`~nimare.studyset.Studyset.slice`
+takes analysis ids and :meth:`~nimare.studyset.Studyset.select_analyses` takes
+a mask or positions -- because conversion is the expensive step and it is
+cheaper to run it once on the rows being modelled.
+
+After conversion, a grouped holdout is
+:class:`~sklearn.model_selection.GroupShuffleSplit` over ``groups``:
 
 .. code-block:: python
 
-    features.select_analyses(features.target == "n-back")   # mask or positions
-    features.slice(["study_0-task0", "study_1-task0"])      # analysis ids
+    from sklearn.model_selection import GroupShuffleSplit
 
-:meth:`~nimare.ml.FeatureSet.select_analyses` indexes rows, which is what a
-mask from a comparison or an array of positions from a splitter gives, and is
-what :meth:`~nimare.studyset.Studyset.select_analyses` takes.
-:meth:`~nimare.ml.FeatureSet.slice` names analyses, which is what survives a
-rebuild, a reorder, or a split saved to disk and read back, and is what
-:meth:`~nimare.studyset.Studyset.slice` takes. Naming an id the dataset does
-not hold raises, rather than quietly returning fewer rows.
+    train, test = next(
+        GroupShuffleSplit(n_splits=1, test_size=0.25, random_state=13).split(
+            bunch.data, bunch.target, bunch.groups
+        )
+    )
+    X_train, y_train = bunch.data[train], bunch.target[train]
 
-Splitting without leaking a study
----------------------------------
-
-:meth:`~nimare.ml.FeatureSet.split` is a grouped holdout over
-:class:`~sklearn.model_selection.GroupShuffleSplit`, and ``test_size`` is a
-fraction of *studies*, so analysis counts only approximate it. For
-cross-validation, hand ``bunch.groups`` to any scikit-learn group splitter.
+``test_size`` is a fraction of *studies*, so analysis counts only approximate
+it. A study belongs to exactly one partition because ``groups`` says which
+study each row came from. For cross-validation there is nothing to split at
+all: hand ``groups`` to any scikit-learn group splitter.
 
 Reducing the voxel features
 ---------------------------
@@ -235,7 +246,7 @@ A transformer placed directly in a pipeline sees every column it is given. With
 map features alone that is the whole matrix and nothing else is needed. Once
 there are descriptor columns, a bare reducer would decompose them along with
 the voxels, which is what :class:`~sklearn.compose.ColumnTransformer` exists to
-prevent. :meth:`~nimare.ml.FeatureSet.make_preprocessor` builds one with the
+prevent. :func:`~nimare.ml.make_preprocessor` builds one with the
 column boundary filled in, the masker bound into an atlas reducer, and
 ``sparse_threshold=1.0`` -- scikit-learn's default of ``0.3`` would densify a
 map block above 30% density, about 1.6 GB at 228,000 columns:
@@ -277,11 +288,20 @@ differs by version: a region falling outside the mask is kept by nilearn 0.12
 and dropped by 0.13. A feature matrix built this way is comparable across
 environments only when the nilearn version is.
 
-Outside a pipeline, fit the reducer on the training feature set with
-:meth:`~nimare.ml.FeatureSet.fit_transform_maps` and hand the same fitted
-reducer to :meth:`~nimare.ml.FeatureSet.transform_maps` for the held-out one.
-Passing an unfitted reducer to the latter raises, because fitting it there
-would use the held-out analyses.
+Outside a pipeline, fit the reducer on the training rows and apply the same
+fitted reducer to the held-out ones. The bundle's ``masker`` is what an atlas
+reducer needs and cannot work out for itself:
+
+.. code-block:: python
+
+    maps = bunch.data[:, bunch.map_columns]
+    reducer = AtlasAggregator(atlas, masker=bunch.masker)
+
+    train_reduced = reducer.fit_transform(maps[train])
+    test_reduced = reducer.transform(maps[test])
+
+Calling ``fit_transform`` on the held-out rows would fit the reduction on the
+analyses being held out.
 
 Rows are converted back into images in batches, because nilearn's maskers
 aggregate an image rather than a row. Most of the cost is per call rather than
@@ -297,7 +317,7 @@ A Studyset of 1,000 studies converts and splits in well under the budget the
 feature was designed to: roughly a second, and under a gigabyte of peak memory,
 against a target of three minutes and five gigabytes. Unreduced voxelwise
 features are sparse everywhere -- in the container, in the exported bundle, and
-through :meth:`~nimare.ml.FeatureSet.make_preprocessor` -- and only an explicit
+through :func:`~nimare.ml.make_preprocessor` -- and only an explicit
 reducer produces a dense representation.
 
 Conversion is linear in analyses, and an MA row is denser than a Studyset row:

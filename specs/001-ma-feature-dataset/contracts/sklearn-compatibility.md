@@ -6,20 +6,20 @@ scikit-learn workflows. **Revised 2026-09-25** alongside
 
 ## Dataset Export
 
-`FeatureSet.to_sklearn()` returns a `sklearn.utils.Bunch` with:
+`Studyset.to_bunch()` returns a `sklearn.utils.Bunch` with:
 
 - `data`: two-dimensional analysis-by-feature matrix accepted by scikit-learn
-  estimators; same as `FeatureSet.features`.
+  estimators.
 - `target`: one-dimensional target array or `None`.
 - `groups`: one-dimensional study group array aligned to `data` rows; same as
-  `FeatureSet.study_ids`.
+  the study each analysis came from.
 - `feature_names`: feature names aligned to `data` columns.
 - `ids`, `provenance`, `map_columns`, `descriptor_columns`: the NiMARE-side
   context a researcher needs to trace a row or build a pipeline.
 
 `to_sklearn(return_X_y=True)` returns `(data, target)` instead, following the
 `sklearn.datasets` convention, so the whole path from Studyset to scikit-learn
-arrays is `FeatureSet.from_studyset(studyset, ...).to_sklearn()`.
+arrays is `Studyset.to_bunch(studyset, ...).to_sklearn()`.
 
 Exported unreduced voxelwise feature data must remain a sparse numeric matrix.
 Dense feature data may be exported only after an explicit reducer produces a
@@ -70,7 +70,7 @@ Grouped splitting uses study group labels. For any split:
 - Too few study groups, or a `test_size` that would empty a partition, must
   raise before returning any split.
 
-`FeatureSet.split` covers the holdout case; `groups` goes straight to
+`GroupShuffleSplit over bunch.groups` covers the holdout case; `groups` goes straight to
 `GroupKFold`, `StratifiedGroupKFold` or `GroupShuffleSplit` for
 cross-validation.
 

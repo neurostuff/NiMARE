@@ -1,5 +1,10 @@
 # Tasks: Modeled Activation Feature Dataset
 
+> **Superseded 2026-09-26.** `FeatureSet` was removed in favour of
+> `Studyset.to_bunch`; see §19 of `interface-design.md`. References to the
+> container below describe the design as it stood before that change.
+
+
 > **Status (2026-09-25)**: superseded in part. The module was implemented
 > against the interface in `interface-design.md`, which the contracts,
 > `data-model.md`, `quickstart.md` and `spec.md` were revised to match. The task

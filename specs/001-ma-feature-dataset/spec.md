@@ -1,5 +1,10 @@
 # Feature Specification: Modeled Activation Feature Dataset
 
+> **Superseded 2026-09-26.** `FeatureSet` was removed in favour of
+> `Studyset.to_bunch`; see §19 of `interface-design.md`. References to the
+> container below describe the design as it stood before that change.
+
+
 **Feature Branch**: `001-ma-feature-dataset`  
 **Created**: 2026-05-01  
 **Status**: Draft  
@@ -176,11 +181,11 @@ A researcher wants convenient, reusable reduction workflows for high-dimensional
 - **FR-011**: The feature MUST report missing or unusable map, descriptor, and target values with enough detail for the researcher to correct inputs or choose an explicit handling strategy.
 - **FR-012**: Voxelwise modeled activation map features MUST be reducible by any sparse-compatible scikit-learn transformer -- variance thresholding, truncated SVD and the like -- used directly, without a NiMARE wrapper or a NiMARE name for it, while preserving analysis-row alignment and study grouping. The feature MUST add one reducer of its own, atlas or label aggregation, because that one needs the voxel order; and MUST provide a way to keep a reducer off any descriptor columns.
 - **FR-013**: The feature MUST prevent data leakage by ensuring any learned reduction or descriptor transformation is fit only on training data before being applied to held-out data.
-- **FR-014**: The feature MUST expose Studyset conversion through one public named constructor, `FeatureSet.from_studyset(studyset, kernel_transformer, ...)`, returning one `FeatureSet`, and the sklearn-ready export through `FeatureSet.to_sklearn(return_X_y=False)`. Grouped splitting MUST be available on the container as `FeatureSet.split(test_size, random_state)`. The conversion helper class MUST remain internal, and no public object in the module may take a Studyset and expose `fit` or `fit_transform`.
+- **FR-014** *(amended 2026-09-26)*: The feature MUST expose Studyset conversion through one public method, `Studyset.to_bunch(kernel_transformer, ...)`, returning one `sklearn.utils.Bunch` that carries `data`, `target`, `groups`, `ids`, `feature_names`, `map_columns`, `descriptor_columns`, `descriptor_names`, `masker` and `provenance`. Grouped splitting is scikit-learn's, over `groups`. There MUST be no container class; the conversion helper class MUST remain internal, and no public object in the module may take a Studyset and expose `fit` or `fit_transform`.
 - **FR-015**: The feature MUST represent unreduced voxelwise feature data as sparse numeric matrices throughout conversion, export, and splitting; dense feature data is allowed only after an explicit reducer creates a reduced representation.
 - **FR-016**: The feature MUST provide one user-facing example that demonstrates Studyset conversion, grouped splitting, descriptor handling, target extraction, and the reduction workflows.
 - **FR-017**: The feature MUST be additive with respect to released NiMARE public behavior; existing Studyset, kernel, metadata, annotation, and documentation workflows must continue to work.
-- **FR-018**: The feature MUST provide an explicit `missing_coordinates` option on `FeatureSet.from_studyset` with `include` and `drop` modes. `drop` MUST be the default and MUST remove coordinate-less analyses before row construction while recording dropped IDs in provenance; `include` MUST retain coordinate-less analyses as all-zero sparse map rows.
+- **FR-018**: The feature MUST provide an explicit `missing_coordinates` option on `Studyset.to_bunch` with `include` and `drop` modes. `drop` MUST be the default and MUST remove coordinate-less analyses before row construction while recording dropped IDs in provenance; `include` MUST retain coordinate-less analyses as all-zero sparse map rows.
 - **FR-019**: The feature MUST provide an explicit `missing_values` option with `raise`, `drop` and `keep` modes for missing descriptor and target values. `raise` MUST be the default and MUST name the affected fields and analysis identifiers; `drop` MUST remove those analyses and `keep` MUST leave the values missing, both recording what happened in provenance.
 - **FR-020**: The feature MUST align generated map rows to analyses by analysis identifier rather than by position, and MUST reject duplicate analysis identifiers, because kernel transformers return maps ordered by identifier and discard the identifiers that name them.
 
@@ -198,7 +203,7 @@ A researcher wants convenient, reusable reduction workflows for high-dimensional
 ### Public API & Compatibility *(mandatory for code changes)*
 
 - **Latest Release Baseline**: 0.16.0
-- **Public API Surface**: New additive public surface for creating machine-learning-ready outputs from existing NiMARE Studysets: `FeatureSet` (`from_studyset`, `to_sklearn`, `split`, `make_preprocessor`, `fit_transform_maps`, `transform_maps`, `select_analyses`, `copy`), and `AtlasAggregator`. Reduction otherwise uses scikit-learn's own transformers directly.
+- **Public API Surface** *(amended 2026-09-26)*: `Studyset.to_bunch(...)`, plus `nimare.ml`'s `describe_fields`, `make_preprocessor` and `AtlasAggregator`. Reduction otherwise uses scikit-learn's own transformers directly.
 - **Compatibility Requirement**: Preserve existing released public behavior for Studysets, modeled activation map generation, metadata, annotations, and text access. New functionality is expected to be additive.
 - **Migration/Deprecation Notes**: No migration or deprecation is expected for existing released APIs.
 - **Sphinx-Gallery Example**: `examples/05_machine_learning/01_plot_machine_learning_in_nimare.py` created or edited.
@@ -230,7 +235,7 @@ A researcher wants convenient, reusable reduction workflows for high-dimensional
 - The MVP assumes input Studysets provide unique study IDs and unique analysis IDs; deriving study groups from ambiguous or missing identifiers is out of scope.
 - Study-level metadata may be repeated across that study's analyses, but grouped splitting prevents study-level leakage between training and testing partitions.
 - "Scikit-learn-compatible" means the exported data can be consumed by common estimator workflows that expect aligned feature values, target values, and grouping labels.
-- Conversion is a named constructor on the container, not a trainable scikit-learn estimator; downstream scikit-learn models consume `FeatureSet.to_sklearn()`. Users meet one class, and the helper that carries out a conversion is internal.
+- Conversion is a method on the Studyset, not a trainable scikit-learn estimator; downstream scikit-learn models consume the Bunch it returns. Users meet no container class, and the helper that carries out a conversion is internal.
 - Kernel transformation is row-independent, so generating every analysis's map before splitting leaks nothing; only steps that learn across rows have to be fitted inside a split.
 - Repeated reducer experiments reuse one `FeatureSet` rather than converting again, and a `memory` location makes repeated conversions of the same Studyset reuse their maps through the kernel transformer's own joblib cache.
 - Unreduced voxelwise feature data is sparse-only; dense data is permitted only after explicit reduction, such as a low-rank component matrix or parcel-level aggregate.

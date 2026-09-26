@@ -1,5 +1,10 @@
 # Implementation Plan: Modeled Activation Feature Dataset
 
+> **Superseded 2026-09-26.** `FeatureSet` was removed in favour of
+> `Studyset.to_bunch`; see §19 of `interface-design.md`. References to the
+> container below describe the design as it stood before that change.
+
+
 **Branch**: `001-ma-feature-dataset` | **Date**: 2026-05-01 | **Spec**: `specs/001-ma-feature-dataset/spec.md`
 **Input**: Feature specification from `specs/001-ma-feature-dataset/spec.md`
 

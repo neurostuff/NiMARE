@@ -11,11 +11,15 @@ row.
 
 `nimare.ml`
 
-The module is exported from `nimare/__init__.py` and documented in
-`docs/api.rst`. Its public names are `FeatureSet`, which builds itself from a
-Studyset, `AtlasAggregator`, and `describe_fields`. Every other reduction is an
-ordinary scikit-learn transformer: the module must not re-export scikit-learn
-under NiMARE names.
+Conversion is `Studyset.to_bunch`, a method on the collection being converted.
+`nimare.ml` holds only what a Studyset cannot answer on its own, and is
+exported from `nimare/__init__.py` and documented in `docs/api.rst`: its public
+names are `AtlasAggregator`, `describe_fields` and `make_preprocessor`. There is
+no container class. Every other reduction is an ordinary scikit-learn
+transformer: the module must not re-export scikit-learn under NiMARE names.
+
+`to_bunch` MUST import scikit-learn when called rather than at module load, so
+that `nimare.studyset` does not depend on it.
 
 ## Division of Responsibility
 
@@ -39,18 +43,17 @@ order before adding local helpers:
    decomposition, and pipelines.
 4. New local helpers only when none of the above provides the needed behavior.
 
-## `FeatureSet.from_studyset`
+## `Studyset.to_bunch`
 
-`FeatureSet.from_studyset(studyset, kernel_transformer, **options)` is the
-public entry point. It converts one Studyset and returns one `FeatureSet`.
+`studyset.to_bunch(kernel_transformer, **options)` is the public entry point.
+It converts one Studyset and returns one `sklearn.utils.Bunch`.
 Conversion is a single call, not a configure-then-call pair: the settings are
 arguments, and what comes back is the thing the researcher works with.
 
-It is a named constructor rather than `__init__` because the container is also
-built from blocks that already exist -- by `split`, `select_analyses`, `copy`
-and the map-reduction methods -- and those must not go through a kernel. A
-constructor that ran a kernel would push every internal path onto a back door
-and put the container's validation there with it.
+It is a method on the Studyset because that is the thing being converted, and
+the bundle it returns is inert data. Unlike the other `to_*` methods it
+computes rather than reformats, which the docstring MUST state: it runs a
+kernel over every analysis.
 
 The conversion logic lives in an internal `_FeatureExtractor` class, so that the
 stages -- field selection, target handling, row retention, map generation,
@@ -119,7 +122,7 @@ The option vocabulary is validated before any work is done.
   field.
 - Never mutate the caller's kernel transformer.
 
-## `FeatureSet`
+## The bundle
 
 The aligned container, and the module's one class. Row `i` is analysis `ids[i]` from study `study_ids[i]`,
 and that order is preserved by every method.
@@ -166,13 +169,10 @@ and that order is preserved by every method.
   and return a reduced dataset.
 - `transform_maps(reducer)`: apply an already fitted reducer, raising
   `NotFittedError` otherwise, because fitting it there would use held-out data.
-- `select_analyses(rows)`: restrict to a boolean mask or an array of positions,
-  the way `Studyset.select_analyses` indexes rows.
-- `slice(ids)`: restrict to the analyses named, in the order named, the way
-  `Studyset.slice` does. An id naming no analysis MUST raise rather than
-  silently yield fewer rows. Indexing by position and naming by id MUST stay
-  separate methods: they are different questions, and `select_analyses` MUST
-  NOT accept ids.
+Row selection happens on the Studyset, before conversion, with the
+`select_analyses` / `slice` pair it already has. A bundle is subset by indexing
+its aligned fields together, which is scikit-learn's own idiom and needs no
+NiMARE API.
 - `copy()`: return an independent dataset copy.
 
 ### Errors
@@ -332,8 +332,9 @@ version is, which the docstring says.
 
 ### Applying a reducer to the map columns only
 
-`FeatureSet.make_preprocessor(map_reducer, descriptor_transformer="passthrough",
-**reducer_params)` is a `ColumnTransformer` with the column boundary filled in,
+`make_preprocessor(bunch, map_reducer, descriptor_transformer="passthrough",
+**reducer_params)` is a `ColumnTransformer` with the column boundary read off
+the bundle,
 the masker bound into an atlas reducer, and `sparse_threshold=1.0` so that a
 map block denser than scikit-learn's default threshold is not quietly
 densified. It accepts a transformer, a transformer class built from

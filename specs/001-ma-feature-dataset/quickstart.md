@@ -15,17 +15,13 @@ python -m pip install -e .[tests,doc]
 ## Convert a Studyset to feature data
 
 ```python
-from nimare import ml
 from nimare.meta.kernel import MKDAKernel
 
-features = ml.FeatureSet.from_studyset(
-    studyset,
-    kernel_transformer=MKDAKernel(r=10),
+bunch = studyset.to_bunch(
+    MKDAKernel(r=10),
     descriptor_fields=["sample_sizes", ("annotations", "Neurosynth_TFIDF__pain")],
     target_field=("annotations", "Neurosynth_TFIDF__emotion"),
-)                                        # a FeatureSet
-
-bunch = features.to_sklearn()
+)
 ```
 
 Expected result:
@@ -36,9 +32,11 @@ Expected result:
 - `bunch.groups` holds the study each analysis came from.
 - `bunch.feature_names`, `bunch.ids` and `bunch.provenance` describe them.
 
-`features.to_sklearn(return_X_y=True)` returns `(X, y)` for callers who want
-nothing else. There is no estimator to configure and no `fit` to call: the container builds
-itself from a Studyset, and that container is what you work with.
+- `bunch.map_columns`, `bunch.descriptor_columns`, `bunch.descriptor_names` and
+  `bunch.masker` say which columns are voxels and where they came from.
+
+There is no container class, no estimator to configure and no `fit` to call.
+Everything after conversion is scikit-learn on ordinary arrays.
 
 A field is named by a bare field name, or by a `(source, field)` tuple. A bare
 name is looked up in metadata, annotations and texts in turn, and an ambiguous
@@ -65,20 +63,26 @@ Studyset reuse the maps they already generated, in this process and the next.
 
 ## Select rows
 
-```python
-features.select_analyses(features.target == "n-back")   # mask or positions
-features.slice(["study_0-task0", "study_1-task0"])      # analysis ids
-```
+Select rows on the Studyset, before conversion, since that is the expensive
+step:
 
-`select_analyses` indexes rows and `slice` names analyses, the same split
-`Studyset` makes between the two. An id naming nothing raises.
+```python
+studyset.slice(["study_0-task0", "study_1-task0"])       # analysis ids
+studyset.select_analyses(mask_or_positions)              # mask or positions
+```
 
 ## Split without study leakage
 
 ```python
-train, test = features.split(test_size=0.25, random_state=13)
+from sklearn.model_selection import GroupShuffleSplit
 
-assert set(train.study_ids).isdisjoint(test.study_ids)
+train, test = next(
+    GroupShuffleSplit(n_splits=1, test_size=0.25, random_state=13).split(
+        bunch.data, bunch.target, bunch.groups
+    )
+)
+
+assert set(bunch.groups[train]).isdisjoint(bunch.groups[test])
 ```
 
 `test_size` is a fraction of *studies*, so analysis counts only approximate it.
@@ -109,9 +113,10 @@ Or by hand, where the fitted reducer carries the fit:
 
 ```python
 svd = TruncatedSVD(n_components=25, random_state=13)
+maps = bunch.data[:, bunch.map_columns]
 
-train_reduced = train.fit_transform_maps(svd)
-test_reduced = test.transform_maps(svd)   # NotFittedError if svd is unfitted
+train_reduced = svd.fit_transform(maps[train])
+test_reduced = svd.transform(maps[test])
 ```
 
 Anything that reads sparse input works: truncated SVD, sparse random
@@ -153,14 +158,13 @@ time is not a workflow. A glob pattern takes them all, under their own names,
 and keeps the block sparse:
 
 ```python
-features = ml.FeatureSet.from_studyset(
-    studyset,
-    kernel_transformer=MKDAKernel(r=10),
+bunch = studyset.to_bunch(
+    MKDAKernel(r=10),
     descriptor_fields=[("annotations", "Neurosynth_TFIDF__*")],
     target_field=("annotations", "Neurosynth_TFIDF__pain"),
 )
 
-features.descriptor_names[:2]   # ['Neurosynth_TFIDF__001', 'Neurosynth_TFIDF__01']
+bunch.descriptor_names[:2]   # ['Neurosynth_TFIDF__001', 'Neurosynth_TFIDF__01']
 ```
 
 A label no analysis carries is a zero rather than a gap, so `missing_values`
@@ -180,11 +184,11 @@ has to know which voxel each column is:
 ```python
 from nilearn.datasets import fetch_atlas_difumo
 
-ml.AtlasAggregator(fetch_atlas_difumo(dimension=64), masker=features.masker)
-ml.AtlasAggregator("harvard_oxford", masker=features.masker,
+ml.AtlasAggregator(fetch_atlas_difumo(dimension=64), masker=bunch.masker)
+ml.AtlasAggregator("harvard_oxford", masker=bunch.masker,
                    atlas_kwargs={"atlas_name": "cort-maxprob-thr25-2mm"})
 
-features.make_preprocessor(fetch_atlas_difumo(dimension=64))   # masker supplied
+ml.make_preprocessor(bunch, fetch_atlas_difumo(dimension=64))  # masker supplied
 ```
 
 An atlas is anything nilearn can load: a fetched atlas, an atlas image or file,
@@ -207,7 +211,8 @@ map block is never quietly densified:
 from sklearn.impute import SimpleImputer
 
 pipeline = make_pipeline(
-    features.make_preprocessor(
+    ml.make_preprocessor(
+        bunch,
         TruncatedSVD(n_components=50, random_state=13),
         descriptor_transformer=SimpleImputer(strategy="median"),
     ),
@@ -221,7 +226,8 @@ treatment, pass a mapping from descriptor name to transformer:
 ```python
 from sklearn.preprocessing import StandardScaler
 
-features.make_preprocessor(
+ml.make_preprocessor(
+    bunch,
     TruncatedSVD(n_components=50, random_state=13),
     descriptor_transformer={
         "sample_sizes": SimpleImputer(strategy="median"),
@@ -231,12 +237,12 @@ features.make_preprocessor(
 ```
 
 Descriptors the mapping does not name are passed through, and the columns come
-out in the order they went in. `features.descriptor_names` lists them.
+out in the order they went in. `bunch.descriptor_names` lists them.
 Transformers are handed the descriptor columns dense, which is what most of
 them expect of a few numeric columns -- `StandardScaler` will not centre sparse
 data at all -- while the map block stays sparse.
 
-`features.map_columns` and `features.descriptor_columns` are public, so the
+`bunch.map_columns` and `bunch.descriptor_columns` are right there, so the
 same thing can be written out:
 
 ```python
@@ -244,8 +250,8 @@ from sklearn.compose import ColumnTransformer
 
 ColumnTransformer(
     [
-        ("maps", TruncatedSVD(n_components=50), features.map_columns),
-        ("descriptors", SimpleImputer(), features.descriptor_columns),
+        ("maps", TruncatedSVD(n_components=50), bunch.map_columns),
+        ("descriptors", SimpleImputer(), bunch.descriptor_columns),
     ],
     sparse_threshold=1.0,
 )
@@ -259,15 +265,14 @@ back.
 Categorical and text fields are not appended to the feature matrix, because
 encoding them during extraction would fit the encoder on the analyses you are
 about to hold out. Either encode the field yourself and select the numeric
-result, or read the raw values from `features.descriptors` -- a DataFrame indexed by
+result, or read the raw values from the Studyset's own tables -- indexed by
 analysis id -- and encode them inside your pipeline.
 
 For a target, pass a label extractor:
 
 ```python
-features = ml.FeatureSet.from_studyset(
-    studyset,
-    kernel_transformer=MKDAKernel(r=10),
+bunch = studyset.to_bunch(
+    MKDAKernel(r=10),
     target_field=("texts", "abstract"),
     target_transformer=lambda texts: [classify(text) for text in texts],
 )

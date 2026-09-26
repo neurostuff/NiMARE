@@ -8,9 +8,11 @@ Machine learning in NiMARE
 Turn a Studyset into a scikit-learn dataset, split it without leaking a study,
 and reduce the voxelwise features before fitting a model.
 
-:class:`~nimare.ml.FeatureSet` holds modeled activation (MA) features, the
-study each analysis came from, and an optional target, all in one row order.
-NiMARE builds it; scikit-learn does the splitting, fitting and scoring.
+:meth:`~nimare.studyset.Studyset.to_bunch` returns a
+:class:`~sklearn.utils.Bunch` of modeled activation (MA) features, the study
+each analysis came from, and an optional target, all in one row order. NiMARE
+builds it; scikit-learn does the splitting, fitting and scoring, on ordinary
+arrays it already knows how to handle.
 """
 
 from pathlib import Path
@@ -28,7 +30,7 @@ from sklearn.random_projection import SparseRandomProjection
 
 from nimare.extract import fetch_neurostore
 from nimare.meta.kernel import MKDAKernel
-from nimare.ml import AtlasAggregator, FeatureSet, describe_fields
+from nimare.ml import AtlasAggregator, describe_fields, make_preprocessor
 from nimare.nimads import Studyset
 from nimare.utils import get_resource_path
 
@@ -51,7 +53,7 @@ print(studyset.metadata["comparison_task"].value_counts().to_string())
 ###############################################################################
 # Build the feature set
 # -----------------------------------------------------------------------------
-# :meth:`~nimare.ml.FeatureSet.from_studyset` applies an MKDA kernel to the
+# :meth:`~nimare.studyset.Studyset.to_bunch` applies an MKDA kernel to the
 # coordinates of each analysis to generate voxelwise MA features, and reads the
 # ``comparison_task`` metadata field as the ``"n-back"`` and ``"flanker"``
 # labels to predict. Fields are named by a bare field name, or by a
@@ -62,38 +64,38 @@ print(studyset.metadata["comparison_task"].value_counts().to_string())
 # function of that analysis's own foci, so it never sees the target or another
 # analysis. Only steps that learn *across* rows have to be fitted inside a
 # split, which is what the pipeline below is for.
-features = FeatureSet.from_studyset(
-    studyset,
-    kernel_transformer=MKDAKernel(r=10),
+bunch = studyset.to_bunch(
+    MKDAKernel(r=10),
     target_field=("metadata", "comparison_task"),
 )
 
-print(features)
-print(f"Voxel features: {features.map_features.shape[1]}")
-print(f"Dropped for want of coordinates: {len(features.provenance['dropped_ids'])}")
-
-###############################################################################
-# Export it for scikit-learn
-# -----------------------------------------------------------------------------
-# ``to_sklearn`` returns the familiar bundle: sparse ``data``, aligned
-# ``target``, and ``groups`` holding the study each analysis came from. Pass
-# ``return_X_y=True`` for a bare ``(X, y)`` pair instead.
-bunch = features.to_sklearn()
-
 print(f"Feature data: {bunch.data.shape}, sparse={bunch.data.format}")
 print(f"Labels: {sorted(set(bunch.target))}")
+print(f"Dropped for want of coordinates: {len(bunch.provenance['dropped_ids'])}")
+
+###############################################################################
+# The bundle is the familiar scikit-learn one: sparse ``data``, aligned
+# ``target``, and ``groups`` holding the study each analysis came from. It also
+# carries ``ids``, ``feature_names``, ``map_columns``, ``descriptor_columns``,
+# ``descriptor_names``, the ``masker`` the voxels came from, and ``provenance``.
+print(f"Bundle: {', '.join(sorted(bunch))}")
 
 ###############################################################################
 # Split without leaking a study
 # -----------------------------------------------------------------------------
 # Analyses from one study are related, so a study belongs to exactly one
-# partition. ``test_size`` is a fraction of *studies*, so the analysis counts
-# only approximate it.
-train, test = features.split(test_size=0.25, random_state=RANDOM_SEED)
+# partition. ``groups`` is what makes that happen, and any scikit-learn group
+# splitter takes it; ``test_size`` is a fraction of *studies*, so the analysis
+# counts only approximate it.
+train, test = next(
+    GroupShuffleSplit(n_splits=1, test_size=0.25, random_state=RANDOM_SEED).split(
+        bunch.data, bunch.target, bunch.groups
+    )
+)
 
-print(f"Train: {len(train)} analyses from {len(set(train.study_ids))} studies")
-print(f"Test:  {len(test)} analyses from {len(set(test.study_ids))} studies")
-print(f"Shared studies: {set(train.study_ids) & set(test.study_ids)}")
+print(f"Train: {len(train)} analyses from {len(set(bunch.groups[train]))} studies")
+print(f"Test:  {len(test)} analyses from {len(set(bunch.groups[test]))} studies")
+print(f"Shared studies: {set(bunch.groups[train]) & set(bunch.groups[test])}")
 
 ###############################################################################
 # Classify the task label
@@ -104,10 +106,9 @@ print(f"Shared studies: {set(train.study_ids) & set(test.study_ids)}")
 # reducer in the pipeline is what keeps it fitted on training rows only.
 # GroupKFold reads the same study labels the split used.
 #
-# Every column here is a voxel -- ``repr(features)`` says so, with no
-# ``n_descriptors`` -- so the reducer can see the whole matrix. The section
-# after next adds descriptor columns, which a bare reducer would decompose
-# along with the voxels.
+# Every column here is a voxel -- ``bunch.descriptor_names`` is empty -- so the
+# reducer can see the whole matrix. The section after next adds descriptor
+# columns, which a bare reducer would decompose along with the voxels.
 pipeline = make_pipeline(
     TruncatedSVD(n_components=50, random_state=RANDOM_SEED),
     LogisticRegression(max_iter=1000, class_weight="balanced", random_state=RANDOM_SEED),
@@ -132,45 +133,41 @@ print(f"Cross-validation accuracy: {scores.mean():.3f} +/- {scores.std():.3f}")
 # ``missing_values="drop"`` to remove those analyses or ``"keep"`` to leave the
 # gaps for an imputer in your pipeline.
 try:
-    FeatureSet.from_studyset(
-        studyset,
-        kernel_transformer=MKDAKernel(r=10),
-        descriptor_fields=["sample_sizes"],
-    )
+    studyset.to_bunch(MKDAKernel(r=10), descriptor_fields=["sample_sizes"])
 except ValueError as exc:
     print(f"{str(exc)[:160]}...")
 
 ###############################################################################
 # Once there are descriptor columns, the reducer has to be kept off them, which
 # is what :class:`~sklearn.compose.ColumnTransformer` is for.
-# :meth:`~nimare.ml.FeatureSet.make_preprocessor` builds one with the column
-# boundary filled in and ``sparse_threshold=1.0``, so a wide sparse map block
-# is never quietly densified. :attr:`~nimare.ml.FeatureSet.map_columns` and
-# :attr:`~nimare.ml.FeatureSet.descriptor_columns` are public if you would
-# rather write it out. With map features alone, as above, there is nothing to
-# keep the reducer away from and the method hands the reducer straight back.
+# :func:`~nimare.ml.make_preprocessor` builds one with the column boundary read
+# off the bundle and ``sparse_threshold=1.0``, so a wide sparse map block is
+# never quietly densified. ``bunch.map_columns`` and
+# ``bunch.descriptor_columns`` are right there if you would rather write it
+# out. With map features alone, as above, there is nothing to keep the reducer
+# away from and the function hands the reducer straight back.
 #
 # One transformer covers every descriptor. When they want different treatment,
 # pass a mapping instead -- ``{"sample_sizes": SimpleImputer(), "year":
 # StandardScaler()}`` -- and the descriptors it does not name are passed
 # through, in the order they came in. Descriptor columns are handed over dense,
 # which is what most transformers expect of a few numeric columns.
-with_descriptors = FeatureSet.from_studyset(
-    studyset,
-    kernel_transformer=MKDAKernel(r=10),
+with_descriptors = studyset.to_bunch(
+    MKDAKernel(r=10),
     target_field=("metadata", "comparison_task"),
     descriptor_fields=["sample_sizes"],
     missing_values="keep",
 )
-preprocessor = with_descriptors.make_preprocessor(
+preprocessor = make_preprocessor(
+    with_descriptors,
     TruncatedSVD(n_components=50, random_state=RANDOM_SEED),
     descriptor_transformer=SimpleImputer(strategy="median"),
 )
 
-print(with_descriptors)
+print(f"Descriptors: {with_descriptors.descriptor_names}")
 print(f"Descriptor columns: {with_descriptors.descriptor_columns}")
 print(f"With descriptors: {type(preprocessor).__name__}")
-print(f"Map features only: {type(features.make_preprocessor(TruncatedSVD(2))).__name__}")
+print(f"Map features only: {type(make_preprocessor(bunch, TruncatedSVD(2))).__name__}")
 
 ###############################################################################
 # Select annotation labels
@@ -182,17 +179,16 @@ print(f"Map features only: {type(features.make_preprocessor(TruncatedSVD(2))).__
 # them. A label no analysis carries is a zero rather than a gap, so
 # ``missing_values`` has nothing to report about a pattern selection.
 neurosynth = Studyset(str(Path(get_resource_path()) / "neurosynth_laird_studyset.json"))
-annotated = FeatureSet.from_studyset(
-    neurosynth,
-    kernel_transformer=MKDAKernel(r=10),
+annotated = neurosynth.to_bunch(
+    MKDAKernel(r=10),
     descriptor_fields=[("annotations", "Neurosynth_TFIDF__*")],
 )
 
-labels = annotated.descriptor_features
-print(annotated)
-print(f"Label columns: {labels.shape[1]}, non-zero: {labels.nnz}")
+labels = annotated.data[:, annotated.descriptor_columns]
+print(f"Bundle: {annotated.data.shape}, of which labels: {labels.shape[1]}")
+print(f"Non-zero labels: {labels.nnz}")
 print(f"Names kept whole: {annotated.descriptor_names[:2]}")
-print(f"Still sparse after export: {sparse.issparse(annotated.to_sklearn().data)}")
+print(f"Still sparse: {sparse.issparse(annotated.data)}")
 
 ###############################################################################
 # Compare reduction workflows
@@ -235,24 +231,29 @@ for name, reducer in reducers.items():
 # ``NiftiMapsMasker`` and a 3D one with a ``NiftiLabelsMasker``, and the
 # atlas's own region names become the feature names.
 #
-# Outside a pipeline, fit the reducer on the training feature set and hand the
-# same fitted reducer to the test one. Passing an unfitted reducer to
-# :meth:`~nimare.ml.FeatureSet.transform_maps` raises, because fitting it there
-# would use the held-out analyses.
+# The bundle carries the ``masker`` its voxels came from, which is the one
+# thing an atlas reducer cannot work out for itself.
+#
+# Outside a pipeline, fit the reducer on the training rows and apply the same
+# fitted reducer to the held-out ones -- calling ``fit_transform`` on the test
+# rows would use the analyses you are holding out.
 difumo = fetch_atlas_difumo(dimension=N_COMPONENTS, resolution_mm=2)
-atlas_reducer = AtlasAggregator(difumo, masker=features.masker)
+atlas_reducer = AtlasAggregator(difumo, masker=bunch.masker)
 
-train_reduced = train.fit_transform_maps(atlas_reducer)
-test_reduced = test.transform_maps(atlas_reducer)
+maps = bunch.data[:, bunch.map_columns]
+train_reduced = atlas_reducer.fit_transform(maps[train])
+test_reduced = atlas_reducer.transform(maps[test])
 
-print(f"Reduced train features: {train_reduced.features.shape}")
-print(f"Reduced test features:  {test_reduced.features.shape}")
-print(f"First region names: {train_reduced.feature_names[:3]}")
+print(f"Reduced train features: {train_reduced.shape}")
+print(f"Reduced test features:  {test_reduced.shape}")
+# get_feature_names_out follows scikit-learn and returns an array of numpy
+# strings; tolist() gives the plain ones.
+print(f"First region names: {atlas_reducer.get_feature_names_out()[:3].tolist()}")
 
 model = LogisticRegression(max_iter=1000, class_weight="balanced", random_state=RANDOM_SEED)
-model.fit(train_reduced.features, train_reduced.target)
+model.fit(train_reduced, bunch.target[train])
 
-print(f"DiFuMo holdout accuracy: {model.score(test_reduced.features, test_reduced.target):.3f}")
+print(f"DiFuMo holdout accuracy: {model.score(test_reduced, bunch.target[test]):.3f}")
 
 ###############################################################################
 # Work with a release-scale Studyset
@@ -270,7 +271,7 @@ print(f"Analyses: {len(studyset.ids)} from {len(set(studyset.study_ids))} studie
 # Ask what is usable, rather than reading 997 field names
 # -----------------------------------------------------------------------------
 # :func:`~nimare.ml.describe_fields` reports every field a selector may name,
-# with the kind :meth:`~nimare.ml.FeatureSet.from_studyset` will read it as and
+# with the kind :meth:`~nimare.studyset.Studyset.to_bunch` will read it as and
 # the fraction of analyses reporting it. Most of a release is a long tail that
 # no analysis fills in, so picking a field becomes a query.
 all_fields = describe_fields(studyset)
@@ -289,15 +290,13 @@ print(targets[["source", "field", "kind", "coverage", "n_unique"]].to_string(ind
 # analysis ids, so take the part being modelled first. ``missing_values="drop"``
 # removes the analyses the extractor could not fill in.
 subset = studyset.slice(analyses=list(studyset.ids)[:4000])
-resting = FeatureSet.from_studyset(
-    subset,
-    kernel_transformer=MKDAKernel(r=10),
+resting = subset.to_bunch(
+    MKDAKernel(r=10),
     target_field=("annotations", "TaskExtractor.fMRITasks[0].RestingState"),
     missing_values="drop",
 )
 
-print(resting)
-print(f"Kept {len(resting)} of {len(subset.ids)} analyses")
+print(f"Kept {resting.data.shape[0]} of {len(subset.ids)} analyses")
 print(f"Resting-state rows: {int(np.sum(np.asarray(resting.target) == 1.0))}")
 
 ###############################################################################
@@ -310,9 +309,8 @@ print(f"Resting-state rows: {int(np.sum(np.asarray(resting.target) == 1.0))}")
 demographics = fields[
     (fields.kind == "numeric") & fields.field.str.contains("groups[0].", regex=False)
 ]
-with_demographics = FeatureSet.from_studyset(
-    subset,
-    kernel_transformer=MKDAKernel(r=10),
+with_demographics = subset.to_bunch(
+    MKDAKernel(r=10),
     target_field=("annotations", "TaskExtractor.fMRITasks[0].RestingState"),
     descriptor_fields=[("annotations", name) for name in demographics.field],
     # A descriptor gap an imputer can fill; a target gap it cannot, so the two
@@ -320,7 +318,7 @@ with_demographics = FeatureSet.from_studyset(
     missing_values={"target": "drop", "descriptors": "keep"},
 )
 
-print(with_demographics)
+print(f"Bundle: {with_demographics.data.shape}")
 print(f"Descriptors: {[name.split('.')[-1] for name in with_demographics.descriptor_names]}")
 
 ###############################################################################
@@ -334,13 +332,14 @@ print(f"Descriptors: {[name.split('.')[-1] for name in with_demographics.descrip
 # answering "task"; ``roc_auc`` asks the question actually being put, which is
 # whether the foci rank a resting-state analysis above a task one.
 release_pipeline = make_pipeline(
-    with_demographics.make_preprocessor(
+    make_preprocessor(
+        with_demographics,
         TruncatedSVD(n_components=50, random_state=RANDOM_SEED),
         descriptor_transformer=SimpleImputer(strategy="median"),
     ),
     LogisticRegression(max_iter=1000, class_weight="balanced", random_state=RANDOM_SEED),
 )
-release_bunch = with_demographics.to_sklearn()
+release_bunch = with_demographics
 release_scores = cross_val_score(
     release_pipeline,
     release_bunch.data,

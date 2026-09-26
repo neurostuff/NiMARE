@@ -745,6 +745,115 @@ class Studyset:
         whole = self._view.point_mask is None and len(self._view) == self.store.n_analyses
         return write_parquet(self.store if whole else _materialize(self), directory)
 
+    def to_bunch(
+        self,
+        kernel_transformer,
+        *,
+        descriptor_fields=None,
+        target_field=None,
+        target_transformer=None,
+        missing_coordinates="drop",
+        missing_values="raise",
+        memory=None,
+        memory_level=2,
+    ):
+        """Convert to the arrays a scikit-learn workflow expects.
+
+        .. versionadded:: 0.22.0
+
+        Generates one modeled activation (MA) map per analysis through the
+        kernel transformer, appends any numeric descriptor fields, extracts any
+        target, and aligns them to the analyses they came from. Unlike the
+        other ``to_*`` methods this computes rather than reformats: a release
+        of 40,000 analyses takes about half a minute and a few gigabytes.
+
+        Generating the maps before splitting does not leak. An analysis's MA
+        map is a function of that analysis's own foci, so it never sees the
+        target or another analysis. Everything that learns *across* rows --
+        decomposition, feature selection, imputation, scaling -- must be fitted
+        on training rows only, which is what a
+        :class:`~sklearn.pipeline.Pipeline` is for.
+
+        Parameters
+        ----------
+        kernel_transformer : :class:`~nimare.meta.kernel.KernelTransformer`
+            Kernel transformer instance or class used to generate the MA maps.
+            There is no default: the choice is scientific.
+        descriptor_fields : :obj:`list`, optional
+            Fields appended to the feature matrix as extra numeric columns, by
+            default None. Each is a field name, or a ``(source, field)`` tuple
+            when the name appears in more than one source; sources are
+            ``"metadata"``, ``"annotations"`` and ``"texts"``. A field that
+            reads as a glob pattern, such as ``"Neurosynth_TFIDF__*"``, selects
+            every annotation label matching it. Non-numeric fields are refused.
+            :func:`~nimare.ml.describe_fields` reports what this studyset
+            offers.
+        target_field : :obj:`str` or :obj:`tuple`, optional
+            Field exported as ``target``, by default None. Scalar numeric and
+            scalar categorical fields are supported directly.
+        target_transformer : :obj:`callable` or transformer, optional
+            Applied to the raw target values before they become ``target``, by
+            default None. Required for text fields, which have no scalar
+            reading.
+        missing_coordinates : {"drop", "include"}, default="drop"
+            Whether analyses reporting no coordinates are removed before rows
+            are built, or kept as all-zero sparse map rows.
+        missing_values : {"raise", "drop", "keep"} or :obj:`dict`, default="raise"
+            What to do when a selected descriptor or target value is missing:
+            report the analyses and fields, remove those analyses, or leave the
+            gaps for a pipeline to impute. A mapping sets a policy per role --
+            ``{"target": "drop", "descriptors": "keep"}`` -- because a
+            descriptor gap can be imputed in a pipeline and a target gap
+            cannot. A role the mapping does not name is ``"raise"``.
+        memory : :class:`joblib.Memory`, :obj:`str` or :class:`pathlib.Path`, optional
+            Cache location for MA map generation, by default None. Used only
+            when the kernel transformer does not define its own.
+        memory_level : :obj:`int`, default=2
+            How eagerly ``memory`` caches. Kernel transformers cache their maps
+            at level 2, so a lower level asks for them not to be cached.
+
+        Returns
+        -------
+        :class:`sklearn.utils.Bunch`
+            One row per retained analysis, holding ``data`` (sparse while the
+            map features are unreduced), ``target``, ``groups`` (the study each
+            analysis came from, for a group-aware splitter), ``ids``,
+            ``feature_names``, ``map_columns``, ``descriptor_columns``,
+            ``descriptor_names``, ``masker`` and ``provenance``.
+
+        Raises
+        ------
+        :obj:`ValueError`
+            If a field cannot be resolved or used, if a value is missing under
+            ``missing_values="raise"``, or if nothing is left to convert.
+
+        See Also
+        --------
+        nimare.ml.describe_fields : What fields this studyset offers.
+        nimare.ml.make_preprocessor : Reduce the map columns and not the rest.
+
+        Examples
+        --------
+        >>> bunch = studyset.to_bunch(  # doctest: +SKIP
+        ...     MKDAKernel(r=10),
+        ...     target_field=("metadata", "comparison_task"),
+        ... )
+        """
+        # Imported here so that nimare.studyset does not pull in scikit-learn,
+        # which only this one method needs.
+        from nimare.ml.extract import _FeatureExtractor
+
+        return _FeatureExtractor(
+            kernel_transformer=kernel_transformer,
+            descriptor_fields=descriptor_fields,
+            target_field=target_field,
+            target_transformer=target_transformer,
+            missing_coordinates=missing_coordinates,
+            missing_values=missing_values,
+            memory=memory,
+            memory_level=memory_level,
+        ).transform(self)
+
     def to_dataset(self):
         """Convert to a legacy :class:`~nimare.dataset.Dataset`.
 

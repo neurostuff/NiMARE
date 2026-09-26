@@ -1,5 +1,10 @@
 # Data Model: Modeled Activation Feature Dataset
 
+> **Superseded 2026-09-26.** `FeatureSet` was removed in favour of
+> `Studyset.to_bunch`; see §19 of `interface-design.md`. References to the
+> container below describe the design as it stood before that change.
+
+
 This data model is organized around the classes and public functions the
 module provides. **Revised 2026-09-25** alongside `contracts/public-api.md`;
 `interface-design.md` records why each shape was chosen. Some conceptual pieces are not standalone classes;
