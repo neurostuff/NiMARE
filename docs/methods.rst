@@ -9,4 +9,5 @@ NiMARE Methods
 
    cbma
    decoding
+   machine_learning
    fetching

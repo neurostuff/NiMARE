@@ -1,0 +1,31 @@
+{
+  "available_candidate_analysis_counts": {
+    "flanker": 406,
+    "n-back": 2069
+  },
+  "matching": {
+    "excluded_rows_matching_both": true,
+    "flanker_regex": "\\bflankers?\\b|\\beriks[eo]n(?:\\s*[- ]?\\s*flankers?)?\\b",
+    "nback_regex": "(?:\\bn\\s*[- ]?\\s*back\\b|\\bnback\\b|\\b[0-9]+\\s*[- ]?\\s*back\\b|\\b(?:zero|one|two|three|four)\\s*[- ]?\\s*back\\b|\\befnback\\b)",
+    "required_coordinates": true
+  },
+  "output_tables": {
+    "analyses": 906,
+    "annotations": 906,
+    "coordinates": 9492,
+    "images": 906,
+    "metadata": 906,
+    "studies": 320,
+    "texts": 906
+  },
+  "selected_analysis_counts": {
+    "flanker": 406,
+    "n-back": 500
+  },
+  "selected_coordinate_rows": 9492,
+  "selected_unique_study_counts": {
+    "flanker": 115,
+    "n-back": 205
+  },
+  "source_release": "neurostore-studyset-2026-07"
+}

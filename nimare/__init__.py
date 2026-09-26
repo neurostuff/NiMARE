@@ -17,6 +17,7 @@ with warnings.catch_warnings(record=True) as w:
         decode,
         io,
         meta,
+        ml,
         reports,
         resources,
         stats,
@@ -29,6 +30,7 @@ with warnings.catch_warnings(record=True) as w:
     __all__ = [
         "base",
         "dataset",
+        "ml",
         "meta",
         "correct",
         "annotate",
