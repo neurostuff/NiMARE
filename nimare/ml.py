@@ -1,25 +1,14 @@
 """Machine-learning helpers for modeled activation (MA) features.
 
-This module converts a :class:`~nimare.nimads.Studyset` into the aligned arrays
-scikit-learn workflows expect: a sparse analysis-by-voxel feature matrix, an
-optional target, and the study labels that keep analyses from one study out of
-two different partitions.
+Converts a :class:`~nimare.nimads.Studyset` into the arrays a scikit-learn
+workflow expects: a sparse analysis-by-voxel feature matrix, an optional
+target, and the study labels that keep analyses from one study out of two
+different partitions. :meth:`FeatureSet.from_studyset` builds the container and
+:class:`AtlasAggregator` reduces its voxels over an atlas; every other
+reduction is an ordinary scikit-learn transformer.
 
-The division of labour is deliberate. NiMARE owns *extraction*: reading the
-Studyset, generating MA maps through a kernel transformer, aligning every row to
-its analysis, and reporting what is missing. scikit-learn owns *evaluation*:
-splitting, fitting, reducing and scoring. Kernel transformation is row-wise
-independent -- an analysis's MA map is a function of that analysis's own foci --
-so building the whole matrix before splitting leaks nothing. Everything that
-learns *across* rows (decomposition, feature selection, imputation, scaling)
-must be fit on training rows only, which is what a
-:class:`~sklearn.pipeline.Pipeline` is for;
-:meth:`FeatureSet.make_preprocessor` builds the piece that goes in it.
-
-The public surface is :meth:`FeatureSet.from_studyset`, which builds the
-container, and :class:`AtlasAggregator`, which reduces its voxelwise features
-over the regions of an atlas. Every other reduction is an ordinary
-scikit-learn transformer, used as scikit-learn documents it.
+See :doc:`the machine learning documentation </machine_learning>` for what the
+module does and does not take responsibility for.
 """
 
 from __future__ import annotations
@@ -51,7 +40,9 @@ from sklearn.utils.validation import check_is_fitted
 
 from nimare.base import NiMAREBase
 from nimare.studyset import normalize_collection
+from nimare.studyset.blocks import label_block_for
 from nimare.studyset.columns import ID_COLS
+from nimare.studyset.frames import _is_numeric
 from nimare.studyset.requirements import PerAnalysis
 
 LGR = logging.getLogger(__name__)
@@ -111,87 +102,167 @@ def _as_selector(selector):
     return source, str(field)
 
 
-def _source_frame(studyset, source):
-    """Return the Studyset table a source names."""
-    return {
-        "metadata": studyset.metadata,
-        "annotations": studyset.annotations_df,
-        "texts": studyset.texts,
-    }[source]
+class _Fields:
+    """The fields a Studyset offers a selector, and how to read them.
 
+    Annotation labels come from the sparse label block, which is also where
+    their values come from: one source of truth for what a label is called,
+    whether it is numeric, and what it holds.
+    """
 
-def _selectable_columns(studyset, source):
-    """Return the columns of one source that a selector may name."""
-    return [col for col in _source_frame(studyset, source).columns if col not in ID_COLS]
+    def __init__(self, studyset):
+        self._studyset = studyset
+        self._frames = {}
+        self._label_block = None
+        self._entries = {}
 
+    # ------------------------------------------------------------ what exists
+    @property
+    def label_block(self):
+        """:class:`~nimare.studyset.blocks.LabelBlock` or None: every annotation's labels."""
+        if self._label_block is None and self._studyset.annotations:
+            self._label_block = label_block_for(self._studyset.view)
+        return self._label_block
 
-def _source_attribute(source):
-    """Return the Studyset attribute a source's raw values are read from."""
-    return "annotations_df" if source == "annotations" else source
-
-
-def _is_pattern(field):
-    """Report whether a field selector names a set of labels rather than one field."""
-    return any(character in field for character in "*?[")
-
-
-def _matching_labels(studyset, pattern):
-    """Return the annotation labels matching ``pattern``, in the Studyset's order."""
-    return [
-        label for label in _selectable_columns(studyset, "annotations") if fnmatch(label, pattern)
-    ]
-
-
-def _resolve_selector(studyset, selector, what="descriptor"):
-    """Return ``(source, field)``, inferring the source from a bare field name."""
-    source, field = _as_selector(selector)
-
-    if source is not None and _is_pattern(field):
-        if source != "annotations":
-            raise ValueError(
-                f"A pattern selects annotation labels, so {field!r} cannot come from "
-                f"{source}. Name a {source} field exactly."
+    def frame(self, source):
+        """Return the Studyset table a source names."""
+        if source not in self._frames:
+            self._frames[source] = getattr(
+                self._studyset, "annotations_df" if source == "annotations" else source
             )
-        if not _matching_labels(studyset, field):
+        return self._frames[source]
+
+    def names(self, source):
+        """Return the fields a selector may name in one source."""
+        if source == "annotations":
+            block = self.label_block
+            return [] if block is None else [str(label) for label in block.labels]
+        return [column for column in self.frame(source).columns if column not in ID_COLS]
+
+    def matching(self, pattern):
+        """Return the annotation labels a pattern names, in the Studyset's order."""
+        return [label for label in self.names("annotations") if fnmatch(label, pattern)]
+
+    # ------------------------------------------------------------- resolution
+    def resolve(self, selector, what):
+        """Return ``(source, field, is_pattern)`` for one selector."""
+        source, field = _as_selector(selector)
+        sources = FIELD_SOURCES if source is None else (source,)
+
+        # An exact name wins over pattern matching, so that a label called
+        # ``groups[0].BMI`` is selectable at all.
+        exact = [name for name in sources if field in set(self.names(name))]
+        if len(exact) > 1:
+            raise ValueError(
+                f"{what.capitalize()} field {field!r} is ambiguous: it appears in "
+                f"{', '.join(exact)}. Name the source explicitly, for example "
+                f"('{exact[0]}', '{field}')."
+            )
+        if exact:
+            return exact[0], field, False
+
+        if _looks_like_pattern(field):
+            if source not in (None, "annotations"):
+                raise ValueError(
+                    f"A pattern selects annotation labels, so {field!r} cannot come from "
+                    f"{source}. Name a {source} field exactly."
+                )
+            if self.matching(field):
+                return "annotations", field, True
             raise ValueError(
                 f"{what.capitalize()} pattern {field!r} matches no annotation label. This "
-                f"Studyset annotates with "
-                f"{_preview(_selectable_columns(studyset, 'annotations'))}."
+                f"Studyset annotates with {_preview(self.names('annotations'))}."
             )
-        return source, field
 
-    if source is not None:
-        if field not in _selectable_columns(studyset, source):
+        if source is not None:
             raise ValueError(
                 f"{what.capitalize()} field {field!r} was not found in the Studyset "
-                f"{source}. Available {source} fields: "
-                f"{_preview(_selectable_columns(studyset, source))}."
+                f"{source}. Available {source} fields: {_preview(self.names(source))}."
             )
-        return source, field
-
-    if _is_pattern(field):
-        if not _matching_labels(studyset, field):
-            raise ValueError(
-                f"{what.capitalize()} pattern {field!r} matches no annotation label. This "
-                f"Studyset annotates with "
-                f"{_preview(_selectable_columns(studyset, 'annotations'))}."
-            )
-        return "annotations", field
-
-    matches = [src for src in FIELD_SOURCES if field in _selectable_columns(studyset, src)]
-    if not matches:
         raise ValueError(
             f"{what.capitalize()} field {field!r} was not found in the Studyset metadata, "
-            "annotations or texts. Name the source explicitly with a "
-            f"(source, field) selector if it should be there."
+            "annotations or texts. Name the source explicitly with a (source, field) "
+            "selector if it should be there."
         )
-    if len(matches) > 1:
-        raise ValueError(
-            f"{what.capitalize()} field {field!r} is ambiguous: it appears in "
-            f"{', '.join(matches)}. Name the source explicitly, for example "
-            f"('{matches[0]}', '{field}')."
-        )
-    return matches[0], field
+
+    # ---------------------------------------------------------------- reading
+    def value(self, source, field):
+        """Return ``(values aligned to the analyses, kind)`` for one field.
+
+        ``kind`` is ``"numeric"``, ``"categorical"`` or ``"text"``, and an
+        absent value is missing, which is what a named field means.
+        """
+        if source == "texts":
+            return self.frame(source)[field].to_numpy(dtype=object), "text"
+
+        if source == "annotations":
+            columns = self._annotation_store(field)
+            if columns is None or _is_numeric(columns.entries(field)[1]):
+                return self._annotation_values(field, columns), "numeric"
+            return columns.get(field, sel=self._studyset.view.index), "categorical"
+
+        # The frame, rather than PerAnalysis, because it merges study-level metadata
+        # into the analyses that inherit it even when a sibling declares its own.
+        raw = self.frame(source)[field]
+        present = raw.notna()
+        numbers = pd.to_numeric(raw, errors="coerce")
+        if not present.any() or numbers[present].notna().all():
+            return numbers.to_numpy(dtype=float), "numeric"
+
+        # Not numbers as they stand, which is what a list of per-group sample sizes
+        # looks like; PerAnalysis reduces those the way the rest of NiMARE does.
+        reduced = PerAnalysis(field).values(self._studyset.store)[self._studyset.view.index]
+        if np.isfinite(reduced).any():
+            return np.asarray(reduced, dtype=float), "numeric"
+
+        return raw.to_numpy(dtype=object), "categorical"
+
+    def matrix(self, pattern):
+        """Return ``(names, sparse values)`` for the labels a pattern names.
+
+        An absent label is a zero rather than a gap, which is what a sparse
+        annotation means.
+        """
+        names = self.matching(pattern)
+        unusable = [name for name in names if not self.is_numeric_label(name)]
+        if unusable:
+            raise ValueError(
+                f"Pattern {pattern!r} matches {len(unusable)} label(s) that are not "
+                f"numeric, and the feature matrix is numeric: {_preview(unusable)}. "
+                "Narrow the pattern, or encode those labels and select the result."
+            )
+
+        block = self.label_block
+        columns = [block.col(name) for name in names]
+        return names, sparse.csc_matrix(block.values)[:, columns].tocsr()
+
+    def is_numeric_label(self, label):
+        """Report whether an annotation label holds numbers."""
+        columns = self._annotation_store(label)
+        # A label the annotations do not own is one the union renamed past a
+        # collision; it is in the block, so it is numeric.
+        return columns is None or _is_numeric(columns.entries(label)[1])
+
+    def _annotation_store(self, label):
+        """Return the column store that owns a label, or None."""
+        if not self._entries:
+            self._entries = {
+                name: annotation.columns
+                for annotation in self._studyset.annotations
+                for name in annotation.columns.keys()
+            }
+        return self._entries.get(label)
+
+    def _annotation_values(self, label, columns):
+        """Return one numeric label's values, missing where the label is absent."""
+        if columns is None:
+            return self.label_block.column(label)
+        return columns.get_numeric(label, sel=self._studyset.view.index)
+
+
+def _looks_like_pattern(field):
+    """Report whether a field selector reads as a glob."""
+    return any(character in field for character in "*?[")
 
 
 def _preview(values, limit=8):
@@ -203,50 +274,12 @@ def _preview(values, limit=8):
     return shown or "none"
 
 
-def _read_field(studyset, source, field):
-    """Return ``(values, kind)`` for one field, aligned to ``studyset.ids``.
-
-    ``kind`` is ``"numeric"``, ``"categorical"`` or ``"text"``. Numeric metadata
-    is read through :class:`~nimare.studyset.requirements.PerAnalysis`, so
-    study-level values are inherited by their analyses and list-valued fields
-    such as ``sample_sizes`` are reduced the way the rest of NiMARE reduces them.
-    """
-    raw = _source_frame(studyset, source)[field]
-
-    if source == "texts":
-        return raw.to_numpy(dtype=object), "text"
-
-    if source == "metadata":
-        values = PerAnalysis(field).values(studyset.store)[studyset.view.index]
-        if np.isfinite(values).any() or pd.api.types.is_numeric_dtype(raw):
-            return np.asarray(values, dtype=float), "numeric"
-
-    if pd.api.types.is_numeric_dtype(raw) or pd.api.types.is_bool_dtype(raw):
-        return raw.to_numpy(dtype=float), "numeric"
-
-    return raw.to_numpy(dtype=object), "categorical"
-
-
 class _DescriptorBlock(NamedTuple):
     """One descriptor selection: its column names, its values, what it lacks."""
 
     names: list
     values: Any  # (n_rows, n_names), dense for a field and sparse for labels
     missing: Any  # boolean mask over rows, or None where absence means zero
-
-
-def _read_labels(studyset, pattern):
-    """Return ``(names, sparse values)`` for the annotation labels a pattern names.
-
-    Read from the Studyset's :class:`~nimare.studyset.blocks.LabelBlock`, which
-    is the sparse form the annotation is stored in: the Neurosynth release
-    annotates 115,747 analyses with 794 labels, and a dense read of that is
-    92 million cells holding 3 million values.
-    """
-    block = studyset.label_block()
-    names = _matching_labels(studyset, pattern)
-    columns = [block.col(name) for name in names]
-    return names, sparse.csc_matrix(block.values)[:, columns].tocsr()
 
 
 def _missing_mask(values, kind):
@@ -290,11 +323,8 @@ def _to_dense(block):
 def _dense_step(transformer):
     """Wrap a descriptor transformer so that it is handed dense columns.
 
-    The descriptor block is stored dense and is a handful of numeric columns,
-    but it arrives here sparse because it sits beside the voxels in one matrix.
-    Most scikit-learn transformers expect dense input for this kind of column --
-    ``StandardScaler`` refuses to centre sparse data at all -- so the block is
-    densified for them. The map block stays sparse.
+    The block arrives sparse because it sits beside the voxels in one matrix,
+    and ``StandardScaler`` refuses to centre sparse data at all.
     """
     if isinstance(transformer, str):
         return transformer
@@ -482,14 +512,7 @@ class FeatureSet(NiMAREBase):
 
         Generates one modeled activation (MA) map per analysis through the
         kernel transformer, appends any numeric descriptor fields, extracts any
-        target, and returns them aligned to the analyses they came from, with
-        the study labels that keep analyses from one study out of two different
-        partitions.
-
-        The work happens here rather than in ``__init__``, which stays a plain
-        data constructor: it is also how :meth:`split`, :meth:`select_analyses`
-        and the map-reduction methods build their results, from blocks that
-        already exist.
+        target, and aligns them to the analyses they came from.
 
         Parameters
         ----------
@@ -500,68 +523,49 @@ class FeatureSet(NiMAREBase):
             There is no default: the choice is scientific.
         descriptor_fields : :obj:`list`, optional
             Fields appended to the feature matrix as extra numeric columns, by
-            default None. Each is a field name, a ``(source, field)`` tuple, or a
-            mapping with ``source`` and ``field``; sources are ``"metadata"``,
-            ``"annotations"`` and ``"texts"``. A bare field name is looked up in
-            each source in turn, and an ambiguous name asks for the tuple form.
-            Non-numeric fields are rejected -- see the Notes.
+            default None. Each is a field name, a ``(source, field)`` tuple, or
+            a mapping with ``source`` and ``field``; sources are
+            ``"metadata"``, ``"annotations"`` and ``"texts"``. A field that
+            reads as a glob pattern, such as ``"Neurosynth_TFIDF__*"``, selects
+            every annotation label matching it. Non-numeric fields are refused.
         target_field : :obj:`str` or :obj:`tuple` or :obj:`dict`, optional
             Field exported as ``y``, by default None. Scalar numeric and scalar
             categorical fields are supported directly.
         target_transformer : :obj:`callable` or transformer, optional
-            Applied to the raw target values before they become ``y``, by default
-            None. Required for text fields, which have no scalar reading. Use a
-            row-wise transform such as a label extractor; a transform that learns
-            from the distribution of ``y`` belongs in
-            :class:`~sklearn.compose.TransformedTargetRegressor`.
+            Applied to the raw target values before they become ``y``, by
+            default None. Required for text fields, which have no scalar
+            reading.
         missing_coordinates : {"drop", "include"}, default="drop"
-            What to do with analyses that report no coordinates. ``"drop"`` removes
-            them before rows are built and records their ids in provenance;
-            ``"include"`` keeps them as all-zero sparse map rows.
+            Whether analyses reporting no coordinates are removed before rows
+            are built, or kept as all-zero sparse map rows.
         missing_values : {"raise", "drop", "keep"}, default="raise"
-            What to do when a selected descriptor or target value is missing.
-            ``"raise"`` reports the analyses and fields involved; ``"drop"`` removes
-            those analyses and records them in provenance; ``"keep"`` leaves NaN in
-            place for a pipeline to impute.
+            What to do when a selected descriptor or target value is missing:
+            report the analyses and fields, remove those analyses, or leave the
+            gaps for a pipeline to impute.
         memory : :class:`joblib.Memory`, :obj:`str` or :class:`pathlib.Path`, optional
-            Cache location for MA map generation, by default None. Repeated calls
-            over the same Studyset then reuse the maps instead of regenerating
-            them, across processes as well as within one. Used only when the kernel
-            transformer does not define its own cache; the kernel's own ``memory``
-            always wins.
+            Cache location for MA map generation, by default None. Used only
+            when the kernel transformer does not define its own.
         memory_level : :obj:`int`, default=2
-            How eagerly ``memory`` caches, following the NiMARE convention. Kernel
-            transformers cache their maps at level 2, which is why that is the
-            default here; a lower level asks for them not to be cached.
+            How eagerly ``memory`` caches. Kernel transformers cache their maps
+            at level 2, so a lower level asks for them not to be cached.
 
         Returns
         -------
         :class:`FeatureSet`
-            One row per retained analysis, with map features, any descriptor
-            features, any target, study groups and provenance. Call
-            :meth:`to_sklearn` for the scikit-learn bundle.
+            One row per retained analysis. Call :meth:`to_sklearn` for the
+            scikit-learn bundle.
 
-        Notes
-        -----
-        Descriptor fields must be numeric, because the exported feature matrix
-        is numeric. A categorical or text field raises and says where its raw
-        values are -- ``studyset.metadata``, ``studyset.annotations_df`` or
-        ``studyset.texts`` -- so that you can encode them and select the numeric
-        result. Encoding here would fit the encoder on every analysis, including
-        the ones you are about to hold out.
+        Raises
+        ------
+        :obj:`ValueError`
+            If a field cannot be resolved or used, if a value is missing under
+            ``missing_values="raise"``, if the target is constant over the
+            analyses that were kept, or if the Studyset has no analyses or
+            repeats an analysis id.
 
-        An annotation is selected a label at a time by name, or many at a time
-        by pattern: ``("annotations", "Neurosynth_TFIDF__*")`` takes every
-        matching label, under its own name, and keeps the block sparse, which
-        matters when an annotation runs to thousands of labels. A label no
-        analysis carries is a zero rather than a gap, so ``missing_values`` has
-        nothing to report about one.
-
-        Generating the maps does not leak: an analysis's MA map is a function of
-        that analysis's own foci, so it never sees ``y`` or another row. Everything
-        that learns *across* rows belongs in a
-        :class:`~sklearn.pipeline.Pipeline`, which :meth:`make_preprocessor`
-        builds the piece for.
+        See Also
+        --------
+        AtlasAggregator : Reduce the map features over the regions of an atlas.
 
         Examples
         --------
@@ -570,12 +574,6 @@ class FeatureSet(NiMAREBase):
         ...     kernel_transformer=MKDAKernel(r=10),
         ...     target_field=("metadata", "comparison_task"),
         ... )
-        >>> train, test = features.split(test_size=0.25, random_state=13)  # doctest: +SKIP
-        >>> bunch = features.to_sklearn()  # doctest: +SKIP
-
-        See Also
-        --------
-        AtlasAggregator : Reduce the map features over the regions of an atlas.
         """
         return _FeatureExtractor(
             kernel_transformer=kernel_transformer,
@@ -768,39 +766,22 @@ class FeatureSet(NiMAREBase):
     ):
         """Apply a reducer to the map columns and something else to the rest.
 
-        This is :class:`~sklearn.compose.ColumnTransformer`, with the column
-        boundary filled in, the masker bound into an atlas reducer, and
-        ``sparse_threshold=1.0`` so that a map block denser than scikit-learn's
-        default threshold is not quietly densified.
-
-        When there are no descriptor columns there is nothing to keep the
-        reducer away from, so the reducer is returned as it is: put a
-        scikit-learn transformer straight into your pipeline and this method is
-        not needed at all.
-
-        Which is also the rule for when it *is* needed. A transformer placed
-        directly in a pipeline sees every column it is given, so once there are
-        descriptor columns a bare reducer decomposes them along with the
-        voxels, quietly. Going through this method costs nothing on a map-only
-        feature set and keeps a pipeline correct if descriptor fields are added
-        later.
+        A :class:`~sklearn.compose.ColumnTransformer` with the column boundary
+        filled in, the masker bound into an atlas reducer, and
+        ``sparse_threshold=1.0``. With no descriptor columns to keep the
+        reducer away from, the reducer is returned as it is.
 
         Parameters
         ----------
         map_reducer : estimator, :obj:`type`, atlas or None
             A scikit-learn transformer, a transformer class built here from
-            ``**reducer_params``, any atlas :class:`AtlasAggregator` accepts
-            (this feature set supplies the voxel order), or None to leave the
-            map columns alone.
+            ``**reducer_params``, any atlas :class:`AtlasAggregator` accepts,
+            or None to leave the map columns alone.
         descriptor_transformer : estimator, :obj:`str` or :obj:`dict`, default="passthrough"
-            What to apply to the descriptor columns: one transformer for all of
-            them, for example :class:`~sklearn.impute.SimpleImputer` when
-            descriptors were kept with missing values, or a mapping from
-            descriptor name to transformer when they need different treatment.
-            Descriptors the mapping does not name are passed through, and the
-            column order is the one they came in with. Transformers are handed
-            the descriptor columns dense, since that is what most of them
-            expect of a handful of numeric columns; the map block stays sparse.
+            One transformer for every descriptor column, or a mapping from
+            descriptor name to transformer. Descriptors the mapping does not
+            name are passed through, and the column order is the one they came
+            in with. Transformers are handed their columns dense.
         **reducer_params
             Passed to ``map_reducer`` when it is a class.
 
@@ -810,37 +791,19 @@ class FeatureSet(NiMAREBase):
             A :class:`~sklearn.compose.ColumnTransformer` when there are
             descriptor columns, and the reducer itself when there are not.
 
+        Raises
+        ------
+        :obj:`ValueError`
+            If ``descriptor_transformer`` names something that is not a
+            descriptor, if it is given for a feature set that has no descriptor
+            columns, or if parameters are passed alongside a built transformer.
+
         Examples
         --------
         >>> pipeline = make_pipeline(  # doctest: +SKIP
         ...     features.make_preprocessor(TruncatedSVD(n_components=50)),
         ...     LogisticRegression(),
         ... )
-        >>> pipeline = make_pipeline(  # doctest: +SKIP
-        ...     features.make_preprocessor(fetch_atlas_difumo(dimension=64)),
-        ...     LogisticRegression(),
-        ... )
-        >>> preprocessor = features.make_preprocessor(  # doctest: +SKIP
-        ...     TruncatedSVD(n_components=50),
-        ...     descriptor_transformer={
-        ...         "sample_sizes": SimpleImputer(strategy="median"),
-        ...         "year": StandardScaler(),
-        ...     },
-        ... )
-
-        Notes
-        -----
-        Written out, the two-block case is the ordinary scikit-learn recipe,
-        and :attr:`map_columns` and :attr:`descriptor_columns` are public so
-        that you can write it yourself::
-
-            ColumnTransformer(
-                [
-                    ("maps", TruncatedSVD(n_components=50), features.map_columns),
-                    ("descriptors", SimpleImputer(), features.descriptor_columns),
-                ],
-                sparse_threshold=1.0,
-            )
         """
         if map_reducer is None or (isinstance(map_reducer, str) and map_reducer == "passthrough"):
             reducer = "passthrough"
@@ -1032,11 +995,10 @@ class FeatureSet(NiMAREBase):
             ids=self.ids.copy(),
             study_ids=self.study_ids.copy(),
             target=None if self.target is None else self.target.copy(),
-            provenance=copy.deepcopy(self.provenance),
         )
 
     def _rebuild(self, **changes):
-        """Return a new dataset, keeping whatever was not named in ``changes``."""
+        """Return a feature set of this type, keeping whatever ``changes`` omits."""
         kwargs = {
             "map_features": self._map_features,
             "ids": self.ids,
@@ -1050,7 +1012,12 @@ class FeatureSet(NiMAREBase):
         }
         kwargs.update(changes)
         positional = (kwargs.pop("map_features"), kwargs.pop("ids"), kwargs.pop("study_ids"))
-        return FeatureSet(*positional, **kwargs)
+
+        provenance = copy.deepcopy(kwargs.pop("provenance"))
+        if "n_rows" in provenance:
+            provenance["n_rows"] = len(positional[1])
+
+        return type(self)(*positional, provenance=provenance, **kwargs)
 
 
 # ------------------------------------------------------------- the extractor
@@ -1125,10 +1092,13 @@ class _FeatureExtractor(NiMAREBase):
         # decides which analyses can have a map at all.
         has_coordinates = studyset.coordinate_block().group_sizes() > 0
 
-        blocks = self._read_descriptors(studyset)
-        target, target_missing = self._read_target(studyset)
+        fields = _Fields(studyset)
+        blocks = self._read_descriptors(fields)
+        target, target_missing = self._read_target(fields)
 
         retained, dropped = self._retained_rows(ids, has_coordinates, blocks, target_missing)
+
+        self._check_target(target, retained, ids)
 
         studyset_rows = studyset.select_analyses(retained)
         map_features = self._map_matrix(studyset_rows, ids[retained], has_coordinates[retained])
@@ -1167,7 +1137,7 @@ class _FeatureExtractor(NiMAREBase):
 
     # -------------------------------------------------------------- selection
 
-    def _read_descriptors(self, studyset):
+    def _read_descriptors(self, fields):
         """Return one :class:`_DescriptorBlock` per selector."""
         selectors = self.descriptor_fields
         if selectors is None:
@@ -1178,21 +1148,18 @@ class _FeatureExtractor(NiMAREBase):
 
         blocks, seen = [], set()
         for selector in selectors:
-            source, field = _resolve_selector(studyset, selector, what="descriptor")
+            source, field, is_pattern = fields.resolve(selector, what="descriptor")
 
-            if _is_pattern(field):
-                names, values = _read_labels(studyset, field)
-                # An annotation is sparse by nature: a label no analysis carries is a
-                # zero, not a gap, so there is nothing for missing_values to report.
+            if is_pattern:
+                names, values = fields.matrix(field)
                 block = _DescriptorBlock(names, values, None)
             else:
-                values, kind = _read_field(studyset, source, field)
+                values, kind = fields.value(source, field)
                 if kind != "numeric":
                     raise ValueError(
                         f"Descriptor field {field!r} from {source} is {kind}, and the "
-                        "feature matrix is numeric. Encode it yourself -- its raw "
-                        f"values are in studyset.{_source_attribute(source)} -- and "
-                        "select the numeric result."
+                        "feature matrix is numeric. Encode it yourself -- its raw values "
+                        f"are in the Studyset's {source} -- and select the numeric result."
                     )
                 block = _DescriptorBlock(
                     [field],
@@ -1210,13 +1177,18 @@ class _FeatureExtractor(NiMAREBase):
 
         return blocks
 
-    def _read_target(self, studyset):
+    def _read_target(self, fields):
         """Return ``(target values, missing mask)`` for the selected target."""
         if self.target_field is None:
             return None, None
 
-        source, field = _resolve_selector(studyset, self.target_field, what="target")
-        values, kind = _read_field(studyset, source, field)
+        source, field, is_pattern = fields.resolve(self.target_field, what="target")
+        if is_pattern:
+            raise ValueError(
+                f"Target pattern {field!r} names a set of labels, and a target is one "
+                "value per analysis. Name one label."
+            )
+        values, kind = fields.value(source, field)
         missing = _missing_mask(values, kind)
 
         if self.target_transformer is not None:
@@ -1241,14 +1213,19 @@ class _FeatureExtractor(NiMAREBase):
                 "target_transformer with a label extractor that chooses one."
             )
 
-        present = values[~missing]
+        return values, missing
+
+    def _check_target(self, target, retained, ids):
+        """Refuse a target that says the same thing about every analysis kept."""
+        if target is None:
+            return
+        kept = np.asarray(target)[retained]
+        present = kept[~_missing_mask(kept, "numeric" if kept.dtype.kind in "fiu" else "other")]
         if len(present) and len(np.unique(present)) == 1:
             raise ValueError(
-                f"Target field {field!r} has the single value {present[0]!r} for every "
-                "analysis, so there is nothing to predict."
+                f"The target has the single value {present[0]!r} for every analysis that "
+                f"was kept ({len(kept)} of {len(ids)}), so there is nothing to predict."
             )
-
-        return values, missing
 
     def _apply_target_transformer(self, values):
         """Apply the target transformer, whichever shape it has."""
@@ -1271,12 +1248,14 @@ class _FeatureExtractor(NiMAREBase):
             retained &= has_coordinates
             dropped["no_coordinates"] = ids[~has_coordinates].tolist()
 
+        # Only rows that survive the coordinate policy can be missing anything: the
+        # rest are not in the output to be missing from.
         missing_by_field = {}
         for block in blocks:
-            if block.missing is not None and block.missing.any():
-                missing_by_field[block.names[0]] = ids[block.missing].tolist()
-        if target_missing is not None and target_missing.any():
-            missing_by_field["<target>"] = ids[target_missing].tolist()
+            if block.missing is not None and (block.missing & retained).any():
+                missing_by_field[block.names[0]] = ids[block.missing & retained].tolist()
+        if target_missing is not None and (target_missing & retained).any():
+            missing_by_field["<target>"] = ids[target_missing & retained].tolist()
 
         if missing_by_field:
             if self.missing_values == "raise":
@@ -1422,30 +1401,23 @@ def _align_map_rows(maps, ids, has_coordinates):
 class AtlasAggregator(TransformerMixin, BaseEstimator):
     """Aggregate masked voxel features into the regions of a nilearn atlas.
 
-    Takes any atlas nilearn can load -- a fetched atlas, an image, a file, the
-    name of a nilearn fetcher, or a masker you built yourself -- and turns each
-    row of map features into one value per region. Rows are converted back into
-    images in the source mask's space in batches and summarised by a nilearn
-    masker, so region definitions, resampling and the aggregation strategy stay
-    nilearn's business.
+    Rows are converted back into images in the source mask's space, in batches,
+    and summarised by a nilearn masker, so region definitions, resampling and
+    the aggregation strategy stay nilearn's. How many regions an atlas yields
+    therefore depends on the nilearn version as well as on the atlas; see
+    :doc:`the machine learning documentation </machine_learning>`.
 
     Parameters
     ----------
     atlas : object, optional
-        The atlas, in any of these forms, by default None:
-
-        - a :class:`~sklearn.utils.Bunch` from a ``nilearn.datasets.fetch_atlas_*``
-          function, whose ``maps`` and ``labels`` are read;
-        - a 3D (deterministic) or 4D (probabilistic) atlas image, or a path to one;
-        - the name of a nilearn fetcher, such as ``"harvard_oxford"``, with any
-          arguments it needs in ``atlas_kwargs``;
-        - a fitted or unfitted :class:`~nilearn.maskers.NiftiLabelsMasker` or
-          :class:`~nilearn.maskers.NiftiMapsMasker`, when the defaults chosen
-          here are not the ones you want. It is cloned, never modified.
-
-        A 4D atlas is summarised with a :class:`~nilearn.maskers.NiftiMapsMasker`
-        and a 3D one with a :class:`~nilearn.maskers.NiftiLabelsMasker`, both
-        with ``resampling_target="data"``.
+        The atlas, in any form nilearn loads, by default None: a
+        :class:`~sklearn.utils.Bunch` from a ``nilearn.datasets.fetch_atlas_*``
+        function, a 3D or 4D atlas image or a path to one, the name of a
+        fetcher with its arguments in ``atlas_kwargs``, or a
+        :class:`~nilearn.maskers.NiftiLabelsMasker` or
+        :class:`~nilearn.maskers.NiftiMapsMasker`, which is cloned rather than
+        modified. A 4D atlas is summarised with a maps masker and a 3D one with
+        a labels masker.
     masker : :class:`~nilearn.maskers.NiftiMasker` or img_like, optional
         The masker defining the voxel order of the incoming features, normally
         :attr:`FeatureSet.masker`, by default None.
@@ -1454,8 +1426,7 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
         None.
     batch_size : :obj:`int`, default=10
         How many rows are held in dense image form at once. Ten rows of a 2 mm
-        whole-brain mask is roughly 18 MB; larger batches use more memory and
-        call nilearn fewer times.
+        whole-brain mask is roughly 18 MB.
 
     Attributes
     ----------
@@ -1464,23 +1435,14 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
     region_names_ : :obj:`list` of :obj:`str` or None
         Region names read from the atlas, when it carries any.
     n_features_out_ : :obj:`int`
-        How many regions the fitted masker actually reports, known once
-        anything has been transformed or named.
-
-    Notes
-    -----
-    How many regions an atlas yields depends on the nilearn version as well as
-    on the atlas: regions that fall outside the mask are kept by nilearn 0.12
-    and dropped by 0.13. The region count and names reported here follow
-    whichever nilearn is installed, so a feature matrix is comparable across
-    environments only when the nilearn version is.
+        How many regions the fitted masker reports, known once anything has
+        been transformed or named.
 
     Examples
     --------
-    >>> from nilearn.datasets import fetch_atlas_difumo  # doctest: +SKIP
     >>> reducer = AtlasAggregator(  # doctest: +SKIP
     ...     atlas=fetch_atlas_difumo(dimension=64),
-    ...     masker=dataset.masker,
+    ...     masker=features.masker,
     ... )
     """
 
@@ -1524,6 +1486,8 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
         self.atlas_masker_ = atlas_masker.fit(self.mask_img_)
         self.region_names_ = region_names
         self.n_features_in_ = X.shape[1]
+        if hasattr(self, "n_features_out_"):
+            del self.n_features_out_
         return self
 
     def transform(self, X):
@@ -1581,9 +1545,8 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
         """Return how many regions the fitted masker reports, asking it if need be.
 
         Neither ``n_elements_`` nor the atlas image answers this on nilearn
-        0.13, where a region that falls outside the mask is dropped from the
-        output but not from either of them. One all-zero row costs a single
-        masker call and is exact.
+        0.13, where a region outside the mask is dropped from the output but
+        not from either of them.
         """
         if not hasattr(self, "n_features_out_"):
             self.transform(np.zeros((1, self.n_features_in_), dtype=float))

@@ -111,7 +111,12 @@ The option vocabulary is validated before any work is done.
   is supplied, and reject a target that has one value for every analysis.
 - Report missing descriptor and target values under `missing_values="raise"`,
   naming the fields and the affected analysis ids; record them in provenance
-  under `"drop"` and `"keep"`.
+  under `"drop"` and `"keep"`. Only analyses that survive `missing_coordinates`
+  can be missing anything: the rest are not in the output to be missing from.
+- Refuse a target that is constant over the analyses that were **kept**, since
+  a minority class can leave with the analyses that had no coordinates.
+- Inherit study-level metadata even when a sibling analysis declares the same
+  field.
 - Never mutate the caller's kernel transformer.
 
 ## `FeatureSet`
@@ -144,6 +149,9 @@ and that order is preserved by every method.
   `target`, `groups`, `feature_names`, `ids`, `provenance`, `map_columns` and
   `descriptor_columns`; or `(data, target)`, following the `sklearn.datasets`
   convention.
+- Every derivation -- `split`, `select_analyses`, `copy`, the map-reduction
+  methods -- MUST return the caller's own type and give its result an
+  independent `provenance` whose `n_rows` describes that result.
 - `split(test_size=0.25, random_state=None)`: grouped holdout by study through
   `GroupShuffleSplit`, returning `(train, test)`. `test_size` is a fraction of
   *studies*. Validate the study count first and raise before returning anything
@@ -189,12 +197,17 @@ aliases.
 
 A field that reads as a glob pattern -- `("annotations", "Neurosynth_TFIDF__*")`
 -- selects every annotation label matching it, in the Studyset's order, each
-under its own name. This is how an annotation is used at all: the Neurosynth
+under its own name. An exact name MUST win over pattern matching, so that a
+label called `ParticipantDemographicsExtractor.groups[0].BMI` is selectable at
+all; 878 of the labels in the bundled NeuroStore studyset are named that way.
+A pattern MUST refuse the non-numeric labels it matches, the way an exactly
+named field is refused, rather than reading them as zeros. This is how an annotation is used at all: the Neurosynth
 release annotates 115,747 analyses with 794 labels, and naming them one at a
 time is not a workflow.
 
-Such a selection MUST be read from the Studyset's `LabelBlock` and MUST stay
-sparse through extraction, splitting and export, because a dense read of that
+Such a selection MUST be read through `label_block_for`, which is also what
+decides what the labels are called, so that selection and extraction cannot
+disagree about a Studyset carrying several annotations. It MUST stay sparse through extraction, splitting and export, because a dense read of that
 annotation is 92 million cells holding 3 million values. Label names MUST
 survive whole, double underscores included, since `Neurosynth_TFIDF__pain` is
 the name of the thing; where a name has to be softened for a scikit-learn step

@@ -58,7 +58,9 @@ STUDY_LAYOUT = [
 ]
 
 
-def _build_ml_studyset(ids_without_points=(), ids_without_score=(), coordinate_offset=0.0):
+def _build_ml_studyset(
+    ids_without_points=(), ids_without_score=(), coordinate_offset=0.0, text_annotation=False
+):
     """Build the Studyset the ML tests read.
 
     A Studyset is immutable, so the variants some tests need -- an analysis with
@@ -85,6 +87,7 @@ def _build_ml_studyset(ids_without_points=(), ids_without_score=(), coordinate_o
                     "annotations": {
                         "motor_label": float(position < 4),
                         "target_score": float(position) + 0.5,
+                        **({"task_name": f"task {position}"} if text_annotation else {}),
                     },
                     "texts": {"abstract": f"Analysis {position} abstract."},
                     "points": (
@@ -1211,6 +1214,148 @@ def test_annotation_pattern_records_what_was_asked_for(neurosynth_studyset):
 
     assert features.provenance["descriptor_fields"] == [["annotations", "Neurosynth_TFIDF__pai*"]]
     assert features.provenance["n_descriptor_features"] == len(features.descriptor_names)
+
+
+@pytest.fixture(scope="session")
+def neurostore_studyset():
+    """Return the bundled NeuroStore studyset, whose labels are named with brackets."""
+    return Studyset(Path(get_resource_path()) / "nback_vs_flanker_studyset_2026-07")
+
+
+def test_exact_field_names_win_over_pattern_matching(neurostore_studyset):
+    """A label whose own name contains a glob character is still selectable.
+
+    878 of the labels in this bundled studyset are named like
+    ``ParticipantDemographicsExtractor.groups[0].BMI``.
+    """
+    studyset = neurostore_studyset.slice(neurostore_studyset.ids[:6])
+    frame = studyset.annotations_df
+    label = next(
+        column
+        for column in frame.columns
+        if "[" in column and pd.api.types.is_numeric_dtype(frame[column])
+    )
+
+    features = FeatureSet.from_studyset(
+        studyset,
+        MKDAKernel(r=10),
+        descriptor_fields=[("annotations", label)],
+        missing_values="keep",
+    )
+
+    assert features.descriptor_names == [label]
+    np.testing.assert_allclose(
+        _dense(features.descriptor_features).ravel(),
+        frame.set_index("id").loc[features.ids, label].to_numpy(dtype=float),
+    )
+
+
+def test_pattern_refuses_non_numeric_labels():
+    """A label a glob matches is checked the way a label named exactly is."""
+    studyset = _build_ml_studyset(text_annotation=True)
+
+    with pytest.raises(ValueError, match="not numeric"):
+        FeatureSet.from_studyset(
+            studyset, MKDAKernel(r=4), descriptor_fields=[("annotations", "task_nam*")]
+        )
+
+    # Named exactly, the same label is refused for the same reason.
+    with pytest.raises(ValueError, match="is categorical"):
+        FeatureSet.from_studyset(
+            studyset, MKDAKernel(r=4), descriptor_fields=[("annotations", "task_name")]
+        )
+
+
+def test_patterns_span_several_annotations(ml_studyset):
+    """Selection and extraction must agree about what the annotations hold."""
+    studyset = ml_studyset.with_annotation(
+        "second", ["extra_term"], np.arange(len(ml_studyset.ids), dtype=float)[:, None]
+    )
+
+    features = FeatureSet.from_studyset(
+        studyset, MKDAKernel(r=4), descriptor_fields=[("annotations", "*_term")]
+    )
+
+    assert features.descriptor_names == ["extra_term"]
+
+
+def test_a_dropped_analysis_cannot_also_be_missing():
+    """missing_values speaks for the rows that are kept, not the ones already gone."""
+    missing_id = "study_2-task0"
+    studyset = _build_ml_studyset(ids_without_points={missing_id}, ids_without_score={missing_id})
+
+    features = FeatureSet.from_studyset(
+        studyset, MKDAKernel(r=4), descriptor_fields=["score"], missing_values="raise"
+    )
+
+    assert features.provenance["dropped_ids"] == [missing_id]
+    assert features.provenance["missing_value_ids"] == {}
+
+
+def test_a_slice_owns_its_provenance(ma_feature_dataset):
+    """Train, test and parent must not share one dict, nor one row count."""
+    dataset = ma_feature_dataset
+    dataset.provenance["n_rows"] = len(dataset)
+    train, test = dataset.split(test_size=0.34, random_state=RANDOM_SEED)
+
+    train.provenance["dropped_ids"].append("leaked")
+
+    assert dataset.provenance["dropped_ids"] == []
+    assert test.provenance["dropped_ids"] == []
+    assert train.provenance["n_rows"] == len(train)
+    assert test.provenance["n_rows"] == len(test)
+
+
+def test_a_subclass_survives_every_derivation(ma_feature_dataset):
+    """A container that derives a plain FeatureSet loses whatever a subclass added."""
+
+    class Mine(FeatureSet):
+        pass
+
+    mine = ma_feature_dataset._rebuild()
+    mine.__class__ = Mine
+
+    train, test = mine.split(test_size=0.34, random_state=RANDOM_SEED)
+    assert type(train) is Mine and type(test) is Mine
+    assert type(mine.copy()) is Mine
+    assert type(mine.select_analyses([0, 1])) is Mine
+    assert type(mine.fit_transform_maps(TruncatedSVD(n_components=1))) is Mine
+
+
+def test_a_target_is_constant_only_over_the_rows_that_are_kept():
+    """The minority class can disappear with the analyses that had no coordinates."""
+    studyset = _build_ml_studyset(ids_without_points={"study_0-task0", "study_0-task1"})
+    labels = ["rare" if id_.startswith("study_0") else "common" for id_ in studyset.ids]
+    studyset = studyset.with_metadata("grp", np.array(labels, dtype=object))
+
+    with pytest.raises(ValueError, match="single value 'common' for every analysis that was kept"):
+        FeatureSet.from_studyset(studyset, MKDAKernel(r=4), target_field="grp")
+
+
+def test_study_level_metadata_is_inherited_even_when_an_analysis_declares_it(ml_studyset):
+    """One analysis declaring a field must not hide the study-level value from its siblings."""
+    features = FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4), descriptor_fields=["year"])
+
+    years = ml_studyset.metadata.set_index("id").loc[features.ids, "year"]
+    np.testing.assert_array_equal(features.descriptor_features[:, 0], years)
+    assert np.isfinite(features.descriptor_features[:, 0]).all()
+
+
+def test_atlas_aggregator_forgets_the_previous_atlas(atlas_features, small_masker):
+    """A refit with a different atlas must not report the first one's region count."""
+    affine = small_masker.mask_img.affine
+    two_regions = np.zeros((4, 4, 4), dtype=np.int16)
+    two_regions[0, :2, :2] = 1
+    two_regions[1, :2, :2] = 2
+    one_region = np.ones((4, 4, 4), dtype=np.int16)
+
+    reducer = AtlasAggregator(atlas=nib.Nifti1Image(two_regions, affine), masker=small_masker)
+    reducer.fit_transform(atlas_features)
+    assert len(reducer.get_feature_names_out()) == 2
+
+    reducer.set_params(atlas=nib.Nifti1Image(one_region, affine))
+    reducer.fit(atlas_features)
+    assert len(reducer.get_feature_names_out()) == 1
 
 
 def test_from_studyset_rejects_repeated_descriptor_fields(ml_studyset):

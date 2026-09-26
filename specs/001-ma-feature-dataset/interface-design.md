@@ -829,3 +829,51 @@ constant-target guard earned its place unprompted: asking for
 `Neurosynth_TFIDF__pain` as the target of the bundled 17-study set fails,
 because that set is motor and language studies and the label is zero
 throughout.
+
+---
+
+## 16. Review, and what it found (2026-09-26)
+
+The branch was reviewed as a whole before merge, with an independent pass over
+the diff as well as a read of my own. Eight correctness bugs were confirmed by
+reproduction, six of them in the two features added last:
+
+1. An exact label whose name contains a glob metacharacter could not be
+   selected at all -- 878 of the bundled NeuroStore studyset's own labels are
+   named `...groups[0].BMI`. An exact name now wins over pattern matching.
+2. A pattern that matched a non-numeric label produced a silent column of
+   zeros, where the same label named exactly was refused. 868 of that
+   studyset's 926 labels are non-numeric, so this was not a corner case.
+   Patterns now refuse them, naming them.
+3. Pattern selection crashed on any Studyset carrying more than one
+   annotation, because selection went through `annotations_df` (which merges
+   them) and extraction through `label_block()` (which refuses to). Both now go
+   through `label_block_for`.
+4. `missing_values="raise"` fired for analyses that `missing_coordinates="drop"`
+   had already removed, aborting a conversion over a row that would not have
+   been in the output.
+5. `split` handed train, test and parent the same provenance dict, so a
+   mutation leaked between them and every part reported the parent's row count.
+6. `split`, `copy` and `select_analyses` returned a plain `FeatureSet`,
+   dropping a subclass's type despite the `container=cls` mechanism added for
+   exactly that.
+7. The constant-target guard ran before row retention, so a single-class target
+   survived when the minority class was dropped for want of coordinates.
+8. Study-level metadata was not inherited by an analysis whose sibling declared
+   the same field, because `PerAnalysis` falls back to the study level only
+   when no analysis declares it. The metadata frame merges correctly, and is
+   now what the module reads.
+
+The first three share a cause worth naming: there were two sources of truth for
+what an annotation contains, and they disagreed about naming, dtype and
+multi-annotation merging. They are now one object, `_Fields`, which answers
+what exists, resolves a selector against it, and reads the values -- so a
+label's name, its numeric-ness and its values cannot come from different
+places. That also removed the dense `annotations_df` read that selection used
+to perform on every pattern.
+
+The review's other finding was that design rationale had accumulated in
+docstrings -- 33% of the module -- because `nimare.ml` had no narrative
+documentation page at all, only an autosummary stub. `docs/machine_learning.rst`
+now sits beside `cbma` and `decoding` in the methods toctree and holds the
+reasoning; the docstrings are back to parameters, returns and raises.
