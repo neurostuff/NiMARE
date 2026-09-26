@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+import numpy as np
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
@@ -12,17 +13,35 @@ from nimare.ml._helpers import _preview, _to_dense
 from nimare.ml.reduce import _resolve_map_reducer
 
 
-def _dense_step(transformer):
+def _dense_step(transformer, names):
     """Wrap a descriptor transformer so that it is handed dense columns.
 
     The block arrives sparse because it sits beside the voxels in one matrix,
     and ``StandardScaler`` refuses to centre sparse data at all.
+
+    The wrapper also restores the descriptor names. A ColumnTransformer selects
+    columns by position, because the feature matrix is an array rather than a
+    frame, so without this a descriptor comes out of ``get_feature_names_out``
+    as ``x228483`` and a fitted coefficient cannot be read back to the field it
+    belongs to.
     """
     if isinstance(transformer, str):
-        return transformer
+        # identity, so the column keeps whatever sparsity it arrived with, but
+        # named rather than positional
+        return FunctionTransformer(
+            accept_sparse=True,
+            feature_names_out=lambda _, __: np.asarray(names, dtype=object),
+        )
     return Pipeline(
         [
-            ("to_dense", FunctionTransformer(_to_dense, accept_sparse=True)),
+            (
+                "to_dense",
+                FunctionTransformer(
+                    _to_dense,
+                    accept_sparse=True,
+                    feature_names_out=lambda _, __: np.asarray(names, dtype=object),
+                ),
+            ),
             ("transform", transformer),
         ]
     )
@@ -48,10 +67,10 @@ def _step_name(name, position, used):
 
 def _descriptor_step(bunch, descriptor_transformer):
     """Return the step applied to the descriptor block."""
-    if not isinstance(descriptor_transformer, Mapping):
-        return _dense_step(descriptor_transformer)
-
     names = list(bunch.descriptor_names)
+    if not isinstance(descriptor_transformer, Mapping):
+        return _dense_step(descriptor_transformer, names)
+
     unknown = [name for name in descriptor_transformer if name not in names]
     if unknown:
         raise ValueError(
@@ -67,12 +86,12 @@ def _descriptor_step(bunch, descriptor_transformer):
         steps.append(
             (
                 _step_name(name, position, used),
-                _dense_step(descriptor_transformer.get(name, "passthrough")),
+                _dense_step(descriptor_transformer.get(name, "passthrough"), [name]),
                 [position],
             )
         )
 
-    return ColumnTransformer(steps, sparse_threshold=1.0)
+    return ColumnTransformer(steps, sparse_threshold=1.0, verbose_feature_names_out=False)
 
 
 def make_preprocessor(

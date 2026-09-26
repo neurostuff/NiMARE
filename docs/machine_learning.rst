@@ -278,6 +278,25 @@ block stays sparse.
 by hand. With no descriptor columns, ``make_preprocessor`` hands the reducer
 straight back.
 
+Reading a model back
+~~~~~~~~~~~~~~~~~~~~
+
+``get_feature_names_out`` works through the preprocessor, so a fitted
+coefficient can be read back to the thing it weighs:
+
+.. code-block:: python
+
+    pipeline.fit(bunch.data, bunch.target)
+    names = pipeline[:-1].get_feature_names_out()
+    dict(zip(names, pipeline[-1].coef_[0]))
+    # {'maps__truncatedsvd0': 0.026, ..., 'descriptors__sample_sizes': -0.006}
+
+A :class:`~sklearn.compose.ColumnTransformer` selects these columns by
+position, because the feature matrix is an array rather than a frame, so a
+descriptor would otherwise come out as ``x228483``.
+:func:`~nimare.ml.make_preprocessor` restores the real names, including for
+descriptors left at ``"passthrough"``.
+
 Atlas aggregation
 ~~~~~~~~~~~~~~~~~
 

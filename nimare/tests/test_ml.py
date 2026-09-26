@@ -1596,3 +1596,46 @@ def test_to_bunch_split_needs_two_studies(ml_studyset):
 
     with pytest.raises(ValueError, match="at least 2 studies"):
         one_study.to_bunch(MKDAKernel(r=4), test_size=0.5)
+
+
+@pytest.mark.parametrize(
+    "descriptor_transformer",
+    [
+        pytest.param(SimpleImputer(strategy="median"), id="one-transformer"),
+        pytest.param({"motor_label": StandardScaler()}, id="per-descriptor-mapping"),
+        pytest.param({}, id="mapping-naming-none-of-them"),
+        pytest.param("passthrough", id="passthrough"),
+    ],
+)
+def test_preprocessor_names_descriptors_after_their_fields(ma_bunch, descriptor_transformer):
+    """A fitted coefficient has to be readable back to the field it belongs to."""
+    preprocessor = ml.make_preprocessor(
+        ma_bunch,
+        TruncatedSVD(n_components=1, random_state=RANDOM_SEED),
+        descriptor_transformer=descriptor_transformer,
+    )
+    preprocessor.fit(ma_bunch.data)
+
+    names = [str(name) for name in preprocessor.get_feature_names_out()]
+
+    # the ColumnTransformer selects by position, so without help this would be
+    # the positional 'x2' rather than the descriptor's own name
+    assert names[-1].endswith("motor_label")
+    assert len(names) == 2
+
+
+def test_preprocessor_feature_names_reach_the_estimator(ma_bunch):
+    """The names line up with the coefficients a fitted model exposes."""
+    pipeline = make_pipeline(
+        ml.make_preprocessor(
+            ma_bunch,
+            TruncatedSVD(n_components=1, random_state=RANDOM_SEED),
+            descriptor_transformer=SimpleImputer(strategy="median"),
+        ),
+        Ridge(),
+    )
+    pipeline.fit(ma_bunch.data, ma_bunch.target)
+
+    names = pipeline[:-1].get_feature_names_out()
+
+    assert len(names) == len(pipeline[-1].coef_)
