@@ -214,28 +214,33 @@ from sklearn.impute import SimpleImputer
 pipeline = make_pipeline(
     ml.make_nimare_column_transformer(
         bunch,
-        TruncatedSVD(n_components=50, random_state=13),
-        descriptor_transformer=SimpleImputer(strategy="median"),
+        (TruncatedSVD(n_components=50, random_state=13), "maps"),
+        (SimpleImputer(strategy="median"), "descriptors"),
     ),
     LogisticRegression(max_iter=1000),
 )
 ```
 
-That applies one transformer to every descriptor. When they want different
-treatment, pass a mapping from descriptor name to transformer:
+It is `sklearn.compose.make_column_transformer` with the bundle filled in: the
+same `(transformer, columns)` pairs, the same step names, and `remainder`,
+`sparse_threshold`, `n_jobs`, `verbose` and `verbose_feature_names_out` passed
+through. A descriptor may be named by its own field name, so treating them
+differently is just more pairs:
 
 ```python
 from sklearn.preprocessing import StandardScaler
 
 ml.make_nimare_column_transformer(
     bunch,
-    TruncatedSVD(n_components=50, random_state=13),
-    descriptor_transformer={
-        "sample_sizes": SimpleImputer(strategy="median"),
-        "year": StandardScaler(),
-    },
+    (TruncatedSVD(n_components=50, random_state=13), "maps"),
+    (SimpleImputer(strategy="median"), "sample_sizes"),
+    (StandardScaler(), "year"),
 )
 ```
+
+Leaving a descriptor unclaimed under the default `remainder="drop"` raises
+rather than discarding it; say `("drop", "descriptors")` or
+`remainder="passthrough"` to mean it.
 
 Descriptors the mapping does not name are passed through, and the columns come
 out in the order they went in. `bunch.descriptor_names` lists them.

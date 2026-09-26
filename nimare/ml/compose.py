@@ -1,18 +1,18 @@
-"""Building the scikit-learn step that treats map and descriptor columns apart."""
+"""A :func:`~sklearn.compose.make_column_transformer` that knows the bundle's blocks."""
 
 from __future__ import annotations
-
-from collections.abc import Mapping
 
 import numpy as np
 from scipy import sparse
 from sklearn.base import clone
 from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
+from sklearn.pipeline import Pipeline, _name_estimators
 from sklearn.preprocessing import FunctionTransformer
 
 from nimare.ml._helpers import _preview, _to_dense
 from nimare.ml.reduce import _resolve_map_reducer
+
+BLOCKS = ("maps", "descriptors")
 
 
 def _handles_sparse(transformer):
@@ -32,166 +32,232 @@ def _handles_sparse(transformer):
     return True
 
 
-def _dense_step(transformer, names):
-    """Wrap a descriptor transformer so that it is handed dense columns.
+def _named(names, func=None):
+    """Return a step that reports ``names`` as its output names.
 
-    The block arrives sparse because it sits beside the voxels in one matrix,
-    and ``StandardScaler`` refuses to centre sparse data at all.
-
-    The wrapper also restores the descriptor names. A ColumnTransformer selects
-    columns by position, because the feature matrix is an array rather than a
-    frame, so without this a descriptor comes out of ``get_feature_names_out``
-    as ``x228483`` and a fitted coefficient cannot be read back to the field it
-    belongs to.
+    A ColumnTransformer selects columns by position, because the feature
+    matrix is an array rather than a frame, so without this a column comes out
+    of ``get_feature_names_out`` as ``x228483`` and a fitted coefficient cannot
+    be read back to the feature it weighs. ``func`` densifies on the way
+    through when the transformer downstream needs it; naming and densifying
+    are one step so that nothing in the chain lacks
+    ``get_feature_names_out``.
     """
-    named = FunctionTransformer(
+    return FunctionTransformer(
+        func,
         accept_sparse=True,
         feature_names_out=lambda _, __: np.asarray(names, dtype=object),
     )
-    if isinstance(transformer, str):
-        # identity, so the column keeps whatever sparsity it arrived with, but
-        # named rather than positional
-        return named
-    if _handles_sparse(transformer):
-        # a sparse-safe transformer keeps the block sparse, which matters when
-        # the descriptors are a pattern selection thousands of labels wide
-        return Pipeline([("name", named), ("transform", transformer)])
-    return Pipeline(
-        [
-            (
-                "to_dense",
-                FunctionTransformer(
-                    _to_dense,
-                    accept_sparse=True,
-                    feature_names_out=lambda _, __: np.asarray(names, dtype=object),
-                ),
-            ),
-            ("transform", transformer),
-        ]
+
+
+def _columns_of(bunch, columns):
+    """Return the column spec ``columns`` means, and the names of those columns.
+
+    A string is a column name, as it is to a
+    :class:`~sklearn.compose.ColumnTransformer` reading a frame. Here the names
+    are the two blocks, ``"maps"`` and ``"descriptors"``, and the descriptors'
+    own field names; a block name wins if a descriptor shares it.
+    """
+    wanted = [columns] if isinstance(columns, str) else columns
+    if _all_strings(wanted):
+        columns = _by_name(bunch, wanted)
+    indices = np.arange(len(bunch.feature_names))[columns]
+    return columns, [str(bunch.feature_names[index]) for index in np.atleast_1d(indices)]
+
+
+def _all_strings(columns):
+    """Report whether ``columns`` is a name or a sequence of names."""
+    return (
+        isinstance(columns, (list, tuple))
+        and bool(columns)
+        and all(isinstance(name, str) for name in columns)
     )
 
 
-def _is_passthrough(transformer):
-    """Report whether a transformer slot was left at its default."""
-    return isinstance(transformer, str) and transformer == "passthrough"
-
-
-def _step_name(name, position, used):
-    """Return a ColumnTransformer step name, which may not contain ``__``.
-
-    Annotation fields often do -- ``Neurosynth_TFIDF__pain`` -- so the name is
-    softened, and disambiguated by position if softening made it collide.
-    """
-    safe = name.replace("__", "_") or f"descriptor_{position}"
-    if safe in used:
-        safe = f"{safe}_{position}"
-    used.add(safe)
-    return safe
-
-
-def _descriptor_step(bunch, descriptor_transformer):
-    """Return the step applied to the descriptor block."""
-    names = list(bunch.descriptor_names)
-    if not isinstance(descriptor_transformer, Mapping):
-        return _dense_step(descriptor_transformer, names)
-
-    unknown = [name for name in descriptor_transformer if name not in names]
-    if unknown:
-        raise ValueError(
-            f"No descriptor called {_preview(unknown)}. This bundle has {_preview(names)}."
-        )
-
-    # Column indices here are relative to the descriptor block, and every
-    # descriptor gets a step of its own so the columns come out in the order they
-    # went in rather than in the order the mapping happened to name them.
-    used = set()
-    steps = []
-    for position, name in enumerate(names):
-        steps.append(
-            (
-                _step_name(name, position, used),
-                _dense_step(descriptor_transformer.get(name, "passthrough"), [name]),
-                [position],
+def _by_name(bunch, wanted):
+    """Return the column indices the names in ``wanted`` select."""
+    descriptors = list(bunch.descriptor_names)
+    offset = bunch.descriptor_columns.start
+    indices = []
+    for name in wanted:
+        if name in BLOCKS:
+            block = bunch.map_columns if name == "maps" else bunch.descriptor_columns
+            indices.extend(range(block.start, block.stop))
+        elif name in descriptors:
+            indices.append(offset + descriptors.index(name))
+        else:
+            raise ValueError(
+                f"{name!r} names neither a block nor a descriptor of this bundle. The "
+                f"blocks are {', '.join(BLOCKS)} and the descriptors are "
+                f"{_preview(descriptors)}; anything else must be a column spec, such as "
+                "bunch.map_columns."
             )
+    return indices
+
+
+def _resolve(bunch, transformer):
+    """Return the transformer a step will really use.
+
+    An atlas becomes an :class:`~nimare.ml.AtlasAggregator` bound to the
+    bundle's masker, which is also what the step is then named after, since
+    ``nifti1image`` would say nothing about what the step does.
+    """
+    if isinstance(transformer, str):
+        if transformer not in ("passthrough", "drop"):
+            raise ValueError(
+                f"{transformer!r} is not a transformer. A string may only be "
+                "'passthrough' or 'drop', as it may be for a ColumnTransformer."
+            )
+        return transformer
+    return _resolve_map_reducer(transformer, masker=bunch.get("masker"))
+
+
+def _step(transformer, columns):
+    """Return the transformer to use for one block, wrapped where it has to be."""
+    if transformer == "drop":
+        return transformer
+    if transformer == "passthrough":
+        # an identity rather than the string, so the columns keep whatever
+        # sparsity they arrived with and are still named
+        return _named(columns)
+    # a sparse-safe transformer keeps the block sparse, which matters when it
+    # is a pattern selection thousands of labels wide
+    densify = None if _handles_sparse(transformer) else _to_dense
+    return Pipeline([("name", _named(columns, densify)), ("transform", transformer)])
+
+
+def _check_claims(bunch, specs, remainder):
+    """Refuse to silently drop descriptor columns nobody asked about."""
+    descriptors = bunch.descriptor_columns
+    if descriptors.stop <= descriptors.start or remainder != "drop":
+        return
+    claimed = set()
+    for columns in specs:
+        claimed.update(np.arange(len(bunch.feature_names))[columns].tolist())
+    unclaimed = [
+        index for index in range(descriptors.start, descriptors.stop) if index not in claimed
+    ]
+    if unclaimed:
+        names = [str(bunch.feature_names[index]) for index in unclaimed]
+        raise ValueError(
+            f"No transformer covers {len(unclaimed)} descriptor column(s): "
+            f"{_preview(names)}. A ColumnTransformer drops what nobody claims, so name "
+            "them with a ('descriptors') spec, or pass remainder='passthrough' to keep "
+            "them as they are."
         )
 
-    return ColumnTransformer(steps, sparse_threshold=1.0, verbose_feature_names_out=False)
+
+def _read_pairs(bunch, transformers):
+    """Return the transformers and the column specs a call's pairs name.
+
+    The transformers resolve first, so that an unusable one is reported as
+    such rather than as whatever its columns did or did not cover.
+    """
+    for pair in transformers:
+        if not (isinstance(pair, tuple) and len(pair) == 2):
+            raise ValueError(
+                f"{pair!r} is not a (transformer, columns) pair. "
+                "make_nimare_column_transformer takes them the way "
+                "sklearn.compose.make_column_transformer does."
+            )
+
+    used = [_resolve(bunch, transformer) for transformer, _ in transformers]
+    resolved = [_columns_of(bunch, columns) for _, columns in transformers]
+    return used, resolved
 
 
 def make_nimare_column_transformer(
     bunch,
-    map_reducer,
-    descriptor_transformer="passthrough",
-    **reducer_params,
+    *transformers,
+    remainder="drop",
+    sparse_threshold=1.0,
+    n_jobs=None,
+    verbose=False,
+    verbose_feature_names_out=True,
 ):
-    """Apply a reducer to the map columns of ``bunch`` and something else to the rest.
+    """Construct a ColumnTransformer over the blocks of ``bunch``.
 
-    A :class:`~sklearn.compose.ColumnTransformer` with the column boundary
-    filled in from the bundle, the bundle's masker bound into an atlas reducer,
-    and ``sparse_threshold=1.0`` so a wide sparse map block is never quietly
-    densified. With no descriptor columns to keep the reducer away from, the
-    reducer is returned as it is.
+    :func:`~sklearn.compose.make_column_transformer` with three things added
+    that a bundle knows and scikit-learn cannot work out on its own: the column
+    spans of the two blocks, the masker an atlas reducer needs, and the names
+    of the columns each transformer is given.
+
+    Everything else is scikit-learn's, including the shape of ``transformers``
+    and the automatic step names. Where this function does not cover a case,
+    write ``ColumnTransformer`` out with ``bunch.map_columns`` and
+    ``bunch.descriptor_columns``, which are ordinary slices.
 
     Parameters
     ----------
     bunch : :class:`sklearn.utils.Bunch`
         A bundle from :meth:`~nimare.studyset.Studyset.to_bunch`.
-    map_reducer : estimator, :obj:`type`, atlas or None
-        A scikit-learn transformer, a transformer class built here from
-        ``**reducer_params``, any atlas :class:`~nimare.ml.AtlasAggregator`
-        accepts, or None to leave the map columns alone.
-    descriptor_transformer : estimator, :obj:`str` or :obj:`dict`, default="passthrough"
-        One transformer for every descriptor column, or a mapping from
-        descriptor name to transformer. Descriptors the mapping does not name
-        are passed through, and the column order is the one they came in with.
-        Transformers are handed their columns dense.
-    **reducer_params
-        Passed to ``map_reducer`` when it is a class.
+    *transformers : :obj:`tuple`
+        ``(transformer, columns)`` pairs, as
+        :func:`~sklearn.compose.make_column_transformer` takes them.
+
+        ``columns`` may be a name, or a list of names, as it may be for a
+        ColumnTransformer reading a frame: ``"maps"`` and ``"descriptors"``
+        name the two blocks, and a descriptor may be named by its own field
+        name. It may equally be anything a
+        :class:`~sklearn.compose.ColumnTransformer` accepts: a slice, indices,
+        a mask or a callable.
+
+        ``transformer`` may be a scikit-learn transformer, ``"passthrough"``,
+        ``"drop"``, or any atlas :class:`~nimare.ml.AtlasAggregator` accepts,
+        which is built against the bundle's masker.
+    remainder : {"drop", "passthrough"} or estimator, default="drop"
+        What happens to columns no transformer claims, as in scikit-learn.
+        Leaving descriptor columns unclaimed under ``"drop"`` raises rather
+        than discarding them quietly.
+    sparse_threshold : :obj:`float`, default=1.0
+        Scikit-learn defaults this to 0.3, which would densify an unreduced map
+        block -- about 1.6 GB at 228,000 columns -- so the default here keeps
+        the result sparse whenever any block is.
+    n_jobs : :obj:`int`, optional
+        Passed to :class:`~sklearn.compose.ColumnTransformer`.
+    verbose : :obj:`bool`, default=False
+        Passed to :class:`~sklearn.compose.ColumnTransformer`.
+    verbose_feature_names_out : :obj:`bool`, default=True
+        Passed to :class:`~sklearn.compose.ColumnTransformer`.
 
     Returns
     -------
-    estimator
-        A :class:`~sklearn.compose.ColumnTransformer` when the bundle has
-        descriptor columns, and the reducer itself when it has not.
+    :class:`~sklearn.compose.ColumnTransformer`
+        Unfitted, with the steps named after their transformers.
 
     Raises
     ------
     :obj:`ValueError`
-        If ``descriptor_transformer`` names something that is not a descriptor,
-        if it is given for a bundle with no descriptor columns, or if
-        parameters are passed alongside a built transformer.
+        If a pair is malformed, if a block name is not one of the bundle's, or
+        if descriptor columns would be dropped without being named.
 
     See Also
     --------
-    sklearn.compose.make_column_transformer : The scikit-learn shorthand this
-        follows. Write that one out with ``bunch.map_columns`` and
-        ``bunch.descriptor_columns`` for anything this does not cover.
+    sklearn.compose.make_column_transformer : The function this follows.
 
     Examples
     --------
-    >>> pipeline = make_pipeline(  # doctest: +SKIP
-    ...     make_nimare_column_transformer(bunch, TruncatedSVD(n_components=50)),
-    ...     LogisticRegression(),
+    >>> preprocessor = make_nimare_column_transformer(  # doctest: +SKIP
+    ...     bunch,
+    ...     (TruncatedSVD(n_components=50), "maps"),
+    ...     (SimpleImputer(strategy="median"), "descriptors"),
     ... )
     """
-    if map_reducer is None or _is_passthrough(map_reducer):
-        reducer = "passthrough"
-    else:
-        reducer = _resolve_map_reducer(map_reducer, masker=bunch.masker, **reducer_params)
+    used, resolved = _read_pairs(bunch, transformers)
+    _check_claims(bunch, [columns for columns, _ in resolved], remainder)
 
-    descriptors = bunch.descriptor_columns
-    if descriptors.stop <= descriptors.start:
-        if not _is_passthrough(descriptor_transformer):
-            raise ValueError(
-                "This bundle has no descriptor columns, so there is nothing for "
-                "descriptor_transformer to act on."
-            )
-        return reducer
-
+    steps = [
+        (_step(transformer, names), columns)
+        for transformer, (columns, names) in zip(used, resolved)
+    ]
+    # named after the transformer rather than the wrapper built around it, so
+    # the step names are the ones scikit-learn would have chosen
+    names = [name for name, _ in _name_estimators(used)] if used else []
     return ColumnTransformer(
-        [
-            ("maps", reducer, bunch.map_columns),
-            ("descriptors", _descriptor_step(bunch, descriptor_transformer), descriptors),
-        ],
-        sparse_threshold=1.0,
+        [(name, step, columns) for name, (step, columns) in zip(names, steps)],
+        n_jobs=n_jobs,
+        remainder=remainder,
+        sparse_threshold=sparse_threshold,
+        verbose=verbose,
+        verbose_feature_names_out=verbose_feature_names_out,
     )

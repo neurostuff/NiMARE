@@ -146,18 +146,21 @@ except ValueError as exc:
 ###############################################################################
 # Once there are descriptor columns, the reducer has to be kept off them, which
 # is what :class:`~sklearn.compose.ColumnTransformer` is for.
-# :func:`~nimare.ml.make_nimare_column_transformer` builds one with the column boundary read
-# off the bundle and ``sparse_threshold=1.0``, so a wide sparse map block is
-# never quietly densified. ``bunch.map_columns`` and
-# ``bunch.descriptor_columns`` are right there if you would rather write it
-# out. With map features alone, as above, there is nothing to keep the reducer
-# away from and the function hands the reducer straight back.
+# :func:`~nimare.ml.make_nimare_column_transformer` is
+# :func:`~sklearn.compose.make_column_transformer` with the bundle's blocks
+# filled in: ``(transformer, columns)`` pairs as scikit-learn takes them, where
+# ``columns`` may be ``"maps"``, ``"descriptors"``, or a descriptor's own field
+# name. It also binds the bundle's masker into an atlas reducer, keeps the
+# column names so a coefficient can be read back, and defaults
+# ``sparse_threshold`` to 1.0 -- scikit-learn's 0.3 would densify a wide map
+# block.
 #
-# One transformer covers every descriptor. When they want different treatment,
-# pass a mapping instead -- ``{"sample_sizes": SimpleImputer(), "year":
-# StandardScaler()}`` -- and the descriptors it does not name are passed
-# through, in the order they came in. Descriptor columns are handed over dense,
-# which is what most transformers expect of a few numeric columns.
+# A transformer per descriptor is just another pair:
+# ``(SimpleImputer(), "sample_sizes"), (StandardScaler(), "year")``. Anything
+# this does not cover is written out with ``bunch.map_columns`` and
+# ``bunch.descriptor_columns``, which are ordinary slices. With map features
+# alone there is nothing to keep the reducer away from, so none of this is
+# needed.
 with_descriptors = studyset.to_bunch(
     MKDAKernel(r=10),
     target_field=("metadata", "comparison_task"),
@@ -166,16 +169,14 @@ with_descriptors = studyset.to_bunch(
 )
 preprocessor = make_nimare_column_transformer(
     with_descriptors,
-    TruncatedSVD(n_components=50, random_state=RANDOM_SEED),
-    descriptor_transformer=SimpleImputer(strategy="median"),
+    (TruncatedSVD(n_components=50, random_state=RANDOM_SEED), "maps"),
+    (SimpleImputer(strategy="median"), "descriptors"),
 )
 
 print(f"Descriptors: {with_descriptors.descriptor_names}")
 print(f"Descriptor columns: {with_descriptors.descriptor_columns}")
 print(f"With descriptors: {type(preprocessor).__name__}")
-print(
-    f"Map features only: {type(make_nimare_column_transformer(bunch, TruncatedSVD(2))).__name__}"
-)
+print(f"Steps: {[name for name, _, _ in preprocessor.transformers]}")
 
 ###############################################################################
 # Select annotation labels
@@ -344,8 +345,8 @@ print(f"Descriptors: {[name.split('.')[-1] for name in with_demographics.descrip
 release_pipeline = make_pipeline(
     make_nimare_column_transformer(
         with_demographics,
-        TruncatedSVD(n_components=50, random_state=RANDOM_SEED),
-        descriptor_transformer=SimpleImputer(strategy="median"),
+        (TruncatedSVD(n_components=50, random_state=RANDOM_SEED), "maps"),
+        (SimpleImputer(strategy="median"), "descriptors"),
     ),
     LogisticRegression(max_iter=1000, class_weight="balanced", random_state=RANDOM_SEED),
 )

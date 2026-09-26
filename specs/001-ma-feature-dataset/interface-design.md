@@ -1250,3 +1250,53 @@ The one shape that would remove the helper outright -- keeping descriptors out
 of `data` and beside it -- was rejected: `cross_val_score(pipe, bunch.data,
 bunch.target)` would then silently ignore descriptors the caller explicitly
 asked for, trading a trap that raises for one that quietly answers wrong.
+
+## 22. Inheriting the scikit-learn signature (2026-09-26)
+
+§21 renamed the function after what it returns. This takes the next step and
+gives it the signature to match: `make_nimare_column_transformer` is now
+`sklearn.compose.make_column_transformer` with the bundle filled in, rather
+than a NiMARE invention that happened to build one.
+
+```python
+make_nimare_column_transformer(
+    bunch,
+    (TruncatedSVD(n_components=50), "maps"),
+    (SimpleImputer(strategy="median"), "sample_sizes"),
+    (StandardScaler(), "year"),
+)
+```
+
+Inherited outright: the `(transformer, columns)` pairs, the automatic step
+names (from scikit-learn's own `_name_estimators`, so they match what it would
+have chosen), and `remainder`, `n_jobs`, `verbose` and
+`verbose_feature_names_out` passed through untouched.
+
+Added, and limited to what scikit-learn cannot derive from an array of numbers:
+
+| Addition | Why scikit-learn cannot do it |
+| --- | --- |
+| `"maps"` / `"descriptors"` / a descriptor's field name as `columns` | The block spans live in the bundle. A string spec is already a column *name* to a ColumnTransformer reading a frame, so this is its own convention, not a new one. |
+| An atlas in the transformer slot | It needs the masker, which no array carries. The step is named after the resolved `AtlasAggregator`, since `nifti1image` would say nothing. |
+| Column names on every step | A ColumnTransformer selects by position here, the matrix being an array, so a descriptor would otherwise be `x228483` and a coefficient unreadable. |
+| Sparse-aware wrapping | Densifying is needed only by transformers that centre, and a pattern selection is thousands of columns wide. |
+| `sparse_threshold=1.0` | scikit-learn's 0.3 would densify an unreduced map block, about 1.6 GB at 228,000 columns. |
+| Refusing unclaimed descriptors | `remainder="drop"` is scikit-learn's default and correct, but silently dropping a field the caller asked to extract is not what anyone means. Saying `("drop", "descriptors")` still drops it. |
+
+### What this removed
+
+The bespoke `descriptor_transformer=` parameter, in both its forms. One
+transformer for every descriptor is `(transformer, "descriptors")`; a different
+one each is simply more pairs, named by field. That is strictly more
+expressive -- the old mapping could not, for instance, give two descriptors one
+shared transformer -- and it is scikit-learn's shape rather than a second
+vocabulary for the same idea.
+
+The transformer-class-plus-`**reducer_params` form went with it. scikit-learn's
+factory takes built transformers, and `**kwargs` alongside `*transformers`
+could not be told apart from the ColumnTransformer keywords anyway.
+
+So did returning the bare reducer when a bundle has no descriptors. A factory
+that sometimes returns a ColumnTransformer and sometimes returns its argument
+is the varying-return-type problem again; it now always returns a
+ColumnTransformer, and the map-only case simply does not need to call it.

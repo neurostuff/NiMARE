@@ -329,37 +329,40 @@ version is, which the docstring says.
 
 ### Applying a reducer to the map columns only
 
-`make_nimare_column_transformer(bunch, map_reducer, descriptor_transformer="passthrough",
-**reducer_params)` is a `ColumnTransformer` with the column boundary read off
-the bundle,
-the masker bound into an atlas reducer, and `sparse_threshold=1.0` so that a
-map block denser than scikit-learn's default threshold is not quietly
-densified. It accepts a transformer, a transformer class built from
-`**reducer_params`, or an atlas.
+```python
+make_nimare_column_transformer(bunch, *transformers, remainder="drop",
+                               sparse_threshold=1.0, n_jobs=None, verbose=False,
+                               verbose_feature_names_out=True)
+```
 
-`descriptor_transformer` takes one transformer for the whole descriptor block,
-or a mapping from descriptor name to transformer when the descriptors need
-different treatment. Descriptors the mapping does not name are passed through,
-the column order is the one they came in with, and a name that is not a
-descriptor raises and lists the ones that are. Descriptor transformers are
-handed their columns dense -- the block is stored dense and is a few numeric
-columns, and `StandardScaler` will not centre sparse data -- while the map
-block stays sparse. Asking for descriptor handling on a feature set that has no
-descriptor columns must raise rather than be ignored.
+`sklearn.compose.make_column_transformer` with the bundle filled in. It MUST
+take the same `(transformer, columns)` pairs, name the steps the way
+`_name_estimators` does, and pass `remainder`, `n_jobs`, `verbose` and
+`verbose_feature_names_out` through unchanged. Anything it does not cover is
+written out as a `ColumnTransformer` over `bunch.map_columns` and
+`bunch.descriptor_columns`.
 
-**When there are no descriptor columns it must return the reducer itself.**
-There is nothing to keep the reducer away from, and a pipeline step that wraps
-one transformer in a `ColumnTransformer` over every column is ceremony. The
-documented workflow for map-only feature sets is to put a scikit-learn
-transformer straight into the pipeline.
+What it adds MUST be limited to what scikit-learn cannot derive from an array:
 
-`map_columns`, `descriptor_columns` and `descriptor_names` are public so that
-the two-block recipe can be written by hand, and the docstring shows it written
-out.
+- `columns` may be a name or a list of names, as it may be for a
+  ColumnTransformer reading a frame. `"maps"` and `"descriptors"` name the
+  blocks; a descriptor may be named by its field name. A name that is neither
+  MUST raise and list both.
+- An atlas in the transformer slot MUST be resolved to an `AtlasAggregator`
+  bound to the bundle's masker, and the step named after the aggregator rather
+  than the atlas object.
+- Each step MUST report the names of the columns it was given, so that a fitted
+  coefficient can be read back to its field; a ColumnTransformer selects by
+  position here, because the feature matrix is an array rather than a frame.
+- A block MUST stay sparse unless the transformer cannot take sparse input,
+  which is asked by fitting a clone on a sparse probe.
+- `sparse_threshold` MUST default to 1.0 rather than scikit-learn's 0.3, which
+  would densify an unreduced map block.
+- Leaving descriptor columns unclaimed under `remainder="drop"` MUST raise.
+  Dropping them is available, but only by saying so.
 
-`fit_transform_maps` requires a built transformer: passing an atlas must raise
-and name `AtlasAggregator(atlas, masker=features.masker)`, because the fitted
-aggregator is what `transform_maps` needs for the held-out rows.
+A string in the transformer slot MUST be `"passthrough"` or `"drop"`, as for a
+ColumnTransformer; `"passthrough"` keeps the block's sparsity and its names.
 
 ## Documentation Contract
 

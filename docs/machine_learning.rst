@@ -257,40 +257,54 @@ A transformer placed directly in a pipeline sees every column it is given. With
 map features alone that is the whole matrix and nothing else is needed. Once
 there are descriptor columns, a bare reducer would decompose them along with
 the voxels, which is what :class:`~sklearn.compose.ColumnTransformer` exists to
-prevent. :func:`~nimare.ml.make_nimare_column_transformer` builds one with the
-column boundary filled in, the masker bound into an atlas reducer, and
-``sparse_threshold=1.0`` -- scikit-learn's default of ``0.3`` would densify a
-map block above 30% density, about 1.6 GB at 228,000 columns:
+prevent.
+
+:func:`~nimare.ml.make_nimare_column_transformer` is
+:func:`~sklearn.compose.make_column_transformer` with the bundle filled in. It
+takes the same ``(transformer, columns)`` pairs, names the steps the same way,
+and passes ``remainder``, ``sparse_threshold``, ``n_jobs``, ``verbose`` and
+``verbose_feature_names_out`` straight through:
 
 .. code-block:: python
 
     preprocessor = make_nimare_column_transformer(
         bunch,
-        TruncatedSVD(n_components=50),
-        descriptor_transformer={
-            "sample_sizes": SimpleImputer(strategy="median"),
-            "year": StandardScaler(),
-        },
+        (TruncatedSVD(n_components=50), "maps"),
+        (SimpleImputer(strategy="median"), "sample_sizes"),
+        (StandardScaler(), "year"),
     )
 
-Descriptors the mapping does not name are passed through, and the columns come
-out in the order they went in.
+``columns`` may be a name, as it may be for a ColumnTransformer reading a
+frame: ``"maps"`` and ``"descriptors"`` name the two blocks, and a descriptor
+may be named by its own field name. It may equally be a slice, indices, a mask
+or a callable -- whatever scikit-learn accepts.
+
+What the bundle adds is the four things scikit-learn cannot work out from an
+array of numbers:
+
+* the column spans of the two blocks;
+* the masker, bound into an atlas reducer, so ``(difumo, "maps")`` works;
+* the column names, so a fitted coefficient can be read back to its field;
+* ``sparse_threshold=1.0``, because scikit-learn's ``0.3`` would densify an
+  unreduced map block -- about 1.6 GB at 228,000 columns.
 
 **It is not needed until there are descriptors.** ``descriptor_fields`` is
-None by default, and then ``descriptor_columns`` is empty, the whole matrix is
-voxels, and the function hands the reducer straight back. A plain
-``make_pipeline(TruncatedSVD(50), LogisticRegression())`` is already correct
-for that case.
+None by default, and then ``descriptor_columns`` is empty and the whole matrix
+is voxels, so a plain ``make_pipeline(TruncatedSVD(50), LogisticRegression())``
+is already correct.
 
 There is no way to mark a column so that a transformer skips it: scikit-learn
-hands every transformer the whole of ``X``, and a
-:class:`~sklearn.compose.ColumnTransformer` names what each group gets --
-indeed its default ``remainder="drop"`` *discards* the columns nobody claimed.
-What stands in for marking is the column spec, which is what
-:func:`~sklearn.compose.make_column_selector` builds for a frame and what
-``bunch.map_columns`` already is for this array: an ordinary
-:class:`slice` that a ColumnTransformer accepts. So the same thing can be
-written out by hand, and should be for anything this function does not cover:
+hands every transformer the whole of ``X``, and a ColumnTransformer names what
+each group gets -- indeed its default ``remainder="drop"`` *discards* the
+columns nobody claimed. What stands in for marking is the column spec, which is
+what :func:`~sklearn.compose.make_column_selector` builds for a frame and what
+``bunch.map_columns`` already is for this array: an ordinary :class:`slice`.
+Because dropping a descriptor silently is rarely what anyone means, leaving one
+unclaimed under ``remainder="drop"`` raises instead; say ``("drop",
+"descriptors")`` or ``remainder="passthrough"`` to mean it.
+
+So the same thing can be written out by hand, and should be for anything this
+function does not cover:
 
 .. code-block:: python
 
