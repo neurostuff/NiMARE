@@ -1652,25 +1652,91 @@ def test_a_character_class_pattern_still_selects_as_one():
     assert features.descriptor_names == ["motor_label", "target_score"]
 
 
-def test_slice_selects_by_id_and_select_analyses_by_position(ml_studyset):
-    """The two name different things, and agree when pointed at the same rows."""
+SLICE_CALLS = [
+    pytest.param({"ids": "study_1-task0"}, id="one-full-id-as-a-string"),
+    pytest.param({"ids": ["study_1-task0", "study_0-task0"]}, id="several-full-ids"),
+    pytest.param({"ids": ["study_2-task0", "study_0-task1"]}, id="named-out-of-row-order"),
+    pytest.param({"ids": ["study_0-task0", "study_0-task0"]}, id="repeated-id"),
+    pytest.param({"ids": "task0"}, id="short-id-shared-by-several"),
+    pytest.param({"ids": ["study_0-task0", "task1"]}, id="full-and-short-together"),
+    pytest.param({"ids": []}, id="nothing-named"),
+    pytest.param({"analyses": ["study_3-task1"]}, id="analyses-alias"),
+    pytest.param({"ids": ["study_0"], "filter_level": "study"}, id="by-study"),
+    pytest.param({"ids": ["study_0", "study_3"], "filter_level": "study"}, id="several-studies"),
+]
+
+
+@pytest.mark.parametrize("call", SLICE_CALLS)
+def test_slice_selects_what_studyset_slice_selects(ml_studyset, call):
+    """An id selects the same analyses here as it does on the Studyset."""
     features = FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4))
-    wanted = [features.ids[2], features.ids[0]]
 
-    by_id = features.slice(wanted)
-    by_position = features.select_analyses([2, 0])
-
-    np.testing.assert_array_equal(by_id.ids, wanted)
-    np.testing.assert_array_equal(by_id.ids, by_position.ids)
-    np.testing.assert_array_equal(by_id.map_features.toarray(), by_position.map_features.toarray())
+    np.testing.assert_array_equal(
+        features.slice(**call).ids,
+        np.asarray(ml_studyset.slice(**call).ids, dtype=str),
+    )
 
 
-def test_slice_names_an_id_it_does_not_hold(ml_studyset):
-    """An id naming nothing raises, as it does for Studyset.slice."""
+@pytest.mark.parametrize(
+    ("call", "on_studyset", "on_features"),
+    [
+        (
+            {"ids": ["no-such-analysis"]},
+            "No analysis in this studyset matches",
+            "No analysis in this dataset matches",
+        ),
+        (
+            {"ids": ["study_9"], "filter_level": "study"},
+            "No study in this studyset matches",
+            "No study in this dataset matches",
+        ),
+        (
+            {"ids": ["study_0-task0"], "filter_level": "bogus"},
+            "filter_level must be",
+            "filter_level must be",
+        ),
+    ],
+)
+def test_slice_refuses_what_studyset_slice_refuses(ml_studyset, call, on_studyset, on_features):
+    """The same calls raise the same way, each message naming the object called."""
     features = FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4))
 
-    with pytest.raises(KeyError, match="not in this dataset"):
-        features.slice([features.ids[0], "no-such-analysis"])
+    with pytest.raises(ValueError, match=on_studyset):
+        ml_studyset.slice(**call)
+    with pytest.raises(ValueError, match=on_features):
+        features.slice(**call)
+
+
+def test_slice_without_ids_is_a_type_error(ml_studyset):
+    """Naming neither ``ids`` nor ``analyses`` is the mistake Studyset calls it."""
+    features = FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4))
+
+    with pytest.raises(TypeError, match="requires 'ids'"):
+        features.slice()
+
+
+def test_slice_keeps_row_order_while_select_analyses_takes_the_order_given(ml_studyset):
+    """Naming analyses and indexing rows differ exactly here."""
+    features = FeatureSet.from_studyset(ml_studyset, MKDAKernel(r=4))
+    wanted = [features.ids[3], features.ids[1]]
+
+    np.testing.assert_array_equal(features.slice(wanted).ids, [features.ids[1], features.ids[3]])
+    np.testing.assert_array_equal(features.select_analyses([3, 1]).ids, wanted)
+
+
+def test_slice_carries_the_rows_it_names(ml_studyset):
+    """The selected rows keep their own maps and targets."""
+    features = FeatureSet.from_studyset(
+        ml_studyset, MKDAKernel(r=4), target_field=("annotations", "target_score")
+    )
+    wanted = [features.ids[3], features.ids[1]]
+
+    sliced = features.slice(wanted)
+    expected = features.select_analyses([1, 3])
+
+    np.testing.assert_array_equal(sliced.ids, expected.ids)
+    np.testing.assert_array_equal(sliced.target, expected.target)
+    np.testing.assert_array_equal(sliced.map_features.toarray(), expected.map_features.toarray())
 
 
 def test_select_analyses_still_refuses_ids(ml_studyset):

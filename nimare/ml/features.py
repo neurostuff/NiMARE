@@ -26,6 +26,7 @@ from nimare.ml._helpers import (
     _to_dense,
 )
 from nimare.ml.reduce import _is_atlas_like, _resolve_map_reducer
+from nimare.studyset.columns import join_names, missing_names
 
 
 def _dense_step(transformer):
@@ -625,32 +626,49 @@ class FeatureSet(NiMAREBase):
 
     # -------------------------------------------------------------- plumbing
 
-    def slice(self, ids):
-        """Return the dataset restricted to the analyses ``ids`` names.
+    def slice(self, ids=None, *, analyses=None, filter_level="analysis"):
+        """Return the dataset holding only the requested ids.
 
         The counterpart of :meth:`select_analyses`, which indexes rows by
         position. An id names the same analysis whatever order the rows are in
-        and whoever built them, so it is what to use to reapply a split saved
-        earlier, or one taken from another object. It mirrors
-        :meth:`~nimare.nimads.Studyset.slice`, down to refusing an id that
-        names nothing rather than quietly returning fewer rows.
+        and whoever built them, so this is what reapplies a split saved
+        earlier, or one taken from another object. The signature and the
+        matching are :meth:`~nimare.studyset.Studyset.slice`'s, so an id that
+        selects a set of analyses there selects the same set here.
 
         Parameters
         ----------
-        ids : array_like of :obj:`str`
-            Analysis ids, as :attr:`ids` lists them.
+        ids : :obj:`str` or array_like of :obj:`str`
+            Analysis ids, or study ids when ``filter_level="study"``. An
+            analysis may be named by its full ``"<study id>-<analysis id>"``
+            id, which :attr:`ids` lists, or by its analysis id alone. A short
+            id shared by several analyses selects all of them.
+        analyses : array_like of :obj:`str`, optional
+            An alias for ``ids``.
+        filter_level : {"analysis", "study"}, default="analysis"
+            Which level ``ids`` names.
 
         Returns
         -------
         :class:`FeatureSet`
-            A dataset holding those analyses, in the order they were named.
+            A dataset holding the named analyses, in this dataset's own row
+            order rather than the order they were named.
 
         Raises
         ------
-        :obj:`KeyError`
-            If an id does not name an analysis in this dataset.
+        :obj:`ValueError`
+            If any id names nothing in this dataset, naming the ids that
+            failed. An empty ``ids`` is not an error.
         """
-        return self.select_analyses(self._rows_for_ids(np.asarray(ids)))
+        if ids is None and analyses is not None:
+            ids = analyses
+        elif ids is None:
+            raise TypeError("slice() requires 'ids'")
+        if filter_level == "study":
+            return self.select_analyses(self._studies_named(ids))
+        if filter_level != "analysis":
+            raise ValueError(f"filter_level must be 'analysis' or 'study', got {filter_level!r}")
+        return self.select_analyses(self._analyses_named(ids))
 
     def select_analyses(self, rows):
         """Return the dataset restricted to the analyses a mask or positions select.
@@ -685,15 +703,46 @@ class FeatureSet(NiMAREBase):
             target=None if self.target is None else self.target[rows],
         )
 
-    def _rows_for_ids(self, ids):
-        """Return the row positions of ``ids``, in the order they were named."""
-        position = {str(name): row for row, name in enumerate(self.ids)}
-        unknown = [str(name) for name in ids if str(name) not in position]
-        if unknown:
-            raise KeyError(
-                f"{len(unknown)} analysis id(s) are not in this dataset: " f"{_preview(unknown)}."
+    @property
+    def _short_ids(self):
+        """The analysis id of each row, without its ``"<study id>-"`` prefix."""
+        return np.array(
+            [
+                full[len(study) + 1 :] if full.startswith(f"{study}-") else full
+                for full, study in zip(self.ids.astype(str), self.study_ids.astype(str))
+            ],
+            dtype=str,
+        )
+
+    def _analyses_named(self, ids):
+        """Return a mask of the analyses ``ids`` names, by full id or short id."""
+        requested = [str(name) for name in np.atleast_1d(ids)]
+        wanted = np.unique(np.asarray(requested, dtype=str))
+        full, short = self.ids.astype(str), self._short_ids
+        keep = np.isin(full, wanted) | np.isin(short, wanted)
+
+        missing = missing_names(requested, set(full[keep]) | set(short[keep]))
+        if missing:
+            raise ValueError(
+                f"No analysis in this dataset matches: {join_names(missing)}. Analyses are "
+                "matched on their full '<study id>-<analysis id>' id, which FeatureSet.ids "
+                "lists, or on the analysis id alone."
             )
-        return np.array([position[str(name)] for name in ids], dtype=int)
+        return keep
+
+    def _studies_named(self, study_ids):
+        """Return a mask of the analyses belonging to the studies named."""
+        requested = [str(name) for name in np.atleast_1d(study_ids)]
+        studies = self.study_ids.astype(str)
+        keep = np.isin(studies, np.asarray(requested, dtype=str))
+
+        missing = missing_names(requested, set(studies[keep]))
+        if missing:
+            raise ValueError(
+                f"No study in this dataset matches: {join_names(missing)}. Studies are "
+                "matched on their own id, which FeatureSet.study_ids lists."
+            )
+        return keep
 
     def copy(self):
         """Return an independent copy of the dataset.
