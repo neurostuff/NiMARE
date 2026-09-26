@@ -204,24 +204,31 @@ takes analysis ids and :meth:`~nimare.studyset.Studyset.select_analyses` takes
 a mask or positions -- because conversion is the expensive step and it is
 cheaper to run it once on the rows being modelled.
 
-After conversion, a grouped holdout is
-:class:`~sklearn.model_selection.GroupShuffleSplit` over ``groups``:
+For a holdout, ``test_size`` adds ``train`` and ``test`` row positions to the
+bundle:
 
 .. code-block:: python
 
-    from sklearn.model_selection import GroupShuffleSplit
+    bunch = studyset.to_bunch(MKDAKernel(r=10), test_size=0.25, random_state=13)
 
-    train, test = next(
-        GroupShuffleSplit(n_splits=1, test_size=0.25, random_state=13).split(
-            bunch.data, bunch.target, bunch.groups
-        )
-    )
-    X_train, y_train = bunch.data[train], bunch.target[train]
+    X_train, y_train = bunch.data[bunch.train], bunch.target[bunch.train]
 
-``test_size`` is a fraction of *studies*, so analysis counts only approximate
-it. A study belongs to exactly one partition because ``groups`` says which
-study each row came from. For cross-validation there is nothing to split at
-all: hand ``groups`` to any scikit-learn group splitter.
+It is a :class:`~sklearn.model_selection.GroupShuffleSplit` over ``groups``, so
+a study belongs to exactly one partition. That grouping is the point: on the
+bundled Studyset a plain :func:`~sklearn.model_selection.train_test_split`
+puts 112 of its 320 studies on both sides at once, and nothing about the
+resulting score says so. ``test_size`` counts *studies*, so analysis counts
+only approximate a fraction.
+
+Without ``test_size`` the two keys are absent and the bundle is exactly as it
+was. The split costs milliseconds where the conversion runs a kernel, so for
+several splits of one bundle -- or for cross-validation, which needs no split
+at all -- hand ``groups`` to a group splitter rather than converting again:
+
+.. code-block:: python
+
+    cross_val_score(pipeline, bunch.data, bunch.target,
+                    cv=GroupKFold(5), groups=bunch.groups)
 
 Reducing the voxel features
 ---------------------------

@@ -1538,3 +1538,61 @@ def test_missing_values_rejects_an_unknown_policy_in_a_mapping():
             target_field="score",
             missing_values={"target": "impute"},
         )
+
+
+def test_to_bunch_splits_without_splitting_a_study(ml_studyset):
+    """test_size adds row positions, and a study belongs to exactly one side."""
+    bunch = ml_studyset.to_bunch(MKDAKernel(r=4), test_size=0.5, random_state=RANDOM_SEED)
+
+    assert set(bunch.groups[bunch.train]).isdisjoint(bunch.groups[bunch.test])
+    assert sorted(np.concatenate([bunch.train, bunch.test]).tolist()) == list(
+        range(bunch.data.shape[0])
+    )
+    assert len(bunch.train) and len(bunch.test)
+
+
+def test_to_bunch_leaves_the_split_out_unless_it_is_asked_for(ml_studyset):
+    """The bundle has the same keys as before when test_size is not given."""
+    bunch = ml_studyset.to_bunch(MKDAKernel(r=4))
+
+    assert "train" not in bunch
+    assert "test" not in bunch
+
+
+def test_to_bunch_split_is_the_one_a_group_splitter_would_make(ml_studyset):
+    """It is GroupShuffleSplit over groups, so a caller can reproduce it."""
+    bunch = ml_studyset.to_bunch(MKDAKernel(r=4), test_size=0.5, random_state=RANDOM_SEED)
+
+    n_test = len(set(bunch.groups[bunch.test]))
+    expected_train, expected_test = next(
+        GroupShuffleSplit(n_splits=1, test_size=n_test, random_state=RANDOM_SEED).split(
+            np.zeros(len(bunch.groups)), groups=bunch.groups
+        )
+    )
+
+    np.testing.assert_array_equal(bunch.train, expected_train)
+    np.testing.assert_array_equal(bunch.test, expected_test)
+
+
+@pytest.mark.parametrize(
+    ("test_size", "message"),
+    [
+        (0.9, "leaves one partition empty"),
+        (0.0, "must be between 0 and 1"),
+        (1.0, "must be between 0 and 1"),
+        (99, "leaves one partition empty"),
+        ("half", "must be a float or an int"),
+    ],
+)
+def test_to_bunch_rejects_impossible_splits(ml_studyset, test_size, message):
+    """A split that cannot be made is named rather than silently emptied."""
+    with pytest.raises(ValueError, match=message):
+        ml_studyset.to_bunch(MKDAKernel(r=4), test_size=test_size)
+
+
+def test_to_bunch_split_needs_two_studies(ml_studyset):
+    """One study cannot be split, since its analyses may not be separated."""
+    one_study = ml_studyset.slice(ids=["study_0"], filter_level="study")
+
+    with pytest.raises(ValueError, match="at least 2 studies"):
+        one_study.to_bunch(MKDAKernel(r=4), test_size=0.5)

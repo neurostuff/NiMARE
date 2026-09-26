@@ -67,6 +67,9 @@ print(studyset.metadata["comparison_task"].value_counts().to_string())
 bunch = studyset.to_bunch(
     MKDAKernel(r=10),
     target_field=("metadata", "comparison_task"),
+    # Hold out a quarter of the studies; see the next section.
+    test_size=0.25,
+    random_state=RANDOM_SEED,
 )
 
 print(f"Feature data: {bunch.data.shape}, sparse={bunch.data.format}")
@@ -84,18 +87,21 @@ print(f"Bundle: {', '.join(sorted(bunch))}")
 # Split without leaking a study
 # -----------------------------------------------------------------------------
 # Analyses from one study are related, so a study belongs to exactly one
-# partition. ``groups`` is what makes that happen, and any scikit-learn group
-# splitter takes it; ``test_size`` is a fraction of *studies*, so the analysis
-# counts only approximate it.
-train, test = next(
-    GroupShuffleSplit(n_splits=1, test_size=0.25, random_state=RANDOM_SEED).split(
-        bunch.data, bunch.target, bunch.groups
-    )
-)
+# partition. Passing ``test_size`` above added ``train`` and ``test`` row
+# positions to the bundle, grouped by study, which is what keeps a plain
+# shuffle from putting the same study on both sides. ``test_size`` counts
+# *studies*, so the analysis counts only approximate the fraction.
+train, test = bunch.train, bunch.test
 
 print(f"Train: {len(train)} analyses from {len(set(bunch.groups[train]))} studies")
 print(f"Test:  {len(test)} analyses from {len(set(bunch.groups[test]))} studies")
 print(f"Shared studies: {set(bunch.groups[train]) & set(bunch.groups[test])}")
+
+###############################################################################
+# The split is a :class:`~sklearn.model_selection.GroupShuffleSplit` over
+# ``groups``, and costs milliseconds where the conversion above runs a kernel.
+# For several splits of one bundle, or for cross-validation, hand ``groups`` to
+# a group splitter rather than converting again.
 
 ###############################################################################
 # Classify the task label

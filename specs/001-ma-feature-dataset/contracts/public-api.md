@@ -255,6 +255,24 @@ Default field behavior:
   fields, require an explicit `target_transformer` to become a target, and
   cannot become descriptor features.
 
+### The train/test split
+
+`to_bunch` MUST accept `test_size` and `random_state`. With `test_size`, the
+bundle MUST also carry `train` and `test` row positions from a
+`GroupShuffleSplit` over `groups`, so that no study appears in both. Without
+it, both keys MUST be absent: the return type is one `Bunch` either way, never
+a tuple, and never `(bundle, None)`.
+
+`test_size` counts studies, as a fraction or a count. A value that would leave
+a partition empty, or a Studyset with fewer than two studies, MUST raise and
+say so.
+
+This exists because the grouping is domain knowledge, not because splitting
+needs a NiMARE API: a plain `train_test_split` on the bundled Studyset puts 112
+of its 320 studies on both sides. Splitting is milliseconds against a
+conversion that runs a kernel, so the docstring MUST point at `groups` and a
+scikit-learn group splitter for repeated splits and for cross-validation.
+
 ### Missing values per role
 
 `missing_values` MUST accept a mapping from role to policy, with roles

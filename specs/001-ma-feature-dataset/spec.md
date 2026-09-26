@@ -33,6 +33,9 @@
   `transform(studyset)` returns one `FeatureSet`; splitting is an
   evaluation choice and lives on the container as `split()`. Returning
   `(dataset, None)` for the common unsplit case was ergonomics nobody wanted.
+  *(Revisited 2026-09-26, once the container was removed: still not a tuple,
+  but `to_bunch(test_size=...)` now adds `train` and `test` row positions to
+  the one bundle it returns. See §20 of `interface-design.md`.)*
 - Q: Where is leakage prevented? -> A: In scikit-learn. Kernel transformation is
   row-independent, so eager extraction leaks nothing; every step that learns
   across rows goes in a `Pipeline` built from

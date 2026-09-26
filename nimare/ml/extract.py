@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 from joblib import Memory
 from scipy import sparse
+from sklearn.model_selection import GroupShuffleSplit
 from sklearn.utils import Bunch
 
 from nimare.base import NiMAREBase
@@ -331,6 +332,33 @@ def describe_fields(studyset, source=None, min_coverage=0.0):
     return table.sort_values(["coverage", "source", "field"], ascending=[False, True, True])
 
 
+def _held_out_studies(test_size, n_studies):
+    """Return the number of studies to hold out, or explain why there is none."""
+    if n_studies < 2:
+        raise ValueError(
+            f"A grouped split needs at least 2 studies, but this Studyset has {n_studies}. "
+            "Analyses from one study are never split across partitions."
+        )
+
+    if isinstance(test_size, (int, np.integer)) and not isinstance(test_size, bool):
+        n_test = int(test_size)
+    elif isinstance(test_size, (float, np.floating)):
+        if not 0.0 < test_size < 1.0:
+            raise ValueError(
+                f"test_size={test_size!r} must be between 0 and 1 when given as a fraction."
+            )
+        n_test = int(np.ceil(test_size * n_studies))
+    else:
+        raise ValueError(f"test_size={test_size!r} must be a float or an int.")
+
+    if not 1 <= n_test <= n_studies - 1:
+        raise ValueError(
+            f"test_size={test_size!r} holds out {n_test} of {n_studies} studies, which "
+            "leaves one partition empty. Lower test_size or use more studies."
+        )
+    return n_test
+
+
 class _DescriptorBlock(NamedTuple):
     """One descriptor selection: its column names, its values, what it lacks."""
 
@@ -373,6 +401,8 @@ class _FeatureExtractor(NiMAREBase):
         target_transformer: Any | None = None,
         missing_coordinates: str = "drop",
         missing_values: str = "raise",
+        test_size=None,
+        random_state=None,
         memory: Any = None,
         memory_level: int = 2,
     ):
@@ -382,6 +412,8 @@ class _FeatureExtractor(NiMAREBase):
         self.target_transformer = target_transformer
         self.missing_coordinates = missing_coordinates
         self.missing_values = missing_values
+        self.test_size = test_size
+        self.random_state = random_state
         self.memory = memory
         self.memory_level = memory_level
 
@@ -432,25 +464,53 @@ class _FeatureExtractor(NiMAREBase):
         map_features = self._map_matrix(studyset_rows, ids[retained], has_coordinates[retained])
 
         descriptor_names = [name for block in blocks for name in block.names]
-        descriptor_matrix = None
-        if blocks:
-            kept = [_take_rows(block.values, retained) for block in blocks]
-            descriptor_matrix = kept[0] if len(kept) == 1 else _hstack_blocks(kept)
-
-        n_map = map_features.shape[1]
-        n_descriptors = 0 if descriptor_matrix is None else descriptor_matrix.shape[1]
-        return Bunch(
-            data=_hstack(map_features, descriptor_matrix),
-            target=None if target is None else target[retained],
-            groups=study_ids[retained],
+        bundle = self._bundle(
+            studyset,
+            map_features,
+            self._descriptor_matrix(blocks, retained),
+            descriptor_names,
             ids=ids[retained],
+            groups=study_ids[retained],
+            target=None if target is None else target[retained],
+            provenance=self._provenance(studyset, ids, retained, dropped, descriptor_names),
+        )
+        if self.test_size is not None:
+            bundle.train, bundle.test = self._grouped_split(bundle.groups)
+        return bundle
+
+    @staticmethod
+    def _descriptor_matrix(blocks, retained):
+        """Return the descriptor block for the retained rows, or None."""
+        if not blocks:
+            return None
+        kept = [_take_rows(block.values, retained) for block in blocks]
+        return kept[0] if len(kept) == 1 else _hstack_blocks(kept)
+
+    @staticmethod
+    def _bundle(studyset, map_features, descriptors, descriptor_names, **aligned):
+        """Assemble the bundle, with the column boundary the blocks imply."""
+        n_map = map_features.shape[1]
+        n_descriptors = 0 if descriptors is None else descriptors.shape[1]
+        return Bunch(
+            data=_hstack(map_features, descriptors),
             feature_names=[f"voxel_{index}" for index in range(n_map)] + list(descriptor_names),
             map_columns=slice(0, n_map),
             descriptor_columns=slice(n_map, n_map + n_descriptors),
             descriptor_names=list(descriptor_names),
             masker=studyset.masker,
-            provenance=self._provenance(studyset, ids, retained, dropped, descriptor_names),
+            **aligned,
         )
+
+    def _grouped_split(self, groups):
+        """Return the row positions of a grouped holdout over ``groups``.
+
+        A study belongs to exactly one partition, which is the whole point of
+        splitting here rather than with a plain shuffle.
+        """
+        n_test = _held_out_studies(self.test_size, len(np.unique(groups)))
+        splitter = GroupShuffleSplit(n_splits=1, test_size=n_test, random_state=self.random_state)
+        train, test = next(splitter.split(np.zeros(len(groups)), groups=groups))
+        return train, test
 
     # ------------------------------------------------------------- validation
 

@@ -74,16 +74,15 @@ studyset.select_analyses(mask_or_positions)              # mask or positions
 ## Split without study leakage
 
 ```python
-from sklearn.model_selection import GroupShuffleSplit
+bunch = studyset.to_bunch(MKDAKernel(r=10), test_size=0.25, random_state=13)
 
-train, test = next(
-    GroupShuffleSplit(n_splits=1, test_size=0.25, random_state=13).split(
-        bunch.data, bunch.target, bunch.groups
-    )
-)
-
-assert set(bunch.groups[train]).isdisjoint(bunch.groups[test])
+assert set(bunch.groups[bunch.train]).isdisjoint(bunch.groups[bunch.test])
 ```
+
+`test_size` adds `train` and `test` row positions, grouped by study. Without it
+both keys are absent. The split is milliseconds and the conversion runs a
+kernel, so for several splits, or for cross-validation, pass `bunch.groups` to
+a scikit-learn group splitter instead of converting again.
 
 `test_size` is a fraction of *studies*, so analysis counts only approximate it.
 For cross-validation, hand `bunch.groups` to any scikit-learn group splitter.

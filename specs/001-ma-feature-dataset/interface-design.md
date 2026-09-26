@@ -1168,3 +1168,42 @@ cross-validation 0.623 ± 0.030, truncated SVD 0.605, sparse random projection
 keeping 3,141 of 4,000 analyses with the same six demographic descriptors --
 so the refactor is behaviour-preserving. The suite went from 139 tests to 96:
 43 covered container methods that no longer exist.
+
+## 20. The split, reopened and re-answered (2026-09-26)
+
+§19 removed the container, which voided half of the 2026-09-25 answer to
+"should conversion return a train/test tuple?" -- *"splitting is an evaluation
+choice and lives on the container as `split()`"*. With no container, the
+question is live again.
+
+The two halves of it measure very differently. Splitting is cheap and the
+conversion is not:
+
+| | Cost |
+| --- | --- |
+| `to_bunch`, which runs a kernel | 0.97 s over 906 analyses, ~30 s over 40,000 |
+| A grouped split over `groups` | 5.2 ms, **186x cheaper** |
+
+But the grouping is domain knowledge that a general-purpose splitter does not
+have. On the bundled Studyset, a plain `train_test_split` puts **112 of its 320
+studies on both sides at once**, and no part of the resulting score says so.
+`GroupShuffleSplit` over `groups` leaks none.
+
+So the safety is worth building in and the coupling is not. `to_bunch` takes
+`test_size` and `random_state` and, when given them, adds `train` and `test`
+row positions to the one `Bunch` it already returns.
+
+- The return type never varies. The 2026-09-25 objection was to
+  `(dataset, None)` for the unsplit case, and that still stands: this is one
+  bundle either way, with two more keys or without them.
+- The default is unchanged. No `test_size`, no keys, same bundle as before.
+- Cross-validation is untouched. It needs no split at all, so its callers
+  ignore the argument entirely.
+- The 186x gap is not hidden. Because the split rides along with a conversion,
+  a second seed means a second conversion; the docstring, the narrative docs
+  and the gallery example all say to pass `groups` to a group splitter for
+  repeated splits.
+
+The split reproduces the container's old one exactly -- 686 train and 220 test
+analyses from 240 and 80 studies -- so nothing about the partition changed,
+only where it is asked for.

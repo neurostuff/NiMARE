@@ -754,6 +754,8 @@ class Studyset:
         target_transformer=None,
         missing_coordinates="drop",
         missing_values="raise",
+        test_size=None,
+        random_state=None,
         memory=None,
         memory_level=2,
     ):
@@ -805,6 +807,17 @@ class Studyset:
             ``{"target": "drop", "descriptors": "keep"}`` -- because a
             descriptor gap can be imputed in a pipeline and a target gap
             cannot. A role the mapping does not name is ``"raise"``.
+        test_size : :obj:`float` or :obj:`int`, optional
+            Hold out this fraction of *studies*, or this many of them, by
+            default None, which splits nothing. The bundle then also carries
+            ``train`` and ``test`` row positions. A study belongs to exactly
+            one partition, so analysis counts only approximate a fraction.
+            The split costs milliseconds while this conversion runs a kernel,
+            so for several splits of one bundle, or for cross-validation, pass
+            ``groups`` to a scikit-learn group splitter instead of converting
+            again.
+        random_state : :obj:`int`, optional
+            Seed for ``test_size``, by default None.
         memory : :class:`joblib.Memory`, :obj:`str` or :class:`pathlib.Path`, optional
             Cache location for MA map generation, by default None. Used only
             when the kernel transformer does not define its own.
@@ -819,13 +832,15 @@ class Studyset:
             map features are unreduced), ``target``, ``groups`` (the study each
             analysis came from, for a group-aware splitter), ``ids``,
             ``feature_names``, ``map_columns``, ``descriptor_columns``,
-            ``descriptor_names``, ``masker`` and ``provenance``.
+            ``descriptor_names``, ``masker`` and ``provenance``. With
+            ``test_size``, also ``train`` and ``test`` row positions.
 
         Raises
         ------
         :obj:`ValueError`
             If a field cannot be resolved or used, if a value is missing under
-            ``missing_values="raise"``, or if nothing is left to convert.
+            ``missing_values="raise"``, if nothing is left to convert, or if
+            ``test_size`` would leave a partition empty.
 
         See Also
         --------
@@ -838,6 +853,13 @@ class Studyset:
         ...     MKDAKernel(r=10),
         ...     target_field=("metadata", "comparison_task"),
         ... )
+
+        Holding out a quarter of the studies, without splitting one::
+
+        >>> bunch = studyset.to_bunch(  # doctest: +SKIP
+        ...     MKDAKernel(r=10), test_size=0.25, random_state=13
+        ... )
+        >>> X_train = bunch.data[bunch.train]  # doctest: +SKIP
         """
         # Imported here so that nimare.studyset does not pull in scikit-learn,
         # which only this one method needs.
@@ -850,6 +872,8 @@ class Studyset:
             target_transformer=target_transformer,
             missing_coordinates=missing_coordinates,
             missing_values=missing_values,
+            test_size=test_size,
+            random_state=random_state,
             memory=memory,
             memory_level=memory_level,
         ).transform(self)
