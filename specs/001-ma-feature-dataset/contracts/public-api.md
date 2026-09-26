@@ -14,7 +14,7 @@ row.
 Conversion is `Studyset.to_bunch`, a method on the collection being converted.
 `nimare.ml` holds only what a Studyset cannot answer on its own, and is
 exported from `nimare/__init__.py` and documented in `docs/api.rst`: its public
-names are `AtlasAggregator`, `describe_fields` and `make_nimare_column_transformer`. There is
+names are `MaskerTransformer`, `describe_fields` and `make_nimare_column_transformer`. There is
 no container class. Every other reduction is an ordinary scikit-learn
 transformer: the module must not re-export scikit-learn under NiMARE names.
 
@@ -297,23 +297,27 @@ cannot read sparse input (`PCA`, for one) fails when it is fitted, with
 scikit-learn's own message. There is no NiMARE vocabulary for any of this, and
 no factory that re-names it.
 
-`AtlasAggregator` is the one reducer the module adds, because it is the one
-that has to know which voxel each column is. It accepts any atlas nilearn can
-load:
+`MaskerTransformer` is the one transformer the module adds, because it is the
+one that has to know which voxel each column is. A nilearn masker is already a
+scikit-learn transformer; what it is not is one that takes an array, since it
+takes images. This bridges that: rows are unmasked into images in the
+`source_masker`'s space, handed to the masker, and returned as an array.
+
+It accepts any nilearn masker, cloned rather than modified, or anything nilearn
+loads as an atlas:
 
 - a `Bunch` from a `nilearn.datasets.fetch_atlas_*` function, read for its
   `maps` and, when present, its `labels`;
 - a 3D (deterministic) or 4D (probabilistic) atlas image, or a path to one;
 - the name of a nilearn fetcher, such as `"harvard_oxford"`, with any arguments
-  it needs in `atlas_kwargs`;
-- a `NiftiLabelsMasker` or `NiftiMapsMasker` the caller configured, which is
-  cloned rather than modified.
+  it needs in `masker_kwargs`.
 
 A 4D atlas is summarised with a `NiftiMapsMasker` and a 3D one with a
-`NiftiLabelsMasker`, both with `resampling_target="data"`. A masker that
-extracts voxels rather than regions, an image that is neither 3D nor 4D, and a
-string that names neither a file nor a fetcher must each raise and say what was
-expected. Region definitions, resampling and the aggregation strategy stay
+`NiftiLabelsMasker`, both with `resampling_target="data"`. A `NiftiMasker`
+returns voxels rather than regions, which MUST be allowed: it is how nilearn's
+smoothing, standardizing and detrending reach these features, and the bridge
+carries it unchanged. An image that is neither 3D nor 4D, and a string that
+names neither a file nor a fetcher, must each raise and say what was expected. Region definitions, resampling and the aggregation strategy stay
 nilearn's business; `get_feature_names_out()` reports region names from the
 atlas when it carries them, and from the masker otherwise.
 
@@ -348,7 +352,7 @@ What it adds MUST be limited to what scikit-learn cannot derive from an array:
   ColumnTransformer reading a frame. `"maps"` and `"descriptors"` name the
   blocks; a descriptor may be named by its field name. A name that is neither
   MUST raise and list both.
-- An atlas in the transformer slot MUST be resolved to an `AtlasAggregator`
+- An atlas in the transformer slot MUST be resolved to an `MaskerTransformer`
   bound to the bundle's masker, and the step named after the aggregator rather
   than the atlas object.
 - Each step MUST report the names of the columns it was given, so that a fitted

@@ -21,8 +21,8 @@ study out of two different partitions.
 :mod:`nimare.ml` holds what a Studyset cannot answer on its own:
 :func:`~nimare.ml.describe_fields` reports which of its fields are worth
 modelling, :func:`~nimare.ml.make_nimare_column_transformer` keeps a reducer off the
-descriptor columns, and :class:`~nimare.ml.AtlasAggregator` reduces voxels over
-an atlas.
+descriptor columns, and :class:`~nimare.ml.MaskerTransformer` lets a nilearn
+masker act on the voxel columns.
 
 Who does what
 -------------
@@ -357,31 +357,49 @@ descriptor would otherwise come out as ``x228483``.
 :func:`~nimare.ml.make_nimare_column_transformer` restores the real names, including for
 descriptors left at ``"passthrough"``.
 
-Atlas aggregation
-~~~~~~~~~~~~~~~~~
+Letting nilearn transform the voxels
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:class:`~nimare.ml.AtlasAggregator` is the one reducer NiMARE adds, because it
-is the one that has to know which voxel each column is. It takes any atlas
-nilearn can load: what a ``fetch_atlas_*`` function returns, an atlas image or
-file, the name of a fetcher with its arguments, or a masker configured by the
-caller. A 4D atlas is summarised with a
+A nilearn masker is already a scikit-learn transformer -- it subclasses
+:class:`~sklearn.base.BaseEstimator` and
+:class:`~sklearn.base.TransformerMixin`, it clones, it carries ``get_params``.
+The one thing that keeps it out of a pipeline over these features is that it
+takes *images*, where a :class:`~sklearn.compose.ColumnTransformer` hands out
+columns of an array.
+
+:class:`~nimare.ml.MaskerTransformer` is that bridge, and the only transformer
+NiMARE adds, because it is the only one that has to know which voxel each
+column is. Rows are unmasked back into images in the source mask's space,
+handed to the nilearn masker, and returned as an array. The bundle's
+``masker`` is what says where the columns came from, which is why it travels
+with the data:
+
+.. code-block:: python
+
+    MaskerTransformer(fetch_atlas_difumo(dimension=64), source_masker=bunch.masker)
+    MaskerTransformer(NiftiMasker(smoothing_fwhm=6), source_masker=bunch.masker)
+
+What it applies is any nilearn masker, or anything nilearn loads as an atlas:
+what a ``fetch_atlas_*`` function returns, an atlas image or file, or the name
+of a fetcher with its arguments. A 4D atlas is summarised with a
 :class:`~nilearn.maskers.NiftiMapsMasker` and a 3D one with a
 :class:`~nilearn.maskers.NiftiLabelsMasker`, and the atlas's own region names
-become the feature names.
+become the feature names. A :class:`~nilearn.maskers.NiftiMasker` returns
+voxels rather than regions, which is how nilearn's smoothing, standardizing
+and detrending reach these features.
 
 How many regions an atlas yields is nilearn's answer, not NiMARE's, and it
 differs by version: a region falling outside the mask is kept by nilearn 0.12
 and dropped by 0.13. A feature matrix built this way is comparable across
 environments only when the nilearn version is.
 
-Outside a pipeline, fit the reducer on the training rows and apply the same
-fitted reducer to the held-out ones. The bundle's ``masker`` is what an atlas
-reducer needs and cannot work out for itself:
+Outside a pipeline, fit it on the training rows and apply the same fitted one
+to the held-out rows:
 
 .. code-block:: python
 
     maps = bunch.data[:, bunch.map_columns]
-    reducer = AtlasAggregator(atlas, masker=bunch.masker)
+    reducer = MaskerTransformer(atlas, source_masker=bunch.masker)
 
     train_reduced = reducer.fit_transform(maps[train])
     test_reduced = reducer.transform(maps[test])

@@ -98,7 +98,7 @@ def _by_name(bunch, wanted):
 def _resolve(bunch, transformer):
     """Return the transformer a step will really use.
 
-    An atlas becomes an :class:`~nimare.ml.AtlasAggregator` bound to the
+    An atlas becomes an :class:`~nimare.ml.MaskerTransformer` bound to the
     bundle's masker, which is also what the step is then named after, since
     ``nifti1image`` would say nothing about what the step does.
     """
@@ -203,7 +203,7 @@ def make_nimare_column_transformer(
         a mask or a callable.
 
         ``transformer`` may be a scikit-learn transformer, ``"passthrough"``,
-        ``"drop"``, or any atlas :class:`~nimare.ml.AtlasAggregator` accepts,
+        ``"drop"``, or any atlas :class:`~nimare.ml.MaskerTransformer` accepts,
         which is built against the bundle's masker.
     remainder : {"drop", "passthrough"} or estimator, default="drop"
         What happens to columns no transformer claims, as in scikit-learn.

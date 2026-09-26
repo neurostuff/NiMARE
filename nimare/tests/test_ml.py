@@ -9,7 +9,7 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 import pytest
-from nilearn.maskers import NiftiLabelsMasker, NiftiMapsMasker
+from nilearn.maskers import NiftiLabelsMasker, NiftiMapsMasker, NiftiMasker
 from scipy import sparse
 from sklearn.base import clone
 from sklearn.compose import ColumnTransformer
@@ -37,7 +37,7 @@ from sklearn.utils import Bunch
 from nimare import ml
 from nimare.generate import create_coordinate_studyset
 from nimare.meta.kernel import MKDAKernel
-from nimare.ml import AtlasAggregator
+from nimare.ml import MaskerTransformer
 from nimare.nimads import Studyset
 from nimare.utils import get_masker, get_resource_path, get_template
 
@@ -591,7 +591,7 @@ def test_map_only_features_need_no_column_transformer(small_masker):
     )
 
 
-def test_atlas_reducer_takes_the_maskers_voxel_order_from_the_feature_set(ma_bunch, small_masker):
+def test_masker_transformer_takes_its_source_masker_from_the_bundle(ma_bunch, small_masker):
     """An atlas, or an aggregator built without one, gets the feature set's masker."""
     atlas = nib.Nifti1Image(np.ones((4, 4, 4), dtype=np.int16), small_masker.mask_img.affine)
 
@@ -600,16 +600,16 @@ def test_atlas_reducer_takes_the_maskers_voxel_order_from_the_feature_set(ma_bun
             ma_bunch, (atlas, "maps"), ("passthrough", "descriptors")
         )
     )
-    unbound = AtlasAggregator(atlas=atlas)
+    unbound = MaskerTransformer(masker=atlas)
     from_aggregator = _step_transformer(
         ml.make_nimare_column_transformer(
             ma_bunch, (unbound, "maps"), ("passthrough", "descriptors")
         )
     )
 
-    assert from_atlas.masker is ma_bunch.masker
-    assert from_aggregator.masker is ma_bunch.masker
-    assert unbound.masker is None  # the caller's object is left alone
+    assert from_atlas.source_masker is ma_bunch.masker
+    assert from_aggregator.source_masker is ma_bunch.masker
+    assert unbound.source_masker is None  # the caller's object is left alone
 
 
 def test_atlas_reduction_needs_a_masker_somewhere(small_masker):
@@ -648,7 +648,7 @@ def atlas_features(small_masker):
 
 
 @pytest.mark.parametrize("atlas_kind", ["labels", "maps"])
-def test_atlas_aggregator_matches_nilearn(small_masker, atlas_features, atlas_kind):
+def test_masker_transformer_matches_nilearn(small_masker, atlas_features, atlas_kind):
     """Aggregation gives what the nilearn masker gives, batch by batch."""
     labels_img, maps_img = _atlas_images(small_masker.mask_img.affine)
 
@@ -661,7 +661,7 @@ def test_atlas_aggregator_matches_nilearn(small_masker, atlas_features, atlas_ki
         atlas_img = maps_img
         reference = NiftiMapsMasker(maps_img=maps_img, resampling_target="data", reports=False)
 
-    reducer = clone(AtlasAggregator(atlas=atlas_img, masker=small_masker, batch_size=2))
+    reducer = clone(MaskerTransformer(masker=atlas_img, source_masker=small_masker, batch_size=2))
     transformed = reducer.fit_transform(atlas_features)
 
     reference.set_params(mask_img=small_masker.mask_img)
@@ -674,42 +674,44 @@ def test_atlas_aggregator_matches_nilearn(small_masker, atlas_features, atlas_ki
     assert len(reducer.get_feature_names_out()) == 2
 
 
-def test_atlas_aggregator_accepts_a_fetched_atlas(small_masker, atlas_features):
+def test_masker_transformer_accepts_a_fetched_atlas(small_masker, atlas_features):
     """A Bunch from a nilearn fetcher is read for its maps and its labels."""
     _, maps_img = _atlas_images(small_masker.mask_img.affine)
     atlas = Bunch(maps=maps_img, labels=["Background", "left", "right"])
 
-    reducer = AtlasAggregator(atlas=atlas, masker=small_masker).fit(atlas_features)
+    reducer = MaskerTransformer(masker=atlas, source_masker=small_masker).fit(atlas_features)
 
-    assert isinstance(reducer.atlas_masker_, NiftiMapsMasker)
+    assert isinstance(reducer.masker_, NiftiMapsMasker)
     np.testing.assert_array_equal(reducer.get_feature_names_out(), ["left", "right"])
 
 
-def test_atlas_aggregator_accepts_a_labels_frame(small_masker, atlas_features):
+def test_masker_transformer_accepts_a_labels_frame(small_masker, atlas_features):
     """DiFuMo-style label frames are read for their name column."""
     _, maps_img = _atlas_images(small_masker.mask_img.affine)
     labels = pd.DataFrame({"component": [1, 2], "difumo_names": ["first", "second"]})
 
-    reducer = AtlasAggregator(atlas=Bunch(maps=maps_img, labels=labels), masker=small_masker)
+    reducer = MaskerTransformer(
+        masker=Bunch(maps=maps_img, labels=labels), source_masker=small_masker
+    )
 
     np.testing.assert_array_equal(
         reducer.fit(atlas_features).get_feature_names_out(), ["first", "second"]
     )
 
 
-def test_atlas_aggregator_accepts_a_path(small_masker, atlas_features, tmp_path):
+def test_masker_transformer_accepts_a_path(small_masker, atlas_features, tmp_path):
     """An atlas on disk is loaded rather than refused."""
     labels_img, _ = _atlas_images(small_masker.mask_img.affine)
     path = tmp_path / "atlas.nii.gz"
     labels_img.to_filename(path)
 
     for atlas in (path, str(path)):
-        reducer = AtlasAggregator(atlas=atlas, masker=small_masker)
+        reducer = MaskerTransformer(masker=atlas, source_masker=small_masker)
         assert reducer.fit_transform(atlas_features).shape == (6, 2)
-        assert isinstance(reducer.atlas_masker_, NiftiLabelsMasker)
+        assert isinstance(reducer.masker_, NiftiLabelsMasker)
 
 
-def test_atlas_aggregator_accepts_a_fetcher_name(small_masker, atlas_features, monkeypatch):
+def test_masker_transformer_accepts_a_fetcher_name(small_masker, atlas_features, monkeypatch):
     """A nilearn fetcher can be named, and its arguments passed through."""
     from nilearn import datasets
 
@@ -722,15 +724,15 @@ def test_atlas_aggregator_accepts_a_fetcher_name(small_masker, atlas_features, m
 
     monkeypatch.setattr(datasets, "fetch_atlas_pretend", fake_fetcher, raising=False)
 
-    reducer = AtlasAggregator(
-        atlas="pretend", masker=small_masker, atlas_kwargs={"dimension": 2}
+    reducer = MaskerTransformer(
+        masker="pretend", source_masker=small_masker, masker_kwargs={"dimension": 2}
     ).fit(atlas_features)
 
     assert calls == {"dimension": 2}
     np.testing.assert_array_equal(reducer.get_feature_names_out(), ["left", "right"])
 
 
-def test_atlas_aggregator_accepts_a_prebuilt_masker(small_masker, atlas_features):
+def test_masker_transformer_accepts_a_prebuilt_masker(small_masker, atlas_features):
     """A masker built by the caller is used as configured, and not modified."""
     labels_img, _ = _atlas_images(small_masker.mask_img.affine)
     atlas_masker = NiftiLabelsMasker(
@@ -744,9 +746,11 @@ def test_atlas_aggregator_accepts_a_prebuilt_masker(small_masker, atlas_features
         reports=False,
     )
 
-    reducer = AtlasAggregator(atlas=atlas_masker, masker=small_masker).fit(atlas_features)
+    reducer = MaskerTransformer(masker=atlas_masker, source_masker=small_masker).fit(
+        atlas_features
+    )
 
-    assert reducer.atlas_masker_.strategy == "sum"
+    assert reducer.masker_.strategy == "sum"
     assert atlas_masker.mask_img is None
     np.testing.assert_array_equal(reducer.get_feature_names_out(), ["region_a", "region_b"])
 
@@ -754,33 +758,40 @@ def test_atlas_aggregator_accepts_a_prebuilt_masker(small_masker, atlas_features
 @pytest.mark.parametrize(
     ("atlas", "message"),
     [
-        (None, "requires an atlas"),
+        (None, "requires something to apply"),
         ("not_an_atlas_anywhere", "neither a file nor a nilearn atlas fetcher"),
         (42, "is not an atlas"),
     ],
 )
-def test_atlas_aggregator_rejects_unusable_atlases(small_masker, atlas, message):
+def test_masker_transformer_rejects_unusable_atlases(small_masker, atlas, message):
     """Whatever the atlas is not, the message says what it could be."""
     with pytest.raises((ValueError, TypeError), match=message):
-        AtlasAggregator(atlas=atlas, masker=small_masker).fit(np.zeros((2, 8)))
+        MaskerTransformer(masker=atlas, source_masker=small_masker).fit(np.zeros((2, 8)))
 
 
-def test_atlas_aggregator_rejects_a_voxel_masker(small_masker):
-    """A NiftiMasker extracts voxels, which is not an aggregation."""
-    with pytest.raises(ValueError, match="rather than regions"):
-        AtlasAggregator(atlas=small_masker, masker=small_masker).fit(np.zeros((2, 8)))
+def test_a_voxel_masker_reaches_the_map_columns(atlas_features, small_masker):
+    """Smoothing and standardizing are voxel maskers, not aggregations."""
+    plain = MaskerTransformer(NiftiMasker(), source_masker=small_masker)
+    smoothed = MaskerTransformer(NiftiMasker(smoothing_fwhm=4), source_masker=small_masker)
+
+    out = smoothed.fit(atlas_features).transform(atlas_features)
+
+    # a voxel masker returns voxels, so the width is unchanged
+    assert out.shape == atlas_features.shape
+    # and it is a real transformation, not a pass through
+    assert not np.allclose(out, plain.fit(atlas_features).transform(atlas_features))
 
 
-def test_atlas_aggregator_requires_the_source_masker(small_masker):
+def test_masker_transformer_requires_the_source_masker(small_masker):
     """The voxel order of the incoming features cannot be guessed."""
     labels_img, _ = _atlas_images(small_masker.mask_img.affine)
 
     with pytest.raises(ValueError, match="voxel order"):
-        AtlasAggregator(atlas=labels_img).fit(np.zeros((2, 8)))
+        MaskerTransformer(masker=labels_img).fit(np.zeros((2, 8)))
 
 
 @pytest.mark.parametrize("atlas_kind", ["labels", "maps"])
-def test_atlas_aggregator_names_match_the_columns_it_returns(
+def test_masker_transformer_names_match_the_columns_it_returns(
     small_masker, atlas_features, atlas_kind
 ):
     """Names follow the regions nilearn actually returns, not the ones it was given.
@@ -804,13 +815,13 @@ def test_atlas_aggregator_names_match_the_columns_it_returns(
         maps[3, 3, 3, 2] = 1.0  # outside the mask
         atlas = Bunch(maps=nib.Nifti1Image(maps, affine), labels=["in_a", "in_b", "outside"])
 
-    reducer = AtlasAggregator(atlas=atlas, masker=small_masker).fit(atlas_features)
+    reducer = MaskerTransformer(masker=atlas, source_masker=small_masker).fit(atlas_features)
     names = reducer.get_feature_names_out()
 
     assert len(names) == reducer.transform(atlas_features).shape[1]
 
 
-def test_atlas_aggregator_names_reduced_features(small_masker, atlas_features):
+def test_masker_transformer_names_reduced_features(small_masker, atlas_features):
     """Region names survive into the reduced dataset's feature names."""
     labels_img, _ = _atlas_images(small_masker.mask_img.affine)
     dataset = _bunch(
@@ -828,7 +839,10 @@ def test_atlas_aggregator_names_reduced_features(small_masker, atlas_features):
 
     assert reduced.shape == (6, 2)
     # prefixed by the step name, as scikit-learn does by default
-    assert [str(name) for name in names] == ["atlasaggregator__one", "atlasaggregator__two"]
+    assert [str(name) for name in names] == [
+        "maskertransformer__one",
+        "maskertransformer__two",
+    ]
 
 
 def test_dataset_reduces_with_any_sklearn_transformer(ma_bunch):
@@ -861,8 +875,8 @@ def test_column_transformer_accepts_an_atlas(small_masker, atlas_features):
         dataset, (labels_img, "maps"), ("passthrough", "descriptors")
     )
 
-    assert isinstance(_step_transformer(reducer), AtlasAggregator)
-    assert _step_transformer(reducer).masker is small_masker
+    assert isinstance(_step_transformer(reducer), MaskerTransformer)
+    assert _step_transformer(reducer).source_masker is small_masker
     assert reducer.fit_transform(dataset.data).shape == (6, 2)
 
 
@@ -872,7 +886,7 @@ def test_column_transformer_accepts_an_atlas(small_masker, atlas_features):
 def test_public_surface_is_a_studyset_method_and_three_helpers():
     """Conversion belongs to the Studyset; nimare.ml holds what it cannot answer."""
     assert set(ml.__all__) == {
-        "AtlasAggregator",
+        "MaskerTransformer",
         "describe_fields",
         "make_nimare_column_transformer",
     }
@@ -1255,7 +1269,7 @@ def test_study_level_metadata_is_inherited_even_when_an_analysis_declares_it(ml_
     assert np.isfinite(_descriptors(features)[:, 0]).all()
 
 
-def test_atlas_aggregator_forgets_the_previous_atlas(atlas_features, small_masker):
+def test_masker_transformer_forgets_the_previous_atlas(atlas_features, small_masker):
     """A refit with a different atlas must not report the first one's region count."""
     affine = small_masker.mask_img.affine
     two_regions = np.zeros((4, 4, 4), dtype=np.int16)
@@ -1263,11 +1277,13 @@ def test_atlas_aggregator_forgets_the_previous_atlas(atlas_features, small_maske
     two_regions[1, :2, :2] = 2
     one_region = np.ones((4, 4, 4), dtype=np.int16)
 
-    reducer = AtlasAggregator(atlas=nib.Nifti1Image(two_regions, affine), masker=small_masker)
+    reducer = MaskerTransformer(
+        masker=nib.Nifti1Image(two_regions, affine), source_masker=small_masker
+    )
     reducer.fit_transform(atlas_features)
     assert len(reducer.get_feature_names_out()) == 2
 
-    reducer.set_params(atlas=nib.Nifti1Image(one_region, affine))
+    reducer.set_params(masker=nib.Nifti1Image(one_region, affine))
     reducer.fit(atlas_features)
     assert len(reducer.get_feature_names_out()) == 1
 

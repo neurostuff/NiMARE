@@ -1300,3 +1300,63 @@ So did returning the bare reducer when a bundle has no descriptors. A factory
 that sometimes returns a ColumnTransformer and sometimes returns its argument
 is the varying-return-type problem again; it now always returns a
 ColumnTransformer, and the map-only case simply does not need to call it.
+
+## 23. Letting any nilearn masker into the pipeline (2026-09-26)
+
+`AtlasAggregator` is now `MaskerTransformer`, and accepts any nilearn masker
+rather than only the ones that reduce to regions.
+
+### What was actually in the way
+
+A nilearn masker is already a scikit-learn transformer: `NiftiMasker`,
+`NiftiLabelsMasker` and `NiftiMapsMasker` all subclass `BaseEstimator` and
+`TransformerMixin`, clone, and carry `get_params`. The single thing keeping
+them out of a pipeline over these features is that they take **images**, where
+a `ColumnTransformer` hands out columns of an array:
+
+| `masker.transform(X)` | |
+| --- | --- |
+| a 2D array of masked voxels | `TypeError: input should be a NiftiLike object` |
+| a 4D image | works |
+
+So the bridge -- unmask the rows back into images in the source mask's space,
+call the masker, return an array -- is the whole of what NiMARE has to add, and
+it is what this class was already doing.
+
+### The restriction was policy, not mechanism
+
+`AtlasAggregator` refused a voxel masker outright: *"NiftiMasker extracts
+voxels rather than regions."* But the identical bridge carries one:
+
+| | Through the class | Through the same bridge by hand |
+| --- | --- | --- |
+| `NiftiLabelsMasker` / `NiftiMapsMasker` | works | works |
+| `NiftiMasker(smoothing_fwhm=6)` | **refused** | works: (24, 228483), voxel order preserved |
+
+And it is not a formality: smoothing the MA maps changes them materially, to
+r = 0.918 with the unsmoothed rows and non-zeros from 52,289 to 530,050. For
+MKDA spheres that is a legitimate modelling choice, and it was unreachable.
+
+So the class is really "apply a nilearn masker to the map columns", and atlas
+aggregation is the case where that masker reduces to regions. By §21's rule --
+a name says what the thing is -- `AtlasAggregator` could not survive widening.
+
+### The signature
+
+```python
+MaskerTransformer(masker, source_masker=bunch.masker, masker_kwargs=None, batch_size=32)
+```
+
+`masker` is what to apply and `source_masker` is where the columns came from.
+The old spelling had `atlas` for the first and `masker` for the second, which
+read as though the bundle's masker were the thing being applied. The rename
+makes the old call sites fail loudly rather than quietly mean something else.
+
+### A regression this turned up, and its fix
+
+Fitting the nilearn masker without images silences a `NiftiMasker` warning that
+the images would be ignored -- but makes a *maps* masker resample at every
+`transform`, which both warns and is slow, because with
+`resampling_target="data"` it resamples onto whatever it was fitted with. The
+rule is per masker: an atlas masker is fitted with the mask image, a voxel
+masker without one. Both paths are now warning-free.

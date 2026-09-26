@@ -18,31 +18,38 @@ from sklearn.exceptions import NotFittedError
 from sklearn.utils.validation import check_is_fitted
 
 
-class AtlasAggregator(TransformerMixin, BaseEstimator):
-    """Aggregate masked voxel features into the regions of a nilearn atlas.
+class MaskerTransformer(TransformerMixin, BaseEstimator):
+    """Apply a nilearn masker to masked voxel features.
 
-    Rows are converted back into images in the source mask's space, in batches,
-    and summarised by a nilearn masker, so region definitions, resampling and
-    the aggregation strategy stay nilearn's. How many regions an atlas yields
-    therefore depends on the nilearn version as well as on the atlas; see
-    :doc:`the machine learning documentation </machine_learning>`.
+    A nilearn masker is already a scikit-learn transformer, but it takes images
+    where a :class:`~sklearn.compose.ColumnTransformer` hands out columns of an
+    array. This is the bridge: rows are converted back into images in the
+    source mask's space, in batches, and handed to the masker, so region
+    definitions, smoothing, resampling and aggregation strategy all stay
+    nilearn's.
+
+    An atlas masker reduces the voxels to regions; a
+    :class:`~nilearn.maskers.NiftiMasker` returns voxels, which is how
+    nilearn's smoothing, standardizing and detrending reach these features. How
+    many regions an atlas yields depends on the nilearn version as well as on
+    the atlas; see :doc:`the machine learning documentation </machine_learning>`.
 
     Parameters
     ----------
-    atlas : object, optional
-        The atlas, in any form nilearn loads, by default None: a
+    masker : object, optional
+        What to apply, by default None. Any nilearn masker, which is cloned
+        rather than modified, or anything nilearn loads as an atlas: a
         :class:`~sklearn.utils.Bunch` from a ``nilearn.datasets.fetch_atlas_*``
-        function, a 3D or 4D atlas image or a path to one, the name of a
-        fetcher with its arguments in ``atlas_kwargs``, or a
-        :class:`~nilearn.maskers.NiftiLabelsMasker` or
-        :class:`~nilearn.maskers.NiftiMapsMasker`, which is cloned rather than
-        modified. A 4D atlas is summarised with a maps masker and a 3D one with
-        a labels masker.
-    masker : :class:`~nilearn.maskers.NiftiMasker` or img_like, optional
+        function, a 3D or 4D atlas image or a path to one, or the name of a
+        fetcher with its arguments in ``masker_kwargs``. A 4D atlas is
+        summarised with a :class:`~nilearn.maskers.NiftiMapsMasker` and a 3D
+        one with a :class:`~nilearn.maskers.NiftiLabelsMasker`.
+    source_masker : :class:`~nilearn.maskers.NiftiMasker` or img_like, optional
         The masker defining the voxel order of the incoming features, normally
-        the ``masker`` a bundle carries, by default None.
-    atlas_kwargs : :obj:`dict`, optional
-        Arguments for the nilearn fetcher when ``atlas`` names one, by default
+        the ``masker`` a bundle carries, by default None. This is where the
+        columns came from, not what is applied to them.
+    masker_kwargs : :obj:`dict`, optional
+        Arguments for the nilearn fetcher when ``masker`` names one, by default
         None.
     batch_size : :obj:`int`, default=32
         How many rows are held in dense image form at once. Larger batches pay
@@ -51,26 +58,30 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
 
     Attributes
     ----------
-    atlas_masker_ : :class:`~nilearn.maskers.BaseMasker`
-        The fitted nilearn masker doing the aggregation.
+    masker_ : :class:`~nilearn.maskers.BaseMasker`
+        The fitted nilearn masker doing the work.
     region_names_ : :obj:`list` of :obj:`str` or None
         Region names read from the atlas, when it carries any.
     n_features_out_ : :obj:`int`
-        How many regions the fitted masker reports, known once anything has
+        How many columns the fitted masker reports, known once anything has
         been transformed or named.
 
     Examples
     --------
-    >>> reducer = AtlasAggregator(  # doctest: +SKIP
-    ...     atlas=fetch_atlas_difumo(dimension=64),
-    ...     masker=features.masker,
+    >>> reducer = MaskerTransformer(  # doctest: +SKIP
+    ...     fetch_atlas_difumo(dimension=64),
+    ...     source_masker=bunch.masker,
+    ... )
+    >>> smoother = MaskerTransformer(  # doctest: +SKIP
+    ...     NiftiMasker(smoothing_fwhm=6),
+    ...     source_masker=bunch.masker,
     ... )
     """
 
-    def __init__(self, atlas=None, masker=None, atlas_kwargs=None, batch_size=32):
-        self.atlas = atlas
+    def __init__(self, masker=None, source_masker=None, masker_kwargs=None, batch_size=32):
         self.masker = masker
-        self.atlas_kwargs = atlas_kwargs
+        self.source_masker = source_masker
+        self.masker_kwargs = masker_kwargs
         self.batch_size = batch_size
 
     def fit(self, X, y=None):
@@ -84,27 +95,32 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
 
         Returns
         -------
-        :class:`AtlasAggregator`
-            The fitted aggregator.
+        :class:`MaskerTransformer`
+            The fitted transformer.
         """
-        if self.atlas is None:
-            raise ValueError(
-                "AtlasAggregator requires an atlas: a fetched nilearn atlas, an atlas "
-                "image or file, the name of a nilearn fetcher, or a nilearn labels or "
-                "maps masker."
-            )
         if self.masker is None:
             raise ValueError(
-                "AtlasAggregator requires the masker that defines the voxel order of the "
-                "features, normally the masker a bundle carries."
+                "MaskerTransformer requires something to apply: a nilearn masker, a "
+                "fetched nilearn atlas, an atlas image or file, or the name of a nilearn "
+                "fetcher."
+            )
+        if self.source_masker is None:
+            raise ValueError(
+                "MaskerTransformer requires the source_masker that defines the voxel "
+                "order of the features, normally the masker a bundle carries."
             )
 
         from nimare.utils import get_masker
 
-        self.mask_img_ = get_masker(self.masker).mask_img
-        atlas_masker, region_names = _resolve_atlas(self.atlas, self.atlas_kwargs)
-        atlas_masker.set_params(mask_img=self.mask_img_)
-        self.atlas_masker_ = atlas_masker.fit(self.mask_img_)
+        self.mask_img_ = get_masker(self.source_masker).mask_img
+        masker, region_names = _resolve_atlas(self.masker, self.masker_kwargs)
+        masker.set_params(mask_img=self.mask_img_)
+        # An atlas masker resamples itself onto the images it is fitted with,
+        # so it is given the mask now rather than resampling once per batch. A
+        # voxel masker has nothing to resample and warns that the images would
+        # be ignored, so it is fitted without them.
+        reduces = hasattr(masker, "labels_img") or hasattr(masker, "maps_img")
+        self.masker_ = masker.fit(self.mask_img_) if reduces else masker.fit()
         self.region_names_ = region_names
         self.n_features_in_ = X.shape[1]
         if hasattr(self, "n_features_out_"):
@@ -112,7 +128,7 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
         return self
 
     def transform(self, X):
-        """Aggregate features into regions.
+        """Apply the masker to the features.
 
         Parameters
         ----------
@@ -122,16 +138,17 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
         Returns
         -------
         :obj:`numpy.ndarray`
-            Analysis-by-region features.
+            Analysis-by-region features for an atlas masker, and
+            analysis-by-voxel for a voxel masker.
         """
-        check_is_fitted(self, ["atlas_masker_"])
+        check_is_fitted(self, ["masker_"])
 
         batches = []
         for start in range(0, X.shape[0], self.batch_size):
             batch = X[start : start + self.batch_size]
             if sparse.issparse(batch):
                 batch = batch.toarray()
-            batches.append(self.atlas_masker_.transform(unmask(batch, self.mask_img_)))
+            batches.append(self.masker_.transform(unmask(batch, self.mask_img_)))
 
         aggregated = np.vstack(batches)
         self.n_features_out_ = aggregated.shape[1]
@@ -149,14 +166,14 @@ class AtlasAggregator(TransformerMixin, BaseEstimator):
         :obj:`numpy.ndarray` of :obj:`str`
             One name per region column.
         """
-        check_is_fitted(self, ["atlas_masker_"])
+        check_is_fitted(self, ["masker_"])
         n_regions = self._n_features_out()
 
         for candidate in _name_candidates(self.region_names_):
             if len(candidate) == n_regions:
                 return np.asarray(candidate, dtype=str)
 
-        names = _masker_region_names(self.atlas_masker_)
+        names = _masker_region_names(self.masker_)
         if names is not None and len(names) == n_regions:
             return np.asarray(names, dtype=str)
 
@@ -186,11 +203,8 @@ def _resolve_atlas(atlas, atlas_kwargs=None):
         atlas = _load_atlas(atlas, atlas_kwargs)
 
     if isinstance(atlas, BaseMasker):
-        if not (hasattr(atlas, "labels_img") or hasattr(atlas, "maps_img")):
-            raise ValueError(
-                f"{type(atlas).__name__} extracts voxels rather than regions. Pass a "
-                "labels or maps atlas, or a NiftiLabelsMasker or NiftiMapsMasker."
-            )
+        # a voxel masker returns voxels rather than regions, which is how
+        # nilearn's smoothing and standardizing reach these features
         return clone(atlas), None
 
     if hasattr(atlas, "maps"):
@@ -311,7 +325,7 @@ def _masker_region_names(atlas_masker):
 
 
 def _is_atlas_like(reducer):
-    """Report whether an object describes an atlas rather than a reducer."""
+    """Report whether an object is a nilearn masker or an atlas, not a reducer."""
     return isinstance(reducer, (BaseMasker, SpatialImage)) or hasattr(reducer, "maps")
 
 
@@ -324,20 +338,20 @@ def _resolve_map_reducer(reducer, masker=None, **kwargs):
     """Return an unfitted transformer for whatever describes a map reduction.
 
     A scikit-learn transformer is used as given, a transformer class is built
-    from ``kwargs``, and an atlas is wrapped in an :class:`AtlasAggregator`
-    bound to ``masker``.
+    from ``kwargs``, and a nilearn masker or atlas is wrapped in a
+    :class:`MaskerTransformer` bound to ``masker`` as its source.
     """
     if isinstance(reducer, type):
         reducer, kwargs = reducer(**kwargs), {}
 
-    if isinstance(reducer, AtlasAggregator) and reducer.masker is None:
-        # Built without a masker, which the feature set can supply.
+    if isinstance(reducer, MaskerTransformer) and reducer.source_masker is None:
+        # Built without one, which the bundle can supply.
         reducer = clone(reducer)
-        reducer.set_params(masker=_required_masker(masker))
+        reducer.set_params(source_masker=_required_masker(masker))
         return reducer
 
     if _is_atlas_like(reducer):
-        return AtlasAggregator(atlas=reducer, masker=_required_masker(masker), **kwargs)
+        return MaskerTransformer(masker=reducer, source_masker=_required_masker(masker), **kwargs)
 
     if _is_transformer(reducer):
         if kwargs:
@@ -350,15 +364,15 @@ def _resolve_map_reducer(reducer, masker=None, **kwargs):
     raise TypeError(
         f"{reducer!r} is not a map reducer. Pass a scikit-learn transformer such as "
         "TruncatedSVD(n_components=50) or VarianceThreshold(), a transformer class, or "
-        "an atlas for AtlasAggregator to summarise."
+        "or a nilearn masker or atlas for MaskerTransformer to apply."
     )
 
 
 def _required_masker(masker):
-    """Return the masker an atlas reduction needs, or explain that it is missing."""
+    """Return the source masker a nilearn masker needs, or say it is missing."""
     if masker is None:
         raise ValueError(
-            "Atlas aggregation needs the masker that defines the voxel order of the map "
+            "A nilearn masker needs the masker that defines the voxel order of the map "
             "features, normally the masker a bundle carries."
         )
     return masker

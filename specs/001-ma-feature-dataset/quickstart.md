@@ -177,26 +177,32 @@ mean in an extractor's repeated fields. A pattern matching nothing is retried
 with its brackets taken literally, so `*groups[0].*` selects group zero;
 `[mt]*`, which already matches, still means a character class.
 
-## Reduce over the regions of an atlas
+## Let nilearn transform the voxels
 
-`AtlasAggregator` is the one reducer NiMARE adds, because it is the one that
-has to know which voxel each column is:
+A nilearn masker is already a scikit-learn transformer; it just takes images
+where a ColumnTransformer hands out columns of an array. `MaskerTransformer`
+is that bridge, and the only transformer NiMARE adds, because it is the only
+one that has to know which voxel each column is:
 
 ```python
 from nilearn.datasets import fetch_atlas_difumo
+from nilearn.maskers import NiftiMasker
 
-ml.AtlasAggregator(fetch_atlas_difumo(dimension=64), masker=bunch.masker)
-ml.AtlasAggregator("harvard_oxford", masker=bunch.masker,
-                   atlas_kwargs={"atlas_name": "cort-maxprob-thr25-2mm"})
+ml.MaskerTransformer(fetch_atlas_difumo(dimension=64), source_masker=bunch.masker)
+ml.MaskerTransformer(NiftiMasker(smoothing_fwhm=6), source_masker=bunch.masker)
+ml.MaskerTransformer("harvard_oxford", source_masker=bunch.masker,
+                     masker_kwargs={"atlas_name": "cort-maxprob-thr25-2mm"})
 
-ml.make_nimare_column_transformer(bunch, fetch_atlas_difumo(dimension=64))  # masker supplied
+# in a column transformer the source masker comes from the bundle
+ml.make_nimare_column_transformer(bunch, (fetch_atlas_difumo(dimension=64), "maps"))
 ```
 
-An atlas is anything nilearn can load: a fetched atlas, an atlas image or file,
-the name of a `fetch_atlas_*` function, or a `NiftiLabelsMasker` or
-`NiftiMapsMasker` you configured yourself. A 4D atlas is summarised with a maps
-masker and a 3D one with a labels masker, and the atlas's own region names
-become the reduced feature names.
+It applies any nilearn masker, or anything nilearn loads as an atlas: a fetched
+atlas, an atlas image or file, or the name of a `fetch_atlas_*` function. A 4D
+atlas is summarised with a maps masker and a 3D one with a labels masker, and
+the atlas's own region names become the feature names. A `NiftiMasker` returns
+voxels rather than regions, which is how nilearn's smoothing, standardizing and
+detrending reach these features.
 
 ## Keep a reducer off the descriptor columns
 

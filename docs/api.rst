@@ -290,7 +290,7 @@ historical import path and adds nothing of its own.
    :toctree: generated/
    :template: class.rst
 
-   ml.AtlasAggregator
+   ml.MaskerTransformer
 
 .. autosummary::
    :toctree: generated/
