@@ -1608,3 +1608,39 @@ there it costs 61% for nothing. It hits across candidates within a fold, where
 the kernel and the reduction do not depend on the parameter being searched, and
 there it is worth 7.4x. The documentation said "across folds and across
 candidates"; the first half was wrong and is corrected.
+
+## 28. Caching the kernel
+
+The kernel runs per fold, and an MA map depends only on its own row's peaks,
+so the repeated work is not a cache miss but a recomputation of identical
+values. Three ways to stop it were measured.
+
+**Take the kernel out of the pipeline.** Convolving once before
+cross-validating does not leak, for the same reason the repetition is
+wasteful. It captures the whole saving and costs no API at all. The saving
+depends on what follows the kernel, which is usually the expensive part:
+14.6% of a five-fold run before `TruncatedSVD(50)`, 23.8% before a bare
+logistic regression, 29.1% before `VarianceThreshold`.
+
+**Loop rather than search, when tuning the kernel.** `GridSearchCV` over
+`makernel__kernel__r` convolves once per radius *per fold*; convolving once
+per radius and cross-validating each set of maps convolves once per radius.
+Measured over three radii: 101.4 s against 85.1 s, same answer.
+
+**A per-row cache inside `MAKernel`** was prototyped and rejected. It works --
+906 misses and 3,624 hits over five folds of 906 analyses, scores identical to
+four decimals -- but:
+
+- The key must cover the kernel *class*, its parameters, the mask, and the
+  row. `MKDAKernel(r=10)` and `KDAKernel(r=10)` have identical `get_params()`
+  and produce different maps, so keying on parameters alone silently serves
+  one for the other. The prototype had exactly that bug.
+- Surviving `clone` needs `__deepcopy__` returning `self`, which is
+  defensible for a memo of a pure function but subverts what `clone` promises.
+- It holds the whole MA matrix in memory, 47 MB on the bundled studyset and
+  156 MB on a 4,000-analysis release slice -- the cost the peak representation
+  exists to avoid.
+
+It also captured less of the saving than hoisting did, so it would have been
+new public surface, a new silent-wrong-answer risk and a new memory cost, in
+exchange for less than the zero-API alternative. Documented instead.

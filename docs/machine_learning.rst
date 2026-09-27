@@ -137,6 +137,46 @@ to the peak columns gives the number of reported coordinates per region, which
 :class:`~nimare.ml.MaskerTransformer` will do because it reads either column
 space.
 
+Taking the kernel back out
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A kernel in the pipeline is convolved again on every fold, and that work is
+not merely uncached -- it is identical. An analysis's MA map is a function of
+that analysis's own peaks, so the map of a given row is the same whichever
+fold it lands in.
+
+That also means convolving once, before cross-validating, does not leak. So
+when the kernel is not what is being tuned, take it out:
+
+.. code-block:: python
+
+    maps = MAKernel(MKDAKernel(r=10), source_masker=bunch.masker).fit_transform(
+        bunch.data[:, bunch.voxel_columns]
+    )
+    cross_val_score(rest_of_the_pipeline, maps, bunch.target, groups=bunch.groups, cv=cv)
+
+How much that saves depends on what follows it, since the kernel is rarely the
+expensive part:
+
+=====================================  ==========================
+Pipeline                               Kernel's share of 5 folds
+=====================================  ==========================
+``MAKernel`` → SVD(50) → logistic                          14.6 %
+``MAKernel`` → logistic                                    23.8 %
+``MAKernel`` → VarianceThreshold → logistic                29.1 %
+=====================================  ==========================
+
+Tuning the kernel does not force it back in, because a loop does the same job
+for less: three radii searched with
+:class:`~sklearn.model_selection.GridSearchCV` over
+``makernel__kernel__r`` convolves 3 × 5 folds, while convolving once per
+radius and cross-validating each set of maps convolves three times. Measured on
+the bundled studyset, 101.4 s against 85.1 s for the same answer.
+
+Keep the kernel in the pipeline when the convenience is worth more than the
+time -- a single search object, one set of parameters, nothing to keep in
+step by hand.
+
 One kernel cannot move into the pipeline
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
