@@ -31,24 +31,18 @@ def _handles_sparse(transformer, n_columns):
     whatever its sparsity, and :class:`~nimare.ml.MAKernel` reads the width to
     know which space its columns are in. A narrow probe answers "no" for both,
     and densifying a voxel block is the one thing worth avoiding.
+
+    A pipeline is probed whole, not by its first step, because a step that
+    takes sparse input may also preserve it: ``SimpleImputer`` hands sparse
+    columns to whatever follows, so a ``StandardScaler`` behind it still
+    refuses to centre them.
     """
     probe = _probe(n_columns)
     try:
-        clone(_first_step(transformer)).fit(probe)
+        clone(transformer).fit(probe)
     except Exception:
         return False
     return True
-
-
-def _first_step(transformer):
-    """Return the estimator that will be handed the sparse block itself.
-
-    Only the first thing to touch the block can be protected by densifying it;
-    what a later step is given is the step before it, and its own business.
-    """
-    while isinstance(transformer, Pipeline) and transformer.steps:
-        transformer = transformer.steps[0][1]
-    return transformer
 
 
 def _probe(n_columns):

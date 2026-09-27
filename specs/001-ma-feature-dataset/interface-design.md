@@ -1475,7 +1475,13 @@ dense input and the block was densified before it. At 228,483 columns that was
 a silent 1.6 GB; at 902,629 it is 16.9 GB and raises, which is how it was
 found.
 
-The probe is now as wide as the block it stands for, and only the first step of
-a pipeline is probed -- a later step receives the step before it, not the block,
-so its appetite is not ours to protect. `MAKernel` reads the width to know
-which space its columns are in, so it needs the same fix for the same reason.
+The probe is now as wide as the block it stands for. `MAKernel` reads the width
+to know which space its columns are in, so it needs the same fix for the same
+reason.
+
+Probing only a pipeline's *first* step was tried and reverted. It looks right --
+only the first thing to touch the block can be protected by densifying it -- but
+a step that takes sparse input may also preserve it, so
+`make_pipeline(SimpleImputer(), StandardScaler())` over a descriptor column was
+called sparse-safe and then raised inside cross-validation. The width fix alone
+is sufficient; the pipeline is probed whole.

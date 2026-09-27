@@ -429,8 +429,12 @@ The probe is as wide as the block, because the width is part of the question.
 ``TruncatedSVD(n_components=50)`` cannot fit a one-column probe whatever its
 sparsity, so a narrow probe called the canonical sparse reducer dense and
 densified the voxel block before it -- 1.6 GB at 228,483 columns, and 16.9 GB
-at 902,629. Only the first step of a pipeline is probed, since a later step is
-handed the step before it rather than the block.
+at 902,629.
+
+A pipeline is probed whole rather than by its first step, because a step that
+takes sparse input may also pass it on: ``SimpleImputer`` hands sparse columns
+to whatever follows, so ``make_pipeline(SimpleImputer(), StandardScaler())``
+needs dense input even though its first step does not.
 
 That matters most for a pattern selection. Scaling the Neurosynth release's
 3,228 labels over 115,748 analyses would be 2.8 GB dense and is 2% filled, so

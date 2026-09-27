@@ -1925,14 +1925,33 @@ def test_a_sparse_voxel_block_is_not_densified_before_a_reducer(ma_bunch):
     assert seen["sparse"] is True
 
 
-def test_only_the_first_step_decides_whether_to_densify(ma_bunch):
-    """A later step's appetite is the step before it, not the raw block."""
-    from nimare.ml.compose import _first_step, _handles_sparse
+def test_a_pipeline_is_probed_whole_not_by_its_first_step(ma_bunch):
+    """A step that takes sparse input may also pass it on.
 
-    inner = make_pipeline(MaxAbsScaler(), StandardScaler())
-    assert isinstance(_first_step(inner), MaxAbsScaler)
+    ``SimpleImputer`` accepts sparse columns and hands sparse columns to
+    whatever follows, so a ``StandardScaler`` behind it still refuses to centre
+    them. Probing only the first step called that chain sparse-safe and left
+    the real failure to surface inside cross-validation.
+    """
+    from nimare.ml.compose import _handles_sparse
 
-    width = ma_bunch.voxel_columns.stop - ma_bunch.voxel_columns.start
-    # MaxAbsScaler takes sparse, so the block is not densified for it, even
-    # though the StandardScaler behind it would refuse sparse input
-    assert _handles_sparse(inner, width) is True
+    preserves_sparsity = make_pipeline(SimpleImputer(strategy="median"), StandardScaler())
+    assert _handles_sparse(preserves_sparsity, 1) is False
+    assert _handles_sparse(SimpleImputer(strategy="median"), 1) is True
+
+    # the same chain is fine once the scaler is told not to centre
+    sparse_safe = make_pipeline(SimpleImputer(strategy="median"), StandardScaler(with_mean=False))
+    assert _handles_sparse(sparse_safe, 1) is True
+
+
+def test_a_descriptor_chain_that_needs_dense_input_gets_it(ma_bunch):
+    """The whole point of the probe: the chain runs rather than raising."""
+    preprocessor = ml.make_nimare_column_transformer(
+        ma_bunch,
+        ("drop", "voxels"),
+        (make_pipeline(SimpleImputer(strategy="median"), StandardScaler()), "descriptors"),
+    )
+    out = preprocessor.fit_transform(ma_bunch.data)
+
+    assert out.shape == (ma_bunch.data.shape[0], 1)
+    assert float(np.mean(out)) == pytest.approx(0.0, abs=1e-9)
