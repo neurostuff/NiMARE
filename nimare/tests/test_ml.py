@@ -909,10 +909,11 @@ def test_column_transformer_accepts_an_atlas(small_masker, atlas_features):
 # ------------------------------------------------------------------ extraction
 
 
-def test_public_surface_is_a_studyset_method_and_four_helpers():
+def test_public_surface_is_a_studyset_method_and_five_helpers():
     """Conversion belongs to the Studyset; nimare.ml holds what it cannot answer."""
     assert set(ml.__all__) == {
         "MAKernel",
+        "MapCache",
         "MaskerTransformer",
         "describe_fields",
         "make_nimare_column_transformer",
