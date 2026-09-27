@@ -137,16 +137,54 @@ to the peak columns gives the number of reported coordinates per region, which
 :class:`~nimare.ml.MaskerTransformer` will do because it reads either column
 space.
 
+Convolving each row once
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+A kernel in the pipeline is convolved again on every fold, and that work is
+not merely uncached -- it is identical, since an analysis's MA map is a
+function of that analysis's own peaks. :class:`~nimare.ml.MapCache` keeps the
+rows already made, so every fold after the first is served rather than
+recomputed:
+
+.. code-block:: python
+
+    cache = MapCache()
+    pipeline = make_pipeline(
+        MAKernel(MKDAKernel(r=10), source_masker=bunch.masker, cache=cache),
+        TruncatedSVD(n_components=50),
+        LogisticRegression(),
+    )
+
+What that is worth depends on what follows the kernel, which is usually the
+expensive part:
+
+===========================================  ==========  ==========
+Pipeline                                      no cache     ``cache=``
+===========================================  ==========  ==========
+``MAKernel`` → SVD(50) → logistic                20.16 s     16.50 s
+``MAKernel`` → VarianceThreshold → logistic       5.66 s      3.66 s
+===========================================  ==========  ==========
+
+It is asked for rather than assumed, because it grows to hold the whole
+feature matrix -- 47 MB on the bundled studyset, 156 MB on a 4,000-analysis
+release slice. :meth:`~nimare.ml.MapCache.clear` lets it go.
+
+A cached row names the kernel that made it, and the mask it was made in, as
+well as the peaks it came from. Both halves matter: ``MKDAKernel(r=10)`` and
+``KDAKernel(r=10)`` report identical parameters and make different maps, and
+two masks can share a shape and an affine while putting a peak in different
+places. Sharing is the point, so the cache is kept rather than copied when the
+transformer is cloned -- a memo of a pure function is not fitted state.
+
 Taking the kernel back out
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A kernel in the pipeline is convolved again on every fold, and that work is
-not merely uncached -- it is identical. An analysis's MA map is a function of
-that analysis's own peaks, so the map of a given row is the same whichever
-fold it lands in.
-
-That also means convolving once, before cross-validating, does not leak. So
-when the kernel is not what is being tuned, take it out:
+The other way to convolve each row once is to do it before cross-validating,
+which does not leak for the same reason the repetition is wasteful. It reaches
+the same speed as a cache and keeps nothing, at the cost of recombining the
+matrix by hand when there are descriptor columns -- the bundle's column spans
+describe the peaks, not the maps. With voxels alone there is nothing to
+recombine:
 
 .. code-block:: python
 

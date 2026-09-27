@@ -432,3 +432,23 @@ Required docs:
 - Numpydoc docstrings for all public classes and functions.
 - The 1,000-study conversion-and-split budget of <=3 minutes and <=5 GB peak
   memory, checked by a `performance_smoke` test.
+
+## `MapCache`
+
+`nimare.ml.MapCache()` holds maps already convolved, and is passed to
+`MAKernel(..., cache=...)`. It is opt-in: it grows to the whole feature
+matrix, which is a cost to ask for rather than to discover.
+
+A cached row MUST be keyed on everything its value depends on: the kernel's
+class, its parameters, the mask's contents and affine, and the row's own
+peaks. The class is not redundant with the parameters -- `MKDAKernel(r=10)`
+and `KDAKernel(r=10)` report identical `get_params()` and produce different
+maps -- and the mask's contents are not redundant with its grid, since two
+masks may share a shape and an affine.
+
+The cache MUST survive `clone`, since folds share it only if cloning keeps it;
+a memo of a pure function is not fitted state. It MUST store copies rather
+than views of the rows it is given, a slice of a CSR matrix's indices being a
+view that keeps the whole array it came from alive.
+
+Caching MUST NOT change what a pipeline computes, only what it costs.

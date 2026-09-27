@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import time
 from pathlib import Path
 
@@ -2152,3 +2153,136 @@ def test_the_source_masker_is_not_refitted_per_fold(small_masker, labels_atlas):
     MaskerTransformer(labels_atlas, source_masker=source).fit(peaks)
 
     assert fits == []
+
+
+# ---------------------------------------------------------------- MapCache
+
+
+def _grid_peaks(masker, rows=3):
+    """Return a small grid-space peak block with one peak per row."""
+    shape = masker.mask_img.shape
+    peaks = sparse.lil_matrix((rows, int(np.prod(shape))), dtype=float)
+    for row in range(rows):
+        peaks[row, np.ravel_multi_index((row % 2, row % 2, 0), shape)] = 1.0
+    return peaks.tocsr()
+
+
+def test_a_cache_changes_the_cost_and_nothing_else(ml_studyset):
+    """Cached maps must equal the maps convolved afresh."""
+    bunch = ml_studyset.to_bunch()
+    peaks = _voxels(bunch)
+
+    plain = MAKernel(MKDAKernel(r=4), source_masker=bunch.masker).fit_transform(peaks)
+    cache = ml.MapCache()
+    cached = MAKernel(MKDAKernel(r=4), source_masker=bunch.masker, cache=cache).fit_transform(
+        peaks
+    )
+
+    assert abs(plain - cached).nnz == 0
+    assert cache.misses == peaks.shape[0]
+    assert cache.hits == 0
+
+
+def test_a_cache_serves_the_second_pass(ml_studyset):
+    """A row convolved once is not convolved again."""
+    bunch = ml_studyset.to_bunch()
+    peaks = _voxels(bunch)
+    cache = ml.MapCache()
+
+    first = MAKernel(MKDAKernel(r=4), source_masker=bunch.masker, cache=cache).fit_transform(peaks)
+    second = MAKernel(MKDAKernel(r=4), source_masker=bunch.masker, cache=cache).fit_transform(
+        peaks
+    )
+
+    assert abs(first - second).nnz == 0
+    assert cache.hits == peaks.shape[0]
+    assert cache.misses == peaks.shape[0]
+
+
+def test_a_cache_survives_cloning(small_masker):
+    """Folds share a cache only because clone keeps it rather than copying it."""
+    cache = ml.MapCache()
+    step = MAKernel(MKDAKernel(r=1), source_masker=small_masker, cache=cache)
+
+    assert clone(step).cache is cache
+    assert copy.deepcopy(cache) is cache
+
+
+def test_a_cached_row_names_the_kernel_that_made_it(small_masker):
+    """MKDAKernel(r=1) and KDAKernel(r=1) report the same parameters.
+
+    Keying on the parameters alone would serve one kernel's maps for the
+    other's, which is the whole reason the class is in the key.
+    """
+    from nimare.meta.kernel import KDAKernel
+
+    assert MKDAKernel(r=1).get_params() == KDAKernel(r=1).get_params()
+
+    peaks = _grid_peaks(small_masker)
+    cache = ml.MapCache()
+    mkda = MAKernel(MKDAKernel(r=1), source_masker=small_masker, cache=cache).fit_transform(peaks)
+    kda = MAKernel(KDAKernel(r=1), source_masker=small_masker, cache=cache).fit_transform(peaks)
+
+    direct = MAKernel(KDAKernel(r=1), source_masker=small_masker).fit_transform(peaks)
+    assert abs(kda - direct).nnz == 0
+    assert cache.hits == 0  # nothing was served across the two kernels
+    assert mkda.shape == kda.shape
+
+
+def test_a_cached_row_names_the_mask_it_was_made_in(small_masker):
+    """The same peaks in a different mask are different maps."""
+    other = get_masker(
+        nib.Nifti1Image(np.ones(small_masker.mask_img.shape, dtype=np.uint8), np.eye(4))
+    )
+    cache = ml.MapCache()
+    peaks = _grid_peaks(small_masker)
+
+    first = MAKernel(MKDAKernel(r=1), source_masker=small_masker, cache=cache).fit_transform(peaks)
+    second = MAKernel(MKDAKernel(r=1), source_masker=other, cache=cache).fit_transform(peaks)
+
+    assert cache.hits == 0
+    assert first.shape[1] != second.shape[1]
+
+
+def test_cached_rows_are_copies_not_views(small_masker):
+    """A slice of a CSR's indices is a view that pins the array it came from."""
+    cache = ml.MapCache()
+    MAKernel(MKDAKernel(r=1), source_masker=small_masker, cache=cache).fit_transform(
+        _grid_peaks(small_masker)
+    )
+
+    assert cache.rows
+    for indices, data in cache.rows.values():
+        assert indices.base is None
+        assert data.base is None
+
+
+def test_a_cache_can_be_emptied(small_masker):
+    """Holding the whole feature matrix is opt-in, and so is letting it go."""
+    cache = ml.MapCache()
+    peaks = _grid_peaks(small_masker)
+    MAKernel(MKDAKernel(r=1), source_masker=small_masker, cache=cache).fit_transform(peaks)
+    assert cache.rows and cache.misses
+
+    cache.clear()
+    assert not cache.rows and not cache.misses and not cache.hits
+    assert cache.width is None
+
+
+def test_a_cache_holds_across_the_folds_of_a_cross_validation(ml_studyset):
+    """The point of the cache: every row convolved once, whatever the split."""
+    bunch = ml_studyset.to_bunch(target_field=("annotations", "target_score"))
+    peaks = _voxels(bunch)
+    cache = ml.MapCache()
+    pipeline = make_pipeline(
+        MAKernel(MKDAKernel(r=4), source_masker=bunch.masker, cache=cache),
+        TruncatedSVD(n_components=2, random_state=RANDOM_SEED),
+        Ridge(),
+    )
+
+    cross_val_score(pipeline, peaks, bunch.target, groups=bunch.groups, cv=GroupKFold(2))
+
+    # every row is convolved once however many folds touch it
+    assert cache.misses == len(cache.rows)
+    assert cache.hits > 0
+    assert cache.hits + cache.misses > peaks.shape[0]
