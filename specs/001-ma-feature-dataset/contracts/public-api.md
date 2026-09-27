@@ -362,8 +362,10 @@ What it adds MUST be limited to what scikit-learn cannot derive from an array:
   which is asked by fitting a clone on a sparse probe.
 - `sparse_threshold` MUST default to 1.0 rather than scikit-learn's 0.3, which
   would densify an unreduced map block.
-- Leaving descriptor columns unclaimed under `remainder="drop"` MUST raise.
-  Dropping them is available, but only by saying so.
+- Leaving *either* block unclaimed under `remainder="drop"` MUST raise. The
+  two blocks are the whole matrix, so naming only the descriptors would
+  discard every voxel and leave a model fitted on a handful of columns.
+  Dropping a block is available, but only by saying so.
 
 A string in the transformer slot MUST be `"passthrough"` or `"drop"`, as for a
 ColumnTransformer; `"passthrough"` keeps the block's sparsity and its names.

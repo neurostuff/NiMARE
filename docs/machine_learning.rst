@@ -299,9 +299,12 @@ each group gets -- indeed its default ``remainder="drop"`` *discards* the
 columns nobody claimed. What stands in for marking is the column spec, which is
 what :func:`~sklearn.compose.make_column_selector` builds for a frame and what
 ``bunch.map_columns`` already is for this array: an ordinary :class:`slice`.
-Because dropping a descriptor silently is rarely what anyone means, leaving one
-unclaimed under ``remainder="drop"`` raises instead; say ``("drop",
-"descriptors")`` or ``remainder="passthrough"`` to mean it.
+``remainder="drop"`` is right for a frame of many columns and wrong here,
+where the two blocks are the whole of the matrix: naming only the descriptors
+would discard 228,483 voxels and leave a model fitted on one column of sample
+sizes, without a word. So leaving *either* block unclaimed raises. Say
+``("drop", "maps")`` or ``remainder="passthrough"`` when that is what is
+meant -- the refusal is about silence, not about the outcome.
 
 So the same thing can be written out by hand, and should be for anything this
 function does not cover:

@@ -1360,3 +1360,30 @@ the images would be ignored -- but makes a *maps* masker resample at every
 `resampling_target="data"` it resamples onto whatever it was fitted with. The
 rule is per masker: an atlas masker is fitted with the mask image, a voxel
 masker without one. Both paths are now warning-free.
+
+## 24. Auditing the flexibility for foot guns (2026-09-27)
+
+Exposing scikit-learn rather than wrapping it buys a smaller surface and costs
+the guardrails a container gave for free. Worth asking which of those losses
+produce a *wrong answer* rather than an error. Tried on the bundled Studyset:
+
+| Mistake | Outcome |
+| --- | --- |
+| Name only the maps, leaving a descriptor unclaimed | caught |
+| **Name only the descriptors, leaving the voxels unclaimed** | **silent: 228,483 columns dropped, shape (906, 1)** |
+| Bare reducer over the whole matrix, descriptors and all | silent |
+| Slice `data` but forget to slice `target` | caught by scikit-learn |
+| Forget `groups=` in `cross_val_score` | silent: 0.606 against 0.584, +2.2 points |
+| Plain `train_test_split` instead of a grouped one | silent: 112 of 320 studies on both sides |
+
+The second row was a bug of our own, and an embarrassing one: §22's guard
+refused to drop a single descriptor column while silently discarding the entire
+feature matrix in the other direction. `remainder="drop"` is right for a frame
+of many columns and wrong for a bundle whose two blocks *are* the matrix, so
+both are now guarded, with `("drop", "maps")` and `remainder="passthrough"` as
+the ways to mean it. The refusal is about silence, not about the outcome.
+
+The rest are inherent to the trade. Fixing "forget `groups=`" or "bare reducer
+over everything" would mean taking `data` back out of the caller's hands, which
+is the container again. They are the price of the flexibility, and the reason
+the documentation leads with the guarded call rather than the general one.

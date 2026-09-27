@@ -127,23 +127,32 @@ def _step(transformer, columns):
 
 
 def _check_claims(bunch, specs, remainder):
-    """Refuse to silently drop descriptor columns nobody asked about."""
-    descriptors = bunch.descriptor_columns
-    if descriptors.stop <= descriptors.start or remainder != "drop":
+    """Refuse to silently drop any block nobody asked about.
+
+    A ColumnTransformer discards the columns no transformer claims, which is
+    right for a frame of many columns and wrong here: the two blocks are the
+    whole of the matrix, and dropping either is a modelling decision rather
+    than a detail. Saying ``("drop", "maps")`` still drops it.
+    """
+    if remainder != "drop":
         return
     claimed = set()
     for columns in specs:
         claimed.update(np.arange(len(bunch.feature_names))[columns].tolist())
-    unclaimed = [
-        index for index in range(descriptors.start, descriptors.stop) if index not in claimed
-    ]
-    if unclaimed:
+
+    for block in BLOCKS:
+        span = bunch.map_columns if block == "maps" else bunch.descriptor_columns
+        if span.stop <= span.start:
+            continue
+        unclaimed = [index for index in range(span.start, span.stop) if index not in claimed]
+        if not unclaimed:
+            continue
         names = [str(bunch.feature_names[index]) for index in unclaimed]
         raise ValueError(
-            f"No transformer covers {len(unclaimed)} descriptor column(s): "
+            f"No transformer covers {len(unclaimed)} of the {block} columns: "
             f"{_preview(names)}. A ColumnTransformer drops what nobody claims, so name "
-            "them with a ('descriptors') spec, or pass remainder='passthrough' to keep "
-            "them as they are."
+            f"them with a {block!r} spec, pass ('drop', {block!r}) if that is meant, or "
+            "remainder='passthrough' to keep them as they are."
         )
 
 

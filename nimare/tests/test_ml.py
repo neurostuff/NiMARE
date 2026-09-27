@@ -549,27 +549,37 @@ def test_a_column_name_that_is_not_a_block_or_a_descriptor_is_named(descriptor_d
         )
 
 
-def test_unclaimed_descriptors_are_not_dropped_quietly(descriptor_dataset):
-    """A ColumnTransformer drops what nobody claims, which here is worth refusing."""
-    with pytest.raises(ValueError, match="No transformer covers 3 descriptor column"):
-        ml.make_nimare_column_transformer(
-            descriptor_dataset, (TruncatedSVD(n_components=2), "maps")
-        )
+def test_an_unclaimed_block_is_not_dropped_quietly(descriptor_dataset):
+    """A ColumnTransformer drops what nobody claims; here either block is worth refusing."""
+    reducer = TruncatedSVD(n_components=2, random_state=RANDOM_SEED)
 
-    # saying so explicitly is accepted, either way round
-    kept = ml.make_nimare_column_transformer(
+    with pytest.raises(ValueError, match="No transformer covers 3 of the descriptors columns"):
+        ml.make_nimare_column_transformer(descriptor_dataset, (reducer, "maps"))
+
+    # the other way round matters more: this one would drop the whole matrix
+    with pytest.raises(ValueError, match="No transformer covers 5 of the maps columns"):
+        ml.make_nimare_column_transformer(descriptor_dataset, (SimpleImputer(), "descriptors"))
+
+
+@pytest.mark.parametrize(
+    ("extra", "kwargs", "width"),
+    [
+        pytest.param([("drop", "descriptors")], {}, 2, id="dropping-descriptors-on-purpose"),
+        pytest.param([], {"remainder": "passthrough"}, 5, id="keeping-them-untouched"),
+    ],
+)
+def test_a_block_may_be_dropped_when_that_is_what_is_meant(
+    descriptor_dataset, extra, kwargs, width
+):
+    """The refusal is about silence, not about the outcome."""
+    preprocessor = ml.make_nimare_column_transformer(
         descriptor_dataset,
-        (TruncatedSVD(n_components=2), "maps"),
-        remainder="passthrough",
-    )
-    dropped = ml.make_nimare_column_transformer(
-        descriptor_dataset,
-        (TruncatedSVD(n_components=2), "maps"),
-        ("drop", "descriptors"),
+        (TruncatedSVD(n_components=2, random_state=RANDOM_SEED), "maps"),
+        *extra,
+        **kwargs,
     )
 
-    assert kept.fit_transform(descriptor_dataset.data).shape[1] == 5
-    assert dropped.fit_transform(descriptor_dataset.data).shape[1] == 2
+    assert preprocessor.fit_transform(descriptor_dataset.data).shape[1] == width
 
 
 def test_map_only_features_need_no_column_transformer(small_masker):
