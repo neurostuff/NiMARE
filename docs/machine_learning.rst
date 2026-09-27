@@ -605,10 +605,26 @@ roughly 6 GB of sparse data -- too much for a 16 GB machine, so it had to be
 sliced first.
 
 What that moved rather than removed is the expansion: a 10 mm MKDA kernel still
-produces about 4,700 non-zeros per row. It now happens inside the pipeline,
-per fold, over a training subset, and a :class:`~sklearn.pipeline.Pipeline`
-built with ``memory=`` caches it across folds and across candidates in a
-search.
+produces about 4,700 non-zeros per row, now inside the pipeline, per fold, over
+a training subset.
+
+A :class:`~sklearn.pipeline.Pipeline` built with ``memory=`` can cache that,
+but only where the cache can hit, which is *not* across folds -- each fold
+trains on different rows, so nothing is recomputed that could have been reused.
+It hits across candidates in a search, where the kernel and the reduction are
+identical for every value of a later step's parameter. Measured on the bundled
+studyset, MKDA into SVD-50 into logistic regression:
+
+===================  ================  =============================
+``memory=``          ``cross_val_score``  ``GridSearchCV``, 3 ``C`` values
+===================  ================  =============================
+not set                        19.2 s                        78.8 s
+set                            30.9 s                        10.7 s
+===================  ================  =============================
+
+So pass it when searching and leave it alone otherwise: hashing a sparse
+training fold and writing it to disk costs more than the kernel it would
+save.
 
 Unreduced voxel features stay sparse everywhere -- in the bundle, through
 :func:`~nimare.ml.make_nimare_column_transformer`, and through

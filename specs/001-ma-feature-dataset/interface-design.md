@@ -1591,3 +1591,20 @@ faster in absolute terms, and with an *optimum* rather than a plateau, since
 128 is now worse than 32. The default of 32 is still right, better justified
 than before. Peak columns cost 35.5 ms per row against maps' 32.7 despite
 spanning four times the grid, because nilearn's per-call setup dominates.
+
+### `Pipeline(memory=)` helps a search, not a plain cross-validation
+
+The move put the kernel inside the pipeline, where it re-runs per fold, and
+the obvious mitigation is scikit-learn's step cache. Measured, it is only half
+right:
+
+| `memory=` | `cross_val_score` | `GridSearchCV`, 3 `C` values |
+| --- | --- | --- |
+| not set | 19.2 s | 78.8 s |
+| set | 30.9 s | 10.7 s |
+
+A cache cannot hit across folds, since each fold trains on different rows, so
+there it costs 61% for nothing. It hits across candidates within a fold, where
+the kernel and the reduction do not depend on the parameter being searched, and
+there it is worth 7.4x. The documentation said "across folds and across
+candidates"; the first half was wrong and is corrected.
