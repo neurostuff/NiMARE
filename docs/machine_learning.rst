@@ -161,13 +161,19 @@ expensive part:
 ===========================================  ==========  ==========
 Pipeline                                      no cache     ``cache=``
 ===========================================  ==========  ==========
-``MAKernel`` → SVD(50) → logistic                20.16 s     16.50 s
-``MAKernel`` → VarianceThreshold → logistic       5.66 s      3.66 s
+``MAKernel`` → SVD(50) → logistic                18.44 s     15.69 s
+``MAKernel`` → VarianceThreshold → logistic       5.46 s      3.52 s
 ===========================================  ==========  ==========
 
-It is asked for rather than assumed, because it grows to hold the whole
-feature matrix -- 47 MB on the bundled studyset, 156 MB on a 4,000-analysis
-release slice. :meth:`~nimare.ml.MapCache.clear` lets it go.
+Those are medians of five interleaved runs, which is worth doing: a single
+pair of runs on a loaded machine had the *uncached* arm drift between 17.4 s
+and 22.6 s, which is larger than the effect being measured.
+
+The first pass is slower than no cache at all, since it pays the convolution
+and the bookkeeping together; the cache earns its place from the second fold
+onwards. It is asked for rather than assumed, because it grows to hold the
+whole feature matrix -- 47 MB on the bundled studyset, 156 MB on a
+4,000-analysis release slice. :meth:`~nimare.ml.MapCache.clear` lets it go.
 
 A cached row names the kernel that made it, and the mask it was made in, as
 well as the peaks it came from. Both halves matter: ``MKDAKernel(r=10)`` and

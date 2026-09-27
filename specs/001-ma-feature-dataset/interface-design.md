@@ -1669,3 +1669,25 @@ not whether it beats a path they are not taking. It does.
 What remains true is the cost: a key that must cover four things, a
 `__deepcopy__` returning `self`, and the whole MA matrix retained. What is no
 longer true is that it buys nothing.
+
+### What the shipped cache measures
+
+Section 28's table was the prototype's. The shipped `MapCache`, measured as
+five interleaved runs (plain, cached, plain, cached, ...) so that drift hits
+both arms alike:
+
+| pipeline | no cache | `cache=` | |
+| --- | --- | --- | --- |
+| `TruncatedSVD(50)` + logistic | 18.44 s | 15.69 s | 14.9% |
+| `VarianceThreshold` + logistic | 5.46 s | 3.52 s | 35.5% |
+
+Interleaving was necessary rather than fastidious: on a loaded machine the
+uncached arm alone ranged 17.4-22.6 s, and two earlier sequential runs put the
+same comparison at 7.1% faster and 51.9% *slower*. Neither was about the cache.
+
+The port also lost an optimisation the prototype had: `_signature()` was called
+inside the per-row comprehension, rebuilding a repr of the kernel's parameters
+906 times per call at 17.8 us each. Hoisted.
+
+The cold pass costs more than no cache, paying the convolution and the
+bookkeeping together; the gain starts at the second fold.
