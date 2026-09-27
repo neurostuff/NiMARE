@@ -193,7 +193,7 @@ def ma_bunch(small_masker):
 
 
 def _voxels(bunch):
-    """Return the map block of a bundle."""
+    """Return the voxel block of a bundle."""
     return bunch.data[:, bunch.voxel_columns]
 
 
@@ -286,10 +286,10 @@ def _dense(block):
     return block.toarray() if sparse.issparse(block) else np.asarray(block)
 
 
-def _map_signature(dataset):
-    """Return the first non-zero map column of each row, which names its focus."""
-    maps = _voxels(dataset)
-    return [int(maps[row].indices.min()) for row in range(maps.shape[0])]
+def _peak_signature(dataset):
+    """Return the first peak column of each row, which names its focus."""
+    peaks = _voxels(dataset)
+    return [int(peaks[row].indices.min()) for row in range(peaks.shape[0])]
 
 
 def assert_sklearn_bunch_valid(
@@ -300,7 +300,7 @@ def assert_sklearn_bunch_valid(
     require_target=True,
     estimator=None,
 ):
-    """Assert the shared sklearn-export contract for MA feature Bunches."""
+    """Assert the shared sklearn-export contract for feature Bunches."""
     assert isinstance(bunch, Bunch)
 
     n_rows, n_columns = bunch.data.shape
@@ -477,7 +477,7 @@ def test_column_transformer_keeps_a_reducer_off_the_descriptor_columns(ma_bunch)
     scoped = scoped.toarray() if sparse.issparse(scoped) else scoped
     bare = clone(reducer).fit_transform(ma_bunch.data)
 
-    # Scoped: the map block is reduced and the descriptor column passes through.
+    # Scoped: the voxel block is reduced and the descriptor column passes through.
     assert scoped.shape == (ma_bunch.data.shape[0], 2)
     np.testing.assert_allclose(scoped[:, -1], descriptors)
     # Bare: one component for everything, the descriptor folded into it.
@@ -667,7 +667,7 @@ def labels_atlas(small_masker):
 
 @pytest.fixture
 def atlas_features(small_masker):
-    """Return sparse map features over the small mask."""
+    """Return sparse features in the small masker's own voxel space."""
     n_voxels = int(small_masker.mask_img.get_fdata().sum())
     return sparse.csr_matrix(np.arange(6 * n_voxels, dtype=float).reshape(6, n_voxels))
 
@@ -986,17 +986,17 @@ def test_from_studyset_aligns_peaks_by_id_not_position(ml_studyset):
     in any order.
     """
     reference = ml_studyset.to_bunch()
-    expected = dict(zip(reference.ids, _map_signature(reference)))
+    expected = dict(zip(reference.ids, _peak_signature(reference)))
 
     positions = np.array([5, 0, 7, 2, 6, 1, 4, 3])
     reordered = ml_studyset.select_analyses(positions).to_bunch()
 
     np.testing.assert_array_equal(reordered.ids, ml_studyset.ids[positions])
-    assert _map_signature(reordered) == [expected[id_] for id_ in reordered.ids]
+    assert _peak_signature(reordered) == [expected[id_] for id_ in reordered.ids]
 
 
 def test_from_studyset_rejects_duplicate_analysis_ids(ml_studyset):
-    """Duplicate ids would collapse into one map row without being noticed."""
+    """Duplicate ids would collapse into one row without being noticed."""
     doubled = ml_studyset.merge(_build_ml_studyset(coordinate_offset=1.0))
 
     # The merge keeps one analysis per id, so build the duplicate explicitly.
@@ -1008,7 +1008,7 @@ def test_from_studyset_rejects_duplicate_analysis_ids(ml_studyset):
 
 @pytest.mark.parametrize("missing_coordinates", ["drop", "include"])
 def test_from_studyset_missing_coordinates(ml_studyset, missing_coordinates):
-    """Coordinate-less analyses are dropped, or kept as all-zero map rows."""
+    """Coordinate-less analyses are dropped, or kept as all-zero peak rows."""
     missing_id = "study_2-task0"
     studyset = _build_ml_studyset(ids_without_points={missing_id})
 
@@ -1413,7 +1413,12 @@ def test_end_to_end_classification(ml_studyset):
 
 @pytest.mark.performance_smoke
 def test_from_studyset_meets_the_conversion_budget():
-    """A 1,000-study Studyset converts and splits inside the documented budget."""
+    """A 1,000-study Studyset converts and splits as a read, not a computation.
+
+    The budget was three minutes and five gigabytes while conversion ran a
+    kernel over every analysis. It now reads peaks, so anything near the old
+    budget would be a regression rather than a pass.
+    """
     # resource is Unix-only, and importing it at module scope makes the whole module
     # uncollectable on Windows. Only this test needs it, and it runs on Linux.
     import resource
@@ -1429,8 +1434,8 @@ def test_from_studyset_meets_the_conversion_budget():
     assert features.data.shape[0] == len(studyset.ids)
     assert set(train.groups).isdisjoint(test.groups)
     assert sparse.issparse(features.data)
-    assert elapsed <= 180, f"conversion and split took {elapsed:.0f}s"
-    assert peak_gb <= 5, f"peak memory was {peak_gb:.1f} GB"
+    assert elapsed <= 10, f"conversion and split took {elapsed:.1f}s"
+    assert peak_gb <= 2, f"peak memory was {peak_gb:.1f} GB"
 
 
 def test_describe_fields_reports_every_source(ml_studyset):

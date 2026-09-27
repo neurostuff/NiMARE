@@ -22,7 +22,7 @@ from nimare.ml._helpers import (
     _preview,
     _take_rows,
 )
-from nimare.ml.peaks import peak_matrix
+from nimare.ml._peaks import peak_matrix
 from nimare.studyset import normalize_collection
 from nimare.studyset.blocks import label_block_for
 from nimare.studyset.columns import ID_COLS
@@ -51,13 +51,7 @@ _SOURCE_ALIASES = {
 
 
 def _as_selector(selector):
-    """Return ``(source, field)`` for a field selector, with ``source`` optional.
-
-    A selector is a bare field name, or a ``(source, field)`` pair matching the
-    ``(kind, field)`` vocabulary NiMARE estimators already use in
-    ``_required_inputs``. The pair is needed only when a bare name is ambiguous,
-    which the resolver says when it is.
-    """
+    """Return ``(source, field)`` for a field selector, with ``source`` optional."""
     source, field = None, None
     if isinstance(selector, str):
         field = selector
@@ -81,12 +75,7 @@ def _as_selector(selector):
 
 
 class _Fields:
-    """The fields a Studyset offers a selector, and how to read them.
-
-    Annotation labels come from the sparse label block, which is also where
-    their values come from: one source of truth for what a label is called,
-    whether it is numeric, and what it holds.
-    """
+    """The fields a Studyset offers a selector, and how to read them."""
 
     def __init__(self, studyset):
         self._studyset = studyset
@@ -137,8 +126,8 @@ class _Fields:
         source, field = _as_selector(selector)
         sources = FIELD_SOURCES if source is None else (source,)
 
-        # An exact name wins over pattern matching, so that a label called
-        # ``groups[0].BMI`` is selectable at all.
+        # an exact name wins over pattern matching, so a label whose own name
+        # reads as a glob is still selectable
         exact = [name for name in sources if field in set(self.names(name))]
         if len(exact) > 1:
             raise ValueError(
@@ -258,11 +247,7 @@ class _Fields:
 
 
 def _escape_brackets(pattern):
-    """Return ``pattern`` with ``[`` and ``]`` taken literally rather than as a class.
-
-    One pass, because escaping each bracket introduces brackets of its own.
-    ``*`` and ``?`` are left alone: they are why the caller wrote a pattern.
-    """
+    """Escape ``[`` and ``]`` in one pass, leaving ``*`` and ``?`` alone."""
     escaped = {"[": "[[]", "]": "[]]"}
     return "".join(escaped.get(character, character) for character in pattern)
 
@@ -378,13 +363,7 @@ def _descriptor_categories(blocks):
 
 
 def _coded(values, missing):
-    """Return ``(code column, categories in code order)`` for a categorical field.
-
-    A category becomes its position in the sorted category list, so the column
-    is numeric and can sit in the feature matrix; ``descriptor_categories``
-    carries the labels those positions stand for. A missing value is NaN, which
-    is what the ``missing_values`` policy acts on.
-    """
+    """Return ``(code column, categories in code order)`` for a categorical field."""
     labels = np.array([_label(value) for value in values], dtype=object)
     categories = sorted({label for label, absent in zip(labels, missing) if not absent})
 
@@ -405,11 +384,7 @@ def _label(value):
 
 
 def _missing_by_field(ids, blocks, target_missing, retained):
-    """Return ``{field: analyses missing it}``, counting only the rows being kept.
-
-    A row the coordinate policy already removed is not in the output to be
-    missing from.
-    """
+    """Return ``{field: analyses missing it}``, counting only the rows being kept."""
     fields = [(block.names[0], block.missing) for block in blocks]
     fields.append((TARGET_KEY, target_missing))
 
@@ -424,10 +399,7 @@ class _FeatureExtractor(NiMAREBase):
     """Carry out one conversion from a Studyset to a scikit-learn bundle.
 
     Internal. :meth:`~nimare.studyset.Studyset.to_bunch` is the public entry
-    point and documents the parameters. The class exists so that the stages of one conversion --
-    field selection, target handling, row retention, map generation,
-    provenance -- stay separate methods over shared configuration, rather than
-    one long function threading nine arguments through itself.
+    point and documents the parameters.
     """
 
     def __init__(
@@ -531,11 +503,7 @@ class _FeatureExtractor(NiMAREBase):
         )
 
     def _grouped_split(self, groups):
-        """Return the row positions of a grouped holdout over ``groups``.
-
-        A study belongs to exactly one partition, which is the whole point of
-        splitting here rather than with a plain shuffle.
-        """
+        """Return the row positions of a grouped holdout over ``groups``."""
         n_test = _held_out_studies(self.test_size, len(np.unique(groups)))
         splitter = GroupShuffleSplit(n_splits=1, test_size=n_test, random_state=self.random_state)
         train, test = next(splitter.split(np.zeros(len(groups)), groups=groups))
@@ -718,8 +686,6 @@ class _FeatureExtractor(NiMAREBase):
             )
 
         return retained, dropped
-
-    # ------------------------------------------------------------ map features
 
     def _missing_policy(self, field):
         """Return the missing-value policy that governs one field."""

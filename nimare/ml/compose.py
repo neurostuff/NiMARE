@@ -18,15 +18,7 @@ _PROBE = sparse.csr_matrix(np.array([[1.0], [0.0], [2.0], [3.0]]))
 
 
 def _handles_sparse(transformer):
-    """Report whether ``transformer`` can be fitted on a sparse block.
-
-    Asked by fitting a clone on a tiny probe, because the answer is a property
-    of the arguments rather than of the class. What is asked is whether
-    sparsity is what the failure is *about*: a probe is small, so plenty of
-    transformers refuse it for their own reasons, and one that fails on sparse
-    input is tried again on the same probe made dense. See :doc:`the machine
-    learning documentation </machine_learning>`.
-    """
+    """Report whether sparsity is what makes ``transformer`` refuse a probe."""
     if not _fails(transformer, _PROBE):
         return True
     return _fails(transformer, _PROBE.toarray())
@@ -42,16 +34,7 @@ def _fails(transformer, probe):
 
 
 def _named(names, func=None):
-    """Return a step that reports ``names`` as its output names.
-
-    A ColumnTransformer selects columns by position, because the feature
-    matrix is an array rather than a frame, so without this a column comes out
-    of ``get_feature_names_out`` as ``x228483`` and a fitted coefficient cannot
-    be read back to the feature it weighs. ``func`` densifies on the way
-    through when the transformer downstream needs it; naming and densifying
-    are one step so that nothing in the chain lacks
-    ``get_feature_names_out``.
-    """
+    """Return a step that reports ``names`` as its output names, densifying with ``func``."""
     return FunctionTransformer(
         func,
         accept_sparse=True,
@@ -60,13 +43,7 @@ def _named(names, func=None):
 
 
 def _columns_of(bunch, columns):
-    """Return the column spec ``columns`` means, and the names of those columns.
-
-    A string is a column name, as it is to a
-    :class:`~sklearn.compose.ColumnTransformer` reading a frame. Here the names
-    are the two blocks, ``"voxels"`` and ``"descriptors"``, and the descriptors'
-    own field names; a block name wins if a descriptor shares it.
-    """
+    """Return the column spec ``columns`` means, and the names of those columns."""
     wanted = [columns] if isinstance(columns, str) else columns
     if _all_strings(wanted):
         columns = _by_name(bunch, wanted)
@@ -105,12 +82,7 @@ def _by_name(bunch, wanted):
 
 
 def _resolve(bunch, transformer):
-    """Return the transformer a step will really use.
-
-    An atlas becomes an :class:`~nimare.ml.MaskerTransformer` bound to the
-    bundle's masker, which is also what the step is then named after, since
-    ``nifti1image`` would say nothing about what the step does.
-    """
+    """Return the transformer a step will really use, with an atlas resolved."""
     if isinstance(transformer, str):
         if transformer not in ("passthrough", "drop"):
             raise ValueError(
@@ -121,26 +93,20 @@ def _resolve(bunch, transformer):
     return _resolve_map_reducer(transformer, masker=bunch.get("masker"))
 
 
-def _step(transformer, columns, coded=None, given=None):
+def _step(transformer, columns, coded, given):
     """Return the transformer to use for one block, wrapped where it has to be.
 
     ``given`` is the transformer as the caller wrote it, which is what the
-    sparse probe must see: an encoder told which categories to expect refuses
-    the probe's own values, and that is not a statement about sparsity.
+    sparse probe must see rather than the one told which categories to expect.
     """
     if transformer == "drop":
         return transformer
     if transformer == "passthrough":
-        # an identity rather than the string, so the columns keep whatever
-        # sparsity they arrived with and are still named
+        # an identity rather than the string, so the columns stay named
         return _named(columns)
-    # a sparse-safe transformer keeps the block sparse, which matters when it
-    # is a pattern selection thousands of labels wide
-    densify = None if _handles_sparse(transformer if given is None else given) else _to_dense
+    densify = None if _handles_sparse(given) else _to_dense
     steps = [("name", _named(columns, densify)), ("transform", transformer)]
     if coded:
-        # an encoder names its output after the code it saw, so "group_name_0.0"
-        # is put back to the label that code stands for
         steps.append(("label", _relabel(coded)))
     return Pipeline(steps)
 
@@ -148,9 +114,7 @@ def _step(transformer, columns, coded=None, given=None):
 def _coded_columns(bunch, columns):
     """Return the coded categoricals in one spec, and the columns that are not.
 
-    Read from column positions rather than from names, because a voxel spec
-    covers the whole image grid and naming it to look for a handful of
-    descriptors would cost more than everything else here put together.
+    Read from positions rather than names: a voxel spec covers the whole grid.
     """
     positions = np.atleast_1d(np.arange(len(bunch.feature_names))[columns])
     categories = bunch.get("descriptor_categories") or {}
@@ -189,12 +153,7 @@ def _relabel(coded):
 
 
 def _with_categories(transformer, coded):
-    """Tell an encoder which categories to expect, when it would guess.
-
-    An encoder left to infer them sees only the codes present in the fold it is
-    fitted on, so a category missing from one training split would silently
-    change the number of columns the model is given.
-    """
+    """Tell an encoder which categories to expect, when it would guess."""
     if not coded or isinstance(transformer, str):
         return transformer
     if "categories" not in getattr(transformer, "get_params", dict)():
@@ -206,13 +165,7 @@ def _with_categories(transformer, coded):
 
 
 def _check_categoricals(bunch, used, coded):
-    """Refuse to hand a raw category code to a model.
-
-    A code is a stand-in for a label, not a quantity: passed through as it
-    stands it tells a linear model that the third category is three times the
-    first. It is also not something to scale or impute alongside real numbers,
-    so a coded column must be the whole of its spec.
-    """
+    """Refuse to hand a raw category code to a model."""
     for transformer, (labels, others) in zip(used, coded):
         if not labels or transformer == "drop":
             continue
@@ -236,17 +189,10 @@ def _check_categoricals(bunch, used, coded):
 
 
 def _check_claims(bunch, specs, remainder):
-    """Refuse to silently drop any block nobody asked about.
-
-    A ColumnTransformer discards the columns no transformer claims, which is
-    right for a frame of many columns and wrong here: the two blocks are the
-    whole of the matrix, and dropping either is a modelling decision rather
-    than a detail. Saying ``("drop", "voxels")`` still drops it.
-    """
+    """Refuse to silently drop any block nobody asked about."""
     if remainder != "drop":
         return
-    # a boolean mask rather than a set of indices: the voxel block spans the
-    # whole image grid, so the set would outweigh the sparse matrix it guards
+    # a mask rather than a set of indices: the voxel block spans the whole grid
     claimed = np.zeros(len(bunch.feature_names), dtype=bool)
     for columns in specs:
         claimed[columns] = True
@@ -273,11 +219,7 @@ def _block_span(bunch, block):
 
 
 def _read_pairs(bunch, transformers):
-    """Return the transformers and the column specs a call's pairs name.
-
-    The transformers resolve first, so that an unusable one is reported as
-    such rather than as whatever its columns did or did not cover.
-    """
+    """Return the transformers and the column specs a call's pairs name."""
     for pair in transformers:
         if not (isinstance(pair, tuple) and len(pair) == 2):
             raise ValueError(
@@ -302,10 +244,11 @@ def make_nimare_column_transformer(
 ):
     """Construct a ColumnTransformer over the blocks of ``bunch``.
 
-    :func:`~sklearn.compose.make_column_transformer` with three things added
-    that a bundle knows and scikit-learn cannot work out on its own: the column
-    spans of the two blocks, the masker an atlas reducer needs, and the names
-    of the columns each transformer is given.
+    :func:`~sklearn.compose.make_column_transformer` with what a bundle knows
+    and scikit-learn cannot work out on its own filled in: the column spans of
+    the two blocks, the masker an atlas reducer needs, the names of the columns
+    each transformer is given, and the categories a coded categorical
+    descriptor stands for.
 
     Everything else is scikit-learn's, including the shape of ``transformers``
     and the automatic step names. Where this function does not cover a case,
@@ -332,12 +275,12 @@ def make_nimare_column_transformer(
         which is built against the bundle's masker.
     remainder : {"drop", "passthrough"} or estimator, default="drop"
         What happens to columns no transformer claims, as in scikit-learn.
-        Leaving descriptor columns unclaimed under ``"drop"`` raises rather
-        than discarding them quietly.
+        Leaving either block unclaimed under ``"drop"`` raises rather than
+        discarding it quietly; ``("drop", "voxels")`` still drops it.
     sparse_threshold : :obj:`float`, default=1.0
-        Scikit-learn defaults this to 0.3, which would densify an unreduced map
-        block -- about 1.6 GB at 228,000 columns -- so the default here keeps
-        the result sparse whenever any block is.
+        Scikit-learn defaults this to 0.3, which would densify an unreduced
+        voxel block -- about 6.5 GB at 902,629 columns -- so the default here
+        keeps the result sparse whenever any block is.
     n_jobs : :obj:`int`, optional
         Passed to :class:`~sklearn.compose.ColumnTransformer`.
     verbose : :obj:`bool`, default=False
@@ -353,8 +296,9 @@ def make_nimare_column_transformer(
     Raises
     ------
     :obj:`ValueError`
-        If a pair is malformed, if a block name is not one of the bundle's, or
-        if descriptor columns would be dropped without being named.
+        If a pair is malformed, if a block name is not one of the bundle's, if
+        either block would be dropped without being named, or if a coded
+        categorical descriptor would reach a model unencoded.
 
     See Also
     --------
@@ -381,8 +325,7 @@ def make_nimare_column_transformer(
             used, given, resolved, coded
         )
     ]
-    # named after the transformer rather than the wrapper built around it, so
-    # the step names are the ones scikit-learn would have chosen
+    # named after the transformer rather than the wrapper, as sklearn would
     names = [name for name, _ in _name_estimators(used)] if used else []
     return ColumnTransformer(
         [(name, step, columns) for name, (step, columns) in zip(names, steps)],

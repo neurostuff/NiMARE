@@ -1,17 +1,15 @@
-"""Machine-learning helpers for modeled activation (MA) features.
+"""Machine-learning helpers for Studyset features.
 
 :meth:`~nimare.studyset.Studyset.to_bunch` turns a
 :class:`~nimare.nimads.Studyset` into the arrays a scikit-learn workflow
-expects: a sparse analysis-by-voxel feature matrix, an optional target, and the
-study labels that keep analyses from one study out of two different partitions.
-This module holds what a Studyset cannot answer on its own:
+expects. This module holds what a Studyset cannot answer on its own:
 :func:`describe_fields` reports which of its fields are worth modelling,
-:func:`make_nimare_column_transformer` keeps a reducer off the descriptor columns, and
-:class:`MaskerTransformer` reduces voxels over an atlas. Every other reduction is
-an ordinary scikit-learn transformer.
+:class:`MAKernel` turns peak columns into modeled activation maps,
+:func:`make_nimare_column_transformer` routes each block to its own
+transformer, and :class:`MaskerTransformer` reduces voxels over an atlas.
+Every other transformation is an ordinary scikit-learn one.
 
-See :doc:`the machine learning documentation </machine_learning>` for what the
-module does and does not take responsibility for.
+See :doc:`the machine learning documentation </machine_learning>`.
 """
 
 from nimare.ml.compose import make_nimare_column_transformer

@@ -789,7 +789,7 @@ class Studyset:
             reading.
         missing_coordinates : {"drop", "include"}, default="drop"
             Whether analyses reporting no coordinates are removed before rows
-            are built, or kept as all-zero sparse map rows.
+            are built, or kept as all-zero peak rows.
         missing_values : {"raise", "drop", "keep"} or :obj:`dict`, default="raise"
             What to do when a selected descriptor or target value is missing:
             report the analyses and fields, remove those analyses, or leave the

@@ -1,8 +1,4 @@
-"""The peak representation a kernel transformer consumes.
-
-See :doc:`the machine learning documentation </machine_learning>` for why the
-peaks span the whole image grid rather than the mask.
-"""
+"""The peak representation a kernel transformer consumes."""
 
 from __future__ import annotations
 
@@ -10,8 +6,6 @@ import numpy as np
 import pandas as pd
 from nibabel import Nifti1Image
 from scipy import sparse
-
-PEAK_DTYPE = np.float32
 
 
 def grid_shape(mask_img):
@@ -40,16 +34,15 @@ def peak_matrix(studyset, mask_img):
     columns = np.ravel_multi_index(ijk[within].T, shape) if within.any() else np.empty(0, int)
 
     return sparse.coo_matrix(
-        (np.ones(int(within.sum()), dtype=PEAK_DTYPE), (group[within], columns)),
-        shape=(block.n_groups, int(np.prod(shape))),
+        (np.ones(int(within.sum()), dtype=np.float32), (group[within], columns)),
+        shape=(block.n_groups, n_grid_columns(mask_img)),
     ).tocsr()
 
 
 def peak_frame(X, shape):
     """Return the ``i``/``j``/``k``/``id`` table a kernel transformer reads.
 
-    ``id`` is the row position in ``X``, so the maps a kernel returns come back
-    in the order they were given.
+    ``id`` is the row position in ``X``, so a kernel's maps come back in order.
     """
     X = sparse.csr_matrix(X) if not sparse.issparse(X) else X.tocsr()
     rows, columns = X.nonzero()

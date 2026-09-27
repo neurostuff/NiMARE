@@ -1,4 +1,4 @@
-"""Reducing modeled activation features, and the atlases that can do it."""
+"""Reducing voxel features, and the atlases that can do it."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from sklearn.base import BaseEstimator, TransformerMixin, clone
 from sklearn.exceptions import NotFittedError
 from sklearn.utils.validation import check_is_fitted
 
-from nimare.ml.peaks import grid_images, n_grid_columns
+from nimare.ml._peaks import grid_images, n_grid_columns
 
 
 class MaskerTransformer(TransformerMixin, BaseEstimator):
@@ -128,10 +128,9 @@ class MaskerTransformer(TransformerMixin, BaseEstimator):
         self.on_grid_ = _incoming_space(X.shape[1], self.mask_img_)
         masker, region_names = _resolve_atlas(self.masker, self.masker_kwargs)
         masker.set_params(mask_img=self.mask_img_)
-        # An atlas masker resamples itself onto the images it is fitted with,
-        # so it is given the mask now rather than resampling once per batch. A
-        # voxel masker has nothing to resample and warns that the images would
-        # be ignored, so it is fitted without them.
+        # an atlas masker resamples onto the images it is fitted with, so it
+        # gets the mask now rather than resampling once per batch; a voxel
+        # masker has nothing to resample and warns if given images
         reduces = hasattr(masker, "labels_img") or hasattr(masker, "maps_img")
         self.masker_ = masker.fit(self.mask_img_) if reduces else masker.fit()
         self.region_names_ = region_names
@@ -199,12 +198,7 @@ class MaskerTransformer(TransformerMixin, BaseEstimator):
         return np.asarray([f"region_{idx}" for idx in range(n_regions)], dtype=str)
 
     def _n_features_out(self):
-        """Return how many regions the fitted masker reports, asking it if need be.
-
-        Neither ``n_elements_`` nor the atlas image answers this on nilearn
-        0.13, where a region outside the mask is dropped from the output but
-        not from either of them.
-        """
+        """Return how many regions the fitted masker reports, asking it if need be."""
         if not hasattr(self, "n_features_out_"):
             self.transform(np.zeros((1, self.n_features_in_), dtype=float))
         return self.n_features_out_
@@ -213,10 +207,7 @@ class MaskerTransformer(TransformerMixin, BaseEstimator):
 def _incoming_space(n_columns, mask_img):
     """Report whether columns span the whole image grid rather than the mask.
 
-    A bundle's peak columns span the grid so that a coordinate outside the mask
-    still reaches it through a kernel; MA maps span the mask. The two widths
-    differ whenever the mask is not the whole image, and the mask is preferred
-    when they do not.
+    The mask is preferred where the two widths coincide.
     """
     n_voxels = int(np.sum(np.asarray(mask_img.dataobj) > 0))
     if n_columns == n_voxels:
@@ -232,19 +223,13 @@ def _incoming_space(n_columns, mask_img):
 
 
 def _resolve_atlas(atlas, atlas_kwargs=None):
-    """Return ``(unfitted nilearn masker, region names or None)`` for an atlas.
-
-    Accepts whatever nilearn hands back: a fetched atlas, an image, a path, a
-    fetcher name, or a masker built by the caller.
-    """
+    """Return ``(unfitted nilearn masker, region names or None)`` for an atlas."""
     region_names = None
 
     if isinstance(atlas, (str, Path)):
         atlas = _load_atlas(atlas, atlas_kwargs)
 
     if isinstance(atlas, BaseMasker):
-        # a voxel masker returns voxels rather than regions, which is how
-        # nilearn's smoothing and standardizing reach these features
         return clone(atlas), None
 
     if hasattr(atlas, "maps"):
@@ -298,11 +283,7 @@ def _load_atlas(atlas, atlas_kwargs=None):
 
 
 def _atlas_region_names(atlas):
-    """Return the region names a fetched nilearn atlas carries, or None.
-
-    Fetchers return them as a list, or as a table of region attributes the way
-    DiFuMo does.
-    """
+    """Return the region names a fetched nilearn atlas carries, or None."""
     labels = getattr(atlas, "labels", None)
     if labels is None:
         return None
@@ -375,12 +356,7 @@ def _is_transformer(reducer):
 
 
 def _resolve_map_reducer(reducer, masker=None, **kwargs):
-    """Return an unfitted transformer for whatever describes a map reduction.
-
-    A scikit-learn transformer is used as given, a transformer class is built
-    from ``kwargs``, and a nilearn masker or atlas is wrapped in a
-    :class:`MaskerTransformer` bound to ``masker`` as its source.
-    """
+    """Return an unfitted transformer for whatever describes a voxel reduction."""
     if isinstance(reducer, type):
         reducer, kwargs = reducer(**kwargs), {}
 

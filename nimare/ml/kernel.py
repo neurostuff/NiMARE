@@ -7,20 +7,17 @@ from scipy import sparse
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
 
-from nimare.ml.peaks import grid_shape, n_grid_columns, peak_frame
+from nimare.ml._peaks import grid_shape, n_grid_columns, peak_frame
 
 
 class MAKernel(TransformerMixin, BaseEstimator):
     """Convolve peak columns into modeled activation maps.
 
-    :meth:`~nimare.studyset.Studyset.to_bunch` reports each analysis as peak
-    counts over the image grid. This turns those peaks into the MA maps a
-    kernel defines, inside a pipeline, so the kernel and its bandwidth are
-    fitted, cloned and tuned like any other hyperparameter.
-
-    Columns come in over the whole image grid and go out over the source
-    masker's voxels, which is the space :class:`~nimare.ml.MaskerTransformer`
-    and :func:`~nilearn.masking.unmask` expect.
+    Columns come in over the whole image grid, as
+    :meth:`~nimare.studyset.Studyset.to_bunch` reports them, and go out over the
+    source masker's voxels. Being a transformer, the kernel and its bandwidth
+    are fitted, cloned and tuned like any other step. See :doc:`the machine
+    learning documentation </machine_learning>`.
 
     Parameters
     ----------
@@ -37,7 +34,7 @@ class MAKernel(TransformerMixin, BaseEstimator):
         The kernel instance doing the work.
     mask_img_ : :class:`~nibabel.nifti1.Nifti1Image`
         The mask defining the incoming grid and the outgoing voxels.
-    n_features_out_ : :obj:`int`
+    n_voxels_ : :obj:`int`
         How many voxel columns the maps have.
 
     See Also
@@ -123,14 +120,11 @@ class MAKernel(TransformerMixin, BaseEstimator):
 
         frame = peak_frame(X, grid_shape(self.mask_img_))
         if frame.empty:
-            self.n_features_out_ = self.n_voxels_
             return sparse.csr_matrix((X.shape[0], self.n_voxels_), dtype=float)
 
         maps = self.kernel_.transform(frame, masker=self.masker_, return_type="sparse")
         maps = maps if sparse.issparse(maps) else sparse.csr_matrix(maps)
-        aggregated = _scatter_rows(maps.tocsr(), np.unique(frame["id"].to_numpy()), X.shape[0])
-        self.n_features_out_ = aggregated.shape[1]
-        return aggregated
+        return _scatter_rows(maps.tocsr(), np.unique(frame["id"].to_numpy()), X.shape[0])
 
     def get_feature_names_out(self, input_features=None):
         """Return one name per voxel of the maps.
@@ -149,13 +143,7 @@ class MAKernel(TransformerMixin, BaseEstimator):
 
 
 def _check_kernel_width(kernel):
-    """Refuse a kernel whose width comes from per-analysis sample sizes.
-
-    An :class:`~nimare.meta.kernel.ALEKernel` given neither ``fwhm`` nor
-    ``sample_size`` derives one width per analysis from that analysis's sample
-    size. A transformer is handed a slice of rows and is not told which, so
-    there is no safe way to line a sample size up with the row it belongs to.
-    """
+    """Refuse a kernel whose width comes from per-analysis sample sizes."""
     derives_width = (
         hasattr(kernel, "sample_size")
         and getattr(kernel, "sample_size", None) is None
@@ -172,11 +160,7 @@ def _check_kernel_width(kernel):
 
 
 def _scatter_rows(maps, rows, n_rows):
-    """Return ``maps`` at ``rows`` of an otherwise all-zero ``n_rows`` matrix.
-
-    A kernel returns one row per analysis that has peaks, so an analysis whose
-    foci all fell outside the image grid has no row of its own to come back to.
-    """
+    """Return ``maps`` at ``rows`` of an otherwise all-zero ``n_rows`` matrix."""
     if maps.shape[0] != len(rows):
         raise ValueError(
             f"The kernel returned {maps.shape[0]} maps for {len(rows)} analyses with "

@@ -61,13 +61,9 @@ target gap cannot:
 missing_values={"target": "drop", "descriptors": "keep"}
 ```
 
-Pass `memory="/path/to/cache"` to have repeated conversions of the same
-Studyset reuse the maps they already generated, in this process and the next.
-
 ## Select rows
 
-Select rows on the Studyset, before conversion, since that is the expensive
-step:
+Select rows on the Studyset, before conversion:
 
 ```python
 studyset.slice(["study_0-task0", "study_1-task0"])       # analysis ids
@@ -140,7 +136,7 @@ suits a matrix this wide better.
 A release-scale Studyset offers more fields than anyone can read. The 2026-09
 NeuroStore release has 76 metadata columns and 924 annotation labels, 875 of
 which fewer than one analysis in a hundred reports. `describe_fields` reports
-what each one holds, using the reader `from_studyset` uses:
+what each one holds, using the reader `to_bunch` uses:
 
 ```python
 from nimare.extract import fetch_neurostore
@@ -153,12 +149,13 @@ fields[fields.kind == "numeric"].field             # a descriptor_fields list
 ```
 
 Columns are `source`, `field`, `kind`, `coverage`, `n_unique` and `example`,
-ordered by coverage. A field it calls numeric is numeric to `from_studyset`,
-because both read it the same way.
+ordered by coverage. A field it calls numeric is numeric to `to_bunch`, because
+both read it the same way.
 
-Conversion is linear in analyses and an MA row is denser than a Studyset row
-(~4,700 non-zeros at a 10 mm radius), so the whole release is roughly 6 GB of
-sparse data and does not convert on a 16 GB machine. Slice first:
+Conversion reads peaks rather than making maps, so the whole 115,748-analysis
+release converts in about 1.5 s. What is still expensive is the kernel, which
+runs per fold inside the pipeline: an MA row is ~4,700 non-zeros at a 10 mm
+radius. Slice first when fitting over a release:
 
 ```python
 subset = studyset.slice(analyses=list(studyset.ids)[:4000])

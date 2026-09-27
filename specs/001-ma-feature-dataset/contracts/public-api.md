@@ -276,7 +276,7 @@ a hundred.
 
 - Returns one row per field, with columns `source`, `field`, `kind`,
   `coverage`, `n_unique` and `example`, ordered by descending coverage.
-- `kind` MUST be the kind `from_studyset` reads the field as. Both MUST share
+- `kind` MUST be the kind `to_bunch` reads the field as. Both MUST share
   one reader, so a field described as numeric cannot then be refused as
   non-numeric by extraction.
 - `coverage` is the fraction of analyses reporting a value, by the same
@@ -316,8 +316,8 @@ cannot read sparse input (`PCA`, for one) fails when it is fitted, with
 scikit-learn's own message. There is no NiMARE vocabulary for any of this, and
 no factory that re-names it.
 
-`MaskerTransformer` is the one transformer the module adds, because it is the
-one that has to know which voxel each column is. A nilearn masker is already a
+`MaskerTransformer` is one of the two transformers the module adds, because it
+has to know which voxel each column is. A nilearn masker is already a
 scikit-learn transformer; what it is not is one that takes an array, since it
 takes images. This bridges that: rows are converted back into images in the
 `source_masker`'s space, handed to the masker, and returned as an array.

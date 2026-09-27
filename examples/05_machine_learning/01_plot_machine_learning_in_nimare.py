@@ -282,8 +282,8 @@ for name, reducer in reducers.items():
 # -----------------------------------------------------------------------------
 # A nilearn masker is already a scikit-learn transformer, but it takes images
 # where a ColumnTransformer hands out columns of an array.
-# :class:`~nimare.ml.MaskerTransformer` is that bridge, and the one transformer
-# NiMARE adds, because it is the one that has to know which voxel each column
+# :class:`~nimare.ml.MaskerTransformer` is that bridge, one of the two
+# transformers NiMARE adds, because it has to know which voxel each column
 # is. The bundle's ``masker`` says that, which is why it travels with the data.
 #
 # What it applies is any nilearn masker, or anything nilearn loads as an atlas:

@@ -261,8 +261,8 @@ Nothing is filled in silently.
 
 * ``missing_coordinates`` decides what happens to analyses that report no
   coordinates: ``"drop"`` (the default) removes them before rows are built and
-  records their ids in provenance, ``"include"`` keeps them as all-zero sparse
-  map rows.
+  records their ids in provenance, ``"include"`` keeps them as all-zero peak
+  rows.
 * ``missing_values`` decides what happens to a selected descriptor or target
   value that an analysis does not report: ``"raise"`` (the default) names the
   fields and the analyses, ``"drop"`` removes those analyses, ``"keep"`` leaves
@@ -357,9 +357,9 @@ resulting score says so. ``test_size`` counts *studies*, so analysis counts
 only approximate a fraction.
 
 Without ``test_size`` the two keys are absent and the bundle is exactly as it
-was. The split costs milliseconds where the conversion runs a kernel, so for
-several splits of one bundle -- or for cross-validation, which needs no split
-at all -- hand ``groups`` to a group splitter rather than converting again:
+was. For several splits of one bundle -- or for cross-validation, which needs
+no split at all -- hand ``groups`` to a group splitter rather than converting
+again:
 
 .. code-block:: python
 
@@ -369,15 +369,19 @@ at all -- hand ``groups`` to a group splitter rather than converting again:
 Reducing the voxel features
 ---------------------------
 
-Map features are an ordinary sparse matrix, so ordinary scikit-learn
-transformers reduce them, imported from scikit-learn and used as scikit-learn
-documents them:
+Once :class:`~nimare.ml.MAKernel` has made the MA maps, they are an ordinary
+sparse matrix, so ordinary scikit-learn transformers reduce them, imported from
+scikit-learn and used as scikit-learn documents them:
 
 .. code-block:: python
 
     from sklearn.decomposition import TruncatedSVD
 
-    pipeline = make_pipeline(TruncatedSVD(n_components=50), LogisticRegression())
+    pipeline = make_pipeline(
+        MAKernel(MKDAKernel(r=10), source_masker=bunch.masker),
+        TruncatedSVD(n_components=50),
+        LogisticRegression(),
+    )
 
 Anything that reads sparse input works: truncated SVD, sparse random
 projection, variance thresholding. :class:`~sklearn.decomposition.PCA` also
@@ -390,7 +394,7 @@ Keeping a reducer off the descriptor columns
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 A transformer placed directly in a pipeline sees every column it is given. With
-map features alone that is the whole matrix and nothing else is needed. Once
+voxel features alone that is the whole matrix and nothing else is needed. Once
 there are descriptor columns, a bare reducer would decompose them along with
 the voxels, which is what :class:`~sklearn.compose.ColumnTransformer` exists to
 prevent.
@@ -477,8 +481,8 @@ whether the probe failed. A probe is small, so plenty of transformers refuse it
 for their own reasons: ``TruncatedSVD(n_components=50)`` cannot fit it at any
 sparsity, and :class:`~nimare.ml.MAKernel` reads the width to know which space
 its columns are in. Counting those as needing dense input densified the voxel
-block before the canonical sparse reducer -- 1.6 GB at 228,483 columns, and
-16.9 GB at 902,629. So a transformer that fails the sparse probe is tried again
+block before the canonical sparse reducer, which at 902,629 columns is 16.9 GB.
+So a transformer that fails the sparse probe is tried again
 on the same probe made dense, and only a failure that densifying *fixes* is
 about sparsity.
 
@@ -507,11 +511,11 @@ coefficient can be read back to the thing it weighs:
     pipeline.fit(bunch.data, bunch.target)
     names = pipeline[:-1].get_feature_names_out()
     dict(zip(names, pipeline[-1].coef_[0]))
-    # {'maps__truncatedsvd0': 0.026, ..., 'descriptors__sample_sizes': -0.006}
+    # {'pipeline__truncatedsvd0': 0.032, ..., 'simpleimputer__sample_sizes': -0.009}
 
 A :class:`~sklearn.compose.ColumnTransformer` selects these columns by
 position, because the feature matrix is an array rather than a frame, so a
-descriptor would otherwise come out as ``x228483``.
+descriptor would otherwise come out as ``x902629``.
 :func:`~nimare.ml.make_nimare_column_transformer` restores the real names, including for
 descriptors left at ``"passthrough"``.
 
@@ -525,8 +529,8 @@ The one thing that keeps it out of a pipeline over these features is that it
 takes *images*, where a :class:`~sklearn.compose.ColumnTransformer` hands out
 columns of an array.
 
-:class:`~nimare.ml.MaskerTransformer` is that bridge, and the only transformer
-NiMARE adds, because it is the only one that has to know which voxel each
+:class:`~nimare.ml.MaskerTransformer` is that bridge, one of the two
+transformers NiMARE adds, because it has to know which voxel each
 column is. Rows are unmasked back into images in the source mask's space,
 handed to the nilearn masker, and returned as an array. The bundle's
 ``masker`` is what says where the columns came from, which is why it travels

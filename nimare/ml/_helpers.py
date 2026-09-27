@@ -52,22 +52,6 @@ def _to_dense(block):
     return block.toarray() if sparse.issparse(block) else block
 
 
-def _check_lengths(n_rows, rows, columns):
-    """Refuse blocks that describe different analyses, or name the wrong columns."""
-    for name, value in rows.items():
-        if value is None:
-            continue
-        length = value.shape[0] if hasattr(value, "shape") else len(value)
-        if length != n_rows:
-            raise ValueError(
-                f"{name} covers {length} analyses, but map_features has {n_rows} rows."
-            )
-
-    for name, (value, expected) in columns.items():
-        if value is not None and expected is not None and len(value) != expected:
-            raise ValueError(f"{name} names {len(value)} columns, but there are {expected}.")
-
-
 def _hstack_blocks(blocks):
     """Stack descriptor blocks side by side, staying sparse if any of them is."""
     if any(sparse.issparse(block) for block in blocks):
@@ -101,11 +85,7 @@ def _take_rows(value, rows):
 
 
 class _FeatureNames(Sequence):
-    """A bundle's column names, built on access rather than up front.
-
-    A peak block spans the whole image grid, so naming every column eagerly
-    would cost more memory than the sparse block it describes.
-    """
+    """A bundle's column names, built on access rather than up front."""
 
     def __init__(self, n_voxels, descriptor_names):
         self.n_voxels = int(n_voxels)
