@@ -1641,6 +1641,15 @@ four decimals -- but:
   156 MB on a 4,000-analysis release slice -- the cost the peak representation
   exists to avoid.
 
-It also captured less of the saving than hoisting did, so it would have been
-new public surface, a new silent-wrong-answer risk and a new memory cost, in
-exchange for less than the zero-API alternative. Documented instead.
+Measured over three repeats, it made the SVD pipeline *slower* -- 33.6 s
+against 20.7 s uncached -- while helping the cheap one, 4.4 s against 5.6 s.
+Part of that slowdown is the prototype's own fault: it cached
+`made.indices[span]`, which is a numpy view, so every cached row pinned the
+entire output array of the kernel call that made it, and five folds retained
+five full MA matrices instead of one. A `.copy()` fixes that.
+
+The conclusion does not depend on the prototype being good, because a cache
+cannot beat hoisting even in principle. Convolving once is the floor that any
+cache is trying to approach, and hoisting *is* that floor: 16.9 s against
+20.7 s uncached, with no key to get right, no `clone` semantics to subvert and
+nothing retained. Documented instead.
