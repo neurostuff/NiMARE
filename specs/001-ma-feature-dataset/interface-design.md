@@ -1691,3 +1691,40 @@ inside the per-row comprehension, rebuilding a repr of the kernel's parameters
 
 The cold pass costs more than no cache, paying the convolution and the
 bookkeeping together; the gain starts at the second fold.
+
+## 29. The splitter, the back-projection, and a boolean cache
+
+Three additions close the gaps the audit of §24 left open, and simplify one
+thing §28 got wrong in shape.
+
+**`study_folds(bunch, cv=5, rows=None)`** binds the study labels to a
+cross-validator. Forgetting `groups=` was the most expensive silent mistake the
+audit found, worth 2.2 points of accuracy, and a bound splitter closes it
+everywhere a `cv=` is taken rather than at the one entry point a wrapper would
+have covered. Verified against `cross_val_score`, `GridSearchCV`,
+`permutation_test_score` and `LeaveOneGroupOut`/`GroupShuffleSplit`/int,
+matching a hand-passed `groups=` exactly. Binding introduces a hazard of its
+own -- slicing `data` afterwards misaligns the labels -- so a matrix of the
+wrong height raises, and `rows=` serves a nested loop.
+
+**`coefficient_image(estimator, bunch, coef=None)`** walks a fitted pipeline
+backwards, undoing each reduction until the weights are one per voxel, and
+unmasks them. It follows a `ColumnTransformer` into the branch covering the
+voxel block, so descriptor weights stay where they belong, and stops at
+`MAKernel`, whose input is peaks rather than brain. `MaskerTransformer` gained
+the `inverse_transform` this needs, spreading region values back over the
+voxels they summarised.
+
+Its interesting refusal is `FunctionTransformer`: it *has* an
+`inverse_transform`, which with no `inverse_func` is the identity. Passing
+weights through it unchanged would report the weights after the function as
+though they were the weights before it -- silently, whenever the function
+preserves width. So a `FunctionTransformer` with a `func` and no `inverse_func`
+is refused, except the identity-or-densify one
+`make_nimare_column_transformer` builds, whose inverse really is the identity.
+
+**`cache=True`** replaces the `MapCache` object of §28. The maps now belong to
+the process rather than to a passed-in object, which is what a boolean implies
+and what lets a clone reuse them without a `__deepcopy__` that returns `self`.
+`clear_map_cache()` releases them and reports what they served. Rows repeated
+within one call are now convolved once rather than once each.

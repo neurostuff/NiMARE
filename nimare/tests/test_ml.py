@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import time
 from pathlib import Path
 
@@ -23,6 +22,7 @@ from sklearn.model_selection import (
     GridSearchCV,
     GroupKFold,
     GroupShuffleSplit,
+    LeaveOneGroupOut,
     cross_val_score,
 )
 from sklearn.pipeline import Pipeline, make_pipeline
@@ -909,14 +909,16 @@ def test_column_transformer_accepts_an_atlas(small_masker, atlas_features):
 # ------------------------------------------------------------------ extraction
 
 
-def test_public_surface_is_a_studyset_method_and_five_helpers():
+def test_public_surface_is_a_studyset_method_and_its_helpers():
     """Conversion belongs to the Studyset; nimare.ml holds what it cannot answer."""
     assert set(ml.__all__) == {
         "MAKernel",
-        "MapCache",
         "MaskerTransformer",
+        "clear_map_cache",
+        "coefficient_image",
         "describe_fields",
         "make_nimare_column_transformer",
+        "study_folds",
     }
     assert not any(name.endswith("Extractor") for name in dir(ml) if not name.startswith("_"))
     # There is no container class left to meet.
@@ -2156,7 +2158,19 @@ def test_the_source_masker_is_not_refitted_per_fold(small_masker, labels_atlas):
     assert fits == []
 
 
-# ---------------------------------------------------------------- MapCache
+# --------------------------------------------------------------- map cache
+
+
+def _row_signatures(peaks):
+    """Return what identifies each row of a peak block, as the cache keys it."""
+    peaks = peaks.tocsr()
+    return [
+        (
+            peaks.indices[peaks.indptr[r] : peaks.indptr[r + 1]].tobytes(),
+            peaks.data[peaks.indptr[r] : peaks.indptr[r + 1]].tobytes(),
+        )
+        for r in range(peaks.shape[0])
+    ]
 
 
 def _grid_peaks(masker, rows=3):
@@ -2170,43 +2184,47 @@ def _grid_peaks(masker, rows=3):
 
 def test_a_cache_changes_the_cost_and_nothing_else(ml_studyset):
     """Cached maps must equal the maps convolved afresh."""
+    ml.clear_map_cache()
     bunch = ml_studyset.to_bunch()
     peaks = _voxels(bunch)
 
     plain = MAKernel(MKDAKernel(r=4), source_masker=bunch.masker).fit_transform(peaks)
-    cache = ml.MapCache()
-    cached = MAKernel(MKDAKernel(r=4), source_masker=bunch.masker, cache=cache).fit_transform(
-        peaks
-    )
+    cached = MAKernel(MKDAKernel(r=4), source_masker=bunch.masker, cache=True).fit_transform(peaks)
 
     assert abs(plain - cached).nnz == 0
-    assert cache.misses == peaks.shape[0]
-    assert cache.hits == 0
+    served = ml.clear_map_cache()
+    assert served["misses"] == len(set(_row_signatures(peaks)))
+    assert served["hits"] == peaks.shape[0] - served["misses"]
 
 
 def test_a_cache_serves_the_second_pass(ml_studyset):
     """A row convolved once is not convolved again."""
+    ml.clear_map_cache()
     bunch = ml_studyset.to_bunch()
     peaks = _voxels(bunch)
-    cache = ml.MapCache()
 
-    first = MAKernel(MKDAKernel(r=4), source_masker=bunch.masker, cache=cache).fit_transform(peaks)
-    second = MAKernel(MKDAKernel(r=4), source_masker=bunch.masker, cache=cache).fit_transform(
-        peaks
-    )
+    first = MAKernel(MKDAKernel(r=4), source_masker=bunch.masker, cache=True).fit_transform(peaks)
+    second = MAKernel(MKDAKernel(r=4), source_masker=bunch.masker, cache=True).fit_transform(peaks)
 
     assert abs(first - second).nnz == 0
-    assert cache.hits == peaks.shape[0]
-    assert cache.misses == peaks.shape[0]
+    served = ml.clear_map_cache()
+    assert served["misses"] == len(set(_row_signatures(peaks)))
+    assert served["hits"] == 2 * peaks.shape[0] - served["misses"]
 
 
 def test_a_cache_survives_cloning(small_masker):
-    """Folds share a cache only because clone keeps it rather than copying it."""
-    cache = ml.MapCache()
-    step = MAKernel(MKDAKernel(r=1), source_masker=small_masker, cache=cache)
+    """Folds share maps because the cache belongs to the process, not the step."""
+    ml.clear_map_cache()
+    peaks = _grid_peaks(small_masker)
+    step = MAKernel(MKDAKernel(r=1), source_masker=small_masker, cache=True)
 
-    assert clone(step).cache is cache
-    assert copy.deepcopy(cache) is cache
+    step.fit_transform(peaks)
+    clone(step).fit(peaks).transform(peaks)
+
+    # the clone convolved nothing: every row it was given was already there
+    served = ml.clear_map_cache()
+    assert served["misses"] == len(set(_row_signatures(peaks)))
+    assert served["hits"] == 2 * peaks.shape[0] - served["misses"]
 
 
 def test_a_cached_row_names_the_kernel_that_made_it(small_masker):
@@ -2219,64 +2237,70 @@ def test_a_cached_row_names_the_kernel_that_made_it(small_masker):
 
     assert MKDAKernel(r=1).get_params() == KDAKernel(r=1).get_params()
 
+    ml.clear_map_cache()
     peaks = _grid_peaks(small_masker)
-    cache = ml.MapCache()
-    mkda = MAKernel(MKDAKernel(r=1), source_masker=small_masker, cache=cache).fit_transform(peaks)
-    kda = MAKernel(KDAKernel(r=1), source_masker=small_masker, cache=cache).fit_transform(peaks)
+    mkda = MAKernel(MKDAKernel(r=1), source_masker=small_masker, cache=True).fit_transform(peaks)
+    kda = MAKernel(KDAKernel(r=1), source_masker=small_masker, cache=True).fit_transform(peaks)
 
     direct = MAKernel(KDAKernel(r=1), source_masker=small_masker).fit_transform(peaks)
     assert abs(kda - direct).nnz == 0
-    assert cache.hits == 0  # nothing was served across the two kernels
     assert mkda.shape == kda.shape
+    # the two kernels share no rows, so each row was convolved by each of them
+    served = ml.clear_map_cache()
+    assert served["misses"] == 2 * len(set(_row_signatures(peaks)))
 
 
 def test_a_cached_row_names_the_mask_it_was_made_in(small_masker):
     """The same peaks in a different mask are different maps."""
+    ml.clear_map_cache()
     other = get_masker(
         nib.Nifti1Image(np.ones(small_masker.mask_img.shape, dtype=np.uint8), np.eye(4))
     )
-    cache = ml.MapCache()
     peaks = _grid_peaks(small_masker)
 
-    first = MAKernel(MKDAKernel(r=1), source_masker=small_masker, cache=cache).fit_transform(peaks)
-    second = MAKernel(MKDAKernel(r=1), source_masker=other, cache=cache).fit_transform(peaks)
+    first = MAKernel(MKDAKernel(r=1), source_masker=small_masker, cache=True).fit_transform(peaks)
+    second = MAKernel(MKDAKernel(r=1), source_masker=other, cache=True).fit_transform(peaks)
 
-    assert cache.hits == 0
     assert first.shape[1] != second.shape[1]
+    # the same peaks in a different mask were convolved again, not served
+    served = ml.clear_map_cache()
+    assert served["misses"] == 2 * len(set(_row_signatures(peaks)))
 
 
 def test_cached_rows_are_copies_not_views(small_masker):
     """A slice of a CSR's indices is a view that pins the array it came from."""
-    cache = ml.MapCache()
-    MAKernel(MKDAKernel(r=1), source_masker=small_masker, cache=cache).fit_transform(
+    from nimare.ml.kernel import _MAPS
+
+    ml.clear_map_cache()
+    MAKernel(MKDAKernel(r=1), source_masker=small_masker, cache=True).fit_transform(
         _grid_peaks(small_masker)
     )
 
-    assert cache.rows
-    for indices, data in cache.rows.values():
+    assert _MAPS.rows
+    for indices, data in _MAPS.rows.values():
         assert indices.base is None
         assert data.base is None
+    ml.clear_map_cache()
 
 
 def test_a_cache_can_be_emptied(small_masker):
     """Holding the whole feature matrix is opt-in, and so is letting it go."""
-    cache = ml.MapCache()
+    ml.clear_map_cache()
     peaks = _grid_peaks(small_masker)
-    MAKernel(MKDAKernel(r=1), source_masker=small_masker, cache=cache).fit_transform(peaks)
-    assert cache.rows and cache.misses
+    MAKernel(MKDAKernel(r=1), source_masker=small_masker, cache=True).fit_transform(peaks)
 
-    cache.clear()
-    assert not cache.rows and not cache.misses and not cache.hits
-    assert cache.width is None
+    served = ml.clear_map_cache()
+    assert served["rows"] and served["misses"]
+    assert ml.clear_map_cache() == {"rows": 0, "hits": 0, "misses": 0}
 
 
 def test_a_cache_holds_across_the_folds_of_a_cross_validation(ml_studyset):
     """The point of the cache: every row convolved once, whatever the split."""
+    ml.clear_map_cache()
     bunch = ml_studyset.to_bunch(target_field=("annotations", "target_score"))
     peaks = _voxels(bunch)
-    cache = ml.MapCache()
     pipeline = make_pipeline(
-        MAKernel(MKDAKernel(r=4), source_masker=bunch.masker, cache=cache),
+        MAKernel(MKDAKernel(r=4), source_masker=bunch.masker, cache=True),
         TruncatedSVD(n_components=2, random_state=RANDOM_SEED),
         Ridge(),
     )
@@ -2284,6 +2308,144 @@ def test_a_cache_holds_across_the_folds_of_a_cross_validation(ml_studyset):
     cross_val_score(pipeline, peaks, bunch.target, groups=bunch.groups, cv=GroupKFold(2))
 
     # every row is convolved once however many folds touch it
-    assert cache.misses == len(cache.rows)
-    assert cache.hits > 0
-    assert cache.hits + cache.misses > peaks.shape[0]
+    served = ml.clear_map_cache()
+    assert served["misses"] == served["rows"]
+    assert served["hits"] > 0
+    assert served["hits"] + served["misses"] > peaks.shape[0]
+
+
+# --------------------------------------------------------------- study_folds
+
+
+def test_study_folds_matches_passing_groups_by_hand(ml_studyset):
+    """Binding the study labels must not change what the split is."""
+    bunch = ml_studyset.to_bunch(target_field=("annotations", "target_score"))
+    voxels = _voxels(bunch)
+    model = Ridge()
+
+    manual = cross_val_score(model, voxels, bunch.target, groups=bunch.groups, cv=GroupKFold(2))
+    bound = cross_val_score(model, voxels, bunch.target, cv=ml.study_folds(bunch, 2))
+
+    np.testing.assert_allclose(manual, bound)
+
+
+@pytest.mark.parametrize(
+    "cv", [2, LeaveOneGroupOut(), GroupShuffleSplit(n_splits=2, test_size=0.5, random_state=13)]
+)
+def test_study_folds_binds_any_group_splitter(ml_studyset, cv):
+    """The int is a convenience; any group splitter can be bound instead."""
+    bunch = ml_studyset.to_bunch()
+    folds = ml.study_folds(bunch, cv)
+
+    for train, test in folds.split(bunch.data):
+        assert set(bunch.groups[train]).isdisjoint(bunch.groups[test])
+    assert folds.get_n_splits() == len(list(folds.split(bunch.data)))
+
+
+def test_study_folds_refuses_a_matrix_it_does_not_describe(ml_studyset):
+    """Slicing the data after binding the labels would silently misalign them."""
+    bunch = ml_studyset.to_bunch()
+    folds = ml.study_folds(bunch, 2)
+
+    with pytest.raises(ValueError, match="study labels cover"):
+        list(folds.split(bunch.data[:3]))
+
+
+def test_study_folds_refuses_more_folds_than_studies(ml_studyset):
+    """A study cannot be split across folds, so it caps how many there are."""
+    bunch = ml_studyset.to_bunch()
+
+    with pytest.raises(ValueError, match="cannot be split across folds"):
+        ml.study_folds(bunch, len(set(bunch.groups)) + 1)
+
+
+def test_study_folds_takes_a_subset_of_rows(ml_studyset):
+    """The inner loop of a nested cross-validation sees only the training rows."""
+    bunch = ml_studyset.to_bunch()
+    rows = np.arange(0, len(bunch.ids), 2)
+    folds = ml.study_folds(bunch, 2, rows=rows)
+
+    assert len(folds.groups) == len(rows)
+    for train, test in folds.split(bunch.data[rows]):
+        assert set(folds.groups[train]).isdisjoint(folds.groups[test])
+
+
+# ---------------------------------------------------------- coefficient_image
+
+
+@pytest.mark.parametrize("reducer", [None, TruncatedSVD(2, random_state=RANDOM_SEED)])
+def test_coefficient_image_puts_weights_back_in_the_brain(ml_studyset, reducer):
+    """A weight per feature becomes a weight per voxel, whatever reduced them."""
+    bunch = ml_studyset.to_bunch(target_field=("annotations", "target_score"))
+    steps = [MAKernel(MKDAKernel(r=4), source_masker=bunch.masker)]
+    steps += [reducer] if reducer is not None else []
+    pipeline = make_pipeline(*steps, Ridge()).fit(_voxels(bunch), bunch.target)
+
+    image = ml.coefficient_image(pipeline, bunch)
+
+    assert image.shape == bunch.masker.mask_img.shape
+    np.testing.assert_allclose(image.affine, bunch.masker.mask_img.affine)
+    assert np.count_nonzero(np.asarray(image.dataobj))
+
+
+def test_coefficient_image_reads_through_a_column_transformer(ml_studyset):
+    """Only the weights over the voxel block name places in the brain."""
+    bunch = ml_studyset.to_bunch(
+        target_field=("annotations", "target_score"), descriptor_fields=["year"]
+    )
+    pipeline = make_pipeline(
+        ml.make_nimare_column_transformer(
+            bunch,
+            (
+                make_pipeline(
+                    MAKernel(MKDAKernel(r=4), source_masker=bunch.masker),
+                    TruncatedSVD(2, random_state=RANDOM_SEED),
+                ),
+                "voxels",
+            ),
+            (StandardScaler(), "descriptors"),
+        ),
+        Ridge(),
+    ).fit(bunch.data, bunch.target)
+
+    image = ml.coefficient_image(pipeline, bunch)
+
+    assert image.shape == bunch.masker.mask_img.shape
+
+
+def test_coefficient_image_takes_weights_it_is_given(ml_studyset):
+    """Permutation importance gives weights the model does not carry itself."""
+    bunch = ml_studyset.to_bunch(target_field=("annotations", "target_score"))
+    pipeline = make_pipeline(
+        MAKernel(MKDAKernel(r=4), source_masker=bunch.masker),
+        TruncatedSVD(2, random_state=RANDOM_SEED),
+        Ridge(),
+    ).fit(_voxels(bunch), bunch.target)
+
+    image = ml.coefficient_image(pipeline, bunch, coef=np.array([1.0, -1.0]))
+
+    assert image.shape == bunch.masker.mask_img.shape
+
+
+def test_coefficient_image_says_what_it_cannot_undo(ml_studyset):
+    """A step with no inverse stops the walk rather than guessing past it."""
+    bunch = ml_studyset.to_bunch(target_field=("annotations", "target_score"))
+    voxels = _voxels(bunch)
+
+    unreadable = make_pipeline(
+        MAKernel(MKDAKernel(r=4), source_masker=bunch.masker),
+        FunctionTransformer(lambda x: _dense(x)[:, :3]),
+        Ridge(),
+    ).fit(voxels, bunch.target)
+    with pytest.raises(ValueError, match="no 'inverse_func' cannot be undone"):
+        ml.coefficient_image(unreadable, bunch)
+
+    from sklearn.cluster import KMeans
+
+    unweighted = make_pipeline(
+        MAKernel(MKDAKernel(r=4), source_masker=bunch.masker),
+        TruncatedSVD(2, random_state=RANDOM_SEED),
+        KMeans(n_clusters=2, n_init=2, random_state=RANDOM_SEED),
+    ).fit(voxels)
+    with pytest.raises(ValueError, match="neither 'coef_' nor 'feature_importances_'"):
+        ml.coefficient_image(unweighted, bunch)

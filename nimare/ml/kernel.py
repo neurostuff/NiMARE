@@ -12,25 +12,8 @@ from sklearn.utils.validation import check_is_fitted
 from nimare.ml._peaks import grid_shape, mask_source, n_grid_columns, peak_frame
 
 
-class MapCache:
-    """Maps already convolved, to be reused by every fold that wants them.
-
-    An MA map is a function of one analysis's own peaks, so a row convolved for
-    one fold is the same row every other fold needs. Pass one cache to
-    :class:`MAKernel` and hold on to it for as long as the maps are wanted; it
-    grows to the whole feature matrix, which is why it is asked for rather than
-    assumed. See :doc:`the machine learning documentation </machine_learning>`.
-
-    Attributes
-    ----------
-    hits, misses : :obj:`int`
-        Rows served from the cache, and rows that had to be convolved.
-
-    Examples
-    --------
-    >>> cache = MapCache()  # doctest: +SKIP
-    >>> step = MAKernel(MKDAKernel(r=10), source_masker=bunch.masker, cache=cache)
-    """
+class _MapCache:
+    """Maps already convolved, keyed by the kernel and mask that made them."""
 
     def __init__(self):
         self.rows = {}
@@ -38,17 +21,9 @@ class MapCache:
         self.hits = 0
         self.misses = 0
 
-    def __deepcopy__(self, memo):
-        """Return the cache itself, so that cloning a kernel keeps it.
-
-        A memo of a pure function is not fitted state, and sharing it is what
-        makes it worth having: every key names the kernel that made the row.
-        """
-        return self
-
     def __repr__(self):
         """Return how much the cache holds and how well it has served."""
-        return f"<MapCache: {len(self.rows)} rows, {self.hits} hits, {self.misses} misses>"
+        return f"<map cache: {len(self.rows)} rows, {self.hits} hits, {self.misses} misses>"
 
     def clear(self):
         """Forget every cached row."""
@@ -56,6 +31,27 @@ class MapCache:
         self.width = None
         self.hits = 0
         self.misses = 0
+
+
+_MAPS = _MapCache()
+
+
+def clear_map_cache():
+    """Release the maps :class:`MAKernel` kept under ``cache=True``.
+
+    Returns
+    -------
+    :obj:`dict`
+        What the cache had served, as ``rows``, ``hits`` and ``misses``.
+
+    Examples
+    --------
+    >>> clear_map_cache()  # doctest: +SKIP
+    {'rows': 894, 'hits': 3624, 'misses': 906}
+    """
+    served = {"rows": len(_MAPS.rows), "hits": _MAPS.hits, "misses": _MAPS.misses}
+    _MAPS.clear()
+    return served
 
 
 class MAKernel(TransformerMixin, BaseEstimator):
@@ -75,11 +71,12 @@ class MAKernel(TransformerMixin, BaseEstimator):
     source_masker : :class:`~nilearn.maskers.NiftiMasker` or img_like, optional
         The masker whose image grid the peak columns span, normally the
         ``masker`` a bundle carries, by default None.
-    cache : :class:`MapCache`, optional
-        Where to keep maps already convolved, by default None, which convolves
-        every row afresh. A cache is shared rather than copied when the
-        transformer is cloned, so folds reuse each other's rows; it grows to
-        hold the whole feature matrix.
+    cache : :obj:`bool`, default=False
+        Whether to keep the maps already convolved, so that folds after the
+        first are served rather than recomputed. The maps are held for the
+        process, not for the transformer, which is what lets a clone reuse
+        them; they grow to the whole feature matrix, and
+        :func:`clear_map_cache` releases them.
 
     Attributes
     ----------
@@ -99,7 +96,7 @@ class MAKernel(TransformerMixin, BaseEstimator):
     >>> step = MAKernel(MKDAKernel(r=10), source_masker=bunch.masker)  # doctest: +SKIP
     """
 
-    def __init__(self, kernel=None, source_masker=None, cache=None):
+    def __init__(self, kernel=None, source_masker=None, cache=False):
         self.kernel = kernel
         self.source_masker = source_masker
         self.cache = cache
@@ -173,7 +170,7 @@ class MAKernel(TransformerMixin, BaseEstimator):
             Analysis-by-voxel MA features, in the source masker's voxel order.
         """
         check_is_fitted(self, ["kernel_"])
-        if self.cache is not None:
+        if self.cache:
             return self._cached(X)
         return self._convolve(X)
 
@@ -193,23 +190,24 @@ class MAKernel(TransformerMixin, BaseEstimator):
         signature = self._signature()
         keys = [(signature, *_row_key(X, row)) for row in range(X.shape[0])]
 
-        missing = [row for row, key in enumerate(keys) if key not in self.cache.rows]
-        self.cache.hits += X.shape[0] - len(missing)
-        self.cache.misses += len(missing)
+        # one row per key, so rows repeated within a call are convolved once
+        missing = {}
+        for row, key in enumerate(keys):
+            missing.setdefault(key, row)
+        missing = {key: row for key, row in missing.items() if key not in _MAPS.rows}
+        _MAPS.hits += X.shape[0] - len(missing)
+        _MAPS.misses += len(missing)
 
         if missing:
-            made = self._convolve(X[missing]).tocsr()
-            for position, row in enumerate(missing):
+            made = self._convolve(X[list(missing.values())]).tocsr()
+            for position, key in enumerate(missing):
                 span = slice(made.indptr[position], made.indptr[position + 1])
                 # copies, because a slice of indices is a view that would keep
                 # the whole array it came from alive
-                self.cache.rows[keys[row]] = (
-                    made.indices[span].copy(),
-                    made.data[span].copy(),
-                )
-            self.cache.width = made.shape[1]
+                _MAPS.rows[key] = (made.indices[span].copy(), made.data[span].copy())
+            _MAPS.width = made.shape[1]
 
-        return _stack_rows([self.cache.rows[key] for key in keys], X.shape[0], self.cache.width)
+        return _stack_rows([_MAPS.rows[key] for key in keys], X.shape[0], _MAPS.width)
 
     def _signature(self):
         """Return what a cached row depends on besides the row itself.

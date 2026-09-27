@@ -170,6 +170,29 @@ class MaskerTransformer(TransformerMixin, BaseEstimator):
         self.n_features_out_ = aggregated.shape[1]
         return aggregated
 
+    def inverse_transform(self, X):
+        """Return region values spread back over the voxels they summarise.
+
+        Parameters
+        ----------
+        X : array_like
+            Analysis-by-region features, as :meth:`transform` returns them.
+
+        Returns
+        -------
+        :obj:`numpy.ndarray`
+            Analysis-by-voxel features, in the space the transformer reads.
+        """
+        check_is_fitted(self, ["masker_"])
+        images = self.masker_.inverse_transform(np.atleast_2d(X))
+        volume = np.asarray(images.dataobj)
+        if volume.ndim == 3:
+            volume = volume[..., None]
+        flat = volume.reshape(-1, volume.shape[-1]).T
+        if self.on_grid_:
+            return flat
+        return flat[:, np.asarray(self.mask_img_.dataobj).ravel() > 0]
+
     def get_feature_names_out(self, input_features=None):
         """Return the region names, from the atlas or from the masker.
 

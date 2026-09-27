@@ -148,9 +148,8 @@ recomputed:
 
 .. code-block:: python
 
-    cache = MapCache()
     pipeline = make_pipeline(
-        MAKernel(MKDAKernel(r=10), source_masker=bunch.masker, cache=cache),
+        MAKernel(MKDAKernel(r=10), source_masker=bunch.masker, cache=True),
         TruncatedSVD(n_components=50),
         LogisticRegression(),
     )
@@ -663,6 +662,54 @@ optimum, at roughly 60 MB.
 Peak columns cost about the same as MA columns here despite spanning four times
 the grid -- 35.5 ms per row against 32.7 -- because what dominates is nilearn's
 per-call setup rather than the width of the array.
+
+Splitting without leaking a study
+---------------------------------
+
+Analyses from one study are not independent, so a study belongs to exactly one
+side of any split. scikit-learn expresses that by taking ``groups=`` at every
+call, which is easy to forget and silent when forgotten -- worth 2.2 points of
+accuracy on the bundled studyset. :func:`~nimare.ml.study_folds` binds them
+once:
+
+.. code-block:: python
+
+    cross_val_score(pipeline, bunch.data, bunch.target, cv=study_folds(bunch))
+
+It takes a fold count or any group splitter to bind --
+:class:`~sklearn.model_selection.LeaveOneGroupOut`,
+:class:`~sklearn.model_selection.GroupShuffleSplit` -- and the result goes
+wherever a ``cv=`` goes, :class:`~sklearn.model_selection.GridSearchCV` and
+:func:`~sklearn.model_selection.permutation_test_score` included. Binding
+introduces a hazard of its own, which it guards: slicing ``data`` after binding
+the labels would misalign them, so a matrix of the wrong height raises. For the
+inner loop of a nested cross-validation, pass ``rows=bunch.train`` along with
+the matching rows of ``data``.
+
+Reading a model back to the brain
+---------------------------------
+
+:func:`~nimare.ml.coefficient_image` walks a fitted pipeline backwards, undoing
+each reduction, until the weights are one per voxel again, and unmasks them:
+
+.. code-block:: python
+
+    image = coefficient_image(pipeline, bunch)
+    plotting.plot_stat_map(image)
+
+It undoes whatever declares an inverse -- truncated SVD, variance thresholding,
+a scaler -- and reads an atlas reduction back through the atlas. A
+:class:`~sklearn.compose.ColumnTransformer` is followed into the branch that
+covers the voxel block, so descriptor weights are left where they belong. The
+walk stops at :class:`~nimare.ml.MAKernel`, whose input is peaks rather than
+brain.
+
+A step that cannot be undone stops the walk and says so. That includes a
+:class:`~sklearn.preprocessing.FunctionTransformer` given a ``func`` but no
+``inverse_func``, whose inverse is the identity and would otherwise report the
+weights after it as though they were the weights before it. Pass ``coef`` to
+project weights the model does not carry itself, such as a permutation
+importance.
 
 Scale
 -----

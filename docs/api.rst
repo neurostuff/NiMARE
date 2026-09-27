@@ -291,15 +291,17 @@ historical import path and adds nothing of its own.
    :template: class.rst
 
    ml.MAKernel
-   ml.MapCache
    ml.MaskerTransformer
 
 .. autosummary::
    :toctree: generated/
    :template: function.rst
 
+   ml.clear_map_cache
+   ml.coefficient_image
    ml.describe_fields
    ml.make_nimare_column_transformer
+   ml.study_folds
 
 
 .. _api_extract_ref:
