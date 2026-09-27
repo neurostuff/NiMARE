@@ -10,10 +10,12 @@ def study_folds(bunch, cv=5, rows=None):
     """Return a cross-validator that already knows which study each row came from.
 
     Analyses from one study are not independent, so a study belongs to exactly
-    one side of any split. scikit-learn expresses that by taking ``groups=`` at
-    every call, which is easy to forget and silent when forgotten -- worth 2.2
-    points of accuracy on the bundled studyset. This binds them once, so the
-    result can be handed to anything that takes ``cv=``.
+    one side of any split. scikit-learn asks for that in two pieces -- a group
+    splitter *and* ``groups=`` -- and only one of them is checked: a group
+    splitter without ``groups`` raises, while ``groups`` without a group
+    splitter is accepted and ignored. Binding the two together is what this is
+    for, since there is then nothing to get half right. The result goes
+    wherever a ``cv=`` goes.
 
     Parameters
     ----------

@@ -1698,10 +1698,17 @@ Three additions close the gaps the audit of §24 left open, and simplify one
 thing §28 got wrong in shape.
 
 **`study_folds(bunch, cv=5, rows=None)`** binds the study labels to a
-cross-validator. Forgetting `groups=` was the most expensive silent mistake the
-audit found, worth 2.2 points of accuracy, and a bound splitter closes it
-everywhere a `cv=` is taken rather than at the one entry point a wrapper would
-have covered. Verified against `cross_val_score`, `GridSearchCV`,
+cross-validator.
+
+The justification first written for it was wrong and is corrected here.
+"Forgetting `groups=` is silent" is false: `cross_val_score(..., cv=GroupKFold(5))`
+without `groups` raises `The 'groups' parameter should not be None`. What is
+silent is the other half -- passing `groups=` while leaving `cv` at its default,
+or at a `KFold`, where scikit-learn accepts the labels and ignores them. That is
+the mistake of someone who knew grouping mattered, and on the bundled studyset
+it reads 0.620 against a grouped 0.604. Binding the splitter and the labels
+together leaves nothing to get half right, everywhere a `cv=` is taken rather
+than at the one entry point a wrapper would have covered. Verified against `cross_val_score`, `GridSearchCV`,
 `permutation_test_score` and `LeaveOneGroupOut`/`GroupShuffleSplit`/int,
 matching a hand-passed `groups=` exactly. Binding introduces a hazard of its
 own -- slicing `data` afterwards misaligns the labels -- so a matrix of the

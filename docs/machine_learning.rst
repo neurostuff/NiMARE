@@ -667,10 +667,26 @@ Splitting without leaking a study
 ---------------------------------
 
 Analyses from one study are not independent, so a study belongs to exactly one
-side of any split. scikit-learn expresses that by taking ``groups=`` at every
-call, which is easy to forget and silent when forgotten -- worth 2.2 points of
-accuracy on the bundled studyset. :func:`~nimare.ml.study_folds` binds them
-once:
+side of any split. scikit-learn asks for that in two pieces, and checks only
+one of them:
+
+===========================================  ===============================
+Call                                          What happens
+===========================================  ===============================
+``cv=GroupKFold(5), groups=...``              correct
+``cv=GroupKFold(5)``, no ``groups``           raises
+``cv=5``, no ``groups``                       silently ungrouped
+``groups=...``, ``cv`` left at the default    **silently ignored**
+``cv=KFold(5), groups=...``                   **silently ignored**
+===========================================  ===============================
+
+The last two are the ones worth a helper. Forgetting ``groups`` is caught;
+passing it and *not* choosing a group splitter is not, and it is the mistake of
+someone who knew grouping mattered. On the bundled studyset that reads 0.620
+where the grouped answer is 0.604.
+
+:func:`~nimare.ml.study_folds` binds the splitter and the labels together, so
+there is nothing to get half right:
 
 .. code-block:: python
 
