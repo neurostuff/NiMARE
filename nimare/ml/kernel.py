@@ -47,7 +47,7 @@ def clear_map_cache():
     Examples
     --------
     >>> clear_map_cache()  # doctest: +SKIP
-    {'rows': 894, 'hits': 3624, 'misses': 906}
+    {'rows': 894, 'hits': 4542, 'misses': 894}
     """
     served = {"rows": len(_MAPS.rows), "hits": _MAPS.hits, "misses": _MAPS.misses}
     _MAPS.clear()

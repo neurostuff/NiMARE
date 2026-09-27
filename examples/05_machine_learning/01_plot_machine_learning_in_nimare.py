@@ -6,7 +6,8 @@ Machine learning in NiMARE
 ============================
 
 Turn a Studyset into a scikit-learn dataset, split it without leaking a study,
-and build the voxelwise features inside a pipeline.
+build the voxelwise features inside a pipeline, and read the fitted model back
+to the brain.
 
 :meth:`~nimare.studyset.Studyset.to_bunch` returns a
 :class:`~sklearn.utils.Bunch` of the peaks each analysis reported, the study it
@@ -18,6 +19,7 @@ activation (MA) kernel included, as :class:`~nimare.ml.MAKernel`.
 from pathlib import Path
 
 import numpy as np
+from nilearn import plotting
 from nilearn.datasets import fetch_atlas_difumo
 from scipy import sparse
 from sklearn.decomposition import TruncatedSVD
@@ -34,6 +36,8 @@ from nimare.meta.kernel import MKDAKernel
 from nimare.ml import (
     MAKernel,
     MaskerTransformer,
+    clear_map_cache,
+    coefficient_image,
     describe_fields,
     make_nimare_column_transformer,
 )
@@ -122,8 +126,13 @@ print(f"Shared studies: {set(bunch.groups[train]) & set(bunch.groups[test])}")
 # Every column here is a voxel -- ``bunch.descriptor_names`` is empty -- so the
 # steps can see the whole matrix. The section after next adds descriptor
 # columns, which a bare reducer would decompose along with the voxels.
+#
+# ``cache=True`` keeps the maps the kernel makes. An MA map is a function of
+# one analysis's own peaks, so a row convolved for one fold is the row every
+# other fold needs; caching them is worth about 15% of this run and 35% when
+# what follows the kernel is cheaper.
 pipeline = make_pipeline(
-    MAKernel(MKDAKernel(r=10), source_masker=bunch.masker),
+    MAKernel(MKDAKernel(r=10), source_masker=bunch.masker, cache=True),
     TruncatedSVD(n_components=50, random_state=RANDOM_SEED),
     LogisticRegression(max_iter=1000, class_weight="balanced", random_state=RANDOM_SEED),
 )
@@ -136,6 +145,40 @@ scores = cross_val_score(
 )
 
 print(f"Cross-validation accuracy: {scores.mean():.3f} +/- {scores.std():.3f}")
+
+###############################################################################
+# Read the model back to the brain
+# -----------------------------------------------------------------------------
+# A coefficient over SVD components says nothing about anatomy.
+# :func:`~nimare.ml.coefficient_image` walks the fitted pipeline backwards,
+# undoing each reduction until the weights are one per voxel again, and
+# unmasks them into an image. The walk stops at the kernel, whose input is
+# peaks rather than brain, and refuses any step that cannot be undone rather
+# than reporting the weights after it as the weights before it.
+#
+# This fit uses every row, which is not the leak the section above warned
+# about: nothing is being scored here. The accuracy came from the folds; this
+# is the map the model would carry into use.
+pipeline.fit(bunch.data, bunch.target)
+weights = coefficient_image(pipeline, bunch)
+
+print(f"Weight image: {weights.shape}")
+print(f"Positive weights favour: {pipeline[-1].classes_[1]}")
+
+plotting.plot_stat_map(
+    weights,
+    display_mode="z",
+    cut_coords=5,
+    title=f"{pipeline[-1].classes_[1]} versus {pipeline[-1].classes_[0]}",
+)
+
+###############################################################################
+# The cached maps are held for the process rather than for the transformer,
+# which is what lets each fold's clone reuse them.
+# :func:`~nimare.ml.clear_map_cache` releases them and reports what they
+# served; they grow to the whole feature matrix, so a long session should let
+# go of one studyset's maps before starting on another.
+print(f"Map cache: {clear_map_cache()}")
 
 ###############################################################################
 # Add study information as extra features
