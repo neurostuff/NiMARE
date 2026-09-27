@@ -5,65 +5,156 @@ Machine learning with Studysets
 
 :meth:`~nimare.studyset.Studyset.to_bunch` turns a
 :class:`~nimare.nimads.Studyset` into the arrays a scikit-learn workflow
-expects: a sparse analysis-by-voxel matrix of modeled activation (MA)
-features, an optional target, and the study labels that keep analyses from one
-study out of two different partitions.
+expects: a sparse analysis-by-voxel matrix of peak counts, an optional target,
+and the study labels that keep analyses from one study out of two different
+partitions.
 
 .. code-block:: python
 
-    from nimare.meta.kernel import MKDAKernel
-
-    bunch = studyset.to_bunch(
-        MKDAKernel(r=10),
-        target_field=("metadata", "comparison_task"),
-    )
+    bunch = studyset.to_bunch(target_field=("metadata", "comparison_task"))
 
 :mod:`nimare.ml` holds what a Studyset cannot answer on its own:
 :func:`~nimare.ml.describe_fields` reports which of its fields are worth
-modelling, :func:`~nimare.ml.make_nimare_column_transformer` keeps a reducer off the
-descriptor columns, and :class:`~nimare.ml.MaskerTransformer` lets a nilearn
+modelling, :class:`~nimare.ml.MAKernel` turns the peaks into modeled activation
+(MA) maps, :func:`~nimare.ml.make_nimare_column_transformer` routes each block
+to its own transformer, and :class:`~nimare.ml.MaskerTransformer` lets a nilearn
 masker act on the voxel columns.
 
 Who does what
 -------------
 
-NiMARE owns *extraction*: reading the Studyset, generating MA maps through a
-kernel transformer, matching every row to its analysis, and reporting what is
-missing. scikit-learn owns *evaluation*: splitting, fitting, reducing and
-scoring.
+NiMARE owns *reading*: what each analysis reported, matched to the analysis it
+came from, with what is missing reported rather than guessed. scikit-learn owns
+everything that *transforms* it, the kernel included.
 
-Generating the maps before splitting does not leak. An analysis's MA map is a
+That line is why ``to_bunch`` takes no kernel. A kernel is not a property of a
+Studyset, it is a modelling choice -- how wide a sphere or a Gaussian stands
+for a reported coordinate -- and it is one choice among several, since peak
+counts per parcel are a feature set too. Making it a transformer puts every
+such choice in one place, where it is fitted, cloned, cached and tuned like any
+other:
+
+.. code-block:: python
+
+    from nimare.meta.kernel import MKDAKernel
+    from nimare.ml import MAKernel, make_nimare_column_transformer
+
+    pipeline = make_pipeline(
+        make_nimare_column_transformer(
+            bunch,
+            (MAKernel(MKDAKernel(r=10), source_masker=bunch.masker), "voxels"),
+        ),
+        TruncatedSVD(n_components=64),
+        LogisticRegression(),
+    )
+
+Convolving before splitting would not have leaked -- an analysis's MA map is a
 function of that analysis's own foci, so it never sees the target or another
-analysis. Everything that learns *across* rows -- decomposition, feature
-selection, imputation, scaling -- must be fitted on training rows only, which
-is what a :class:`~sklearn.pipeline.Pipeline` is for.
+analysis -- and that is the point: the move buys composition, not correctness.
+Everything that learns *across* rows -- decomposition, feature selection,
+imputation, scaling -- must still be fitted on training rows only, which is
+what a :class:`~sklearn.pipeline.Pipeline` is for.
 
-Map rows are matched to analyses by analysis id. Kernel transformers return
-one row per analysis that has coordinates, ordered by id, and
-``return_type="sparse"`` drops the ids that name them, so pairing the two by
-position is only correct while the Studyset happens to be in sorted order --
-which :meth:`~nimare.studyset.Studyset.select_analyses` does not guarantee.
+Why the peaks span the grid
+---------------------------
+
+The voxel columns cover the whole image grid of the bundle's ``masker``, not
+just the voxels inside its mask. A coordinate outside the mask still reaches
+into it once a kernel spreads it, so in the mask's own column space such a
+focus has nowhere to be recorded and its contribution is lost. On the bundled
+n-back/flanker studyset that is 266 foci in 112 of 906 analyses, which changes
+99 rows -- silently, since every row still has a plausible map.
+
+Spanning the grid costs almost nothing, because peaks are far sparser than the
+maps they generate: 9,359 nonzeros against 3,889,276 for the same studyset at a
+10 mm radius. Converting a release is no longer the memory wall it was; the
+expansion happens per fold, inside the pipeline, on a training subset.
+
+:class:`~nimare.ml.MAKernel` takes grid columns in and returns the masker's
+voxels, which is the space :class:`~nimare.ml.MaskerTransformer` and nilearn
+expect. ``MaskerTransformer`` reads either, deciding from the width, so an
+atlas can summarise the raw peaks or the maps a kernel made.
 
 What the bundle holds
 ---------------------
 
 A :class:`~sklearn.utils.Bunch`, which is a dict whose keys are also
-attributes, holding ``data`` (sparse while the map features are unreduced),
-``target``, ``groups`` (the study each analysis came from), ``ids``,
-``feature_names``, ``map_columns``, ``descriptor_columns``,
-``descriptor_names``, the ``masker`` the voxels came from, and ``provenance``.
+attributes, holding ``data`` (sparse), ``target``, ``groups`` (the study each
+analysis came from), ``ids``, ``feature_names``, ``voxel_columns``,
+``descriptor_columns``, ``descriptor_names``, the ``masker`` whose grid the
+voxels span, and ``provenance``.
 
 There is no container class and no estimator to configure. Everything after
 conversion is scikit-learn working on ordinary arrays: a grouped split is
 :class:`~sklearn.model_selection.GroupShuffleSplit` over ``groups``, a subset
 is an index into ``data``, ``ids`` and ``target`` together, and a reduction is
-a transformer applied to ``data[:, bunch.map_columns]``.
+a transformer applied to ``data[:, bunch.voxel_columns]``.
 
-``to_bunch`` is the only ``to_*`` method on a Studyset that computes rather
-than reformats: a release of 40,000 analyses takes about half a minute and a
-few gigabytes, because it runs a kernel over every analysis. It is also the
-only one that needs scikit-learn, which it imports when called rather than at
-module load, so :mod:`nimare.studyset` does not depend on it.
+``feature_names`` names a column when asked rather than up front, because a
+grid of 902,629 columns would otherwise cost more in strings than the sparse
+matrix they describe. It indexes, slices and reports membership like a list.
+
+``to_bunch`` is the only ``to_*`` method on a Studyset that needs
+scikit-learn, which it imports when called rather than at module load, so
+:mod:`nimare.studyset` does not depend on it.
+
+Turning peaks into MA maps
+--------------------------
+
+:class:`~nimare.ml.MAKernel` wraps any NiMARE kernel transformer as a
+scikit-learn one. It takes the bundle's grid columns and returns the masker's
+voxels, so it goes first among the voxel steps:
+
+.. code-block:: python
+
+    make_nimare_column_transformer(
+        bunch,
+        (
+            make_pipeline(
+                MAKernel(MKDAKernel(r=10), source_masker=bunch.masker),
+                TruncatedSVD(n_components=64),
+            ),
+            "voxels",
+        ),
+        (SimpleImputer(strategy="median"), "descriptors"),
+    )
+
+Because it is an ordinary estimator, the kernel's own parameters are nested
+parameters of the pipeline, and tune like any other:
+
+.. code-block:: python
+
+    GridSearchCV(pipeline, {"makernel__kernel__r": [6, 10, 14]}, cv=...)
+
+Whether that is worth searching is a separate question. On the bundled
+n-back/flanker studyset, MKDA radii from 6 mm to 15 mm score between 0.587 and
+0.597 against a fold standard deviation of 0.03, while the widest kernel costs
+eleven times the non-zeros and eight times the fitting time of the narrowest.
+Bandwidth is cheap to search and, on these data, has nothing to find.
+
+Skipping the kernel entirely is also a feature set: an atlas applied straight
+to the peak columns gives the number of reported coordinates per region, which
+:class:`~nimare.ml.MaskerTransformer` will do because it reads either column
+space.
+
+One kernel cannot move into the pipeline
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An :class:`~nimare.meta.kernel.ALEKernel` given neither ``fwhm`` nor
+``sample_size`` derives a separate width for every analysis from that
+analysis's sample size. A transformer is handed a slice of rows and is not told
+which rows they are, so there is no way to line a per-analysis sample size up
+with the row it belongs to, and ``MAKernel`` refuses it rather than guessing.
+
+scikit-learn's metadata routing exists for exactly this, but it is not
+dependable here: routing into a :class:`~sklearn.compose.ColumnTransformer`
+raises on scikit-learn 1.4.0, works on 1.4.2, and between 1.5 and 1.7 delivers
+the metadata to the training fold and silently drops it on the held-out one --
+a model scored against maps built with a different kernel width than it was
+fitted with. It works again from 1.8, which requires Python 3.11.
+
+Pass a width that holds across analyses instead -- ``ALEKernel(fwhm=10)`` or
+``ALEKernel(sample_size=20)``.
 
 Selecting fields
 ----------------
@@ -90,7 +181,6 @@ it:
 .. code-block:: python
 
     bunch = studyset.to_bunch(
-        MKDAKernel(r=10),
         descriptor_fields=[("annotations", "Neurosynth_TFIDF__*")],
     )
 
@@ -190,7 +280,6 @@ The ``field`` column, filtered to ``kind == "numeric"``, is the
 
     numeric = fields[fields.kind == "numeric"].field
     bunch = studyset.to_bunch(
-        MKDAKernel(r=10),
         descriptor_fields=[("annotations", name) for name in numeric],
         missing_values="keep",
     )
@@ -209,7 +298,7 @@ bundle:
 
 .. code-block:: python
 
-    bunch = studyset.to_bunch(MKDAKernel(r=10), test_size=0.25, random_state=13)
+    bunch = studyset.to_bunch(test_size=0.25, random_state=13)
 
     X_train, y_train = bunch.data[bunch.train], bunch.target[bunch.train]
 
@@ -269,13 +358,13 @@ and passes ``remainder``, ``sparse_threshold``, ``n_jobs``, ``verbose`` and
 
     preprocessor = make_nimare_column_transformer(
         bunch,
-        (TruncatedSVD(n_components=50), "maps"),
+        (TruncatedSVD(n_components=50), "voxels"),
         (SimpleImputer(strategy="median"), "sample_sizes"),
         (StandardScaler(), "year"),
     )
 
 ``columns`` may be a name, as it may be for a ColumnTransformer reading a
-frame: ``"maps"`` and ``"descriptors"`` name the two blocks, and a descriptor
+frame: ``"voxels"`` and ``"descriptors"`` name the two blocks, and a descriptor
 may be named by its own field name. It may equally be a slice, indices, a mask
 or a callable -- whatever scikit-learn accepts.
 
@@ -283,10 +372,10 @@ What the bundle adds is the four things scikit-learn cannot work out from an
 array of numbers:
 
 * the column spans of the two blocks;
-* the masker, bound into an atlas reducer, so ``(difumo, "maps")`` works;
+* the masker, bound into an atlas reducer, so ``(difumo, "voxels")`` works;
 * the column names, so a fitted coefficient can be read back to its field;
 * ``sparse_threshold=1.0``, because scikit-learn's ``0.3`` would densify an
-  unreduced map block -- about 1.6 GB at 228,000 columns.
+  unreduced voxel block -- about 6.5 GB at 902,629 grid columns.
 
 **It is not needed until there are descriptors.** ``descriptor_fields`` is
 None by default, and then ``descriptor_columns`` is empty and the whole matrix
@@ -298,12 +387,12 @@ hands every transformer the whole of ``X``, and a ColumnTransformer names what
 each group gets -- indeed its default ``remainder="drop"`` *discards* the
 columns nobody claimed. What stands in for marking is the column spec, which is
 what :func:`~sklearn.compose.make_column_selector` builds for a frame and what
-``bunch.map_columns`` already is for this array: an ordinary :class:`slice`.
+``bunch.voxel_columns`` already is for this array: an ordinary :class:`slice`.
 ``remainder="drop"`` is right for a frame of many columns and wrong here,
 where the two blocks are the whole of the matrix: naming only the descriptors
-would discard 228,483 voxels and leave a model fitted on one column of sample
+would discard every voxel and leave a model fitted on one column of sample
 sizes, without a word. So leaving *either* block unclaimed raises. Say
-``("drop", "maps")`` or ``remainder="passthrough"`` when that is what is
+``("drop", "voxels")`` or ``remainder="passthrough"`` when that is what is
 meant -- the refusal is about silence, not about the outcome.
 
 So the same thing can be written out by hand, and should be for anything this
@@ -313,7 +402,7 @@ function does not cover:
 
     ColumnTransformer(
         [
-            ("maps", TruncatedSVD(n_components=50), bunch.map_columns),
+            ("voxels", TruncatedSVD(n_components=50), bunch.voxel_columns),
             ("descriptors", SimpleImputer(), bunch.descriptor_columns),
         ],
         sparse_threshold=1.0,
@@ -329,12 +418,19 @@ implicit zeros. :class:`~sklearn.preprocessing.StandardScaler` says so and
 names the fix, ``with_mean=False``, and
 :class:`~sklearn.preprocessing.MaxAbsScaler` is the sparse-safe scaler.
 
-:func:`~nimare.ml.make_nimare_column_transformer` decides per transformer, by fitting a
-clone on a tiny sparse probe: the answer is a property of the arguments rather
-than the class, since ``StandardScaler()`` refuses sparse input and
+:func:`~nimare.ml.make_nimare_column_transformer` decides per transformer, by
+fitting a clone on a sparse probe: the answer is a property of the arguments
+rather than the class, since ``StandardScaler()`` refuses sparse input and
 ``StandardScaler(with_mean=False)`` does not, and no estimator tag separates
 them. A transformer that passes keeps the block sparse; one that fails is
 handed dense columns, which always works.
+
+The probe is as wide as the block, because the width is part of the question.
+``TruncatedSVD(n_components=50)`` cannot fit a one-column probe whatever its
+sparsity, so a narrow probe called the canonical sparse reducer dense and
+densified the voxel block before it -- 1.6 GB at 228,483 columns, and 16.9 GB
+at 902,629. Only the first step of a pipeline is probed, since a later step is
+handed the step before it rather than the block.
 
 That matters most for a pattern selection. Scaling the Neurosynth release's
 3,228 labels over 115,748 analyses would be 2.8 GB dense and is 2% filled, so
@@ -401,11 +497,11 @@ to the held-out rows:
 
 .. code-block:: python
 
-    maps = bunch.data[:, bunch.map_columns]
+    voxels = bunch.data[:, bunch.voxel_columns]
     reducer = MaskerTransformer(atlas, source_masker=bunch.masker)
 
-    train_reduced = reducer.fit_transform(maps[train])
-    test_reduced = reducer.transform(maps[test])
+    train_reduced = reducer.fit_transform(voxels[train])
+    test_reduced = reducer.transform(voxels[test])
 
 Calling ``fit_transform`` on the held-out rows would fit the reduction on the
 analyses being held out.
@@ -420,33 +516,37 @@ set. The default of 32 sits at the knee, at roughly 60 MB.
 Scale
 -----
 
-A Studyset of 1,000 studies converts and splits in well under the budget the
-feature was designed to: roughly a second, and under a gigabyte of peak memory,
-against a target of three minutes and five gigabytes. Unreduced voxelwise
-features are sparse everywhere -- in the container, in the exported bundle, and
-through :func:`~nimare.ml.make_nimare_column_transformer` -- and only an explicit
-reducer produces a dense representation.
+Conversion no longer generates maps, so it is a read rather than a
+computation. Against the 2026-09 NeuroStore release on a 2 mm whole-brain mask,
+whose grid is 902,629 columns:
 
-Conversion is linear in analyses, and an MA row is denser than a Studyset row:
-against the 2026-09 NeuroStore release at a 10 mm MKDA radius, measured on a
-2 mm whole-brain mask,
+=================  ========  ===========
+Analyses           Time      Non-zeros
+=================  ========  ===========
+500                  0.8 s         3,008
+2,000                0.2 s        13,825
+8,000                0.2 s        79,344
+20,000               0.3 s       218,485
+115,748              1.5 s       852,973
+=================  ========  ===========
 
-=================  ========  ===========  =============
-Analyses           Time      Non-zeros    Peak memory
-=================  ========  ===========  =============
-500                  3.8 s     1,350,169        63 MB
-2,000                3.2 s     6,045,930       105 MB
-8,000               10.2 s    33,437,983       549 MB
-20,000              27.7 s    91,017,001      1,483 MB
-=================  ========  ===========  =============
+The whole release converts in under two seconds, and peak memory did not rise
+measurably above the cost of holding the Studyset itself. Under the previous
+design, which ran a kernel over every analysis at conversion, 20,000 analyses
+took 27.7 s and 91 million non-zeros, and the full release was estimated at
+roughly 6 GB of sparse data -- too much for a 16 GB machine, so it had to be
+sliced first.
 
-Extrapolating the observed 4,700 non-zeros per row, all 115,748 analyses would
-be roughly 6 GB of sparse data and about twice that at peak, so the whole
-release does not convert on a 16 GB machine. Take the part being modelled
-first -- :meth:`~nimare.nimads.Studyset.slice` selects analyses by id, and
-``describe_fields`` says which ones carry the field of interest -- and pass
-``memory=`` so a second pass over the same analyses reuses the maps it already
-generated.
+What that moved rather than removed is the expansion: a 10 mm MKDA kernel still
+produces about 4,700 non-zeros per row. It now happens inside the pipeline,
+per fold, over a training subset, and a :class:`~sklearn.pipeline.Pipeline`
+built with ``memory=`` caches it across folds and across candidates in a
+search.
+
+Unreduced voxel features stay sparse everywhere -- in the bundle, through
+:func:`~nimare.ml.make_nimare_column_transformer`, and through
+:class:`~nimare.ml.MAKernel` -- and only an explicit reducer produces a dense
+representation.
 
 .. seealso::
 

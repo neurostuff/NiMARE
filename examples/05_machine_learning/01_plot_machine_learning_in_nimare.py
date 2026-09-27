@@ -6,13 +6,13 @@ Machine learning in NiMARE
 ============================
 
 Turn a Studyset into a scikit-learn dataset, split it without leaking a study,
-and reduce the voxelwise features before fitting a model.
+and build the voxelwise features inside a pipeline.
 
 :meth:`~nimare.studyset.Studyset.to_bunch` returns a
-:class:`~sklearn.utils.Bunch` of modeled activation (MA) features, the study
-each analysis came from, and an optional target, all in one row order. NiMARE
-builds it; scikit-learn does the splitting, fitting and scoring, on ordinary
-arrays it already knows how to handle.
+:class:`~sklearn.utils.Bunch` of the peaks each analysis reported, the study it
+came from, and an optional target, all in one row order. NiMARE reads the
+Studyset; scikit-learn does everything that transforms it -- the modeled
+activation (MA) kernel included, as :class:`~nimare.ml.MAKernel`.
 """
 
 from pathlib import Path
@@ -30,7 +30,12 @@ from sklearn.random_projection import SparseRandomProjection
 
 from nimare.extract import fetch_neurostore
 from nimare.meta.kernel import MKDAKernel
-from nimare.ml import MaskerTransformer, describe_fields, make_nimare_column_transformer
+from nimare.ml import (
+    MAKernel,
+    MaskerTransformer,
+    describe_fields,
+    make_nimare_column_transformer,
+)
 from nimare.nimads import Studyset
 from nimare.utils import get_resource_path
 
@@ -53,19 +58,16 @@ print(studyset.metadata["comparison_task"].value_counts().to_string())
 ###############################################################################
 # Build the feature set
 # -----------------------------------------------------------------------------
-# :meth:`~nimare.studyset.Studyset.to_bunch` applies an MKDA kernel to the
-# coordinates of each analysis to generate voxelwise MA features, and reads the
-# ``comparison_task`` metadata field as the ``"n-back"`` and ``"flanker"``
-# labels to predict. Fields are named by a bare field name, or by a
-# ``(source, field)`` pair when the name appears in more than one Studyset
-# table.
+# :meth:`~nimare.studyset.Studyset.to_bunch` reads each analysis's foci into a
+# row of peak counts over the image grid, and reads the ``comparison_task``
+# metadata field as the ``"n-back"`` and ``"flanker"`` labels to predict.
+# Fields are named by a bare field name, or by a ``(source, field)`` pair when
+# the name appears in more than one Studyset table.
 #
-# Generating the maps before splitting does not leak: an analysis's MA map is a
-# function of that analysis's own foci, so it never sees the target or another
-# analysis. Only steps that learn *across* rows have to be fitted inside a
-# split, which is what the pipeline below is for.
+# No kernel is named here. Convolving peaks into MA maps is a modelling choice,
+# and one choice among several -- peak counts per parcel are a feature set too
+# -- so it belongs with the others, in the pipeline.
 bunch = studyset.to_bunch(
-    MKDAKernel(r=10),
     target_field=("metadata", "comparison_task"),
     # Hold out a quarter of the studies; see the next section.
     test_size=0.25,
@@ -73,14 +75,19 @@ bunch = studyset.to_bunch(
 )
 
 print(f"Feature data: {bunch.data.shape}, sparse={bunch.data.format}")
+print(f"Non-zeros: {bunch.data.nnz:,} peaks")
 print(f"Labels: {sorted(set(bunch.target))}")
 print(f"Dropped for want of coordinates: {len(bunch.provenance['dropped_ids'])}")
 
 ###############################################################################
 # The bundle is the familiar scikit-learn one: sparse ``data``, aligned
 # ``target``, and ``groups`` holding the study each analysis came from. It also
-# carries ``ids``, ``feature_names``, ``map_columns``, ``descriptor_columns``,
-# ``descriptor_names``, the ``masker`` the voxels came from, and ``provenance``.
+# carries ``ids``, ``feature_names``, ``voxel_columns``, ``descriptor_columns``,
+# ``descriptor_names``, the ``masker`` whose grid the voxels span, and
+# ``provenance``.
+#
+# The voxel columns span the whole image grid, not just the mask, because a
+# coordinate outside the mask still reaches into it once a kernel spreads it.
 print(f"Bundle: {', '.join(sorted(bunch))}")
 
 ###############################################################################
@@ -99,23 +106,23 @@ print(f"Shared studies: {set(bunch.groups[train]) & set(bunch.groups[test])}")
 
 ###############################################################################
 # The split is a :class:`~sklearn.model_selection.GroupShuffleSplit` over
-# ``groups``, and costs milliseconds where the conversion above runs a kernel.
-# For several splits of one bundle, or for cross-validation, hand ``groups`` to
-# a group splitter rather than converting again.
+# ``groups``. For several splits of one bundle, or for cross-validation, hand
+# ``groups`` to a group splitter rather than converting again.
 
 ###############################################################################
 # Classify the task label
 # -----------------------------------------------------------------------------
 # ``bunch.data`` is an ordinary sparse matrix, so an ordinary scikit-learn
-# pipeline works on it. The voxelwise MA features are high-dimensional, so
-# truncated SVD reduces them before the classifier sees them; putting the
-# reducer in the pipeline is what keeps it fitted on training rows only.
-# GroupKFold reads the same study labels the split used.
+# pipeline works on it. :class:`~nimare.ml.MAKernel` convolves the peaks into
+# MA maps as the first step, truncated SVD reduces them before the classifier
+# sees them, and both are fitted on training rows only because they are in the
+# pipeline. GroupKFold reads the same study labels the split used.
 #
 # Every column here is a voxel -- ``bunch.descriptor_names`` is empty -- so the
-# reducer can see the whole matrix. The section after next adds descriptor
+# steps can see the whole matrix. The section after next adds descriptor
 # columns, which a bare reducer would decompose along with the voxels.
 pipeline = make_pipeline(
+    MAKernel(MKDAKernel(r=10), source_masker=bunch.masker),
     TruncatedSVD(n_components=50, random_state=RANDOM_SEED),
     LogisticRegression(max_iter=1000, class_weight="balanced", random_state=RANDOM_SEED),
 )
@@ -139,7 +146,7 @@ print(f"Cross-validation accuracy: {scores.mean():.3f} +/- {scores.std():.3f}")
 # ``missing_values="drop"`` to remove those analyses or ``"keep"`` to leave the
 # gaps for an imputer in your pipeline.
 try:
-    studyset.to_bunch(MKDAKernel(r=10), descriptor_fields=["sample_sizes"])
+    studyset.to_bunch(descriptor_fields=["sample_sizes"])
 except ValueError as exc:
     print(f"{str(exc)[:160]}...")
 
@@ -149,27 +156,32 @@ except ValueError as exc:
 # :func:`~nimare.ml.make_nimare_column_transformer` is
 # :func:`~sklearn.compose.make_column_transformer` with the bundle's blocks
 # filled in: ``(transformer, columns)`` pairs as scikit-learn takes them, where
-# ``columns`` may be ``"maps"``, ``"descriptors"``, or a descriptor's own field
-# name. It also binds the bundle's masker into an atlas reducer, keeps the
-# column names so a coefficient can be read back, and defaults
-# ``sparse_threshold`` to 1.0 -- scikit-learn's 0.3 would densify a wide map
+# ``columns`` may be ``"voxels"``, ``"descriptors"``, or a descriptor's own
+# field name. It also binds the bundle's masker into an atlas reducer, keeps
+# the column names so a coefficient can be read back, and defaults
+# ``sparse_threshold`` to 1.0 -- scikit-learn's 0.3 would densify a wide voxel
 # block.
 #
 # A transformer per descriptor is just another pair:
 # ``(SimpleImputer(), "sample_sizes"), (StandardScaler(), "year")``. Anything
-# this does not cover is written out with ``bunch.map_columns`` and
-# ``bunch.descriptor_columns``, which are ordinary slices. With map features
+# this does not cover is written out with ``bunch.voxel_columns`` and
+# ``bunch.descriptor_columns``, which are ordinary slices. With voxel features
 # alone there is nothing to keep the reducer away from, so none of this is
 # needed.
 with_descriptors = studyset.to_bunch(
-    MKDAKernel(r=10),
     target_field=("metadata", "comparison_task"),
     descriptor_fields=["sample_sizes"],
     missing_values="keep",
 )
 preprocessor = make_nimare_column_transformer(
     with_descriptors,
-    (TruncatedSVD(n_components=50, random_state=RANDOM_SEED), "maps"),
+    (
+        make_pipeline(
+            MAKernel(MKDAKernel(r=10), source_masker=with_descriptors.masker),
+            TruncatedSVD(n_components=50, random_state=RANDOM_SEED),
+        ),
+        "voxels",
+    ),
     (SimpleImputer(strategy="median"), "descriptors"),
 )
 
@@ -189,7 +201,6 @@ print(f"Steps: {[name for name, _, _ in preprocessor.transformers]}")
 # ``missing_values`` has nothing to report about a pattern selection.
 neurosynth = Studyset(str(Path(get_resource_path()) / "neurosynth_laird_studyset.json"))
 annotated = neurosynth.to_bunch(
-    MKDAKernel(r=10),
     descriptor_fields=[("annotations", "Neurosynth_TFIDF__*")],
 )
 
@@ -202,12 +213,12 @@ print(f"Still sparse: {sparse.issparse(annotated.data)}")
 ###############################################################################
 # Compare reduction workflows
 # -----------------------------------------------------------------------------
-# Any scikit-learn transformer will do. They see the sparse voxel matrix, so
-# they have to accept sparse input: truncated SVD, sparse random projection,
-# variance thresholding and atlas aggregation all do. ``PCA`` accepts sparse
-# input as well, but only through its ``arpack`` or ``covariance_eigh``
-# solvers, and it centres the data, which is why truncated SVD is the usual
-# choice for a matrix this wide.
+# Any scikit-learn transformer will do, downstream of the kernel. They see the
+# sparse MA matrix, so they have to accept sparse input: truncated SVD, sparse
+# random projection, variance thresholding and atlas aggregation all do.
+# ``PCA`` accepts sparse input as well, but only through its ``arpack`` or
+# ``covariance_eigh`` solvers, and it centres the data, which is why truncated
+# SVD is the usual choice for a matrix this wide.
 reducers = {
     "Truncated SVD": TruncatedSVD(n_components=N_COMPONENTS, random_state=RANDOM_SEED),
     "Sparse random projection": SparseRandomProjection(
@@ -219,6 +230,7 @@ splitter = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=RANDOM_SEED
 
 for name, reducer in reducers.items():
     reduced_pipeline = make_pipeline(
+        MAKernel(MKDAKernel(r=10), source_masker=bunch.masker),
         reducer,
         LogisticRegression(max_iter=1000, class_weight="balanced", random_state=RANDOM_SEED),
     )
@@ -248,7 +260,11 @@ for name, reducer in reducers.items():
 # :class:`~nilearn.maskers.NiftiMasker` returns voxels instead, which is how
 # nilearn's smoothing and standardizing reach these features::
 #
-#     (NiftiMasker(smoothing_fwhm=6), "maps")
+#     (NiftiMasker(smoothing_fwhm=6), "voxels")
+#
+# It reads either column space, deciding from the width: the bundle's raw peak
+# columns, which gives the number of reported coordinates per region, or the MA
+# maps a kernel made, as here.
 #
 # Outside a pipeline, fit the transformer on the training rows and apply the
 # same fitted one to the held-out rows -- calling ``fit_transform`` on the test
@@ -256,7 +272,9 @@ for name, reducer in reducers.items():
 difumo = fetch_atlas_difumo(dimension=N_COMPONENTS, resolution_mm=2)
 atlas_reducer = MaskerTransformer(difumo, source_masker=bunch.masker)
 
-maps = bunch.data[:, bunch.map_columns]
+maps = MAKernel(MKDAKernel(r=10), source_masker=bunch.masker).fit_transform(
+    bunch.data[:, bunch.voxel_columns]
+)
 train_reduced = atlas_reducer.fit_transform(maps[train])
 test_reduced = atlas_reducer.transform(maps[test])
 
@@ -300,14 +318,15 @@ print(targets[["source", "field", "kind", "coverage", "n_unique"]].to_string(ind
 ###############################################################################
 # Convert the part you are modelling
 # -----------------------------------------------------------------------------
-# An MA row is denser than a Studyset row -- about 4,700 voxels at a 10 mm
-# radius -- so the whole release is roughly 6 GB of sparse data and does not
-# convert on a 16 GB machine. :meth:`~nimare.nimads.Studyset.slice` takes
-# analysis ids, so take the part being modelled first. ``missing_values="drop"``
-# removes the analyses the extractor could not fill in.
+# The whole release converts in under two seconds now that conversion reads
+# peaks rather than making maps -- 115,748 analyses and 852,973 non-zeros. What
+# is still expensive is the kernel: an MA row is about 4,700 voxels at a 10 mm
+# radius, so fitting over the whole release would be. :meth:`~nimare.nimads.Studyset.slice`
+# takes analysis ids, so take the part being modelled first.
+# ``missing_values="drop"`` removes the analyses the extractor could not fill
+# in.
 subset = studyset.slice(analyses=list(studyset.ids)[:4000])
 resting = subset.to_bunch(
-    MKDAKernel(r=10),
     target_field=("annotations", "TaskExtractor.fMRITasks[0].RestingState"),
     missing_values="drop",
 )
@@ -326,7 +345,6 @@ demographics = fields[
     (fields.kind == "numeric") & fields.field.str.contains("groups[0].", regex=False)
 ]
 with_demographics = subset.to_bunch(
-    MKDAKernel(r=10),
     target_field=("annotations", "TaskExtractor.fMRITasks[0].RestingState"),
     descriptor_fields=[("annotations", name) for name in demographics.field],
     # A descriptor gap an imputer can fill; a target gap it cannot, so the two
@@ -350,7 +368,13 @@ print(f"Descriptors: {[name.split('.')[-1] for name in with_demographics.descrip
 release_pipeline = make_pipeline(
     make_nimare_column_transformer(
         with_demographics,
-        (TruncatedSVD(n_components=50, random_state=RANDOM_SEED), "maps"),
+        (
+            make_pipeline(
+                MAKernel(MKDAKernel(r=10), source_masker=with_demographics.masker),
+                TruncatedSVD(n_components=50, random_state=RANDOM_SEED),
+            ),
+            "voxels",
+        ),
         (SimpleImputer(strategy="median"), "descriptors"),
     ),
     LogisticRegression(max_iter=1000, class_weight="balanced", random_state=RANDOM_SEED),

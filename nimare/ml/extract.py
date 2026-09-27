@@ -2,21 +2,19 @@
 
 from __future__ import annotations
 
-import copy
 from collections.abc import Mapping, Sequence
 from fnmatch import fnmatch
 from typing import Any, NamedTuple
 
 import numpy as np
 import pandas as pd
-from joblib import Memory
 from scipy import sparse
 from sklearn.model_selection import GroupShuffleSplit
 from sklearn.utils import Bunch
 
 from nimare.base import NiMAREBase
 from nimare.ml._helpers import (
-    _as_sparse,
+    _FeatureNames,
     _hstack,
     _hstack_blocks,
     _jsonable,
@@ -24,6 +22,7 @@ from nimare.ml._helpers import (
     _preview,
     _take_rows,
 )
+from nimare.ml.peaks import peak_matrix
 from nimare.studyset import normalize_collection
 from nimare.studyset.blocks import label_block_for
 from nimare.studyset.columns import ID_COLS
@@ -395,7 +394,6 @@ class _FeatureExtractor(NiMAREBase):
 
     def __init__(
         self,
-        kernel_transformer: Any,
         descriptor_fields: Sequence[Any] | None = None,
         target_field: Any | None = None,
         target_transformer: Any | None = None,
@@ -403,10 +401,7 @@ class _FeatureExtractor(NiMAREBase):
         missing_values: str = "raise",
         test_size=None,
         random_state=None,
-        memory: Any = None,
-        memory_level: int = 2,
     ):
-        self.kernel_transformer = kernel_transformer
         self.descriptor_fields = descriptor_fields
         self.target_field = target_field
         self.target_transformer = target_transformer
@@ -414,8 +409,6 @@ class _FeatureExtractor(NiMAREBase):
         self.missing_values = missing_values
         self.test_size = test_size
         self.random_state = random_state
-        self.memory = memory
-        self.memory_level = memory_level
 
     # ------------------------------------------------------------- public API
 
@@ -448,9 +441,8 @@ class _FeatureExtractor(NiMAREBase):
             )
 
         study_ids = studyset.metadata["study_id"].to_numpy(dtype=str)
-        # The coordinate block is what the kernel transformer reads, so it is also what
-        # decides which analyses can have a map at all.
-        has_coordinates = studyset.coordinate_block().group_sizes() > 0
+        peaks = peak_matrix(studyset, studyset.masker.mask_img)
+        has_coordinates = np.diff(peaks.indptr) > 0
 
         fields = _Fields(studyset)
         blocks = self._read_descriptors(fields)
@@ -460,13 +452,10 @@ class _FeatureExtractor(NiMAREBase):
 
         self._check_target(target, retained, ids)
 
-        studyset_rows = studyset.select_analyses(retained)
-        map_features = self._map_matrix(studyset_rows, ids[retained], has_coordinates[retained])
-
         descriptor_names = [name for block in blocks for name in block.names]
         bundle = self._bundle(
             studyset,
-            map_features,
+            peaks[retained],
             self._descriptor_matrix(blocks, retained),
             descriptor_names,
             ids=ids[retained],
@@ -487,15 +476,15 @@ class _FeatureExtractor(NiMAREBase):
         return kept[0] if len(kept) == 1 else _hstack_blocks(kept)
 
     @staticmethod
-    def _bundle(studyset, map_features, descriptors, descriptor_names, **aligned):
+    def _bundle(studyset, peaks, descriptors, descriptor_names, **aligned):
         """Assemble the bundle, with the column boundary the blocks imply."""
-        n_map = map_features.shape[1]
+        n_voxels = peaks.shape[1]
         n_descriptors = 0 if descriptors is None else descriptors.shape[1]
         return Bunch(
-            data=_hstack(map_features, descriptors),
-            feature_names=[f"voxel_{index}" for index in range(n_map)] + list(descriptor_names),
-            map_columns=slice(0, n_map),
-            descriptor_columns=slice(n_map, n_map + n_descriptors),
+            data=_hstack(peaks, descriptors),
+            feature_names=_FeatureNames(n_voxels, descriptor_names),
+            voxel_columns=slice(0, n_voxels),
+            descriptor_columns=slice(n_voxels, n_voxels + n_descriptors),
             descriptor_names=list(descriptor_names),
             masker=studyset.masker,
             **aligned,
@@ -693,46 +682,11 @@ class _FeatureExtractor(NiMAREBase):
         role = "target" if field == TARGET_KEY else "descriptors"
         return self.missing_values.get(role, "raise")
 
-    def _map_matrix(self, studyset, ids, has_coordinates):
-        """Return the analysis-by-voxel matrix, aligned row for row to ``ids``."""
-        maps = self._resolve_kernel().transform(studyset, return_type="sparse")
-        return _align_map_rows(_as_sparse(maps).tocsr(), ids, has_coordinates)
-
-    def _resolve_kernel(self):
-        """Return a kernel transformer instance, with caching wired up if asked."""
-        kernel_transformer = self.kernel_transformer
-        if isinstance(kernel_transformer, type):
-            kernel_transformer = kernel_transformer()
-
-        if _memory_location(self.memory) is None:
-            return kernel_transformer
-        if _memory_location(getattr(kernel_transformer, "memory", None)) is not None:
-            # The kernel already caches somewhere; do not second-guess it.
-            return kernel_transformer
-
-        kernel_transformer = copy.deepcopy(kernel_transformer)
-        kernel_transformer.memory = (
-            self.memory
-            if isinstance(self.memory, Memory)
-            else Memory(location=self.memory, verbose=0)
-        )
-        # Passed through as given: a kernel transformer caches its maps at level 2, so a
-        # lower level is a request not to cache them.
-        kernel_transformer.memory_level = int(self.memory_level)
-        return kernel_transformer
-
     # -------------------------------------------------------------- provenance
 
     def _provenance(self, studyset, ids, retained, dropped, descriptor_names):
         """Record what this conversion did, for reproducibility."""
         from nimare import __version__
-
-        kernel_transformer = self.kernel_transformer
-        kernel_name = (
-            kernel_transformer.__name__
-            if isinstance(kernel_transformer, type)
-            else type(kernel_transformer).__name__
-        )
 
         return {
             "nimare_version": __version__,
@@ -741,10 +695,6 @@ class _FeatureExtractor(NiMAREBase):
             "space": getattr(studyset, "space", None),
             "n_analyses": int(len(ids)),
             "n_rows": int(retained.sum()),
-            "kernel_transformer": {
-                "class": kernel_name,
-                "params": _jsonable(_kernel_params(kernel_transformer)),
-            },
             "masker": type(studyset.masker).__name__,
             "missing_coordinates": self.missing_coordinates,
             "dropped_ids": dropped["no_coordinates"],
@@ -756,56 +706,6 @@ class _FeatureExtractor(NiMAREBase):
         }
 
 
-def _kernel_params(kernel_transformer):
-    """Return a kernel transformer's parameters, class or instance."""
-    if isinstance(kernel_transformer, type) or not hasattr(kernel_transformer, "get_params"):
-        return {}
-    return kernel_transformer.get_params()
-
-
-def _memory_location(memory):
-    """Return the location a joblib Memory writes to, or None when it is a no-op."""
-    if memory is None:
-        return None
-    if isinstance(memory, Memory):
-        return memory.location
-    return str(memory)
-
-
 def _has_multiple_labels(values):
     """Report whether any value holds more than one label."""
     return any(isinstance(value, (list, tuple, set, np.ndarray)) for value in values)
-
-
-def _align_map_rows(maps, ids, has_coordinates):
-    """Return map rows in ``ids`` order, with all-zero rows where there are no foci.
-
-    Kernel transformers return one row per analysis that has coordinates,
-    ordered by analysis id rather than by the Studyset's own row order, and
-    ``return_type="sparse"`` drops the ids that name them. Rebuilding the id
-    order here is what keeps every row's map with its own target and study;
-    pairing the two by position only works while the Studyset happens to be in
-    sorted order.
-    """
-    map_ids = np.sort(ids[has_coordinates])
-
-    if len(map_ids) != maps.shape[0]:
-        raise ValueError(
-            f"The kernel transformer returned {maps.shape[0]} maps for {len(map_ids)} "
-            "analyses with coordinates. Map features cannot be aligned to analyses."
-        )
-
-    rows = np.empty(len(ids), dtype=int)
-    rows[has_coordinates] = np.searchsorted(map_ids, ids[has_coordinates])
-
-    if not has_coordinates.all():
-        # One extra all-zero row for every coordinate-less analysis to point at.
-        maps = sparse.vstack(
-            [maps, sparse.csr_matrix((1, maps.shape[1]), dtype=maps.dtype)], format="csr"
-        )
-        rows[~has_coordinates] = maps.shape[0] - 1
-
-    if np.array_equal(rows, np.arange(len(ids))):
-        return maps.tocsr()
-
-    return maps[rows].tocsr()

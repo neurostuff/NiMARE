@@ -45,30 +45,26 @@ order before adding local helpers:
 
 ## `Studyset.to_bunch`
 
-`studyset.to_bunch(kernel_transformer, **options)` is the public entry point.
-It converts one Studyset and returns one `sklearn.utils.Bunch`.
+`studyset.to_bunch(**options)` is the public entry point. It converts one
+Studyset and returns one `sklearn.utils.Bunch`.
 Conversion is a single call, not a configure-then-call pair: the settings are
 arguments, and what comes back is the thing the researcher works with.
 
 It is a method on the Studyset because that is the thing being converted, and
-the bundle it returns is inert data. Unlike the other `to_*` methods it
-computes rather than reformats, which the docstring MUST state: it runs a
-kernel over every analysis.
+the bundle it returns is inert data. It takes no kernel: turning peaks into MA
+maps is a modelling choice and belongs with the other modelling choices, in the
+scikit-learn pipeline, as `nimare.ml.MAKernel`.
 
 The conversion logic lives in an internal `_FeatureExtractor` class, so that the
-stages -- field selection, target handling, row retention, map generation,
+stages -- field selection, target handling, row retention, peak reading,
 provenance -- stay separate methods over shared configuration. That class is not
 exported, not documented, and not part of the public surface. No public object
 in this module takes a Studyset and exposes `fit` or `fit_transform`.
 
 ### Signature
 
-Required, positionally:
-
-- `studyset`: the Studyset to convert. One analysis becomes one row.
-- `kernel_transformer`: existing NiMARE kernel transformer instance or class.
-  No implicit scientific default is selected; public examples must pass an
-  explicit kernel transformer.
+Required, positionally: none. `studyset` is the receiver, and one analysis
+becomes one row.
 
 Keyword-only:
 
@@ -81,12 +77,7 @@ Keyword-only:
 - `missing_coordinates`: `"drop"` (default) or `"include"`.
 - `missing_values`: `"raise"` (default), `"drop"` or `"keep"`, for missing
   descriptor and target values.
-- `memory`, `memory_level`: joblib cache location for MA map generation,
-  applied to a copy of the kernel transformer when it does not define its own,
-  following the NiMARE `CacheMixin` convention. Kernel transformers cache their
-  maps at memory level 2, so `memory_level` defaults to 2 here; a lower level
-  is a request not to cache. Repeated conversions of the same Studyset then
-  reuse the maps, across processes as well as within one.
+- `test_size`, `random_state`: an optional grouped holdout.
 
 The option vocabulary is validated before any work is done.
 
@@ -120,7 +111,6 @@ The option vocabulary is validated before any work is done.
   a minority class can leave with the analyses that had no coordinates.
 - Inherit study-level metadata even when a sibling analysis declares the same
   field.
-- Never mutate the caller's kernel transformer.
 
 ## The bundle
 
@@ -135,7 +125,10 @@ and that order is preserved by every method.
 - `groups`: one study label per row, for a group-aware splitter.
 - `ids`: full Studyset analysis identifiers, `<study_id>-<analysis_id>`.
 - `feature_names`: names for `data` in column order.
-- `map_columns`, `descriptor_columns`: the column slices of `data`. A slice is
+- `voxel_columns`, `descriptor_columns`: the column slices of `data`. The voxel
+  columns are peak counts over the whole image grid of `masker`, not over its
+  mask, because a coordinate outside the mask still reaches into it once a
+  kernel spreads it. A slice is
   what a `ColumnTransformer` takes, so these are the column spec, and no other
   marking of the voxel columns is possible: scikit-learn hands every
   transformer the whole of `X`.
@@ -144,8 +137,8 @@ and that order is preserved by every method.
   atlas reducer cannot work this out from `data`, which is why the bundle
   carries it.
 - `provenance`: conversion settings and source Studyset details, including
-  `missing_coordinates`, `dropped_ids`, `missing_value_ids`, and the kernel
-  transformer and its parameters.
+  `missing_coordinates`, `dropped_ids` and `missing_value_ids`. The kernel is
+  no longer among them: it is a pipeline step, and the pipeline records it.
 - `train`, `test`: row positions of a grouped holdout. Present only when
   `test_size` was given.
 
@@ -248,8 +241,7 @@ say so.
 
 This exists because the grouping is domain knowledge, not because splitting
 needs a NiMARE API: a plain `train_test_split` on the bundled Studyset puts 112
-of its 320 studies on both sides. Splitting is milliseconds against a
-conversion that runs a kernel, so the docstring MUST point at `groups` and a
+of its 320 studies on both sides. The docstring MUST point at `groups` and a
 scikit-learn group splitter for repeated splits and for cross-validation.
 
 ### Missing values per role
@@ -287,9 +279,31 @@ a hundred.
 - `source` restricts the report to one source; `min_coverage` drops fields
   below a coverage.
 
+## `MAKernel`
+
+`nimare.ml.MAKernel(kernel, source_masker=...)` is a scikit-learn transformer
+wrapping any NiMARE kernel transformer. Grid-space peak columns in, the source
+masker's voxel columns out. It is the only supported way to build MA features,
+and it MUST reproduce a direct kernel call over the same analyses exactly.
+
+The kernel is held as a constructor parameter, unmodified, so `get_params`,
+`set_params`, `clone` and nested tuning (`makernel__kernel__r`) all work
+through scikit-learn's own machinery.
+
+`MAKernel` MUST refuse a kernel that derives a separate width per analysis from
+that analysis's sample size -- an `ALEKernel` given neither `fwhm` nor
+`sample_size`. A transformer receives a slice of rows without being told which,
+so no per-analysis quantity can be lined up with its row. The error MUST name
+`fwhm=` and `sample_size=` as the fixes. Metadata routing is not used: routing
+into a `ColumnTransformer` raises on scikit-learn 1.4.0 and silently drops the
+metadata on the held-out fold from 1.5 through 1.7.
+
+It MUST also refuse columns that do not span the source masker's grid, since
+masked columns would otherwise be convolved as if they were peaks.
+
 ## Reduction
 
-Map features are an ordinary sparse matrix, so ordinary scikit-learn
+Voxel features are an ordinary sparse matrix, so ordinary scikit-learn
 transformers reduce them: `TruncatedSVD`, `VarianceThreshold`,
 `SparseRandomProjection` and anything else that accepts sparse input, used as
 scikit-learn documents them and imported from scikit-learn. A reducer that
@@ -300,8 +314,13 @@ no factory that re-names it.
 `MaskerTransformer` is the one transformer the module adds, because it is the
 one that has to know which voxel each column is. A nilearn masker is already a
 scikit-learn transformer; what it is not is one that takes an array, since it
-takes images. This bridges that: rows are unmasked into images in the
+takes images. This bridges that: rows are converted back into images in the
 `source_masker`'s space, handed to the masker, and returned as an array.
+
+It MUST read either column space, deciding from the width: the masker's own
+voxels, as `MAKernel` returns them, or its whole image grid, as a bundle's peak
+columns arrive. A width matching neither MUST raise. This is what lets an atlas
+summarise raw peak counts per region, with no kernel involved.
 
 It accepts any nilearn masker, cloned rather than modified, or anything nilearn
 loads as an atlas:
@@ -343,13 +362,13 @@ make_nimare_column_transformer(bunch, *transformers, remainder="drop",
 take the same `(transformer, columns)` pairs, name the steps the way
 `_name_estimators` does, and pass `remainder`, `n_jobs`, `verbose` and
 `verbose_feature_names_out` through unchanged. Anything it does not cover is
-written out as a `ColumnTransformer` over `bunch.map_columns` and
+written out as a `ColumnTransformer` over `bunch.voxel_columns` and
 `bunch.descriptor_columns`.
 
 What it adds MUST be limited to what scikit-learn cannot derive from an array:
 
 - `columns` may be a name or a list of names, as it may be for a
-  ColumnTransformer reading a frame. `"maps"` and `"descriptors"` name the
+  ColumnTransformer reading a frame. `"voxels"` and `"descriptors"` name the
   blocks; a descriptor may be named by its field name. A name that is neither
   MUST raise and list both.
 - An atlas in the transformer slot MUST be resolved to an `MaskerTransformer`

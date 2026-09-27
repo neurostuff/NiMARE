@@ -70,8 +70,8 @@ function and one container.
 
 **Arguments**
 
-- `studyset`: the Studyset to convert, positionally first.
-- `kernel_transformer`: existing NiMARE kernel transformer instance or class.
+- `studyset`: the Studyset to convert, as the receiver. No kernel: MA maps are
+  built by `nimare.ml.MAKernel` inside the pipeline.
 - `descriptor_fields`: optional selectors for metadata, annotations, or texts.
 - `target_field`: optional selector for one prediction target.
 - `target_transformer`: optional callable or stateless transformer applied to
@@ -131,7 +131,7 @@ and an optional target.
 - `target`: optional one-dimensional row-aligned prediction target.
 - `masker`: the masker defining voxel order for unreduced map features.
 - `provenance`: conversion settings and source Studyset details.
-- `map_columns`, `descriptor_columns`, `shape`: column slices and dimensions.
+- `voxel_columns`, `descriptor_columns`, `shape`: column slices and dimensions.
 - `descriptor_names`: the descriptor columns, in order.
 
 The blocks are the source of truth and `features` is derived from them, so the
@@ -179,7 +179,7 @@ than the sparse matrix has bytes.
 #### `to_sklearn(return_X_y=False)`
 
 Returns a `sklearn.utils.Bunch` with `data`, `target`, `groups`,
-`feature_names`, `ids`, `descriptors`, `provenance`, `map_columns` and
+`feature_names`, `ids`, `descriptors`, `provenance`, `voxel_columns` and
 `descriptor_columns`, or `(data, target)`.
 
 #### `split(test_size=0.25, random_state=None)`
@@ -196,7 +196,7 @@ the reducer itself when there are no descriptor columns to keep it away from.
 `descriptor_transformer` is one transformer for the whole block, or a mapping
 from descriptor name to transformer; either way those columns are handed over
 dense.
-`map_columns` and `descriptor_columns` are public, so the same thing can be
+`voxel_columns` and `descriptor_columns` are public, so the same thing can be
 written by hand.
 
 #### `fit_transform_maps(reducer)` / `transform_maps(reducer)`

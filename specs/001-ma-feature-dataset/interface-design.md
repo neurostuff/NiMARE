@@ -394,7 +394,7 @@ class MAFeatureExtractor(NiMAREBase):
 
     def to_sklearn(self, studyset, *, return_X_y=False):
         """Bunch(data, target, groups, ids, feature_names, provenance,
-        map_columns, descriptor_columns) -- or ``(X, y)`` when return_X_y."""
+        voxel_columns, descriptor_columns) -- or ``(X, y)`` when return_X_y."""
 
 
 class MAFeatureDataset(NiMAREBase):
@@ -410,7 +410,7 @@ class MAFeatureDataset(NiMAREBase):
     @property
     def feature_names(self) -> list[str]: ...      # lazy
     @property
-    def map_columns(self) -> slice: ...
+    def voxel_columns(self) -> slice: ...
     @property
     def descriptor_columns(self) -> slice: ...
 
@@ -777,7 +777,7 @@ in a `ColumnTransformer` over every column. Both are gone:
   one block is not worth the indirection. It keeps the two things worth keeping
   for the two-block case: the column boundary, and `sparse_threshold=1.0`,
   since scikit-learn's default of 0.3 would densify a map block above 30%
-  density -- about 1.6 GB at 228k columns. `map_columns` and
+  density -- about 1.6 GB at 228k columns. `voxel_columns` and
   `descriptor_columns` stay public so the recipe can be written by hand, and
   the docstring writes it out.
 - `fit_transform_maps` rejects a bare atlas with a message naming
@@ -1120,7 +1120,7 @@ expensive step and `Studyset.slice` already selects rows.
 
 The bundle was already carrying almost everything: `to_sklearn` returned
 `data`, `target`, `groups`, `feature_names`, `ids`, `provenance`,
-`map_columns` and `descriptor_columns`. Only `masker` and `descriptor_names`
+`voxel_columns` and `descriptor_columns`. Only `masker` and `descriptor_names`
 had to be added for it to stand alone.
 
 ### Why on the Studyset
@@ -1145,7 +1145,7 @@ import time, since `nimare.annotate` already imports scikit-learn at
 | --- | --- |
 | `split` | `GroupShuffleSplit` over `bunch.groups` |
 | `slice`, `select_analyses` | the Studyset's own pair, before conversion |
-| `fit_transform_maps` / `transform_maps` | a transformer on `data[:, map_columns]` |
+| `fit_transform_maps` / `transform_maps` | a transformer on `data[:, voxel_columns]` |
 | `to_sklearn` | the bundle is the bundle |
 | `copy`, `__repr__`, `__len__`, subclass preservation | dict semantics |
 | `feature_names` built lazily | eager, ~13 MB for a 2 mm mask |
@@ -1236,7 +1236,7 @@ No, and the reason is structural rather than a preference.
 - **scikit-learn has no mechanism for a column to opt out of a transformer.**
   Every transformer is handed the whole of `X`. The nearest thing is the
   *column spec* a `ColumnTransformer` takes, which is what
-  `make_column_selector` builds for a frame, and what `bunch.map_columns`
+  `make_column_selector` builds for a frame, and what `bunch.voxel_columns`
   already is for this array: an ordinary `slice`, accepted directly.
 - **"Untargeted by default" is the opposite of the ColumnTransformer default**,
   which is `remainder="drop"`: a column nobody claims is discarded, not passed
@@ -1276,7 +1276,7 @@ Added, and limited to what scikit-learn cannot derive from an array of numbers:
 
 | Addition | Why scikit-learn cannot do it |
 | --- | --- |
-| `"maps"` / `"descriptors"` / a descriptor's field name as `columns` | The block spans live in the bundle. A string spec is already a column *name* to a ColumnTransformer reading a frame, so this is its own convention, not a new one. |
+| `"voxels"` / `"descriptors"` / a descriptor's field name as `columns` | The block spans live in the bundle. A string spec is already a column *name* to a ColumnTransformer reading a frame, so this is its own convention, not a new one. |
 | An atlas in the transformer slot | It needs the masker, which no array carries. The step is named after the resolved `AtlasAggregator`, since `nifti1image` would say nothing. |
 | Column names on every step | A ColumnTransformer selects by position here, the matrix being an array, so a descriptor would otherwise be `x228483` and a coefficient unreadable. |
 | Sparse-aware wrapping | Densifying is needed only by transformers that centre, and a pattern selection is thousands of columns wide. |
@@ -1380,10 +1380,102 @@ The second row was a bug of our own, and an embarrassing one: §22's guard
 refused to drop a single descriptor column while silently discarding the entire
 feature matrix in the other direction. `remainder="drop"` is right for a frame
 of many columns and wrong for a bundle whose two blocks *are* the matrix, so
-both are now guarded, with `("drop", "maps")` and `remainder="passthrough"` as
+both are now guarded, with `("drop", "voxels")` and `remainder="passthrough"` as
 the ways to mean it. The refusal is about silence, not about the outcome.
 
 The rest are inherent to the trade. Fixing "forget `groups=`" or "bare reducer
 over everything" would mean taking `data` back out of the caller's hands, which
 is the container again. They are the price of the flexibility, and the reason
 the documentation leads with the guarded call rather than the general one.
+
+## 25. The kernel is a pipeline step, not a conversion argument
+
+§17 gave `to_bunch` a required `kernel_transformer` and generated MA maps at
+conversion. The boundary that justified it was "NiMARE owns extraction,
+scikit-learn owns evaluation", with the kernel counted as extraction. It is
+not. A kernel is a modelling choice — how wide a sphere or a Gaussian stands
+for a reported coordinate — and it is one choice among several, because peak
+counts per parcel are a feature set too. Making it an argument of the reader
+made MA maps compulsory and put one transform in a different place from every
+other.
+
+So `to_bunch` now takes no kernel and returns the peaks; `nimare.ml.MAKernel`
+wraps any NiMARE kernel transformer as a scikit-learn one. Verified
+behaviour-preserving: `MAKernel` over the peak columns reproduces the old map
+block bit for bit for MKDA, KDA and fixed-width ALE, and the gallery's
+SVD pipeline still scores 0.605.
+
+A middle option — making `kernel_transformer` optional, so both paths existed —
+was rejected as two ways to do one thing.
+
+### The peaks span the image grid, not the mask
+
+Measured, not assumed. In the mask's own 228,483-column space the round trip is
+*lossy*: a focus outside the mask has nowhere to be recorded, but its kernel
+still reaches in. On the bundled studyset that is 266 foci in 112 analyses,
+changing 99 of 906 rows — silently, since every row still has a plausible map.
+Over the full 902,629-column grid the round trip is exact.
+
+The width costs nothing, because peaks are 416x sparser than the maps they
+generate (9,359 non-zeros against 3,889,276). What it did cost was
+`feature_names`, at 55 MB of eager strings against 14 MB before, so the names
+are now generated on access, with `index` and `in` reading the name rather than
+scanning. `_check_claims` likewise moved from a set of indices to a boolean
+mask.
+
+The unlooked-for result is scale: the whole 115,748-analysis release now
+converts in 1.5 s with 852,973 non-zeros, where the previous design needed
+27.7 s for 20,000 analyses and was estimated at ~6 GB for the release — too
+much for a 16 GB machine. The expansion still happens, but per fold, inside the
+pipeline, over a training subset.
+
+### Study-wise ALE cannot follow
+
+An `ALEKernel` given neither `fwhm` nor `sample_size` derives one width per
+analysis from that analysis's sample size. A transformer is handed a slice of
+rows and is not told which, so a bound sample-size array would misalign under
+cross-validation — the silent-wrong-answer class this design keeps eliminating.
+`MAKernel` refuses it and names the fix.
+
+scikit-learn's metadata routing is the sanctioned answer, and was rejected on
+measurement. Routing into a `ColumnTransformer`:
+
+| scikit-learn | behaviour |
+| --- | --- |
+| 1.4.0 | raises `AttributeError: '_columns'` |
+| 1.4.2 | correct |
+| 1.5.2, 1.6.1, 1.7.0 | **silently drops it on the held-out fold** |
+| 1.8.0, 1.9.1 | correct |
+
+The 1.5–1.7 window delivers sample sizes to the training fold and `None` to the
+test fold, scoring a model against maps built with a different kernel width
+than it was fitted with. Requiring >= 1.8 would mean dropping Python 3.10,
+since 1.8 requires 3.11. Neither cost is worth a capability reachable by
+passing `ALEKernel(fwhm=...)`.
+
+### What the move buys, and what it does not
+
+It does not buy correctness: convolving before the split never leaked, because
+an MA map is a function of one analysis's own foci. It does not buy accuracy
+either — swept on two studysets, MKDA radii of 6–15 mm span 0.587–0.597 against
+a fold SD of 0.03, and on the release slice 6–14 mm span 0.661–0.673 against a
+fold SD of 0.04. Bandwidth has nothing to find, and the widest kernels cost
+8–11x the time for slightly worse scores.
+
+What it buys is that every decision about the features is made in one place,
+and that decisions the old API forbade are now expressible: an atlas over the
+raw peaks scores 0.552 on the bundled studyset without any kernel at all.
+
+### The sparse probe has to be block-shaped
+
+Widening the voxel block exposed a bug in §22's probe. `_handles_sparse` fitted
+a clone on a 4x1 sparse matrix, which `TruncatedSVD(n_components=50)` cannot
+fit at any sparsity, so the canonical sparse reducer was classed as needing
+dense input and the block was densified before it. At 228,483 columns that was
+a silent 1.6 GB; at 902,629 it is 16.9 GB and raises, which is how it was
+found.
+
+The probe is now as wide as the block it stands for, and only the first step of
+a pipeline is probed -- a later step receives the step before it, not the block,
+so its appetite is not ours to protect. `MAKernel` reads the width to know
+which space its columns are in, so it needs the same fix for the same reason.

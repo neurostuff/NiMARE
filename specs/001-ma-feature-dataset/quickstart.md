@@ -15,10 +15,7 @@ python -m pip install -e .[tests,doc]
 ## Convert a Studyset to feature data
 
 ```python
-from nimare.meta.kernel import MKDAKernel
-
 bunch = studyset.to_bunch(
-    MKDAKernel(r=10),
     descriptor_fields=["sample_sizes", ("annotations", "Neurosynth_TFIDF__pain")],
     target_field=("annotations", "Neurosynth_TFIDF__emotion"),
 )
@@ -26,13 +23,14 @@ bunch = studyset.to_bunch(
 
 Expected result:
 
-- `bunch.data` is the analysis-by-feature matrix, sparse while the map features
-  are unreduced.
+- `bunch.data` is the analysis-by-feature matrix, sparse. Its voxel columns are
+  peak counts over the whole image grid of `bunch.masker`; `nimare.ml.MAKernel`
+  turns them into MA maps inside the pipeline.
 - `bunch.target` is aligned to the rows of `data`.
 - `bunch.groups` holds the study each analysis came from.
 - `bunch.feature_names`, `bunch.ids` and `bunch.provenance` describe them.
 
-- `bunch.map_columns`, `bunch.descriptor_columns`, `bunch.descriptor_names` and
+- `bunch.voxel_columns`, `bunch.descriptor_columns`, `bunch.descriptor_names` and
   `bunch.masker` say which columns are voxels and where they came from.
 
 There is no container class, no estimator to configure and no `fit` to call.
@@ -74,32 +72,34 @@ studyset.select_analyses(mask_or_positions)              # mask or positions
 ## Split without study leakage
 
 ```python
-bunch = studyset.to_bunch(MKDAKernel(r=10), test_size=0.25, random_state=13)
+bunch = studyset.to_bunch(test_size=0.25, random_state=13)
 
 assert set(bunch.groups[bunch.train]).isdisjoint(bunch.groups[bunch.test])
 ```
 
 `test_size` adds `train` and `test` row positions, grouped by study. Without it
-both keys are absent. The split is milliseconds and the conversion runs a
-kernel, so for several splits, or for cross-validation, pass `bunch.groups` to
-a scikit-learn group splitter instead of converting again.
+both keys are absent. For several splits, or for cross-validation, pass
+`bunch.groups` to a scikit-learn group splitter instead of converting again.
 
 `test_size` is a fraction of *studies*, so analysis counts only approximate it.
 For cross-validation, hand `bunch.groups` to any scikit-learn group splitter.
 
-## Reduce voxelwise map features
+## Build and reduce the voxelwise features
 
-Map features are an ordinary sparse matrix, so ordinary scikit-learn
-transformers reduce them. Inside a pipeline, which is what keeps the reducer
-fitted on training rows only:
+`MAKernel` convolves the peaks into MA maps, and ordinary scikit-learn
+transformers reduce them. Both go in the pipeline, which is what keeps every
+step that learns across rows fitted on training rows only:
 
 ```python
+from nimare.meta.kernel import MKDAKernel
+from nimare.ml import MAKernel
 from sklearn.decomposition import TruncatedSVD
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupKFold, cross_val_score
 from sklearn.pipeline import make_pipeline
 
 pipeline = make_pipeline(
+    MAKernel(MKDAKernel(r=10), source_masker=bunch.masker),
     TruncatedSVD(n_components=50, random_state=13),
     LogisticRegression(max_iter=1000),
 )
@@ -112,11 +112,18 @@ Or by hand, where the fitted reducer carries the fit:
 
 ```python
 svd = TruncatedSVD(n_components=25, random_state=13)
-maps = bunch.data[:, bunch.map_columns]
+maps = MAKernel(MKDAKernel(r=10), source_masker=bunch.masker).fit_transform(
+    bunch.data[:, bunch.voxel_columns]
+)
 
 train_reduced = svd.fit_transform(maps[train])
 test_reduced = svd.transform(maps[test])
 ```
+
+The kernel's own parameters tune like any other, as
+`makernel__kernel__r` in a `GridSearchCV`. Skipping it is a feature set too:
+an atlas applied straight to the peak columns counts reported coordinates per
+region.
 
 Anything that reads sparse input works: truncated SVD, sparse random
 projection, variance thresholding. `PCA` takes sparse input too, but only with
@@ -160,7 +167,6 @@ and keeps the block sparse:
 
 ```python
 bunch = studyset.to_bunch(
-    MKDAKernel(r=10),
     descriptor_fields=[("annotations", "Neurosynth_TFIDF__*")],
     target_field=("annotations", "Neurosynth_TFIDF__pain"),
 )
@@ -254,7 +260,7 @@ Transformers are handed the descriptor columns dense, which is what most of
 them expect of a few numeric columns -- `StandardScaler` will not centre sparse
 data at all -- while the map block stays sparse.
 
-`bunch.map_columns` and `bunch.descriptor_columns` are right there, so the
+`bunch.voxel_columns` and `bunch.descriptor_columns` are right there, so the
 same thing can be written out:
 
 ```python
@@ -262,7 +268,7 @@ from sklearn.compose import ColumnTransformer
 
 ColumnTransformer(
     [
-        ("maps", TruncatedSVD(n_components=50), bunch.map_columns),
+        ("maps", TruncatedSVD(n_components=50), bunch.voxel_columns),
         ("descriptors", SimpleImputer(), bunch.descriptor_columns),
     ],
     sparse_threshold=1.0,
@@ -284,7 +290,6 @@ For a target, pass a label extractor:
 
 ```python
 bunch = studyset.to_bunch(
-    MKDAKernel(r=10),
     target_field=("texts", "abstract"),
     target_transformer=lambda texts: [classify(text) for text in texts],
 )

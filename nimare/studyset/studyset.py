@@ -747,7 +747,6 @@ class Studyset:
 
     def to_bunch(
         self,
-        kernel_transformer,
         *,
         descriptor_fields=None,
         target_field=None,
@@ -756,31 +755,20 @@ class Studyset:
         missing_values="raise",
         test_size=None,
         random_state=None,
-        memory=None,
-        memory_level=2,
     ):
         """Convert to the arrays a scikit-learn workflow expects.
 
         .. versionadded:: 0.22.0
 
-        Generates one modeled activation (MA) map per analysis through the
-        kernel transformer, appends any numeric descriptor fields, extracts any
-        target, and aligns them to the analyses they came from. Unlike the
-        other ``to_*`` methods this computes rather than reformats: a release
-        of 40,000 analyses takes about half a minute and a few gigabytes.
-
-        Generating the maps before splitting does not leak. An analysis's MA
-        map is a function of that analysis's own foci, so it never sees the
-        target or another analysis. Everything that learns *across* rows --
-        decomposition, feature selection, imputation, scaling -- must be fitted
-        on training rows only, which is what a
-        :class:`~sklearn.pipeline.Pipeline` is for.
+        Reads each analysis's foci into a row of peak counts over the image
+        grid, appends any numeric descriptor fields, extracts any target, and
+        aligns them to the analyses they came from. Turning peaks into modeled
+        activation (MA) maps is :class:`~nimare.ml.MAKernel`, a transformer,
+        so that every choice about the features is made in one place: the
+        scikit-learn pipeline.
 
         Parameters
         ----------
-        kernel_transformer : :class:`~nimare.meta.kernel.KernelTransformer`
-            Kernel transformer instance or class used to generate the MA maps.
-            There is no default: the choice is scientific.
         descriptor_fields : :obj:`list`, optional
             Fields appended to the feature matrix as extra numeric columns, by
             default None. Each is a field name, or a ``(source, field)`` tuple
@@ -812,28 +800,23 @@ class Studyset:
             default None, which splits nothing. The bundle then also carries
             ``train`` and ``test`` row positions. A study belongs to exactly
             one partition, so analysis counts only approximate a fraction.
-            The split costs milliseconds while this conversion runs a kernel,
-            so for several splits of one bundle, or for cross-validation, pass
+            For several splits of one bundle, or for cross-validation, pass
             ``groups`` to a scikit-learn group splitter instead of converting
             again.
         random_state : :obj:`int`, optional
             Seed for ``test_size``, by default None.
-        memory : :class:`joblib.Memory`, :obj:`str` or :class:`pathlib.Path`, optional
-            Cache location for MA map generation, by default None. Used only
-            when the kernel transformer does not define its own.
-        memory_level : :obj:`int`, default=2
-            How eagerly ``memory`` caches. Kernel transformers cache their maps
-            at level 2, so a lower level asks for them not to be cached.
 
         Returns
         -------
         :class:`sklearn.utils.Bunch`
-            One row per retained analysis, holding ``data`` (sparse while the
-            map features are unreduced), ``target``, ``groups`` (the study each
-            analysis came from, for a group-aware splitter), ``ids``,
-            ``feature_names``, ``map_columns``, ``descriptor_columns``,
-            ``descriptor_names``, ``masker`` and ``provenance``. With
-            ``test_size``, also ``train`` and ``test`` row positions.
+            One row per retained analysis, holding ``data`` (sparse), ``target``,
+            ``groups`` (the study each analysis came from, for a group-aware
+            splitter), ``ids``, ``feature_names``, ``voxel_columns``,
+            ``descriptor_columns``, ``descriptor_names``, ``masker`` and
+            ``provenance``. With ``test_size``, also ``train`` and ``test`` row
+            positions. The voxel columns are peak counts over the whole image
+            grid of ``masker``, which :class:`~nimare.ml.MAKernel` turns into MA
+            maps.
 
         Raises
         ------
@@ -845,20 +828,18 @@ class Studyset:
         See Also
         --------
         nimare.ml.describe_fields : What fields this studyset offers.
-        nimare.ml.make_nimare_column_transformer : Reduce the map columns and not the rest.
+        nimare.ml.MAKernel : Turn the peak columns into MA maps in a pipeline.
+        nimare.ml.make_nimare_column_transformer : Route each block to its own transformer.
 
         Examples
         --------
         >>> bunch = studyset.to_bunch(  # doctest: +SKIP
-        ...     MKDAKernel(r=10),
         ...     target_field=("metadata", "comparison_task"),
         ... )
 
         Holding out a quarter of the studies, without splitting one::
 
-        >>> bunch = studyset.to_bunch(  # doctest: +SKIP
-        ...     MKDAKernel(r=10), test_size=0.25, random_state=13
-        ... )
+        >>> bunch = studyset.to_bunch(test_size=0.25, random_state=13)  # doctest: +SKIP
         >>> X_train = bunch.data[bunch.train]  # doctest: +SKIP
         """
         # Imported here so that nimare.studyset does not pull in scikit-learn,
@@ -866,7 +847,6 @@ class Studyset:
         from nimare.ml.extract import _FeatureExtractor
 
         return _FeatureExtractor(
-            kernel_transformer=kernel_transformer,
             descriptor_fields=descriptor_fields,
             target_field=target_field,
             target_transformer=target_transformer,
@@ -874,8 +854,6 @@ class Studyset:
             missing_values=missing_values,
             test_size=test_size,
             random_state=random_state,
-            memory=memory,
-            memory_level=memory_level,
         ).transform(self)
 
     def to_dataset(self):

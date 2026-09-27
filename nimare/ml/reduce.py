@@ -17,9 +17,11 @@ from sklearn.base import BaseEstimator, TransformerMixin, clone
 from sklearn.exceptions import NotFittedError
 from sklearn.utils.validation import check_is_fitted
 
+from nimare.ml.peaks import grid_images, n_grid_columns
+
 
 class MaskerTransformer(TransformerMixin, BaseEstimator):
-    """Apply a nilearn masker to masked voxel features.
+    """Apply a nilearn masker to voxel features.
 
     A nilearn masker is already a scikit-learn transformer, but it takes images
     where a :class:`~sklearn.compose.ColumnTransformer` hands out columns of an
@@ -47,7 +49,10 @@ class MaskerTransformer(TransformerMixin, BaseEstimator):
     source_masker : :class:`~nilearn.maskers.NiftiMasker` or img_like, optional
         The masker defining the voxel order of the incoming features, normally
         the ``masker`` a bundle carries, by default None. This is where the
-        columns came from, not what is applied to them.
+        columns came from, not what is applied to them. Columns may be the
+        masker's own voxels, as :class:`~nimare.ml.MAKernel` returns them, or
+        the whole image grid, as a bundle's peak columns arrive; which of the
+        two is read off their width.
     masker_kwargs : :obj:`dict`, optional
         Arguments for the nilearn fetcher when ``masker`` names one, by default
         None.
@@ -97,6 +102,13 @@ class MaskerTransformer(TransformerMixin, BaseEstimator):
         -------
         :class:`MaskerTransformer`
             The fitted transformer.
+
+        Raises
+        ------
+        :obj:`ValueError`
+            If nothing was given to apply, if no source masker was given, or
+            if the columns match neither the source masker's voxels nor its
+            image grid.
         """
         if self.masker is None:
             raise ValueError(
@@ -113,6 +125,7 @@ class MaskerTransformer(TransformerMixin, BaseEstimator):
         from nimare.utils import get_masker
 
         self.mask_img_ = get_masker(self.source_masker).mask_img
+        self.on_grid_ = _incoming_space(X.shape[1], self.mask_img_)
         masker, region_names = _resolve_atlas(self.masker, self.masker_kwargs)
         masker.set_params(mask_img=self.mask_img_)
         # An atlas masker resamples itself onto the images it is fitted with,
@@ -133,7 +146,8 @@ class MaskerTransformer(TransformerMixin, BaseEstimator):
         Parameters
         ----------
         X : array_like or sparse matrix
-            Analysis-by-voxel features in the source masker's voxel order.
+            Analysis-by-voxel features, over the source masker's voxels or over
+            its image grid, matching what the transformer was fitted on.
 
         Returns
         -------
@@ -148,7 +162,12 @@ class MaskerTransformer(TransformerMixin, BaseEstimator):
             batch = X[start : start + self.batch_size]
             if sparse.issparse(batch):
                 batch = batch.toarray()
-            batches.append(self.masker_.transform(unmask(batch, self.mask_img_)))
+            images = (
+                grid_images(batch, self.mask_img_)
+                if self.on_grid_
+                else unmask(batch, self.mask_img_)
+            )
+            batches.append(self.masker_.transform(images))
 
         aggregated = np.vstack(batches)
         self.n_features_out_ = aggregated.shape[1]
@@ -189,6 +208,27 @@ class MaskerTransformer(TransformerMixin, BaseEstimator):
         if not hasattr(self, "n_features_out_"):
             self.transform(np.zeros((1, self.n_features_in_), dtype=float))
         return self.n_features_out_
+
+
+def _incoming_space(n_columns, mask_img):
+    """Report whether columns span the whole image grid rather than the mask.
+
+    A bundle's peak columns span the grid so that a coordinate outside the mask
+    still reaches it through a kernel; MA maps span the mask. The two widths
+    differ whenever the mask is not the whole image, and the mask is preferred
+    when they do not.
+    """
+    n_voxels = int(np.sum(np.asarray(mask_img.dataobj) > 0))
+    if n_columns == n_voxels:
+        return False
+    if n_columns == n_grid_columns(mask_img):
+        return True
+    raise ValueError(
+        f"MaskerTransformer was given {n_columns} columns, but its source_masker has "
+        f"{n_voxels} voxels and a grid of {n_grid_columns(mask_img)}. Features must "
+        "arrive either over the masker's voxels, as MAKernel returns them, or over its "
+        "grid, as a bundle's peak columns do."
+    )
 
 
 def _resolve_atlas(atlas, atlas_kwargs=None):

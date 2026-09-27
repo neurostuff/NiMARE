@@ -9,27 +9,55 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline, _name_estimators
 from sklearn.preprocessing import FunctionTransformer
 
-from nimare.ml._helpers import _preview, _to_dense
+from nimare.ml._helpers import _NamesAt, _preview, _to_dense
 from nimare.ml.reduce import _resolve_map_reducer
 
-BLOCKS = ("maps", "descriptors")
+BLOCKS = ("voxels", "descriptors")
+
+_PROBE_ROWS = 4
 
 
-def _handles_sparse(transformer):
+def _handles_sparse(transformer, n_columns):
     """Report whether ``transformer`` can be fitted on a sparse block.
 
-    Asked by fitting a clone on a tiny sparse probe, because the answer is a
+    Asked by fitting a clone on a sparse probe, because the answer is a
     property of the arguments rather than of the class: ``StandardScaler()``
     refuses sparse input while ``StandardScaler(with_mean=False)`` does not,
     and no estimator tag separates them. Anything that fails the probe is
     handed dense columns, which always works.
+
+    The probe is as wide as the block, because the width is part of the
+    question: ``TruncatedSVD(n_components=50)`` cannot fit a one-column probe
+    whatever its sparsity, and :class:`~nimare.ml.MAKernel` reads the width to
+    know which space its columns are in. A narrow probe answers "no" for both,
+    and densifying a voxel block is the one thing worth avoiding.
     """
-    probe = sparse.csr_matrix(np.array([[1.0], [0.0], [2.0], [3.0]]))
+    probe = _probe(n_columns)
     try:
-        clone(transformer).fit(probe)
+        clone(_first_step(transformer)).fit(probe)
     except Exception:
         return False
     return True
+
+
+def _first_step(transformer):
+    """Return the estimator that will be handed the sparse block itself.
+
+    Only the first thing to touch the block can be protected by densifying it;
+    what a later step is given is the step before it, and its own business.
+    """
+    while isinstance(transformer, Pipeline) and transformer.steps:
+        transformer = transformer.steps[0][1]
+    return transformer
+
+
+def _probe(n_columns):
+    """Return a small sparse matrix shaped like the block, cheaply."""
+    rows = np.arange(_PROBE_ROWS) % max(n_columns, 1)
+    return sparse.csr_matrix(
+        (np.arange(1.0, _PROBE_ROWS + 1.0), (np.arange(_PROBE_ROWS), rows)),
+        shape=(_PROBE_ROWS, max(n_columns, 1)),
+    )
 
 
 def _named(names, func=None):
@@ -55,14 +83,14 @@ def _columns_of(bunch, columns):
 
     A string is a column name, as it is to a
     :class:`~sklearn.compose.ColumnTransformer` reading a frame. Here the names
-    are the two blocks, ``"maps"`` and ``"descriptors"``, and the descriptors'
+    are the two blocks, ``"voxels"`` and ``"descriptors"``, and the descriptors'
     own field names; a block name wins if a descriptor shares it.
     """
     wanted = [columns] if isinstance(columns, str) else columns
     if _all_strings(wanted):
         columns = _by_name(bunch, wanted)
     indices = np.arange(len(bunch.feature_names))[columns]
-    return columns, [str(bunch.feature_names[index]) for index in np.atleast_1d(indices)]
+    return columns, _NamesAt(bunch.feature_names, indices)
 
 
 def _all_strings(columns):
@@ -81,7 +109,7 @@ def _by_name(bunch, wanted):
     indices = []
     for name in wanted:
         if name in BLOCKS:
-            block = bunch.map_columns if name == "maps" else bunch.descriptor_columns
+            block = _block_span(bunch, name)
             indices.extend(range(block.start, block.stop))
         elif name in descriptors:
             indices.append(offset + descriptors.index(name))
@@ -90,7 +118,7 @@ def _by_name(bunch, wanted):
                 f"{name!r} names neither a block nor a descriptor of this bundle. The "
                 f"blocks are {', '.join(BLOCKS)} and the descriptors are "
                 f"{_preview(descriptors)}; anything else must be a column spec, such as "
-                "bunch.map_columns."
+                "bunch.voxel_columns."
             )
     return indices
 
@@ -122,7 +150,7 @@ def _step(transformer, columns):
         return _named(columns)
     # a sparse-safe transformer keeps the block sparse, which matters when it
     # is a pattern selection thousands of labels wide
-    densify = None if _handles_sparse(transformer) else _to_dense
+    densify = None if _handles_sparse(transformer, len(columns)) else _to_dense
     return Pipeline([("name", _named(columns, densify)), ("transform", transformer)])
 
 
@@ -132,28 +160,35 @@ def _check_claims(bunch, specs, remainder):
     A ColumnTransformer discards the columns no transformer claims, which is
     right for a frame of many columns and wrong here: the two blocks are the
     whole of the matrix, and dropping either is a modelling decision rather
-    than a detail. Saying ``("drop", "maps")`` still drops it.
+    than a detail. Saying ``("drop", "voxels")`` still drops it.
     """
     if remainder != "drop":
         return
-    claimed = set()
+    # a boolean mask rather than a set of indices: the voxel block spans the
+    # whole image grid, so the set would outweigh the sparse matrix it guards
+    claimed = np.zeros(len(bunch.feature_names), dtype=bool)
     for columns in specs:
-        claimed.update(np.arange(len(bunch.feature_names))[columns].tolist())
+        claimed[columns] = True
 
     for block in BLOCKS:
-        span = bunch.map_columns if block == "maps" else bunch.descriptor_columns
+        span = _block_span(bunch, block)
         if span.stop <= span.start:
             continue
-        unclaimed = [index for index in range(span.start, span.stop) if index not in claimed]
-        if not unclaimed:
+        unclaimed = span.start + np.flatnonzero(~claimed[span])
+        if not len(unclaimed):
             continue
-        names = [str(bunch.feature_names[index]) for index in unclaimed]
+        names = _NamesAt(bunch.feature_names, unclaimed[:8])
         raise ValueError(
             f"No transformer covers {len(unclaimed)} of the {block} columns: "
             f"{_preview(names)}. A ColumnTransformer drops what nobody claims, so name "
             f"them with a {block!r} spec, pass ('drop', {block!r}) if that is meant, or "
             "remainder='passthrough' to keep them as they are."
         )
+
+
+def _block_span(bunch, block):
+    """Return the column slice one block name covers."""
+    return bunch.voxel_columns if block == "voxels" else bunch.descriptor_columns
 
 
 def _read_pairs(bunch, transformers):
@@ -193,7 +228,7 @@ def make_nimare_column_transformer(
 
     Everything else is scikit-learn's, including the shape of ``transformers``
     and the automatic step names. Where this function does not cover a case,
-    write ``ColumnTransformer`` out with ``bunch.map_columns`` and
+    write ``ColumnTransformer`` out with ``bunch.voxel_columns`` and
     ``bunch.descriptor_columns``, which are ordinary slices.
 
     Parameters
@@ -205,7 +240,7 @@ def make_nimare_column_transformer(
         :func:`~sklearn.compose.make_column_transformer` takes them.
 
         ``columns`` may be a name, or a list of names, as it may be for a
-        ColumnTransformer reading a frame: ``"maps"`` and ``"descriptors"``
+        ColumnTransformer reading a frame: ``"voxels"`` and ``"descriptors"``
         name the two blocks, and a descriptor may be named by its own field
         name. It may equally be anything a
         :class:`~sklearn.compose.ColumnTransformer` accepts: a slice, indices,
@@ -248,7 +283,7 @@ def make_nimare_column_transformer(
     --------
     >>> preprocessor = make_nimare_column_transformer(  # doctest: +SKIP
     ...     bunch,
-    ...     (TruncatedSVD(n_components=50), "maps"),
+    ...     (MAKernel(MKDAKernel(r=10), source_masker=bunch.masker), "voxels"),
     ...     (SimpleImputer(strategy="median"), "descriptors"),
     ... )
     """

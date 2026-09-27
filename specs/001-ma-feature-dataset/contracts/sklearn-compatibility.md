@@ -14,7 +14,7 @@ scikit-learn workflows. **Revised 2026-09-25** alongside
 - `groups`: one-dimensional study group array aligned to `data` rows; same as
   the study each analysis came from.
 - `feature_names`: feature names aligned to `data` columns.
-- `ids`, `provenance`, `map_columns`, `descriptor_columns`: the NiMARE-side
+- `ids`, `provenance`, `voxel_columns`, `descriptor_columns`: the NiMARE-side
   context a researcher needs to trace a row or build a pipeline.
 
 `to_sklearn(return_X_y=True)` returns `(data, target)` instead, following the
