@@ -1538,3 +1538,56 @@ cover only coded columns and must not be `"passthrough"`. `("drop", ...)`
 remains the explicit way out, because the guard is about silence rather than
 about the outcome. Worth noting that no scikit-learn encoder accepts sparse
 input, which the existing per-block densification already covers.
+
+## 27. Profiling the pipeline design
+
+Re-profiled after the kernel moved into the pipeline, since the earlier
+measurements were of a design where conversion did the expensive work. Stage
+timings on the bundled studyset (906 analyses, 902,629 grid columns), MKDA
+r=10 into TruncatedSVD(50) into logistic regression:
+
+| stage | before | after |
+| --- | --- | --- |
+| `to_bunch()` (warm) | 3 ms | 3 ms |
+| `MAKernel.fit_transform` | 1.13 s | 0.64 s |
+| `make_nimare_column_transformer` | 1.22 s | **0.06 s** |
+| `preprocessor.fit_transform` | 7.46 s | 4.41 s |
+| `cross_val_score`, 5 folds | 39.5 s | **18.5 s** |
+
+Two hot spots, both ours.
+
+**A named block became a list of every column it covered.** `_by_name`
+extended a Python list with `range(0, 902_629)`, which `_columns_of` then fed
+back to `np.arange(n)[columns]`. The list alone was enough to make the garbage
+collector 0.93 s of a 1.22 s construction. Worse, that list reached
+`ColumnTransformer`, so every fold sliced the sparse matrix by fancy index
+instead of by slice. A block now resolves to its own `slice`, and several
+names concatenate as an integer array. This is most of the drop from 39.5 s to
+21.8 s, and it took the test suite from 52 s to 21 s as a side effect.
+
+**The source masker was refitted on every fold.** `MAKernel.fit` and
+`MaskerTransformer.fit` resolved `source_masker` through `get_masker`, which
+fits a nilearn masker that has no `mask_img_`. `clone` strips exactly that
+attribute, so every clone -- two for the sparse probe, one per fold -- paid a
+0.34 s nilearn fit. Neither needs a *fitted* masker: both read `mask_img`, the
+constructor parameter, and so does `KernelTransformer.transform` when given a
+coordinates frame. `mask_source` returns the source untouched when it already
+carries a mask image.
+
+What is left is not ours: `_randomized_svd` (2.5 s of the 4.4 s),
+`compute_kda_ma` (0.36 s), `svd_flip`'s `argmax` (0.22 s) and
+`ColumnTransformer._validate_remainder` (0.12 s per fold, which builds
+`set(range(902_629))` whatever `remainder` is set to).
+
+Release scale (4,000 analyses sliced from the 2026-09 release) agrees:
+conversion of the whole release 2.0 s, construction 0.034 s, kernel 1.75 s,
+`fit_transform` 9.3 s, five folds 56 s.
+
+### The batch-size figures were stale
+
+§20 recorded 436/178/141 ms per row at batch sizes 8/32/128 and described a
+trade that flattens out. Re-measured, it is 70.6/32.7/50.8 ms -- five times
+faster in absolute terms, and with an *optimum* rather than a plateau, since
+128 is now worse than 32. The default of 32 is still right, better justified
+than before. Peak columns cost 35.5 ms per row against maps' 32.7 despite
+spanning four times the grid, because nilearn's per-call setup dominates.

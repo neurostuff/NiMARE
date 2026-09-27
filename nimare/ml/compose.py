@@ -47,8 +47,23 @@ def _columns_of(bunch, columns):
     wanted = [columns] if isinstance(columns, str) else columns
     if _all_strings(wanted):
         columns = _by_name(bunch, wanted)
-    indices = np.arange(len(bunch.feature_names))[columns]
-    return columns, _NamesAt(bunch.feature_names, indices)
+    return columns, _NamesAt(bunch.feature_names, _positions(columns, len(bunch.feature_names)))
+
+
+def _positions(columns, n_columns):
+    """Return the column positions a spec covers, without naming them.
+
+    A slice is turned into its own range rather than used to index one, because
+    the voxel block spans the whole image grid.
+    """
+    if isinstance(columns, slice):
+        return np.arange(*columns.indices(n_columns))
+    values = np.asarray(columns)
+    if values.dtype == bool:
+        return np.flatnonzero(values)
+    if np.issubdtype(values.dtype, np.integer):
+        return np.atleast_1d(values)
+    return np.atleast_1d(np.arange(n_columns)[columns])
 
 
 def _all_strings(columns):
@@ -61,16 +76,20 @@ def _all_strings(columns):
 
 
 def _by_name(bunch, wanted):
-    """Return the column indices the names in ``wanted`` select."""
+    """Return the columns the names in ``wanted`` select.
+
+    One name is its own slice, so naming the voxel block costs nothing; several
+    are concatenated in the order they were given.
+    """
     descriptors = list(bunch.descriptor_names)
     offset = bunch.descriptor_columns.start
-    indices = []
+    spans = []
     for name in wanted:
         if name in BLOCKS:
-            block = _block_span(bunch, name)
-            indices.extend(range(block.start, block.stop))
+            spans.append(_block_span(bunch, name))
         elif name in descriptors:
-            indices.append(offset + descriptors.index(name))
+            position = offset + descriptors.index(name)
+            spans.append(slice(position, position + 1))
         else:
             raise ValueError(
                 f"{name!r} names neither a block nor a descriptor of this bundle. The "
@@ -78,7 +97,9 @@ def _by_name(bunch, wanted):
                 f"{_preview(descriptors)}; anything else must be a column spec, such as "
                 "bunch.voxel_columns."
             )
-    return indices
+    if len(spans) == 1:
+        return spans[0]
+    return np.concatenate([np.arange(span.start, span.stop) for span in spans])
 
 
 def _resolve(bunch, transformer):
@@ -116,7 +137,7 @@ def _coded_columns(bunch, columns):
 
     Read from positions rather than names: a voxel spec covers the whole grid.
     """
-    positions = np.atleast_1d(np.arange(len(bunch.feature_names))[columns])
+    positions = _positions(columns, len(bunch.feature_names))
     categories = bunch.get("descriptor_categories") or {}
     if not categories:
         return {}, positions

@@ -571,10 +571,14 @@ analyses being held out.
 
 Rows are converted back into images in batches, because nilearn's maskers
 aggregate an image rather than a row. Most of the cost is per call rather than
-per row, so ``batch_size`` trades memory for speed steeply at first and then
-hardly at all: against a 2 mm whole-brain mask, a batch of 8 costs 436 ms per
-row, 32 costs 178 ms, and 128 costs 141 ms for four times the dense working
-set. The default of 32 sits at the knee, at roughly 60 MB.
+per row, and ``batch_size`` has an optimum rather than a trade: against a 2 mm
+whole-brain mask, a batch of 8 costs 70.6 ms per row, 32 costs 32.7 ms, and 128
+costs 50.8 ms for four times the dense working set. The default of 32 is that
+optimum, at roughly 60 MB.
+
+Peak columns cost about the same as MA columns here despite spanning four times
+the grid -- 35.5 ms per row against 32.7 -- because what dominates is nilearn's
+per-call setup rather than the width of the array.
 
 Scale
 -----

@@ -17,7 +17,7 @@ from sklearn.base import BaseEstimator, TransformerMixin, clone
 from sklearn.exceptions import NotFittedError
 from sklearn.utils.validation import check_is_fitted
 
-from nimare.ml._peaks import grid_images, n_grid_columns
+from nimare.ml._peaks import grid_images, mask_source, n_grid_columns
 
 
 class MaskerTransformer(TransformerMixin, BaseEstimator):
@@ -57,9 +57,9 @@ class MaskerTransformer(TransformerMixin, BaseEstimator):
         Arguments for the nilearn fetcher when ``masker`` names one, by default
         None.
     batch_size : :obj:`int`, default=32
-        How many rows are held in dense image form at once. Larger batches pay
-        the masker's per-call setup over more rows, at proportionally more
-        memory: 32 rows of a 2 mm whole-brain mask is roughly 60 MB.
+        How many rows are held in dense image form at once. The default is the
+        measured optimum for a 2 mm whole-brain mask, at roughly 60 MB; see
+        :doc:`the machine learning documentation </machine_learning>`.
 
     Attributes
     ----------
@@ -122,9 +122,7 @@ class MaskerTransformer(TransformerMixin, BaseEstimator):
                 "order of the features, normally the masker a bundle carries."
             )
 
-        from nimare.utils import get_masker
-
-        self.mask_img_ = get_masker(self.source_masker).mask_img
+        self.mask_img_ = mask_source(self.source_masker).mask_img
         self.on_grid_ = _incoming_space(X.shape[1], self.mask_img_)
         masker, region_names = _resolve_atlas(self.masker, self.masker_kwargs)
         masker.set_params(mask_img=self.mask_img_)

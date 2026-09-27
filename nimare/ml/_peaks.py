@@ -8,6 +8,20 @@ from nibabel import Nifti1Image
 from scipy import sparse
 
 
+def mask_source(source):
+    """Return something carrying ``mask_img``, without fitting a masker for it.
+
+    :func:`~sklearn.base.clone` strips a nilearn masker's fitted state, so
+    resolving one through ``get_masker`` refits it on every fold.
+    """
+    if hasattr(getattr(source, "mask_img", None), "affine"):
+        return source
+
+    from nimare.utils import get_masker
+
+    return get_masker(source)
+
+
 def grid_shape(mask_img):
     """Return the image grid the peak columns span."""
     return tuple(int(size) for size in mask_img.shape)

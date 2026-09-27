@@ -2107,3 +2107,48 @@ def test_a_coded_category_may_be_dropped_on_purpose(ml_studyset):
     out = preprocessor.fit_transform(features.data)
 
     assert out.shape == (len(features.ids), 1)
+
+
+# --------------------------------------------------------------- performance
+
+
+def test_a_named_block_stays_a_slice(ma_bunch):
+    """A block spec must not become a list of every column it covers.
+
+    A sparse matrix sliced by a ``slice`` skips scipy's fancy-index path, and
+    the list itself was large enough to drag the garbage collector in.
+    """
+    from nimare.ml.compose import _by_name, _columns_of
+
+    assert _by_name(ma_bunch, ["voxels"]) == ma_bunch.voxel_columns
+    columns, _ = _columns_of(ma_bunch, "voxels")
+    assert isinstance(columns, slice)
+
+    # several names concatenate, in the order they were given
+    both = _by_name(ma_bunch, ["descriptors", "voxels"])
+    assert both[0] == ma_bunch.descriptor_columns.start
+    assert both[1] == ma_bunch.voxel_columns.start
+
+
+def test_the_source_masker_is_not_refitted_per_fold(small_masker, labels_atlas):
+    """Resolving the source masker must not fit it again.
+
+    ``clone`` strips a nilearn masker's fitted state, so a transformer that
+    asked for a fitted one paid a fresh nilearn fit on every fold.
+    """
+    fits = []
+
+    class _CountingMasker(type(small_masker)):
+        def fit(self, imgs=None, y=None):
+            fits.append(1)
+            return super().fit(imgs, y)
+
+    source = clone(small_masker)
+    source.__class__ = _CountingMasker
+    grid = int(np.prod(small_masker.mask_img.shape))
+    peaks = sparse.csr_matrix((2, grid), dtype=float)
+
+    MAKernel(MKDAKernel(r=1), source_masker=source).fit(peaks)
+    MaskerTransformer(labels_atlas, source_masker=source).fit(peaks)
+
+    assert fits == []

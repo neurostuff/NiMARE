@@ -7,7 +7,7 @@ from scipy import sparse
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
 
-from nimare.ml._peaks import grid_shape, n_grid_columns, peak_frame
+from nimare.ml._peaks import grid_shape, mask_source, n_grid_columns, peak_frame
 
 
 class MAKernel(TransformerMixin, BaseEstimator):
@@ -82,13 +82,11 @@ class MAKernel(TransformerMixin, BaseEstimator):
                 "normally the masker a bundle carries."
             )
 
-        from nimare.utils import get_masker
-
         kernel = self.kernel() if isinstance(self.kernel, type) else self.kernel
         _check_kernel_width(kernel)
 
         self.kernel_ = kernel
-        self.masker_ = get_masker(self.source_masker)
+        self.masker_ = mask_source(self.source_masker)
         self.mask_img_ = self.masker_.mask_img
         self.n_voxels_ = int(np.sum(np.asarray(self.mask_img_.dataobj) > 0))
         expected = n_grid_columns(self.mask_img_)
