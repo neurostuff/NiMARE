@@ -667,7 +667,15 @@ Splitting without leaking a study
 ---------------------------------
 
 Analyses from one study are not independent, so a study belongs to exactly one
-side of any split. scikit-learn asks for that in two pieces, and checks only
+side of any split. That is scikit-learn's to express, and the idiom is the
+ordinary one:
+
+.. code-block:: python
+
+    cross_val_score(pipeline, bunch.data, bunch.target,
+                    groups=bunch.groups, cv=GroupKFold(5))
+
+Worth knowing is that scikit-learn asks for it in two pieces and checks only
 one of them:
 
 ===========================================  ===============================
@@ -680,27 +688,11 @@ Call                                          What happens
 ``cv=KFold(5), groups=...``                   **silently ignored**
 ===========================================  ===============================
 
-The last two are the ones worth a helper. Forgetting ``groups`` is caught;
-passing it and *not* choosing a group splitter is not, and it is the mistake of
-someone who knew grouping mattered. On the bundled studyset that reads 0.620
-where the grouped answer is 0.604.
-
-:func:`~nimare.ml.study_folds` binds the splitter and the labels together, so
-there is nothing to get half right:
-
-.. code-block:: python
-
-    cross_val_score(pipeline, bunch.data, bunch.target, cv=study_folds(bunch))
-
-It takes a fold count or any group splitter to bind --
-:class:`~sklearn.model_selection.LeaveOneGroupOut`,
-:class:`~sklearn.model_selection.GroupShuffleSplit` -- and the result goes
-wherever a ``cv=`` goes, :class:`~sklearn.model_selection.GridSearchCV` and
-:func:`~sklearn.model_selection.permutation_test_score` included. Binding
-introduces a hazard of its own, which it guards: slicing ``data`` after binding
-the labels would misalign them, so a matrix of the wrong height raises. For the
-inner loop of a nested cross-validation, pass ``rows=bunch.train`` along with
-the matching rows of ``data``.
+Forgetting ``groups`` is caught. Passing it and *not* choosing a group
+splitter is not, and that is the mistake of someone who knew grouping
+mattered: on the bundled studyset it reads 0.620 where the grouped answer is
+0.604. The bundle carries ``groups`` so that the correct call is always
+available; choosing the splitter to go with it stays the caller's.
 
 Reading a model back to the brain
 ---------------------------------

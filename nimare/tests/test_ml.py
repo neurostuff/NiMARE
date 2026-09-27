@@ -22,7 +22,6 @@ from sklearn.model_selection import (
     GridSearchCV,
     GroupKFold,
     GroupShuffleSplit,
-    LeaveOneGroupOut,
     cross_val_score,
 )
 from sklearn.pipeline import Pipeline, make_pipeline
@@ -909,7 +908,7 @@ def test_column_transformer_accepts_an_atlas(small_masker, atlas_features):
 # ------------------------------------------------------------------ extraction
 
 
-def test_public_surface_is_a_studyset_method_and_its_helpers():
+def test_public_surface_is_a_studyset_method_and_six_helpers():
     """Conversion belongs to the Studyset; nimare.ml holds what it cannot answer."""
     assert set(ml.__all__) == {
         "MAKernel",
@@ -918,7 +917,6 @@ def test_public_surface_is_a_studyset_method_and_its_helpers():
         "coefficient_image",
         "describe_fields",
         "make_nimare_column_transformer",
-        "study_folds",
     }
     assert not any(name.endswith("Extractor") for name in dir(ml) if not name.startswith("_"))
     # There is no container class left to meet.
@@ -2312,62 +2310,6 @@ def test_a_cache_holds_across_the_folds_of_a_cross_validation(ml_studyset):
     assert served["misses"] == served["rows"]
     assert served["hits"] > 0
     assert served["hits"] + served["misses"] > peaks.shape[0]
-
-
-# --------------------------------------------------------------- study_folds
-
-
-def test_study_folds_matches_passing_groups_by_hand(ml_studyset):
-    """Binding the study labels must not change what the split is."""
-    bunch = ml_studyset.to_bunch(target_field=("annotations", "target_score"))
-    voxels = _voxels(bunch)
-    model = Ridge()
-
-    manual = cross_val_score(model, voxels, bunch.target, groups=bunch.groups, cv=GroupKFold(2))
-    bound = cross_val_score(model, voxels, bunch.target, cv=ml.study_folds(bunch, 2))
-
-    np.testing.assert_allclose(manual, bound)
-
-
-@pytest.mark.parametrize(
-    "cv", [2, LeaveOneGroupOut(), GroupShuffleSplit(n_splits=2, test_size=0.5, random_state=13)]
-)
-def test_study_folds_binds_any_group_splitter(ml_studyset, cv):
-    """The int is a convenience; any group splitter can be bound instead."""
-    bunch = ml_studyset.to_bunch()
-    folds = ml.study_folds(bunch, cv)
-
-    for train, test in folds.split(bunch.data):
-        assert set(bunch.groups[train]).isdisjoint(bunch.groups[test])
-    assert folds.get_n_splits() == len(list(folds.split(bunch.data)))
-
-
-def test_study_folds_refuses_a_matrix_it_does_not_describe(ml_studyset):
-    """Slicing the data after binding the labels would silently misalign them."""
-    bunch = ml_studyset.to_bunch()
-    folds = ml.study_folds(bunch, 2)
-
-    with pytest.raises(ValueError, match="study labels cover"):
-        list(folds.split(bunch.data[:3]))
-
-
-def test_study_folds_refuses_more_folds_than_studies(ml_studyset):
-    """A study cannot be split across folds, so it caps how many there are."""
-    bunch = ml_studyset.to_bunch()
-
-    with pytest.raises(ValueError, match="cannot be split across folds"):
-        ml.study_folds(bunch, len(set(bunch.groups)) + 1)
-
-
-def test_study_folds_takes_a_subset_of_rows(ml_studyset):
-    """The inner loop of a nested cross-validation sees only the training rows."""
-    bunch = ml_studyset.to_bunch()
-    rows = np.arange(0, len(bunch.ids), 2)
-    folds = ml.study_folds(bunch, 2, rows=rows)
-
-    assert len(folds.groups) == len(rows)
-    for train, test in folds.split(bunch.data[rows]):
-        assert set(folds.groups[train]).isdisjoint(folds.groups[test])
 
 
 # ---------------------------------------------------------- coefficient_image

@@ -1697,22 +1697,20 @@ bookkeeping together; the gain starts at the second fold.
 Three additions close the gaps the audit of §24 left open, and simplify one
 thing §28 got wrong in shape.
 
-**`study_folds(bunch, cv=5, rows=None)`** binds the study labels to a
-cross-validator.
+**A splitter helper was built and then removed.** `study_folds(bunch, cv=5)`
+bound the study labels to a cross-validator so that `cv=study_folds(bunch)`
+replaced `cv=GroupKFold(5), groups=bunch.groups`. It worked, and it was cut:
+the scikit-learn idiom is better here, being the one a reader already knows,
+and the helper saved a keyword rather than preventing a mistake -- nothing
+stops a caller writing `cv=5` and never reaching for it.
 
-The justification first written for it was wrong and is corrected here.
-"Forgetting `groups=` is silent" is false: `cross_val_score(..., cv=GroupKFold(5))`
-without `groups` raises `The 'groups' parameter should not be None`. What is
-silent is the other half -- passing `groups=` while leaving `cv` at its default,
-or at a `KFold`, where scikit-learn accepts the labels and ignores them. That is
-the mistake of someone who knew grouping mattered, and on the bundled studyset
-it reads 0.620 against a grouped 0.604. Binding the splitter and the labels
-together leaves nothing to get half right, everywhere a `cv=` is taken rather
-than at the one entry point a wrapper would have covered. Verified against `cross_val_score`, `GridSearchCV`,
-`permutation_test_score` and `LeaveOneGroupOut`/`GroupShuffleSplit`/int,
-matching a hand-passed `groups=` exactly. Binding introduces a hazard of its
-own -- slicing `data` afterwards misaligns the labels -- so a matrix of the
-wrong height raises, and `rows=` serves a nested loop.
+The justification first written for it was also wrong, which is worth
+recording. "Forgetting `groups=` is silent" is false:
+`cross_val_score(..., cv=GroupKFold(5))` without `groups` raises. What is
+silent is the other half -- passing `groups=` while leaving `cv` at its default
+or at a `KFold`, where scikit-learn accepts the labels and ignores them, worth
+0.620 against a grouped 0.604 on the bundled studyset. That table is what had
+value, and it is now in the documentation without a function attached to it.
 
 **`coefficient_image(estimator, bunch, coef=None)`** walks a fitted pipeline
 backwards, undoing each reduction until the weights are one per voxel, and
