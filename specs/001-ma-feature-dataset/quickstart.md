@@ -32,6 +32,11 @@ Expected result:
 
 - `bunch.voxel_columns`, `bunch.descriptor_columns`, `bunch.descriptor_names` and
   `bunch.masker` say which columns are voxels and where they came from.
+- `bunch.descriptor_categories` says what a categorical descriptor's codes mean.
+  A numeric matrix cannot hold a string, so those columns hold the position of a
+  category; the encoder is yours to pick, in the pipeline:
+  `(OneHotEncoder(), "group_name")`. Passing a code through, or scaling it
+  alongside a real number, is refused.
 
 There is no container class, no estimator to configure and no `fit` to call.
 Everything after conversion is scikit-learn on ordinary arrays.

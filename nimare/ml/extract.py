@@ -364,6 +364,44 @@ class _DescriptorBlock(NamedTuple):
     names: list
     values: Any  # (n_rows, n_names), dense for a field and sparse for labels
     missing: Any  # boolean mask over rows, or None where absence means zero
+    categories: Any = None  # {name: labels in code order} for a coded field
+
+
+def _descriptor_categories(blocks):
+    """Return ``{field: labels in code order}`` over every coded descriptor."""
+    return {
+        name: labels
+        for block in blocks
+        if block.categories
+        for name, labels in block.categories.items()
+    }
+
+
+def _coded(values, missing):
+    """Return ``(code column, categories in code order)`` for a categorical field.
+
+    A category becomes its position in the sorted category list, so the column
+    is numeric and can sit in the feature matrix; ``descriptor_categories``
+    carries the labels those positions stand for. A missing value is NaN, which
+    is what the ``missing_values`` policy acts on.
+    """
+    labels = np.array([_label(value) for value in values], dtype=object)
+    categories = sorted({label for label, absent in zip(labels, missing) if not absent})
+
+    codes = np.full(len(labels), np.nan, dtype=float)
+    if categories:
+        lookup = {label: position for position, label in enumerate(categories)}
+        for row, (label, absent) in enumerate(zip(labels, missing)):
+            if not absent:
+                codes[row] = lookup[label]
+    return codes.reshape(-1, 1), categories
+
+
+def _label(value):
+    """Return the category a raw annotation value names."""
+    if isinstance(value, (list, tuple, np.ndarray)):
+        return ", ".join(str(item) for item in value)
+    return str(value)
 
 
 def _missing_by_field(ids, blocks, target_missing, retained):
@@ -458,6 +496,7 @@ class _FeatureExtractor(NiMAREBase):
             peaks[retained],
             self._descriptor_matrix(blocks, retained),
             descriptor_names,
+            _descriptor_categories(blocks),
             ids=ids[retained],
             groups=study_ids[retained],
             target=None if target is None else target[retained],
@@ -476,7 +515,7 @@ class _FeatureExtractor(NiMAREBase):
         return kept[0] if len(kept) == 1 else _hstack_blocks(kept)
 
     @staticmethod
-    def _bundle(studyset, peaks, descriptors, descriptor_names, **aligned):
+    def _bundle(studyset, peaks, descriptors, descriptor_names, categories, **aligned):
         """Assemble the bundle, with the column boundary the blocks imply."""
         n_voxels = peaks.shape[1]
         n_descriptors = 0 if descriptors is None else descriptors.shape[1]
@@ -486,6 +525,7 @@ class _FeatureExtractor(NiMAREBase):
             voxel_columns=slice(0, n_voxels),
             descriptor_columns=slice(n_voxels, n_voxels + n_descriptors),
             descriptor_names=list(descriptor_names),
+            descriptor_categories=dict(categories),
             masker=studyset.masker,
             **aligned,
         )
@@ -549,17 +589,23 @@ class _FeatureExtractor(NiMAREBase):
                 block = _DescriptorBlock(names, values, None)
             else:
                 values, kind = fields.value(source, field)
-                if kind != "numeric":
+                if kind == "text":
                     raise ValueError(
-                        f"Descriptor field {field!r} from {source} is {kind}, and the "
-                        "feature matrix is numeric. Encode it yourself -- its raw values "
-                        f"are in the Studyset's {source} -- and select the numeric result."
+                        f"Descriptor field {field!r} from {source} is text, and the "
+                        "feature matrix is numeric. A free-text field has no reading as "
+                        "a column: extract one yourself -- its raw values are in the "
+                        f"Studyset's {source} -- and select the numeric result."
                     )
-                block = _DescriptorBlock(
-                    [field],
-                    np.asarray(values, dtype=float).reshape(-1, 1),
-                    _missing_mask(values, kind),
-                )
+                missing = _missing_mask(values, kind)
+                if kind == "categorical":
+                    codes, categories = _coded(values, missing)
+                    block = _DescriptorBlock([field], codes, missing, {field: categories})
+                else:
+                    block = _DescriptorBlock(
+                        [field],
+                        np.asarray(values, dtype=float).reshape(-1, 1),
+                        missing,
+                    )
 
             repeated = [name for name in block.names if name in seen]
             if repeated:

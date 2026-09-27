@@ -29,6 +29,8 @@ from sklearn.preprocessing import (
     FunctionTransformer,
     MaxAbsScaler,
     MinMaxScaler,
+    OneHotEncoder,
+    OrdinalEncoder,
     StandardScaler,
 )
 from sklearn.random_projection import SparseRandomProjection
@@ -264,10 +266,11 @@ def _step_transformer(column_transformer, index=0):
     """Return the transformer a ColumnTransformer step really applies.
 
     make_nimare_column_transformer wraps each one so that column names and
-    sparsity survive, so the transformer itself is the wrapper's last step.
+    sparsity survive, so the transformer itself is the wrapper's named
+    ``"transform"`` step.
     """
     step = column_transformer.transformers[index][1]
-    return step[-1] if isinstance(step, Pipeline) else step
+    return step.named_steps["transform"] if isinstance(step, Pipeline) else step
 
 
 def _column(data, index):
@@ -1083,7 +1086,6 @@ def test_from_studyset_missing_target_values_are_reported():
 @pytest.mark.parametrize(
     ("selector", "message"),
     [
-        ("comparison_task", "is categorical"),
         ("abstract", "is text"),
         ("not_a_field", "was not found in the Studyset metadata"),
         (("annotations", "sample_sizes"), "was not found in the Studyset annotations"),
@@ -1092,7 +1094,7 @@ def test_from_studyset_missing_target_values_are_reported():
     ],
 )
 def test_from_studyset_rejects_unusable_descriptors(ml_studyset, selector, message):
-    """Descriptor fields have to be numeric, and have to exist."""
+    """Descriptor fields have to be readable as columns, and have to exist."""
     with pytest.raises((ValueError, TypeError), match=message):
         ml_studyset.to_bunch(descriptor_fields=[selector])
 
@@ -1231,9 +1233,10 @@ def test_pattern_refuses_non_numeric_labels():
     with pytest.raises(ValueError, match="not numeric"):
         studyset.to_bunch(descriptor_fields=[("annotations", "task_nam*")])
 
-    # Named exactly, the same label is refused for the same reason.
-    with pytest.raises(ValueError, match="is categorical"):
-        studyset.to_bunch(descriptor_fields=[("annotations", "task_name")])
+    # Named exactly, the same label is one field rather than a matrix of them,
+    # so it is coded and its categories travel with the bundle.
+    features = studyset.to_bunch(descriptor_fields=[("annotations", "task_name")])
+    assert features.descriptor_categories["task_name"]
 
 
 def test_patterns_span_several_annotations(ml_studyset):
@@ -1885,44 +1888,47 @@ def test_masker_transformer_refuses_a_width_from_neither_space(small_masker, lab
         )
 
 
-def test_sparse_probe_reads_the_block_width(ma_bunch):
-    """A reducer is judged on a probe as wide as the block it will be given.
+def test_the_probe_asks_whether_sparsity_is_the_problem():
+    """A transformer that fails the probe for its own reasons still takes sparse.
 
-    ``TruncatedSVD(n_components=50)`` cannot fit a one-column probe whatever
-    its sparsity, so a narrow probe called the canonical sparse reducer dense
-    and densified the whole voxel block before it.
+    ``TruncatedSVD(n_components=50)`` cannot fit a tiny probe at any sparsity,
+    so a probe that only asked "did it fail?" called the canonical sparse
+    reducer dense and densified the whole voxel block before it. Only a failure
+    that densifying the probe *fixes* is about sparsity.
     """
     from nimare.ml.compose import _handles_sparse
 
-    width = ma_bunch.voxel_columns.stop - ma_bunch.voxel_columns.start
-    reducer = TruncatedSVD(n_components=width // 2, random_state=RANDOM_SEED)
-
-    assert _handles_sparse(reducer, width) is True
-    assert _handles_sparse(reducer, 1) is False
-    # centring is refused on sparse input at any width, which is the real signal
-    assert _handles_sparse(StandardScaler(), width) is False
-    assert _handles_sparse(StandardScaler(with_mean=False), width) is True
+    assert _handles_sparse(TruncatedSVD(n_components=50)) is True
+    assert _handles_sparse(TruncatedSVD(n_components=1)) is True
+    # centring sparse input is the real signal: dense input fixes it
+    assert _handles_sparse(StandardScaler()) is False
+    assert _handles_sparse(StandardScaler(with_mean=False)) is True
+    # no scikit-learn encoder reads sparse input
+    assert _handles_sparse(OneHotEncoder()) is False
 
 
 def test_a_sparse_voxel_block_is_not_densified_before_a_reducer(ma_bunch):
     """The block stays sparse on its way into a transformer that accepts it."""
-    seen = {}
+    seen = []
 
     class _Recording(TruncatedSVD):
-        def fit(self, X, y=None):
-            seen["sparse"] = sparse.issparse(X)
-            return super().fit(X, y)
+        # a ColumnTransformer calls fit_transform, so recording only fit would
+        # observe the sparse probe rather than the block
+        def fit_transform(self, X, y=None):
+            seen.append(sparse.issparse(X))
+            return super().fit_transform(X, y)
 
-    width = ma_bunch.voxel_columns.stop - ma_bunch.voxel_columns.start
     preprocessor = ml.make_nimare_column_transformer(
         ma_bunch,
         (_Recording(n_components=2, random_state=RANDOM_SEED), "voxels"),
         ("passthrough", "descriptors"),
     )
-    preprocessor.fit(ma_bunch.data)
+    assert preprocessor.transformers[0][1].named_steps["name"].func is None
 
-    assert width > 1
-    assert seen["sparse"] is True
+    preprocessor.fit_transform(ma_bunch.data)
+
+    # the probe fits a clone first, so the block itself is the last call
+    assert seen[-1] is True
 
 
 def test_a_pipeline_is_probed_whole_not_by_its_first_step(ma_bunch):
@@ -1936,12 +1942,12 @@ def test_a_pipeline_is_probed_whole_not_by_its_first_step(ma_bunch):
     from nimare.ml.compose import _handles_sparse
 
     preserves_sparsity = make_pipeline(SimpleImputer(strategy="median"), StandardScaler())
-    assert _handles_sparse(preserves_sparsity, 1) is False
-    assert _handles_sparse(SimpleImputer(strategy="median"), 1) is True
+    assert _handles_sparse(preserves_sparsity) is False
+    assert _handles_sparse(SimpleImputer(strategy="median")) is True
 
     # the same chain is fine once the scaler is told not to centre
     sparse_safe = make_pipeline(SimpleImputer(strategy="median"), StandardScaler(with_mean=False))
-    assert _handles_sparse(sparse_safe, 1) is True
+    assert _handles_sparse(sparse_safe) is True
 
 
 def test_a_descriptor_chain_that_needs_dense_input_gets_it(ma_bunch):
@@ -1955,3 +1961,144 @@ def test_a_descriptor_chain_that_needs_dense_input_gets_it(ma_bunch):
 
     assert out.shape == (ma_bunch.data.shape[0], 1)
     assert float(np.mean(out)) == pytest.approx(0.0, abs=1e-9)
+
+
+# ------------------------------------------------- categorical descriptors
+
+
+def test_a_categorical_descriptor_becomes_a_code_and_its_categories(ml_studyset):
+    """A string field enters the numeric matrix as a position, not a value."""
+    features = ml_studyset.to_bunch(descriptor_fields=[("metadata", "comparison_task")])
+
+    categories = features.descriptor_categories["comparison_task"]
+    assert categories == ["flanker", "n-back"]
+
+    codes = _dense(_descriptor_block(features))[:, 0]
+    assert set(np.unique(codes)) <= set(range(len(categories)))
+
+    # every row's code names the label that row actually carries
+    raw = ml_studyset.metadata.set_index("id").loc[features.ids, "comparison_task"]
+    np.testing.assert_array_equal(
+        [categories[int(code)] for code in codes], raw.to_numpy(dtype=str)
+    )
+
+
+def test_a_numeric_descriptor_has_no_categories(ml_studyset):
+    """Only a coded field appears in descriptor_categories."""
+    features = ml_studyset.to_bunch(descriptor_fields=["year", ("metadata", "comparison_task")])
+
+    assert set(features.descriptor_categories) == {"comparison_task"}
+
+
+def test_a_text_descriptor_is_still_refused(ml_studyset):
+    """Free text has no reading as a column, coded or otherwise."""
+    with pytest.raises(ValueError, match="is text"):
+        ml_studyset.to_bunch(descriptor_fields=[("texts", "abstract")])
+
+
+@pytest.mark.parametrize("missing_values", ["raise", "drop", "keep"])
+def test_a_missing_category_follows_the_missing_policy(missing_values):
+    """A gap in a categorical field is a gap, not a category of its own."""
+    missing_id = "study_3-task1"
+    studyset = _build_ml_studyset()
+    labels = np.array(
+        ["red" if index % 2 else "blue" for index in range(len(studyset.ids))], dtype=object
+    )
+    labels[list(studyset.ids).index(missing_id)] = None
+    studyset = studyset.with_metadata("colour", labels)
+
+    call = {"descriptor_fields": ["colour"], "missing_values": missing_values}
+    if missing_values == "raise":
+        with pytest.raises(ValueError, match=f"Missing values in colour .*{missing_id}"):
+            studyset.to_bunch(**call)
+        return
+
+    features = studyset.to_bunch(**call)
+    assert features.descriptor_categories["colour"] == ["blue", "red"]
+    codes = _dense(_descriptor_block(features))[:, 0]
+    if missing_values == "drop":
+        assert missing_id not in set(features.ids)
+        assert np.isfinite(codes).all()
+    else:
+        row = int(np.flatnonzero(features.ids == missing_id)[0])
+        assert np.isnan(codes[row])
+
+
+def test_an_encoder_gets_the_categories_and_gives_back_the_labels(ml_studyset):
+    """The caller picks the encoder; the bundle supplies what it cannot know."""
+    features = ml_studyset.to_bunch(descriptor_fields=[("metadata", "comparison_task")])
+    preprocessor = ml.make_nimare_column_transformer(
+        features,
+        ("drop", "voxels"),
+        (OneHotEncoder(handle_unknown="ignore"), "comparison_task"),
+    )
+    preprocessor.fit(features.data)
+
+    names = [name.split("__", 1)[-1] for name in preprocessor.get_feature_names_out()]
+    assert names == ["comparison_task_flanker", "comparison_task_n-back"]
+
+
+def test_an_encoder_is_told_the_categories_so_folds_agree(ml_studyset):
+    """A fold missing a category must not change how many columns a model gets."""
+    features = ml_studyset.to_bunch(descriptor_fields=[("metadata", "comparison_task")])
+    preprocessor = ml.make_nimare_column_transformer(
+        features,
+        ("drop", "voxels"),
+        (OneHotEncoder(handle_unknown="ignore"), "comparison_task"),
+    )
+    encoder = _step_transformer(preprocessor, index=1)
+    np.testing.assert_array_equal(encoder.categories, [np.array([0.0, 1.0])])
+
+    # a subset carrying only one of the two categories still yields two columns
+    codes = _dense(_descriptor_block(features))[:, 0]
+    one_category = np.flatnonzero(codes == codes[0])
+    reduced = preprocessor.fit_transform(features.data[one_category])
+    assert reduced.shape == (len(one_category), 2)
+
+
+def test_a_caller_may_choose_a_different_encoding(ml_studyset):
+    """Nothing about the code prefers one-hot; it is the caller's decision."""
+    features = ml_studyset.to_bunch(
+        descriptor_fields=[("metadata", "comparison_task")],
+        target_field=("annotations", "target_score"),
+    )
+    preprocessor = ml.make_nimare_column_transformer(
+        features,
+        ("drop", "voxels"),
+        (OrdinalEncoder(), "comparison_task"),
+    )
+    out = preprocessor.fit_transform(features.data, features.target)
+
+    assert out.shape == (len(features.ids), 1)
+
+
+def test_a_coded_category_cannot_reach_a_model_raw(ml_studyset):
+    """A code is a label's position, so passing it through is a wrong answer."""
+    features = ml_studyset.to_bunch(descriptor_fields=[("metadata", "comparison_task"), "year"])
+
+    with pytest.raises(ValueError, match="cannot be passed through"):
+        ml.make_nimare_column_transformer(
+            features,
+            ("drop", "voxels"),
+            ("passthrough", "comparison_task"),
+            (SimpleImputer(), "year"),
+        )
+
+    with pytest.raises(ValueError, match="also covers"):
+        ml.make_nimare_column_transformer(
+            features, ("drop", "voxels"), (StandardScaler(), "descriptors")
+        )
+
+
+def test_a_coded_category_may_be_dropped_on_purpose(ml_studyset):
+    """The guard is about silence, not about the outcome."""
+    features = ml_studyset.to_bunch(descriptor_fields=[("metadata", "comparison_task"), "year"])
+    preprocessor = ml.make_nimare_column_transformer(
+        features,
+        ("drop", "voxels"),
+        ("drop", "comparison_task"),
+        (SimpleImputer(), "year"),
+    )
+    out = preprocessor.fit_transform(features.data)
+
+    assert out.shape == (len(features.ids), 1)

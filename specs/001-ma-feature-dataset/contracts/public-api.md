@@ -133,6 +133,11 @@ and that order is preserved by every method.
   marking of the voxel columns is possible: scikit-learn hands every
   transformer the whole of `X`.
 - `descriptor_names`: the descriptor columns, in order, under their real names.
+- `descriptor_categories`: `{field: labels in code order}` for each categorical
+  descriptor. Those columns hold the *position* of a category, not a quantity,
+  because a numeric matrix cannot hold a string and a frame wide enough to do
+  so costs about 34 s per row-slice against 0.4 ms. The encoding choice stays
+  with the caller, in the pipeline.
 - `masker`: the masker defining voxel order for unreduced map features. An
   atlas reducer cannot work this out from `data`, which is why the bundle
   carries it.
@@ -321,6 +326,29 @@ It MUST read either column space, deciding from the width: the masker's own
 voxels, as `MAKernel` returns them, or its whole image grid, as a bundle's peak
 columns arrive. A width matching neither MUST raise. This is what lets an atlas
 summarise raw peak counts per region, with no kernel involved.
+
+## Categorical descriptors
+
+A categorical `descriptor_fields` selector MUST be accepted and stored as the
+position of its category, with the labels published in
+`bunch.descriptor_categories`. Text fields remain refused, having no reading as
+a column. A missing category MUST be NaN and follow `missing_values`, rather
+than becoming a category of its own.
+
+A transformer MUST be probed for sparse input as the caller wrote it, before
+`categories=` is filled in, since an encoder told which categories to expect
+refuses the probe's own values for reasons unrelated to sparsity.
+
+`make_nimare_column_transformer` MUST supply `categories=` to an encoder that
+would otherwise infer them, so a training split missing a category still yields
+the same number of columns, and MUST restore the real labels in
+`get_feature_names_out`. It MUST NOT choose the encoder.
+
+It MUST refuse a spec that would hand a raw code to a model: one covering both
+coded and numeric columns, or one whose transformer is `"passthrough"`. A code
+is a label's position, so either would tell a model that the third category is
+three times the first. `("drop", ...)` MUST remain allowed, since the guard is
+about silence rather than about the outcome.
 
 It accepts any nilearn masker, cloned rather than modified, or anything nilearn
 loads as an atlas:

@@ -72,7 +72,10 @@ function and one container.
 
 - `studyset`: the Studyset to convert, as the receiver. No kernel: MA maps are
   built by `nimare.ml.MAKernel` inside the pipeline.
-- `descriptor_fields`: optional selectors for metadata, annotations, or texts.
+- `descriptor_fields`: optional selectors for metadata or annotations. A
+  numeric field becomes a column of its values; a categorical one becomes a
+  column of category positions, with the labels in `descriptor_categories`.
+  Text has no reading as a column and is refused.
 - `target_field`: optional selector for one prediction target.
 - `target_transformer`: optional callable or stateless transformer applied to
   the raw target values, for fields with no scalar reading.

@@ -1475,13 +1475,66 @@ dense input and the block was densified before it. At 228,483 columns that was
 a silent 1.6 GB; at 902,629 it is 16.9 GB and raises, which is how it was
 found.
 
-The probe is now as wide as the block it stands for. `MAKernel` reads the width
-to know which space its columns are in, so it needs the same fix for the same
-reason.
-
-Probing only a pipeline's *first* step was tried and reverted. It looks right --
-only the first thing to touch the block can be protected by densifying it -- but
-a step that takes sparse input may also preserve it, so
+Two fixes were tried before the right one. Probing only a pipeline's *first*
+step looks right -- only the first thing to touch the block can be protected by
+densifying it -- but a step that takes sparse input may also preserve it, so
 `make_pipeline(SimpleImputer(), StandardScaler())` over a descriptor column was
-called sparse-safe and then raised inside cross-validation. The width fix alone
-is sufficient; the pipeline is probed whole.
+called sparse-safe and then raised inside cross-validation. Widening the probe
+to the block's real width worked, but made the probe do real work: classifying
+`TruncatedSVD` took 1.3 s of randomized SVD over 902,629 columns.
+
+The question was wrong, not the probe's size. What matters is whether sparsity
+is what the failure is *about*. A transformer that fails the sparse probe is
+now tried again on the same probe made dense, and only a failure that
+densifying *fixes* counts as needing dense input. That is correct for all
+eleven cases we care about -- including `TruncatedSVD(50)`, `MAKernel`, and the
+imputer-then-scaler chain -- at one column, with no width to plumb through.
+
+An encoder must be probed as the caller wrote it, before `categories=` is
+filled in: an encoder told which categories to expect refuses the probe's own
+values, which is not a statement about sparsity.
+
+## 26. Categorical descriptors enter as a code, not as an encoding
+
+A categorical descriptor field used to be refused outright, with the caller
+told to encode it and write the result back into the Studyset. That was
+inconsistent twice over: a categorical *target* passes through fine, because
+`target` is a separate 1-D array; and the refusal told callers that
+transformations belong in the pipeline while handing them a value the pipeline
+could not reach.
+
+Mixed dtypes were measured before being ruled out. A pandas frame will hold
+sparse columns beside object columns, and the memory is fine -- 100,000 sparse
+columns cost no measurable RSS. What is not fine is access: each column is its
+own `SparseArray`, so row indexing is O(columns).
+
+| representation | one row-slice at 902,629 columns |
+| --- | --- |
+| sparse `DataFrame` | ~34 s (from 3.72 s measured at 100,000) |
+| `csr_matrix` | 0.0004 s |
+
+Cross-validation row-slices constantly, so a 5-fold run would spend minutes
+slicing before fitting anything. `scipy.sparse` refuses `dtype=object`
+outright. The matrix stays numeric.
+
+So `to_bunch` stores the *position* of a category and publishes
+`bunch.descriptor_categories`. That is a representation, not an encoding: a
+code plus its category list is bit-identical to one-hot encoding the strings,
+and the caller still picks `OneHotEncoder`, `OrdinalEncoder`, `TargetEncoder`
+or anything else, fitted per fold in the pipeline.
+
+`make_nimare_column_transformer` fills in the two things scikit-learn cannot
+work out from an array of numbers, alongside the four it already did:
+`categories=`, so a training split that happens to miss a category still yields
+the same number of columns, and the real labels in `get_feature_names_out`, so
+a coefficient reads back as `group_name_healthy` rather than `group_name_0.0`.
+It does not choose the encoder.
+
+### The guard
+
+An ordinal code reaching a linear model unencoded is a silent wrong answer --
+the class this design keeps removing -- so a spec covering a coded column must
+cover only coded columns and must not be `"passthrough"`. `("drop", ...)`
+remains the explicit way out, because the guard is about silence rather than
+about the outcome. Worth noting that no scikit-learn encoder accepts sparse
+input, which the existing per-block densification already covers.

@@ -169,6 +169,53 @@ Metadata is read so that study-level fields are inherited by their analyses,
 and list-valued fields such as ``sample_sizes`` are reduced the way the rest of
 NiMARE reduces them.
 
+Categorical fields
+~~~~~~~~~~~~~~~~~~
+
+A feature matrix is numeric, and it is sparse and 900,000 columns wide, so a
+string cannot be a column of it: a pandas frame would hold one, but each of its
+columns is a separate array, and a single row-slice of one that wide costs
+about 34 seconds against 0.4 milliseconds for the matrix. Cross-validation
+slices rows constantly, so that is not a trade worth making.
+
+What enters the matrix is therefore the *position* of a category, and the
+bundle carries what the positions mean::
+
+    bunch.descriptor_categories
+    # {'group_name': ['healthy', 'patients']}
+
+That is a representation rather than an encoding, so the choice of encoding
+stays where every other transformation now is -- in the pipeline:
+
+.. code-block:: python
+
+    make_nimare_column_transformer(
+        bunch,
+        (MAKernel(MKDAKernel(r=10), source_masker=bunch.masker), "voxels"),
+        (OneHotEncoder(handle_unknown="ignore"), "group_name"),
+        (SimpleImputer(strategy="median"), "count"),
+    )
+
+A code plus its category list is bit-identical to one-hot encoding the strings
+themselves, and ``OneHotEncoder``, ``OrdinalEncoder`` and ``TargetEncoder`` are
+all equally available. Two things the bundle fills in, because scikit-learn
+cannot work them out from an array of numbers: ``categories=``, so that a fold
+whose training split happens to miss a category still yields the same number of
+columns, and the real labels in ``get_feature_names_out``, so a coefficient
+reads back as ``group_name_healthy`` rather than ``group_name_0.0``.
+
+None of scikit-learn's encoders accept sparse input --
+``OneHotEncoder``, ``OrdinalEncoder`` and ``TargetEncoder`` all raise ``Sparse
+data was passed, but dense data is required`` -- which the per-block
+densification already handles.
+
+**A code cannot be passed through.** It stands for a label, not a quantity, so
+handing it to a model as it stands says that the third category is three times
+the first. A spec covering a coded column must cover only coded columns, and
+must not be ``"passthrough"``; ``("drop", "group_name")`` is still the way to
+say it is not wanted. Free text stays refused outright, since it has no reading
+as a column at all.
+
 Annotation labels
 ~~~~~~~~~~~~~~~~~
 
@@ -425,16 +472,24 @@ rather than the class, since ``StandardScaler()`` refuses sparse input and
 them. A transformer that passes keeps the block sparse; one that fails is
 handed dense columns, which always works.
 
-The probe is as wide as the block, because the width is part of the question.
-``TruncatedSVD(n_components=50)`` cannot fit a one-column probe whatever its
-sparsity, so a narrow probe called the canonical sparse reducer dense and
-densified the voxel block before it -- 1.6 GB at 228,483 columns, and 16.9 GB
-at 902,629.
+What the probe asks is whether sparsity is what the failure is *about*, not
+whether the probe failed. A probe is small, so plenty of transformers refuse it
+for their own reasons: ``TruncatedSVD(n_components=50)`` cannot fit it at any
+sparsity, and :class:`~nimare.ml.MAKernel` reads the width to know which space
+its columns are in. Counting those as needing dense input densified the voxel
+block before the canonical sparse reducer -- 1.6 GB at 228,483 columns, and
+16.9 GB at 902,629. So a transformer that fails the sparse probe is tried again
+on the same probe made dense, and only a failure that densifying *fixes* is
+about sparsity.
 
 A pipeline is probed whole rather than by its first step, because a step that
 takes sparse input may also pass it on: ``SimpleImputer`` hands sparse columns
 to whatever follows, so ``make_pipeline(SimpleImputer(), StandardScaler())``
 needs dense input even though its first step does not.
+
+An encoder is probed as you wrote it, before the bundle fills in
+``categories=``: an encoder told which categories to expect refuses the probe's
+own values, and that is not a statement about sparsity.
 
 That matters most for a pattern selection. Scaling the Neurosynth release's
 3,228 labels over 115,748 analyses would be 2.8 GB dense and is 2% filled, so

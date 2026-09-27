@@ -770,12 +770,14 @@ class Studyset:
         Parameters
         ----------
         descriptor_fields : :obj:`list`, optional
-            Fields appended to the feature matrix as extra numeric columns, by
-            default None. Each is a field name, or a ``(source, field)`` tuple
-            when the name appears in more than one source; sources are
-            ``"metadata"``, ``"annotations"`` and ``"texts"``. A field that
-            reads as a glob pattern, such as ``"Neurosynth_TFIDF__*"``, selects
-            every annotation label matching it. Non-numeric fields are refused.
+            Fields appended to the feature matrix as extra columns, by default
+            None. Each is a field name, or a ``(source, field)`` tuple when the
+            name appears in more than one source; sources are ``"metadata"``,
+            ``"annotations"`` and ``"texts"``. A field that reads as a glob
+            pattern, such as ``"Neurosynth_TFIDF__*"``, selects every annotation
+            label matching it. A numeric field becomes a column of its values; a
+            categorical one becomes a column of category positions, with the
+            labels in ``descriptor_categories``. Text fields are refused.
             :func:`~nimare.ml.describe_fields` reports what this studyset
             offers.
         target_field : :obj:`str` or :obj:`tuple`, optional
@@ -812,11 +814,11 @@ class Studyset:
             One row per retained analysis, holding ``data`` (sparse), ``target``,
             ``groups`` (the study each analysis came from, for a group-aware
             splitter), ``ids``, ``feature_names``, ``voxel_columns``,
-            ``descriptor_columns``, ``descriptor_names``, ``masker`` and
-            ``provenance``. With ``test_size``, also ``train`` and ``test`` row
-            positions. The voxel columns are peak counts over the whole image
-            grid of ``masker``, which :class:`~nimare.ml.MAKernel` turns into MA
-            maps.
+            ``descriptor_columns``, ``descriptor_names``,
+            ``descriptor_categories``, ``masker`` and ``provenance``. With
+            ``test_size``, also ``train`` and ``test`` row positions. The voxel
+            columns are peak counts over the whole image grid of ``masker``,
+            which :class:`~nimare.ml.MAKernel` turns into MA maps.
 
         Raises
         ------

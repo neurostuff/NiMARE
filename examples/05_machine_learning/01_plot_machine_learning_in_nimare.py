@@ -26,6 +26,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupKFold, GroupShuffleSplit, cross_val_score
 from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import OneHotEncoder
 from sklearn.random_projection import SparseRandomProjection
 
 from nimare.extract import fetch_neurostore
@@ -189,6 +190,39 @@ print(f"Descriptors: {with_descriptors.descriptor_names}")
 print(f"Descriptor columns: {with_descriptors.descriptor_columns}")
 print(f"With descriptors: {type(preprocessor).__name__}")
 print(f"Steps: {[name for name, _, _ in preprocessor.transformers]}")
+
+###############################################################################
+# Use a categorical field as a feature
+# -----------------------------------------------------------------------------
+# A feature matrix is numeric, so a string cannot be a column of it. What goes
+# in is the *position* of a category, and ``descriptor_categories`` says what
+# the positions mean -- a representation rather than an encoding, so the choice
+# of encoder stays in the pipeline with every other transformation.
+#
+# The bundle fills in the two things scikit-learn cannot work out from an array
+# of numbers: ``categories=``, so a training split that happens to miss a
+# category still yields the same number of columns, and the real labels in
+# ``get_feature_names_out``. A code cannot be passed through or scaled, because
+# it stands for a label rather than a quantity.
+GROUP = "ParticipantDemographicsExtractor.groups[0].group_name"
+with_group = studyset.to_bunch(
+    target_field=("metadata", "comparison_task"),
+    descriptor_fields=[("annotations", GROUP)],
+    missing_values={"target": "drop", "descriptors": "keep"},
+)
+encoded = make_nimare_column_transformer(
+    with_group,
+    ("drop", "voxels"),
+    (OneHotEncoder(handle_unknown="ignore"), GROUP),
+).fit(with_group.data)
+
+print(f"Categories: {with_group.descriptor_categories}")
+print(f"Encoded as: {[n.split('.')[-1] for n in encoded.get_feature_names_out()]}")
+
+try:
+    make_nimare_column_transformer(with_group, ("drop", "voxels"), ("passthrough", GROUP))
+except ValueError as exc:
+    print(f"{str(exc)[:150]}...")
 
 ###############################################################################
 # Select annotation labels

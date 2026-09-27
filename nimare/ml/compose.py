@@ -14,44 +14,31 @@ from nimare.ml.reduce import _resolve_map_reducer
 
 BLOCKS = ("voxels", "descriptors")
 
-_PROBE_ROWS = 4
+_PROBE = sparse.csr_matrix(np.array([[1.0], [0.0], [2.0], [3.0]]))
 
 
-def _handles_sparse(transformer, n_columns):
+def _handles_sparse(transformer):
     """Report whether ``transformer`` can be fitted on a sparse block.
 
-    Asked by fitting a clone on a sparse probe, because the answer is a
-    property of the arguments rather than of the class: ``StandardScaler()``
-    refuses sparse input while ``StandardScaler(with_mean=False)`` does not,
-    and no estimator tag separates them. Anything that fails the probe is
-    handed dense columns, which always works.
-
-    The probe is as wide as the block, because the width is part of the
-    question: ``TruncatedSVD(n_components=50)`` cannot fit a one-column probe
-    whatever its sparsity, and :class:`~nimare.ml.MAKernel` reads the width to
-    know which space its columns are in. A narrow probe answers "no" for both,
-    and densifying a voxel block is the one thing worth avoiding.
-
-    A pipeline is probed whole, not by its first step, because a step that
-    takes sparse input may also preserve it: ``SimpleImputer`` hands sparse
-    columns to whatever follows, so a ``StandardScaler`` behind it still
-    refuses to centre them.
+    Asked by fitting a clone on a tiny probe, because the answer is a property
+    of the arguments rather than of the class. What is asked is whether
+    sparsity is what the failure is *about*: a probe is small, so plenty of
+    transformers refuse it for their own reasons, and one that fails on sparse
+    input is tried again on the same probe made dense. See :doc:`the machine
+    learning documentation </machine_learning>`.
     """
-    probe = _probe(n_columns)
+    if not _fails(transformer, _PROBE):
+        return True
+    return _fails(transformer, _PROBE.toarray())
+
+
+def _fails(transformer, probe):
+    """Report whether fitting a clone on ``probe`` raises."""
     try:
         clone(transformer).fit(probe)
     except Exception:
-        return False
-    return True
-
-
-def _probe(n_columns):
-    """Return a small sparse matrix shaped like the block, cheaply."""
-    rows = np.arange(_PROBE_ROWS) % max(n_columns, 1)
-    return sparse.csr_matrix(
-        (np.arange(1.0, _PROBE_ROWS + 1.0), (np.arange(_PROBE_ROWS), rows)),
-        shape=(_PROBE_ROWS, max(n_columns, 1)),
-    )
+        return True
+    return False
 
 
 def _named(names, func=None):
@@ -134,8 +121,13 @@ def _resolve(bunch, transformer):
     return _resolve_map_reducer(transformer, masker=bunch.get("masker"))
 
 
-def _step(transformer, columns):
-    """Return the transformer to use for one block, wrapped where it has to be."""
+def _step(transformer, columns, coded=None, given=None):
+    """Return the transformer to use for one block, wrapped where it has to be.
+
+    ``given`` is the transformer as the caller wrote it, which is what the
+    sparse probe must see: an encoder told which categories to expect refuses
+    the probe's own values, and that is not a statement about sparsity.
+    """
     if transformer == "drop":
         return transformer
     if transformer == "passthrough":
@@ -144,8 +136,103 @@ def _step(transformer, columns):
         return _named(columns)
     # a sparse-safe transformer keeps the block sparse, which matters when it
     # is a pattern selection thousands of labels wide
-    densify = None if _handles_sparse(transformer, len(columns)) else _to_dense
-    return Pipeline([("name", _named(columns, densify)), ("transform", transformer)])
+    densify = None if _handles_sparse(transformer if given is None else given) else _to_dense
+    steps = [("name", _named(columns, densify)), ("transform", transformer)]
+    if coded:
+        # an encoder names its output after the code it saw, so "group_name_0.0"
+        # is put back to the label that code stands for
+        steps.append(("label", _relabel(coded)))
+    return Pipeline(steps)
+
+
+def _coded_columns(bunch, columns):
+    """Return the coded categoricals in one spec, and the columns that are not.
+
+    Read from column positions rather than from names, because a voxel spec
+    covers the whole image grid and naming it to look for a handful of
+    descriptors would cost more than everything else here put together.
+    """
+    positions = np.atleast_1d(np.arange(len(bunch.feature_names))[columns])
+    categories = bunch.get("descriptor_categories") or {}
+    if not categories:
+        return {}, positions
+
+    span = bunch.descriptor_columns
+    names = list(bunch.descriptor_names)
+    inside = positions[(positions >= span.start) & (positions < span.stop)]
+
+    found, coded_positions = {}, []
+    for position in inside:
+        name = names[int(position) - span.start]
+        if name in categories:
+            found[name] = categories[name]
+            coded_positions.append(int(position))
+
+    others = positions[~np.isin(positions, coded_positions)] if found else positions
+    return found, others
+
+
+def _relabel(coded):
+    """Return a step that puts category labels back into the output names."""
+    replacements = {
+        f"{name}_{float(position)}": f"{name}_{label}"
+        for name, labels in coded.items()
+        for position, label in enumerate(labels)
+    }
+
+    def named(_, input_features):
+        return np.asarray(
+            [replacements.get(str(name), str(name)) for name in input_features], dtype=object
+        )
+
+    return FunctionTransformer(accept_sparse=True, feature_names_out=named)
+
+
+def _with_categories(transformer, coded):
+    """Tell an encoder which categories to expect, when it would guess.
+
+    An encoder left to infer them sees only the codes present in the fold it is
+    fitted on, so a category missing from one training split would silently
+    change the number of columns the model is given.
+    """
+    if not coded or isinstance(transformer, str):
+        return transformer
+    if "categories" not in getattr(transformer, "get_params", dict)():
+        return transformer
+    if not isinstance(transformer.categories, str):
+        return transformer
+    expected = [np.arange(len(labels), dtype=float) for labels in coded.values()]
+    return clone(transformer).set_params(categories=expected)
+
+
+def _check_categoricals(bunch, used, coded):
+    """Refuse to hand a raw category code to a model.
+
+    A code is a stand-in for a label, not a quantity: passed through as it
+    stands it tells a linear model that the third category is three times the
+    first. It is also not something to scale or impute alongside real numbers,
+    so a coded column must be the whole of its spec.
+    """
+    for transformer, (labels, others) in zip(used, coded):
+        if not labels or transformer == "drop":
+            continue
+
+        if len(others):
+            raise ValueError(
+                f"{_preview(sorted(labels))} is a coded categorical descriptor, and this "
+                f"spec also covers {len(others)} column(s) that are not: "
+                f"{_preview(_NamesAt(bunch.feature_names, others[:8]))}. A code stands for "
+                "a label rather than a quantity, so give the categorical columns a spec of "
+                f"their own with an encoder, such as (OneHotEncoder(), {sorted(labels)[0]!r})."
+            )
+        if transformer == "passthrough":
+            raise ValueError(
+                f"{_preview(sorted(labels))} is a coded categorical descriptor and cannot "
+                "be passed through: its values are positions in "
+                "bunch.descriptor_categories, so a model would read the third category as "
+                "three times the first. Name an encoder, such as OneHotEncoder() or "
+                "TargetEncoder(), or ('drop', ...) if it is not wanted."
+            )
 
 
 def _check_claims(bunch, specs, remainder):
@@ -283,10 +370,16 @@ def make_nimare_column_transformer(
     """
     used, resolved = _read_pairs(bunch, transformers)
     _check_claims(bunch, [columns for columns, _ in resolved], remainder)
+    coded = [_coded_columns(bunch, columns) for columns, _ in resolved]
+    _check_categoricals(bunch, used, coded)
+    given = used
+    used = [_with_categories(transformer, labels) for transformer, (labels, _) in zip(used, coded)]
 
     steps = [
-        (_step(transformer, names), columns)
-        for transformer, (columns, names) in zip(used, resolved)
+        (_step(transformer, names, labels, written), columns)
+        for transformer, written, (columns, names), (labels, _) in zip(
+            used, given, resolved, coded
+        )
     ]
     # named after the transformer rather than the wrapper built around it, so
     # the step names are the ones scikit-learn would have chosen
