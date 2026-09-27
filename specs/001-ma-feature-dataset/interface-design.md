@@ -1641,15 +1641,31 @@ four decimals -- but:
   156 MB on a 4,000-analysis release slice -- the cost the peak representation
   exists to avoid.
 
-Measured over three repeats, it made the SVD pipeline *slower* -- 33.6 s
-against 20.7 s uncached -- while helping the cheap one, 4.4 s against 5.6 s.
-Part of that slowdown is the prototype's own fault: it cached
-`made.indices[span]`, which is a numpy view, so every cached row pinned the
-entire output array of the kernel call that made it, and five folds retained
-five full MA matrices instead of one. A `.copy()` fixes that.
+Measured with those defects fixed -- copies rather than views, and a key
+covering the kernel class, its parameters and the mask -- over three repeats:
 
-The conclusion does not depend on the prototype being good, because a cache
-cannot beat hoisting even in principle. Convolving once is the floor that any
-cache is trying to approach, and hoisting *is* that floor: 16.9 s against
-20.7 s uncached, with no key to get right, no `clone` semantics to subvert and
-nothing retained. Documented instead.
+| pipeline | kernel in pipeline | cached | hoisted |
+| --- | --- | --- | --- |
+| `TruncatedSVD(50)` + logistic | 20.16 s | 16.50 s | 16.65 s |
+| `VarianceThreshold` + logistic | 5.66 s | 3.66 s | 3.75 s |
+
+Scores identical to four decimals throughout. The hoisted column excludes the
+one-off kernel run, so cached and hoisted are the same within noise; both beat
+leaving the kernel in the pipeline by 18% and 35%.
+
+An earlier version of this section rejected the cache on the grounds that it
+"cannot beat hoisting even in principle", hoisting being the floor a cache
+approaches. That was wrong twice over. The numbers it relied on came from the
+view-pinning prototype, which made the SVD pipeline *slower* -- 33.6 s against
+20.7 s -- and the argument treated hoisting as a free floor when hoisting also
+pays to slice a 228,483-column matrix on every fold. The floor is not zero and
+the cache reaches it.
+
+It was also the wrong comparison. Someone who wants a cache is someone for whom
+hoisting is awkward -- they have descriptors, or they want one search object --
+so the question is whether the cache beats leaving the kernel in the pipeline,
+not whether it beats a path they are not taking. It does.
+
+What remains true is the cost: a key that must cover four things, a
+`__deepcopy__` returning `self`, and the whole MA matrix retained. What is no
+longer true is that it buys nothing.
