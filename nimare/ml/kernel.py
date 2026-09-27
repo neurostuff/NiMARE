@@ -190,7 +190,8 @@ class MAKernel(TransformerMixin, BaseEstimator):
     def _cached(self, X):
         """Return the maps of every row of ``X``, convolving only the new ones."""
         X = X.tocsr() if sparse.issparse(X) else sparse.csr_matrix(X)
-        keys = [(self._signature(), *_row_key(X, row)) for row in range(X.shape[0])]
+        signature = self._signature()
+        keys = [(signature, *_row_key(X, row)) for row in range(X.shape[0])]
 
         missing = [row for row, key in enumerate(keys) if key not in self.cache.rows]
         self.cache.hits += X.shape[0] - len(missing)
