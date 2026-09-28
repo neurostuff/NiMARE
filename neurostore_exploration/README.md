@@ -140,8 +140,18 @@ error 9×10⁻⁶ for a maps atlas (lstsq vs pinv) and 3×10⁻⁸ for a labels 
 with a ~1000× speedup on apply, which is what makes a 137k-row × 9-atlas sweep
 feasible on 4 cores.
 
-All cross-validation is `GroupKFold` **by study**, so analyses from one paper
-never straddle a fold.
+**Everything is grouped by study.** Analyses from one paper are not
+independent, so no study straddles a split: `GroupKFold(5)` by `study_id`
+throughout, except where a single grouped holdout is noted (the SVD arm of
+Q1c, and the transfer matrix in Q6, which holds out a quarter of each
+disorder's studies).
+
+**Why the atlas may be precomputed outside the fold.** An atlas is a fixed,
+data-independent linear map — it is the same operator whichever rows it is
+applied to, and `MaskerTransformer.fit` reads only `X.shape[1]` — so applying
+it before cross-validation leaks nothing. Every *data-dependent* step (the
+truncated SVD, the scaler, the classifier) stays inside the pipeline and is
+fitted on training rows only.
 
 **Confound baseline.** Every analysis is checked against a model given only the
 number of reported foci. For cognitive domains it sits at chance (AUC
