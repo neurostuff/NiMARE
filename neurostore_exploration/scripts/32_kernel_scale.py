@@ -58,15 +58,34 @@ KERNELS = [("MKDA r=5", MKDAKernel(r=5)), ("MKDA r=10", MKDAKernel(r=10)),
            ("MKDA r=30", MKDAKernel(r=30)), ("KDA r=10", KDAKernel(r=10)),
            ("ALE (sample-size)", ALEKernel())]
 
+CHUNK = 2048
+
+
+def reduced_features(kernel):
+    """Atlas features for one kernel, a chunk at a time.
+
+    A wide kernel is enormous held whole -- MKDA at r=30 puts ~75k non-zeros in
+    every row -- so each chunk is convolved, reduced and discarded.
+    """
+    transformer = MAKernel(kernel, source_masker=bunch.masker).fit(peaks[:2])
+    out = np.empty((peaks.shape[0], operator.shape[1]), dtype=np.float32)
+    total_nnz = 0
+    for start in range(0, peaks.shape[0], CHUNK):
+        maps = transformer.transform(peaks[start:start + CHUNK])
+        total_nnz += maps.nnz
+        out[start:start + maps.shape[0]] = np.asarray(maps @ operator, dtype=np.float32)
+        del maps
+    return out, total_nnz / peaks.shape[0]
+
+
 records = []
 for name, kernel in KERNELS:
     t0 = time.time()
     try:
-        maps = MAKernel(kernel, source_masker=bunch.masker).fit_transform(peaks)
+        X, nnz_per_row = reduced_features(kernel)
     except Exception as exc:
         print(f"{name:<20} skipped: {type(exc).__name__}: {str(exc)[:70]}", flush=True)
         continue
-    X = np.asarray(maps @ operator, dtype=np.float32)
     density = float((X != 0).mean())
     for domain in nsnorm.DOMAINS:
         y = sub["dom_" + domain].values.astype(int)
@@ -81,8 +100,8 @@ for name, kernel in KERNELS:
                         "density": density})
     mean_auc = np.mean([r["auc"] for r in records if r["kernel"] == name])
     print(f"{name:<20} mean AUC {mean_auc:.3f}  "
-          f"(nnz/row {maps.nnz / maps.shape[0]:.0f}, {time.time() - t0:.0f}s)", flush=True)
-    del maps, X
+          f"(nnz/row {nnz_per_row:.0f}, {time.time() - t0:.0f}s)", flush=True)
+    del X
     clear_map_cache()
 
 res = pd.DataFrame(records)
