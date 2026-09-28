@@ -200,10 +200,42 @@ at the same radius, so whether overlapping spheres are summed or binarised
 makes no difference, and ALE's Gaussians land in the same place as MKDA's hard
 spheres.
 
-Put beside Q1 and the ceiling probe below, three independent knobs on the
-spatial representation — parcellation granularity, kernel bandwidth, kernel
-family — are all nearly flat. Whatever limits coordinate-based decoding, it is
-not the resolution at which the coordinates are read.
+Put beside Q1, three independent knobs on the spatial representation —
+parcellation granularity, kernel bandwidth, kernel family — are all nearly
+flat. Whatever limits coordinate-based decoding, it is not the resolution at
+which the coordinates are read. Q1c asks what it *is*.
+
+### Q1c. So where *is* the ceiling? Not in anything you control
+
+Decoding tops out near AUC 0.63–0.65 whatever is done to it. Four candidate
+culprits, each isolated on the same 20,007-analysis sample:
+
+| what is changed | effect on mean AUC |
+|---|---|
+| atlas granularity, 39 → 512 regions (Q1) | span **0.021** |
+| kernel width and family, 8 kernels (Q1b) | span **0.007** |
+| a non-linear model — gradient boosting instead of logistic regression | **+0.009** |
+| the atlas removed entirely — SVD-128 over all 228,483 voxels, same split | **+0.012** |
+| cleaner labels — only analyses the extractor gave exactly one domain | **+0.005** |
+
+Not one of them is worth more than a hundredth of AUC. Discarding the
+parcellation and modelling all 228k voxels recovers 0.012; letting the model
+be non-linear recovers 0.009; restricting to unambiguously labelled analyses
+recovers 0.005 while throwing away seven-eighths of the rows.
+
+The gains are not uniformly distributed, and where they land is informative:
+unreduced voxels help most for **Motivation** (+0.031) and **Social function**
+(+0.018) — the two rarest labels, whose anatomy is distributed — and least for
+**Learning and memory** (−0.001) and **Emotion** (+0.002), which sit on large
+compact structures (hippocampus, amygdala, insula) that any atlas already
+resolves. Everything else falls between at +0.009 to +0.013.
+
+So the ceiling is not in the representation, the estimator, or the label
+noise. It is in what a coordinate table *is*: a handful of thresholded peaks,
+published under one of many analysis pipelines, standing in for a whole
+statistical map. Roughly 0.65 appears to be what that yields for this question,
+and buying much more of it will take different data — full statistical maps —
+rather than a better model of the peaks.
 
 ### Q2. Cognitive domains differ enormously in how spatially specific they are
 
@@ -444,10 +476,12 @@ worth interpreting.
    structure suggests merges (Emotion+Social, Perception+Attention,
    Reasoning+Motivation). Clustering the coordinates first and naming the
    clusters afterwards is now a tractable experiment.
-3. *Why does decoding saturate at ~40 regions?* Either reported peaks carry only
-   coarse spatial information (plausible: they are sparse, smoothed, and
-   thresholded), or the labels are too noisy to reward precision. The
-   single-label and unreduced-SVD comparisons in `26_ceiling.py` separate these.
+3. *What would actually raise the ceiling?* Q1c rules out the atlas, the
+   kernel, the estimator and label multiplicity, which between them buy under
+   0.02 AUC. That points at the coordinate representation itself. Re-running
+   this against full statistical maps, for the subset of studies that have
+   them, would say how much is lost in going from a map to a peak list — and
+   would put a number on what the coordinate literature can and cannot answer.
 
 **For clinical neuroscience**
 
@@ -499,7 +533,7 @@ worth interpreting.
 | `scripts/32_kernel_scale.py` | Q1b |
 | `scripts/33_age.py` | Q8 |
 | `scripts/24_maps.py` | weight maps via `coefficient_image` |
-| `scripts/26_ceiling.py` | atlas vs model vs label-noise probe |
+| `scripts/26_ceiling.py` | Q1c |
 | `scripts/30_figures.py`, `31_map_figure.py` | figures |
 
 Scripts read a cached release via `fetch_neurostore(version="nightly")` and
