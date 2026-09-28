@@ -745,6 +745,117 @@ class Studyset:
         whole = self._view.point_mask is None and len(self._view) == self.store.n_analyses
         return write_parquet(self.store if whole else _materialize(self), directory)
 
+    def to_bunch(
+        self,
+        *,
+        descriptor_fields=None,
+        target_field=None,
+        target_transformer=None,
+        missing_coordinates="drop",
+        missing_values="raise",
+        test_size=None,
+        random_state=None,
+    ):
+        """Convert Studyset to scikit-learn compatible bunch.
+
+        .. versionadded:: 0.22.0
+
+        Reads each analysis's foci into a row of peak counts over the image
+        grid, appends any descriptor fields, extracts any target, and aligns
+        them to the analyses they came from. Apply a kernel in your pipeline
+        with :class:`~nimare.ml.MAKernel`.
+
+        Parameters
+        ----------
+        descriptor_fields : :obj:`list`, optional
+            Fields appended to the feature matrix as extra columns, by default
+            None. Each is a field name, or a ``(source, field)`` tuple when the
+            name appears in more than one source; sources are ``"metadata"``,
+            ``"annotations"`` and ``"texts"``. A field that reads as a glob
+            pattern, such as ``"Neurosynth_TFIDF__*"``, selects every annotation
+            label matching it. A numeric field becomes a column of its values; a
+            categorical one becomes a column of category positions, with the
+            labels in ``descriptor_categories``. Text fields are refused.
+            :func:`~nimare.ml.describe_fields` reports what this studyset
+            offers.
+        target_field : :obj:`str` or :obj:`tuple`, optional
+            Field exported as ``target``, by default None. Scalar numeric and
+            scalar categorical fields are supported directly.
+        target_transformer : :obj:`callable` or transformer, optional
+            Applied to the raw target values before they become ``target``, by
+            default None. Required for text fields, which have no scalar
+            reading.
+        missing_coordinates : {"drop", "include"}, default="drop"
+            Whether analyses reporting no coordinates are removed before rows
+            are built, or kept as all-zero peak rows.
+        missing_values : {"raise", "drop", "keep"} or :obj:`dict`, default="raise"
+            What to do when a selected descriptor or target value is missing:
+            report the analyses and fields, remove those analyses, or leave the
+            gaps for a pipeline to impute. A mapping sets a policy per role --
+            ``{"target": "drop", "descriptors": "keep"}`` -- because a
+            descriptor gap can be imputed in a pipeline and a target gap
+            cannot. A role the mapping does not name is ``"raise"``.
+        test_size : :obj:`float` or :obj:`int`, optional
+            Hold out this fraction of *studies*, or this many of them, by
+            default None, which splits nothing. The bunch then also carries
+            ``train`` and ``test`` row positions. A study belongs to exactly
+            one partition, so analysis counts only approximate a fraction.
+            For several splits of one bunch, or for cross-validation, pass
+            ``groups`` to a scikit-learn group splitter instead of converting
+            again.
+        random_state : :obj:`int`, optional
+            Seed for ``test_size``, by default None.
+
+        Returns
+        -------
+        :class:`sklearn.utils.Bunch`
+            One row per retained analysis, holding ``data`` (sparse), ``target``,
+            ``groups`` (the study each analysis came from, for a group-aware
+            splitter), ``ids``, ``feature_names``, ``voxel_columns``,
+            ``descriptor_columns``, ``descriptor_names``,
+            ``descriptor_categories``, ``masker`` and ``provenance``. With
+            ``test_size``, also ``train`` and ``test`` row positions. The voxel
+            columns are peak counts over the whole image grid of ``masker``,
+            which :class:`~nimare.ml.MAKernel` turns into MA maps.
+
+        Raises
+        ------
+        :obj:`ValueError`
+            If a field cannot be resolved or used, if a value is missing under
+            ``missing_values="raise"``, if nothing is left to convert, or if
+            ``test_size`` would leave a partition empty.
+
+        See Also
+        --------
+        nimare.ml.describe_fields : What fields this studyset offers.
+        nimare.ml.MAKernel : Turn the peak columns into MA maps in a pipeline.
+        nimare.ml.make_nimare_column_transformer : Route each block to its own transformer.
+
+        Examples
+        --------
+        >>> bunch = studyset.to_bunch(  # doctest: +SKIP
+        ...     target_field=("metadata", "comparison_task"),
+        ... )
+
+        Holding out a quarter of the studies, without splitting one::
+
+        >>> bunch = studyset.to_bunch(test_size=0.25, random_state=13)  # doctest: +SKIP
+        >>> X_train = bunch.data[bunch.train]  # doctest: +SKIP
+        """
+        # Imported here so that nimare.studyset does not pull in scikit-learn,
+        # which only this one method needs.
+        from nimare.ml.extract import _FeatureExtractor
+
+        return _FeatureExtractor(
+            descriptor_fields=descriptor_fields,
+            target_field=target_field,
+            target_transformer=target_transformer,
+            missing_coordinates=missing_coordinates,
+            missing_values=missing_values,
+            test_size=test_size,
+            random_state=random_state,
+        ).transform(self)
+
     def to_dataset(self):
         """Convert to a legacy :class:`~nimare.dataset.Dataset`.
 
