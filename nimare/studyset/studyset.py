@@ -797,10 +797,10 @@ class Studyset:
             cannot. A role the mapping does not name is ``"raise"``.
         test_size : :obj:`float` or :obj:`int`, optional
             Hold out this fraction of *studies*, or this many of them, by
-            default None, which splits nothing. The bundle then also carries
+            default None, which splits nothing. The bunch then also carries
             ``train`` and ``test`` row positions. A study belongs to exactly
             one partition, so analysis counts only approximate a fraction.
-            For several splits of one bundle, or for cross-validation, pass
+            For several splits of one bunch, or for cross-validation, pass
             ``groups`` to a scikit-learn group splitter instead of converting
             again.
         random_state : :obj:`int`, optional

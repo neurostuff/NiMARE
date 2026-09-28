@@ -70,7 +70,7 @@ class MAKernel(TransformerMixin, BaseEstimator):
         no default: the choice is scientific.
     source_masker : :class:`~nilearn.maskers.NiftiMasker` or img_like, optional
         The masker whose image grid the peak columns span, normally the
-        ``masker`` a bundle carries, by default None.
+        ``masker`` a bunch carries, by default None.
     cache : :obj:`bool`, default=False
         Whether to keep the maps already convolved, so that folds after the
         first are served rather than recomputed. The maps are held for the
@@ -130,7 +130,7 @@ class MAKernel(TransformerMixin, BaseEstimator):
         if self.source_masker is None:
             raise ValueError(
                 "MAKernel requires the source_masker whose grid the peak columns span, "
-                "normally the masker a bundle carries."
+                "normally the masker a bunch carries."
             )
 
         kernel = self.kernel() if isinstance(self.kernel, type) else self.kernel
@@ -150,7 +150,7 @@ class MAKernel(TransformerMixin, BaseEstimator):
                 f"MAKernel was given {X.shape[1]} columns, but the grid of its "
                 f"source_masker has {expected}. Peak columns span the whole image grid, "
                 "so a kernel reaches voxels that a coordinate outside the mask would "
-                "otherwise lose. Pass the bundle's own masker as source_masker, and the "
+                "otherwise lose. Pass the bunch's own masker as source_masker, and the "
                 "peak columns as they came."
             )
         self.n_features_in_ = X.shape[1]

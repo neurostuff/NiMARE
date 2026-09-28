@@ -85,26 +85,26 @@ bunch = studyset.to_bunch(
 print(f"Feature data: {bunch.data.shape}, sparse={bunch.data.format}")
 print(f"Non-zeros: {bunch.data.nnz:,} peaks")
 print(f"Labels: {sorted(set(bunch.target))}")
-print(f"Dropped for want of coordinates: {len(bunch.provenance['dropped_ids'])}")
+print(f"Dropped studies because of no coordinates: {len(bunch.provenance['dropped_ids'])}")
 
 ###############################################################################
-# The bundle is the familiar scikit-learn one: sparse ``data``, aligned
-# ``target``, and ``groups`` holding the study each analysis came from. It also
-# carries ``ids``, ``feature_names``, ``voxel_columns``, ``descriptor_columns``,
-# ``descriptor_names``, the ``masker`` whose grid the voxels span, and
-# ``provenance``.
+# If you've worked with scikit-learn, ``bunch`` may be familiar: sparse ``data``,
+# aligned ``target``, and ``groups`` holding the study each analysis came from. It
+# also carries ``ids``, ``feature_names``, ``voxel_columns``,
+# ``descriptor_columns``, ``descriptor_names``, the ``masker`` whose grid the
+# voxels span, and ``provenance``.
 #
 # The voxel columns span the whole image grid. A coordinate just outside the
 # mask still spreads into it once a kernel is applied, so the full grid keeps
 # that contribution.
-print(f"Bundle: {', '.join(sorted(bunch))}")
+print(f"Bunch: {', '.join(sorted(bunch))}")
 
 ###############################################################################
-# Keep each study on one side of the split
+# Split testing and training at the study level, not the analysis level
 # -----------------------------------------------------------------------------
 # Analyses from one study are related, so keep each study on one side of the
 # split. Passing ``test_size`` above added ``train`` and ``test`` row positions
-# to the bundle, grouped by study. ``test_size`` counts *studies*, so the
+# to the bunch, grouped by study. ``test_size`` counts *studies*, so the
 # analysis counts approximate the fraction you asked for.
 train, test = bunch.train, bunch.test
 
@@ -114,7 +114,7 @@ print(f"Shared studies: {set(bunch.groups[train]) & set(bunch.groups[test])}")
 
 ###############################################################################
 # The split is a :class:`~sklearn.model_selection.GroupShuffleSplit` over
-# ``groups``. For several splits of one bundle, or for cross-validation, convert
+# ``groups``. For several splits of one bunch, or for cross-validation, convert
 # once and hand ``groups`` to a group splitter.
 
 ###############################################################################
@@ -149,7 +149,7 @@ scores = cross_val_score(
 print(f"Cross-validation accuracy: {scores.mean():.3f} +/- {scores.std():.3f}")
 
 ###############################################################################
-# Read the model back to the brain
+# interpret the model results in the brain
 # -----------------------------------------------------------------------------
 # The classifier weighs SVD components, and you want to know which regions
 # carry the prediction. :func:`~nimare.ml.coefficient_image` walks the fitted
@@ -193,14 +193,14 @@ except ValueError as exc:
     print(f"{str(exc)[:160]}...")
 
 ###############################################################################
-# Once there are descriptor columns, give each block its own transformer so the
-# reducer works on the voxels only. That is what
+# Once there are descriptor columns, give each block its own transformer so it
+# works on the voxels only. That is what
 # :class:`~sklearn.compose.ColumnTransformer` is for, and
 # :func:`~nimare.ml.make_nimare_column_transformer` is
-# :func:`~sklearn.compose.make_column_transformer` with the bundle filled in.
+# :func:`~sklearn.compose.make_column_transformer` with the bunch filled in.
 # Pass ``(transformer, columns)`` pairs as scikit-learn takes them, where
 # ``columns`` may be ``"voxels"``, ``"descriptors"``, or a descriptor's own
-# field name. It binds the bundle's masker into an atlas, keeps the column names
+# field name. It binds the bunch's masker into an atlas, keeps the column names
 # so a coefficient reads back to its field, and picks a ``sparse_threshold`` that
 # keeps a wide voxel block sparse.
 #
@@ -233,11 +233,13 @@ print(f"Steps: {[name for name, _, _ in preprocessor.transformers]}")
 ###############################################################################
 # Use a categorical field as a feature
 # -----------------------------------------------------------------------------
-# A feature matrix holds numbers, so a categorical descriptor enters it as a
-# category code, and ``descriptor_categories`` tells you what the codes mean.
-# Pick your encoder in the pipeline, alongside every other transformation.
+# Categorical features are represented numerically through
+# category codes, and ``descriptor_categories`` tells you how the
+# codes relate back to the categories.
+# Pick your category encoder in the pipeline, and treat it like any other
+# scikit-learn transformer.
 #
-# The bundle fills in the two things scikit-learn works out from a frame but not
+# The bunch fills in the two things scikit-learn works out from a frame but not
 # from an array of numbers: ``categories=``, so a training split that happens to
 # miss a category still yields the same number of columns, and the real labels in
 # ``get_feature_names_out``. A code stands for a label, so give it an encoder.
@@ -274,20 +276,20 @@ annotated = neurosynth.to_bunch(
 )
 
 labels = annotated.data[:, annotated.descriptor_columns]
-print(f"Bundle: {annotated.data.shape}, of which labels: {labels.shape[1]}")
+print(f"Bunch: {annotated.data.shape}, of which labels: {labels.shape[1]}")
 print(f"Non-zero labels: {labels.nnz}")
 print(f"Names kept whole: {annotated.descriptor_names[:2]}")
 print(f"Still sparse: {sparse.issparse(annotated.data)}")
 
 ###############################################################################
-# Compare reduction workflows
+# Compare transformer workflows
 # -----------------------------------------------------------------------------
 # Any scikit-learn transformer that reads sparse input will do, downstream of
 # the kernel: truncated SVD, sparse random projection, variance thresholding and
 # atlas aggregation all do. ``PCA`` reads sparse input through its ``arpack`` or
 # ``covariance_eigh`` solvers and centres the data, so truncated SVD is the usual
 # choice for a matrix this wide.
-reducers = {
+transformers = {
     "Truncated SVD": TruncatedSVD(n_components=N_COMPONENTS, random_state=RANDOM_SEED),
     "Sparse random projection": SparseRandomProjection(
         n_components=N_COMPONENTS, random_state=RANDOM_SEED
@@ -296,10 +298,10 @@ reducers = {
 }
 splitter = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=RANDOM_SEED)
 
-for name, reducer in reducers.items():
+for name, transformer in transformers.items():
     reduced_pipeline = make_pipeline(
         MAKernel(MKDAKernel(r=10), source_masker=bunch.masker),
-        reducer,
+        transformer,
         LogisticRegression(max_iter=1000, class_weight="balanced", random_state=RANDOM_SEED),
     )
     score = cross_val_score(
@@ -316,7 +318,7 @@ for name, reducer in reducers.items():
 # -----------------------------------------------------------------------------
 # A nilearn masker is already a scikit-learn transformer, and it takes images
 # where a ColumnTransformer hands out columns of an array.
-# :class:`~nimare.ml.MaskerTransformer` bridges the two, using the bundle's
+# :class:`~nimare.ml.MaskerTransformer` bridges the two, using the bunch's
 # ``masker`` to know which voxel each column is.
 #
 # It applies any nilearn masker, or anything nilearn loads as an atlas: what a
@@ -329,26 +331,26 @@ for name, reducer in reducers.items():
 #
 #     (NiftiMasker(smoothing_fwhm=6), "voxels")
 #
-# It reads either column space, working it out from the width: the bundle's raw
+# It reads either column space, working it out from the width: the bunch's raw
 # peak columns, which gives the coordinates reported per region, or the MA maps
 # a kernel made, as here.
 #
 # Outside a pipeline, fit the transformer on the training rows and apply that
 # same fitted one to the held-out rows.
 difumo = fetch_atlas_difumo(dimension=N_COMPONENTS, resolution_mm=2)
-atlas_reducer = MaskerTransformer(difumo, source_masker=bunch.masker)
+atlas_transformer = MaskerTransformer(difumo, source_masker=bunch.masker)
 
 maps = MAKernel(MKDAKernel(r=10), source_masker=bunch.masker).fit_transform(
     bunch.data[:, bunch.voxel_columns]
 )
-train_reduced = atlas_reducer.fit_transform(maps[train])
-test_reduced = atlas_reducer.transform(maps[test])
+train_reduced = atlas_transformer.fit_transform(maps[train])
+test_reduced = atlas_transformer.transform(maps[test])
 
 print(f"Reduced train features: {train_reduced.shape}")
 print(f"Reduced test features:  {test_reduced.shape}")
 # get_feature_names_out follows scikit-learn and returns an array of numpy
 # strings; tolist() gives the plain ones.
-print(f"First region names: {atlas_reducer.get_feature_names_out()[:3].tolist()}")
+print(f"First region names: {atlas_transformer.get_feature_names_out()[:3].tolist()}")
 
 model = LogisticRegression(max_iter=1000, class_weight="balanced", random_state=RANDOM_SEED)
 model.fit(train_reduced, bunch.target[train])
@@ -413,7 +415,7 @@ with_demographics = subset.to_bunch(
     missing_values={"target": "drop", "descriptors": "keep"},
 )
 
-print(f"Bundle: {with_demographics.data.shape}")
+print(f"Bunch: {with_demographics.data.shape}")
 print(f"Descriptors: {[name.split('.')[-1] for name in with_demographics.descriptor_names]}")
 
 ###############################################################################

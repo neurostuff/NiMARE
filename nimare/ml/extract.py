@@ -1,4 +1,4 @@
-"""Reading a Studyset into the bundle :meth:`~nimare.studyset.Studyset.to_bunch` returns."""
+"""Reading a Studyset into the bunch :meth:`~nimare.studyset.Studyset.to_bunch` returns."""
 
 from __future__ import annotations
 
@@ -396,7 +396,7 @@ def _missing_by_field(ids, blocks, target_missing, retained):
 
 
 class _FeatureExtractor(NiMAREBase):
-    """Carry out one conversion from a Studyset to a scikit-learn bundle.
+    """Carry out one conversion from a Studyset to a scikit-learn bunch.
 
     Internal. :meth:`~nimare.studyset.Studyset.to_bunch` is the public entry
     point and documents the parameters.
@@ -423,7 +423,7 @@ class _FeatureExtractor(NiMAREBase):
     # ------------------------------------------------------------- public API
 
     def transform(self, studyset):
-        """Convert a Studyset into the bundle scikit-learn expects.
+        """Convert a Studyset into the bunch scikit-learn expects.
 
         Parameters
         ----------
@@ -463,7 +463,7 @@ class _FeatureExtractor(NiMAREBase):
         self._check_target(target, retained, ids)
 
         descriptor_names = [name for block in blocks for name in block.names]
-        bundle = self._bundle(
+        bunch = self._assemble(
             studyset,
             peaks[retained],
             self._descriptor_matrix(blocks, retained),
@@ -475,8 +475,8 @@ class _FeatureExtractor(NiMAREBase):
             provenance=self._provenance(studyset, ids, retained, dropped, descriptor_names),
         )
         if self.test_size is not None:
-            bundle.train, bundle.test = self._grouped_split(bundle.groups)
-        return bundle
+            bunch.train, bunch.test = self._grouped_split(bunch.groups)
+        return bunch
 
     @staticmethod
     def _descriptor_matrix(blocks, retained):
@@ -487,8 +487,8 @@ class _FeatureExtractor(NiMAREBase):
         return kept[0] if len(kept) == 1 else _hstack_blocks(kept)
 
     @staticmethod
-    def _bundle(studyset, peaks, descriptors, descriptor_names, categories, **aligned):
-        """Assemble the bundle, with the column boundary the blocks imply."""
+    def _assemble(studyset, peaks, descriptors, descriptor_names, categories, **aligned):
+        """Assemble the bunch, with the column boundary the blocks imply."""
         n_voxels = peaks.shape[1]
         n_descriptors = 0 if descriptors is None else descriptors.shape[1]
         return Bunch(

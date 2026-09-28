@@ -1,4 +1,4 @@
-"""A :func:`~sklearn.compose.make_column_transformer` that knows the bundle's blocks."""
+"""A :func:`~sklearn.compose.make_column_transformer` that knows the bunch's blocks."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from sklearn.pipeline import Pipeline, _name_estimators
 from sklearn.preprocessing import FunctionTransformer
 
 from nimare.ml._helpers import _NamesAt, _preview, _to_dense
-from nimare.ml.reduce import _resolve_map_reducer
+from nimare.ml.reduce import _resolve_voxel_transformer
 
 BLOCKS = ("voxels", "descriptors")
 
@@ -109,7 +109,7 @@ def _by_name(bunch, wanted):
             spans.append(slice(position, position + 1))
         else:
             raise ValueError(
-                f"{name!r} names neither a block nor a descriptor of this bundle. The "
+                f"{name!r} names neither a block nor a descriptor of this bunch. The "
                 f"blocks are {', '.join(BLOCKS)} and the descriptors are "
                 f"{_preview(descriptors)}; anything else must be a column spec, such as "
                 "bunch.voxel_columns."
@@ -128,7 +128,7 @@ def _resolve(bunch, transformer):
                 "'passthrough' or 'drop', as it may be for a ColumnTransformer."
             )
         return transformer
-    return _resolve_map_reducer(transformer, masker=bunch.get("masker"))
+    return _resolve_voxel_transformer(transformer, masker=bunch.get("masker"))
 
 
 def _step(transformer, columns, coded, given):
@@ -282,7 +282,7 @@ def make_nimare_column_transformer(
 ):
     """Construct a ColumnTransformer over the blocks of ``bunch``.
 
-    :func:`~sklearn.compose.make_column_transformer` with the bundle filled in:
+    :func:`~sklearn.compose.make_column_transformer` with the bunch filled in:
     the column spans of the two blocks, the masker an atlas needs, the column
     names each transformer is given, and the categories a categorical
     descriptor code stands for. Everything else is scikit-learn's, including
@@ -295,7 +295,7 @@ def make_nimare_column_transformer(
     Parameters
     ----------
     bunch : :class:`sklearn.utils.Bunch`
-        A bundle from :meth:`~nimare.studyset.Studyset.to_bunch`.
+        A bunch from :meth:`~nimare.studyset.Studyset.to_bunch`.
     *transformers : :obj:`tuple`
         ``(transformer, columns)`` pairs, as
         :func:`~sklearn.compose.make_column_transformer` takes them.
@@ -309,7 +309,7 @@ def make_nimare_column_transformer(
 
         ``transformer`` may be a scikit-learn transformer, ``"passthrough"``,
         ``"drop"``, or any atlas :class:`~nimare.ml.MaskerTransformer` accepts,
-        which is built against the bundle's masker.
+        which is built against the bunch's masker.
     remainder : {"drop", "passthrough"} or estimator, default="drop"
         What happens to columns no transformer claims, as in scikit-learn.
         Claim both blocks under ``"drop"``; say ``("drop", "voxels")`` to drop
@@ -333,7 +333,7 @@ def make_nimare_column_transformer(
     Raises
     ------
     :obj:`ValueError`
-        If a pair is malformed, if a block name is not one of the bundle's, if
+        If a pair is malformed, if a block name is not one of the bunch's, if
         either block would be dropped without being named, or if a coded
         categorical descriptor would reach a model unencoded.
 

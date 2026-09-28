@@ -26,7 +26,7 @@ def coefficient_image(estimator, bunch, coef=None):
         A fitted pipeline ending in a model with ``coef_``, or the model
         itself when the features are already voxels.
     bunch : :class:`sklearn.utils.Bunch`
-        The bundle the model was fitted on, for its ``masker`` and the span of
+        The bunch the model was fitted on, for its ``masker`` and the span of
         its voxel columns.
     coef : array_like, optional
         Weights to project instead of the model's own, by default None. One per
@@ -36,7 +36,7 @@ def coefficient_image(estimator, bunch, coef=None):
     Returns
     -------
     :class:`~nibabel.nifti1.Nifti1Image`
-        One weight per voxel, in the bundle masker's space. A model with one
+        One weight per voxel, in the bunch masker's space. A model with one
         set of weights gives a 3D image, several give a 4D one.
 
     Raises

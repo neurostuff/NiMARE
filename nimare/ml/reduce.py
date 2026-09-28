@@ -1,4 +1,4 @@
-"""Apply a nilearn masker or atlas to the voxel columns of a bundle."""
+"""Apply a nilearn masker or atlas to the voxel columns of a bunch."""
 
 from __future__ import annotations
 
@@ -47,10 +47,10 @@ class MaskerTransformer(TransformerMixin, BaseEstimator):
         one with a :class:`~nilearn.maskers.NiftiLabelsMasker`.
     source_masker : :class:`~nilearn.maskers.NiftiMasker` or img_like, optional
         The masker defining the voxel order of the incoming features, normally
-        the ``masker`` a bundle carries, by default None. This is where the
+        the ``masker`` a bunch carries, by default None. This is where the
         columns came from, not what is applied to them. Columns may be the
         masker's own voxels, as :class:`~nimare.ml.MAKernel` returns them, or
-        the whole image grid, as a bundle's peak columns arrive; which of the
+        the whole image grid, as a bunch's peak columns arrive; which of the
         two is read off their width.
     masker_kwargs : :obj:`dict`, optional
         Arguments for the nilearn fetcher when ``masker`` names one, by default
@@ -72,7 +72,7 @@ class MaskerTransformer(TransformerMixin, BaseEstimator):
 
     Examples
     --------
-    >>> reducer = MaskerTransformer(  # doctest: +SKIP
+    >>> transformer = MaskerTransformer(  # doctest: +SKIP
     ...     fetch_atlas_difumo(dimension=64),
     ...     source_masker=bunch.masker,
     ... )
@@ -118,7 +118,7 @@ class MaskerTransformer(TransformerMixin, BaseEstimator):
         if self.source_masker is None:
             raise ValueError(
                 "MaskerTransformer requires the source_masker that defines the voxel "
-                "order of the features, normally the masker a bundle carries."
+                "order of the features, normally the masker a bunch carries."
             )
 
         self.mask_img_ = mask_source(self.source_masker).mask_img
@@ -244,7 +244,7 @@ def _incoming_space(n_columns, mask_img):
         f"MaskerTransformer was given {n_columns} columns, but its source_masker has "
         f"{n_voxels} voxels and a grid of {n_grid_columns(mask_img)}. Features must "
         "arrive either over the masker's voxels, as MAKernel returns them, or over its "
-        "grid, as a bundle's peak columns do."
+        "grid, as a bunch's peak columns do."
     )
 
 
@@ -371,42 +371,44 @@ def _masker_region_names(atlas_masker):
     return None
 
 
-def _is_atlas_like(reducer):
-    """Report whether an object is a nilearn masker or an atlas, not a reducer."""
-    return isinstance(reducer, (BaseMasker, SpatialImage)) or hasattr(reducer, "maps")
+def _is_atlas_like(obj):
+    """Report whether an object is a nilearn masker or an atlas."""
+    return isinstance(obj, (BaseMasker, SpatialImage)) or hasattr(obj, "maps")
 
 
-def _is_transformer(reducer):
+def _is_transformer(obj):
     """Report whether an object is a scikit-learn transformer."""
-    return hasattr(reducer, "fit") and hasattr(reducer, "transform")
+    return hasattr(obj, "fit") and hasattr(obj, "transform")
 
 
-def _resolve_map_reducer(reducer, masker=None, **kwargs):
-    """Return an unfitted transformer for whatever describes a voxel reduction."""
-    if isinstance(reducer, type):
-        reducer, kwargs = reducer(**kwargs), {}
+def _resolve_voxel_transformer(transformer, masker=None, **kwargs):
+    """Return an unfitted transformer for whatever was given for the voxel columns."""
+    if isinstance(transformer, type):
+        transformer, kwargs = transformer(**kwargs), {}
 
-    if isinstance(reducer, MaskerTransformer) and reducer.source_masker is None:
-        # Built without one, which the bundle can supply.
-        reducer = clone(reducer)
-        reducer.set_params(source_masker=_required_masker(masker))
-        return reducer
+    if isinstance(transformer, MaskerTransformer) and transformer.source_masker is None:
+        # Built without one, which the bunch can supply.
+        transformer = clone(transformer)
+        transformer.set_params(source_masker=_required_masker(masker))
+        return transformer
 
-    if _is_atlas_like(reducer):
-        return MaskerTransformer(masker=reducer, source_masker=_required_masker(masker), **kwargs)
+    if _is_atlas_like(transformer):
+        return MaskerTransformer(
+            masker=transformer, source_masker=_required_masker(masker), **kwargs
+        )
 
-    if _is_transformer(reducer):
+    if _is_transformer(transformer):
         if kwargs:
             raise ValueError(
-                "Reducer parameters are only used when the reducer is given as a class "
-                "or as an atlas; set them on the transformer instead."
+                "Keyword parameters are only used when the transformer is given as a "
+                "class or as an atlas; set them on the transformer instead."
             )
-        return reducer
+        return transformer
 
     raise TypeError(
-        f"{reducer!r} is not a map reducer. Pass a scikit-learn transformer such as "
-        "TruncatedSVD(n_components=50) or VarianceThreshold(), a transformer class, or "
-        "or a nilearn masker or atlas for MaskerTransformer to apply."
+        f"{transformer!r} cannot transform the voxel columns. Pass a scikit-learn "
+        "transformer such as TruncatedSVD(n_components=50) or VarianceThreshold(), a "
+        "transformer class, or a nilearn masker or atlas for MaskerTransformer to apply."
     )
 
 
@@ -415,6 +417,6 @@ def _required_masker(masker):
     if masker is None:
         raise ValueError(
             "A nilearn masker needs the masker that defines the voxel order of the map "
-            "features, normally the masker a bundle carries."
+            "features, normally the masker a bunch carries."
         )
     return masker

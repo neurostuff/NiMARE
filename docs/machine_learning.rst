@@ -29,7 +29,7 @@ Questions you can ask with it:
 3. Does study information, such as sample size or an annotation label, add to
    what the coordinates already say?
 
-What is a bundle?
+What is a bunch?
 -----------------
 
 A :class:`~sklearn.utils.Bunch` holds ``data`` (sparse), ``target``, ``groups``
@@ -37,13 +37,13 @@ A :class:`~sklearn.utils.Bunch` holds ``data`` (sparse), ``target``, ``groups``
 ``voxel_columns``, ``descriptor_columns``, ``descriptor_names``, the ``masker``
 whose grid the voxels span, and ``provenance``.
 
-There are some niceties and conveniences for using the bundle with NiMARE
+There are some niceties and conveniences for using the bunch with NiMARE
 architecture, and if you're just starting out we recommend you do. If you're a
 seasoned scikit-learn practitioner and have enough context to understand the
-meta-analytic data, you can take the bundle and use it as you would any other
+meta-analytic data, you can take the bunch and use it as you would any other
 scikit-learn dataset.
 
-The voxel columns span the whole image grid of the bundle's masker. A
+The voxel columns span the whole image grid of the bunch's masker. A
 coordinate just outside the mask still spreads into it once a kernel is
 applied, so keeping the full grid keeps that contribution. Peaks are sparse, so
 this stays cheap.
@@ -112,7 +112,7 @@ Categorical fields
 ~~~~~~~~~~~~~~~~~~
 
 A feature matrix holds numbers, so a categorical descriptor enters it as a
-category code. The bundle tells you what the codes mean::
+category code. The bunch tells you what the codes mean::
 
     bunch.descriptor_categories
     # {'group_name': ['healthy', 'patients']}
@@ -214,7 +214,7 @@ Splitting without leaking a study
 ---------------------------------
 
 Analyses from one study are related, so keep each study on one side of a split.
-Pass ``test_size`` to get ``train`` and ``test`` row positions on the bundle:
+Pass ``test_size`` to get ``train`` and ``test`` row positions on the bunch:
 
 .. code-block:: python
 
@@ -260,13 +260,13 @@ all read sparse input:
     :class:`~sklearn.decomposition.TruncatedSVD` is the better fit for a matrix
     this wide.
 
-Keeping a reducer off the descriptor columns
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Keeping a transformer off the descriptor columns
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 With voxel features alone, a plain pipeline is all you need. Once you add
-descriptor columns, give each block its own transformer so the reducer works on
-the voxels only. :func:`~nimare.ml.make_nimare_column_transformer` is
-:func:`~sklearn.compose.make_column_transformer` with the bundle filled in: the
+descriptor columns, give each block its own transformer so it works on the
+voxels only. :func:`~nimare.ml.make_nimare_column_transformer` is
+:func:`~sklearn.compose.make_column_transformer` with the bunch filled in: the
 same ``(transformer, columns)`` pairs, the same step names, and ``remainder``,
 ``sparse_threshold``, ``n_jobs``, ``verbose`` and ``verbose_feature_names_out``
 passed straight through.
@@ -282,7 +282,7 @@ passed straight through.
 
 ``columns`` may be ``"voxels"``, ``"descriptors"``, a descriptor's own field
 name, or anything scikit-learn accepts: a slice, indices, a mask, a callable.
-What the bundle fills in is the span of each block, the masker an atlas needs,
+What the bunch fills in is the span of each block, the masker an atlas needs,
 the column names so a coefficient reads back to its field, and a
 ``sparse_threshold`` that keeps a wide voxel block sparse.
 
@@ -348,7 +348,7 @@ Working at release scale
 
 :func:`~nimare.extract.fetch_neurostore` downloads a published NeuroStore
 release. Conversion reads peaks, so a whole release converts in a couple of
-seconds and stays sparse from the bundle through the column transformer.
+seconds and stays sparse from the bunch through the column transformer.
 
 Applying a kernel is the expensive step, and it happens in your pipeline, per
 fold, on a training subset. Slice the Studyset to the analyses you are

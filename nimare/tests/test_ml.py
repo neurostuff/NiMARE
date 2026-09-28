@@ -158,7 +158,7 @@ def ml_studyset():
 
 @pytest.fixture(scope="session")
 def small_masker():
-    """Return a masker over a tiny volume, for reducer tests."""
+    """Return a masker over a tiny volume, for transformer tests."""
     mask_data = np.zeros((4, 4, 4), dtype=np.uint8)
     mask_data[:2, :2, :2] = 1
     return get_masker(nib.Nifti1Image(mask_data, np.eye(4)))
@@ -331,7 +331,7 @@ def test_column_transformer_reduces_only_voxel_columns(ma_bunch):
 
 
 def test_column_transformer_keeps_unreduced_features_sparse(ma_bunch):
-    """A sparse-preserving reducer must not be densified on the way through."""
+    """A sparse-preserving transformer must not be densified on the way through."""
     dataset = ma_bunch
     preprocessor = ml.make_nimare_column_transformer(
         dataset, (VarianceThreshold(threshold=0.0), "voxels"), ("passthrough", "descriptors")
@@ -343,7 +343,7 @@ def test_column_transformer_keeps_unreduced_features_sparse(ma_bunch):
 
 
 def test_column_transformer_accepts_transformers_and_passthrough(ma_bunch):
-    """The reducer may be an instance, a name, or nothing at all."""
+    """The transformer may be an instance, a name, or nothing at all."""
     dataset = ma_bunch
 
     built = ml.make_nimare_column_transformer(
@@ -390,60 +390,60 @@ def test_dataset_works_in_sklearn_model_selection(ma_bunch):
 
 
 @pytest.mark.parametrize(
-    "reducer",
+    "transformer",
     [
         pytest.param(TruncatedSVD(n_components=1), id="truncated-svd"),
         pytest.param(VarianceThreshold(threshold=0.0), id="variance-threshold"),
         pytest.param(SparseRandomProjection(n_components=1), id="sparse-random-projection"),
     ],
 )
-def test_column_transformer_takes_scikit_learn_transformers(ma_bunch, reducer):
+def test_column_transformer_takes_scikit_learn_transformers(ma_bunch, transformer):
     """Any scikit-learn transformer is used as the caller built it."""
     preprocessor = ml.make_nimare_column_transformer(
-        ma_bunch, (reducer, "voxels"), ("passthrough", "descriptors")
+        ma_bunch, (transformer, "voxels"), ("passthrough", "descriptors")
     )
 
-    assert _step_transformer(preprocessor) is reducer
+    assert _step_transformer(preprocessor) is transformer
 
 
 def test_column_transformer_uses_a_built_transformer_as_given(ma_bunch):
     """An instance is used as it is, and cannot be reconfigured in passing."""
-    reducer = SparseRandomProjection(n_components=3)
+    transformer = SparseRandomProjection(n_components=3)
 
     assert (
         _step_transformer(
             ml.make_nimare_column_transformer(
-                ma_bunch, (reducer, "voxels"), ("passthrough", "descriptors")
+                ma_bunch, (transformer, "voxels"), ("passthrough", "descriptors")
             )
         )
-        is reducer
+        is transformer
     )
 
     # transformers are configured by the caller, as they are for sklearn's own
     # make_column_transformer, so stray parameters are a TypeError
     with pytest.raises(TypeError, match="unexpected keyword argument"):
-        ml.make_nimare_column_transformer(ma_bunch, (reducer, "voxels"), n_components=4)
+        ml.make_nimare_column_transformer(ma_bunch, (transformer, "voxels"), n_components=4)
 
 
-def test_column_transformer_rejects_things_that_are_not_reducers(ma_bunch):
+def test_column_transformer_rejects_things_that_are_not_transformers(ma_bunch):
     """The message names what a transformer slot accepts."""
     with pytest.raises(ValueError, match="A string may only be 'passthrough' or 'drop'"):
         ml.make_nimare_column_transformer(ma_bunch, ("truncated_svd", "voxels"))
 
-    with pytest.raises(TypeError, match="is not a map reducer"):
+    with pytest.raises(TypeError, match="cannot transform the voxel columns"):
         ml.make_nimare_column_transformer(ma_bunch, (object(), "voxels"))
 
 
-def test_column_transformer_keeps_a_reducer_off_the_descriptor_columns(ma_bunch):
-    """A bare reducer would decompose the descriptor columns along with the voxels."""
-    reducer = TruncatedSVD(n_components=1, random_state=RANDOM_SEED)
+def test_column_transformer_keeps_a_transformer_off_the_descriptor_columns(ma_bunch):
+    """A bare transformer would decompose the descriptor columns along with the voxels."""
+    transformer = TruncatedSVD(n_components=1, random_state=RANDOM_SEED)
     descriptors = _descriptors(ma_bunch).ravel()
 
     scoped = ml.make_nimare_column_transformer(
-        ma_bunch, (reducer, "voxels"), ("passthrough", "descriptors")
+        ma_bunch, (transformer, "voxels"), ("passthrough", "descriptors")
     ).fit_transform(ma_bunch.data)
     scoped = scoped.toarray() if sparse.issparse(scoped) else scoped
-    bare = clone(reducer).fit_transform(ma_bunch.data)
+    bare = clone(transformer).fit_transform(ma_bunch.data)
 
     # Scoped: the voxel block is reduced and the descriptor column passes through.
     assert scoped.shape == (ma_bunch.data.shape[0], 2)
@@ -528,10 +528,10 @@ def test_a_column_name_that_is_not_a_block_or_a_descriptor_is_named(descriptor_d
 
 def test_an_unclaimed_block_is_not_dropped_quietly(descriptor_dataset):
     """A ColumnTransformer drops what nobody claims; here either block is worth refusing."""
-    reducer = TruncatedSVD(n_components=2, random_state=RANDOM_SEED)
+    transformer = TruncatedSVD(n_components=2, random_state=RANDOM_SEED)
 
     with pytest.raises(ValueError, match="No transformer covers 3 of the descriptors columns"):
-        ml.make_nimare_column_transformer(descriptor_dataset, (reducer, "voxels"))
+        ml.make_nimare_column_transformer(descriptor_dataset, (transformer, "voxels"))
 
     # the other way round matters more: this one would drop the whole matrix
     with pytest.raises(ValueError, match="No transformer covers 5 of the voxels columns"):
@@ -560,7 +560,7 @@ def test_a_block_may_be_dropped_when_that_is_what_is_meant(
 
 
 def test_map_only_features_need_no_column_transformer(small_masker):
-    """With no descriptors there is nothing to keep a reducer away from."""
+    """With no descriptors there is nothing to keep a transformer away from."""
     map_only = _bunch(
         sparse.csr_matrix(np.eye(4)),
         ids=[f"s{idx}-t" for idx in range(4)],
@@ -569,7 +569,7 @@ def test_map_only_features_need_no_column_transformer(small_masker):
     )
 
     assert map_only.descriptor_columns.stop == map_only.descriptor_columns.start
-    # so the whole matrix is voxels and the reducer can be used on its own
+    # so the whole matrix is voxels and the transformer can be used on its own
     np.testing.assert_allclose(
         TruncatedSVD(n_components=2, random_state=RANDOM_SEED).fit_transform(map_only.data),
         TruncatedSVD(n_components=2, random_state=RANDOM_SEED).fit_transform(
@@ -578,7 +578,7 @@ def test_map_only_features_need_no_column_transformer(small_masker):
     )
 
 
-def test_masker_transformer_takes_its_source_masker_from_the_bundle(ma_bunch, small_masker):
+def test_masker_transformer_takes_its_source_masker_from_the_bunch(ma_bunch, small_masker):
     """An atlas, or an aggregator built without one, gets the feature set's masker."""
     atlas = nib.Nifti1Image(np.ones((4, 4, 4), dtype=np.int16), small_masker.mask_img.affine)
 
@@ -654,8 +654,10 @@ def test_masker_transformer_matches_nilearn(small_masker, atlas_features, atlas_
         atlas_img = maps_img
         reference = NiftiMapsMasker(maps_img=maps_img, resampling_target="data", reports=False)
 
-    reducer = clone(MaskerTransformer(masker=atlas_img, source_masker=small_masker, batch_size=2))
-    transformed = reducer.fit_transform(atlas_features)
+    transformer = clone(
+        MaskerTransformer(masker=atlas_img, source_masker=small_masker, batch_size=2)
+    )
+    transformed = transformer.fit_transform(atlas_features)
 
     reference.set_params(mask_img=small_masker.mask_img)
     expected = reference.fit(small_masker.mask_img).transform(
@@ -664,7 +666,7 @@ def test_masker_transformer_matches_nilearn(small_masker, atlas_features, atlas_
 
     assert transformed.shape == (6, 2)
     np.testing.assert_allclose(transformed, expected)
-    assert len(reducer.get_feature_names_out()) == 2
+    assert len(transformer.get_feature_names_out()) == 2
 
 
 def test_masker_transformer_accepts_a_fetched_atlas(small_masker, atlas_features):
@@ -672,10 +674,10 @@ def test_masker_transformer_accepts_a_fetched_atlas(small_masker, atlas_features
     _, maps_img = _atlas_images(small_masker.mask_img.affine)
     atlas = Bunch(maps=maps_img, labels=["Background", "left", "right"])
 
-    reducer = MaskerTransformer(masker=atlas, source_masker=small_masker).fit(atlas_features)
+    transformer = MaskerTransformer(masker=atlas, source_masker=small_masker).fit(atlas_features)
 
-    assert isinstance(reducer.masker_, NiftiMapsMasker)
-    np.testing.assert_array_equal(reducer.get_feature_names_out(), ["left", "right"])
+    assert isinstance(transformer.masker_, NiftiMapsMasker)
+    np.testing.assert_array_equal(transformer.get_feature_names_out(), ["left", "right"])
 
 
 def test_masker_transformer_accepts_a_labels_frame(small_masker, atlas_features):
@@ -683,12 +685,12 @@ def test_masker_transformer_accepts_a_labels_frame(small_masker, atlas_features)
     _, maps_img = _atlas_images(small_masker.mask_img.affine)
     labels = pd.DataFrame({"component": [1, 2], "difumo_names": ["first", "second"]})
 
-    reducer = MaskerTransformer(
+    transformer = MaskerTransformer(
         masker=Bunch(maps=maps_img, labels=labels), source_masker=small_masker
     )
 
     np.testing.assert_array_equal(
-        reducer.fit(atlas_features).get_feature_names_out(), ["first", "second"]
+        transformer.fit(atlas_features).get_feature_names_out(), ["first", "second"]
     )
 
 
@@ -699,9 +701,9 @@ def test_masker_transformer_accepts_a_path(small_masker, atlas_features, tmp_pat
     labels_img.to_filename(path)
 
     for atlas in (path, str(path)):
-        reducer = MaskerTransformer(masker=atlas, source_masker=small_masker)
-        assert reducer.fit_transform(atlas_features).shape == (6, 2)
-        assert isinstance(reducer.masker_, NiftiLabelsMasker)
+        transformer = MaskerTransformer(masker=atlas, source_masker=small_masker)
+        assert transformer.fit_transform(atlas_features).shape == (6, 2)
+        assert isinstance(transformer.masker_, NiftiLabelsMasker)
 
 
 def test_masker_transformer_accepts_a_fetcher_name(small_masker, atlas_features, monkeypatch):
@@ -717,12 +719,12 @@ def test_masker_transformer_accepts_a_fetcher_name(small_masker, atlas_features,
 
     monkeypatch.setattr(datasets, "fetch_atlas_pretend", fake_fetcher, raising=False)
 
-    reducer = MaskerTransformer(
+    transformer = MaskerTransformer(
         masker="pretend", source_masker=small_masker, masker_kwargs={"dimension": 2}
     ).fit(atlas_features)
 
     assert calls == {"dimension": 2}
-    np.testing.assert_array_equal(reducer.get_feature_names_out(), ["left", "right"])
+    np.testing.assert_array_equal(transformer.get_feature_names_out(), ["left", "right"])
 
 
 def test_masker_transformer_accepts_a_prebuilt_masker(small_masker, atlas_features):
@@ -739,13 +741,13 @@ def test_masker_transformer_accepts_a_prebuilt_masker(small_masker, atlas_featur
         reports=False,
     )
 
-    reducer = MaskerTransformer(masker=atlas_masker, source_masker=small_masker).fit(
+    transformer = MaskerTransformer(masker=atlas_masker, source_masker=small_masker).fit(
         atlas_features
     )
 
-    assert reducer.masker_.strategy == "sum"
+    assert transformer.masker_.strategy == "sum"
     assert atlas_masker.mask_img is None
-    np.testing.assert_array_equal(reducer.get_feature_names_out(), ["region_a", "region_b"])
+    np.testing.assert_array_equal(transformer.get_feature_names_out(), ["region_a", "region_b"])
 
 
 @pytest.mark.parametrize(
@@ -808,10 +810,10 @@ def test_masker_transformer_names_match_the_columns_it_returns(
         maps[3, 3, 3, 2] = 1.0  # outside the mask
         atlas = Bunch(maps=nib.Nifti1Image(maps, affine), labels=["in_a", "in_b", "outside"])
 
-    reducer = MaskerTransformer(masker=atlas, source_masker=small_masker).fit(atlas_features)
-    names = reducer.get_feature_names_out()
+    transformer = MaskerTransformer(masker=atlas, source_masker=small_masker).fit(atlas_features)
+    names = transformer.get_feature_names_out()
 
-    assert len(names) == reducer.transform(atlas_features).shape[1]
+    assert len(names) == transformer.transform(atlas_features).shape[1]
 
 
 def test_masker_transformer_names_reduced_features(small_masker, atlas_features):
@@ -824,11 +826,11 @@ def test_masker_transformer_names_reduced_features(small_masker, atlas_features)
         masker=small_masker,
     )
 
-    reducer = ml.make_nimare_column_transformer(
+    transformer = ml.make_nimare_column_transformer(
         dataset, (Bunch(maps=labels_img, labels=["one", "two"]), "voxels")
     )
-    reduced = reducer.fit_transform(dataset.data)
-    names = reducer.get_feature_names_out()
+    reduced = transformer.fit_transform(dataset.data)
+    names = transformer.get_feature_names_out()
 
     assert reduced.shape == (6, 2)
     # prefixed by the step name, as scikit-learn does by default
@@ -839,18 +841,18 @@ def test_masker_transformer_names_reduced_features(small_masker, atlas_features)
 
 
 def test_dataset_reduces_with_any_sklearn_transformer(ma_bunch):
-    """A reducer NiMARE has never heard of works like the named ones."""
-    reducer = SparseRandomProjection(n_components=1, random_state=RANDOM_SEED)
+    """A transformer NiMARE has never heard of works like the named ones."""
+    transformer = SparseRandomProjection(n_components=1, random_state=RANDOM_SEED)
     train, test = _split(ma_bunch, 0.34, RANDOM_SEED)
 
     # Fitted on the training rows only, then applied to the held-out ones.
-    reduced_train = reducer.fit_transform(_voxels(train))
-    reduced_test = reducer.transform(_voxels(test))
+    reduced_train = transformer.fit_transform(_voxels(train))
+    reduced_test = transformer.transform(_voxels(test))
 
     assert reduced_train.shape == (train.data.shape[0], 1)
     assert reduced_test.shape == (test.data.shape[0], 1)
     with pytest.raises(NotFittedError):
-        clone(reducer).transform(_voxels(test))
+        clone(transformer).transform(_voxels(test))
 
 
 def test_column_transformer_accepts_an_atlas(small_masker, atlas_features):
@@ -864,13 +866,13 @@ def test_column_transformer_accepts_an_atlas(small_masker, atlas_features):
     )
 
     # Map-only features: there is nothing to keep the aggregator away from.
-    reducer = ml.make_nimare_column_transformer(
+    transformer = ml.make_nimare_column_transformer(
         dataset, (labels_img, "voxels"), ("passthrough", "descriptors")
     )
 
-    assert isinstance(_step_transformer(reducer), MaskerTransformer)
-    assert _step_transformer(reducer).source_masker is small_masker
-    assert reducer.fit_transform(dataset.data).shape == (6, 2)
+    assert isinstance(_step_transformer(transformer), MaskerTransformer)
+    assert _step_transformer(transformer).source_masker is small_masker
+    assert transformer.fit_transform(dataset.data).shape == (6, 2)
 
 
 # ------------------------------------------------------------------ extraction
@@ -1248,15 +1250,15 @@ def test_masker_transformer_forgets_the_previous_atlas(atlas_features, small_mas
     two_regions[1, :2, :2] = 2
     one_region = np.ones((4, 4, 4), dtype=np.int16)
 
-    reducer = MaskerTransformer(
+    transformer = MaskerTransformer(
         masker=nib.Nifti1Image(two_regions, affine), source_masker=small_masker
     )
-    reducer.fit_transform(atlas_features)
-    assert len(reducer.get_feature_names_out()) == 2
+    transformer.fit_transform(atlas_features)
+    assert len(transformer.get_feature_names_out()) == 2
 
-    reducer.set_params(masker=nib.Nifti1Image(one_region, affine))
-    reducer.fit(atlas_features)
-    assert len(reducer.get_feature_names_out()) == 1
+    transformer.set_params(masker=nib.Nifti1Image(one_region, affine))
+    transformer.fit(atlas_features)
+    assert len(transformer.get_feature_names_out()) == 1
 
 
 def test_from_studyset_rejects_repeated_descriptor_fields(ml_studyset):
@@ -1882,7 +1884,7 @@ def test_nimare_transformers_declare_that_they_read_sparse_input(ma_bunch):
     assert _handles_sparse(make_pipeline(kernel, TruncatedSVD(n_components=2))) is True
 
 
-def test_a_sparse_voxel_block_is_not_densified_before_a_reducer(ma_bunch):
+def test_a_sparse_voxel_block_is_not_densified_before_a_transformer(ma_bunch):
     """The block stays sparse on its way into a transformer that accepts it."""
     seen = []
 
@@ -2283,12 +2285,12 @@ def test_a_cache_holds_across_the_folds_of_a_cross_validation(ml_studyset):
 # ---------------------------------------------------------- coefficient_image
 
 
-@pytest.mark.parametrize("reducer", [None, TruncatedSVD(2, random_state=RANDOM_SEED)])
-def test_coefficient_image_puts_weights_back_in_the_brain(ml_studyset, reducer):
+@pytest.mark.parametrize("transformer", [None, TruncatedSVD(2, random_state=RANDOM_SEED)])
+def test_coefficient_image_puts_weights_back_in_the_brain(ml_studyset, transformer):
     """A weight per feature becomes a weight per voxel, whatever reduced them."""
     bunch = ml_studyset.to_bunch(target_field=("annotations", "target_score"))
     steps = [MAKernel(MKDAKernel(r=4), source_masker=bunch.masker)]
-    steps += [reducer] if reducer is not None else []
+    steps += [transformer] if transformer is not None else []
     pipeline = make_pipeline(*steps, Ridge()).fit(_voxels(bunch), bunch.target)
 
     image = ml.coefficient_image(pipeline, bunch)

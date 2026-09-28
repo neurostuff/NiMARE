@@ -85,7 +85,7 @@ def _take_rows(value, rows):
 
 
 class _FeatureNames(Sequence):
-    """A bundle's column names, built on access rather than up front."""
+    """A bunch's column names, built on access rather than up front."""
 
     def __init__(self, n_voxels, descriptor_names):
         self.n_voxels = int(n_voxels)
