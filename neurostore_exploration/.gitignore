@@ -1,0 +1,5 @@
+# Analysis intermediates live in a scratch directory, not the repo.
+*.parquet
+*.npy
+*.npz
+*.nii.gz
