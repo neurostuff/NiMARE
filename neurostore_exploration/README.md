@@ -342,6 +342,40 @@ far more extreme than the conditions' own epidemiology.
 
 Healthy and patient studies are equally small (median 20 vs 19).
 
+### Q8. Participant age is unpredictable — because there is barely any
+
+Regressing the reported mean participant age on the coordinates (healthy task
+fMRI, 41,718 analyses from 11,249 studies) is a flat null:
+
+| model | R² | MAE | r |
+|---|---|---|---|
+| mean (baseline) | −0.000 | 4.9 yr | −0.016 |
+| focus count | −0.000 | 4.9 yr | −0.009 |
+| ridge on 256 regions | **+0.001** | 4.9 yr | +0.058 |
+| gradient boosting | −0.003 | 4.9 yr | +0.058 |
+
+The reason is not that age leaves no trace in the brain. It is that this corpus
+has almost no age to predict:
+
+| mean age of the reported group | share of healthy task-fMRI analyses |
+|---|---|
+| under 18 | 5.9% |
+| **18–30** | **80.3%** |
+| 30–45 | 10.2% |
+| 45–60 | 1.6% |
+| 60+ | 2.0% |
+
+Half of all analyses sit in the 4.7-year window from 22.3 to 27.0, and 78.9%
+fall between 20 and 30. Including patients widens it only a little (66.5%
+18–30, 4.6% over 60). An MAE of 4.9 years against an IQR of 4.7 years is what
+"nothing to predict" looks like.
+
+The weights the ridge does put down are at least in the right direction —
+sensorimotor and paracentral regions toward older samples, anterior insula,
+vmPFC, caudate and IFG toward younger ones, which is the shape a
+developmental/aging contrast would take — but with R² of 0.001 they are not
+worth interpreting.
+
 ---
 
 ## 5. Questions this raises
@@ -376,14 +410,19 @@ Healthy and patient studies are equally small (median 20 vs 19).
 6. *What does 13.5% female in autism imaging do to the published maps?*
    Sex-stratified meta-analyses are now possible at scale for depression,
    anxiety, ADHD and autism.
+7. *Can a coordinate corpus say anything about the lifespan?* On this evidence,
+   barely: 3.6% of healthy task-fMRI analyses report a mean age over 45. Any
+   meta-analytic claim about aging is resting on a very thin slice, and the
+   same corpus that supports 50k-analysis claims about Emotion supports almost
+   nothing about being 70.
 
 **For the resource itself**
 
-7. The 6,939 `patients`-with-healthy-diagnosis rows and the 321 voxel-index
+8. The 6,939 `patients`-with-healthy-diagnosis rows and the 321 voxel-index
    analyses are fixable upstream; both silently corrupt downstream models.
-8. Should releases ship a canonical vocabulary mapping, so that every user does
+9. Should releases ship a canonical vocabulary mapping, so that every user does
    not re-derive `Memory` → `Learning and memory` independently?
-9. `texts` is empty in this release — restoring abstracts would allow the LLM
+10. `texts` is empty in this release — restoring abstracts would allow the LLM
    labels to be checked against the source text.
 
 ---
@@ -402,6 +441,8 @@ Healthy and patient studies are equally small (median 20 vs 19).
 | `scripts/22_ontology.py`, `28_confusion.py` | Q2–Q4 |
 | `scripts/21_clinical.py`, `27_blocks.py` | Q5–Q6 |
 | `scripts/23_descriptive.py` | Q7 |
+| `scripts/32_kernel_scale.py` | kernel bandwidth sweep |
+| `scripts/33_age.py` | Q8 |
 | `scripts/24_maps.py` | weight maps via `coefficient_image` |
 | `scripts/26_ceiling.py` | atlas vs model vs label-noise probe |
 | `scripts/30_figures.py`, `31_map_figure.py` | figures |
