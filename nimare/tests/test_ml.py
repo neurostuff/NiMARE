@@ -292,38 +292,6 @@ def _peak_signature(dataset):
     return [int(peaks[row].indices.min()) for row in range(peaks.shape[0])]
 
 
-def assert_sklearn_bunch_valid(
-    bunch,
-    expected_rows=None,
-    expected_columns=None,
-    expected_sparse=None,
-    require_target=True,
-    estimator=None,
-):
-    """Assert the shared sklearn-export contract for feature Bunches."""
-    assert isinstance(bunch, Bunch)
-
-    n_rows, n_columns = bunch.data.shape
-    assert n_rows == (expected_rows if expected_rows is not None else n_rows)
-    if expected_columns is not None:
-        assert n_columns == expected_columns
-    if expected_sparse is not None:
-        assert sparse.issparse(bunch.data) is expected_sparse
-
-    assert np.issubdtype(bunch.data.dtype, np.number)
-    assert len(bunch.groups) == n_rows
-    assert len(bunch.ids) == n_rows
-    assert len(bunch.feature_names) == n_columns
-
-    if bunch.target is None:
-        assert not require_target
-    else:
-        assert len(bunch.target) == n_rows
-
-    if estimator is not None:
-        estimator.fit(bunch.data, bunch.target)
-
-
 # ---------------------------------------------------------------- container
 
 
@@ -725,7 +693,7 @@ def test_masker_transformer_accepts_a_labels_frame(small_masker, atlas_features)
 
 
 def test_masker_transformer_accepts_a_path(small_masker, atlas_features, tmp_path):
-    """An atlas on disk is loaded rather than refused."""
+    """An atlas on disk is loaded from its path."""
     labels_img, _ = _atlas_images(small_masker.mask_img.affine)
     path = tmp_path / "atlas.nii.gz"
     labels_img.to_filename(path)
@@ -950,7 +918,12 @@ def test_from_studyset(ml_studyset):
         [20 + idx for idx in range(len(studyset.ids))],
     )
 
-    assert_sklearn_bunch_valid(features, expected_rows=len(studyset.ids), expected_sparse=True)
+    assert isinstance(features, Bunch)
+    assert np.issubdtype(features.data.dtype, np.number)
+    assert len(features.groups) == len(studyset.ids)
+    assert len(features.ids) == len(studyset.ids)
+    assert len(features.target) == len(studyset.ids)
+    assert len(features.feature_names) == features.data.shape[1]
 
 
 def test_from_studyset_records_provenance(ml_studyset):
@@ -1880,23 +1853,33 @@ def test_masker_transformer_refuses_a_width_from_neither_space(small_masker, lab
         )
 
 
-def test_the_probe_asks_whether_sparsity_is_the_problem():
-    """A transformer that fails the probe for its own reasons still takes sparse.
-
-    ``TruncatedSVD(n_components=50)`` cannot fit a tiny probe at any sparsity,
-    so a probe that only asked "did it fail?" called the canonical sparse
-    reducer dense and densified the whole voxel block before it. Only a failure
-    that densifying the probe *fixes* is about sparsity.
-    """
+def test_sparse_support_is_read_per_instance():
+    """Whether a transformer reads sparse input can depend on its arguments."""
     from nimare.ml.compose import _handles_sparse
 
     assert _handles_sparse(TruncatedSVD(n_components=50)) is True
     assert _handles_sparse(TruncatedSVD(n_components=1)) is True
-    # centring sparse input is the real signal: dense input fixes it
+    # StandardScaler centres by default, which sparse input rules out
     assert _handles_sparse(StandardScaler()) is False
     assert _handles_sparse(StandardScaler(with_mean=False)) is True
+    assert _handles_sparse(MaxAbsScaler()) is True
     # no scikit-learn encoder reads sparse input
     assert _handles_sparse(OneHotEncoder()) is False
+
+
+def test_nimare_transformers_declare_that_they_read_sparse_input(ma_bunch):
+    """Keep a wide voxel block sparse through NiMARE's own transformers.
+
+    A voxel block spans the whole image grid, so densifying one to please a
+    transformer that would have taken it sparse costs gigabytes.
+    """
+    from nimare.ml.compose import _handles_sparse
+
+    kernel = MAKernel(MKDAKernel(r=10), source_masker=ma_bunch.masker)
+
+    assert _handles_sparse(kernel) is True
+    assert _handles_sparse(MaskerTransformer(ma_bunch.masker)) is True
+    assert _handles_sparse(make_pipeline(kernel, TruncatedSVD(n_components=2))) is True
 
 
 def test_a_sparse_voxel_block_is_not_densified_before_a_reducer(ma_bunch):

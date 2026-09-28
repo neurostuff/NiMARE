@@ -756,16 +756,14 @@ class Studyset:
         test_size=None,
         random_state=None,
     ):
-        """Convert to the arrays a scikit-learn workflow expects.
+        """Convert Studyset to scikit-learn compatible bunch.
 
         .. versionadded:: 0.22.0
 
         Reads each analysis's foci into a row of peak counts over the image
-        grid, appends any numeric descriptor fields, extracts any target, and
-        aligns them to the analyses they came from. Turning peaks into modeled
-        activation (MA) maps is :class:`~nimare.ml.MAKernel`, a transformer,
-        so that every choice about the features is made in one place: the
-        scikit-learn pipeline.
+        grid, appends any descriptor fields, extracts any target, and aligns
+        them to the analyses they came from. Apply a kernel in your pipeline
+        with :class:`~nimare.ml.MAKernel`.
 
         Parameters
         ----------

@@ -5,15 +5,19 @@
 Machine learning in NiMARE
 ============================
 
-Turn a Studyset into a scikit-learn dataset, split it without leaking a study,
-build the voxelwise features inside a pipeline, and read the fitted model back
-to the brain.
+This example will walk you through some of the typical patterns to work with
+scikit-learn in NiMARE. You will learn how to:
+
+1. export a Studyset into a scikit-learn dataset.
+2. select your feature (what's doing the predicting) and target (what you want
+   to predict) variables.
+3. choose between different kernels and transforms for your model.
+4. read a fitted model back onto the brain.
 
 :meth:`~nimare.studyset.Studyset.to_bunch` returns a
 :class:`~sklearn.utils.Bunch` of the peaks each analysis reported, the study it
 came from, and an optional target, all in one row order. NiMARE reads the
-Studyset; scikit-learn does everything that transforms it -- the modeled
-activation (MA) kernel included, as :class:`~nimare.ml.MAKernel`.
+Studyset; scikit-learn handles the rest.
 """
 
 from pathlib import Path
@@ -66,12 +70,11 @@ print(studyset.metadata["comparison_task"].value_counts().to_string())
 # :meth:`~nimare.studyset.Studyset.to_bunch` reads each analysis's foci into a
 # row of peak counts over the image grid, and reads the ``comparison_task``
 # metadata field as the ``"n-back"`` and ``"flanker"`` labels to predict.
-# Fields are named by a bare field name, or by a ``(source, field)`` pair when
-# the name appears in more than one Studyset table.
+# Name a field either way: a bare field name, or a ``(source, field)`` pair when
+# the same name appears in more than one Studyset table.
 #
-# No kernel is named here. Convolving peaks into MA maps is a modelling choice,
-# and one choice among several -- peak counts per parcel are a feature set too
-# -- so it belongs with the others, in the pipeline.
+# You choose the kernel later, in the pipeline, so that it is fitted on training
+# rows only and can be tuned like any other step.
 bunch = studyset.to_bunch(
     target_field=("metadata", "comparison_task"),
     # Hold out a quarter of the studies; see the next section.
@@ -91,18 +94,18 @@ print(f"Dropped for want of coordinates: {len(bunch.provenance['dropped_ids'])}"
 # ``descriptor_names``, the ``masker`` whose grid the voxels span, and
 # ``provenance``.
 #
-# The voxel columns span the whole image grid, not just the mask, because a
-# coordinate outside the mask still reaches into it once a kernel spreads it.
+# The voxel columns span the whole image grid. A coordinate just outside the
+# mask still spreads into it once a kernel is applied, so the full grid keeps
+# that contribution.
 print(f"Bundle: {', '.join(sorted(bunch))}")
 
 ###############################################################################
-# Split without leaking a study
+# Keep each study on one side of the split
 # -----------------------------------------------------------------------------
-# Analyses from one study are related, so a study belongs to exactly one
-# partition. Passing ``test_size`` above added ``train`` and ``test`` row
-# positions to the bundle, grouped by study, which is what keeps a plain
-# shuffle from putting the same study on both sides. ``test_size`` counts
-# *studies*, so the analysis counts only approximate the fraction.
+# Analyses from one study are related, so keep each study on one side of the
+# split. Passing ``test_size`` above added ``train`` and ``test`` row positions
+# to the bundle, grouped by study. ``test_size`` counts *studies*, so the
+# analysis counts approximate the fraction you asked for.
 train, test = bunch.train, bunch.test
 
 print(f"Train: {len(train)} analyses from {len(set(bunch.groups[train]))} studies")
@@ -111,26 +114,25 @@ print(f"Shared studies: {set(bunch.groups[train]) & set(bunch.groups[test])}")
 
 ###############################################################################
 # The split is a :class:`~sklearn.model_selection.GroupShuffleSplit` over
-# ``groups``. For several splits of one bundle, or for cross-validation, hand
-# ``groups`` to a group splitter rather than converting again.
+# ``groups``. For several splits of one bundle, or for cross-validation, convert
+# once and hand ``groups`` to a group splitter.
 
 ###############################################################################
 # Classify the task label
 # -----------------------------------------------------------------------------
 # ``bunch.data`` is an ordinary sparse matrix, so an ordinary scikit-learn
-# pipeline works on it. :class:`~nimare.ml.MAKernel` convolves the peaks into
-# MA maps as the first step, truncated SVD reduces them before the classifier
-# sees them, and both are fitted on training rows only because they are in the
+# pipeline works on it. :class:`~nimare.ml.MAKernel` turns the peaks into MA
+# maps as the first step, truncated SVD reduces them before the classifier sees
+# them, and both are fitted on training rows only because they are in the
 # pipeline. GroupKFold reads the same study labels the split used.
 #
-# Every column here is a voxel -- ``bunch.descriptor_names`` is empty -- so the
-# steps can see the whole matrix. The section after next adds descriptor
-# columns, which a bare reducer would decompose along with the voxels.
+# Every column here is a voxel, so each step can see the whole matrix. The
+# section after next adds descriptor columns and gives each block its own
+# transformer.
 #
-# ``cache=True`` keeps the maps the kernel makes. An MA map is a function of
-# one analysis's own peaks, so a row convolved for one fold is the row every
-# other fold needs; caching them is worth about 15% of this run and 35% when
-# what follows the kernel is cheaper.
+# ``cache=True`` reuses maps the kernel has already made. An MA map depends only
+# on that analysis's own peaks, so the row made for one fold is the row the next
+# fold needs.
 pipeline = make_pipeline(
     MAKernel(MKDAKernel(r=10), source_masker=bunch.masker, cache=True),
     TruncatedSVD(n_components=50, random_state=RANDOM_SEED),
@@ -149,16 +151,14 @@ print(f"Cross-validation accuracy: {scores.mean():.3f} +/- {scores.std():.3f}")
 ###############################################################################
 # Read the model back to the brain
 # -----------------------------------------------------------------------------
-# A coefficient over SVD components says nothing about anatomy.
-# :func:`~nimare.ml.coefficient_image` walks the fitted pipeline backwards,
-# undoing each reduction until the weights are one per voxel again, and
-# unmasks them into an image. The walk stops at the kernel, whose input is
-# peaks rather than brain, and refuses any step that cannot be undone rather
-# than reporting the weights after it as the weights before it.
+# The classifier weighs SVD components, and you want to know which regions
+# carry the prediction. :func:`~nimare.ml.coefficient_image` walks the fitted
+# pipeline backwards, undoing each reduction until the weights are one per
+# voxel, and unmasks them into an image. The walk stops at the kernel, whose
+# input is peaks.
 #
-# This fit uses every row, which is not the leak the section above warned
-# about: nothing is being scored here. The accuracy came from the folds; this
-# is the map the model would carry into use.
+# Fit on every row here. The folds above gave you the accuracy; this is the map
+# the model would carry into use.
 pipeline.fit(bunch.data, bunch.target)
 weights = coefficient_image(pipeline, bunch)
 
@@ -173,45 +173,41 @@ plotting.plot_stat_map(
 )
 
 ###############################################################################
-# The cached maps are held for the process rather than for the transformer,
-# which is what lets each fold's clone reuse them.
-# :func:`~nimare.ml.clear_map_cache` releases them and reports what they
-# served; they grow to the whole feature matrix, so a long session should let
-# go of one studyset's maps before starting on another.
+# The cached maps are held for the process, which is what lets each fold's
+# clone reuse them. :func:`~nimare.ml.clear_map_cache` releases them and reports
+# what they served. They grow to the size of the feature matrix, so release them
+# when you move on to another studyset.
 print(f"Map cache: {clear_map_cache()}")
 
 ###############################################################################
 # Add study information as extra features
 # -----------------------------------------------------------------------------
 # Numeric metadata and annotation fields can be appended to the feature matrix
-# as extra columns. Nothing is filled in silently: by default a field that some
-# analyses do not report stops the conversion and names them, because a column
-# that is mostly imputed is a modelling decision rather than a detail. Pass
-# ``missing_values="drop"`` to remove those analyses or ``"keep"`` to leave the
-# gaps for an imputer in your pipeline.
+# as extra columns. You have explicit control on how to handle missing data: by
+# default a field that some analyses leave out stops the conversion and names
+# them, so the choice stays yours. Pass ``missing_values="drop"`` to remove those
+# analyses, or ``"keep"`` to leave the gaps for an imputer in your pipeline.
 try:
     studyset.to_bunch(descriptor_fields=["sample_sizes"])
 except ValueError as exc:
     print(f"{str(exc)[:160]}...")
 
 ###############################################################################
-# Once there are descriptor columns, the reducer has to be kept off them, which
-# is what :class:`~sklearn.compose.ColumnTransformer` is for.
+# Once there are descriptor columns, give each block its own transformer so the
+# reducer works on the voxels only. That is what
+# :class:`~sklearn.compose.ColumnTransformer` is for, and
 # :func:`~nimare.ml.make_nimare_column_transformer` is
-# :func:`~sklearn.compose.make_column_transformer` with the bundle's blocks
-# filled in: ``(transformer, columns)`` pairs as scikit-learn takes them, where
+# :func:`~sklearn.compose.make_column_transformer` with the bundle filled in.
+# Pass ``(transformer, columns)`` pairs as scikit-learn takes them, where
 # ``columns`` may be ``"voxels"``, ``"descriptors"``, or a descriptor's own
-# field name. It also binds the bundle's masker into an atlas reducer, keeps
-# the column names so a coefficient can be read back, and defaults
-# ``sparse_threshold`` to 1.0 -- scikit-learn's 0.3 would densify a wide voxel
-# block.
+# field name. It binds the bundle's masker into an atlas, keeps the column names
+# so a coefficient reads back to its field, and picks a ``sparse_threshold`` that
+# keeps a wide voxel block sparse.
 #
 # A transformer per descriptor is just another pair:
-# ``(SimpleImputer(), "sample_sizes"), (StandardScaler(), "year")``. Anything
-# this does not cover is written out with ``bunch.voxel_columns`` and
-# ``bunch.descriptor_columns``, which are ordinary slices. With voxel features
-# alone there is nothing to keep the reducer away from, so none of this is
-# needed.
+# ``(SimpleImputer(), "sample_sizes"), (StandardScaler(), "year")``. For anything
+# this does not cover, write out ``bunch.voxel_columns`` and
+# ``bunch.descriptor_columns``, which are ordinary slices.
 with_descriptors = studyset.to_bunch(
     target_field=("metadata", "comparison_task"),
     descriptor_fields=["sample_sizes"],
@@ -237,16 +233,14 @@ print(f"Steps: {[name for name, _, _ in preprocessor.transformers]}")
 ###############################################################################
 # Use a categorical field as a feature
 # -----------------------------------------------------------------------------
-# A feature matrix is numeric, so a string cannot be a column of it. What goes
-# in is the *position* of a category, and ``descriptor_categories`` says what
-# the positions mean -- a representation rather than an encoding, so the choice
-# of encoder stays in the pipeline with every other transformation.
+# A feature matrix holds numbers, so a categorical descriptor enters it as a
+# category code, and ``descriptor_categories`` tells you what the codes mean.
+# Pick your encoder in the pipeline, alongside every other transformation.
 #
-# The bundle fills in the two things scikit-learn cannot work out from an array
-# of numbers: ``categories=``, so a training split that happens to miss a
-# category still yields the same number of columns, and the real labels in
-# ``get_feature_names_out``. A code cannot be passed through or scaled, because
-# it stands for a label rather than a quantity.
+# The bundle fills in the two things scikit-learn works out from a frame but not
+# from an array of numbers: ``categories=``, so a training split that happens to
+# miss a category still yields the same number of columns, and the real labels in
+# ``get_feature_names_out``. A code stands for a label, so give it an encoder.
 GROUP = "ParticipantDemographicsExtractor.groups[0].group_name"
 with_group = studyset.to_bunch(
     target_field=("metadata", "comparison_task"),
@@ -270,12 +264,10 @@ except ValueError as exc:
 ###############################################################################
 # Select annotation labels
 # -----------------------------------------------------------------------------
-# An annotation is thousands of mostly-empty columns -- the Neurosynth release
-# annotates 115,747 analyses with 794 labels -- so naming them one at a time is
-# not a workflow. A glob pattern takes them all, each under its own name, and
-# reads them from the Studyset's sparse label block rather than densifying
-# them. A label no analysis carries is a zero rather than a gap, so
-# ``missing_values`` has nothing to report about a pattern selection.
+# Annotations usually run to thousands of labels, so a glob pattern takes them
+# all, each under its own name, reading from the Studyset's sparse label block.
+# A label no analysis carries is a zero, so a pattern selection gives you a
+# complete label matrix.
 neurosynth = Studyset(str(Path(get_resource_path()) / "neurosynth_laird_studyset.json"))
 annotated = neurosynth.to_bunch(
     descriptor_fields=[("annotations", "Neurosynth_TFIDF__*")],
@@ -290,12 +282,11 @@ print(f"Still sparse: {sparse.issparse(annotated.data)}")
 ###############################################################################
 # Compare reduction workflows
 # -----------------------------------------------------------------------------
-# Any scikit-learn transformer will do, downstream of the kernel. They see the
-# sparse MA matrix, so they have to accept sparse input: truncated SVD, sparse
-# random projection, variance thresholding and atlas aggregation all do.
-# ``PCA`` accepts sparse input as well, but only through its ``arpack`` or
-# ``covariance_eigh`` solvers, and it centres the data, which is why truncated
-# SVD is the usual choice for a matrix this wide.
+# Any scikit-learn transformer that reads sparse input will do, downstream of
+# the kernel: truncated SVD, sparse random projection, variance thresholding and
+# atlas aggregation all do. ``PCA`` reads sparse input through its ``arpack`` or
+# ``covariance_eigh`` solvers and centres the data, so truncated SVD is the usual
+# choice for a matrix this wide.
 reducers = {
     "Truncated SVD": TruncatedSVD(n_components=N_COMPONENTS, random_state=RANDOM_SEED),
     "Sparse random projection": SparseRandomProjection(
@@ -323,29 +314,27 @@ for name, reducer in reducers.items():
 ###############################################################################
 # Let nilearn transform the voxels
 # -----------------------------------------------------------------------------
-# A nilearn masker is already a scikit-learn transformer, but it takes images
+# A nilearn masker is already a scikit-learn transformer, and it takes images
 # where a ColumnTransformer hands out columns of an array.
-# :class:`~nimare.ml.MaskerTransformer` is that bridge, one of the two
-# transformers NiMARE adds, because it has to know which voxel each column
-# is. The bundle's ``masker`` says that, which is why it travels with the data.
+# :class:`~nimare.ml.MaskerTransformer` bridges the two, using the bundle's
+# ``masker`` to know which voxel each column is.
 #
-# What it applies is any nilearn masker, or anything nilearn loads as an atlas:
-# what a ``fetch_atlas_*`` function returns, an atlas image or file, or the name
-# of a fetcher such as ``"harvard_oxford"``. A 4D atlas is summarised with a
+# It applies any nilearn masker, or anything nilearn loads as an atlas: what a
+# ``fetch_atlas_*`` function returns, an atlas image or file, or a fetcher name
+# such as ``"harvard_oxford"``. A 4D atlas is summarised with a
 # ``NiftiMapsMasker`` and a 3D one with a ``NiftiLabelsMasker``, and the atlas's
 # own region names become the feature names. A
-# :class:`~nilearn.maskers.NiftiMasker` returns voxels instead, which is how
+# :class:`~nilearn.maskers.NiftiMasker` gives you voxels back, which is how
 # nilearn's smoothing and standardizing reach these features::
 #
 #     (NiftiMasker(smoothing_fwhm=6), "voxels")
 #
-# It reads either column space, deciding from the width: the bundle's raw peak
-# columns, which gives the number of reported coordinates per region, or the MA
-# maps a kernel made, as here.
+# It reads either column space, working it out from the width: the bundle's raw
+# peak columns, which gives the coordinates reported per region, or the MA maps
+# a kernel made, as here.
 #
-# Outside a pipeline, fit the transformer on the training rows and apply the
-# same fitted one to the held-out rows -- calling ``fit_transform`` on the test
-# rows would use the analyses you are holding out.
+# Outside a pipeline, fit the transformer on the training rows and apply that
+# same fitted one to the held-out rows.
 difumo = fetch_atlas_difumo(dimension=N_COMPONENTS, resolution_mm=2)
 atlas_reducer = MaskerTransformer(difumo, source_masker=bunch.masker)
 
@@ -370,21 +359,20 @@ print(f"DiFuMo holdout accuracy: {model.score(test_reduced, bunch.target[test]):
 # Work with a release-scale Studyset
 # -----------------------------------------------------------------------------
 # :func:`~nimare.extract.fetch_neurostore` downloads a published NeuroStore
-# release: 115,748 analyses from 32,444 studies, annotated with 924 labels by
-# LLM extractors. Nothing below is specific to that release -- the same three
-# steps work on any Studyset large enough that reading its field list is not
-# an option.
+# release, annotated with hundreds of labels by LLM extractors. The same three
+# steps work on any Studyset large enough that reading its field list by hand is
+# impractical.
 studyset = fetch_neurostore(version="2026-09")
 
 print(f"Analyses: {len(studyset.ids)} from {len(set(studyset.study_ids))} studies")
 
 ###############################################################################
-# Ask what is usable, rather than reading 997 field names
+# Ask which fields are usable
 # -----------------------------------------------------------------------------
 # :func:`~nimare.ml.describe_fields` reports every field a selector may name,
 # with the kind :meth:`~nimare.studyset.Studyset.to_bunch` will read it as and
-# the fraction of analyses reporting it. Most of a release is a long tail that
-# no analysis fills in, so picking a field becomes a query.
+# the fraction of analyses reporting it. Most of a release is a long tail, so
+# picking a field becomes a query.
 all_fields = describe_fields(studyset)
 fields = all_fields[all_fields.coverage >= 0.5]
 targets = fields[fields.n_unique.between(2, 12)]
@@ -395,13 +383,11 @@ print(targets[["source", "field", "kind", "coverage", "n_unique"]].to_string(ind
 ###############################################################################
 # Convert the part you are modelling
 # -----------------------------------------------------------------------------
-# The whole release converts in under two seconds now that conversion reads
-# peaks rather than making maps -- 115,748 analyses and 852,973 non-zeros. What
-# is still expensive is the kernel: an MA row is about 4,700 voxels at a 10 mm
-# radius, so fitting over the whole release would be. :meth:`~nimare.nimads.Studyset.slice`
-# takes analysis ids, so take the part being modelled first.
-# ``missing_values="drop"`` removes the analyses the extractor could not fill
-# in.
+# Conversion reads peaks, so a whole release converts in a couple of seconds.
+# Applying the kernel is the expensive step, so slice the Studyset to the
+# analyses you are modelling first: :meth:`~nimare.nimads.Studyset.slice` takes
+# analysis ids. ``missing_values="drop"`` removes the analyses the extractor left
+# blank.
 subset = studyset.slice(analyses=list(studyset.ids)[:4000])
 resting = subset.to_bunch(
     target_field=("annotations", "TaskExtractor.fMRITasks[0].RestingState"),
@@ -412,12 +398,10 @@ print(f"Kept {resting.data.shape[0]} of {len(subset.ids)} analyses")
 print(f"Resting-state rows: {int(np.sum(np.asarray(resting.target) == 1.0))}")
 
 ###############################################################################
-# An extractor's repeated fields are indexed, and a bracket is a glob character
-# class, so ``*groups[0].*`` would ordinarily match nothing. A pattern that
-# matches nothing is retried with its brackets taken literally, so it selects
-# group zero as intended. That group mixes numeric and categorical labels, and
-# only numbers go into a feature matrix, so the ``field`` column filtered to
-# ``kind == "numeric"`` is the descriptor list that was meant.
+# An extractor's repeated fields are indexed, and brackets are glob syntax, so
+# ``*groups[0].*`` is retried with its brackets taken literally and selects group
+# zero as intended. That group mixes numeric and categorical labels, so filter
+# the ``field`` column to ``kind == "numeric"`` for the descriptor list.
 demographics = fields[
     (fields.kind == "numeric") & fields.field.str.contains("groups[0].", regex=False)
 ]
@@ -435,12 +419,11 @@ print(f"Descriptors: {[name.split('.')[-1] for name in with_demographics.descrip
 ###############################################################################
 # Classify resting-state against task
 # -----------------------------------------------------------------------------
-# From here it is the workflow above: a grouped split so no study spans both
-# sides, and an imputer for the descriptor gaps the ``"descriptors": "keep"``
+# From here it is the workflow above: a grouped split so each study stays on one
+# side, and an imputer for the descriptor gaps the ``"descriptors": "keep"``
 # policy left for the pipeline.
 #
-# Only one analysis in seven is resting-state, so accuracy would reward always
-# answering "task"; ``roc_auc`` asks the question actually being put, which is
+# Resting-state analyses are the minority here, so use ``roc_auc``: it asks
 # whether the foci rank a resting-state analysis above a task one.
 release_pipeline = make_pipeline(
     make_nimare_column_transformer(

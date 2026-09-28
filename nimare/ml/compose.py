@@ -16,9 +16,26 @@ BLOCKS = ("voxels", "descriptors")
 
 _PROBE = sparse.csr_matrix(np.array([[1.0], [0.0], [2.0], [3.0]]))
 
+try:  # scikit-learn >= 1.6
+    from sklearn.utils import get_tags
+except ImportError:  # pragma: no cover - exercised on the minimum version
+    get_tags = None
+
 
 def _handles_sparse(transformer):
-    """Report whether sparsity is what makes ``transformer`` refuse a probe."""
+    """Report whether ``transformer`` reads sparse input.
+
+    Asks scikit-learn's own tags where they exist. They answer per instance, so
+    ``StandardScaler(with_mean=False)`` is separated from ``StandardScaler()``,
+    and they compose through a :class:`~sklearn.pipeline.Pipeline`. On older
+    scikit-learn, fit a clone on a sparse probe and see whether making the
+    probe dense is what fixes a failure.
+    """
+    if get_tags is not None:
+        try:
+            return bool(get_tags(transformer).input_tags.sparse)
+        except Exception:
+            pass
     if not _fails(transformer, _PROBE):
         return True
     return _fails(transformer, _PROBE.toarray())
@@ -265,16 +282,15 @@ def make_nimare_column_transformer(
 ):
     """Construct a ColumnTransformer over the blocks of ``bunch``.
 
-    :func:`~sklearn.compose.make_column_transformer` with what a bundle knows
-    and scikit-learn cannot work out on its own filled in: the column spans of
-    the two blocks, the masker an atlas reducer needs, the names of the columns
-    each transformer is given, and the categories a coded categorical
-    descriptor stands for.
+    :func:`~sklearn.compose.make_column_transformer` with the bundle filled in:
+    the column spans of the two blocks, the masker an atlas needs, the column
+    names each transformer is given, and the categories a categorical
+    descriptor code stands for. Everything else is scikit-learn's, including
+    the shape of ``transformers`` and the automatic step names.
 
-    Everything else is scikit-learn's, including the shape of ``transformers``
-    and the automatic step names. Where this function does not cover a case,
-    write ``ColumnTransformer`` out with ``bunch.voxel_columns`` and
-    ``bunch.descriptor_columns``, which are ordinary slices.
+    For a case this does not cover, write ``ColumnTransformer`` out with
+    ``bunch.voxel_columns`` and ``bunch.descriptor_columns``, which are
+    ordinary slices.
 
     Parameters
     ----------
@@ -296,8 +312,8 @@ def make_nimare_column_transformer(
         which is built against the bundle's masker.
     remainder : {"drop", "passthrough"} or estimator, default="drop"
         What happens to columns no transformer claims, as in scikit-learn.
-        Leaving either block unclaimed under ``"drop"`` raises rather than
-        discarding it quietly; ``("drop", "voxels")`` still drops it.
+        Claim both blocks under ``"drop"``; say ``("drop", "voxels")`` to drop
+        one on purpose.
     sparse_threshold : :obj:`float`, default=1.0
         Scikit-learn defaults this to 0.3, which would densify an unreduced
         voxel block -- about 6.5 GB at 902,629 columns -- so the default here

@@ -40,12 +40,12 @@ MISSING_POLICIES = ("raise", "drop", "keep")
 MISSING_ROLES = ("target", "descriptors")
 
 
+# ``Studyset`` exposes the annotations table under two names, so a selector
+# may use either; the rest are the table names themselves.
 _SOURCE_ALIASES = {
-    "annotations_df": "annotations",
-    "annotation": "annotations",
-    "text": "texts",
-    "metadata": "metadata",
     "annotations": "annotations",
+    "annotations_df": "annotations",
+    "metadata": "metadata",
     "texts": "texts",
 }
 

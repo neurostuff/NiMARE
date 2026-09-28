@@ -16,8 +16,9 @@ def coefficient_image(estimator, bunch, coef=None):
     """Return a fitted model's voxel weights as an image.
 
     Walks the fitted steps backwards, undoing each reduction, until the weights
-    are one per voxel again, and unmasks them. A step that cannot be undone
-    stops the walk and says so rather than guessing.
+    are one per voxel again, and unmasks them. Every step between the model and
+    the voxels needs an inverse for a weight to name a place in the brain, and
+    a step that has none stops the walk and says so.
 
     Parameters
     ----------

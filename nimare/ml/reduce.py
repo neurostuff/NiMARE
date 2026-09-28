@@ -1,4 +1,4 @@
-"""Reducing voxel features, and the atlases that can do it."""
+"""Apply a nilearn masker or atlas to the voxel columns of a bundle."""
 
 from __future__ import annotations
 
@@ -23,18 +23,17 @@ from nimare.ml._peaks import grid_images, mask_source, n_grid_columns
 class MaskerTransformer(TransformerMixin, BaseEstimator):
     """Apply a nilearn masker to voxel features.
 
-    A nilearn masker is already a scikit-learn transformer, but it takes images
-    where a :class:`~sklearn.compose.ColumnTransformer` hands out columns of an
-    array. This is the bridge: rows are converted back into images in the
-    source mask's space, in batches, and handed to the masker, so region
-    definitions, smoothing, resampling and aggregation strategy all stay
-    nilearn's.
+    A nilearn masker takes images, where a
+    :class:`~sklearn.compose.ColumnTransformer` hands out columns of an array.
+    This is the bridge: rows are turned back into images in the source mask's
+    space, in batches, and handed to the masker, so region definitions,
+    smoothing, resampling and aggregation strategy all stay nilearn's.
 
-    An atlas masker reduces the voxels to regions; a
-    :class:`~nilearn.maskers.NiftiMasker` returns voxels, which is how
+    An atlas reduces the voxels to regions; a
+    :class:`~nilearn.maskers.NiftiMasker` gives voxels back, which is how
     nilearn's smoothing, standardizing and detrending reach these features. How
-    many regions an atlas yields depends on the nilearn version as well as on
-    the atlas; see :doc:`the machine learning documentation </machine_learning>`.
+    many regions an atlas yields depends on the nilearn version as well as the
+    atlas; see :doc:`the machine learning documentation </machine_learning>`.
 
     Parameters
     ----------
@@ -192,6 +191,12 @@ class MaskerTransformer(TransformerMixin, BaseEstimator):
         if self.on_grid_:
             return flat
         return flat[:, np.asarray(self.mask_img_.dataobj).ravel() > 0]
+
+    def __sklearn_tags__(self):
+        """Declare that this transformer reads sparse input."""
+        tags = super().__sklearn_tags__()
+        tags.input_tags.sparse = True
+        return tags
 
     def get_feature_names_out(self, input_features=None):
         """Return the region names, from the atlas or from the masker.

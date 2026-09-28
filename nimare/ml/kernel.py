@@ -60,8 +60,8 @@ class MAKernel(TransformerMixin, BaseEstimator):
     Columns come in over the whole image grid, as
     :meth:`~nimare.studyset.Studyset.to_bunch` reports them, and go out over the
     source masker's voxels. Being a transformer, the kernel and its bandwidth
-    are fitted, cloned and tuned like any other step. See :doc:`the machine
-    learning documentation </machine_learning>`.
+    are fitted, cloned and tuned like any other pipeline step. See :doc:`the
+    machine learning documentation </machine_learning>`.
 
     Parameters
     ----------
@@ -222,6 +222,12 @@ class MAKernel(TransformerMixin, BaseEstimator):
             self.mask_img_.affine.tobytes(),
             self.mask_id_,
         )
+
+    def __sklearn_tags__(self):
+        """Declare that this transformer reads sparse input."""
+        tags = super().__sklearn_tags__()
+        tags.input_tags.sparse = True
+        return tags
 
     def get_feature_names_out(self, input_features=None):
         """Return one name per voxel of the maps.
