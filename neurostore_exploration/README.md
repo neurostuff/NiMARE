@@ -46,11 +46,12 @@ independent field before being trusted.
 0.42% of foci (4,254, in 1,256 analyses) fall outside any plausible MNI box.
 They are not one problem but two:
 
-- **Voxel indices reported as millimetres** — 321 analyses where *every*
-  coordinate is non-negative and under 200, e.g. `(63, 104, 81)`, `(131, 82, 83)`.
-  These are array indices. They are silently wrong rather than obviously wrong,
-  because some indices land inside the grid and become real (but meaningless)
-  brain locations.
+- **Voxel indices reported as millimetres** — 408 analyses whose foci are *all*
+  non-negative and under 200 while most fall outside the brain, e.g.
+  `(63, 104, 81)`, `(131, 82, 83)`. These are array indices. For 321 of them
+  every single focus is out of range. They are silently wrong rather than
+  obviously wrong, because an index in the 40–90 range lands inside the grid
+  and becomes a real — but meaningless — brain location.
 - **Magnitude corruption** — 247 foci with |coordinate| > 500 mm
   (`z = 2080`, `y = 1190`, `x = 2620`): merged table cells or lost decimal points.
 
@@ -171,8 +172,15 @@ Full healthy task-fMRI sample (50,665 analyses, 13,634 studies, DiFuMo-256):
 | Attention | 0.602 | dorsal visual stream, planum temporale, MFG |
 | Executive cognitive control | **0.588** | SFG, MFG, IFS — the multiple-demand network |
 
+![domain maps](figures/07_domain_maps.png)
+
 The weight maps are textbook-correct without any anatomical prior being
-supplied, which is the best available check that the pipeline is sound.
+supplied — bilateral amygdala and anterior insula for Emotion, bilateral
+hippocampus for Learning and memory, occipital cortex for Perception, medial
+prefrontal and temporal cortex for Social function — which is the best
+available check that the pipeline is sound. They were read back with
+`nimare.ml.coefficient_image`, which walks the fitted pipeline backwards
+through the atlas.
 
 The **ordering is the finding**. Domains anchored to sensorimotor or
 perisylvian cortex are identifiable from coordinates alone; the "control"
@@ -376,7 +384,7 @@ Healthy and patient studies are equally small (median 20 vs 19).
 | `scripts/23_descriptive.py` | Q7 |
 | `scripts/24_maps.py` | weight maps via `coefficient_image` |
 | `scripts/26_ceiling.py` | atlas vs model vs label-noise probe |
-| `scripts/30_figures.py` | figures |
+| `scripts/30_figures.py`, `31_map_figure.py` | figures |
 
 Scripts read a cached release via `fetch_neurostore(version="nightly")` and
 write intermediates to a scratch directory set at the top of `cohort.py`.
