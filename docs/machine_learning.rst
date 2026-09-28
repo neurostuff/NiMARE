@@ -67,8 +67,8 @@ n-back/flanker studyset that is 266 foci in 112 of 906 analyses, which changes
 
 Spanning the grid costs almost nothing, because peaks are far sparser than the
 maps they generate: 9,359 nonzeros against 3,889,276 for the same studyset at a
-10 mm radius. Converting a release is no longer the memory wall it was; the
-expansion happens per fold, inside the pipeline, on a training subset.
+10 mm radius. The expansion happens per fold, inside the pipeline, on a
+training subset.
 
 :class:`~nimare.ml.MAKernel` takes grid columns in and returns the masker's
 voxels, which is the space :class:`~nimare.ml.MaskerTransformer` and nilearn
@@ -142,9 +142,8 @@ Convolving each row once
 
 A kernel in the pipeline is convolved again on every fold, and that work is
 not merely uncached -- it is identical, since an analysis's MA map is a
-function of that analysis's own peaks. :class:`~nimare.ml.MapCache` keeps the
-rows already made, so every fold after the first is served rather than
-recomputed:
+function of that analysis's own peaks. ``cache=True`` keeps the rows already
+made, so every fold after the first is served rather than recomputed:
 
 .. code-block:: python
 
@@ -172,7 +171,7 @@ The first pass is slower than no cache at all, since it pays the convolution
 and the bookkeeping together; the cache earns its place from the second fold
 onwards. It is asked for rather than assumed, because it grows to hold the
 whole feature matrix -- 47 MB on the bundled studyset, 156 MB on a
-4,000-analysis release slice. :meth:`~nimare.ml.MapCache.clear` lets it go.
+4,000-analysis release slice. :func:`~nimare.ml.clear_map_cache` lets it go.
 
 A cached row names the kernel that made it, and the mask it was made in, as
 well as the peaks it came from. Both halves matter: ``MKDAKernel(r=10)`` and
@@ -583,8 +582,8 @@ That matters most for a pattern selection. Scaling the Neurosynth release's
 ``MaxAbsScaler`` stays sparse while ``StandardScaler()`` -- which was asked to
 centre -- does not.
 
-Reading a model back
-~~~~~~~~~~~~~~~~~~~~
+Reading feature names back
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``get_feature_names_out`` works through the preprocessor, so a fitted
 coefficient can be read back to the thing it weighs:
@@ -722,8 +721,8 @@ importance.
 Scale
 -----
 
-Conversion no longer generates maps, so it is a read rather than a
-computation. Against the 2026-09 NeuroStore release on a 2 mm whole-brain mask,
+Conversion reads peaks rather than generating maps, so it is a read rather
+than a computation. Against the 2026-09 NeuroStore release on a 2 mm whole-brain mask,
 whose grid is 902,629 columns:
 
 =================  ========  ===========
@@ -737,15 +736,10 @@ Analyses           Time      Non-zeros
 =================  ========  ===========
 
 The whole release converts in under two seconds, and peak memory did not rise
-measurably above the cost of holding the Studyset itself. Under the previous
-design, which ran a kernel over every analysis at conversion, 20,000 analyses
-took 27.7 s and 91 million non-zeros, and the full release was estimated at
-roughly 6 GB of sparse data -- too much for a 16 GB machine, so it had to be
-sliced first.
+measurably above the cost of holding the Studyset itself.
 
-What that moved rather than removed is the expansion: a 10 mm MKDA kernel still
-produces about 4,700 non-zeros per row, now inside the pipeline, per fold, over
-a training subset.
+The expansion is in the pipeline rather than the bundle: a 10 mm MKDA kernel
+produces about 4,700 non-zeros per row, per fold, over a training subset.
 
 A :class:`~sklearn.pipeline.Pipeline` built with ``memory=`` can cache that,
 but only where the cache can hit, which is *not* across folds -- each fold

@@ -918,9 +918,6 @@ def test_public_surface_is_a_studyset_method_and_six_helpers():
         "describe_fields",
         "make_nimare_column_transformer",
     }
-    assert not any(name.endswith("Extractor") for name in dir(ml) if not name.startswith("_"))
-    # There is no container class left to meet.
-    assert not hasattr(ml, "FeatureSet")
     assert callable(Studyset.to_bunch)
 
 
@@ -954,18 +951,6 @@ def test_from_studyset(ml_studyset):
     )
 
     assert_sklearn_bunch_valid(features, expected_rows=len(studyset.ids), expected_sparse=True)
-
-
-def test_from_studyset_to_sklearn(ml_studyset):
-    """The whole path from Studyset to scikit-learn arrays is two calls."""
-    features = ml_studyset.to_bunch(target_field=("annotations", "target_score"))
-
-    bunch = features
-    data, target = (features.data, features.target)
-
-    assert_sklearn_bunch_valid(bunch, expected_rows=len(ml_studyset.ids), expected_sparse=True)
-    assert data.shape == bunch.data.shape
-    np.testing.assert_array_equal(target, bunch.target)
 
 
 def test_from_studyset_records_provenance(ml_studyset):
