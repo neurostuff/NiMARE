@@ -56,7 +56,11 @@ operator = np.load(f"{WORK}/ops/{ATLAS}.npy")
 KERNELS = [("MKDA r=5", MKDAKernel(r=5)), ("MKDA r=10", MKDAKernel(r=10)),
            ("MKDA r=15", MKDAKernel(r=15)), ("MKDA r=20", MKDAKernel(r=20)),
            ("MKDA r=30", MKDAKernel(r=30)), ("KDA r=10", KDAKernel(r=10)),
-           ("ALE (sample-size)", ALEKernel())]
+           # ALE with no fwhm and no sample_size derives a kernel per study and
+           # refuses, so its width is named here like the others'.
+           ("ALE fwhm=10", ALEKernel(fwhm=10)), ("ALE fwhm=15", ALEKernel(fwhm=15))]
+
+RESULTS = f"{WORK}/results_kernel_scale.parquet"
 
 CHUNK = 2048
 
@@ -78,8 +82,17 @@ def reduced_features(kernel):
     return out, total_nnz / peaks.shape[0]
 
 
+# Each kernel costs minutes, so a rerun keeps what is already scored.
 records = []
+if Path(RESULTS).exists():
+    records = pd.read_parquet(RESULTS).to_dict("records")
+    print(f"resuming with {len({r['kernel'] for r in records})} kernels already scored",
+          flush=True)
+
 for name, kernel in KERNELS:
+    if any(r["kernel"] == name for r in records):
+        print(f"{name:<20} cached", flush=True)
+        continue
     t0 = time.time()
     try:
         X, nnz_per_row = reduced_features(kernel)
@@ -105,6 +118,6 @@ for name, kernel in KERNELS:
     clear_map_cache()
 
 res = pd.DataFrame(records)
-res.to_parquet(f"{WORK}/results_kernel_scale.parquet")
+res.to_parquet(RESULTS)
 print("\n" + "=" * 86)
 print(res.pivot_table(index="domain", columns="kernel", values="auc").round(3).to_string())

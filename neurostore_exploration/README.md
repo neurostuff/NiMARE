@@ -153,6 +153,32 @@ already captures 98% of what 512 does. A 48-region anatomical atlas
 matches a 512-mode data-driven one. **Atlas choice is not where the leverage
 is** — which is useful, because the coarse atlases are ~10× cheaper.
 
+### Q1b. Neither does the kernel: the peaks carry coarse information, full stop
+
+The atlas sweep varied how finely the brain is divided. The other spatial
+scale is how far a reported peak is allowed to spread before it is read —
+the kernel. Same sample (12,000 analyses, 3,121 studies), DiFuMo-256
+throughout, only the kernel changing:
+
+| kernel | non-zeros per row | mean AUC |
+|---|---|---|
+| MKDA r=5 | 635 | 0.618 |
+| MKDA r=10 | 3,678 | 0.619 |
+| MKDA r=15 | 11,193 | **0.622** |
+| MKDA r=20 | 22,490 | 0.621 |
+| MKDA r=30 | 54,115 | 0.615 |
+| KDA r=10 | 3,678 | 0.618 |
+
+An 85-fold change in how much of the brain each analysis occupies moves mean
+AUC by **0.007**, with the same shallow inverted U the atlas sweep showed —
+and KDA is indistinguishable from MKDA at the same radius, so whether
+overlapping spheres are summed or binarised does not matter either.
+
+Put beside Q1 and the ceiling probe below, three independent knobs on the
+spatial representation — parcellation granularity, kernel bandwidth, kernel
+family — are all nearly flat. Whatever limits coordinate-based decoding, it is
+not the resolution at which the coordinates are read.
+
 ### Q2. Cognitive domains differ enormously in how spatially specific they are
 
 ![domain decodability](figures/02_domain_decodability.png)
@@ -441,7 +467,7 @@ worth interpreting.
 | `scripts/22_ontology.py`, `28_confusion.py` | Q2–Q4 |
 | `scripts/21_clinical.py`, `27_blocks.py` | Q5–Q6 |
 | `scripts/23_descriptive.py` | Q7 |
-| `scripts/32_kernel_scale.py` | kernel bandwidth sweep |
+| `scripts/32_kernel_scale.py` | Q1b |
 | `scripts/33_age.py` | Q8 |
 | `scripts/24_maps.py` | weight maps via `coefficient_image` |
 | `scripts/26_ceiling.py` | atlas vs model vs label-noise probe |
