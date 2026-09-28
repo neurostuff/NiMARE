@@ -294,6 +294,14 @@ For more information about fetching data from the internet, see :ref:`fetching t
 
    extract.fetch_neurostore
    extract.fetch_neurostore_releases
+   extract.search_neurostore_studyset
+   extract.search_base_studies
+   extract.studyset_from_base_studies
+   extract.base_studies_to_nimads_dict
+   extract.select_base_study_version
+   extract.resolve_version_heuristic
+   extract.register_version_heuristic
+   extract.prefer_source
    extract.fetch_neuroquery
    extract.fetch_neurosynth
    extract.download_nidm_pain
