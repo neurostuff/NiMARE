@@ -18,6 +18,26 @@ import pandas as pd
 MNI_BOX = dict(x=(-90, 90), y=(-130, 90), z=(-80, 100))
 
 
+# Spaces the loader cannot transform. It warns once and passes the coordinates
+# through, and the loaded ``space`` column then reads ``mni152_2mm`` for them
+# like everything else, so nothing downstream can tell them apart.
+UNTRANSFORMED_SPACES = {"OTHER", "UNKNOWN", ""}
+
+
+def untransformed_analyses(release_dir):
+    """Return the analyses whose declared space the loader could not transform.
+
+    Reads the release's own ``coordinates.parquet`` rather than the loaded
+    Studyset, because the loader overwrites the declared space.
+    """
+    import pandas as pd
+
+    raw = pd.read_parquet(f"{release_dir}/coordinates.parquet",
+                          columns=["contrast_id", "space"])
+    unknown = raw.space.isna() | raw.space.isin(UNTRANSFORMED_SPACES)
+    return raw.loc[unknown, "contrast_id"].unique()
+
+
 def flag_coordinates(coordinates):
     """Label each focus and each analysis with the quality problems it has.
 

@@ -14,7 +14,7 @@ sha256 `05b7a371…5812e`. NiMARE at `78426eb`, scikit-learn 1.9.1, nilearn 0.13
 | table | shape | note |
 |---|---|---|
 | analyses | 146,736 | from 38,936 studies |
-| coordinates | 1,018,893 foci | all resolved to `mni152_2mm` on load |
+| coordinates | 1,018,893 foci | labelled `mni152_2mm` after load — but see §2.1 |
 | metadata | 146,736 × 67 | mostly a long tail of curator-specific keys |
 | annotations | 146,736 × 927 | two LLM extractors |
 | texts | 146,736 × 3 | **id columns only — no abstracts in this release** |
@@ -41,7 +41,29 @@ coordinates.
 `nsnorm.py` holds the normalizations; each one was checked against an
 independent field before being trusted.
 
-### 2.1 Coordinates: two distinct failure modes
+### 2.1 A fifth of the corpus is transformed, and 5% cannot be
+
+As shipped, the release declares a coordinate space per focus:
+
+| declared space | foci |
+|---|---|
+| MNI | 785,891 |
+| TAL / Talairach | 183,274 (18.0%) |
+| **OTHER / UNKNOWN / empty / null** | **49,728 (4.9%)** |
+
+The loader transforms Talairach to MNI, warns once about the rest — and then
+writes `mni152_2mm` into the `space` column for *every* row. After load nothing
+distinguishes the **6,081 analyses (4.4%)** whose true space is unknown from
+the ones that were genuinely converted. `nsnorm.untransformed_analyses()` reads
+them back out of the release's own parquet, which is the only place the
+distinction survives.
+
+How much this matters is bounded by Q1b below: an untransformed Talairach
+coordinate is off by roughly 5–10 mm, and decoding is flat across kernel widths
+from 5 to 30 mm, so it is unlikely to change a decoding result. It would matter
+a great deal for anything that reads a peak's location literally.
+
+### 2.2 Coordinates: two distinct failure modes
 
 0.42% of foci (4,254, in 1,256 analyses) fall outside any plausible MNI box.
 They are not one problem but two:
@@ -63,7 +85,7 @@ Also found: **10,758 exactly duplicated foci** within an analysis (1,672
 analyses), and 21.3% non-integer coordinates (a normal consequence of
 Talairach→MNI transformation, not an error).
 
-### 2.2 Controlled vocabularies drifted
+### 2.3 Controlled vocabularies drifted
 
 The extractor was given fixed vocabularies and did not stay inside them:
 
@@ -76,7 +98,7 @@ The extractor was given fixed vocabularies and did not stay inside them:
 The drift is small in volume (~1% of labels) but it silently fragments
 categories — `Memory` and `Learning and memory` would otherwise be two classes.
 
-### 2.3 Diagnosis: 7,455 free-text strings → 31 categories
+### 2.4 Diagnosis: 7,455 free-text strings → 31 categories
 
 `groups[0].diagnosis` is unnormalized free text: `Major Depressive Disorder`,
 `Major Depressive Disorder (mdd)`, and `Mdd` are three strings for one entity.
@@ -86,13 +108,13 @@ An ordered regex vocabulary folds them to 31 categories.
 `group_name` field, every disorder category lands almost entirely in
 `patients` (e.g. Alzheimer's 1414/1414, epilepsy 1316/1316, ADHD 948/955).
 
-### 2.4 Demographic outliers
+### 2.5 Demographic outliers
 
 Mean age ranged to **775,350** and group counts to **101,650**. Screening to
 age ∈ [1,100] and n ∈ [1,2000] removes 103 and 1,056 values respectively.
 After screening, the median reported group size is **20**.
 
-### 2.5 Two integrity problems worth reporting upstream
+### 2.6 Two integrity problems worth reporting upstream
 
 - **6,939 analyses (4.7%)** carry `group_name = "patients"` together with a
   diagnosis string that reads plainly healthy (`Healthy`, `Healthy Volunteers`,
@@ -448,8 +470,11 @@ worth interpreting.
 
 **For the resource itself**
 
-8. The 6,939 `patients`-with-healthy-diagnosis rows and the 321 voxel-index
+8. The 6,939 `patients`-with-healthy-diagnosis rows and the 408 voxel-index
    analyses are fixable upstream; both silently corrupt downstream models.
+   Separately, should the loader keep the declared space after it fails to
+   transform it? Right now 6,081 analyses in an unknown space are
+   indistinguishable from converted ones once loaded.
 9. Should releases ship a canonical vocabulary mapping, so that every user does
    not re-derive `Memory` → `Learning and memory` independently?
 10. `texts` is empty in this release — restoring abstracts would allow the LLM
