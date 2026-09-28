@@ -168,11 +168,15 @@ throughout, only the kernel changing:
 | MKDA r=20 | 22,490 | 0.621 |
 | MKDA r=30 | 54,115 | 0.615 |
 | KDA r=10 | 3,678 | 0.618 |
+| ALE fwhm=10 | 25,528 | 0.620 |
+| ALE fwhm=15 | 66,092 | 0.621 |
 
-An 85-fold change in how much of the brain each analysis occupies moves mean
-AUC by **0.007**, with the same shallow inverted U the atlas sweep showed —
-and KDA is indistinguishable from MKDA at the same radius, so whether
-overlapping spheres are summed or binarised does not matter either.
+A 104-fold change in how much of the brain each analysis occupies moves mean
+AUC by **0.007**, with the same shallow inverted U the atlas sweep showed.
+Kernel *family* matters no more than width: KDA is indistinguishable from MKDA
+at the same radius, so whether overlapping spheres are summed or binarised
+makes no difference, and ALE's Gaussians land in the same place as MKDA's hard
+spheres.
 
 Put beside Q1 and the ceiling probe below, three independent knobs on the
 spatial representation — parcellation granularity, kernel bandwidth, kernel
