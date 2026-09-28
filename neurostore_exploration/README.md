@@ -70,7 +70,7 @@ The extractor was given fixed vocabularies and did not stay inside them:
 | field | raw values | canonical | examples of drift |
 |---|---|---|---|
 | `fMRITasks[0].Domain` | 28 | **10** | `Memory`→`Learning and memory`; `Cognitive control`→`Executive cognitive control`; `Motor`/`Motor control`/`Motor function`→`Action` |
-| `Modality` | 33 | 10 | `fMRI`, `rsfMRI`→`fMRI-BOLD`; `DTI`→`DiffusionMRI`; `ERP`/`iEEG`/`ECoG`→`Electrophysiology` |
+| `Modality` | 33 | 9 | `fMRI`, `rsfMRI`→`fMRI-BOLD`; `DTI`→`DiffusionMRI`; `ERP`/`iEEG`/`ECoG`→`Electrophysiology` |
 | `TaskDesign` | 12 | 4 | `Resting State`, `Seed-based`, `Vertex-wise` are not task designs at all |
 
 The drift is small in volume (~1% of labels) but it silently fragments
@@ -149,7 +149,7 @@ Mean ROC AUC over 10 domains, 20,007 analyses, 5,290 studies:
 | DiFuMo | 512 | 0.622 |
 
 The curve is a shallow inverted U peaking near 128 regions, and 39 regions
-already captures 98% of what 512 does. A 48-region anatomical atlas from 2006
+already captures 98% of what 512 does. A 48-region anatomical atlas
 matches a 512-mode data-driven one. **Atlas choice is not where the leverage
 is** — which is useful, because the coarse atlases are ~10× cheaper.
 
@@ -182,12 +182,15 @@ available check that the pipeline is sound. They were read back with
 `nimare.ml.coefficient_image`, which walks the fitted pipeline backwards
 through the atlas.
 
-The **ordering is the finding**. Domains anchored to sensorimotor or
-perisylvian cortex are identifiable from coordinates alone; the "control"
-domains are barely above chance. A category like *executive cognitive control*
-is defined by the task the experimenter ran, not by a distinguishable place in
-the brain — a data-driven restatement of the multiple-demand / non-specificity
-problem, measured here on 50k analyses.
+The **ordering is the finding**, and it spans a factor of three in
+above-chance signal: Action is at +0.253 over chance, executive cognitive
+control at +0.088. Every domain is well above chance at these sample sizes —
+this is not "control tasks are undecodable" — but domains anchored to
+sensorimotor or perisylvian cortex are far more identifiable from coordinates
+alone than the control domains are. That is a data-driven restatement of the
+multiple-demand / non-specificity problem: a category like *executive
+cognitive control* is individuated much more by the task the experimenter ran
+than by where the peaks land.
 
 ### Q3. The ontology's own similarity structure
 
@@ -332,8 +335,10 @@ Healthy and patient studies are equally small (median 20 vs 19).
 
 1. *Is "executive cognitive control" a brain category or a task category?* It
    decodes at 0.588 and is recalled 18% of the time, against Action's 0.753 and
-   58%. If a category has no distinguishable spatial signature across 50k
-   analyses, what work is it doing in the ontology?
+   58%. A category whose spatial signature is this much weaker than its
+   neighbours' — across 50k analyses, so not for want of data — is doing most
+   of its work at the task level. Is that the right level for it to sit at in
+   a *brain* ontology?
 2. *Would a data-driven domain vocabulary beat the curated one?* The confusion
    structure suggests merges (Emotion+Social, Perception+Attention,
    Reasoning+Motivation). Clustering the coordinates first and naming the
