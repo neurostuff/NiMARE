@@ -1060,9 +1060,9 @@ def test_from_studyset_rejects_unusable_descriptors(ml_studyset, selector, messa
 
 
 @pytest.fixture(scope="session")
-def neurosynth_studyset():
-    """Return the bundled Neurosynth Studyset, which annotates with 3,228 labels."""
-    return Studyset(str(Path(get_resource_path()) / "neurosynth_laird_studyset.json"))
+def neurosynth_studyset(testdata_laird_studyset):
+    """Return the Neurosynth Studyset from conftest, which annotates with 3,228 labels."""
+    return testdata_laird_studyset
 
 
 def test_annotation_labels_are_selected_by_pattern(neurosynth_studyset):
