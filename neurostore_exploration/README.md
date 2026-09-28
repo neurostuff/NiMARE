@@ -268,6 +268,21 @@ Within a single cognitive domain the clinical signal is 0.526–0.564 and
 essentially flat across domains. A genuine effect is present, but it is small,
 and it is smaller than the confound it is usually reported alongside.
 
+What little the clinical model does use is worth looking at. Its weights are
+an order of magnitude smaller than any domain model's (largest |w| 0.053
+against 0.2–0.3), and they split in a telling way:
+
+| leans **patient** | leans **healthy** |
+|---|---|
+| antero-inferior insula, superior putamen, cerebellum Crus I / VIIb | posterior ITG LH, medial SFG, superior parietal lobule |
+| **anterior horns of the lateral ventricles, forceps minor, optic radiation** | lateral occipital cortex, pars opercularis, IPS LH |
+
+The healthy side is ordinary task-activation cortex. The patient side is
+subcortical and cerebellar — and includes ventricular and white-matter
+components that cannot be activation loci at all. Even inside a sample
+restricted to task fMRI-BOLD, the model is partly reading *how clinical papers
+report coordinates* rather than where patients' brains differ.
+
 ### Q6. Psychiatric disorders share a signature; neurological ones do not
 
 ![transfer matrix](figures/05_transfer_matrix.png)
