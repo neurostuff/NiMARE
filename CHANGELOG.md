@@ -2,7 +2,52 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.21.0...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.22.0...HEAD)
+
+## [0.22.0](https://github.com/neurostuff/NiMARE/compare/0.21.0...0.22.0) - 2026-09-30
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+### What's Changed
+
+This release contains a few different themes of work.
+The first theme is alignment with external packages like GingerALE
+and the MKDAtoolbox, which resulted in a couple of small changes:
+
+- how statistics are calculated/how null values are thresholded. Instead of doing +0.5 and lowering to the floor, doing typical rounding less biased.
+- taking into account sample_size in MKDADensity
+- allow for explicit seed arguments for reproducibility of results
+
+There will be more writeups about how the performance of NiMARE compares to other meta-analysis packages.
+
+The second theme is corrections/fixes, big thanks to @SahilKumar75 and @const7 for their contributions!
+
+The third theme is machine learning, where Google Summer of Code student @lyraluoyu implemented NiMARE's machine learning module #1148. Combined with our large studyset releases from neurostore (https://neurostore.org/api/neurostore-studyset-releases/), this opens up a number of interesting questions/comparisons that were previously not testable.
+
+* [FIX] Reject coordinates outside mask image bounds by @SahilKumar75 in https://github.com/neurostuff/NiMARE/pull/1135
+* [FIX] Fix inclusive thresholds in decoder preprocessing by @const7 in https://github.com/neurostuff/NiMARE/pull/1137
+* [FIX] NaN-safe FDR correction, and a one-tailed z for BrainMap forward inference by @jdkent in https://github.com/neurostuff/NiMARE/pull/1139
+* [FIX] Correct the Neurosynth decoder's uniformity test by @jdkent in https://github.com/neurostuff/NiMARE/pull/1138
+* [FIX] ensure traversing slices of a studyset maintains the view by @jdkent in https://github.com/neurostuff/NiMARE/pull/1140
+* [FIX] Build Monte Carlo null bin edges from the bin centres by @jdkent in https://github.com/neurostuff/NiMARE/pull/1144
+* [FIX] Fix ALE histogram binning to use nearest bin instead of floor by @jdkent in https://github.com/neurostuff/NiMARE/pull/1147
+* [FIX] Correct KDA's approximate-null binning by @jdkent in https://github.com/neurostuff/NiMARE/pull/1145
+* [REF] Use _round2 for KDA's approximate-null tie-break by @jdkent in https://github.com/neurostuff/NiMARE/pull/1150
+* [FIX] Round millimetre coordinates to the nearest voxel (MKDA/KDA parity with Neurosynth) by @jdkent in https://github.com/neurostuff/NiMARE/pull/1142
+* [ENH] Add an autodiff fallback for CBMR's closed-form information matrix by @jdkent in https://github.com/neurostuff/NiMARE/pull/1151
+* [ENH] mkda sample size weighting by @jdkent in https://github.com/neurostuff/NiMARE/pull/1141
+* [FIX] Load m2r2's mdinclude extension instead of importing MdInclude by @jdkent in https://github.com/neurostuff/NiMARE/pull/1156
+* [ENH] Allow random processes to be seeded for reproducibility by @jdkent in https://github.com/neurostuff/NiMARE/pull/1152
+* [ENH] Add fetch_neurostore and deprecate fetch_neurosynth by @jdkent in https://github.com/neurostuff/NiMARE/pull/1160
+* [DOC] Make it obvious how to reach the NiMARE team by @jdkent in https://github.com/neurostuff/NiMARE/pull/1159
+* [FIX] Validate Monte Carlo iteration counts by @SahilKumar75 in https://github.com/neurostuff/NiMARE/pull/1154
+* [ENH] 001 ma feature dataset by @jdkent in https://github.com/neurostuff/NiMARE/pull/1148
+* [MAINT] Bump pymare version in setup.cfg by @jdkent in https://github.com/neurostuff/NiMARE/pull/1163
+
+### New Contributors
+
+* @SahilKumar75 made their first contribution in https://github.com/neurostuff/NiMARE/pull/1135
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.21.0...0.22.0
 
 ## [0.21.0](https://github.com/neurostuff/NiMARE/compare/0.20.0...0.21.0) - 2026-08-31
 
@@ -24,6 +69,7 @@ All notable changes to NiMARE releases are documented in this page.
 
 ```
 warnings.filterwarnings("ignore", message=".*nimare.dataset.Dataset is deprecated")
+
 
 ```
 Also: `Dataset.get_studies_by_label` documents its real default of `label_threshold=0.001` (previously documented as 0.5).
