@@ -423,9 +423,15 @@ class Studyset:
         return list(self.ids[self._label_masks(labels, label_threshold, annotation).all(axis=0)])
 
     def get_analyses_by_label(self, labels=None, label_threshold=0.001, annotation=None):
-        """Short analysis ids whose labels reach the threshold."""
+        """Full analysis ids whose labels reach the threshold.
+
+        .. versionchanged:: 0.22.1
+
+            Returns full ``"<study id>-<analysis id>"`` ids. Short analysis ids can be
+            shared across studies, so slicing by them selected unrelated analyses.
+        """
         keep = self._label_masks(labels, label_threshold, annotation).all(axis=0)
-        return list(self._view.short_keys[keep].astype(str))
+        return list(self._view.keys[keep].astype(str))
 
     def _analyses_in_mask(self, mask):
         """Studies filtered with at least one focus in ``mask``."""
@@ -444,8 +450,14 @@ class Studyset:
         return list(self._analyses_in_mask(mask).keys.astype(str))
 
     def get_analyses_by_mask(self, mask):
-        """Short analysis ids with at least one focus inside ``mask``."""
-        return list(self._analyses_in_mask(mask).short_keys.astype(str))
+        """Full analysis ids with at least one focus inside ``mask``.
+
+        .. versionchanged:: 0.22.1
+
+            Returns full ``"<study id>-<analysis id>"`` ids. Short analysis ids can be
+            shared across studies, so slicing by them selected unrelated analyses.
+        """
+        return list(self._analyses_in_mask(mask).keys.astype(str))
 
     def get_studies_by_coordinate(self, xyz, r=20):
         """Full analysis ids with a focus within ``r`` mm of any of ``xyz``."""
@@ -455,7 +467,13 @@ class Studyset:
         return list(self._view.analyses_with_points(flagged).keys.astype(str))
 
     def get_analyses_by_coordinate(self, xyz, r=None, n=None):
-        """Short analysis ids near ``xyz``, by radius or by count."""
+        """Full analysis ids near ``xyz``, by radius or by count.
+
+        .. versionchanged:: 0.22.1
+
+            Returns full ``"<study id>-<analysis id>"`` ids. Short analysis ids can be
+            shared across studies, so slicing by them selected unrelated analyses.
+        """
         if (r is None) == (n is None):
             raise ValueError("Exactly one of r or n must be provided.")
         xyz = np.asarray(xyz).ravel()
@@ -471,7 +489,7 @@ class Studyset:
         else:
             hit = np.unique(groups[np.argsort(distances)[:n]])
         # hit indexes the coordinate block's groups, which are this selection.
-        return list(self._view.short_keys[hit].astype(str))
+        return list(self._view.keys[hit].astype(str))
 
     def _frame_field(self, frame, field, what):
         """Field names in ``frame``, or one field's values."""

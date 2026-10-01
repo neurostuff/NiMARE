@@ -357,7 +357,7 @@ def test_get_analyses_by_label(example_nimads_studyset):
     studyset = nimads.Studyset(example_nimads_studyset)
     values = np.array([[1.0] if i < 2 else [0.0] for i in range(len(studyset.ids))])
     labelled = studyset.with_annotation("custom", ["custom_label"], values)
-    expected = [str(i).rsplit("-", 1)[-1] for i in labelled.ids[:2]]
+    expected = [str(i) for i in labelled.ids[:2]]
 
     results = labelled.get_analyses_by_label("custom_label", label_threshold=0.5)
 
