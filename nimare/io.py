@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import warnings
 from collections import Counter, defaultdict
 from functools import lru_cache
 from itertools import groupby
@@ -1902,7 +1903,13 @@ def convert_sleuth_to_nimads_dict(
     else:
         ds_target = None
 
-    dset = convert_sleuth_to_dataset(text_file, target=ds_target)
+    from nimare.dataset import _quiet_dataset_deprecation
+
+    # The Dataset is only an intermediate: the caller asked for a Studyset, which sets
+    # its own target and masker, so warnings about the Dataset point at nothing they made.
+    with _quiet_dataset_deprecation(), warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="No mask or target space specified")
+        dset = convert_sleuth_to_dataset(text_file, target=ds_target)
     return convert_dataset_to_nimads_dict(
         dset, studyset_id=studyset_id, studyset_name=studyset_name
     )

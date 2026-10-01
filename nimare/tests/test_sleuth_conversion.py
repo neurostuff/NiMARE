@@ -14,6 +14,7 @@ from nimare.io import (
     convert_sleuth_to_nimads_dict,
 )
 from nimare.studyset import normalize_collection
+from nimare.tests.utils import get_test_data_path
 
 
 def test_annotation_splitting_boolean(example_nimads_studyset, example_nimads_annotation):
@@ -433,3 +434,18 @@ def test_sleuth_export_writes_only_the_selection(split_studyset, tmp_path):
     written = (tmp_path / "nimads_sleuth_file.txt").read_text()
     assert "Analysis_A1" in written and "Analysis_A2" not in written
     assert "1.00\t2.00\t3.00" in written and "4.00" not in written
+
+
+def test_studyset_from_sleuth_does_not_warn_about_the_internal_dataset():
+    """Studyset.from_sleuth builds a Dataset only as an intermediate; don't warn about it."""
+    import warnings
+
+    from nimare.studyset import Studyset
+
+    sleuth_file = str(Path(get_test_data_path()) / "test_sleuth_file.txt")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        Studyset.from_sleuth(sleuth_file)
+    messages = [str(w.message) for w in caught]
+    assert not [m for m in messages if "Dataset is deprecated" in m], messages
+    assert not [m for m in messages if "No mask or target space specified" in m], messages
