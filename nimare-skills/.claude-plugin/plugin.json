@@ -1,0 +1,15 @@
+{
+  "name": "nimare-skills",
+  "description": "Agent skills for neuroimaging meta-analysis with NiMARE: coordinate-based (ALE, MKDA, SCALE, CBMR) and image-based meta-analysis, MACM, functional decoding, dataset curation, and reporting — with the statistical guardrails the defaults do not enforce.",
+  "version": "0.1.0",
+  "author": {
+    "name": "NiMARE developers",
+    "url": "https://github.com/neurostuff/NiMARE"
+  },
+  "homepage": "https://nimare.readthedocs.io",
+  "license": "MIT",
+  "keywords": [
+    "neuroimaging", "meta-analysis", "nimare", "ale", "neurosynth",
+    "neuroquery", "fmri", "coordinate-based-meta-analysis", "functional-decoding"
+  ]
+}

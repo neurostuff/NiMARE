@@ -1,0 +1,21 @@
+{
+  "name": "nimare-skills",
+  "owner": {
+    "name": "neurostuff",
+    "url": "https://github.com/neurostuff"
+  },
+  "metadata": {
+    "description": "Agent skills for neuroimaging meta-analysis with NiMARE.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "nimare-skills",
+      "source": "./",
+      "description": "Skills for running statistically defensible neuroimaging meta-analyses with NiMARE: ALE and other coordinate-based methods, image-based meta-analysis, MACM, functional decoding against Neurosynth/NeuroQuery, dataset curation and contrast-independence auditing, and reporting.",
+      "version": "0.1.0",
+      "category": "science",
+      "keywords": ["neuroimaging", "meta-analysis", "nimare", "neurosynth", "fmri"]
+    }
+  ]
+}
