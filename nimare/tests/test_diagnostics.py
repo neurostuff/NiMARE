@@ -627,6 +627,7 @@ def test_focusfilter(testdata_laird):
     assert n_coordinates_filtered == 1101
     assert n_coordinates_filtered <= n_coordinates_all
 
+
 def test_jackknife_non_finite_guardrail():
     """Test that Jackknife's cluster summary guardrail correctly sanitizes non-finite values."""
     import numpy as np
@@ -640,7 +641,7 @@ def test_jackknife_non_finite_guardrail():
     # Use a dictionary for the context since the function expects key-value lookups
     cluster_summary_context = {
         "mode": "masked_array",
-        "cluster_indices": [np.array([0, 1]), np.array([2, 3])]
+        "cluster_indices": [np.array([0, 1]), np.array([2, 3])],
     }
 
     # Input array containing NaN and inf values that would typically trigger the ValueError

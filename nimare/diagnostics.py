@@ -413,6 +413,7 @@ def _summarize_cluster_values(values, masker, cluster_summary_context):
 
     return raw_means
 
+
 def _infer_label_map_tails(label_maps, clusters_table, n_clusters):
     """Infer tail labels from label maps and cluster statistics."""
     inferred_tail = "positive"
