@@ -627,6 +627,23 @@ def test_get_analyses_by_helpers_return_ids_slice_selects_exactly():
         assert list(studyset.slice(ids=ids).ids) == ["mixed-plain"], how
 
 
+def test_get_analyses_by_metadata_and_annotations_keep_shared_short_ids_apart():
+    """Check that analyses sharing a short id are not merged into one dict entry."""
+    document = selection_document()
+    for study in document["studies"]:
+        for analysis in study["analyses"]:
+            analysis["metadata"] = {"site": study["id"]}
+    studyset = Studyset(document)
+    values = np.ones((len(studyset.ids), 1))
+    labelled = studyset.with_annotation("custom", ["lab"], values)
+    expected = ["mixed-a-b", "mixed-plain", "other-plain"]
+
+    by_metadata = studyset.get_analyses_by_metadata("site")
+    assert sorted(by_metadata) == expected
+    assert by_metadata["other-plain"] == {"site": "other"}
+    assert sorted(labelled.get_analyses_by_annotations("lab")) == expected
+
+
 def test_points_outside_mask_volume_are_not_clipped_to_edge():
     """An out-of-volume focus cannot inherit a boundary voxel's mask value."""
     document = selection_document()

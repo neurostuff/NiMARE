@@ -533,7 +533,13 @@ class Studyset:
         return {str(store.analysis_key[r]): cache.get(int(r), []) for r in rows}
 
     def get_analyses_by_metadata(self, key, value=None):
-        """``{analysis id: {key: value}}`` for analyses carrying ``key``."""
+        """``{full analysis id: {key: value}}`` for analyses carrying ``key``.
+
+        .. versionchanged:: 0.22.1
+
+            Keyed by full ``"<study id>-<analysis id>"`` ids. Short ids can be shared
+            across studies, which silently merged those analyses into one entry.
+        """
         store = self.store
         out = {}
         for level in (store.metadata, store.study_metadata):
@@ -549,7 +555,7 @@ class Studyset:
                     continue
                 if value is None or found == value:
                     analysis_row = self._view.index[pos]
-                    out[str(store.analysis_key[analysis_row])] = {key: found}
+                    out[str(store.analysis_full_key[analysis_row])] = {key: found}
             if out:
                 break
         return out
@@ -559,6 +565,11 @@ class Studyset:
 
         Accepts either form: the previous implementation keyed on the annotation
         id here while ``get_studies_by_label`` keyed on the label.
+
+        .. versionchanged:: 0.22.1
+
+            Keyed by full ``"<study id>-<analysis id>"`` ids. Short ids can be shared
+            across studies, which silently merged those analyses into one entry.
         """
         store = self.store
         out = {}
@@ -567,7 +578,7 @@ class Studyset:
             for row in self._view.index:
                 note = notes.get(int(row))
                 if note and (value is None or note == value):
-                    out[str(store.analysis_key[row])] = {key: note}
+                    out[str(store.analysis_full_key[row])] = {key: note}
             return out
         for annotation in store.annotations.values():
             if key not in annotation.columns:
@@ -578,7 +589,7 @@ class Studyset:
                 if found is None:
                     continue
                 if value is None or found == value:
-                    out[str(store.analysis_key[row])] = {key: found}
+                    out[str(store.analysis_full_key[row])] = {key: found}
         return out
 
     def get_annotations(self, analyses=None):
