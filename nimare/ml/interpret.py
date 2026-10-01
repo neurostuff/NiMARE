@@ -4,12 +4,21 @@ from __future__ import annotations
 
 import numpy as np
 from sklearn.compose import ColumnTransformer
+from sklearn.decomposition import PCA, TruncatedSVD
+from sklearn.feature_selection import SelectorMixin
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import FunctionTransformer
+from sklearn.preprocessing import (
+    FunctionTransformer,
+    MaxAbsScaler,
+    MinMaxScaler,
+    RobustScaler,
+    StandardScaler,
+)
 
 from nimare.ml._helpers import _to_dense
 from nimare.ml._peaks import mask_source
 from nimare.ml.kernel import MAKernel
+from nimare.ml.reduce import MaskerTransformer
 
 
 def coefficient_image(estimator, bunch, coef=None):
@@ -17,8 +26,8 @@ def coefficient_image(estimator, bunch, coef=None):
 
     Walks the fitted steps backwards, undoing each reduction, until the weights
     are one per voxel again, and unmasks them. Every step between the model and
-    the voxels needs an inverse for a weight to name a place in the brain, and
-    a step that has none stops the walk and says so.
+    the voxels has to be read back for a weight to name a place in the brain,
+    and a step that cannot be stops the walk and says so.
 
     Parameters
     ----------
@@ -44,6 +53,25 @@ def coefficient_image(estimator, bunch, coef=None):
     :obj:`ValueError`
         If no weights can be found, if a step cannot be undone, or if the
         weights do not end up one per voxel.
+
+    Notes
+    -----
+    A model that scores ``w @ (A x + c)`` scores ``(A.T @ w) @ x`` plus a
+    constant, so a weight moves back through a linear step by the transpose of
+    its linear part, and the step's offset belongs to the intercept. That is not
+    what ``inverse_transform`` computes: it maps a point back, ``A^-1 (z - c)``,
+    which agrees with the transpose only for an orthogonal step with no offset.
+    Through a :class:`~sklearn.preprocessing.StandardScaler` it would give
+    ``w * scale + mean`` where the weight is ``w / scale``. The steps read back
+    are therefore the ones whose linear part is known: the scikit-learn scalers
+    (:class:`~sklearn.preprocessing.StandardScaler`,
+    :class:`~sklearn.preprocessing.MaxAbsScaler`,
+    :class:`~sklearn.preprocessing.MinMaxScaler`,
+    :class:`~sklearn.preprocessing.RobustScaler`),
+    :class:`~sklearn.decomposition.PCA`,
+    :class:`~sklearn.decomposition.TruncatedSVD`, feature selectors, and a
+    :class:`~nimare.ml.MaskerTransformer`, which is undone through the atlas it
+    applied. Any other step is refused.
 
     See Also
     --------
@@ -118,14 +146,47 @@ def _undo(step, weights, bunch):
             )
         return weights
 
-    if hasattr(step, "inverse_transform"):
+    if isinstance(step, MaskerTransformer):
         return np.asarray(step.inverse_transform(weights))
 
+    pulled = _pull_back(step, weights)
+    if pulled is not None:
+        return pulled
+
     raise ValueError(
-        f"{type(step).__name__} has no 'inverse_transform', so the weights after it "
-        "cannot be read back to the features before it. Drop it from the pipeline you "
-        "pass here, or project weights you have already undone."
+        f"{type(step).__name__} is not a step whose weights can be read back to the "
+        "features before it. A weight moves back through a linear step by the transpose "
+        "of that step, which 'inverse_transform' does not compute, so only steps with a "
+        "known linear part are undone: StandardScaler, MaxAbsScaler, MinMaxScaler, "
+        "RobustScaler, PCA, TruncatedSVD, feature selectors and MaskerTransformer. Drop "
+        "it from the pipeline you pass here, or project weights you have already undone."
     )
+
+
+def _pull_back(step, weights):
+    """Return ``weights`` over a linear step's inputs, or None for any other step.
+
+    The transpose of the step's linear part, without its offset: see the Notes of
+    :func:`coefficient_image`.
+    """
+    if isinstance(step, (StandardScaler, MaxAbsScaler, RobustScaler)):
+        # x' = (x - offset) / scale; scale_ is None when scaling was switched off
+        return weights if step.scale_ is None else weights / step.scale_
+    if isinstance(step, MinMaxScaler):
+        # x' = x * scale_ + min_
+        return weights * step.scale_
+    if isinstance(step, PCA):
+        # z = (x - mean_) @ components_.T, divided by sqrt(explained_variance_) if whitened
+        if step.whiten:
+            weights = weights / np.sqrt(step.explained_variance_)
+        return weights @ step.components_
+    if isinstance(step, TruncatedSVD):
+        return weights @ step.components_
+    if isinstance(step, SelectorMixin):
+        # a selection's transpose puts each weight back in its column and zeros the rest,
+        # which is what a selector's inverse_transform already does
+        return np.asarray(step.inverse_transform(weights))
+    return None
 
 
 def _voxel_branch(column_transformer, weights, bunch):

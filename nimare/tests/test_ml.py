@@ -13,7 +13,7 @@ from nilearn.maskers import NiftiLabelsMasker, NiftiMapsMasker, NiftiMasker
 from scipy import sparse
 from sklearn.base import clone
 from sklearn.compose import ColumnTransformer
-from sklearn.decomposition import TruncatedSVD
+from sklearn.decomposition import PCA, TruncatedSVD
 from sklearn.exceptions import NotFittedError
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.impute import SimpleImputer
@@ -31,6 +31,8 @@ from sklearn.preprocessing import (
     MinMaxScaler,
     OneHotEncoder,
     OrdinalEncoder,
+    QuantileTransformer,
+    RobustScaler,
     StandardScaler,
 )
 from sklearn.random_projection import SparseRandomProjection
@@ -38,9 +40,9 @@ from sklearn.utils import Bunch
 
 from nimare import ml
 from nimare.generate import create_coordinate_studyset
-from nimare.meta.kernel import MKDAKernel
+from nimare.meta.kernel import ALEKernel, MKDAKernel
 from nimare.ml import MAKernel, MaskerTransformer
-from nimare.ml._helpers import _FeatureNames
+from nimare.ml._helpers import _FeatureNames, _to_dense
 from nimare.nimads import Studyset
 from nimare.utils import get_masker, get_resource_path, get_template
 
@@ -2298,6 +2300,60 @@ def test_coefficient_image_puts_weights_back_in_the_brain(ml_studyset, transform
     assert image.shape == bunch.masker.mask_img.shape
     np.testing.assert_allclose(image.affine, bunch.masker.mask_img.affine)
     assert np.count_nonzero(np.asarray(image.dataobj))
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        StandardScaler(),
+        StandardScaler(with_mean=False),
+        MaxAbsScaler(),
+        MinMaxScaler(),
+        RobustScaler(),
+        TruncatedSVD(3, random_state=RANDOM_SEED),
+        PCA(3, random_state=RANDOM_SEED),
+        PCA(3, whiten=True, random_state=RANDOM_SEED),
+        VarianceThreshold(),
+        make_pipeline(StandardScaler(), PCA(3, random_state=RANDOM_SEED)),
+    ],
+    ids=lambda step: type(step).__name__ + ("_whiten" if getattr(step, "whiten", False) else ""),
+)
+def test_coefficient_image_weights_reproduce_the_model(ml_studyset, step):
+    """The voxel weights score every map as the fitted model does, up to its intercept.
+
+    A model scoring ``w @ (A x + c)`` scores ``(A.T w) @ x`` plus a constant, so that is what a
+    weight over voxels has to be; reading ``w`` back as a point with ``inverse_transform``
+    gives ``A^-1 (w - c)`` instead.
+    """
+    bunch = ml_studyset.to_bunch(target_field=("annotations", "target_score"))
+    # ALE maps rather than binary MKDA ones: on a 0/1 map most scalers' scales are 1, and a
+    # weight read back through them comes out right by accident
+    kernel = MAKernel(ALEKernel(fwhm=8), source_masker=bunch.masker)
+    pipeline = make_pipeline(
+        kernel, FunctionTransformer(_to_dense, accept_sparse=True), step, Ridge()
+    ).fit(_voxels(bunch), bunch.target)
+
+    image = ml.coefficient_image(pipeline, bunch)
+
+    maps = _dense(pipeline[0].transform(_voxels(bunch))).astype(float)
+    weights = get_masker(bunch.masker.mask_img).transform(image).ravel()
+    predicted = pipeline.predict(_voxels(bunch))
+    offset = predicted - maps @ weights
+    assert np.ptp(offset) <= 1e-5 * np.ptp(predicted)
+
+
+def test_coefficient_image_refuses_a_step_it_cannot_read_weights_through(ml_studyset):
+    """Having an inverse_transform is not enough: weights move back by the transpose."""
+    bunch = ml_studyset.to_bunch(target_field=("annotations", "target_score"))
+    pipeline = make_pipeline(
+        MAKernel(MKDAKernel(r=4), source_masker=bunch.masker),
+        FunctionTransformer(_to_dense, accept_sparse=True),
+        QuantileTransformer(n_quantiles=5),
+        Ridge(),
+    ).fit(_voxels(bunch), bunch.target)
+
+    with pytest.raises(ValueError, match="QuantileTransformer"):
+        ml.coefficient_image(pipeline, bunch)
 
 
 def test_coefficient_image_reads_through_a_column_transformer(ml_studyset):

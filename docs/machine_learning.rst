@@ -334,8 +334,15 @@ each reduction until the weights are one per voxel, and unmasks them:
     image = coefficient_image(pipeline, bunch)
     plotting.plot_stat_map(image)
 
-It undoes whatever declares an inverse — truncated SVD, variance thresholding,
-a scaler — and reads an atlas reduction back through the atlas. With a
+A weight is not a point in feature space, so a step is not undone with its
+``inverse_transform``: a model scoring ``w @ (A x + c)`` scores
+``(A.T @ w) @ x`` plus a constant, and the weight moves back by the transpose of
+the step's linear part, its offset going to the intercept. Through a
+:class:`~sklearn.preprocessing.StandardScaler` that is ``w / scale``, where the
+inverse would give ``w * scale + mean``. The steps read back are the ones whose
+linear part is known — the scikit-learn scalers, PCA, truncated SVD and feature
+selectors such as variance thresholding — and an atlas reduction is read back
+through the atlas; any other step is refused rather than guessed past. With a
 :class:`~sklearn.compose.ColumnTransformer` it follows the branch covering the
 voxels, so descriptor weights stay where they belong. The walk stops at
 :class:`~nimare.ml.MAKernel`, whose input is peaks.
