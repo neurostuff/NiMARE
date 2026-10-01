@@ -59,6 +59,25 @@ def test_NeurosynthDecoder_featuregroup(testdata_laird):
     assert isinstance(decoded_df, pd.DataFrame)
 
 
+@pytest.mark.parametrize(
+    "features",
+    [
+        ["connectivity", "modeling"],
+        ["Neurosynth_TFIDF__connectivity", "Neurosynth_TFIDF__modeling"],
+        ["connectivity", "Neurosynth_TFIDF__modeling"],
+    ],
+    ids=["bare", "full", "mixed"],
+)
+def test_NeurosynthDecoder_featuregroup_and_features(testdata_laird, features):
+    """Features may be named with or without the feature group prefix."""
+    decoder = discrete.NeurosynthDecoder(feature_group="Neurosynth_TFIDF", features=features)
+    decoder.fit(testdata_laird)
+    expected = ["Neurosynth_TFIDF__connectivity", "Neurosynth_TFIDF__modeling"]
+    assert sorted(decoder.features_) == expected
+    decoded_df = decoder.transform(ids=testdata_laird.ids[:5])
+    assert sorted(decoded_df.index) == expected
+
+
 def test_NeurosynthDecoder_featuregroup_failure(testdata_laird):
     """Smoke test for NeurosynthDecoder with feature group selection and no detected features."""
     decoder = discrete.NeurosynthDecoder(feature_group="Neurosynth_TFIDF", features=["01", "05"])
