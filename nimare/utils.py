@@ -1569,7 +1569,8 @@ def find_citations(description):
     intext_citations = re.findall(r"\\cite{" + citation_pattern + "}", description)
     inparen_citations = re.findall(r"\\citealt{" + citation_pattern + "}", description)
     all_citations = ",".join(paren_citations + intext_citations + inparen_citations)
-    all_citations = all_citations.split(",")
+    # Splitting an empty join gives [""], which is not a citation.
+    all_citations = [citation for citation in all_citations.split(",") if citation]
     all_citations = sorted(list(set(all_citations)))
     return all_citations
 

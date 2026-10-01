@@ -1708,7 +1708,7 @@ class BalancedALESubtraction(PairwiseCBMAEstimator):
         return (
             "A balanced ALE subtraction was performed in NiMARE using matched-size "
             "subsampling within groups, averaged balanced ALE differences, and Monte Carlo null "
-            "extrema from balanced resamples. :footcite:t:`Frahm_Monimu_Hoffstaedter`"
+            "extrema from balanced resamples \\citep{Frahm_Monimu_Hoffstaedter}."
         )
 
     def _compute_summarystat_est(self, ma_values):
