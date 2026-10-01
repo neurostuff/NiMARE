@@ -19,7 +19,7 @@ from nimare.decode.base import Decoder
 from nimare.decode.utils import weight_priors
 from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
 from nimare.meta.cbma.mkda import MKDAChi2
-from nimare.results import MetaResult
+from nimare.results import MetaResult, _shell
 from nimare.stats import pearson
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
@@ -447,8 +447,10 @@ class CorrelationDecoder(Decoder):
                 "Call 'fit' or 'load_imgs' before using 'transform'."
             )
 
-        # Make sure we return a copy of the MetaResult
-        results = self.results_.copy()
+        # A new MetaResult, so a previously returned one is not modified. Only the tables
+        # change, so share the fitted estimator and maps rather than deep-copying them:
+        # the estimator can hold the whole input database.
+        results = _shell(self.results_, tables=dict(self.results_.tables), metadata={})
         features = list(results.maps.keys())
         images = np.array(list(results.maps.values()))
 
@@ -585,8 +587,10 @@ class CorrelationDistributionDecoder(Decoder):
                 "Call 'fit' before using 'transform'."
             )
 
-        # Make sure we return a copy of the MetaResult
-        results = self.results_.copy()
+        # A new MetaResult, so a previously returned one is not modified. Only the tables
+        # change, so share the fitted estimator and maps rather than deep-copying them:
+        # the estimator can hold the whole input database.
+        results = _shell(self.results_, tables=dict(self.results_.tables), metadata={})
         features = list(results.maps.keys())
 
         img_vec = results.masker.transform(img)
