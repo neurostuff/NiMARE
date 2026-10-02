@@ -1,0 +1,401 @@
+"""Tools for managing meta-analytic results."""
+
+import copy
+import logging
+import os
+
+import nibabel as nib
+import numpy as np
+import pandas as pd
+from nibabel.funcs import squeeze_image
+
+from nimare.base import NiMAREBase
+from nimare.utils import (
+    DEFAULT_FLOAT_DTYPE,
+    _clip_logp_values,
+    _clip_p_values,
+    get_description_references,
+    get_masker,
+)
+
+LGR = logging.getLogger(__name__)
+
+
+class DroppedInput:
+    """Stand-in for an input image array dropped by :meth:`MetaResult.save`.
+
+    .. versionadded:: 0.21.0
+
+    Parameters
+    ----------
+    key : :obj:`str`
+        The ``estimator.inputs_`` key whose array was dropped.
+
+    Raises
+    ------
+    RuntimeError
+        On any read of the placeholder, naming the key and the flag that removed it.
+    """
+
+    def __init__(self, key):
+        self._key = key
+
+    def _raise(self, *args, **kwargs):
+        """Report the dropped key and how to get the array back."""
+        raise RuntimeError(
+            f"estimator.inputs_['{self._key}'] was dropped when this MetaResult was saved "
+            "with with_inputs=False, so the operations that read the input images -- "
+            "reporting, and Monte Carlo FWE correction of an image-based meta-analysis -- "
+            "cannot run on it. Refit the estimator to rebuild the inputs, or save the "
+            "result again with with_inputs=True."
+        )
+
+    def __getattr__(self, name):
+        """Raise on any public attribute lookup, such as ``.shape``."""
+        # Private and dunder names pass through so that pickle and copy can still probe
+        # the placeholder for ``__reduce_ex__``, ``__deepcopy__`` and the like.
+        if name.startswith("_"):
+            raise AttributeError(name)
+        self._raise()
+
+    __array__ = _raise
+    __getitem__ = _raise
+    __iter__ = _raise
+    __len__ = _raise
+
+    def __repr__(self):
+        """Show the dropped key."""
+        return f"DroppedInput({self._key!r})"
+
+
+def _shell(result, **overrides):
+    """Build a result carrying ``result``'s attributes, bypassing ``__init__``.
+
+    ``__init__`` deep-copies the estimator, rebuilds the masker and re-derives the
+    citations from the description, none of which a result built from an already-built
+    one needs.
+
+    Parameters
+    ----------
+    result : :class:`MetaResult`
+        The result to take attributes from.
+    overrides
+        Attributes to set in place of ``result``'s.
+
+    Returns
+    -------
+    :class:`MetaResult`
+        A new result of ``result``'s class.
+    """
+    new = object.__new__(type(result))
+    new.__dict__.update(result.__dict__)
+    new.__dict__.update(overrides)
+    return new
+
+
+def _drop_input_images(estimator):
+    """Return a shallow copy of ``estimator`` with its input image arrays replaced.
+
+    The keys replaced are the ones ``_required_inputs`` declares as images, plus the
+    ``"data_bags"`` derived from them. The rest of ``inputs_`` is small and is kept; the
+    diagnostics need ``inputs_["id"]`` to enumerate the studies they refit.
+
+    Parameters
+    ----------
+    estimator : :class:`~nimare.base.Estimator`
+        A fitted estimator.
+
+    Returns
+    -------
+    :class:`~nimare.base.Estimator`
+        A shallow copy carrying :class:`DroppedInput` placeholders, or ``estimator``
+        unchanged when it declares no image inputs.
+    """
+    inputs = getattr(estimator, "inputs_", None)
+    if not inputs:
+        return estimator
+
+    keys = set(estimator._image_input_fields())
+    keys.add("data_bags")
+    keys &= set(inputs)
+    if not keys:
+        return estimator
+
+    stripped = copy.copy(estimator)
+    stripped.inputs_ = {
+        key: (DroppedInput(key) if key in keys else value) for key, value in inputs.items()
+    }
+    return stripped
+
+
+class MetaResult(NiMAREBase):
+    """Base class for meta-analytic results.
+
+    .. versionchanged:: 0.1.0
+
+        - Added corrector and diagnostics attributes.
+
+    .. versionchanged:: 0.0.12
+
+        - Added the description attribute.
+
+    Parameters
+    ----------
+    estimator : :class:`~nimare.base.Estimator`
+        The Estimator used to generate the maps in the MetaResult.
+    corrector : :class:`~nimare.correct.Corrector`
+        The Corrector used to correct the maps in the MetaResult.
+    diagnostics : :obj:`list` of :class:`~nimare.diagnostics.Diagnostics`
+        List of diagnostic classes.
+    mask : Niimg-like or `nilearn.maskers.base_masker.BaseMasker`
+        Mask for converting maps between arrays and images.
+    maps : None or :obj:`dict` of :obj:`numpy.ndarray`, optional
+        Maps to store in the object. The maps must be provided as 1D numpy arrays. Default is None.
+    tables : None or :obj:`dict` of :obj:`pandas.DataFrame`, optional
+        Pandas DataFrames to store in the object. Default is None.
+    description_ : :obj:`str`, optional
+        Description of the method that generated the result. Default is "".
+
+    Attributes
+    ----------
+    estimator : :class:`~nimare.base.Estimator`
+        The Estimator used to generate the maps in the MetaResult.
+    corrector : :class:`~nimare.correct.Corrector`
+        The Corrector used to correct the maps in the MetaResult.
+    diagnostics : :obj:`list` of :class:`~nimare.diagnostics.Diagnostics`
+        List of diagnostic classes.
+    masker : :class:`~nilearn.maskers.NiftiMasker` or similar
+        Masker object.
+    maps : :obj:`dict`
+    tables : :obj:`dict`
+        Keys are table levels and values are pandas DataFrames.
+    description_ : :obj:`str`
+        A textual description of the method that generated the result.
+
+        Citations in this description are formatted according to ``natbib``'s LaTeX format.
+    bibtex_ : :obj:`str`
+        The BibTeX entries for any citations in ``description``.
+        These entries are extracted from NiMARE's references.bib file and filtered based on the
+        description automatically.
+
+        Users should be able to copy the contents of the ``bibtex`` attribute into their own
+        BibTeX file without issue.
+    """
+
+    def __init__(
+        self,
+        estimator,
+        corrector=None,
+        diagnostics=None,
+        mask=None,
+        maps=None,
+        tables=None,
+        description="",
+    ):
+        self.estimator = copy.deepcopy(estimator)
+        self.corrector = copy.deepcopy(corrector)
+        diagnostics = diagnostics or []
+        self.diagnostics = [copy.deepcopy(diagnostic) for diagnostic in diagnostics]
+        self.masker = get_masker(mask)
+
+        maps = maps or {}
+        tables = tables or {}
+
+        for map_name, map_ in maps.items():
+            if not isinstance(map_, np.ndarray):
+                raise ValueError(f"Maps must be numpy arrays. '{map_name}' is a {type(map_)}")
+
+            if map_.ndim != 1:
+                LGR.warning(f"Map '{map_name}' should be 1D, not {map_.ndim}D. Squeezing.")
+                map_ = np.squeeze(map_)
+            if map_name == "p" or map_name.startswith("p_"):
+                map_ = _clip_p_values(map_, dtype=DEFAULT_FLOAT_DTYPE)
+            elif map_name.startswith("logp"):
+                map_ = _clip_logp_values(map_, dtype=DEFAULT_FLOAT_DTYPE)
+            if np.issubdtype(map_.dtype, np.floating) and map_.dtype != DEFAULT_FLOAT_DTYPE:
+                map_ = map_.astype(DEFAULT_FLOAT_DTYPE)
+            maps[map_name] = map_
+
+        for table_name, table in tables.items():
+            if not isinstance(table, pd.DataFrame):
+                raise ValueError(f"Tables must be DataFrames. '{table_name}' is a {type(table)}")
+
+        self.maps = maps
+        self.tables = tables
+        self.metadata = {}
+        self.description_ = description
+
+    @property
+    def description_(self):
+        """:obj:`str`: A textual description of the method that generated the result."""
+        return self.__description
+
+    @description_.setter
+    def description_(self, desc):
+        """Automatically extract references when the description is set."""
+        desc = desc or ""
+        self.__description = desc
+        self.bibtex_ = "" if not desc else get_description_references(desc)
+
+    def get_map(self, name, return_type="image"):
+        """Get stored map as image or array.
+
+        Parameters
+        ----------
+        name : :obj:`str`
+            Name of the map. Used to index self.maps.
+        return_type : {'image', 'array'}, optional
+            Whether to return a niimg ('image') or a numpy array.
+            Default is 'image'.
+        """
+        m = self.maps.get(name)
+        if m is None:
+            raise ValueError(f"No map with name '{name}' found.")
+        if return_type == "image":
+            # NiftiLabelsMasker (and other scikit-learn-based maskers) do not accept NaNs.
+            # Replace NaNs with zeros when converting to images to keep transforms stable.
+            if np.issubdtype(m.dtype, np.floating):
+                m = np.nan_to_num(m, nan=0.0, posinf=0.0, neginf=0.0)
+            # pending resolution of https://github.com/nilearn/nilearn/issues/2724
+            try:
+                return self.masker.inverse_transform(m)
+            except IndexError:
+                return squeeze_image(self.masker.inverse_transform([m]))
+        return m
+
+    def save(self, filename, compress=True, with_inputs=True):
+        """Pickle the MetaResult to the provided file.
+
+        .. versionchanged:: 0.21.0
+
+            Added the ``with_inputs`` parameter.
+
+        Parameters
+        ----------
+        filename : :obj:`str`
+            File to which the result will be saved.
+        compress : :obj:`bool`, optional
+            If True, the file will be compressed with gzip. Otherwise, the
+            uncompressed version will be saved. Default = True.
+        with_inputs : :obj:`bool`, optional
+            Whether to write the estimator's input images into the file. Default = True.
+            False replaces them with :class:`DroppedInput` placeholders, which for an
+            image-based result is most of the file.
+
+            The maps, tables, masker, corrector and study ids are unaffected, so
+            ``get_map``, ``save_maps``, ``save_tables``, ``copy``, the Bonferroni and FDR
+            corrections and the diagnostics all still work; the diagnostics re-read the
+            images from disk for each refit. :func:`~nimare.reports.base.run_reports` and
+            ``FWECorrector(method="montecarlo")`` on an image-based estimator do not: they
+            read the input arrays, and raise when they reach a placeholder.
+        """
+        if with_inputs:
+            super().save(filename, compress=compress)
+            return
+
+        # A shell, not a copy: sharing the maps and tables avoids duplicating them in
+        # order to write a smaller file.
+        stripped = _shell(self, estimator=_drop_input_images(self.estimator))
+        NiMAREBase.save(stripped, filename, compress=compress)
+
+    def save_maps(self, output_dir=".", prefix="", prefix_sep="_", names=None):
+        """Save results to files.
+
+        Parameters
+        ----------
+        output_dir : :obj:`str`, optional
+            Output directory in which to save results. If the directory doesn't
+            exist, it will be created. Default is current directory.
+        prefix : :obj:`str`, optional
+            Prefix to prepend to output file names.
+            Default is None.
+        prefix_sep : :obj:`str`, optional
+            Separator to add between prefix and default file names.
+            Default is _.
+        names : None or :obj:`list` of :obj:`str`, optional
+            Names of specific maps to write out. If None, save all maps.
+            Default is None.
+        """
+        if prefix == "":
+            prefix_sep = ""
+
+        if not prefix.endswith(prefix_sep):
+            prefix = prefix + prefix_sep
+
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        names = names or list(self.maps.keys())
+        maps = {k: self.get_map(k) for k in names if self.maps[k] is not None}
+
+        for imgtype, img in maps.items():
+            filename = prefix + imgtype + ".nii.gz"
+            outpath = os.path.join(output_dir, filename)
+            if img is not None:
+                data_dtype = img.get_data_dtype()
+                if np.issubdtype(data_dtype, np.integer) or data_dtype == np.bool_:
+                    data = np.asanyarray(img.dataobj)
+                else:
+                    data = img.get_fdata(dtype=DEFAULT_FLOAT_DTYPE)
+                header = img.header.copy()
+                header.set_data_dtype(data.dtype)
+                try:
+                    header.set_slope_inter(1.0, 0.0)
+                except Exception:
+                    pass
+                img = nib.Nifti1Image(data, img.affine, header)
+            img.to_filename(outpath)
+
+    def save_tables(self, output_dir=".", prefix="", prefix_sep="_", names=None):
+        """Save result tables to TSV files.
+
+        Parameters
+        ----------
+        output_dir : :obj:`str`, optional
+            Output directory in which to save results. If the directory doesn't
+            exist, it will be created. Default is current directory.
+        prefix : :obj:`str`, optional
+            Prefix to prepend to output file names.
+            Default is None.
+        prefix_sep : :obj:`str`, optional
+            Separator to add between prefix and default file names.
+            Default is _.
+        names : None or :obj:`list` of :obj:`str`, optional
+            Names of specific tables to write out. If None, save all tables.
+            Default is None.
+        """
+        if prefix == "":
+            prefix_sep = ""
+
+        if not prefix.endswith(prefix_sep):
+            prefix = prefix + prefix_sep
+
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        names = names or list(self.tables.keys())
+        tables = {k: self.tables[k] for k in names}
+
+        for tabletype, table in tables.items():
+            filename = prefix + tabletype + ".tsv"
+            outpath = os.path.join(output_dir, filename)
+            if table is not None:
+                table.to_csv(outpath, sep="\t", index=False)
+            else:
+                LGR.warning(f"Table {tabletype} is None. Not saving.")
+
+    def _set_description(self, desc):
+        self.__description = desc
+        self.bibtex_ = "" if not desc else get_description_references(desc)
+
+    def copy(self):
+        """Return copy of result object."""
+        return _shell(
+            self,
+            # Deep copy the estimator so that corrected results can update estimator state
+            # without mutating the original MetaResult or estimator.
+            estimator=copy.deepcopy(self.estimator),
+            maps=copy.deepcopy(self.maps),
+            tables=copy.deepcopy(self.tables),
+            metadata={},
+        )

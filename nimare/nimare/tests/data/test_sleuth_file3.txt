@@ -1,0 +1,5 @@
+// Reference = Talairach
+// StudyName: ExperimentName
+// Subjects = 25
+-18	-58	-24
+10  20  dog

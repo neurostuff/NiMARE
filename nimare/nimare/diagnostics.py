@@ -411,6 +411,16 @@ def _summarize_cluster_values(values, masker, cluster_summary_context):
         stat_prop_values = cluster_summary_context["cluster_masker"].transform(stat_prop_img)
         raw_means = stat_prop_values.flatten()
 
+    # Guardrail: replace non-finite values (nan, inf) with zeros (or median) to ensure downstream code handles them.
+    if not np.isfinite(raw_means).all():
+        logging.warning(
+            "Non-finite (NaN/inf) values detected in Jackknife cluster contributions. "
+            "Imputing with safe baseline defaults to prevent hierarchical clustering crashes."
+        )
+        valid_median = np.nanmedian(raw_means)
+        fallback_value = 0.0 if not np.isfinite(valid_median) else valid_median
+        raw_means = np.nan_to_num(raw_means, nan=fallback_value, posinf=fallback_value, neginf=fallback_value)
+
     return raw_means
 
 
@@ -418,10 +428,8 @@ def _infer_label_map_tails(label_maps, clusters_table, n_clusters):
     """Infer tail labels from label maps and cluster statistics."""
     inferred_tail = "positive"
     mixed_signs = False
-
     if len(label_maps) == 2:
         return ["positive", "negative"], inferred_tail, mixed_signs
-
     if len(label_maps) == 1 and n_clusters > 0:
         peak_stats = clusters_table["Peak Stat"].astype(float)
         has_pos = (peak_stats > 0).any()
@@ -433,8 +441,8 @@ def _infer_label_map_tails(label_maps, clusters_table, n_clusters):
         else:
             mixed_signs = True
         return [inferred_tail], inferred_tail, mixed_signs
-
     return [inferred_tail], inferred_tail, mixed_signs
+
 
 
 class Diagnostics(NiMAREBase):

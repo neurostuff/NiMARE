@@ -1,0 +1,578 @@
+"""Kernel transformers for CBMA algorithms.
+
+Methods for estimating thresholded cluster maps from neuroimaging contrasts
+(Contrasts) from sets of foci and optional additional information (e.g., sample
+size and test statistic values).
+"""
+
+from __future__ import division
+
+import logging
+
+import nibabel as nib
+import numpy as np
+import pandas as pd
+from joblib import Memory
+from scipy import sparse as sp_sparse
+
+from nimare.base import NiMAREBase
+from nimare.dataset import Dataset, _warn_dataset_input
+from nimare.meta.utils import (
+    compute_ale_ma,
+    compute_kda_ma,
+    get_ale_kernel,
+)
+from nimare.studyset import normalize_collection
+from nimare.utils import _add_metadata_to_dataframe, _mask_img_to_bool, mm2vox
+
+LGR = logging.getLogger(__name__)
+
+
+def _sparse_maps_to_summary_array(sparse_maps):
+    """Collapse sparse MA maps across studies into a 1D summary array."""
+    return np.asarray(sparse_maps.sum(axis=0)).ravel()
+
+
+def _sparse_maps_to_array(sparse_maps):
+    """Convert masked sparse MA maps into a dense study-by-voxel array."""
+    return sparse_maps.toarray()
+
+
+def _sparse_maps_to_images(sparse_maps, exp_ids, mask, mask_data):
+    """Reconstruct one full-volume image per study from masked sparse MA maps."""
+    imgs = []
+    mask_data_flat = mask_data.reshape(-1)
+    for i_exp, _ in enumerate(exp_ids):
+        kernel_row = np.asarray(sparse_maps.getrow(i_exp).todense()).ravel()
+        kernel_data = np.zeros(mask_data_flat.shape[0], dtype=kernel_row.dtype)
+        kernel_data[mask_data_flat] = kernel_row
+        kernel_data = kernel_data.reshape(mask.shape)
+        img = nib.Nifti1Image(kernel_data, mask.affine, dtype=kernel_data.dtype)
+        imgs.append(img)
+    return imgs
+
+
+def _dense_maps_to_array_or_images(kernel_maps, exp_ids, mask, mask_data, return_type):
+    """Reconstruct dense kernel outputs into arrays or images."""
+    outputs = []
+    for i_exp, _ in enumerate(exp_ids):
+        kernel_data = kernel_maps[i_exp].todense()
+
+        if return_type == "array":
+            outputs.append(kernel_data[mask_data])
+        elif return_type == "image":
+            kernel_data *= mask_data
+            img = nib.Nifti1Image(kernel_data, mask.affine, dtype=kernel_data.dtype)
+            outputs.append(img)
+
+    if return_type == "array":
+        return np.vstack(outputs)
+    return outputs
+
+
+class KernelTransformer(NiMAREBase):
+    """Base class for modeled activation-generating methods in :mod:`~nimare.meta.kernel`.
+
+    .. versionchanged:: 0.12.0
+
+        - Standardize CBMA sparse outputs as 2D study-by-masked-voxel sparse matrices.
+
+    .. versionchanged:: 0.2.1
+
+        - Add return_type='summary_array' option to transform method.
+
+    .. versionchanged:: 0.0.13
+
+        - Remove "dataset" `return_type` option.
+
+    Coordinate-based meta-analyses leverage coordinates reported in
+    neuroimaging papers to simulate the thresholded statistical maps from the
+    original analyses. This generally involves convolving each coordinate with
+    a kernel (typically a Gaussian or binary sphere) that may be weighted based
+    on some additional measure, such as statistic value or sample size.
+
+    Parameters
+    ----------
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
+
+    Notes
+    -----
+    All extra (non-ijk) parameters for a given kernel should be overridable as
+    parameters to __init__, so we can access them with get_params() and also
+    apply them to datasets with missing data.
+    """
+
+    def __init__(self, memory=Memory(location=None, verbose=0), memory_level=0):
+        self.memory = memory
+        self.memory_level = memory_level
+
+    def _infer_names(self, **kwargs):
+        """Determine filename pattern and image type.
+
+        The parameters used to construct the filenames come from the transformer's
+        parameters (attributes saved in ``__init__()``).
+
+        Parameters
+        ----------
+        **kwargs
+            Additional key/value pairs to incorporate into the image name.
+            A common example is the hash for the target template's affine.
+
+        Attributes
+        ----------
+        filename_pattern : str
+            Filename pattern for images.
+        image_type : str
+            Name of the corresponding column in the Dataset.images DataFrame.
+        """
+        params = self.get_params()
+        params = dict(**params, **kwargs)
+
+        # Determine names for kernel-specific files
+        keys = sorted(params.keys())
+        param_str = "_".join(f"{k}-{str(params[k])}" for k in keys)
+        self.filename_pattern = (
+            f"study-[[id]]_{param_str}_{self.__class__.__name__}.nii.gz".replace(
+                "[[", "{"
+            ).replace("]]", "}")
+        )
+        self.image_type = f"{param_str}_{self.__class__.__name__}"
+
+    def transform(self, dataset, masker=None, return_type="image"):
+        """Generate modeled activation images for each Contrast in dataset.
+
+        Parameters
+        ----------
+        dataset : :obj:`~nimare.dataset.Dataset`, :obj:`~nimare.nimads.Studyset`, \
+                or :obj:`pandas.DataFrame`
+            Collection for which to make images. Can be a DataFrame if necessary.
+            DataFrame inputs may provide precomputed matrix indices in ``i``, ``j``, and ``k``.
+            When those columns are present, they are used directly and ``x``, ``y``, and ``z``
+            are ignored.
+        masker : img_like or None, optional
+            Mask to apply to MA maps. Required if ``dataset`` is a DataFrame.
+            If None, the input collection's masker attribute will be used.
+            Required only for DataFrame inputs. Default is None.
+        return_type : {'sparse', 'array', 'image', 'summary_array'}, optional
+            Whether to return a sparse matrix ('sparse'), a numpy array ('array'),
+            or a list of niimgs ('image').
+            Default is 'image'.
+
+        Returns
+        -------
+        imgs : (C x V) :class:`numpy.ndarray` or :obj:`list` of :class:`nibabel.Nifti1Image` \
+               or sparse matrix
+            If return_type is 'sparse', the kernel-specific sparse representation is returned.
+            For ALE, KDA, and MKDA this is a study-by-masked-voxel CSR matrix.
+            If return_type is 'array', a 2D numpy array (C x V), where C is
+            contrast and V is voxel.
+            If return_type is 'summary_array', a 1D numpy array (V,) containing
+            a summary measure for each voxel that has been combined across experiments.
+            If return_type is 'image', a list of modeled activation images
+            (one for each of the Contrasts in the input dataset).
+
+        Attributes
+        ----------
+        filename_pattern : str
+            Filename pattern for MA maps. If :meth:`_infer_names` is executed.
+        image_type : str
+            Name of the corresponding column in the Dataset.images DataFrame.
+            If :meth:`_infer_names` is executed.
+
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
+        """
+        if return_type not in ("sparse", "array", "image", "summary_array"):
+            raise ValueError(
+                'Argument "return_type" must be "image", "array", "summary_array", "sparse".'
+            )
+
+        if isinstance(dataset, pd.DataFrame):
+            assert (
+                masker is not None
+            ), "Argument 'masker' must be provided if dataset is a DataFrame."
+            mask = masker.mask_img
+            coordinates = dataset.copy()
+
+            if not {"i", "j", "k"}.issubset(coordinates.columns):
+                # Calculate IJK. Must assume that the masker is in same space,
+                # but has different affine, from original IJK.
+                coordinates[["i", "j", "k"]] = mm2vox(dataset[["x", "y", "z"]], mask.affine)
+        else:
+            if isinstance(dataset, Dataset):
+                # Kernels read a Dataset directly rather than normalising it, so the
+                # deprecation notice has to be raised here instead.
+                _warn_dataset_input()
+            else:
+                dataset = normalize_collection(dataset)
+
+            masker = dataset.masker if not masker else masker
+            mask = masker.mask_img
+            coordinates = dataset.coordinates.copy()
+
+            # Calculate IJK
+            if not np.array_equal(mask.affine, dataset.masker.mask_img.affine):
+                LGR.warning("Mask affine does not match Dataset affine. Assuming same space.")
+
+            coordinates[["i", "j", "k"]] = mm2vox(coordinates[["x", "y", "z"]], mask.affine)
+
+            # Add any metadata the Transformer might need to the coordinates DataFrame
+            # This approach is probably inferior to one which uses a _required_inputs attribute
+            # (like the MetaEstimators), but it should work just fine as long as individual
+            # requirements are written in here.
+            if (
+                hasattr(self, "sample_size")
+                and (self.sample_size is None)
+                and ("sample_size" not in coordinates.columns)
+            ):
+                coordinates = _add_metadata_to_dataframe(
+                    dataset,
+                    coordinates,
+                    metadata_field=("sample_sizes", "sample_size"),
+                    target_column="sample_size",
+                    filter_func=np.mean,
+                )
+
+        if return_type in ("array", "image"):
+            mask_data = _mask_img_to_bool(mask)
+
+        # Generate the MA maps
+        if return_type == "summary_array" or return_type == "sparse":
+            args = (mask, coordinates, return_type)
+        else:
+            args = (mask, coordinates)
+
+        transformed_maps = self._cache(self._transform, func_memory_level=2)(*args)
+
+        kernel_maps, exp_ids = transformed_maps
+        if return_type == "sparse":
+            return kernel_maps
+        if return_type == "summary_array":
+            if sp_sparse.issparse(kernel_maps):
+                return _sparse_maps_to_summary_array(kernel_maps)
+            return kernel_maps
+
+        if sp_sparse.issparse(kernel_maps):
+            if return_type == "array":
+                return _sparse_maps_to_array(kernel_maps)
+            return _sparse_maps_to_images(kernel_maps, exp_ids, mask, mask_data)
+
+        return _dense_maps_to_array_or_images(
+            kernel_maps,
+            exp_ids,
+            mask,
+            mask_data,
+            return_type,
+        )
+
+    def _transform(self, mask, coordinates, return_type="sparse"):
+        """Apply the kernel's unique transformer.
+
+        Parameters
+        ----------
+        mask : niimg-like
+            Mask image. Should contain binary-like integer data.
+        coordinates : pandas.DataFrame
+            DataFrame containing IDs and coordinates.
+            The DataFrame must have the following columns: "id", "i", "j", "k".
+            Additionally, individual kernels may require other columns
+            (e.g., "sample_size" for ALE).
+        return_type : {'sparse', 'summary_array'}, optional
+            Whether to return the kernel's sparse representation ('sparse') or a 1D numpy
+            array ('summary_array') where the contrast maps are combined.
+            For ALE, KDA, and MKDA, the sparse representation is a study-by-masked-voxel
+            CSR matrix.
+            Default is 'sparse'.
+
+        Returns
+        -------
+        transformed_maps : object
+            Transformed data, containing one element for each study.
+
+            -   Case 1: ``return_type='sparse'``
+                A length-2 tuple with the kernel's sparse representation and a numpy array of
+                study IDs. For ALE, KDA, and MKDA, this sparse representation is a study-by-
+                masked-voxel CSR matrix.
+
+            -   Case 2: ``return_type='summary_array'``
+                A 1D numpy array of shape ``(V,)`` containing the summary measure for each voxel.
+        """
+        pass
+
+
+class ALEKernel(KernelTransformer):
+    """Generate ALE modeled activation images from coordinates and sample size.
+
+    By default (if neither ``fwhm`` nor ``sample_size`` is provided), the FWHM of the kernel
+    will be determined on a study-wise basis based on the sample sizes available in the input,
+    via the method described in :footcite:t:`eickhoff2012activation`.
+
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
+    .. versionchanged:: 0.0.13
+
+        - Remove "dataset" `return_type` option.
+
+    .. versionchanged:: 0.0.12
+
+        * Remove low-memory option in favor of sparse arrays for kernel transformers.
+
+    Parameters
+    ----------
+    fwhm : :obj:`float`, optional
+        Full-width half-max for Gaussian kernel, if you want to have a
+        constant kernel across Contrasts. Mutually exclusive with
+        ``sample_size``.
+    sample_size : :obj:`int`, optional
+        Sample size, used to derive FWHM for Gaussian kernel based on
+        formulae from Eickhoff et al. (2012). This sample size overwrites
+        the Contrast-specific sample sizes in the dataset, in order to hold
+        kernel constant across Contrasts. Mutually exclusive with ``fwhm``.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
+
+    References
+    ----------
+    .. footbibliography::
+    """
+
+    def __init__(
+        self,
+        fwhm=None,
+        sample_size=None,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+    ):
+        if fwhm is not None and sample_size is not None:
+            raise ValueError('Only one of "fwhm" and "sample_size" may be provided.')
+        self.fwhm = fwhm
+        self.sample_size = sample_size
+        super().__init__(memory=memory, memory_level=memory_level)
+
+    def _transform(self, mask, coordinates, return_type="sparse"):
+        args = self._prepare_transform(mask, coordinates)
+        transformed, _, _ = compute_ale_ma(
+            mask,
+            args["ijks"],
+            kernel=args["kernel"],
+            exp_idx=args["exp_idx"],
+            sample_sizes=args["sample_sizes"],
+            use_dict=args["use_dict"],
+        )
+
+        exp_ids = np.unique(args["exp_idx"])
+        return transformed, exp_ids
+
+    def _prepare_transform(self, mask, coordinates):
+        """Prepare ALE kernel inputs shared across sparse output variants."""
+        ijks = coordinates[["i", "j", "k"]].values
+        exp_idx = coordinates["id"].values
+
+        use_dict = True
+        kernel = None
+        if self.sample_size is not None:
+            sample_sizes = self.sample_size
+            use_dict = False
+        elif self.fwhm is None:
+            sample_sizes = coordinates["sample_size"].values
+        else:
+            sample_sizes = None
+
+        if self.fwhm is not None:
+            assert np.isfinite(self.fwhm), "FWHM must be finite number"
+            _, kernel = get_ale_kernel(mask, fwhm=self.fwhm)
+            use_dict = False
+
+        return {
+            "ijks": ijks,
+            "exp_idx": exp_idx,
+            "kernel": kernel,
+            "sample_sizes": sample_sizes,
+            "use_dict": use_dict,
+        }
+
+    def _generate_description(self):
+        """Generate a description of the fitted KernelTransformer.
+
+        Returns
+        -------
+        str
+            Description of the KernelTransformer.
+        """
+        if self.sample_size is not None:
+            fwhm_str = (
+                "with a full-width at half max corresponding to a sample size of "
+                f"{self.sample_size}, according to the formulae provided in "
+                "\\cite{eickhoff2012activation}"
+            )
+        elif self.fwhm is not None:
+            fwhm_str = f"with a full-width at half max of {self.fwhm}"
+        else:
+            fwhm_str = (
+                "with full-width at half max values determined on a study-wise basis based on the "
+                "study sample sizes according to the formulae provided in "
+                "\\cite{eickhoff2012activation}"
+            )
+
+        description = (
+            "An ALE kernel \\citep{eickhoff2012activation} was used to generate study-wise "
+            "modeled activation maps from coordinates. "
+            "In this kernel method, each coordinate is convolved with a Gaussian kernel "
+            f"{fwhm_str}. "
+            "For voxels with overlapping kernels, the maximum value was retained."
+        )
+        return description
+
+
+class KDAKernel(KernelTransformer):
+    """Generate KDA modeled activation images from coordinates.
+
+    .. versionchanged:: 0.2.1
+
+        - Add new parameter ``return_type`` to transform method.
+
+    .. versionchanged:: 0.0.13
+
+        - Add new parameter ``memory`` to cache modeled activation (MA) maps.
+
+    .. versionchanged:: 0.0.13
+
+        - Remove "dataset" `return_type` option.
+
+    .. versionchanged:: 0.0.12
+
+        * Remove low-memory option in favor of sparse arrays for kernel transformers.
+
+    Parameters
+    ----------
+    r : :obj:`int`, default=10
+        Sphere radius, in mm.
+    value : :obj:`int`, default=1
+        Value for sphere.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
+    """
+
+    _sum_overlap = True
+
+    def __init__(
+        self,
+        r=10,
+        value=1,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+    ):
+        self.r = float(r)
+        self.value = value
+        super().__init__(memory=memory, memory_level=memory_level)
+
+    def _transform(self, mask, coordinates, return_type="sparse"):
+        """Return type can either be sparse or summary_array."""
+        ijks = coordinates[["i", "j", "k"]].values
+        exp_idx = coordinates["id"].values
+        if return_type == "sparse":
+            transformed, _ = compute_kda_ma(
+                mask,
+                ijks,
+                self.r,
+                self.value,
+                exp_idx,
+                sum_overlap=self._sum_overlap,
+            )
+        elif return_type == "summary_array":
+            transformed = compute_kda_ma(
+                mask,
+                ijks,
+                self.r,
+                self.value,
+                exp_idx,
+                sum_overlap=self._sum_overlap,
+                sum_across_studies=True,
+            )
+        else:
+            raise ValueError('Argument "return_type" must be "sparse" or "summary_array".')
+        exp_ids = np.unique(exp_idx)
+        return transformed, exp_ids
+
+    def _generate_description(self):
+        """Generate a description of the fitted KernelTransformer.
+
+        Returns
+        -------
+        str
+            Description of the KernelTransformer.
+        """
+        description = (
+            "A KDA kernel \\citep{wager2003valence,wager2004neuroimaging} was used to generate "
+            "study-wise modeled activation maps from coordinates. "
+            "In this kernel method, each coordinate is convolved with a sphere with a radius of "
+            f"{self.r} and a value of {self.value}. "
+            "These spheres are then summed within each study to produce the study's MA map."
+        )
+        return description
+
+
+class MKDAKernel(KDAKernel):
+    """Generate MKDA modeled activation images from coordinates.
+
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+        - Add new parameter ``return_type`` to transform method.
+
+    .. versionchanged:: 0.0.13
+
+        - Remove "dataset" `return_type` option.
+
+    .. versionchanged:: 0.0.12
+
+        * Remove low-memory option in favor of sparse arrays for kernel transformers.
+
+    Parameters
+    ----------
+    r : :obj:`int`, default=10
+        Sphere radius, in mm.
+    value : :obj:`int`, default=1
+        Value for sphere.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
+    """
+
+    _sum_overlap = False
+
+    def _generate_description(self):
+        """Generate a description of the fitted KernelTransformer.
+
+        Returns
+        -------
+        str
+            Description of the KernelTransformer.
+        """
+        description = (
+            "An MKDA kernel \\citep{wager2007meta} was used to generate "
+            "study-wise modeled activation maps from coordinates. "
+            "In this kernel method, each coordinate is convolved with a sphere with a radius of "
+            f"{self.r} and a value of {self.value}. "
+            "For voxels with overlapping spheres, the maximum value was retained."
+        )
+        return description

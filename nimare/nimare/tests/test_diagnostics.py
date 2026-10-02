@@ -631,7 +631,6 @@ def test_focusfilter(testdata_laird):
 def test_jackknife_non_finite_guardrail():
     """Test that Jackknife's cluster summary guardrail correctly sanitizes non-finite values."""
     import numpy as np
-
     from nimare.diagnostics import _summarize_cluster_values
 
     # Mock masker for testing array mode
@@ -654,4 +653,8 @@ def test_jackknife_non_finite_guardrail():
 
     # Assert that the guardrail successfully converted everything to safe finite numbers
     assert np.isfinite(summarized).all()
+<<<<<<< HEAD
     assert summarized.shape[0] == 2
+=======
+    assert summarized.shape[0] == 2
+>>>>>>> e29d730 (Save local debugging fixes in NiMARE submodule)

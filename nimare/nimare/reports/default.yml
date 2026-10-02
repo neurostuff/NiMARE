@@ -1,0 +1,123 @@
+# STATEMENT OF CHANGES: This file is derived from sources licensed under the Apache-2.0 terms,
+# and this file has been changed.
+# The original file this work derives from is found at:
+# https://github.com/nipreps/niworkflows/blob/9905f90110879ed4123ea291f512b0a60d7ba207/niworkflows/reports/default.yml
+#
+# [May 2023] CHANGES:
+#    * Replace BIDSlayout with code that uses the nimare Dataset and MetaResult class.
+#
+# ORIGINAL WORK'S ATTRIBUTION NOTICE:
+#
+#     Copyright 2021 The NiPreps Developers <nipreps@gmail.com>
+#
+#     Licensed under the Apache License, Version 2.0 (the "License");
+#     you may not use this file except in compliance with the License.
+#     You may obtain a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#     Unless required by applicable law or agreed to in writing, software
+#     distributed under the License is distributed on an "AS IS" BASIS,
+#     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#     See the License for the specific language governing permissions and
+#     limitations under the License.
+define: &heatmap_text "The heatmap presents the relative contributions of each experiment to 
+      each cluster in the thresholded map. There is one row for each experiment, and 
+      one column for each cluster, with column names being 
+      <em>PostiveTail</em>/<em>NegativeTail</em> indicating the sign (+/-) of the cluster's
+      statistical values. The rows and columns were re-ordered to form clusters in the heatmap."
+define: &focuscounter_text "The FocusCounter analysis characterizes the relative contribution 
+      of each experiment in a meta-analysis to the resulting clusters by counting the number 
+      of peaks from each experiment that fall within each significant cluster."
+define: &jackknife_text "The Jackknife analysis characterizes the relative contribution of each 
+      experiment in a meta-analysis to the resulting clusters by looping through 
+      experiments, calculating the Estimator's summary statistic for all experiments 
+      <b>except</b> the target experiment, dividing the resulting test summary statistics 
+      by the summary statistics from the original meta-analysis, and finally averaging 
+      the resulting proportion values across all voxels in each cluster."
+define: &explorer_text "The following figure provides an interactive window to explore 
+      the meta-analytic map in detail."
+package: nimare
+sections:
+- name: Summary
+  reportlets:
+  - bids: {value: preliminary, dset: 1, suffix: summary}
+    title: Dataset 1
+  - bids: {value: preliminary, dset: 1, suffix: figure-mask}
+    title: Mask
+  - bids: {value: preliminary, dset: 1, suffix: figure-static}
+    title: Peak coordinates
+  - bids: {value: preliminary, dset: 1, suffix: figure-legend}
+  - bids: {value: preliminary, dset: 1, suffix: figure-interactive}
+    title: Explorer
+    iframe: True
+  - bids: {value: preliminary, dset: 1, suffix: figure-relcov}
+    title: Relative Coverage Map
+  - bids: {value: preliminary, dset: 1, suffix: figure-dof}
+    title: DoF Map
+  - bids: {value: preliminary, dset: 1, suffix: figure-truevoxels}
+    title: Percentage of Valid Voxels
+    dropdown: True
+  - bids: {value: preliminary, dset: 1, suffix: figure-ridgeplot}
+    title: Ridge Plot
+  - bids: {value: preliminary, dset: 1, suffix: figure-summarystats}
+    title: Summary Statistics
+    dropdown: True
+  - bids: {value: preliminary, dset: 1, suffix: figure-similarity}
+    title: Similarity of Input Maps
+  - bids: {value: preliminary, dset: 2, suffix: summary}
+    title: Dataset 2
+  - bids: {value: preliminary, dset: 2, suffix: figure-mask}
+    title: Mask
+  - bids: {value: preliminary, dset: 2, suffix: figure-static}
+    title: Peak coordinates
+  - bids: {value: preliminary, dset: 2, suffix: figure-legend}
+  - bids: {value: preliminary, dset: 2, suffix: figure-interactive}
+    title: Explorer
+    iframe: True
+- name: Meta-Analysis
+  reportlets:
+  - bids: {value: estimator, suffix: summary}
+    title: Estimator
+    description: Parameters use to fit the meta-analytic estimator.
+  - bids: {value: corrector, suffix: summary}
+    title: Corrector
+    description: Parameters use to fit the corrector.
+  - bids: {value: corrector, suffix: figure-summary}
+  - bids: {value: corrector, suffix: figure-non}
+  - bids: {value: corrector, suffix: figure-interactive}
+    subtitle: Explorer
+    description: *explorer_text
+  - bids: {value: corrector, suffix: figure-static}
+    description: This panel shows the the corrrected meta-analytic map.
+- name: Diagnostics
+  reportlets:
+  - bids: {value: diagnostics, suffix: summary}
+  - bids: {value: diagnostics, tab: clust, suffix: table}
+    subtitle: Significant clusters
+  - bids: {value: diagnostics, tail: positive, suffix: figure}
+    subtitle: "Label map: positive tail"
+  - bids: {value: diagnostics, tail: negative, suffix: figure}
+    subtitle: "Label map: negative tail"
+  - bids: {value: diagnostics, diag: FocusCounter, tab: counts, suffix: figure}
+    subtitle: FocusCounter
+    caption: *heatmap_text
+    description: *focuscounter_text
+  - bids: {value: diagnostics, diag: Jackknife, tab: counts, suffix: figure}
+    subtitle: Jackknife
+    caption: *heatmap_text
+    description: *jackknife_text
+  - bids: {value: diagnostics, diag: FocusCounter, tab: counts, tail: positive, suffix: figure}
+    subtitle: FocusCounter
+    subsubtitle: "Heatmap: positive tail"
+    caption: *heatmap_text
+    description: *focuscounter_text
+  - bids: {value: diagnostics, diag: FocusCounter, tab: counts, tail: negative, suffix: figure}
+    subsubtitle: "Heatmap: negative tail"
+  - bids: {value: diagnostics, diag: Jackknife, tab: counts, tail: positive, suffix: figure}
+    subtitle: Jackknife
+    subsubtitle: "Heatmap: positive tail"
+    caption: *heatmap_text
+    description: *jackknife_text
+  - bids: {value: diagnostics, diag: Jackknife, tab: counts, tail: negative, suffix: figure}
+    subsubtitle: "Heatmap: negative tail"

@@ -85,24 +85,9 @@ Additionally, each Corrector type accepts a "method" parameter,
 which determines the specific approach used to correct the error rate of choice.
 These methods can be broadly separated into two groups: generic methods and Estimator-specific methods.
 
-Generic methods rely on internal implementations of common correction approaches to correct the results as an array,
-without accounting for any of the idiosyncrasies of neuroimaging data, such as the smoothness of the data.
-One example of a generic method is the "bonferroni" method for the FWECorrector.
+Generic methods (such as Bonferroni and both FDR methods) rely on internal implementations of common correction approaches to correct results as an array, without accounting for any of the idiosyncrasies of neuroimaging data, such as spatial smoothness. As a result, they do not provide adequate statistical control and are not recommended.
 
-.. tip::
-    We do not recommend using the generic methods.
-
-Estimator-specific methods are approaches that are implemented within the Estimator as class methods
-that are then called by the Corrector.
-These methods are generally designed specifically for neruoimaging, or event coordinate-based, data,
-and are thus generally preferable to generic methods.
-One such method is the Monte Carlo method (``method="montecarlo"``).
-
-Example: :ref:`corrector-cbma-example`
-
-The Monte Carlo multiple comparisons correction method
-``````````````````````````````````````````````````````
-:class:`~nimare.correct.FWECorrector`, :meth:`~nimare.meta.cbma.base.CBMAEstimator.correct_fwe_montecarlo`
+In contrast, Monte Carlo correction (``method="montecarlo"``) is the primary and most rigorously validated approach for statistical inference—particularly for ALE methods—as it is the only method that properly accounts for these unique neuroimaging characteristics.
 
 For our CBMA algorithms, we strongly recommend using the "montecarlo" method with the FWECorrector.
 This is the primary Estimator-specific method, which operates by creating simulated versions of the Dataset,
