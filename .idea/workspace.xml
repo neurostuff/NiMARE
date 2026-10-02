@@ -1,7 +1,31 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="a214395f-d6f3-4000-b5d8-57db03032104" name="Changes" comment="" />
+    <list default="true" id="a214395f-d6f3-4000-b5d8-57db03032104" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/docs/_static/contact.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/_templates/contact.html" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/contact.rst" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/examples/01_datasets/08_fetch_neurostore.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/examples/02_meta-analyses/17_plot_mkda_sample_size_weighting.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/CONTRIBUTING.md" beforeDir="false" afterPath="$PROJECT_DIR$/CONTRIBUTING.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/NiMARE/examples/02_meta-analyses/08_plot_cbma_subtraction_conjunction.py" beforeDir="false" afterPath="$PROJECT_DIR$/NiMARE/examples/02_meta-analyses/08_plot_cbma_subtraction_conjunction.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/NiMARE/nimare/diagnostics.py" beforeDir="false" afterPath="$PROJECT_DIR$/NiMARE/nimare/diagnostics.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/_static/nimare.css" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_static/nimare.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/_templates/layout.html" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_templates/layout.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/api.rst" beforeDir="false" afterPath="$PROJECT_DIR$/docs/api.rst" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/cbma.rst" beforeDir="false" afterPath="$PROJECT_DIR$/docs/cbma.rst" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/conf.py" beforeDir="false" afterPath="$PROJECT_DIR$/docs/conf.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/decoding.rst" beforeDir="false" afterPath="$PROJECT_DIR$/docs/decoding.rst" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/fetching.rst" beforeDir="false" afterPath="$PROJECT_DIR$/docs/fetching.rst" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/index.rst" beforeDir="false" afterPath="$PROJECT_DIR$/docs/index.rst" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/installation.rst" beforeDir="false" afterPath="$PROJECT_DIR$/docs/installation.rst" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/links.rst" beforeDir="false" afterPath="$PROJECT_DIR$/docs/links.rst" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/examples/01_datasets/02_download_neurosynth.py" beforeDir="false" afterPath="$PROJECT_DIR$/examples/01_datasets/02_download_neurosynth.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/examples/01_datasets/README.txt" beforeDir="false" afterPath="$PROJECT_DIR$/examples/01_datasets/README.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/setup.cfg" beforeDir="false" afterPath="$PROJECT_DIR$/setup.cfg" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
