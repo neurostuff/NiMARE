@@ -9,6 +9,7 @@ from glob import glob
 from io import BytesIO
 from unittest.mock import patch
 
+import pandas as pd
 import pytest
 
 import nimare
@@ -512,3 +513,18 @@ def test_fetch_neurostore_rejects_invalid_return_type(tmp_path):
     """An unsupported return_type fails before any request is made."""
     with pytest.raises(ValueError, match="Invalid return_type"):
         nimare.extract.fetch_neurostore(data_dir=tmp_path, return_type="dataset")
+
+
+def test_expand_df_scores_alias_similarity():
+    """_expand_df scores each alias against its concept name (pandas 3 safe).
+
+    DataFrame.apply passes labelled rows, which pandas 3 no longer indexes by position.
+    """
+    from nimare.extract.utils import _expand_df
+
+    df = pd.DataFrame({"id": ["c1"], "name": ["task switching"], "alias": ["task-switching"]})
+    expanded = _expand_df(df)
+    assert "ratio" in expanded.columns
+    assert (expanded["ratio"] <= 100).all()
+    exact = expanded.loc[expanded["alias"] == "task switching", "ratio"]
+    assert (exact == 100).all()

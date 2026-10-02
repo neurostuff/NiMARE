@@ -203,8 +203,11 @@ def _get_ratio(tup):
     .. versionadded:: 0.0.2
 
     """
-    if all(isinstance(t, str) for t in tup):
-        return fuzz.ratio(tup[0], tup[1])
+    # Unpack rather than index: DataFrame.apply passes a labelled Series, which pandas 3
+    # no longer indexes by position.
+    alias, name = tup
+    if isinstance(alias, str) and isinstance(name, str):
+        return fuzz.ratio(alias, name)
     else:
         return 100
 
