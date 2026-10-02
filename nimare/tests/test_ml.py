@@ -13,7 +13,7 @@ from nilearn.maskers import NiftiLabelsMasker, NiftiMapsMasker, NiftiMasker
 from scipy import sparse
 from sklearn.base import clone
 from sklearn.compose import ColumnTransformer
-from sklearn.decomposition import TruncatedSVD
+from sklearn.decomposition import PCA, TruncatedSVD
 from sklearn.exceptions import NotFittedError
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.impute import SimpleImputer
@@ -31,6 +31,8 @@ from sklearn.preprocessing import (
     MinMaxScaler,
     OneHotEncoder,
     OrdinalEncoder,
+    QuantileTransformer,
+    RobustScaler,
     StandardScaler,
 )
 from sklearn.random_projection import SparseRandomProjection
@@ -38,9 +40,9 @@ from sklearn.utils import Bunch
 
 from nimare import ml
 from nimare.generate import create_coordinate_studyset
-from nimare.meta.kernel import MKDAKernel
+from nimare.meta.kernel import ALEKernel, MKDAKernel
 from nimare.ml import MAKernel, MaskerTransformer
-from nimare.ml._helpers import _FeatureNames
+from nimare.ml._helpers import _FeatureNames, _to_dense
 from nimare.nimads import Studyset
 from nimare.utils import get_masker, get_resource_path, get_template
 
@@ -2298,6 +2300,330 @@ def test_coefficient_image_puts_weights_back_in_the_brain(ml_studyset, transform
     assert image.shape == bunch.masker.mask_img.shape
     np.testing.assert_allclose(image.affine, bunch.masker.mask_img.affine)
     assert np.count_nonzero(np.asarray(image.dataobj))
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        StandardScaler(),
+        StandardScaler(with_mean=False),
+        MaxAbsScaler(),
+        MinMaxScaler(),
+        RobustScaler(),
+        TruncatedSVD(3, random_state=RANDOM_SEED),
+        PCA(3, random_state=RANDOM_SEED),
+        PCA(3, whiten=True, random_state=RANDOM_SEED),
+        VarianceThreshold(),
+        make_pipeline(StandardScaler(), PCA(3, random_state=RANDOM_SEED)),
+    ],
+    ids=lambda step: type(step).__name__ + ("_whiten" if getattr(step, "whiten", False) else ""),
+)
+def test_coefficient_image_weights_reproduce_the_model(ml_studyset, step):
+    """The voxel weights score every map as the fitted model does, up to its intercept.
+
+    A model scoring ``w @ (A x + c)`` scores ``(A.T w) @ x`` plus a constant, so that is what a
+    weight over voxels has to be; reading ``w`` back as a point with ``inverse_transform``
+    gives ``A^-1 (w - c)`` instead.
+    """
+    bunch = ml_studyset.to_bunch(target_field=("annotations", "target_score"))
+    # ALE maps rather than binary MKDA ones: on a 0/1 map most scalers' scales are 1, and a
+    # weight read back through them comes out right by accident
+    kernel = MAKernel(ALEKernel(fwhm=8), source_masker=bunch.masker)
+    # a centred target keeps the predictions near zero, so float32 rounding of a large
+    # intercept does not hide an offset read back as a weight (PCA's mean_)
+    pipeline = make_pipeline(
+        kernel, FunctionTransformer(_to_dense, accept_sparse=True), step, Ridge()
+    ).fit(_voxels(bunch), bunch.target - bunch.target.mean())
+
+    image = ml.coefficient_image(pipeline, bunch)
+
+    _assert_weights_reproduce(pipeline, _voxels(bunch), image, bunch.masker)
+
+
+@pytest.mark.parametrize(
+    "step, message",
+    [
+        (QuantileTransformer(n_quantiles=5), "QuantileTransformer"),
+        (MinMaxScaler(clip=True), "clip=True clips values"),
+    ],
+    ids=["quantile", "clipped_minmax"],
+)
+def test_coefficient_image_refuses_a_step_it_cannot_read_weights_through(
+    ml_studyset, step, message
+):
+    """Having an inverse_transform is not enough: weights move back by the transpose."""
+    bunch = ml_studyset.to_bunch(target_field=("annotations", "target_score"))
+    pipeline = make_pipeline(
+        MAKernel(MKDAKernel(r=4), source_masker=bunch.masker),
+        FunctionTransformer(_to_dense, accept_sparse=True),
+        step,
+        Ridge(),
+    ).fit(_voxels(bunch), bunch.target)
+
+    with pytest.raises(ValueError, match=message):
+        ml.coefficient_image(pipeline, bunch)
+
+
+def _zero_variance_pca():
+    """Return a whitened PCA with a zero-variance last component, as a rank-deficient fit has."""
+    rng = np.random.default_rng(RANDOM_SEED)
+    pca = PCA(3, whiten=True, random_state=RANDOM_SEED).fit(rng.normal(size=(20, 5)))
+    pca.explained_variance_[-1] = 0.0
+    return pca
+
+
+def _pca_floors_whitening():
+    """Report whether this scikit-learn's PCA.transform floors a zero whitening scale.
+
+    Later releases floor it at machine epsilon; earlier ones, such as 1.4, divide by zero
+    and return inf, which no model downstream can be fitted on.
+    """
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return bool(np.isfinite(_zero_variance_pca().transform(np.ones((1, 5)))).all())
+
+
+def test_coefficient_image_keeps_a_zero_variance_component_finite():
+    """A whitened component with no variance does not turn the weights into inf."""
+    from nimare.ml.interpret import _pull_back
+
+    weights = np.random.default_rng(RANDOM_SEED).normal(size=(1, 3))
+
+    assert np.isfinite(_pull_back(_zero_variance_pca(), weights)).all()
+
+
+@pytest.mark.skipif(
+    not _pca_floors_whitening(),
+    reason="this scikit-learn's PCA.transform divides by a zero whitening scale",
+)
+def test_coefficient_image_reads_a_zero_variance_component_as_pca_transforms_it():
+    """A whitened component with no variance is scaled as PCA.transform scales it.
+
+    PCA.transform floors a whitening scale at machine epsilon; dividing a weight by the
+    unfloored zero gives inf where the transform gives a finite feature.
+    """
+    from nimare.ml.interpret import _pull_back
+
+    rng = np.random.default_rng(RANDOM_SEED + 1)
+    pca = _zero_variance_pca()
+    weights = rng.normal(size=(1, 3))
+
+    pulled = _pull_back(pca, weights)
+
+    probe = rng.normal(size=(4, 5))
+    linear_part = pca.transform(probe) - pca.transform(np.zeros((1, 5)))
+    np.testing.assert_allclose(probe @ pulled.T, linear_part @ weights.T, rtol=1e-6)
+
+
+def _brain_atlases(mask_img):
+    """Return a labels atlas with unequal regions and three overlapping maps over a mask."""
+    inside = np.asarray(mask_img.dataobj) > 0
+    i = np.indices(inside.shape)[0]
+    # three slabs along x of very different sizes, so a region's size matters
+    labels = np.where(inside, 1 + (i > 25) + (i > 70), 0).astype(np.int16)
+    centres = np.array([[30, 50, 40], [45, 60, 45], [60, 50, 40]])
+    grid = np.stack(np.indices(inside.shape), axis=-1)
+    maps = np.stack([np.exp(-((grid - c) ** 2).sum(-1) / (2 * 12.0**2)) for c in centres], axis=-1)
+    return (
+        nib.Nifti1Image(labels, mask_img.affine),
+        nib.Nifti1Image(maps * inside[..., None], mask_img.affine),
+    )
+
+
+def _atlas_reducer(name, mask_img):
+    labels_img, maps_img = _brain_atlases(mask_img)
+    if name == "labels_mean":
+        return NiftiLabelsMasker(labels_img=labels_img, resampling_target="data", reports=False)
+    if name == "labels_sum":
+        return NiftiLabelsMasker(
+            labels_img=labels_img, strategy="sum", resampling_target="data", reports=False
+        )
+    if name == "maps":
+        return NiftiMapsMasker(maps_img=maps_img, resampling_target="data", reports=False)
+    if name == "smoothing":
+        return NiftiMasker(smoothing_fwhm=6)
+    return NiftiMasker()
+
+
+def _assert_weights_reproduce(pipeline, voxels, image, masker):
+    """Assert the voxel weights score every MA map as the pipeline does, up to a constant.
+
+    The predictions and the weight image are float32, so the offset can only be constant
+    to float32 rounding of the values involved, which can exceed a small fraction of the
+    predictions' spread when that spread is narrow. A weight read back wrongly is off by
+    the order of the spread itself.
+    """
+    maps = _dense(pipeline[0].transform(voxels)).astype(float)
+    weights = get_masker(masker.mask_img).transform(image).ravel().astype(float)
+    predicted = np.asarray(pipeline.predict(voxels), dtype=float)
+    assert np.ptp(predicted) > 0
+    scored = maps @ weights
+    offset = predicted - scored
+    rounding = 32 * np.finfo(np.float32).eps * (np.abs(predicted).max() + np.abs(scored).max())
+    assert np.ptp(offset) <= 1e-5 * np.ptp(predicted) + rounding
+
+
+@pytest.mark.parametrize("reducer", ["labels_mean", "labels_sum", "maps", "smoothing", "voxels"])
+def test_coefficient_image_reads_an_atlas_back_per_voxel(ml_studyset, reducer):
+    """A region's weight is shared out over its voxels as the reduction weighted them."""
+    bunch = ml_studyset.to_bunch(target_field=("annotations", "target_score"))
+    pipeline = make_pipeline(
+        MAKernel(ALEKernel(fwhm=8), source_masker=bunch.masker),
+        MaskerTransformer(
+            _atlas_reducer(reducer, bunch.masker.mask_img), source_masker=bunch.masker
+        ),
+        # ALE region values are small, and the default alpha would shrink them to nothing
+        Ridge(alpha=1e-6),
+    ).fit(_voxels(bunch), bunch.target - bunch.target.mean())
+
+    image = ml.coefficient_image(pipeline, bunch)
+
+    _assert_weights_reproduce(pipeline, _voxels(bunch), image, bunch.masker)
+
+
+def test_coefficient_image_paints_regions_when_asked(ml_studyset):
+    """atlas='region' shows each region's weight on every one of its voxels."""
+    bunch = ml_studyset.to_bunch(target_field=("annotations", "target_score"))
+    labels_img, _ = _brain_atlases(bunch.masker.mask_img)
+    pipeline = make_pipeline(
+        MAKernel(ALEKernel(fwhm=8), source_masker=bunch.masker),
+        MaskerTransformer(
+            _atlas_reducer("labels_mean", bunch.masker.mask_img), source_masker=bunch.masker
+        ),
+        Ridge(alpha=1e-6),
+    ).fit(_voxels(bunch), bunch.target)
+
+    painted = np.asarray(ml.coefficient_image(pipeline, bunch, atlas="region").dataobj)
+    per_voxel = np.asarray(ml.coefficient_image(pipeline, bunch).dataobj)
+
+    labels = np.asarray(labels_img.dataobj)
+    for region, weight in enumerate(pipeline[-1].coef_, start=1):
+        inside = labels == region
+        np.testing.assert_allclose(painted[inside], weight, rtol=1e-6)
+        np.testing.assert_allclose(per_voxel[inside], weight / inside.sum(), rtol=1e-6)
+
+
+@pytest.mark.parametrize(
+    "reducer, message",
+    [
+        (
+            lambda img: NiftiLabelsMasker(
+                labels_img=_brain_atlases(img)[0],
+                strategy="maximum",
+                resampling_target="data",
+                reports=False,
+            ),
+            "not linear in the voxels",
+        ),
+        (lambda img: NiftiMasker(standardize="zscore_sample"), "depends on the other rows"),
+    ],
+)
+def test_coefficient_image_refuses_an_atlas_with_no_linear_part(ml_studyset, reducer, message):
+    """A maximum, or a standardisation across rows, has no transpose to read weights through."""
+    bunch = ml_studyset.to_bunch(target_field=("annotations", "target_score"))
+    pipeline = make_pipeline(
+        MAKernel(ALEKernel(fwhm=8), source_masker=bunch.masker),
+        MaskerTransformer(reducer(bunch.masker.mask_img), source_masker=bunch.masker),
+        Ridge(),
+    ).fit(_voxels(bunch), bunch.target)
+
+    with pytest.raises(ValueError, match=message):
+        ml.coefficient_image(pipeline, bunch)
+
+
+def _haufe(maps, scores):
+    """Return cov(maps, scores) @ pinv(cov(scores)), one row per score."""
+    maps = maps - maps.mean(axis=0)
+    scores = scores - scores.mean(axis=0)
+    n = len(scores)
+    return ((maps.T @ scores / (n - 1)) @ np.linalg.pinv(scores.T @ scores / (n - 1))).T
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [
+        [],
+        [StandardScaler(), PCA(3, random_state=RANDOM_SEED)],
+        # refused for weights, since it has no linear part; a pattern needs none
+        [QuantileTransformer(n_quantiles=5)],
+    ],
+    ids=["model_on_voxels", "scaler_and_pca", "quantile"],
+)
+@pytest.mark.parametrize("n_targets", [1, 2])
+def test_coefficient_image_pattern_is_the_haufe_pattern(ml_studyset, steps, n_targets):
+    """A pattern is how each voxel covaries with the model's scores, whatever came between."""
+    bunch = ml_studyset.to_bunch(target_field=("annotations", "target_score"))
+    voxels = _voxels(bunch)
+    rng = np.random.default_rng(RANDOM_SEED)
+    target = (
+        bunch.target
+        if n_targets == 1
+        else np.column_stack([bunch.target, rng.normal(size=len(bunch.target))])
+    )
+    pipeline = make_pipeline(
+        MAKernel(ALEKernel(fwhm=8), source_masker=bunch.masker),
+        FunctionTransformer(_to_dense, accept_sparse=True),
+        *[clone(step) for step in steps],
+        Ridge(),
+    ).fit(voxels, target)
+
+    image = ml.coefficient_image(pipeline, bunch, kind="pattern", X=voxels)
+
+    maps = _dense(pipeline[0].transform(voxels)).astype(float)
+    expected = _haufe(maps, pipeline.predict(voxels).reshape(len(maps), -1))
+    pattern = get_masker(bunch.masker.mask_img).transform(image).reshape(n_targets, -1)
+    # MA maps are float32, so agreement is to float32 precision
+    np.testing.assert_allclose(pattern, expected, atol=1e-4 * np.abs(expected).max())
+
+
+def test_coefficient_image_pattern_reads_through_a_column_transformer(ml_studyset):
+    """The scores include the descriptors; the pattern is over the voxels the kernel made."""
+    bunch = ml_studyset.to_bunch(
+        target_field=("annotations", "target_score"), descriptor_fields=["year"]
+    )
+    pipeline = make_pipeline(
+        ml.make_nimare_column_transformer(
+            bunch,
+            (
+                make_pipeline(
+                    MAKernel(ALEKernel(fwhm=8), source_masker=bunch.masker),
+                    TruncatedSVD(2, random_state=RANDOM_SEED),
+                ),
+                "voxels",
+            ),
+            (StandardScaler(), "descriptors"),
+        ),
+        Ridge(),
+    ).fit(bunch.data, bunch.target)
+
+    image = ml.coefficient_image(pipeline, bunch, kind="pattern")
+
+    kernel = MAKernel(ALEKernel(fwhm=8), source_masker=bunch.masker).fit(_voxels(bunch))
+    maps = _dense(kernel.transform(_voxels(bunch))).astype(float)
+    expected = _haufe(maps, pipeline.predict(bunch.data)[:, None]).ravel()
+    pattern = get_masker(bunch.masker.mask_img).transform(image).ravel()
+    # MA maps are float32, so agreement is to float32 precision
+    np.testing.assert_allclose(pattern, expected, atol=1e-4 * np.abs(expected).max())
+
+
+def test_coefficient_image_checks_what_it_is_asked_for(ml_studyset):
+    """An unknown kind or atlas reading, or a pattern of a model with no readout, is refused."""
+    bunch = ml_studyset.to_bunch(target_field=("annotations", "target_score"))
+    pipeline = make_pipeline(MAKernel(MKDAKernel(r=4), source_masker=bunch.masker), Ridge()).fit(
+        _voxels(bunch), bunch.target
+    )
+    with pytest.raises(ValueError, match="kind must be one of"):
+        ml.coefficient_image(pipeline, bunch, kind="weight")
+    with pytest.raises(ValueError, match="atlas must be one of"):
+        ml.coefficient_image(pipeline, bunch, atlas="regions")
+
+    from sklearn.tree import DecisionTreeRegressor
+
+    tree = make_pipeline(
+        MAKernel(MKDAKernel(r=4), source_masker=bunch.masker),
+        DecisionTreeRegressor(random_state=RANDOM_SEED),
+    ).fit(_voxels(bunch), bunch.target)
+    with pytest.raises(ValueError, match="needs the linear readout"):
+        ml.coefficient_image(tree, bunch, kind="pattern")
 
 
 def test_coefficient_image_reads_through_a_column_transformer(ml_studyset):
