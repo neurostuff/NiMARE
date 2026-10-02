@@ -152,8 +152,8 @@ class BrainMapDecoder(Decoder):
         Default is None, which uses all feature groups available.
     features : :obj:`list`, optional
         List of features in dataset annotations to use for decoding.
-        If feature_group is provided, then features should not include the
-        feature group prefix.
+        If feature_group is provided, features may be given with or without the
+        feature group prefix; they are matched and reported by full column name.
         If feature_group is *not* provided, then features *should* include the
         prefix.
         Default is None, which uses all features available.
@@ -456,8 +456,8 @@ class NeurosynthDecoder(Decoder):
         Default is None, which uses all feature groups available.
     features : :obj:`list`, optional
         List of features in dataset annotations to use for decoding.
-        If feature_group is provided, then features should not include the
-        feature group prefix.
+        If feature_group is provided, features may be given with or without the
+        feature group prefix; they are matched and reported by full column name.
         If feature_group is *not* provided, then features *should* include the
         prefix.
         Default is None, which uses all features available.
@@ -822,8 +822,10 @@ class ROIAssociationDecoder(Decoder):
         Default is None, which uses all feature groups available.
     features : :obj:`list`, optional
         List of features in dataset annotations to use for decoding.
-        If feature_group is provided, then features should not include the feature group prefix.
-        If feature_group is *not* provided, then features *should* include the prefix.
+        If feature_group is provided, features may be given with or without the
+        feature group prefix; they are matched and reported by full column name.
+        If feature_group is *not* provided, then features *should* include the
+        prefix.
         Default is None, which uses all features available.
 
     Notes

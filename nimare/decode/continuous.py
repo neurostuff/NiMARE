@@ -158,7 +158,8 @@ class CorrelationDecoder(Decoder):
     feature_group : :obj:`str`, optional
         Feature group
     features : :obj:`list`, optional
-        Features
+        Features. If feature_group is provided, features may be given with or without
+        the feature group prefix; they are matched and reported by full column name.
     frequency_threshold : :obj:`float`, optional
         Frequency threshold
     meta_estimator : :class:`~nimare.base.CBMAEstimator`, optional
