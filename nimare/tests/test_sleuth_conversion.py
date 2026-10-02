@@ -433,3 +433,15 @@ def test_sleuth_export_writes_only_the_selection(split_studyset, tmp_path):
     written = (tmp_path / "nimads_sleuth_file.txt").read_text()
     assert "Analysis_A1" in written and "Analysis_A2" not in written
     assert "1.00\t2.00\t3.00" in written and "4.00" not in written
+
+
+@pytest.mark.parametrize(
+    "wrap", [Path, lambda p: [Path(p)], lambda p: (p,)], ids=["path", "list", "tuple"]
+)
+def test_convert_sleuth_to_nimads_dict_accepts_documented_path_types(wrap):
+    """Path objects and sequences of them are accepted, as documented."""
+    from nimare.tests.utils import get_test_data_path
+
+    sleuth_file = str(Path(get_test_data_path()) / "test_sleuth_file.txt")
+    expected = convert_sleuth_to_nimads_dict(sleuth_file)
+    assert convert_sleuth_to_nimads_dict(wrap(sleuth_file)) == expected

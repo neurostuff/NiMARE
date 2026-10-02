@@ -1882,6 +1882,13 @@ def convert_sleuth_to_nimads_dict(
     dict
         NIMADS Studyset dictionary.
     """
+    # The Dataset converters accept a str or a list of str; this one is documented to also
+    # take path-like objects and any sequence of them.
+    if isinstance(text_file, (str, os.PathLike)):
+        text_file = os.fspath(text_file)
+    else:
+        text_file = [os.fspath(f) for f in text_file]
+
     # Original behavior when target is specified
     # Normalize incoming target string to dataset template keys accepted by
     # Dataset (mni152_2mm or ale_2mm). Accept common variants including misspellings.
