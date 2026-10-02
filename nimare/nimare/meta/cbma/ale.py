@@ -1,0 +1,2320 @@
+"""CBMA methods from the activation likelihood estimation (ALE) family."""
+
+import copy
+import logging
+import os
+import tempfile
+import warnings
+from contextlib import contextmanager
+from itertools import chain
+
+import nibabel as nib
+import numpy as np
+import pandas as pd
+from joblib import Memory, Parallel, delayed
+from scipy import ndimage
+from scipy import sparse as sp_sparse
+from tqdm.auto import tqdm
+
+from nimare import _version
+from nimare.meta.cbma.base import CBMAEstimator, PairwiseCBMAEstimator
+from nimare.meta.cbma.io_utils import (
+    _csr_to_memmap,
+    _determine_low_memory_chunk_bytes,
+    _estimate_csr_nbytes,
+    _get_available_memory_bytes,
+    _iter_study_id_chunks,
+)
+from nimare.meta.cbma.null_utils import (
+    _ale_approximate_z_from_ma,
+    _ChunkedCSRGroup,
+    _compute_ale_summarystat,
+    _compute_group_approximate_null,
+    _csr_row_max,
+    _study_ma_histogram,
+    _update_ale_histogram,
+)
+from nimare.meta.cbma.pairwise_utils import (
+    _accumulate_csr_log_sums,
+    _ale_uncorrected_group_maps,
+    _GroupMAEstimate,
+    _PairwiseMAStore,
+    _prefix_ale_group_maps,
+    _resolve_balanced_target_n,
+)
+from nimare.meta.cbma.predictive import PredictiveCutoffError, predict_cutoffs
+from nimare.meta.cbma.utils import (
+    _threshold_z_clusters,
+    collect_csr_ma_maps,
+    generate_subset_schedule,
+    require_masked_csr,
+)
+from nimare.meta.kernel import ALEKernel
+from nimare.meta.utils import (
+    _calculate_cluster_measures,
+    compute_ale_ma,
+    get_ale_kernel,
+)
+from nimare.results import MetaResult
+from nimare.stats import null_to_p
+from nimare.transforms import p_to_z
+from nimare.utils import (
+    DEFAULT_FLOAT_DTYPE,
+    _check_ncores,
+    _mask_coverage_to_mask,
+    _mask_img_to_bool,
+    _p_to_logp_values,
+    mm2vox,
+    use_memmap,
+)
+
+LGR = logging.getLogger(__name__)
+__version__ = _version.get_versions()["version"]
+
+
+def _masked_prior_columns(masker, mask_coverage="gm", gm_threshold=0.1):
+    """Return full-image and masked-space prior indicators from the active masker.
+
+    Parameters
+    ----------
+    mask_coverage : {"gm", "brain"}, optional
+        Voxel set used as the randomization prior. ``"gm"`` restricts sampling
+        to voxels with grey-matter probability above ``gm_threshold`` in the
+        mask image (the ICBM 10% GM probability map). ``"brain"`` includes
+        every non-zero voxel in the mask image, i.e. the whole-brain mask.
+        Default is ``"gm"``.
+    gm_threshold : float, optional
+        Intensity threshold applied when ``mask_coverage="gm"``. Default is 0.1.
+    """
+    prior_img = _mask_coverage_to_mask(
+        masker,
+        mask_coverage=mask_coverage,
+        gm_threshold=gm_threshold,
+    )
+    prior_masked = np.squeeze(
+        masker.transform(nib.Nifti1Image(prior_img.astype(np.int8), masker.mask_img.affine))
+    ).astype(bool, copy=False)
+    return prior_img, prior_masked
+
+
+def _study_metadata_from_coordinates(coordinates):
+    """Extract per-study sample sizes and focus counts from an ALE coordinates table."""
+    grouped = coordinates.groupby("id", sort=False)
+    sample_sizes = grouped["sample_size"].mean().to_numpy(dtype=np.int32)
+    num_foci = grouped.size().to_numpy(dtype=np.int32)
+    return sample_sizes, num_foci
+
+
+def _random_ale_ma_from_metadata(mask_img, sample_sizes, num_foci, sample_space, rng):
+    """Generate a random ALE MA matrix from study-level focus counts and sample sizes."""
+    all_ijks = []
+    exp_idx = []
+    focus_sample_sizes = []
+    for i_study, (study_nsub, study_nfoci) in enumerate(zip(sample_sizes, num_foci)):
+        if hasattr(rng, "integers"):
+            focus_idx = rng.integers(sample_space.shape[0], size=int(study_nfoci))
+        else:
+            focus_idx = rng.randint(0, sample_space.shape[0], size=int(study_nfoci))
+        study_ijks = sample_space[focus_idx, :]
+        all_ijks.append(study_ijks)
+        exp_idx.extend([i_study] * int(study_nfoci))
+        focus_sample_sizes.extend([int(study_nsub)] * int(study_nfoci))
+
+    ijks = np.vstack(all_ijks).astype(np.int32, copy=False)
+    exp_idx = np.asarray(exp_idx, dtype=np.int32)
+    focus_sample_sizes = np.asarray(focus_sample_sizes, dtype=np.int32)
+    ma_maps, _, _ = compute_ale_ma(
+        mask_img,
+        ijks,
+        exp_idx=exp_idx,
+        sample_sizes=focus_sample_sizes,
+        use_dict=True,
+    )
+    return require_masked_csr(ma_maps)
+
+
+def _collect_masked_ma_maps(estimator, coords_key="coordinates", maps_key="ma_maps"):
+    """Collect ALE-family MA maps in masked CSR form."""
+    estimator._study_max_ma_values = None
+    return collect_csr_ma_maps(estimator, coords_key=coords_key, maps_key=maps_key)
+
+
+def _collect_ale_masked_ma_maps(estimator, coords_key="coordinates", maps_key="ma_maps"):
+    """Collect ALE MA maps and cache per-study maxima for approximate-null binning."""
+    ma_values = _collect_masked_ma_maps(estimator, coords_key=coords_key, maps_key=maps_key)
+    estimator._study_max_ma_values = _csr_row_max(ma_values).astype(
+        DEFAULT_FLOAT_DTYPE, copy=False
+    )
+    return ma_values
+
+
+class ALE(CBMAEstimator):
+    """Activation likelihood estimation.
+
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
+    .. versionchanged:: 0.0.12
+
+        - Use a 4D sparse array for modeled activation maps.
+
+    Parameters
+    ----------
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
+        Kernel with which to convolve coordinates from dataset.
+        Default is ALEKernel.
+    null_method : {"approximate", "montecarlo"}, optional
+        Method by which to determine uncorrected p-values. The available options are
+
+        ======================= =================================================================
+        "approximate" (default) Build a histogram of summary-statistic values and their
+                                expected frequencies under the assumption of random spatial
+                                associated between studies, via a weighted convolution, as
+                                described in :footcite:t:`eickhoff2012activation`.
+
+                                This method is much faster, but slightly less accurate, than the
+                                "montecarlo" option.
+        "montecarlo"            Perform a large number of permutations, in which the coordinates
+                                in the studies are randomly drawn from the Estimator's brain mask
+                                and the full set of resulting summary-statistic values are
+                                incorporated into a null distribution (stored as a histogram for
+                                memory reasons).
+
+                                This method is must slower, and is only slightly more accurate.
+        ======================= =================================================================
+
+    n_iters : :obj:`int`, default=5000
+        Number of iterations to use to define the null distribution.
+        This is only used if ``null_method=="montecarlo"``.
+        Default is 5000.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
+    n_cores : :obj:`int`, default=1
+        Number of cores to use for parallelization.
+        This is only used if ``null_method=="montecarlo"``.
+        If <=0, defaults to using all available cores.
+        Default is 1.
+    **kwargs
+        Keyword arguments. Arguments for the kernel_transformer can be assigned here,
+        with the prefix ``kernel__`` in the variable name.
+        Another optional argument is ``mask``.
+
+    Attributes
+    ----------
+    masker : :class:`~nilearn.maskers.NiftiMasker` or similar
+        Masker object.
+    inputs_ : :obj:`dict`
+        Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
+        This is an edited version of the dataset's coordinates DataFrame.
+    null_distributions_ : :obj:`dict` of :class:`numpy.ndarray`
+        Null distributions for the uncorrected summary-statistic-to-p-value conversion and any
+        multiple-comparisons correction methods.
+        Entries are added to this attribute if and when the corresponding method is applied.
+
+        If ``null_method == "approximate"``:
+
+            -   ``histogram_bins``: Array of bin centers for the null distribution histogram,
+                ranging from zero to the maximum possible summary statistic value for the Dataset.
+            -   ``histweights_corr-none_method-approximate``: Array of weights for the null
+                distribution histogram, with one value for each bin in ``histogram_bins``.
+
+        If ``null_method == "montecarlo"``:
+
+            -   ``histogram_bins``: Array of bin centers for the null distribution histogram,
+                ranging from zero to the maximum possible summary statistic value for the Dataset.
+            -   ``histweights_corr-none_method-montecarlo``: Array of weights for the null
+                distribution histogram, with one value for each bin in ``histogram_bins``.
+                These values are derived from the full set of summary statistics from each
+                iteration of the Monte Carlo procedure.
+            -   ``histweights_level-voxel_corr-fwe_method-montecarlo``: Array of weights for the
+                voxel-level FWE-correction null distribution, with one value for each bin in
+                ``histogram_bins``. These values are derived from the maximum summary statistic
+                from each iteration of the Monte Carlo procedure.
+
+        If :meth:`correct_fwe_montecarlo` is applied:
+
+            -   ``values_level-voxel_corr-fwe_method-montecarlo``: The maximum summary statistic
+                value from each Monte Carlo iteration. An array of shape (n_iters,).
+            -   ``values_desc-size_level-cluster_corr-fwe_method-montecarlo``: The maximum cluster
+                size from each Monte Carlo iteration. An array of shape (n_iters,).
+            -   ``values_desc-mass_level-cluster_corr-fwe_method-montecarlo``: The maximum cluster
+                mass from each Monte Carlo iteration. An array of shape (n_iters,).
+
+    Notes
+    -----
+    The ALE algorithm was originally developed in :footcite:t:`turkeltaub2002meta`,
+    then updated in :footcite:t:`turkeltaub2012minimizing` and
+    :footcite:t:`eickhoff2012activation`.
+
+    The ALE algorithm is also implemented as part of the GingerALE app provided by the BrainMap
+    organization (https://www.brainmap.org/ale/).
+
+    Available correction methods: :meth:`~nimare.meta.cbma.ale.ALE.correct_fwe_montecarlo`.
+
+    References
+    ----------
+    .. footbibliography::
+    """
+
+    def __init__(
+        self,
+        kernel_transformer=ALEKernel,
+        null_method="approximate",
+        n_iters=5000,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+        n_cores=1,
+        **kwargs,
+    ):
+        if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
+            LGR.warning(
+                f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
+                f"for the {type(self).__name__} algorithm. "
+                "Expect suboptimal performance and beware bugs."
+            )
+
+        # Add kernel transformer attribute and process keyword arguments
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
+        self.null_method = null_method
+        self.n_iters = None if null_method == "approximate" else n_iters or 5000
+        self.n_cores = _check_ncores(n_cores)
+        self.dataset = None
+        self._permutation_parallel_backend = "threading"
+
+    def _generate_description(self):
+        """Generate a description of the fitted Estimator.
+
+        Returns
+        -------
+        str
+            Description of the Estimator.
+        """
+        if self.null_method == "montecarlo":
+            null_method_str = (
+                "a Monte Carlo-based null distribution, in which dataset coordinates were "
+                "randomly drawn from the analysis mask and the full set of ALE values were "
+                f"retained, using {self.n_iters} iterations"
+            )
+        else:
+            null_method_str = "an approximate null distribution \\citep{eickhoff2012activation}"
+
+        if (
+            hasattr(self.kernel_transformer, "sample_size")  # Only kernels that allow sample sizes
+            and (self.kernel_transformer.sample_size is None)
+            and (self.kernel_transformer.fwhm is None)
+        ):
+            # Get the total number of subjects in the inputs.
+            n_subjects = (
+                self.inputs_["coordinates"].groupby("id")["sample_size"].mean().values.sum()
+            )
+            sample_size_str = f", with a total of {int(n_subjects)} participants"
+        else:
+            sample_size_str = ""
+
+        description = (
+            "An activation likelihood estimation (ALE) meta-analysis "
+            "\\citep{turkeltaub2002meta,turkeltaub2012minimizing,eickhoff2012activation} was "
+            f"performed with NiMARE {__version__} "
+            "(RRID:SCR_017398; \\citealt{Salo2023}), using a(n) "
+            f"{self.kernel_transformer.__class__.__name__.replace('Kernel', '')} kernel. "
+            f"{self.kernel_transformer._generate_description()} "
+            f"ALE values were converted to p-values using {null_method_str}. "
+            f"The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
+            f"{len(self.inputs_['id'])} experiments{sample_size_str}."
+        )
+        return description
+
+    def _collect_ma_maps(self, coords_key="coordinates", maps_key="ma_maps", return_type="sparse"):
+        """Collect ALE MA maps in the masked sparse format used by the estimator."""
+        if return_type != "sparse":
+            return super()._collect_ma_maps(
+                coords_key=coords_key,
+                maps_key=maps_key,
+                return_type=return_type,
+            )
+
+        return _collect_ale_masked_ma_maps(self, coords_key=coords_key, maps_key=maps_key)
+
+    def _prepare_subsample_null(self, ma_maps, subset_study_ids=None):
+        """Cache per-study MA maxima required by ALE's histogram binning."""
+        self._study_max_ma_values = _csr_row_max(ma_maps).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+
+    def _generate_random_null_ma(self, target_n, sample_space, rng):
+        """Generate a random ALE MA matrix using sample-size-aware Gaussian kernels."""
+        sample_sizes, num_foci = _study_metadata_from_coordinates(self.inputs_["coordinates"])
+        if target_n < len(sample_sizes):
+            subset = rng.permutation(len(sample_sizes))[:target_n]
+            subset_study_ids = np.array(self.inputs_["id"])[subset]
+            sample_sizes = sample_sizes[subset]
+            num_foci = num_foci[subset]
+        else:
+            subset_study_ids = None
+        return (
+            _random_ale_ma_from_metadata(
+                self.masker.mask_img, sample_sizes, num_foci, sample_space, rng
+            ),
+            subset_study_ids,
+        )
+
+    def _compute_summarystat(self, data):
+        """Compute ALE summary statistics from input data."""
+        if sp_sparse.isspmatrix(data):
+            return self._compute_summarystat_est(data)
+
+        return super()._compute_summarystat(data)
+
+    def _compute_summarystat_est(self, ma_values):
+        ma_values = require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
+        stat_values = _compute_ale_summarystat(ma_values)
+        if sp_sparse.isspmatrix(ma_values):
+            self.__n_mask_voxels = stat_values.shape[0]
+        return stat_values
+
+    def _determine_histogram_bins(self, ma_maps):
+        """Determine histogram bins for null distribution methods.
+
+        Parameters
+        ----------
+        ma_maps : scipy.sparse matrix
+            Masked study-by-voxel MA maps.
+
+        Notes
+        -----
+        This method adds one entry to the null_distributions_ dict attribute: "histogram_bins".
+        """
+        if not hasattr(self, "null_distributions_"):
+            self.null_distributions_ = {}
+
+        if sp_sparse.isspmatrix(ma_maps):
+            ma_maps = require_masked_csr(ma_maps)
+            max_ma_values = getattr(self, "_study_max_ma_values", None)
+            if max_ma_values is None or max_ma_values.shape[0] != ma_maps.shape[0]:
+                max_ma_values = _csr_row_max(ma_maps)
+        else:
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
+
+        # Determine bins for null distribution histogram
+        # Remember that numpy histogram bins are bin edges, not centers
+        # Assuming values of 0, .001, .002, etc., bins are -.0005-.0005, .0005-.0015, etc.
+        INV_STEP_SIZE = 100000
+        step_size = 1 / INV_STEP_SIZE
+        # round up based on resolution
+        max_ma_values = np.ceil(max_ma_values * INV_STEP_SIZE) / INV_STEP_SIZE
+        max_poss_ale = self._compute_summarystat(max_ma_values)
+        # create bin centers
+        hist_bins = np.round(np.arange(0, max_poss_ale + (1.5 * step_size), step_size), 5)
+        self.null_distributions_["histogram_bins"] = hist_bins
+
+    def _compute_null_approximate(self, ma_maps):
+        """Compute uncorrected ALE null distribution using approximate solution.
+
+        Parameters
+        ----------
+        ma_maps : scipy.sparse matrix
+            Masked study-by-voxel MA maps.
+
+        Notes
+        -----
+        This method adds two entries to the null_distributions_ dict attribute:
+
+            - "histogram_bins"
+            - "histweights_corr-none_method-approximate"
+        """
+        if sp_sparse.isspmatrix(ma_maps):
+            ma_maps = require_masked_csr(ma_maps)
+        else:
+            raise ValueError(f"Unsupported data type '{type(ma_maps)}'")
+
+        assert "histogram_bins" in self.null_distributions_.keys()
+
+        # Reuse the fixed histogram grid derived earlier in _determine_histogram_bins.
+        bin_centers = self.null_distributions_["histogram_bins"].astype(np.float64, copy=False)
+        step_size = bin_centers[1] - bin_centers[0]
+        inv_step_size = 1 / step_size
+        n_bins = bin_centers.shape[0]
+        mask_voxel_recip = 1.0 / self.__n_mask_voxels
+        n_exp = ma_maps.shape[0]
+        data = ma_maps.data
+        indptr = ma_maps.indptr
+
+        ale_hist = None
+        tmp_hist = np.zeros(n_bins, dtype=np.float64)
+        for exp_idx in range(n_exp):
+            start = indptr[exp_idx]
+            end = indptr[exp_idx + 1]
+            study_ma_values = data[start:end]
+
+            n_nonzero_voxels = study_ma_values.shape[0]
+            n_zero_voxels = self.__n_mask_voxels - n_nonzero_voxels
+
+            exp_hist = _study_ma_histogram(
+                study_ma_values,
+                n_zero_voxels,
+                mask_voxel_recip,
+                inv_step_size,
+                n_bins,
+            )
+
+            if ale_hist is None:
+                ale_hist = exp_hist.copy()
+                continue
+
+            ale_idx = np.where(ale_hist > 0)[0]
+            exp_hist_idx = np.where(exp_hist > 0)[0]
+            _update_ale_histogram(
+                ale_idx,
+                ale_hist[ale_idx],
+                exp_hist_idx,
+                exp_hist[exp_hist_idx],
+                bin_centers,
+                inv_step_size,
+                n_bins,
+                tmp_hist,
+            )
+            ale_hist, tmp_hist = tmp_hist, ale_hist
+
+        self.null_distributions_["histweights_corr-none_method-approximate"] = ale_hist
+
+    def _predictive_counts(self):
+        """Return experiment-level subject and focus counts for predictive ALE cutoffs."""
+        coordinates = self.inputs_["coordinates"]
+        if "sample_size" not in coordinates.columns:
+            raise PredictiveCutoffError(
+                "ALE predictive cutoff requires per-experiment sample sizes in the fitted "
+                "coordinates. Fit ALE with sample sizes available in the dataset metadata."
+            )
+
+        grouped = coordinates.groupby("id", sort=False)
+        nsub = grouped["sample_size"].mean().to_numpy(dtype=float)
+        nfoci = grouped.size().to_numpy(dtype=float)
+        return grouped.ngroups, nsub, nfoci
+
+    def _threshold_clusters_by_size(self, stat_values, ss_thresh, cluster_size_thresh):
+        """Return a masked-array cluster map thresholded by statistic and cluster size."""
+        stat_map = self.masker.inverse_transform(stat_values).get_fdata(dtype=DEFAULT_FLOAT_DTYPE)
+        stat_map[stat_map <= ss_thresh] = 0
+        conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
+        labeled, _ = ndimage.label(stat_map > 0, conn)
+        if not labeled.any():
+            return np.zeros(stat_values.shape[0], dtype=bool)
+
+        _, idx, cluster_sizes = np.unique(labeled, return_inverse=True, return_counts=True)
+        cluster_sizes[0] = 0
+        keep = cluster_sizes[idx].reshape(labeled.shape) >= cluster_size_thresh
+        keep &= stat_map > 0
+        return np.squeeze(
+            self.masker.transform(
+                nib.Nifti1Image(keep.astype(np.int8), self.masker.mask_img.affine)
+            )
+        ).astype(bool, copy=False)
+
+    def correct_fwe_predictive(self, result):
+        """Apply predictive vFWE and cFWE cutoffs to an ALE result.
+
+        Notes
+        -----
+        The packaged cutoff models were ported from related ALE software.
+        See that project's README for background and references.
+        """
+        stat_values = result.get_map("stat", return_type="array")
+        p_values = result.get_map("p", return_type="array")
+        z_values = result.get_map("z", return_type="array")
+
+        nexp, nsub, nfoci = self._predictive_counts()
+        cutoffs = predict_cutoffs(nexp, nsub, nfoci)
+        self.null_distributions_["summary_stat_thresh_level-voxel_corr-fwe_method-predictive"] = (
+            cutoffs["vfwe"]
+        )
+        self.null_distributions_[
+            "summary_stat_thresh_desc-size_level-cluster_corr-fwe_method-predictive"
+        ] = float(cutoffs["cfwe"])
+
+        voxel_mask = stat_values >= cutoffs["vfwe"]
+        ss_thresh = self._p_to_summarystat(0.001)
+        cluster_mask = self._threshold_clusters_by_size(stat_values, ss_thresh, cutoffs["cfwe"])
+
+        one = np.array(1.0, dtype=DEFAULT_FLOAT_DTYPE)
+        logp_values = result.get_map("logp", return_type="array")
+        p_vfwe = np.where(voxel_mask, p_values, one).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        p_cfwe = np.where(cluster_mask, p_values, one).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        z_vfwe = np.where(voxel_mask, z_values, 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        z_cfwe = np.where(cluster_mask, z_values, 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        logp_vfwe = np.where(voxel_mask, logp_values, 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        logp_cfwe = np.where(cluster_mask, logp_values, 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+
+        description = (
+            "Family-wise error correction was approximated with predictive ALE "
+            "cutoffs. Voxel-level and cluster-size thresholds were predicted from experiment-"
+            "level subject and focus counts using packaged XGBoost regressors "
+            "trained on simulated ALE datasets, "
+            "as described in :footcite:t:`10.1162/imag_a_00423`."
+        )
+        maps = {
+            "p_level-voxel": p_vfwe,
+            "z_level-voxel": z_vfwe,
+            "logp_level-voxel": logp_vfwe,
+            "p_desc-size_level-cluster": p_cfwe,
+            "z_desc-size_level-cluster": z_cfwe,
+            "logp_desc-size_level-cluster": logp_cfwe,
+        }
+        return maps, {}, description
+
+
+class ALESubtraction(PairwiseCBMAEstimator):
+    """ALE subtraction analysis.
+
+    .. versionchanged:: 0.9.0
+
+        - New parameters: ``vfwe_only`` and ``voxel_thresh``
+          for montecarlo family wise error correction.
+
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
+    .. versionchanged:: 0.0.12
+
+        - Use memmapped array for null distribution and remove ``memory_limit`` parameter.
+        - Support parallelization and add progress bar.
+        - Add ALE-difference (stat) and -log10(p) (logp) maps to results.
+        - Use a 4D sparse array for modeled activation maps.
+
+    .. versionchanged:: 0.0.8
+
+        * [FIX] Assume non-symmetric null distribution.
+
+    .. versionchanged:: 0.0.7
+
+        * [FIX] Assume a zero-centered and symmetric null distribution.
+
+    Parameters
+    ----------
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
+        Kernel with which to convolve coordinates from dataset.
+        Default is ALEKernel.
+    n_iters : :obj:`int`, default=5000
+        Default is 5000.
+    voxel_thresh : :obj:`float`, default=0.001
+        Uncorrected voxel-level p-value threshold used for cluster-defining threshold when
+        cluster nulls are computed.
+    low_memory : {False, True, "auto"}, default="auto"
+        Best-effort strategy for reducing resident memory used by study-wise MA maps during
+        permutations. When ALESubtraction generates MA maps from coordinates, low-memory mode
+        builds each group's CSR MA maps chunk by chunk and stores the chunks as disk-backed
+        memmaps before permutation-based resampling. If "auto", only activate this behavior when
+        the projected combined MA-map footprint exceeds roughly half of the currently available
+        system memory. Precomputed MA maps are used as provided and do not participate in this
+        chunked path.
+    vfwe_only : :obj:`bool`, default=True
+        If True, only compute voxel-level null information. If False, also compute and retain
+        cluster size and mass null distributions from the permutation maps.
+    restrict_to_inference_mask : :obj:`bool`, default=False
+        If True and directional inference maps are supplied to ``fit``, restrict permutation
+        inference to the union of nonzero inference-map voxels. Observed group and contrast
+        summary-statistic maps are still reported across the full estimator mask.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
+    n_cores : :obj:`int`, default=1
+        Number of processes to use for meta-analysis. If -1, use all available cores.
+        Default is 1.
+
+        .. versionadded:: 0.0.12
+    **kwargs
+        Keyword arguments. Arguments for the kernel_transformer can be assigned here,
+        with the prefix ``kernel__`` in the variable name. Another optional argument is ``mask``.
+
+    Attributes
+    ----------
+    masker : :class:`~nilearn.maskers.NiftiMasker` or similar
+        Masker object.
+    inputs_ : :obj:`dict`
+        Inputs to the Estimator. For ALESubtraction, this includes edited coordinate DataFrames
+        for both groups, stored under ``coordinates1`` and ``coordinates2``.
+
+    Notes
+    -----
+    This method was originally developed in :footcite:t:`laird2005ale` and refined in
+    :footcite:t:`eickhoff2012activation`.
+
+    The ALE subtraction algorithm is also implemented as part of the GingerALE app provided by the
+    BrainMap organization (https://www.brainmap.org/ale/).
+
+    The voxel-wise null distributions used by this Estimator are very large, so they are not
+    retained as Estimator attributes. However, summary distributions (e.g., per-iteration
+    maximum statistics for voxel-level FWE correction) are retained.
+
+    Warnings
+    --------
+    This implementation contains one key difference from the original version.
+
+    In the original version, group 1 > group 2 difference values are only evaluated for voxels
+    significant in the group 1 meta-analysis, and group 2 > group 1 difference values are only
+    evaluated for voxels significant in the group 2 meta-analysis.
+
+    In NiMARE's implementation, the analysis is run in a two-sided manner for *all* voxels in the
+    mask.
+
+    References
+    ----------
+    .. footbibliography::
+    """
+
+    def __init__(
+        self,
+        kernel_transformer=ALEKernel,
+        n_iters=5000,
+        voxel_thresh=0.001,
+        low_memory="auto",
+        vfwe_only=True,
+        restrict_to_inference_mask=False,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+        n_cores=1,
+        **kwargs,
+    ):
+        if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
+            LGR.warning(
+                f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
+                f"for the {type(self).__name__} algorithm. "
+                "Expect suboptimal performance and beware bugs."
+            )
+
+        # Add kernel transformer attribute and process keyword arguments
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
+
+        self.dataset1 = None
+        self.dataset2 = None
+        self.n_iters = n_iters
+        self.voxel_thresh = voxel_thresh
+        self.low_memory = low_memory
+        self.vfwe_only = vfwe_only
+        self.restrict_to_inference_mask = restrict_to_inference_mask
+        self.n_cores = _check_ncores(n_cores)
+        self._permutation_parallel_backend = "threading"
+        self._low_memory_fraction = 0.5
+        # memory_limit needs to exist to trigger use_memmap decorator, but it will also be used if
+        # a Dataset with pre-generated MA maps is provided.
+        self.memory_limit = "100mb"
+
+        if self.low_memory not in (False, True, "auto"):
+            raise ValueError(
+                "low_memory must be False, True, or 'auto'; " f"got {self.low_memory!r}."
+            )
+
+        if not self.vfwe_only:
+            if self.voxel_thresh is None:
+                raise ValueError("voxel_thresh must be provided when vfwe_only is False.")
+
+            # Enforce scalar numeric voxel-wise threshold
+            try:
+                voxel_thresh_float = float(self.voxel_thresh)
+            except (TypeError, ValueError):
+                raise TypeError(
+                    "voxel_thresh must be a scalar numeric value when vfwe_only is False; "
+                    f"got {type(self.voxel_thresh).__name__}."
+                )
+
+            if not 0 < voxel_thresh_float < 1:
+                raise ValueError(
+                    "voxel_thresh must be between 0 and 1 (exclusive) when vfwe_only is False; "
+                    f"got {self.voxel_thresh!r}."
+                )
+
+    def _generate_description(self):
+        if (
+            hasattr(self.kernel_transformer, "sample_size")  # Only kernels that allow sample sizes
+            and (self.kernel_transformer.sample_size is None)
+            and (self.kernel_transformer.fwhm is None)
+        ):
+            # Get the total number of subjects in the inputs.
+            n_subjects = (
+                self.inputs_["coordinates1"].groupby("id")["sample_size"].mean().values.sum()
+            )
+            sample_size_str1 = f", with a total of {int(n_subjects)} participants"
+            n_subjects = (
+                self.inputs_["coordinates2"].groupby("id")["sample_size"].mean().values.sum()
+            )
+            sample_size_str2 = f", with a total of {int(n_subjects)} participants"
+        else:
+            sample_size_str1 = ""
+            sample_size_str2 = ""
+
+        description = (
+            "An activation likelihood estimation (ALE) subtraction analysis "
+            "\\citep{laird2005ale,eickhoff2012activation} was performed with NiMARE "
+            f"v{__version__} "
+            "(RRID:SCR_017398; \\citealt{Salo2023}), "
+            f"using a(n) {self.kernel_transformer.__class__.__name__.replace('Kernel', '')} "
+            "kernel. "
+            f"{self.kernel_transformer._generate_description()} "
+            "The subtraction analysis was implemented according to NiMARE's \\citep{Salo2023} "
+            "approach, which differs from the original version. "
+            "In this version, ALE-difference scores are calculated between the two datasets, "
+            "for all voxels in the mask, rather than for voxels significant in the main effects "
+            "analyses of the two datasets. "
+            "Next, voxel-wise null distributions of ALE-difference scores were generated via a "
+            "randomized group assignment procedure, in which the studies in the two datasets were "
+            "randomly reassigned and ALE-difference scores were calculated for the randomized "
+            "datasets. "
+            f"This randomization procedure was repeated {self.n_iters} times to build the null "
+            "distributions. "
+            "The significance of the original ALE-difference scores was assessed using a "
+            "two-sided statistical test. "
+            "The null distributions were assumed to be asymmetric, as ALE-difference scores will "
+            "be skewed based on the sample sizes of the two datasets. "
+            f"The first input dataset (group1) included {self.inputs_['coordinates1'].shape[0]} "
+            f"foci from {len(self.inputs_['id1'])} experiments{sample_size_str1}. "
+            f"The second input dataset (group2) included {self.inputs_['coordinates2'].shape[0]} "
+            f"foci from {len(self.inputs_['id2'])} experiments{sample_size_str2}. "
+        )
+        return description
+
+    def _finalize_alediff_tail_counts(self, left_counts, right_counts, n_iters):
+        """Convert ALE subtraction tail counts into p-values and z-map signs."""
+        left_tail = left_counts / n_iters
+        right_tail = right_counts / n_iters
+        smallest_value = 1.0 / n_iters
+        p_values = 2.0 * np.minimum(left_tail, right_tail)
+        p_values = np.maximum(smallest_value, np.minimum(p_values, 1.0 - smallest_value)).astype(
+            DEFAULT_FLOAT_DTYPE,
+            copy=False,
+        )
+        diff_signs = np.sign(right_counts.astype(np.int64) - left_counts.astype(np.int64)).astype(
+            DEFAULT_FLOAT_DTYPE,
+            copy=False,
+        )
+
+        return p_values, diff_signs
+
+    def _finalize_masked_alediff_tail_counts(
+        self, upper_counts, lower_counts, diff_ale_values, group1_mask, group2_mask, n_iters
+    ):
+        """Convert directional ALE subtraction tail counts into one-sided masked p-values."""
+        smallest_value = 1.0 / n_iters
+        p_values = np.ones(diff_ale_values.shape[0], dtype=DEFAULT_FLOAT_DTYPE)
+        diff_signs = np.zeros(diff_ale_values.shape[0], dtype=DEFAULT_FLOAT_DTYPE)
+
+        diff_ale_values = np.asarray(diff_ale_values)
+        if group1_mask is not None:
+            pos_idx = group1_mask & (diff_ale_values > 0)
+            p_values[pos_idx] = np.maximum(smallest_value, upper_counts[pos_idx] / n_iters).astype(
+                DEFAULT_FLOAT_DTYPE,
+                copy=False,
+            )
+            diff_signs[pos_idx] = 1
+
+        if group2_mask is not None:
+            neg_idx = group2_mask & (diff_ale_values < 0)
+            p_values[neg_idx] = np.maximum(smallest_value, lower_counts[neg_idx] / n_iters).astype(
+                DEFAULT_FLOAT_DTYPE,
+                copy=False,
+            )
+            diff_signs[neg_idx] = -1
+
+        return p_values, diff_signs
+
+    def _compute_summarystat_est(self, ma_values):
+        return _compute_ale_summarystat(
+            require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
+        )
+
+    @staticmethod
+    def _inference_union_mask(group1_mask, group2_mask):
+        """Build the voxel union for directional inference maps."""
+        if group1_mask is None and group2_mask is None:
+            return None
+
+        base = group1_mask if group1_mask is not None else group2_mask
+        union_mask = np.zeros(base.shape, dtype=bool)
+        if group1_mask is not None:
+            union_mask |= group1_mask
+        if group2_mask is not None:
+            union_mask |= group2_mask
+        if not np.any(union_mask):
+            raise ValueError(
+                "Directional ALESubtraction inference requires at least one nonzero voxel in "
+                "inference_map1 or inference_map2."
+            )
+        return union_mask
+
+    def _restrict_pairwise_ma_store(self, ma_store, union_mask):
+        """Slice a pairwise MA store to the inference union mask."""
+        if union_mask is None:
+            return ma_store
+
+        return _PairwiseMAStore(
+            group1=self._slice_ma_group_columns(ma_store.group1, union_mask),
+            group2=self._slice_ma_group_columns(ma_store.group2, union_mask),
+            group1_stat=ma_store.group1_stat[union_mask],
+            group2_stat=ma_store.group2_stat[union_mask],
+            temp_files=[],
+        )
+
+    @staticmethod
+    def _slice_ma_group_columns(ma_group, column_mask):
+        """Slice CSR or chunked CSR MA maps to selected columns."""
+        if isinstance(ma_group, _ChunkedCSRGroup):
+            chunks = [chunk[:, column_mask] for chunk in ma_group.chunks]
+            return _ChunkedCSRGroup(
+                chunks=chunks,
+                row_offsets=ma_group.row_offsets.copy(),
+                shape=(ma_group.shape[0], int(np.count_nonzero(column_mask))),
+            )
+        return ma_group[:, column_mask]
+
+    @staticmethod
+    def _scatter_to_full_mask(values, union_mask, fill_value=0):
+        """Scatter restricted masked values back to the full masker vector."""
+        if union_mask is None:
+            return values
+
+        full_values = np.full(union_mask.shape[0], fill_value, dtype=np.asarray(values).dtype)
+        full_values[union_mask] = values
+        return full_values
+
+    @use_memmap(LGR, n_files=3)
+    def _fit(self, dataset1, dataset2):
+        self.dataset1 = dataset1
+        self.dataset2 = dataset2
+        self.masker = self.masker or dataset1.masker
+        self.null_distributions_ = {}
+        iter_diff_values = None
+        inference_map1 = self.inputs_.get("inference_map1")
+        inference_map2 = self.inputs_.get("inference_map2")
+        group1_mask = None if inference_map1 is None else np.asarray(inference_map1) > 0
+        group2_mask = None if inference_map2 is None else np.asarray(inference_map2) > 0
+
+        union_mask = None
+        has_inference_mask = group1_mask is not None or group2_mask is not None
+        if has_inference_mask:
+            inference_union_mask = self._inference_union_mask(group1_mask, group2_mask)
+            if self.restrict_to_inference_mask:
+                union_mask = inference_union_mask
+
+        with self._managed_pairwise_ma_store(
+            maps_key1="ma_maps1",
+            coords_key1="coordinates1",
+            maps_key2="ma_maps2",
+            coords_key2="coordinates2",
+        ) as ma_store:
+            fit_store = self._restrict_pairwise_ma_store(ma_store, union_mask)
+            if union_mask is None:
+                fit_group1_mask = group1_mask
+                fit_group2_mask = group2_mask
+            else:
+                fit_group1_mask = None if group1_mask is None else group1_mask[union_mask]
+                fit_group2_mask = None if group2_mask is None else group2_mask[union_mask]
+            full_diff_ale_values = ma_store.group1_stat - ma_store.group2_stat
+            diff_ale_values = fit_store.group1_stat - fit_store.group2_stat
+
+            try:
+                if not self.vfwe_only:
+                    # Cluster-level nulls still require access to all permutation maps.
+                    iter_diff_values = np.memmap(
+                        self.memmap_filenames[2],
+                        dtype=DEFAULT_FLOAT_DTYPE,
+                        mode="w+",
+                        shape=(self.n_iters, fit_store.n_voxels),
+                    )
+
+                iter_abs_max, p_values, diff_signs = self._run_null_permutations(
+                    fit_store,
+                    n_iters=self.n_iters,
+                    n_cores=self.n_cores,
+                    diff_ale_values=diff_ale_values,
+                    iter_diff_values=iter_diff_values,
+                    group1_mask=fit_group1_mask,
+                    group2_mask=fit_group2_mask,
+                )
+                self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = (
+                    iter_abs_max
+                )
+
+                if not self.vfwe_only:
+                    if self.voxel_thresh is None:
+                        raise ValueError("voxel_thresh must be provided when vfwe_only is False.")
+
+                    ss_thresh, iter_max_sizes, iter_max_masses = self._compute_cluster_nulls(
+                        iter_diff_values,
+                        voxel_thresh=self.voxel_thresh,
+                        n_iters=self.n_iters,
+                        union_mask=union_mask,
+                    )
+                    self.null_distributions_[
+                        "summary_stat_thresh_level-voxel_corr-fwe_method-montecarlo"
+                    ] = ss_thresh
+                    self.null_distributions_[
+                        "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+                    ] = iter_max_sizes
+                    self.null_distributions_[
+                        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+                    ] = iter_max_masses
+            finally:
+                if isinstance(iter_diff_values, np.memmap):
+                    LGR.debug(f"Closing memmap at {iter_diff_values.filename}")
+                    iter_diff_values._mmap.close()
+
+            group_maps = {}
+            for group_label, ma_maps, stat_group in (
+                ("group1", ma_store.group1, ma_store.group1_stat),
+                ("group2", ma_store.group2, ma_store.group2_stat),
+            ):
+                group_maps.update(
+                    _ale_uncorrected_group_maps(
+                        self,
+                        ma_maps,
+                        group_label,
+                        stat_values=stat_group,
+                    )
+                )
+
+        z_tail = "one" if (group1_mask is not None or group2_mask is not None) else "two"
+        z_arr = p_to_z(p_values, tail=z_tail) * diff_signs
+        logp_arr = _p_to_logp_values(p_values, dtype=DEFAULT_FLOAT_DTYPE)
+        p_values = self._scatter_to_full_mask(p_values, union_mask, fill_value=1)
+        z_arr = self._scatter_to_full_mask(z_arr, union_mask)
+        logp_arr = self._scatter_to_full_mask(logp_arr, union_mask)
+
+        maps = {
+            "stat_desc-group1MinusGroup2": full_diff_ale_values,
+            "p_desc-group1MinusGroup2": p_values,
+            "z_desc-group1MinusGroup2": z_arr,
+            "logp_desc-group1MinusGroup2": logp_arr,
+        }
+        maps.update(group_maps)
+        description = self._description_text()
+
+        return maps, {}, description
+
+    def _run_permutation(self, i_iter, ma_store):
+        """Run a single permutation of the ALESubtraction null distribution procedure."""
+        group1_idx, group2_idx = self._permute_pairwise_group_indices(
+            n_total=ma_store.n_total,
+            n_group1=ma_store.n_group1,
+            seed=i_iter,
+        )
+        iter_grp1_ale_values = ma_store.compute_partition_summarystat(group1_idx)
+        iter_grp2_ale_values = ma_store.compute_partition_summarystat(group2_idx)
+        return i_iter, iter_grp1_ale_values - iter_grp2_ale_values
+
+    def _iterate_permutation_diffs(self, ma_store, n_iters, n_cores):
+        """Yield permutation difference maps for one pairwise MA store."""
+        parallel_kwargs = {
+            "return_as": "generator",
+            "n_jobs": _check_ncores(n_cores),
+            "backend": self._permutation_parallel_backend,
+        }
+        return tqdm(
+            Parallel(**parallel_kwargs)(
+                delayed(self._run_permutation)(i_iter, ma_store) for i_iter in range(n_iters)
+            ),
+            total=n_iters,
+        )
+
+    def _run_null_permutations(
+        self,
+        ma_store,
+        n_iters,
+        n_cores,
+        diff_ale_values=None,
+        iter_diff_values=None,
+        group1_mask=None,
+        group2_mask=None,
+    ):
+        """Run Monte Carlo null permutations and optionally stream ALE-difference tail counts."""
+        iter_abs_max = np.empty(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+        upper_counts = lower_counts = None
+
+        if diff_ale_values is not None:
+            upper_counts = np.zeros(ma_store.n_voxels, dtype=np.uint32)
+            lower_counts = np.zeros(ma_store.n_voxels, dtype=np.uint32)
+
+        for i_iter, iter_diff in self._iterate_permutation_diffs(ma_store, n_iters, n_cores):
+            iter_abs_max[i_iter] = np.max(np.abs(iter_diff))
+            if diff_ale_values is not None:
+                if group1_mask is None and group2_mask is None:
+                    upper_counts += iter_diff >= diff_ale_values
+                    lower_counts += iter_diff <= diff_ale_values
+                else:
+                    if group1_mask is not None:
+                        upper_counts[group1_mask] += (
+                            iter_diff[group1_mask] >= diff_ale_values[group1_mask]
+                        )
+                    if group2_mask is not None:
+                        lower_counts[group2_mask] += (
+                            iter_diff[group2_mask] <= diff_ale_values[group2_mask]
+                        )
+            if iter_diff_values is not None:
+                iter_diff_values[i_iter, :] = iter_diff
+
+        p_values = diff_signs = None
+        if diff_ale_values is not None:
+            if group1_mask is None and group2_mask is None:
+                p_values, diff_signs = self._finalize_alediff_tail_counts(
+                    upper_counts, lower_counts, n_iters
+                )
+            else:
+                p_values, diff_signs = self._finalize_masked_alediff_tail_counts(
+                    upper_counts,
+                    lower_counts,
+                    diff_ale_values,
+                    group1_mask,
+                    group2_mask,
+                    n_iters,
+                )
+
+        return iter_abs_max, p_values, diff_signs
+
+    def _compute_cluster_nulls(self, iter_diff_values, voxel_thresh, n_iters, union_mask=None):
+        """Compute cluster-forming threshold and cluster null summaries from permutation maps."""
+        # When union_mask is provided, restrict the ss_thresh quantile and cluster stats to the
+        # masked region so that null clusters can only form where inference maps have signal.
+        is_restricted = union_mask is not None and iter_diff_values.shape[1] == union_mask.sum()
+        if union_mask is not None and not is_restricted:
+            ss_thresh = np.quantile(np.abs(iter_diff_values[:, union_mask]), 1 - voxel_thresh)
+        else:
+            ss_thresh = np.quantile(np.abs(iter_diff_values), 1 - voxel_thresh)
+        conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
+        iter_max_sizes = np.zeros(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+        iter_max_masses = np.zeros(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+
+        for i_iter in range(n_iters):
+            iter_vals = iter_diff_values[i_iter, :]
+            if is_restricted:
+                iter_vals = self._scatter_to_full_mask(iter_vals, union_mask)
+            elif union_mask is not None:
+                iter_vals = iter_vals.copy()
+                iter_vals[~union_mask] = 0
+            iter_map = self.masker.inverse_transform(iter_vals).get_fdata(
+                dtype=DEFAULT_FLOAT_DTYPE
+            )
+            iter_max_sizes[i_iter], iter_max_masses[i_iter] = _calculate_cluster_measures(
+                iter_map, ss_thresh, conn, tail="two"
+            )
+
+        return ss_thresh, iter_max_sizes, iter_max_masses
+
+    def _should_use_low_memory(self, projected_nbytes):
+        """Determine whether best-effort chunked MA-map storage should be used."""
+        if self.low_memory is True:
+            return True
+        if self.low_memory is False:
+            return False
+
+        available_bytes = _get_available_memory_bytes()
+        if available_bytes is None:
+            return False
+        return projected_nbytes >= (available_bytes * self._low_memory_fraction)
+
+    def _estimate_group_ma_bytes(self, coords_key):
+        """Estimate total CSR bytes and bytes per study for one MA-map group."""
+        coordinates = self.inputs_[coords_key]
+        sample_n_studies = min(32, len(np.unique(coordinates["id"].values)))
+        sample_df = next(_iter_study_id_chunks(coordinates, chunk_rows=sample_n_studies))
+        sample_ma = require_masked_csr(
+            self.kernel_transformer.transform(
+                sample_df,
+                masker=self.masker,
+                return_type="sparse",
+            ),
+            source=f"Generated sample for {coords_key}",
+        )
+        bytes_per_study = _estimate_csr_nbytes(sample_ma) / max(sample_ma.shape[0], 1)
+        total_bytes = bytes_per_study * len(np.unique(coordinates["id"].values))
+        return _GroupMAEstimate(
+            total_bytes=total_bytes,
+            bytes_per_study=bytes_per_study,
+            sample_ma=sample_ma,
+            sample_n_studies=sample_n_studies,
+        )
+
+    def _determine_chunk_rows(self, bytes_per_study, available_bytes=None):
+        """Determine how many studies to transform per chunk in low-memory mode."""
+        chunk_bytes = _determine_low_memory_chunk_bytes(available_bytes=available_bytes)
+        return max(1, int(chunk_bytes / max(bytes_per_study, 1.0)))
+
+    def _collect_chunked_ma_maps(self, coords_key, chunk_rows, prefix, estimate=None):
+        """Collect one MA-map group into memmap-backed CSR chunks."""
+        temp_files = []
+        chunked_maps = []
+        row_offsets = [0]
+        log_sums = None
+        coordinates = self.inputs_[coords_key]
+        start_idx = 0
+
+        if estimate is not None and estimate.sample_ma is not None:
+            if estimate.sample_n_studies <= chunk_rows:
+                start_idx = estimate.sample_n_studies
+                initial_chunks = [estimate.sample_ma]
+            else:
+                initial_chunks = []
+        else:
+            initial_chunks = []
+
+        chunk_iter = (
+            require_masked_csr(
+                self.kernel_transformer.transform(
+                    chunk_df,
+                    masker=self.masker,
+                    return_type="sparse",
+                ),
+                source=f"Generated {coords_key} chunk",
+            )
+            for chunk_df in _iter_study_id_chunks(coordinates, chunk_rows, start_idx=start_idx)
+        )
+
+        for i_chunk, chunk_ma in enumerate(chain(initial_chunks, chunk_iter)):
+            if log_sums is None:
+                log_sums = np.zeros(chunk_ma.shape[1], dtype=np.float64)
+
+            _accumulate_csr_log_sums(chunk_ma, log_sums)
+            chunk_ma, chunk_files = _csr_to_memmap(chunk_ma, prefix=f"{prefix}{i_chunk:04d}")
+            temp_files.extend(chunk_files)
+            chunked_maps.append(chunk_ma)
+            row_offsets.append(row_offsets[-1] + chunk_ma.shape[0])
+
+        if log_sums is None:
+            raise ValueError(f"No studies were available for {coords_key}.")
+
+        stat_values = (1.0 - np.exp(log_sums)).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        ma_group = _ChunkedCSRGroup(
+            chunks=chunked_maps,
+            row_offsets=np.asarray(row_offsets, dtype=np.int64),
+            shape=(row_offsets[-1], log_sums.shape[0]),
+        )
+        return ma_group, stat_values, temp_files
+
+    def _prepare_pairwise_ma_maps(self, maps_key1, coords_key1, maps_key2, coords_key2):
+        """Collect pairwise MA maps and optionally spill coordinate-generated maps to disk."""
+        temp_files = []
+
+        if maps_key1 in self.inputs_ or maps_key2 in self.inputs_:
+            if self.low_memory is not False:
+                LGR.info(
+                    "ALESubtraction low-memory chunking is only applied when MA maps are "
+                    "generated from coordinates; using precomputed MA maps without chunking."
+                )
+            ma_maps1 = _collect_masked_ma_maps(self, maps_key=maps_key1, coords_key=coords_key1)
+            ma_maps2 = _collect_masked_ma_maps(self, maps_key=maps_key2, coords_key=coords_key2)
+            grp1_ale_values = self._compute_summarystat_est(ma_maps1)
+            grp2_ale_values = self._compute_summarystat_est(ma_maps2)
+            return _PairwiseMAStore(
+                group1=ma_maps1,
+                group2=ma_maps2,
+                group1_stat=grp1_ale_values,
+                group2_stat=grp2_ale_values,
+                temp_files=temp_files,
+            )
+
+        grp1_estimate = self._estimate_group_ma_bytes(coords_key1)
+        grp2_estimate = self._estimate_group_ma_bytes(coords_key2)
+        combined_nbytes = grp1_estimate.total_bytes + grp2_estimate.total_bytes
+
+        if self._should_use_low_memory(combined_nbytes):
+            available_bytes = _get_available_memory_bytes()
+            chunk_rows1 = self._determine_chunk_rows(
+                grp1_estimate.bytes_per_study, available_bytes=available_bytes
+            )
+            chunk_rows2 = self._determine_chunk_rows(
+                grp2_estimate.bytes_per_study, available_bytes=available_bytes
+            )
+            LGR.info(
+                "ALESubtraction low-memory chunked mode activated for permutation MA maps "
+                "(projected %.2f GB; chunk_rows=%d/%d).",
+                combined_nbytes / float(1024**3),
+                chunk_rows1,
+                chunk_rows2,
+            )
+            ma_maps1, grp1_ale_values, group1_files = self._collect_chunked_ma_maps(
+                coords_key=coords_key1,
+                chunk_rows=chunk_rows1,
+                prefix="ALESubtractionGroup1Chunk",
+                estimate=grp1_estimate,
+            )
+            ma_maps2, grp2_ale_values, group2_files = self._collect_chunked_ma_maps(
+                coords_key=coords_key2,
+                chunk_rows=chunk_rows2,
+                prefix="ALESubtractionGroup2Chunk",
+                estimate=grp2_estimate,
+            )
+            temp_files.extend(group1_files)
+            temp_files.extend(group2_files)
+            return _PairwiseMAStore(
+                group1=ma_maps1,
+                group2=ma_maps2,
+                group1_stat=grp1_ale_values,
+                group2_stat=grp2_ale_values,
+                temp_files=temp_files,
+            )
+
+        ma_maps1 = _collect_masked_ma_maps(self, maps_key=maps_key1, coords_key=coords_key1)
+        ma_maps2 = _collect_masked_ma_maps(self, maps_key=maps_key2, coords_key=coords_key2)
+        grp1_ale_values = self._compute_summarystat_est(ma_maps1)
+        grp2_ale_values = self._compute_summarystat_est(ma_maps2)
+        return _PairwiseMAStore(
+            group1=ma_maps1,
+            group2=ma_maps2,
+            group1_stat=grp1_ale_values,
+            group2_stat=grp2_ale_values,
+            temp_files=temp_files,
+        )
+
+    @contextmanager
+    def _managed_pairwise_ma_store(self, maps_key1, coords_key1, maps_key2, coords_key2):
+        """Yield pairwise MA-map storage and guarantee cleanup on exit."""
+        ma_store = self._prepare_pairwise_ma_maps(maps_key1, coords_key1, maps_key2, coords_key2)
+        try:
+            yield ma_store
+        finally:
+            ma_store.close()
+
+    def _make_group_ale_estimator(self, group_label, n_iters, n_cores):
+        """Build a lightweight one-sample ALE estimator around stored group inputs."""
+        coords_suffix = "1" if group_label == "group1" else "2"
+        estimator = ALE(
+            kernel_transformer=copy.deepcopy(self.kernel_transformer),
+            null_method="approximate",
+            n_iters=n_iters,
+            n_cores=n_cores,
+            mask=self.masker,
+            memory=self.memory,
+            memory_level=self.memory_level,
+        )
+        estimator.masker = self.masker
+        estimator.null_distributions_ = {}
+        estimator.inputs_ = {
+            "coordinates": self.inputs_[f"coordinates{coords_suffix}"],
+            "id": self.inputs_[f"id{coords_suffix}"],
+        }
+        return estimator
+
+    def _correct_group_main_effects(
+        self,
+        result,
+        ma_store,
+        voxel_thresh,
+        n_iters,
+        n_cores,
+        vfwe_only=False,
+    ):
+        """Apply one-sample ALE FWE correction to stored group main-effect maps."""
+        group_maps = {}
+        for group_label, ma_maps in (("group1", ma_store.group1), ("group2", ma_store.group2)):
+            temp_estimator = self._make_group_ale_estimator(group_label, n_iters, n_cores)
+            temp_estimator._ALE__n_mask_voxels = result.get_map(
+                f"stat_desc-{group_label}", return_type="array"
+            ).shape[0]
+            _compute_group_approximate_null(temp_estimator, ma_maps)
+            group_result = MetaResult(
+                estimator=temp_estimator,
+                mask=self.masker,
+                maps={
+                    "stat": result.get_map(f"stat_desc-{group_label}", return_type="array"),
+                    "p": result.get_map(f"p_desc-{group_label}", return_type="array"),
+                    "z": result.get_map(f"z_desc-{group_label}", return_type="array"),
+                    "logp": result.get_map(f"logp_desc-{group_label}", return_type="array"),
+                },
+            )
+            corr_maps, _, _ = temp_estimator.correct_fwe_montecarlo(
+                group_result,
+                voxel_thresh=voxel_thresh,
+                n_iters=n_iters,
+                n_cores=n_cores,
+                vfwe_only=vfwe_only,
+            )
+            group_maps.update(_prefix_ale_group_maps(corr_maps, group_label))
+        return group_maps
+
+    def correct_fwe_montecarlo(
+        self,
+        result,
+        voxel_thresh=0.001,
+        n_iters=None,
+        n_cores=1,
+        vfwe_only=False,
+        target="pairwise",
+    ):
+        """Perform FWE correction using the max-value permutation method."""
+        if target not in ("pairwise", "main-effects", "all"):
+            raise ValueError(
+                "target must be one of {'pairwise', 'main-effects', 'all'}; " f"got {target!r}."
+            )
+        do_pairwise = target in ("pairwise", "all")
+        do_main_effects = target in ("main-effects", "all")
+
+        stat_values = result.get_map("stat_desc-group1MinusGroup2", return_type="array")
+        z_values = result.get_map("z_desc-group1MinusGroup2", return_type="array")
+        sign = np.sign(z_values)
+        if n_iters is None:
+            n_iters = self.n_iters
+        if voxel_thresh is None:
+            voxel_thresh = self.voxel_thresh
+
+        expected = (self.n_iters, self.voxel_thresh, self.vfwe_only)
+        requested = (n_iters, voxel_thresh, vfwe_only)
+
+        has_vfwe_null = "values_level-voxel_corr-fwe_method-montecarlo" in self.null_distributions_
+        has_cluster_null = all(
+            key in self.null_distributions_
+            for key in (
+                "values_desc-size_level-cluster_corr-fwe_method-montecarlo",
+                "values_desc-mass_level-cluster_corr-fwe_method-montecarlo",
+                "summary_stat_thresh_level-voxel_corr-fwe_method-montecarlo",
+            )
+        )
+
+        use_cached = requested == expected and has_vfwe_null and (vfwe_only or has_cluster_null)
+        group_corr_maps = {}
+
+        if do_pairwise and not use_cached:
+            warnings.warn(
+                "ALESubtraction FWE correction is recomputing permutations because the "
+                "requested parameters do not match the estimator's cached null model "
+                "(or cached nulls are missing).\n"
+                f"Estimator: n_iters={expected[0]}, voxel_thresh={expected[1]}, "
+                f"vfwe_only={expected[2]}\n"
+                f"Requested: n_iters={requested[0]}, voxel_thresh={requested[1]}, "
+                f"vfwe_only={requested[2]}\n"
+                "Recomputing Monte Carlo nulls for correction.",
+                UserWarning,
+            )
+
+            iter_diff_values = None
+            tmp_path = None
+            with self._managed_pairwise_ma_store(
+                maps_key1="ma_maps1",
+                coords_key1="coordinates1",
+                maps_key2="ma_maps2",
+                coords_key2="coordinates2",
+            ) as ma_store:
+                try:
+                    if not vfwe_only:
+                        fd, tmp_path = tempfile.mkstemp(prefix="ALESubtractionFWE", suffix=".mmap")
+                        os.close(fd)
+                        iter_diff_values = np.memmap(
+                            tmp_path,
+                            dtype=DEFAULT_FLOAT_DTYPE,
+                            mode="w+",
+                            shape=(n_iters, stat_values.shape[0]),
+                        )
+
+                    vfwe_null, _, _ = self._run_null_permutations(
+                        ma_store,
+                        n_iters=n_iters,
+                        n_cores=n_cores,
+                        iter_diff_values=iter_diff_values,
+                    )
+                    self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = (
+                        vfwe_null
+                    )
+
+                    if not vfwe_only:
+                        ss_thresh, iter_max_sizes, iter_max_masses = self._compute_cluster_nulls(
+                            iter_diff_values,
+                            voxel_thresh=voxel_thresh,
+                            n_iters=n_iters,
+                        )
+                        self.null_distributions_[
+                            "summary_stat_thresh_level-voxel_corr-fwe_method-montecarlo"
+                        ] = ss_thresh
+                        self.null_distributions_[
+                            "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+                        ] = iter_max_sizes
+                        self.null_distributions_[
+                            "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+                        ] = iter_max_masses
+                    if do_main_effects:
+                        group_corr_maps = self._correct_group_main_effects(
+                            result,
+                            ma_store,
+                            voxel_thresh=voxel_thresh,
+                            n_iters=n_iters,
+                            n_cores=n_cores,
+                            vfwe_only=vfwe_only,
+                        )
+
+                finally:
+                    if isinstance(iter_diff_values, np.memmap):
+                        iter_diff_values._mmap.close()
+                    if tmp_path and os.path.isfile(tmp_path):
+                        os.remove(tmp_path)
+        maps = {}
+        if do_pairwise:
+            vfwe_null = self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"]
+            p_vfwe_vals = null_to_p(np.abs(stat_values), vfwe_null, tail="upper")
+            z_vfwe_vals = p_to_z(p_vfwe_vals, tail="two") * sign
+            logp_vfwe_vals = _p_to_logp_values(p_vfwe_vals, dtype=DEFAULT_FLOAT_DTYPE)
+
+            maps.update(
+                {
+                    "p_desc-group1MinusGroup2_level-voxel": p_vfwe_vals,
+                    "z_desc-group1MinusGroup2_level-voxel": z_vfwe_vals,
+                    "logp_desc-group1MinusGroup2_level-voxel": logp_vfwe_vals,
+                }
+            )
+
+            if not vfwe_only:
+                csfwe_null = self.null_distributions_[
+                    "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+                ]
+                cmfwe_null = self.null_distributions_[
+                    "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+                ]
+                ss_thresh = self.null_distributions_[
+                    "summary_stat_thresh_level-voxel_corr-fwe_method-montecarlo"
+                ]
+
+                stat_map = self.masker.inverse_transform(stat_values).get_fdata(
+                    dtype=DEFAULT_FLOAT_DTYPE
+                )
+                stat_map[np.abs(stat_map) <= ss_thresh] = 0
+
+                conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
+                labeled_pos, _ = ndimage.label(stat_map > 0, conn)
+                labeled_neg, _ = ndimage.label(stat_map < 0, conn)
+                if labeled_pos.size:
+                    labeled_neg[labeled_neg > 0] += labeled_pos.max()
+                labeled = labeled_pos + labeled_neg
+
+                cluster_labels, idx, cluster_sizes = np.unique(
+                    labeled, return_inverse=True, return_counts=True
+                )
+                cluster_sizes[0] = 0
+
+                cluster_masses = np.zeros(cluster_labels.shape, dtype=DEFAULT_FLOAT_DTYPE)
+                for label in cluster_labels[1:]:
+                    ss_vals = np.abs(stat_map[labeled == label]) - ss_thresh
+                    cluster_masses[label] = np.sum(ss_vals)
+
+                p_cmfwe_vals = null_to_p(cluster_masses, cmfwe_null, tail="upper")
+                p_cmfwe_map = p_cmfwe_vals[idx].reshape(labeled.shape)
+                p_cmfwe_values = np.squeeze(
+                    self.masker.transform(
+                        nib.Nifti1Image(p_cmfwe_map, self.masker.mask_img.affine)
+                    )
+                )
+
+                p_csfwe_vals = null_to_p(cluster_sizes, csfwe_null, tail="upper")
+                p_csfwe_map = p_csfwe_vals[idx].reshape(labeled.shape)
+                p_csfwe_values = np.squeeze(
+                    self.masker.transform(
+                        nib.Nifti1Image(p_csfwe_map, self.masker.mask_img.affine)
+                    )
+                )
+
+                z_cmfwe_vals = p_to_z(p_cmfwe_values, tail="two") * sign
+                logp_cmfwe_vals = _p_to_logp_values(
+                    p_cmfwe_values,
+                    dtype=DEFAULT_FLOAT_DTYPE,
+                )
+
+                z_csfwe_vals = p_to_z(p_csfwe_values, tail="two") * sign
+                logp_csfwe_vals = _p_to_logp_values(
+                    p_csfwe_values,
+                    dtype=DEFAULT_FLOAT_DTYPE,
+                )
+
+                maps.update(
+                    {
+                        "p_desc-group1MinusGroup2Mass_level-cluster": p_cmfwe_values,
+                        "z_desc-group1MinusGroup2Mass_level-cluster": z_cmfwe_vals,
+                        "logp_desc-group1MinusGroup2Mass_level-cluster": logp_cmfwe_vals,
+                        "p_desc-group1MinusGroup2Size_level-cluster": p_csfwe_values,
+                        "z_desc-group1MinusGroup2Size_level-cluster": z_csfwe_vals,
+                        "logp_desc-group1MinusGroup2Size_level-cluster": logp_csfwe_vals,
+                    }
+                )
+
+        if do_main_effects:
+            if not (do_pairwise and not use_cached):
+                with self._managed_pairwise_ma_store(
+                    maps_key1="ma_maps1",
+                    coords_key1="coordinates1",
+                    maps_key2="ma_maps2",
+                    coords_key2="coordinates2",
+                ) as ma_store:
+                    group_corr_maps = self._correct_group_main_effects(
+                        result,
+                        ma_store,
+                        voxel_thresh=voxel_thresh,
+                        n_iters=n_iters,
+                        n_cores=n_cores,
+                        vfwe_only=vfwe_only,
+                    )
+            maps.update(group_corr_maps)
+
+        if vfwe_only:
+            description = (
+                "Family-wise error correction was performed using a voxel-level Monte Carlo "
+                "procedure for ALE subtraction. "
+                "In this procedure, experiments from the two input datasets were randomly "
+                "reassigned between groups while preserving the original group sizes, and the "
+                "maximum absolute ALE-difference value was retained. "
+                f"This procedure was repeated {n_iters} times to build a null distribution of "
+                "summary statistics."
+            )
+        else:
+            description = (
+                "Family-wise error correction was performed using voxel-level and cluster-level "
+                "Monte Carlo procedures for ALE subtraction. "
+                "In this procedure, experiments from the two input datasets were randomly "
+                "reassigned between groups while preserving the original group sizes, and the "
+                "maximum absolute ALE-difference value, cluster size, and cluster mass were "
+                "retained. "
+                f"This procedure was repeated {n_iters} times to build null distributions of "
+                "summary statistics, cluster sizes, and cluster masses. "
+                f"Clusters were defined with face-wise connectivity at p < {voxel_thresh}."
+            )
+
+        if target == "main-effects":
+            description += (
+                " One-sample ALE Monte Carlo correction was also applied to the "
+                "stored group main-effect maps, without recomputing the pairwise "
+                "subtraction outputs."
+            )
+        elif target == "all":
+            description += (
+                " The same correction request also produced corrected maps for "
+                "the stored group main effects."
+            )
+
+        return maps, {}, description
+
+
+class BalancedALESubtraction(PairwiseCBMAEstimator):
+    """Balanced ALE subtraction with matched-size subsampling.
+
+    "A balanced ALE subtraction using matched-size "
+    "subsampling within groups, averaged balanced ALE differences, and Monte Carlo null "
+    "extrema from balanced resamples. :footcite:t:`Frahm_Monimu_Hoffstaedter`"
+
+    Parameters
+    ----------
+    null_method : {"random-foci", "label-permutation"}, optional
+        Method used to generate the null distribution of balanced differences.
+
+        ``"random-foci"`` (default) generates null MA maps by placing each
+        study's foci randomly within the ``mask_coverage`` while preserving
+        per-study sample-size and focus-count metadata. Because balanced
+        subsampling breaks label exchangeability, this is the statistically
+        coherent null for balanced subtractions.
+
+        ``"label-permutation"`` pools the prior-masked MA maps from both
+        groups, randomly reassigns study labels (preserving group sizes), and
+        computes the balanced difference. This directly tests group-label
+        exchangeability at the cost of assuming the spatial structure of each
+        study is fixed.
+    mask_coverage : {"gm", "brain"}, optional
+        Voxel set used both for restricting the balanced-difference computation
+        and (when ``null_method="random-foci"``) for drawing random foci.
+        ``"gm"`` uses mask-image intensity > 0.1 (the ICBM 10% GM probability
+        map); ``"brain"`` uses all non-zero voxels. Default is ``"gm"``.
+    alpha : float, optional
+        Family-wise error rate for the per-group cluster threshold used inside
+        ``_probabilistic_map`` and for the balanced-subtraction extrema
+        percentiles in ``_fit``. Default is 0.05.
+    """
+
+    def __init__(
+        self,
+        kernel_transformer=ALEKernel,
+        target_n=None,
+        n_subsamples=2500,
+        difference_iterations=1000,
+        n_iters=1000,
+        voxel_thresh=0.001,
+        null_method="random-foci",
+        mask_coverage="gm",
+        alpha=0.05,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+        n_cores=1,
+        random_state=None,
+        **kwargs,
+    ):
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
+        if null_method not in ("random-foci", "label-permutation"):
+            raise ValueError("null_method must be 'random-foci' or 'label-permutation'.")
+        if mask_coverage not in ("gm", "brain"):
+            raise ValueError("mask_coverage must be 'gm' or 'brain'.")
+        if not 0 < alpha < 1:
+            raise ValueError(f"alpha must be between 0 and 1; got {alpha}.")
+        self.target_n = target_n
+        self.n_subsamples = n_subsamples
+        self.difference_iterations = difference_iterations
+        self.n_iters = n_iters
+        self.voxel_thresh = voxel_thresh
+        self.null_method = null_method
+        self.mask_coverage = mask_coverage
+        self.alpha = alpha
+        self.n_cores = _check_ncores(n_cores)
+        self.random_state = random_state
+        self.dataset1 = None
+        self.dataset2 = None
+
+    def _generate_description(self):
+        return (
+            "A balanced ALE subtraction was performed in NiMARE using matched-size "
+            "subsampling within groups, averaged balanced ALE differences, and Monte Carlo null "
+            "extrema from balanced resamples. :footcite:t:`Frahm_Monimu_Hoffstaedter`"
+        )
+
+    def _compute_summarystat_est(self, ma_values):
+        return _compute_ale_summarystat(
+            require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
+        )
+
+    def _probabilistic_map(self, dataset, target_n, seed):
+        estimator = ALE(
+            kernel_transformer=copy.deepcopy(self.kernel_transformer),
+            null_method="approximate",
+            n_iters=self.n_iters,
+            n_cores=self.n_cores,
+            mask=self.masker,
+            memory=self.memory,
+            memory_level=self.memory_level,
+        )
+        fitted = estimator.fit(dataset)
+        ma_maps = fitted.estimator._collect_ma_maps()
+        sample_sizes, num_foci = _study_metadata_from_coordinates(estimator.inputs_["coordinates"])
+        prior_img, prior_masked = _masked_prior_columns(
+            estimator.masker, mask_coverage=self.mask_coverage
+        )
+        sample_space = np.vstack(np.where(prior_img)).T.astype(np.int32, copy=False)
+        rng = np.random.RandomState(seed)
+
+        # Precompute boolean mask once to avoid NiBabel round-trip in hot loops.
+        mask_arr = _mask_img_to_bool(estimator.masker.mask_img)
+
+        null_cluster_sizes = np.zeros(self.n_iters, dtype=np.int32)
+        for i_iter in range(self.n_iters):
+            if target_n < ma_maps.shape[0]:
+                subset = rng.permutation(ma_maps.shape[0])[:target_n]
+                subset_sample_sizes = sample_sizes[subset]
+                subset_num_foci = num_foci[subset]
+            else:
+                subset_sample_sizes = sample_sizes
+                subset_num_foci = num_foci
+            null_ma = _random_ale_ma_from_metadata(
+                estimator.masker.mask_img,
+                subset_sample_sizes,
+                subset_num_foci,
+                sample_space,
+                rng,
+            )
+            _, null_z = _ale_approximate_z_from_ma(estimator, null_ma)
+            _, null_cluster_sizes[i_iter] = _threshold_z_clusters(
+                null_z,
+                estimator.masker,
+                voxel_thresh=self.voxel_thresh,
+                cluster_size_threshold=None,
+                mask_arr=mask_arr,
+            )
+
+        cluster_threshold = np.percentile(null_cluster_sizes, 100.0 * (1.0 - self.alpha))
+        samples = generate_subset_schedule(
+            ma_maps.shape[0],
+            target_n,
+            n_samples=self.n_subsamples,
+            random_state=seed,
+            exhaustive_limit=10000,
+        )
+        prob_map = np.zeros(ma_maps.shape[1], dtype=DEFAULT_FLOAT_DTYPE)
+        for sample in samples:
+            _, z_values = _ale_approximate_z_from_ma(estimator, ma_maps[sample, :])
+            z_values, _ = _threshold_z_clusters(
+                z_values,
+                estimator.masker,
+                voxel_thresh=self.voxel_thresh,
+                cluster_size_threshold=cluster_threshold,
+                mask_arr=mask_arr,
+            )
+            prob_map += (z_values > 0).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        return (
+            (prob_map / len(samples)).astype(DEFAULT_FLOAT_DTYPE, copy=False),
+            ma_maps,
+            prior_masked,
+            sample_sizes,
+            num_foci,
+        )
+
+    def _mean_balanced_difference(self, ma_maps1, ma_maps2, target_n, n_iters, rng):
+        diff = np.zeros(ma_maps1.shape[1], dtype=DEFAULT_FLOAT_DTYPE)
+        for _ in range(n_iters):
+            idx1 = rng.choice(ma_maps1.shape[0], size=target_n, replace=False)
+            idx2 = rng.choice(ma_maps2.shape[0], size=target_n, replace=False)
+            diff += _compute_ale_summarystat(ma_maps1[idx1, :]) - _compute_ale_summarystat(
+                ma_maps2[idx2, :]
+            )
+        return (diff / float(n_iters)).astype(DEFAULT_FLOAT_DTYPE, copy=False)
+
+    def _to_prior_dense(self, ma_maps, prior_masked):
+        """Materialize prior-masked MA maps in dense form for balanced null extrema."""
+        prior_ma = ma_maps[:, prior_masked]
+        if sp_sparse.isspmatrix(prior_ma):
+            return prior_ma.toarray().astype(DEFAULT_FLOAT_DTYPE, copy=False)
+        return np.asarray(prior_ma, dtype=DEFAULT_FLOAT_DTYPE)
+
+    def _null_balanced_extrema(
+        self,
+        sample_sizes1,
+        num_foci1,
+        sample_sizes2,
+        num_foci2,
+        prior_masked,
+        target_n,
+        rng,
+        sample_space=None,
+        prior_ma1=None,
+        prior_ma2=None,
+    ):
+        """Generate one null balanced-difference extremum pair.
+
+        Dispatches to random-foci or label-permutation based on
+        ``self.null_method``. ``sample_space`` must be supplied for
+        ``"random-foci"``; ``prior_ma1`` / ``prior_ma2`` must be supplied for
+        ``"label-permutation"``.
+        """
+        if self.null_method == "random-foci":
+            null_ma1 = _random_ale_ma_from_metadata(
+                self.masker.mask_img, sample_sizes1, num_foci1, sample_space, rng
+            )
+            null_ma2 = _random_ale_ma_from_metadata(
+                self.masker.mask_img, sample_sizes2, num_foci2, sample_space, rng
+            )
+            null_diff = self._mean_balanced_difference(
+                self._to_prior_dense(null_ma1, prior_masked),
+                self._to_prior_dense(null_ma2, prior_masked),
+                target_n,
+                self.difference_iterations,
+                rng,
+            )
+        else:  # "label-permutation"
+            n1 = prior_ma1.shape[0]
+            pooled = np.vstack([prior_ma1, prior_ma2])
+            perm = rng.permutation(pooled.shape[0])
+            null_diff = self._mean_balanced_difference(
+                pooled[perm[:n1], :],
+                pooled[perm[n1:], :],
+                target_n,
+                self.difference_iterations,
+                rng,
+            )
+        return float(np.min(null_diff)), float(np.max(null_diff))
+
+    def _fit(self, dataset1, dataset2):
+        self.dataset1 = dataset1
+        self.dataset2 = dataset2
+        self.masker = self.masker or dataset1.masker
+        self.null_distributions_ = {}
+
+        target_n = _resolve_balanced_target_n(dataset1, dataset2, self.target_n)
+
+        prob1, ma_maps1, prior_masked1, sample_sizes1, num_foci1 = self._probabilistic_map(
+            dataset1, target_n, self.random_state
+        )
+        prob2, ma_maps2, prior_masked2, sample_sizes2, num_foci2 = self._probabilistic_map(
+            dataset2,
+            target_n,
+            None if self.random_state is None else self.random_state + 1,
+        )
+        prior_masked = prior_masked1 & prior_masked2
+        prior_ma1 = self._to_prior_dense(ma_maps1, prior_masked)
+        prior_ma2 = self._to_prior_dense(ma_maps2, prior_masked)
+
+        # Pre-compute sample_space once; only needed for random-foci null.
+        if self.null_method == "random-foci":
+            prior_img, _ = _masked_prior_columns(self.masker, mask_coverage=self.mask_coverage)
+            sample_space = np.vstack(np.where(prior_img)).T.astype(np.int32, copy=False)
+        else:
+            sample_space = None
+
+        rng = np.random.RandomState(self.random_state)
+        observed_prior = self._mean_balanced_difference(
+            prior_ma1,
+            prior_ma2,
+            target_n,
+            self.difference_iterations,
+            rng,
+        )
+        observed = np.zeros(ma_maps1.shape[1], dtype=DEFAULT_FLOAT_DTYPE)
+        observed[prior_masked] = observed_prior
+
+        min_null = np.zeros(self.n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+        max_null = np.zeros(self.n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+        for i_iter in range(self.n_iters):
+            min_null[i_iter], max_null[i_iter] = self._null_balanced_extrema(
+                sample_sizes1,
+                num_foci1,
+                sample_sizes2,
+                num_foci2,
+                prior_masked,
+                target_n,
+                rng,
+                sample_space=sample_space,
+                prior_ma1=prior_ma1,
+                prior_ma2=prior_ma2,
+            )
+
+        half_alpha = self.alpha / 2.0
+        low_threshold = np.percentile(min_null, 100.0 * half_alpha)
+        high_threshold = np.percentile(max_null, 100.0 * (1.0 - half_alpha))
+        smallest = 1.0 / float(self.n_iters)
+        p_map = np.ones(observed.shape[0], dtype=DEFAULT_FLOAT_DTYPE)
+        z_map = np.zeros(observed.shape[0], dtype=DEFAULT_FLOAT_DTYPE)
+
+        pos_mask = observed > high_threshold
+        neg_mask = observed < low_threshold
+        if np.any(pos_mask):
+            p_pos = np.maximum(
+                smallest,
+                np.array(
+                    [np.mean(max_null >= diff) for diff in observed[pos_mask]],
+                    dtype=DEFAULT_FLOAT_DTYPE,
+                ),
+            )
+            pos_idx = np.flatnonzero(pos_mask)
+            p_map[pos_idx] = p_pos
+            z_map[pos_idx] = p_to_z(p_pos, tail="one")
+        if np.any(neg_mask):
+            p_neg = np.maximum(
+                smallest,
+                np.array(
+                    [np.mean(min_null <= diff) for diff in observed[neg_mask]],
+                    dtype=DEFAULT_FLOAT_DTYPE,
+                ),
+            )
+            neg_idx = np.flatnonzero(neg_mask)
+            p_map[neg_idx] = np.minimum(p_map[neg_idx], p_neg)
+            z_map[neg_idx] = -p_to_z(p_neg, tail="one")
+
+        maps = {
+            "stat_desc-balancedGroup1MinusGroup2": observed.astype(
+                DEFAULT_FLOAT_DTYPE, copy=False
+            ),
+            "p_desc-balancedGroup1MinusGroup2": p_map,
+            "z_desc-balancedGroup1MinusGroup2": z_map.astype(DEFAULT_FLOAT_DTYPE, copy=False),
+            "logp_desc-balancedGroup1MinusGroup2": _p_to_logp_values(
+                p_map,
+                dtype=DEFAULT_FLOAT_DTYPE,
+            ),
+            "stat_desc-conjunction": np.minimum(prob1, prob2).astype(
+                DEFAULT_FLOAT_DTYPE, copy=False
+            ),
+            "prob_desc-group1": prob1,
+            "prob_desc-group2": prob2,
+        }
+        self.null_distributions_["values_desc-balancedMinNull_corr-none"] = min_null
+        self.null_distributions_["values_desc-balancedMaxNull_corr-none"] = max_null
+        return maps, {}, self._description_text()
+
+
+class SCALE(CBMAEstimator):
+    r"""Specific coactivation likelihood estimation.
+
+    This method was originally introduced in :footcite:t:`langner2014meta`.
+
+    .. versionchanged:: 0.14.0
+
+        Use direct empirical voxelwise permutation p-values and add voxel-level Monte Carlo
+        family-wise error correction.
+
+    .. versionchanged:: 0.14.0
+
+        Stream permutation exceedance counts instead of retaining a full voxelwise permutation
+        null matrix in the main SCALE fit path.
+
+    .. versionchanged:: 0.2.1
+
+        - New parameters: ``memory`` and ``memory_level`` for memory caching.
+
+    .. versionchanged:: 0.0.12
+
+        - Remove unused parameters ``voxel_thresh`` and ``memory_limit``.
+        - Use memmapped array for null distribution.
+        - Use a 4D sparse array for modeled activation maps.
+
+    .. versionchanged:: 0.0.10
+
+        Replace ``ijk`` with ``xyz``. This should be easier for users to collect.
+
+    Parameters
+    ----------
+    xyz : (N x 3) :obj:`numpy.ndarray`
+        Numpy array with XYZ coordinates.
+        Voxels are rows and x, y, z (meaning coordinates) values are the three columnns.
+
+        .. versionchanged:: 0.0.12
+
+            This parameter was previously incorrectly labeled as "optional" and indicated that
+            it supports tab-delimited files, which it does not (yet).
+
+    n_iters : int, default=5000
+        Number of iterations for statistical inference. Default: 5000
+    n_cores : int, default=1
+        Number of processes to use for meta-analysis. If -1, use all available cores.
+        Default: 1
+    kernel_transformer : :obj:`~nimare.meta.kernel.KernelTransformer`, optional
+        Kernel with which to convolve coordinates from dataset. Default is
+        :class:`~nimare.meta.kernel.ALEKernel`.
+    memory : instance of :class:`joblib.Memory`, :obj:`str`, or :class:`pathlib.Path`
+        Used to cache the output of a function. By default, no caching is done.
+        If a :obj:`str` is given, it is the path to the caching directory.
+    memory_level : :obj:`int`, default=0
+        Rough estimator of the amount of memory used by caching.
+        Higher value means more memory for caching. Zero means no caching.
+    **kwargs
+        Keyword arguments. Arguments for the kernel_transformer can be assigned here,
+        with the prefix '\kernel__' in the variable name.
+
+    Attributes
+    ----------
+    masker : :class:`~nilearn.maskers.NiftiMasker` or similar
+        Masker object.
+    inputs_ : :obj:`dict`
+        Inputs to the Estimator. For CBMA estimators, there is only one key: coordinates.
+        This is an edited version of the dataset's coordinates DataFrame.
+    null_distributions_ : :obj:`dict` of :class:`numpy.ndarray`
+        Null distribution information.
+        Entries are added to this attribute if and when the corresponding method is applied.
+
+        .. important::
+            The voxel-wise null distributions used by this Estimator are very large, so they are
+            not retained as Estimator attributes.
+
+        If :meth:`correct_fwe_montecarlo` is applied:
+
+            -   ``values_level-voxel_corr-fwe_method-montecarlo``: The maximum summary statistic
+                value from each SCALE permutation. An array of shape ``(n_iters,)``.
+
+    Notes
+    -----
+    SCALE uses voxel-specific empirical null distributions derived from the supplied reference
+    coordinate pool. NiMARE therefore supports voxel-level Monte Carlo FWE correction for SCALE,
+    but does not implement cluster-level Monte Carlo FWE correction.
+
+    References
+    ----------
+    .. footbibliography::
+    """
+
+    def __init__(
+        self,
+        xyz,
+        n_iters=5000,
+        n_cores=1,
+        kernel_transformer=ALEKernel,
+        memory=Memory(location=None, verbose=0),
+        memory_level=0,
+        **kwargs,
+    ):
+        if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
+            LGR.warning(
+                f"The KernelTransformer being used ({kernel_transformer}) is not optimized "
+                f"for the {type(self).__name__} algorithm. "
+                "Expect suboptimal performance and beware bugs."
+            )
+
+        # Add kernel transformer attribute and process keyword arguments
+        super().__init__(
+            kernel_transformer=kernel_transformer,
+            memory=memory,
+            memory_level=memory_level,
+            **kwargs,
+        )
+
+        if not isinstance(xyz, np.ndarray):
+            raise TypeError(f"Parameter 'xyz' must be a numpy.ndarray, not a {type(xyz)}")
+        elif xyz.ndim != 2:
+            raise ValueError(f"Parameter 'xyz' must be a 2D array, but has {xyz.ndim} dimensions")
+        elif xyz.shape[1] != 3:
+            raise ValueError(f"Parameter 'xyz' must have 3 columns, but has shape {xyz.shape}")
+
+        self.xyz = xyz
+        self.n_iters = n_iters
+        self.n_cores = _check_ncores(n_cores)
+
+    def _generate_description(self):
+        if (
+            hasattr(self.kernel_transformer, "sample_size")  # Only kernels that allow sample sizes
+            and (self.kernel_transformer.sample_size is None)
+            and (self.kernel_transformer.fwhm is None)
+        ):
+            # Get the total number of subjects in the inputs.
+            n_subjects = (
+                self.inputs_["coordinates"].groupby("id")["sample_size"].mean().values.sum()
+            )
+            sample_size_str = f", with a total of {int(n_subjects)} participants"
+        else:
+            sample_size_str = ""
+
+        description = (
+            "A specific coactivation likelihood estimation (SCALE) meta-analysis "
+            "\\citep{langner2014meta} was performed with NiMARE "
+            f"{__version__} "
+            "(RRID:SCR_017398; \\citealt{Salo2023}), with "
+            f"{self.n_iters} iterations. "
+            f"The input dataset included {self.inputs_['coordinates'].shape[0]} foci from "
+            f"{len(self.inputs_['id'])} experiments{sample_size_str}."
+        )
+        return description
+
+    def _fit(self, dataset):
+        """Perform specific coactivation likelihood estimation meta-analysis on dataset.
+
+        Parameters
+        ----------
+        dataset : :obj:`~nimare.dataset.Dataset`
+            Dataset to analyze.
+
+        .. warning::
+            Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
+            in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
+        """
+        self.dataset = dataset
+        self.masker = self.masker or dataset.masker
+        self.null_distributions_ = {}
+
+        ma_values = _collect_masked_ma_maps(self, coords_key="coordinates", maps_key="ma_maps")
+
+        stat_values = self._compute_summarystat_est(ma_values)
+
+        del ma_values
+
+        iter_df, voxel_ijk, permutation_args, sampled_voxel_idx = self._prepare_permutations(
+            self.n_iters
+        )
+        exceedance_counts = np.zeros(stat_values.shape[0], dtype=np.uint32)
+
+        for iter_values in self._iterate_permuted_stats(
+            sampled_voxel_idx, voxel_ijk, iter_df, permutation_args, self.n_cores
+        ):
+            exceedance_counts += iter_values >= stat_values
+
+        p_values, z_values = self._scale_to_p(stat_values, exceedance_counts)
+        logp_values = _p_to_logp_values(
+            p_values,
+            dtype=DEFAULT_FLOAT_DTYPE,
+            copy=False,
+        )
+
+        # Write out unthresholded value images
+        maps = {"stat": stat_values, "logp": logp_values, "z": z_values}
+        description = self._description_text()
+
+        return maps, {}, description
+
+    def _compute_summarystat_est(self, data):
+        """Generate SCALE ALE summary statistics from contrast data."""
+        if isinstance(data, pd.DataFrame):
+            ma_values = self.kernel_transformer.transform(
+                data, masker=self.masker, return_type="sparse"
+            )
+        elif isinstance(data, np.ndarray) or sp_sparse.isspmatrix(data):
+            ma_values = data
+        else:
+            raise ValueError(f"Unsupported data type '{type(data)}'")
+
+        return _compute_ale_summarystat(
+            require_masked_csr(ma_values) if sp_sparse.isspmatrix(ma_values) else ma_values
+        )
+
+    def _prepare_permutations(self, n_iters):
+        """Prepare shared SCALE permutation inputs."""
+        iter_df = self.inputs_["coordinates"].copy()
+        voxel_ijk = mm2vox(self.xyz, self.masker.mask_img.affine).astype(np.int32, copy=False)
+        permutation_args = self._prepare_permutation_args(iter_df)
+        sampled_voxel_idx = np.random.choice(voxel_ijk.shape[0], size=(iter_df.shape[0], n_iters))
+        return iter_df, voxel_ijk, permutation_args, sampled_voxel_idx
+
+    def _prepare_permutation_args(self, coordinates):
+        """Prepare static ALE kernel inputs for SCALE permutations."""
+        if not isinstance(self.kernel_transformer, ALEKernel):
+            return None
+
+        use_dict = True
+        kernel = None
+        if self.kernel_transformer.sample_size is not None:
+            sample_sizes = self.kernel_transformer.sample_size
+            use_dict = False
+        elif self.kernel_transformer.fwhm is None:
+            sample_sizes = coordinates["sample_size"].values
+        else:
+            sample_sizes = None
+
+        if self.kernel_transformer.fwhm is not None:
+            _, kernel = get_ale_kernel(self.masker.mask_img, fwhm=self.kernel_transformer.fwhm)
+            use_dict = False
+
+        return {
+            "exp_idx": coordinates["id"].values,
+            "sample_sizes": sample_sizes,
+            "use_dict": use_dict,
+            "kernel": kernel,
+        }
+
+    def _scale_to_p(self, stat_values, scale_values):
+        """Compute p- and z-values from voxelwise exceedance counts.
+
+        Parameters
+        ----------
+        stat_values : (V) array
+            ALE values. Included for API consistency with other estimators.
+        scale_values : (V,) array
+            Voxelwise exceedance counts from SCALE permutations.
+
+        Returns
+        -------
+        p_values : (V) array
+        z_values : (V) array
+        """
+        del stat_values
+        p_values = scale_values.astype(DEFAULT_FLOAT_DTYPE, copy=False) / self.n_iters
+        smallest_value = 1.0 / self.n_iters
+        p_values = np.maximum(smallest_value, np.minimum(p_values, 1.0 - smallest_value)).astype(
+            DEFAULT_FLOAT_DTYPE,
+            copy=False,
+        )
+        z_values = p_to_z(p_values, tail="one")
+        return p_values, z_values
+
+    def _run_permutation(self, sampled_voxel_idx, voxel_ijk, iter_df, permutation_args=None):
+        """Run a single random SCALE permutation from sampled voxel-row indices."""
+        if permutation_args is not None:
+            ma_values, _, _ = compute_ale_ma(
+                self.masker.mask_img,
+                voxel_ijk[sampled_voxel_idx, :],
+                kernel=permutation_args["kernel"],
+                exp_idx=permutation_args["exp_idx"],
+                sample_sizes=permutation_args["sample_sizes"],
+                use_dict=permutation_args["use_dict"],
+            )
+            return _compute_ale_summarystat(ma_values)
+
+        iter_df = iter_df.copy()
+        iter_df[["i", "j", "k"]] = voxel_ijk[sampled_voxel_idx, :]
+        stat_values = self._compute_summarystat_est(iter_df)
+        return stat_values
+
+    def _iterate_permuted_stats(
+        self, sampled_voxel_idx, voxel_ijk, iter_df, permutation_args, n_cores
+    ):
+        """Yield permuted SCALE statistic maps for a fixed permutation schedule."""
+        if n_cores == 1:
+            for i_iter in tqdm(
+                range(sampled_voxel_idx.shape[1]), total=sampled_voxel_idx.shape[1]
+            ):
+                yield self._run_permutation(
+                    sampled_voxel_idx[:, i_iter],
+                    voxel_ijk,
+                    iter_df,
+                    permutation_args=permutation_args,
+                )
+            return
+
+        parallel_kwargs = {
+            "return_as": "generator",
+            "n_jobs": n_cores,
+        }
+        yield from tqdm(
+            Parallel(**parallel_kwargs)(
+                delayed(self._run_permutation)(
+                    sampled_voxel_idx[:, i_iter],
+                    voxel_ijk,
+                    iter_df,
+                    permutation_args=permutation_args,
+                )
+                for i_iter in range(sampled_voxel_idx.shape[1])
+            ),
+            total=sampled_voxel_idx.shape[1],
+        )
+
+    def correct_fwe_montecarlo(
+        self,
+        result,
+        voxel_thresh=None,
+        n_iters=5000,
+        n_cores=1,
+        vfwe_only=True,
+    ):
+        """Perform voxel-level Monte Carlo FWE correction for SCALE.
+
+        Notes
+        -----
+        This method implements only voxel-level max-statistic correction.
+        Cluster-level Monte Carlo FWE correction is not implemented for SCALE because the method
+        uses voxel-specific empirical null distributions rather than a single global null model.
+        """
+        if not vfwe_only:
+            raise NotImplementedError(
+                "SCALE only supports voxel-level Monte Carlo FWE correction. "
+                "Cluster-level FWE is not implemented."
+            )
+        if voxel_thresh is not None:
+            LGR.warning(
+                "Ignoring voxel_thresh for SCALE Monte Carlo FWE correction; "
+                "only voxel-level max-stat inference is supported."
+            )
+
+        stat_values = result.get_map("stat", return_type="array")
+        iter_df, voxel_ijk, permutation_args, sampled_voxel_idx = self._prepare_permutations(
+            n_iters
+        )
+        fwe_voxel_max = np.empty(n_iters, dtype=DEFAULT_FLOAT_DTYPE)
+        n_cores = _check_ncores(n_cores)
+
+        for i_iter, iter_values in enumerate(
+            self._iterate_permuted_stats(
+                sampled_voxel_idx, voxel_ijk, iter_df, permutation_args, n_cores
+            )
+        ):
+            fwe_voxel_max[i_iter] = np.max(iter_values)
+
+        p_vfwe_values = null_to_p(stat_values, fwe_voxel_max, tail="upper")
+        z_vfwe_values = p_to_z(p_vfwe_values, tail="one")
+        logp_vfwe_values = _p_to_logp_values(
+            p_vfwe_values,
+            dtype=DEFAULT_FLOAT_DTYPE,
+            copy=False,
+        )
+
+        self.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"] = fwe_voxel_max
+
+        maps = {
+            "logp_level-voxel": logp_vfwe_values,
+            "z_level-voxel": z_vfwe_values,
+        }
+        description = (
+            "Family-wise error correction was performed for SCALE using a voxel-level Monte Carlo "
+            "max-statistic procedure. "
+            "In this procedure, null datasets are generated by replacing dataset coordinates with "
+            "coordinates randomly sampled from the SCALE reference coordinate pool, and the "
+            f"maximum ALE summary statistic is retained. This procedure was repeated {n_iters} "
+            "times to build a voxel-level FWE null distribution. "
+            "Cluster-level Monte Carlo FWE correction is not implemented for SCALE."
+        )
+        return maps, {}, description

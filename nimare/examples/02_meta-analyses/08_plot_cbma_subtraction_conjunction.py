@@ -14,7 +14,7 @@ A common project workflow with two meta-analytic samples involves the following:
 
 1. Run a within-sample meta-analysis of the first sample.
 2. Characterize/summarize the results of the first meta-analysis.
-3. Run a within-sample meta-analysis of the second sample.
+3. Run a within-sample meta-analysis of the second sample.1
 4. Characterize/summarize the results of the second meta-analysis.
 5. Compare the two samples with a subtraction analysis.
 6. Compare the two within-sample meta-analyses with a conjunction analysis.
@@ -22,7 +22,7 @@ A common project workflow with two meta-analytic samples involves the following:
 
 import os
 from pathlib import Path
-
+from nimare.diagnostics import FocusCounter, Jackknife
 import matplotlib.pyplot as plt
 from nilearn.plotting import plot_stat_map
 
@@ -125,20 +125,7 @@ knowledge_count_table = knowledge_diagnostic_results.tables[
 ]
 knowledge_count_table.head(10)
 
-###############################################################################
-from nimare.diagnostics import Jackknife
 
-jackknife = Jackknife(
-    target_image="z_desc-size_level-cluster_corr-FWE_method-montecarlo",
-    voxel_thresh=None,
-)
-related_diagnostic_results = jackknife.transform(related_corrected_results)
-related_jackknife_table = related_diagnostic_results.tables[
-    "z_desc-size_level-cluster_corr-FWE_method-montecarlo_diag-Jackknife_tab-counts_tail-positive"
-]
-related_jackknife_table.head(10)
-
-###############################################################################
 # Subtraction analysis
 # -----------------------------------------------------------------------------
 # Typically, one would use at least 5000 iterations for a subtraction analysis.
@@ -197,7 +184,6 @@ run_reports(res_sub, html_dir)
 #
 #     <iframe src="./08_subtraction/report.html" style="border:none;" seamless="seamless" \
 #        width="100%" height="1000px"></iframe>
-
 ###############################################################################
 # Conjunction analysis
 # -----------------------------------------------------------------------------

@@ -1,0 +1,32 @@
+{
+    "name": "nimare",
+    "entities": [
+        {
+            "name": "datatype",
+            "pattern": "([a-zA-Z0-9]+)[_.]"
+        },
+        {
+            "name": "description",
+            "pattern": "[_/\\\\]+desc-([a-zA-Z0-9]+)"
+        },
+        {
+            "name": "level",
+            "pattern": "[_/\\\\]+level-([a-zA-Z]+)"
+        },
+        {
+            "name": "correction",
+            "pattern": "[_/\\\\]+corr-([A-Z]+)"
+        },
+        {
+            "name": "method",
+            "pattern": "[_/\\\\]+method-([a-zA-Z0-9]+)"
+        },
+        {
+            "name": "extension",
+            "pattern": "[._]*[a-zA-Z0-9]*?(\\.[^/\\\\]+)$"
+        }
+    ],
+    "default_path_patterns": [
+        "{datatype<{datatype}>}[_desc-{description}][_level-{level<cluster|voxel>}][_corr-{correction<FDR|FWE>}][_method-{method}]{extension<.nii|.nii.gz|.json>|.nii.gz}"
+    ]
+}

@@ -1,0 +1,422 @@
+"""Test nimare.meta.mkda (KDA-based meta-analytic algorithms)."""
+
+import logging
+
+import numpy as np
+import pytest
+from scipy import sparse as sp_sparse
+from scipy import special
+
+import nimare
+from nimare.correct import FDRCorrector, FWECorrector
+from nimare.meta import KDA, MKDAChi2, MKDADensity, MKDAKernel
+
+
+def test_MKDADensity_kernel_instance_with_kwargs(testdata_cbma):
+    """Smoke test for MKDADensity with a kernel transformer object.
+
+    With kernel arguments provided, which should result in a warning, but the original
+    object's parameters should remain untouched.
+    """
+    kern = MKDAKernel(r=2)
+    meta = MKDADensity(kern, kernel__r=6, null_method="montecarlo", n_iters=10)
+
+    assert meta.kernel_transformer.get_params().get("r") == 2
+
+
+def test_MKDADensity_kernel_class(testdata_cbma):
+    """Smoke test for MKDADensity with a kernel transformer class."""
+    meta = MKDADensity(MKDAKernel, kernel__r=5, null_method="montecarlo", n_iters=10)
+    results = meta.fit(testdata_cbma)
+    assert isinstance(results, nimare.results.MetaResult)
+
+
+def test_MKDADensity_kernel_instance(testdata_cbma):
+    """Smoke test for MKDADensity with a kernel transformer object."""
+    kern = MKDAKernel(r=5)
+    meta = MKDADensity(kern, null_method="montecarlo", n_iters=10)
+    results = meta.fit(testdata_cbma)
+    assert isinstance(results, nimare.results.MetaResult)
+
+
+def test_MKDADensity_approximate_null(testdata_cbma_full, caplog):
+    """Smoke test for MKDADensity with the "approximate" null_method."""
+    meta = MKDADensity(null="approximate")
+    results = meta.fit(testdata_cbma_full)
+    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=1)
+    corr_results = corr.transform(results)
+    assert isinstance(results, nimare.results.MetaResult)
+    assert isinstance(results.description_, str)
+    assert isinstance(corr_results, nimare.results.MetaResult)
+    assert isinstance(corr_results.description_, str)
+
+    # Check that the vfwe_only option does not work
+    corr2 = FWECorrector(
+        method="montecarlo",
+        voxel_thresh=0.001,
+        n_iters=5,
+        n_cores=1,
+        vfwe_only=True,
+    )
+    with caplog.at_level(logging.WARNING):
+        corr_results2 = corr2.transform(results)
+
+    assert "Running permutations from scratch." in caplog.text
+
+    assert isinstance(corr_results2, nimare.results.MetaResult)
+    assert "logp_level-voxel_corr-FWE_method-montecarlo" in corr_results2.maps
+    assert "logp_desc-size_level-cluster_corr-FWE_method-montecarlo" not in corr_results2.maps
+
+
+def test_MKDADensity_montecarlo_null(testdata_cbma):
+    """Smoke test for MKDADensity with the "montecarlo" null_method."""
+    meta = MKDADensity(null_method="montecarlo", n_iters=10)
+    results = meta.fit(testdata_cbma)
+    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=1)
+    corr_results = corr.transform(results)
+    assert isinstance(results, nimare.results.MetaResult)
+    assert isinstance(results.description_, str)
+    assert isinstance(corr_results, nimare.results.MetaResult)
+    assert isinstance(corr_results.description_, str)
+
+    # Check that the vfwe_only option works
+    corr2 = FWECorrector(
+        method="montecarlo",
+        voxel_thresh=0.001,
+        n_iters=5,
+        n_cores=1,
+        vfwe_only=True,
+    )
+    corr_results2 = corr2.transform(results)
+    assert isinstance(corr_results2, nimare.results.MetaResult)
+    assert "logp_level-voxel_corr-FWE_method-montecarlo" in corr_results2.maps
+    assert "logp_desc-size_level-cluster_corr-FWE_method-montecarlo" not in corr_results2.maps
+
+
+def test_MKDAChi2_fdr(testdata_cbma):
+    """Smoke test for MKDAChi2."""
+    meta = MKDAChi2()
+    results = meta.fit(testdata_cbma, testdata_cbma)
+    assert "z_desc-group1" in results.maps
+    assert "z_desc-group2" in results.maps
+    assert "p_desc-group1" in results.maps
+    assert "p_desc-group2" in results.maps
+    corr = FDRCorrector(method="indep", alpha=0.001)
+    corr_results = corr.transform(results)
+    assert isinstance(results, nimare.results.MetaResult)
+    assert isinstance(results.description_, str)
+    assert isinstance(corr_results, nimare.results.MetaResult)
+    assert isinstance(corr_results.description_, str)
+    assert "z_desc-group1_level-voxel_corr-FDR_method-indep" in corr_results.maps
+    assert "z_desc-group2_level-voxel_corr-FDR_method-indep" in corr_results.maps
+
+    methods = FDRCorrector.inspect(results)
+    assert methods == ["indep", "negcorr"]
+
+
+def test_MKDAChi2_directional_inference_maps_gate_association_results(testdata_cbma_full):
+    """Directional inference maps should zero unsupported MKDAChi2 association voxels."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+
+    baseline = MKDAChi2(generate_description=False).fit(dset1, dset2)
+    baseline_z = baseline.get_map("z_desc-association", return_type="array")
+    pos_map = (baseline_z > 0).astype(np.int8)
+    neg_map = (baseline_z < 0).astype(np.int8)
+
+    masked = MKDAChi2(generate_description=False).fit(
+        dset1,
+        dset2,
+        inference_map1=pos_map,
+        inference_map2=neg_map,
+    )
+
+    z_values = masked.get_map("z_desc-association", return_type="array")
+    p_values = masked.get_map("p_desc-association", return_type="array")
+    union = (pos_map > 0) | (neg_map > 0)
+
+    assert np.all(z_values[~union] == 0)
+    np.testing.assert_allclose(p_values[~union], 1.0)
+    assert np.all(z_values[pos_map <= 0] <= 0)
+    assert np.all(z_values[neg_map <= 0] >= 0)
+
+
+def test_MKDAChi2_fwe_1core(testdata_cbma):
+    """Smoke test for MKDAChi2."""
+    meta = MKDAChi2()
+    results = meta.fit(testdata_cbma, testdata_cbma)
+    valid_methods = FWECorrector.inspect(results)
+    assert "montecarlo" in valid_methods
+
+    corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
+    corr_results = corr.transform(results)
+    assert isinstance(results, nimare.results.MetaResult)
+    assert isinstance(results.description_, str)
+    assert isinstance(corr_results, nimare.results.MetaResult)
+    assert isinstance(corr_results.description_, str)
+    assert (
+        "values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo"
+        in corr_results.estimator.null_distributions_.keys()
+    )
+    assert (
+        "values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo"
+        in corr_results.estimator.null_distributions_.keys()
+    )
+    assert (
+        "values_desc-group2_level-voxel_corr-fwe_method-montecarlo"
+        in corr_results.estimator.null_distributions_.keys()
+    )
+    assert "z_desc-group1_level-voxel_corr-FWE_method-montecarlo" in corr_results.maps
+    assert "z_desc-group2_level-voxel_corr-FWE_method-montecarlo" in corr_results.maps
+
+
+def test_MKDAChi2_fwe_null_method_default_and_label_permutation(testdata_cbma):
+    """MKDAChi2 should default to label-permutation FWE and run the label-permutation path."""
+    meta = MKDAChi2()
+    assert meta.fwe_null_method == "label-permutation"
+
+    results = meta.fit(testdata_cbma, testdata_cbma)
+    corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
+    corr_results = corr.transform(results)
+
+    assert (
+        "values_desc-pAgF_level-voxel_corr-fwe_method-montecarlo"
+        in corr_results.estimator.null_distributions_.keys()
+    )
+    assert (
+        "values_desc-pFgA_level-voxel_corr-fwe_method-montecarlo"
+        in corr_results.estimator.null_distributions_.keys()
+    )
+
+
+def test_MKDAChi2_invalid_fwe_null_method():
+    """MKDAChi2 should reject unsupported FWE null methods."""
+    with pytest.raises(
+        ValueError, match="fwe_null_method must be 'label-permutation' or 'random-foci'"
+    ):
+        MKDAChi2(fwe_null_method="invalid")
+
+
+def test_MKDAChi2_precomputed_ma_maps_do_not_leak_between_fit_calls(testdata_cbma):
+    """Precomputed pairwise MA maps should not affect a later fit."""
+    testdata_cbma = testdata_cbma.copy()
+    ids = sorted(testdata_cbma.ids)
+    first_dset1 = testdata_cbma.slice(ids[:4])
+    first_dset2 = testdata_cbma.slice(ids[4:8])
+    second_dset1 = testdata_cbma.slice(ids[8:12])
+    second_dset2 = testdata_cbma.slice(ids[12:16])
+
+    meta = MKDAChi2(generate_description=False)
+    precomputed1 = meta.kernel_transformer.transform(first_dset1, return_type="sparse")
+    precomputed2 = meta.kernel_transformer.transform(first_dset2, return_type="sparse")
+
+    meta.fit(first_dset1, first_dset2, ma_maps1=precomputed1, ma_maps2=precomputed2)
+    second_result = meta.fit(second_dset1, second_dset2)
+    expected = MKDAChi2(generate_description=False).fit(second_dset1, second_dset2)
+
+    assert "ma_maps1" not in meta.inputs_
+    assert "ma_maps2" not in meta.inputs_
+    assert np.array_equal(
+        second_result.get_map("chi2_desc-association", return_type="array"),
+        expected.get_map("chi2_desc-association", return_type="array"),
+    )
+
+
+def test_MKDAChi2_fwe_2core(testdata_cbma):
+    """Smoke test for MKDAChi2."""
+    meta = MKDAChi2()
+    results = meta.fit(testdata_cbma, testdata_cbma)
+    assert isinstance(results, nimare.results.MetaResult)
+    corr_2core = FWECorrector(method="montecarlo", n_iters=5, n_cores=2)
+    cres_2core = corr_2core.transform(results)
+    assert isinstance(cres_2core, nimare.results.MetaResult)
+
+
+def test_KDA_approximate_null(testdata_cbma):
+    """Smoke test for KDA with approximate null and FWE correction."""
+    meta = KDA(null_method="approximate")
+    results = meta.fit(testdata_cbma)
+    corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
+    corr_results = corr.transform(results)
+    assert isinstance(results, nimare.results.MetaResult)
+    assert isinstance(results.description_, str)
+    assert results.get_map("p", return_type="array").dtype == np.float32
+    assert isinstance(corr_results, nimare.results.MetaResult)
+    assert isinstance(corr_results.description_, str)
+    assert (
+        corr_results.get_map(
+            "logp_level-voxel_corr-FWE_method-montecarlo", return_type="array"
+        ).dtype
+        == np.float32
+    )
+    assert (
+        corr_results.get_map(
+            "logp_desc-size_level-cluster_corr-FWE_method-montecarlo", return_type="array"
+        ).dtype
+        == np.float32
+    )
+    assert (
+        corr_results.get_map(
+            "logp_desc-mass_level-cluster_corr-FWE_method-montecarlo", return_type="array"
+        ).dtype
+        == np.float32
+    )
+
+
+def test_KDA_fwe_1core(testdata_cbma):
+    """Smoke test for KDA with montecarlo null and FWE correction."""
+    meta = KDA(null_method="montecarlo", n_iters=10)
+    results = meta.fit(testdata_cbma)
+    corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
+    corr_results = corr.transform(results)
+    assert isinstance(results, nimare.results.MetaResult)
+    assert results.get_map("p", return_type="array").dtype == np.float32
+    assert isinstance(corr_results, nimare.results.MetaResult)
+    assert (
+        corr_results.get_map(
+            "logp_level-voxel_corr-FWE_method-montecarlo", return_type="array"
+        ).dtype
+        == np.float32
+    )
+    assert (
+        corr_results.get_map(
+            "logp_desc-mass_level-cluster_corr-FWE_method-montecarlo", return_type="array"
+        ).dtype
+        == np.float32
+    )
+    assert (
+        corr_results.get_map(
+            "logp_desc-size_level-cluster_corr-FWE_method-montecarlo", return_type="array"
+        ).dtype
+        == np.float32
+    )
+
+
+def test_MKDADensity_approximate_montecarlo_convergence(testdata_cbma_full):
+    """Evaluate convergence between approximate and montecarlo null methods in MKDA."""
+    est_a = MKDADensity(null_method="approximate")
+    n_iters = 10
+    est_e = MKDADensity(null_method="montecarlo", n_iters=n_iters)
+    res_a = est_a.fit(testdata_cbma_full)
+    res_e = est_e.fit(testdata_cbma_full)
+    # Get smallest p-value above 0 from the montecarlo estimator; above this,
+    # the two should converge reasonably closely.
+    min_p = 1 / n_iters
+    p_idx = res_e.maps["p"] > min_p
+    p_approximate = res_a.maps["p"][p_idx]
+    p_montecarlo = res_e.maps["p"][p_idx]
+    # Correlation must be near unity and mean difference should be tiny
+    assert np.corrcoef(p_approximate, p_montecarlo)[0, 1] > 0.98
+    assert (p_approximate - p_montecarlo).mean() < 1e-3
+
+
+def test_MKDADensity_masked_csr_kernel_matches_masked_array(testdata_cbma):
+    """Direct masked-CSR MKDA kernel output should match the dense masked array."""
+    meta = MKDADensity(generate_description=False)
+    csr = meta.kernel_transformer.transform(testdata_cbma, return_type="sparse")
+    dense = meta.kernel_transformer.transform(testdata_cbma, return_type="array")
+
+    assert sp_sparse.isspmatrix_csr(csr)
+    np.testing.assert_allclose(csr.toarray(), dense)
+
+
+def test_MKDADensity_csr_summarystat_matches_dense(testdata_cbma):
+    """Masked-CSR MKDA summary stats should match the dense path."""
+    meta = MKDADensity(generate_description=False)
+    meta.masker = testdata_cbma.masker
+    meta._collect_inputs(testdata_cbma)
+    meta._preprocess_input(testdata_cbma)
+
+    ma_maps = meta.kernel_transformer.transform(testdata_cbma, return_type="sparse")
+    dense = meta.kernel_transformer.transform(testdata_cbma, return_type="array")
+    meta.weight_vec_ = meta._compute_weights(ma_maps)
+
+    csr_summary = meta._compute_summarystat_est(ma_maps)
+    dense_summary = meta._compute_summarystat_est(dense)
+    np.testing.assert_allclose(csr_summary, dense_summary)
+
+
+def test_MKDADensity_precomputed_masked_csr_matches_generated_fast_path(testdata_cbma):
+    """MKDADensity should accept precomputed masked-CSR MA maps."""
+    baseline = MKDADensity(null_method="approximate", generate_description=False).fit(
+        testdata_cbma
+    )
+
+    meta = MKDADensity(null_method="approximate", generate_description=False)
+    meta.masker = testdata_cbma.masker
+    meta._collect_inputs(testdata_cbma)
+    meta._preprocess_input(testdata_cbma)
+    precomputed = meta.kernel_transformer.transform(testdata_cbma, return_type="sparse")
+
+    result = MKDADensity(null_method="approximate", generate_description=False).fit(
+        testdata_cbma,
+        ma_maps=precomputed,
+    )
+
+    np.testing.assert_allclose(
+        result.get_map("stat", return_type="array"),
+        baseline.get_map("stat", return_type="array"),
+    )
+    np.testing.assert_allclose(
+        result.get_map("p", return_type="array"),
+        baseline.get_map("p", return_type="array"),
+    )
+
+
+def test_KDA_approximate_montecarlo_convergence(testdata_cbma_full):
+    """Evaluate convergence between approximate and montecarlo null methods in KDA."""
+    est_a = KDA(null_method="approximate")
+    n_iters = 10
+    est_e = KDA(null_method="montecarlo", n_iters=n_iters)
+    res_a = est_a.fit(testdata_cbma_full)
+    res_e = est_e.fit(testdata_cbma_full)
+    # Get smallest p-value above 0 from the montecarlo estimator; above this,
+    # the two should converge reasonably closely.
+    min_p = 1 / n_iters
+    p_idx = res_e.maps["p"] > min_p
+    p_approximate = res_a.maps["p"][p_idx]
+    p_montecarlo = res_e.maps["p"][p_idx]
+    # Correlation must be near unity and mean difference should be tiny
+    assert np.corrcoef(p_approximate, p_montecarlo)[0, 1] > 0.98
+    assert (p_approximate - p_montecarlo).mean() < 1e-3
+
+
+def test_MKDAChi2_logp_maps_follow_the_chi_squared_tail(testdata_cbma_full):
+    """The reported -log10(p) must track the chi-squared statistic, not a floor.
+
+    The old code floored the p-value at machine epsilon, capping every -log10(p) at 15.65
+    from a chi-squared of 71 on, and then stored it through a float32 p-value, capping it
+    again at 44.85.
+    """
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:])
+
+    results = MKDAChi2(generate_description=False).fit(dset1, dset2)
+
+    for name in ("uniformity", "association", "group2"):
+        chi2_values = results.get_map(f"chi2_desc-{name}", return_type="array")
+        logp_values = results.get_map(f"logp_desc-{name}", return_type="array")
+        # The exact one-dof upper tail, computed independently of the implementation.
+        expected = -(np.log(2.0) + special.log_ndtr(-np.sqrt(chi2_values))) / np.log(10.0)
+        assert np.allclose(logp_values, expected, rtol=1e-5), name
+
+    deepest = results.get_map("logp_desc-group2", return_type="array").max()
+    assert deepest > 44.85, "used to be capped, first at 15.65 and then at 44.85"
+    # The p map cannot follow it there, which is why the logp map exists.
+    assert results.get_map("p_desc-group2", return_type="array").min() == np.float32(1e-45)
+
+
+def test_MKDAChi2_z_maps_are_unchanged_by_the_log_space_tail(testdata_cbma_full):
+    """z is sqrt(chi2) with a sign and never went through a p-value, so it must not move."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:])
+
+    results = MKDAChi2(generate_description=False).fit(dset1, dset2)
+
+    for name in ("uniformity", "association", "group2"):
+        z_values = results.get_map(f"z_desc-{name}", return_type="array")
+        chi2_values = results.get_map(f"chi2_desc-{name}", return_type="array")
+        # Voxels with no directional evidence get a sign of zero, so compare where there is one.
+        signed = z_values != 0
+        assert signed.any(), name
+        assert np.allclose(np.abs(z_values[signed]), np.sqrt(chi2_values[signed]), rtol=1e-6), name

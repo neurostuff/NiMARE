@@ -1,0 +1,82 @@
+"""
+
+.. _metas_cbma_vs_ibma:
+
+================================================
+Compare image and coordinate based meta-analyses
+================================================
+
+Run IBMAs and CBMAs on a toy Studyset, then compare the results qualitatively.
+
+Collection of NIDM-Results packs downloaded from Neurovault collection 1425,
+uploaded by Dr. Camille Maumet.
+"""
+
+import os
+
+import pandas as pd
+from nilearn.plotting import plot_stat_map
+
+from nimare.extract import download_nidm_pain
+from nimare.meta.cbma import ALE
+from nimare.meta.ibma import DerSimonianLaird
+from nimare.nimads import Studyset
+from nimare.transforms import ImagesToCoordinates, ImageTransformer
+from nimare.utils import get_resource_path
+
+###############################################################################
+# Download data
+# -----------------------------------------------------------------------------
+dset_dir = download_nidm_pain()
+
+###############################################################################
+# Load Studyset
+# -----------------------------------------------------------------------------
+studyset_file = os.path.join(get_resource_path(), "nidm_pain_studyset.json")
+studyset = Studyset(studyset_file, target="mni152_2mm")
+studyset = studyset.update_path(dset_dir)
+
+# Calculate missing statistical images from the available stats.
+xformer = ImageTransformer(target=["varcope"])
+studyset = xformer.transform(studyset)
+
+# create coordinates from statistical maps
+coord_gen = ImagesToCoordinates(merge_strategy="fill")
+studyset = coord_gen.transform(studyset)
+
+###############################################################################
+# ALE (CBMA)
+# -----------------------------------------------------------------------------
+meta_cbma = ALE()
+cbma_results = meta_cbma.fit(studyset)
+plot_stat_map(
+    cbma_results.get_map("z"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+)
+
+###############################################################################
+# DerSimonian-Laird (IBMA)
+# -----------------------------------------------------------------------------
+meta_ibma = DerSimonianLaird()
+ibma_results = meta_ibma.fit(studyset)
+plot_stat_map(
+    ibma_results.get_map("z"),
+    cut_coords=[0, 0, -8],
+    draw_cross=False,
+    cmap="RdBu_r",
+    symmetric_cbar=True,
+)
+
+###############################################################################
+# Compare CBMA and IBMA Z-maps
+# -----------------------------------------------------------------------------
+stat_df = pd.DataFrame(
+    {
+        "CBMA": cbma_results.get_map("z", return_type="array"),
+        "IBMA": ibma_results.get_map("z", return_type="array"),
+    }
+)
+print(stat_df.corr())

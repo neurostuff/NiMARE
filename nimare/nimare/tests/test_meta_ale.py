@@ -1,0 +1,1519 @@
+"""Test nimare.meta.ale (ALE/SCALE meta-analytic algorithms)."""
+
+import copy
+import os
+import pickle
+
+import nibabel as nib
+import numpy as np
+import pytest
+from nilearn.maskers import NiftiLabelsMasker
+from scipy import ndimage
+from scipy import sparse as sp_sparse
+
+import nimare
+from nimare.correct import FDRCorrector, FWECorrector
+from nimare.generate import create_coordinate_dataset
+from nimare.meta import ale
+from nimare.meta.cbma import io_utils, pairwise_utils
+from nimare.meta.utils import _calculate_cluster_measures
+from nimare.results import MetaResult
+from nimare.stats import null_to_p, nullhist_to_p
+from nimare.tests.utils import get_test_data_path
+from nimare.transforms import p_to_z
+from nimare.utils import mm2vox, vox2mm
+
+SIMULATED_ALE_REGRESSION_DATASETS = [
+    pytest.param(
+        {
+            "foci": 3,
+            "foci_percentage": "60%",
+            "fwhm": 10.0,
+            "sample_size": 20,
+            "n_studies": 20,
+            "n_noise_foci": 10,
+            "seed": 101,
+            "space": "MNI",
+        },
+        id="small",
+    ),
+    pytest.param(
+        {
+            "foci": 5,
+            "foci_percentage": "60%",
+            "fwhm": 10.0,
+            "sample_size": 30,
+            "n_studies": 40,
+            "n_noise_foci": 20,
+            "seed": 102,
+            "space": "MNI",
+        },
+        id="medium",
+    ),
+]
+
+
+def _dense_ale_reference(ma_values):
+    """Reference ALE approximate-null implementation using dense masked arrays."""
+    stat_values = 1.0 - np.prod(1.0 - ma_values, axis=0)
+
+    inv_step_size = 100000
+    step_size = 1 / inv_step_size
+    max_ma_values = np.max(ma_values, axis=1)
+    max_ma_values = np.ceil(max_ma_values * inv_step_size) / inv_step_size
+    max_poss_ale = 1.0 - np.prod(1.0 - max_ma_values, axis=0)
+    hist_bins = np.round(np.arange(0, max_poss_ale + (1.5 * step_size), step_size), 5)
+
+    bin_centers = hist_bins
+    bin_edges = np.append(bin_centers, bin_centers[-1] + step_size)
+    n_mask_voxels = ma_values.shape[1]
+
+    ale_hist = None
+    for study_ma_values in ma_values:
+        n_nonzero_voxels = np.count_nonzero(study_ma_values)
+        n_zero_voxels = n_mask_voxels - n_nonzero_voxels
+
+        exp_hist = np.histogram(
+            study_ma_values[study_ma_values > 0], bins=bin_edges, density=False
+        )[0].astype(float)
+        exp_hist[0] += n_zero_voxels
+        exp_hist /= exp_hist.sum()
+
+        if ale_hist is None:
+            ale_hist = exp_hist.copy()
+            continue
+
+        ale_idx = np.where(ale_hist > 0)[0]
+        exp_idx = np.where(exp_hist > 0)[0]
+        ale_scores = 1 - np.outer((1 - bin_centers[exp_idx]), (1 - bin_centers[ale_idx])).ravel()
+        score_idx = np.floor(ale_scores * inv_step_size).astype(int)
+        probabilities = np.outer(exp_hist[exp_idx], ale_hist[ale_idx]).ravel()
+        ale_hist = np.zeros(ale_hist.shape)
+        np.add.at(ale_hist, score_idx, probabilities)
+
+    p_values = nullhist_to_p(stat_values, ale_hist, hist_bins)
+    z_values = p_to_z(p_values, tail="one")
+    return {
+        "stat": stat_values,
+        "p": p_values,
+        "z": z_values,
+        "hist_bins": hist_bins,
+        "hist": ale_hist,
+    }
+
+
+def _prepare_ale_inputs(dataset, kernel_transformer=None):
+    """Prepare ALE estimator inputs without running a full fit."""
+    meta = ale.ALE(
+        kernel_transformer=kernel_transformer or ale.ALEKernel(),
+        null_method="approximate",
+        generate_description=False,
+    )
+    meta.masker = dataset.masker
+    meta._collect_inputs(dataset)
+    meta._preprocess_input(dataset)
+    return meta
+
+
+def _study_ma_histogram_reference(
+    study_ma_values, n_zero_voxels, mask_voxel_recip, inv_step_size, n_bins
+):
+    """Reference implementation for ALE study-histogram binning."""
+    exp_hist = np.zeros(n_bins, dtype=np.float64)
+    for value in study_ma_values:
+        idx = int(np.floor(value * inv_step_size))
+        idx = min(max(idx, 0), n_bins - 1)
+        exp_hist[idx] += 1.0
+
+    exp_hist[0] += n_zero_voxels
+    exp_hist *= mask_voxel_recip
+    return exp_hist
+
+
+def _calculate_cluster_measures_reference(arr3d, threshold, conn, tail="upper"):
+    """Reference implementation for cluster size/mass measurement."""
+    arr3d = arr3d.copy()
+    if tail == "upper":
+        arr3d[arr3d <= threshold] = 0
+    else:
+        arr3d[np.abs(arr3d) <= threshold] = 0
+
+    labeled_arr3d, _ = ndimage.label(arr3d > 0, conn)
+
+    if tail == "two":
+        n_positive_clusters = np.max(labeled_arr3d)
+        temp_labeled_arr3d, _ = ndimage.label(arr3d < 0, conn)
+        temp_labeled_arr3d[temp_labeled_arr3d > 0] += n_positive_clusters
+        labeled_arr3d = labeled_arr3d + temp_labeled_arr3d
+
+    clust_sizes = np.bincount(labeled_arr3d.ravel())
+
+    max_mass = 0.0
+    for unique_val in np.arange(1, clust_sizes.shape[0]):
+        ss_vals = np.abs(arr3d[labeled_arr3d == unique_val]) - threshold
+        max_mass = np.maximum(max_mass, np.sum(ss_vals))
+
+    clust_sizes = clust_sizes[1:]
+    max_size = np.max(clust_sizes) if clust_sizes.size else 0
+    return max_size, max_mass
+
+
+def _alediff_to_p_voxel_reference(i_voxel, stat_value, voxel_null):
+    """Reference scalar ALE subtraction p-value implementation."""
+    p_value = null_to_p(stat_value, voxel_null, tail="two", symmetric=False)
+    return p_value, i_voxel
+
+
+def _alediff_to_p_values_reference(stat_values, iter_diff_values, chunk_size):
+    """Reference chunked ALE subtraction p-value/sign implementation."""
+    n_iters, n_voxels = iter_diff_values.shape
+    smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
+    p_values = np.empty(n_voxels, dtype=np.float32)
+    diff_signs = np.empty(n_voxels, dtype=np.float32)
+
+    for start in range(0, n_voxels, chunk_size):
+        stop = min(start + chunk_size, n_voxels)
+        null_chunk = np.asarray(iter_diff_values[:, start:stop])
+        stat_chunk = np.asarray(stat_values[start:stop], dtype=null_chunk.dtype)
+
+        left_tail = 1.0 - (np.count_nonzero(null_chunk < stat_chunk[None, :], axis=0) / n_iters)
+        right_tail = 1.0 - (np.count_nonzero(null_chunk > stat_chunk[None, :], axis=0) / n_iters)
+        p_chunk = 2.0 * np.minimum(left_tail, right_tail)
+        p_values[start:stop] = np.maximum(
+            smallest_value, np.minimum(p_chunk, 1.0 - smallest_value)
+        ).astype(np.float32, copy=False)
+        diff_signs[start:stop] = np.sign(stat_chunk - np.median(null_chunk, axis=0))
+
+    return p_values, diff_signs
+
+
+def _scale_to_p_values_reference(stat_values, scale_values, chunk_size):
+    """Reference chunked SCALE empirical p-value implementation."""
+    n_voxels = stat_values.shape[0]
+    n_iters = scale_values.shape[0]
+    p_values = np.empty(n_voxels, dtype=np.float32)
+    smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
+
+    for start in range(0, n_voxels, chunk_size):
+        stop = min(start + chunk_size, n_voxels)
+        null_chunk = np.asarray(scale_values[:, start:stop])
+        p_chunk = np.count_nonzero(null_chunk >= stat_values[None, start:stop], axis=0).astype(
+            np.float32, copy=False
+        )
+        p_chunk /= n_iters
+        p_values[start:stop] = np.maximum(
+            smallest_value, np.minimum(p_chunk, 1.0 - smallest_value)
+        )
+
+    return p_values
+
+
+def _scale_counts_to_p_values_reference(exceedance_counts, n_iters):
+    """Reference streamed-count SCALE p-value implementation."""
+    p_values = exceedance_counts.astype(np.float32, copy=False) / n_iters
+    smallest_value = np.maximum(np.finfo(float).eps, 1.0 / n_iters)
+    return np.maximum(smallest_value, np.minimum(p_values, 1.0 - smallest_value)).astype(
+        np.float32,
+        copy=False,
+    )
+
+
+def _update_ale_histogram_reference(
+    ale_idx, ale_probs, exp_idx, exp_probs, bin_centers, inv_step_size, n_bins
+):
+    """Reference implementation for ALE histogram updates."""
+    out = np.zeros(n_bins, dtype=np.float64)
+    for i_exp in range(exp_idx.shape[0]):
+        exp_center = bin_centers[exp_idx[i_exp]]
+        exp_prob = exp_probs[i_exp]
+        exp_one_minus = 1.0 - exp_center
+        for i_ale in range(ale_idx.shape[0]):
+            score = 1.0 - exp_one_minus * (1.0 - bin_centers[ale_idx[i_ale]])
+            score_idx = int(np.floor(score * inv_step_size))
+            score_idx = min(max(score_idx, 0), n_bins - 1)
+            out[score_idx] += exp_prob * ale_probs[i_ale]
+    return out
+
+
+def test_ALE_missing_sample_sizes_raises_informative_error(testdata_cbma_full):
+    """Raise a helpful error listing ids when sample sizes are missing."""
+    dset = copy.deepcopy(testdata_cbma_full)
+    bad_id = dset.coordinates["id"].iloc[0]
+    dset.metadata.loc[dset.metadata["id"] == bad_id, "sample_sizes"] = None
+
+    with pytest.raises(ValueError) as excinfo:
+        ale.ALE(null_method="approximate").fit(dset)
+
+    msg = str(excinfo.value).lower()
+    assert "sample size" in msg
+    assert bad_id.lower() in msg
+
+
+def test_cbma_raises_without_masker():
+    """CBMA estimators require a masker to run."""
+    dset_dict = {
+        "study1": {
+            "contrasts": {"contrast1": {"coords": {"space": "MNI", "x": [0], "y": [0], "z": [0]}}}
+        }
+    }
+    dset = nimare.dataset.Dataset(dset_dict, target=None, mask=None)
+
+    with pytest.raises(ValueError, match=r"masker is required"):
+        ale.ALE(null_method="approximate").fit(dset)
+
+
+def test_cbma_raises_on_mixed_coordinate_spaces(mni_mask):
+    """CBMA estimators reject datasets with mixed coordinate spaces."""
+    dset_dict = {
+        "study1": {
+            "contrasts": {"contrast1": {"coords": {"space": "MNI", "x": [0], "y": [0], "z": [0]}}}
+        },
+        "study2": {
+            "contrasts": {"contrast1": {"coords": {"space": "TAL", "x": [0], "y": [0], "z": [0]}}}
+        },
+    }
+    dset = nimare.dataset.Dataset(dset_dict, target=None, mask=None)
+
+    with pytest.raises(ValueError, match=r"Mixed coordinate spaces detected"):
+        ale.ALE(null_method="approximate", mask=mni_mask).fit(dset)
+
+
+def test_ALE_approximate_null_unit(testdata_cbma, tmp_path_factory):
+    """Unit test for ALE with approximate null_method."""
+    tmpdir = tmp_path_factory.mktemp("test_ALE_approximate_null_unit")
+    est_out_file = os.path.join(tmpdir, "est_file.pkl.gz")
+    res_out_file = os.path.join(tmpdir, "res_file.pkl.gz")
+
+    meta = ale.ALE(null_method="approximate")
+    results = meta.fit(testdata_cbma)
+    assert "stat" in results.maps.keys()
+    assert "p" in results.maps.keys()
+    assert "z" in results.maps.keys()
+    assert isinstance(results, nimare.results.MetaResult)
+    assert isinstance(results.get_map("z", return_type="image"), nib.Nifti1Image)
+    assert isinstance(results.get_map("z", return_type="array"), np.ndarray)
+    results_copy = results.copy()
+    assert results_copy != results
+    assert isinstance(results, nimare.results.MetaResult)
+
+    # Test saving/loading estimator
+    for compress in [True, False]:
+        meta.save(est_out_file, compress=compress)
+        assert os.path.isfile(est_out_file)
+        meta2 = ale.ALE.load(est_out_file, compressed=compress)
+        assert isinstance(meta2, ale.ALE)
+        if compress:
+            with pytest.raises(pickle.UnpicklingError):
+                ale.ALE.load(est_out_file, compressed=(not compress))
+        else:
+            with pytest.raises(OSError):
+                ale.ALE.load(est_out_file, compressed=(not compress))
+
+    # Test saving/loading MetaResult object
+    for compress in [True, False]:
+        results.save(res_out_file, compress=compress)
+        assert os.path.isfile(res_out_file)
+        res2 = MetaResult.load(res_out_file, compressed=compress)
+        assert isinstance(res2, MetaResult)
+        if compress:
+            with pytest.raises(pickle.UnpicklingError):
+                MetaResult.load(res_out_file, compressed=(not compress))
+        else:
+            with pytest.raises(OSError):
+                MetaResult.load(res_out_file, compressed=(not compress))
+
+    # Test MCC methods
+    # Monte Carlo FWE
+    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=-1)
+    corr_results = corr.transform(results)
+    assert isinstance(corr_results, nimare.results.MetaResult)
+    assert isinstance(corr_results.description_, str)
+    assert "z_desc-size_level-cluster_corr-FWE_method-montecarlo" in corr_results.maps.keys()
+    assert "z_desc-mass_level-cluster_corr-FWE_method-montecarlo" in corr_results.maps.keys()
+    assert "z_level-voxel_corr-FWE_method-montecarlo" in corr_results.maps.keys()
+    assert "logp_desc-size_level-cluster_corr-FWE_method-montecarlo" in corr_results.maps.keys()
+    assert "logp_desc-mass_level-cluster_corr-FWE_method-montecarlo" in corr_results.maps.keys()
+    assert "logp_level-voxel_corr-FWE_method-montecarlo" in corr_results.maps.keys()
+
+    assert isinstance(
+        corr_results.get_map(
+            "z_desc-size_level-cluster_corr-FWE_method-montecarlo", return_type="image"
+        ),
+        nib.Nifti1Image,
+    )
+    assert isinstance(
+        corr_results.get_map(
+            "z_desc-size_level-cluster_corr-FWE_method-montecarlo", return_type="array"
+        ),
+        np.ndarray,
+    )
+    assert isinstance(
+        corr_results.get_map(
+            "z_desc-mass_level-cluster_corr-FWE_method-montecarlo", return_type="image"
+        ),
+        nib.Nifti1Image,
+    )
+    assert isinstance(
+        corr_results.get_map(
+            "z_desc-mass_level-cluster_corr-FWE_method-montecarlo", return_type="array"
+        ),
+        np.ndarray,
+    )
+
+    # Bonferroni FWE
+    corr = FWECorrector(method="bonferroni")
+    corr_results = corr.transform(results)
+    assert isinstance(corr_results, nimare.results.MetaResult)
+    assert isinstance(corr_results.description_, str)
+    assert isinstance(
+        corr_results.get_map("z_corr-FWE_method-bonferroni", return_type="image"), nib.Nifti1Image
+    )
+    assert isinstance(
+        corr_results.get_map("z_corr-FWE_method-bonferroni", return_type="array"), np.ndarray
+    )
+
+    # FDR
+    corr = FDRCorrector(method="indep", alpha=0.05)
+    corr_results = corr.transform(results)
+    assert isinstance(corr_results, nimare.results.MetaResult)
+    assert isinstance(corr_results.description_, str)
+    assert isinstance(
+        corr_results.get_map("z_corr-FDR_method-indep", return_type="image"), nib.Nifti1Image
+    )
+    assert isinstance(
+        corr_results.get_map("z_corr-FDR_method-indep", return_type="array"), np.ndarray
+    )
+
+
+def test_ALE_precomputed_ma_maps_do_not_leak_between_fit_calls(testdata_cbma):
+    """Precomputed MA maps from one fit should not affect a later fit."""
+    testdata_cbma = testdata_cbma.copy()
+    ids = sorted(testdata_cbma.ids)
+    first_dset = testdata_cbma.slice(ids[:8])
+    second_dset = testdata_cbma.slice(ids[8:16])
+
+    meta = ale.ALE(null_method="approximate", generate_description=False)
+    precomputed = meta.kernel_transformer.transform(first_dset, return_type="sparse")
+
+    meta.fit(first_dset, ma_maps=precomputed)
+    second_result = meta.fit(second_dset)
+    expected = ale.ALE(null_method="approximate", generate_description=False).fit(second_dset)
+
+    assert "ma_maps" not in meta.inputs_
+    assert np.array_equal(
+        second_result.get_map("stat", return_type="array"),
+        expected.get_map("stat", return_type="array"),
+    )
+
+
+@pytest.mark.parametrize("dataset_kwargs", SIMULATED_ALE_REGRESSION_DATASETS)
+def test_ALE_fit_matches_dense_reference(dataset_kwargs):
+    """Approximate-null ALE fit should match the dense masked-array reference path."""
+    _, dataset = create_coordinate_dataset(**dataset_kwargs)
+    meta = ale.ALE(null_method="approximate")
+    result = meta.fit(dataset)
+
+    ma_values = meta.kernel_transformer.transform(dataset, return_type="array")
+    expected = _dense_ale_reference(ma_values)
+
+    np.testing.assert_allclose(
+        result.get_map("stat", return_type="array"),
+        expected["stat"],
+        rtol=1e-5,
+        atol=5e-7,
+    )
+    p_values = result.get_map("p", return_type="array")
+    p_diff = np.abs(p_values - expected["p"])
+    assert np.corrcoef(p_values, expected["p"])[0, 1] > 0.999
+    assert p_diff.mean() < 1e-4
+    assert np.quantile(p_diff, 0.99) < 5e-4
+
+    z_values = result.get_map("z", return_type="array")
+    z_diff = np.abs(z_values - expected["z"])
+    assert np.corrcoef(z_values, expected["z"])[0, 1] > 0.999
+    assert z_diff.mean() < 1e-4
+    assert np.quantile(z_diff, 0.99) < 5e-4
+
+
+def test_ALE_csr_summarystat_matches_dense_reference():
+    """CSR summary-stat computation should match the dense ALE implementation."""
+    _, dataset = create_coordinate_dataset(
+        foci=3,
+        foci_percentage="60%",
+        fwhm=10.0,
+        sample_size=20,
+        n_studies=20,
+        n_noise_foci=10,
+        seed=404,
+        space="MNI",
+    )
+    meta = ale.ALE(null_method="approximate")
+    meta.masker = dataset.masker
+
+    csr = meta.kernel_transformer.transform(dataset, return_type="sparse")
+    dense = meta.kernel_transformer.transform(dataset, return_type="array")
+
+    actual = meta._compute_summarystat_est(csr)
+    expected = 1.0 - np.prod(1.0 - dense, axis=0)
+
+    np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=5e-7)
+
+
+def test_ALE_csr_approximate_null_matches_dense_reference():
+    """CSR approximate-null histogram construction should match the dense reference path."""
+    _, dataset = create_coordinate_dataset(
+        foci=3,
+        foci_percentage="60%",
+        fwhm=10.0,
+        sample_size=20,
+        n_studies=20,
+        n_noise_foci=10,
+        seed=505,
+        space="MNI",
+    )
+    meta = ale.ALE(null_method="approximate")
+    meta.masker = dataset.masker
+    meta.null_distributions_ = {}
+
+    csr = meta.kernel_transformer.transform(dataset, return_type="sparse")
+    _ = meta._compute_summarystat_est(csr)
+    meta._determine_histogram_bins(csr)
+    meta._compute_null_approximate(csr)
+
+    dense = meta.kernel_transformer.transform(dataset, return_type="array")
+    expected = _dense_ale_reference(dense)
+
+    np.testing.assert_allclose(
+        meta.null_distributions_["histogram_bins"],
+        expected["hist_bins"],
+        rtol=1e-5,
+        atol=5e-7,
+    )
+    np.testing.assert_allclose(
+        meta.null_distributions_["histweights_corr-none_method-approximate"],
+        expected["hist"],
+        rtol=1e-5,
+        atol=3e-4,
+    )
+
+
+def test_ALE_study_ma_histogram_edge_bins():
+    """Study histogram binning should match the legacy floor-based implementation at edges."""
+    inv_step_size = 10.0
+    n_bins = 11
+    n_zero_voxels = 3
+    mask_voxel_recip = 1.0 / (n_zero_voxels + 6)
+    study_ma_values = np.array(
+        [0.0, 0.099999999, 0.1, 0.199999999, 0.9, 0.999999999],
+        dtype=np.float64,
+    )
+
+    actual = ale._study_ma_histogram(
+        study_ma_values,
+        n_zero_voxels,
+        mask_voxel_recip,
+        inv_step_size,
+        n_bins,
+    )
+    expected = _study_ma_histogram_reference(
+        study_ma_values,
+        n_zero_voxels,
+        mask_voxel_recip,
+        inv_step_size,
+        n_bins,
+    )
+
+    np.testing.assert_allclose(actual, expected)
+
+
+def test_ALE_update_histogram_edge_bins():
+    """Histogram updates should match the legacy floor-based implementation at bin edges."""
+    bin_centers = np.linspace(0.0, 1.0, 11, dtype=np.float64)
+    inv_step_size = 10.0
+    n_bins = bin_centers.shape[0]
+    ale_idx = np.array([0, 1, 9, 10], dtype=np.int64)
+    exp_idx = np.array([0, 1, 9, 10], dtype=np.int64)
+    ale_probs = np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float64)
+    exp_probs = np.array([0.4, 0.3, 0.2, 0.1], dtype=np.float64)
+    out = np.empty(n_bins, dtype=np.float64)
+
+    actual = ale._update_ale_histogram(
+        ale_idx,
+        ale_probs,
+        exp_idx,
+        exp_probs,
+        bin_centers,
+        inv_step_size,
+        n_bins,
+        out,
+    )
+    expected = _update_ale_histogram_reference(
+        ale_idx,
+        ale_probs,
+        exp_idx,
+        exp_probs,
+        bin_centers,
+        inv_step_size,
+        n_bins,
+    )
+
+    np.testing.assert_allclose(actual, expected)
+
+
+@pytest.mark.parametrize(
+    ("kernel_transformer", "sample_sizes"),
+    [
+        pytest.param(ale.ALEKernel(fwhm=10.0), None, id="fixed-fwhm"),
+        pytest.param(ale.ALEKernel(), [20] * 6, id="repeated-sample-sizes"),
+        pytest.param(ale.ALEKernel(), [18, 22, 26, 30, 34, 38], id="mixed-sample-sizes"),
+    ],
+)
+def test_ALE_masked_csr_kernel_matches_masked_array(kernel_transformer, sample_sizes):
+    """Direct masked-CSR ALE kernel output should match the dense masked-array reference."""
+    _, dataset = create_coordinate_dataset(
+        foci=4,
+        foci_percentage="60%",
+        fwhm=10.0,
+        sample_size=20,
+        n_studies=6,
+        n_noise_foci=10,
+        seed=606,
+        space="MNI",
+    )
+    if sample_sizes is not None:
+        sample_size_by_id = dict(zip(dataset.ids, sample_sizes))
+        dataset.metadata["sample_sizes"] = dataset.metadata["id"].map(sample_size_by_id)
+
+    meta = _prepare_ale_inputs(dataset, kernel_transformer=kernel_transformer)
+    csr = meta.kernel_transformer.transform(dataset, return_type="sparse")
+    dense = meta.kernel_transformer.transform(dataset, return_type="array")
+
+    assert sp_sparse.isspmatrix_csr(csr)
+    assert csr.shape == dense.shape
+    np.testing.assert_allclose(csr.toarray(), dense, rtol=1e-5, atol=5e-7)
+    np.testing.assert_allclose(
+        np.asarray(csr.max(axis=1).todense()).ravel(), dense.max(axis=1), rtol=1e-5, atol=5e-7
+    )
+
+
+def test_ALE_precomputed_ma_maps_match_generated_fast_path():
+    """Precomputed ALE MA maps should match the generated masked-CSR fast path."""
+    _, dataset = create_coordinate_dataset(
+        foci=3,
+        foci_percentage="60%",
+        fwhm=10.0,
+        sample_size=20,
+        n_studies=20,
+        n_noise_foci=10,
+        seed=707,
+        space="MNI",
+    )
+    expected = ale.ALE(null_method="approximate", generate_description=False).fit(dataset)
+
+    precomputed = ale.ALE(null_method="approximate").kernel_transformer.transform(
+        dataset,
+        return_type="sparse",
+    )
+
+    result = ale.ALE(null_method="approximate", generate_description=False).fit(
+        dataset,
+        ma_maps=precomputed,
+    )
+
+    np.testing.assert_allclose(
+        result.get_map("stat", return_type="array"),
+        expected.get_map("stat", return_type="array"),
+        rtol=1e-5,
+        atol=5e-7,
+    )
+    np.testing.assert_allclose(
+        result.get_map("p", return_type="array"),
+        expected.get_map("p", return_type="array"),
+        rtol=1e-5,
+        atol=5e-7,
+    )
+
+
+def test_ALE_montecarlo_null_unit(testdata_cbma, tmp_path_factory):
+    """Unit test for ALE with an montecarlo null_method.
+
+    This test is run with low-memory kernel transformation as well.
+    """
+    tmpdir = tmp_path_factory.mktemp("test_ALE_montecarlo_null_unit")
+    out_file = os.path.join(tmpdir, "file.pkl.gz")
+
+    meta = ale.ALE(null_method="montecarlo", n_iters=10)
+    results = meta.fit(testdata_cbma)
+    assert isinstance(results.description_, str)
+    assert "stat" in results.maps.keys()
+    assert "p" in results.maps.keys()
+    assert "z" in results.maps.keys()
+    assert isinstance(results, nimare.results.MetaResult)
+    assert isinstance(results.get_map("z", return_type="image"), nib.Nifti1Image)
+    assert isinstance(results.get_map("z", return_type="array"), np.ndarray)
+    results_copy = results.copy()
+    assert results_copy != results
+    assert isinstance(results, nimare.results.MetaResult)
+
+    # Test saving/loading
+    meta.save(out_file, compress=True)
+    assert os.path.isfile(out_file)
+    meta2 = ale.ALE.load(out_file, compressed=True)
+    assert isinstance(meta2, ale.ALE)
+    with pytest.raises(pickle.UnpicklingError):
+        ale.ALE.load(out_file, compressed=False)
+
+    meta.save(out_file, compress=False)
+    assert os.path.isfile(out_file)
+    meta2 = ale.ALE.load(out_file, compressed=False)
+    assert isinstance(meta2, ale.ALE)
+    with pytest.raises(OSError):
+        ale.ALE.load(out_file, compressed=True)
+
+    # Test MCC methods
+    # Monte Carlo FWE
+    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=5, n_cores=-1)
+    corr_results = corr.transform(results)
+    assert isinstance(corr_results, nimare.results.MetaResult)
+    assert isinstance(corr_results.description_, str)
+    assert "z_desc-size_level-cluster_corr-FWE_method-montecarlo" in corr_results.maps.keys()
+    assert "z_desc-mass_level-cluster_corr-FWE_method-montecarlo" in corr_results.maps.keys()
+    assert "z_level-voxel_corr-FWE_method-montecarlo" in corr_results.maps.keys()
+    assert "logp_desc-size_level-cluster_corr-FWE_method-montecarlo" in corr_results.maps.keys()
+    assert "logp_desc-mass_level-cluster_corr-FWE_method-montecarlo" in corr_results.maps.keys()
+    assert "logp_level-voxel_corr-FWE_method-montecarlo" in corr_results.maps.keys()
+    assert isinstance(
+        corr_results.get_map(
+            "z_desc-size_level-cluster_corr-FWE_method-montecarlo", return_type="image"
+        ),
+        nib.Nifti1Image,
+    )
+    assert isinstance(
+        corr_results.get_map(
+            "z_desc-size_level-cluster_corr-FWE_method-montecarlo", return_type="array"
+        ),
+        np.ndarray,
+    )
+    assert isinstance(
+        corr_results.get_map(
+            "z_desc-mass_level-cluster_corr-FWE_method-montecarlo", return_type="image"
+        ),
+        nib.Nifti1Image,
+    )
+    assert isinstance(
+        corr_results.get_map(
+            "z_desc-mass_level-cluster_corr-FWE_method-montecarlo", return_type="array"
+        ),
+        np.ndarray,
+    )
+
+    # Check that the updated null distribution is in the corrected MetaResult's Estimator.
+    assert (
+        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+        in corr_results.estimator.null_distributions_.keys()
+    )
+    # The updated null distribution should *not* be in the original Estimator, nor in the
+    # uncorrected MetaResult's Estimator.
+    assert (
+        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+        not in meta.null_distributions_.keys()
+    )
+    assert (
+        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+        not in results.estimator.null_distributions_.keys()
+    )
+
+    # Bonferroni FWE
+    corr = FWECorrector(method="bonferroni")
+    corr_results = corr.transform(results)
+    assert isinstance(corr_results, nimare.results.MetaResult)
+    assert isinstance(
+        corr_results.get_map("z_corr-FWE_method-bonferroni", return_type="image"), nib.Nifti1Image
+    )
+    assert isinstance(
+        corr_results.get_map("z_corr-FWE_method-bonferroni", return_type="array"), np.ndarray
+    )
+
+    # FDR
+    corr = FDRCorrector(method="indep", alpha=0.05)
+    corr_results = corr.transform(results)
+    assert isinstance(corr_results, nimare.results.MetaResult)
+    assert isinstance(
+        corr_results.get_map("z_corr-FDR_method-indep", return_type="image"), nib.Nifti1Image
+    )
+    assert isinstance(
+        corr_results.get_map("z_corr-FDR_method-indep", return_type="array"), np.ndarray
+    )
+
+
+def test_ALE_montecarlo_histogram_reduction_matches_batch():
+    """Streaming Monte Carlo histogram reduction should match batch reduction semantics."""
+    _, dset = create_coordinate_dataset(
+        foci=3,
+        fwhm=10.0,
+        n_studies=4,
+        sample_size=30,
+        n_noise_foci=5,
+        seed=7,
+    )
+    meta = ale.ALE(null_method="montecarlo", n_iters=3, n_cores=1)
+    meta.masker = dset.masker
+    meta._collect_inputs(dset)
+    meta._preprocess_input(dset)
+    meta.null_distributions_ = {"histogram_bins": np.array([0.0, 0.5, 1.0])}
+
+    counts_seq = [
+        np.array([3, 0, 1], dtype=np.int32),
+        np.array([1, 2, 0], dtype=np.int32),
+        np.array([0, 1, 3], dtype=np.int32),
+    ]
+    expected_uncorr = np.sum(counts_seq, axis=0)
+    expected_vfwe = np.zeros_like(expected_uncorr)
+    for idx in (2, 1, 2):
+        expected_vfwe[idx] += 1
+
+    counter = iter(counts_seq)
+
+    def fake_permutation(iter_xyz, iter_df, bin_edges=None):
+        return next(counter).copy()
+
+    meta._compute_null_montecarlo_permutation = fake_permutation
+    meta._compute_null_montecarlo(n_iters=3, n_cores=1)
+
+    np.testing.assert_array_equal(
+        meta.null_distributions_["histweights_corr-none_method-montecarlo"],
+        expected_uncorr,
+    )
+    np.testing.assert_array_equal(
+        meta.null_distributions_["histweights_level-voxel_corr-fwe_method-montecarlo"],
+        expected_vfwe,
+    )
+
+
+def test_ALESubtraction_smoke(testdata_cbma, tmp_path_factory):
+    """Smoke test for ALESubtraction."""
+    tmpdir = tmp_path_factory.mktemp("test_ALESubtraction_smoke")
+    out_file = os.path.join(tmpdir, "file.pkl.gz")
+
+    sub_meta = ale.ALESubtraction(n_iters=10, n_cores=2)
+    results = sub_meta.fit(testdata_cbma, testdata_cbma)
+    assert isinstance(results, nimare.results.MetaResult)
+    assert isinstance(results.description_, str)
+    assert "z_desc-group1MinusGroup2" in results.maps.keys()
+    assert isinstance(
+        results.get_map("z_desc-group1MinusGroup2", return_type="image"), nib.Nifti1Image
+    )
+    assert isinstance(results.get_map("z_desc-group1MinusGroup2", return_type="array"), np.ndarray)
+    assert "z_desc-group1" in results.maps
+    assert "z_desc-group2" in results.maps
+    assert "p_desc-group1" in results.maps
+    assert "p_desc-group2" in results.maps
+    assert (
+        "values_level-voxel_corr-fwe_method-montecarlo"
+        in results.estimator.null_distributions_.keys()
+    )
+    assert (
+        "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+        not in results.estimator.null_distributions_.keys()
+    )
+    assert (
+        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+        not in results.estimator.null_distributions_.keys()
+    )
+
+    sub_meta.save(out_file)
+    assert os.path.isfile(out_file)
+
+
+def test_ALESubtraction_group_maps_are_correctable(testdata_cbma):
+    """ALESubtraction should expose group maps to generic and estimator-specific correctors."""
+    results = ale.ALESubtraction(n_iters=2, n_cores=1).fit(testdata_cbma, testdata_cbma)
+
+    fdr_result = FDRCorrector(method="indep", alpha=0.05).transform(results)
+    assert "z_desc-group1_corr-FDR_method-indep" in fdr_result.maps
+    assert "z_desc-group2_corr-FDR_method-indep" in fdr_result.maps
+
+    pairwise_fwe = FWECorrector(
+        method="montecarlo", n_iters=2, n_cores=1, vfwe_only=True
+    ).transform(results)
+    assert "z_desc-group1MinusGroup2_level-voxel_corr-FWE_method-montecarlo" in pairwise_fwe.maps
+    assert "z_desc-group1_level-voxel_corr-FWE_method-montecarlo" not in pairwise_fwe.maps
+
+    fwe_result = FWECorrector(
+        method="montecarlo",
+        n_iters=2,
+        n_cores=1,
+        vfwe_only=True,
+        target="main-effects",
+    ).transform(results)
+    assert "z_desc-group1_level-voxel_corr-FWE_method-montecarlo" in fwe_result.maps
+    assert "z_desc-group2_level-voxel_corr-FWE_method-montecarlo" in fwe_result.maps
+    assert "z_desc-group1MinusGroup2_level-voxel_corr-FWE_method-montecarlo" not in fwe_result.maps
+
+
+def test_ALESubtraction_init_vfwe_voxel_thresh_logic():
+    """Verify ALESubtraction init validation for vfwe_only/voxel_thresh."""
+    # Default init should work and keep default vfwe_only behavior.
+    sub_meta = ale.ALESubtraction()
+    assert sub_meta.vfwe_only is True
+    assert sub_meta.voxel_thresh == 0.001
+
+    # If cluster nulls are requested, voxel_thresh is required.
+    with pytest.raises(ValueError, match="voxel_thresh must be provided"):
+        ale.ALESubtraction(vfwe_only=False, voxel_thresh=None)
+
+    # If cluster nulls are requested, voxel_thresh must be numeric.
+    with pytest.raises(TypeError, match="voxel_thresh must be a scalar numeric value"):
+        ale.ALESubtraction(vfwe_only=False, voxel_thresh="not_a_number")
+
+    # If cluster nulls are requested, voxel_thresh must be in (0, 1).
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        ale.ALESubtraction(vfwe_only=False, voxel_thresh=0)
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        ale.ALESubtraction(vfwe_only=False, voxel_thresh=1)
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        ale.ALESubtraction(vfwe_only=False, voxel_thresh=-0.1)
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        ale.ALESubtraction(vfwe_only=False, voxel_thresh=1.1)
+
+    # Numeric-like strings are accepted by float conversion.
+    sub_meta = ale.ALESubtraction(vfwe_only=False, voxel_thresh="0.01")
+    assert sub_meta.vfwe_only is False
+
+    with pytest.raises(ValueError, match="low_memory must be False, True, or 'auto'"):
+        ale.ALESubtraction(low_memory="sometimes")
+
+
+def test_ALESubtraction_cluster_nulls(testdata_cbma):
+    """Verify optional cluster nulls are computed for ALESubtraction."""
+    sub_meta = ale.ALESubtraction(n_iters=2, n_cores=1, vfwe_only=False, voxel_thresh=0.05)
+    results = sub_meta.fit(testdata_cbma, testdata_cbma)
+
+    assert (
+        "values_desc-size_level-cluster_corr-fwe_method-montecarlo"
+        in results.estimator.null_distributions_.keys()
+    )
+    assert (
+        "values_desc-mass_level-cluster_corr-fwe_method-montecarlo"
+        in results.estimator.null_distributions_.keys()
+    )
+
+
+@pytest.mark.parametrize("tail", ["upper", "two"])
+def test_calculate_cluster_measures_matches_reference(tail):
+    """Cluster size/mass helper should match the legacy implementation."""
+    rng = np.random.default_rng(31)
+    arr3d = rng.normal(size=(9, 10, 11)).astype(np.float32)
+    threshold = 0.75
+    conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
+
+    expected_size, expected_mass = _calculate_cluster_measures_reference(
+        arr3d, threshold, conn, tail=tail
+    )
+    actual_size, actual_mass = _calculate_cluster_measures(
+        arr3d.copy(), threshold, conn, tail=tail
+    )
+
+    assert actual_size == expected_size
+    np.testing.assert_allclose(actual_mass, expected_mass)
+
+
+def test_ALESubtraction_chunked_pvalues_match_scalar_path():
+    """Chunked p-value conversion should match the scalar implementation."""
+    rng = np.random.default_rng(4)
+
+    stat_values = rng.normal(size=17).astype(np.float32)
+    iter_diff_values = rng.normal(size=(13, 17)).astype(np.float32)
+
+    scalar_p = np.array(
+        [
+            _alediff_to_p_voxel_reference(
+                i_voxel, stat_values[i_voxel], iter_diff_values[:, i_voxel]
+            )[0]
+            for i_voxel in range(stat_values.shape[0])
+        ]
+    ).reshape(-1)
+    scalar_sign = np.sign(stat_values - np.median(iter_diff_values, axis=0))
+
+    chunked_p, chunked_sign = _alediff_to_p_values_reference(stat_values, iter_diff_values, 4)
+
+    np.testing.assert_allclose(chunked_p, scalar_p)
+    np.testing.assert_array_equal(chunked_sign, scalar_sign)
+
+
+def test_ALESubtraction_streamed_tail_counts_match_chunked_path():
+    """Streamed ALE subtraction tail counts should match chunked null evaluation."""
+    rng = np.random.default_rng(14)
+
+    stat_values = rng.normal(size=31).astype(np.float32)
+    iter_diff_values = rng.normal(size=(17, 31)).astype(np.float32)
+
+    chunked_p, chunked_sign = _alediff_to_p_values_reference(stat_values, iter_diff_values, 7)
+
+    left_counts = np.count_nonzero(iter_diff_values >= stat_values[None, :], axis=0).astype(
+        np.uint32
+    )
+    right_counts = np.count_nonzero(iter_diff_values <= stat_values[None, :], axis=0).astype(
+        np.uint32
+    )
+    streamed_p, streamed_sign = ale.ALESubtraction()._finalize_alediff_tail_counts(
+        left_counts, right_counts, iter_diff_values.shape[0]
+    )
+
+    np.testing.assert_allclose(streamed_p, chunked_p)
+    np.testing.assert_array_equal(streamed_sign, chunked_sign)
+
+
+def test_ALESubtraction_partitioned_summarystat_matches_combined_path():
+    """Partitioned ALE summary stats should match the stacked sparse path."""
+    rng = np.random.default_rng(19)
+    n_grp1 = 5
+    n_grp2 = 7
+    n_voxels = 29
+
+    ma_maps1 = sp_sparse.random(
+        n_grp1,
+        n_voxels,
+        density=0.2,
+        format="csr",
+        random_state=19,
+        data_rvs=lambda n: rng.uniform(0.01, 0.5, size=n).astype(np.float32),
+    )
+    ma_maps2 = sp_sparse.random(
+        n_grp2,
+        n_voxels,
+        density=0.25,
+        format="csr",
+        random_state=23,
+        data_rvs=lambda n: rng.uniform(0.01, 0.5, size=n).astype(np.float32),
+    )
+
+    ma_arr = sp_sparse.vstack((ma_maps1, ma_maps2), format="csr")
+    total_idx = np.arange(n_grp1 + n_grp2)
+    rng.shuffle(total_idx)
+
+    expected_grp1 = ale._compute_ale_summarystat(ma_arr[total_idx[:n_grp1], :])
+    expected_grp2 = ale._compute_ale_summarystat(ma_arr[total_idx[n_grp1:], :])
+
+    actual_grp1 = pairwise_utils._compute_partition_ale_summarystat(
+        ma_maps1, ma_maps2, total_idx[:n_grp1], n_grp1
+    )
+    actual_grp2 = pairwise_utils._compute_partition_ale_summarystat(
+        ma_maps1, ma_maps2, total_idx[n_grp1:], n_grp1
+    )
+
+    np.testing.assert_allclose(actual_grp1, expected_grp1)
+    np.testing.assert_allclose(actual_grp2, expected_grp2)
+
+
+def test_ALESubtraction_partitioned_summarystat_validates_inputs():
+    """Partitioned ALE summary stats should fail fast on mismatched MA groups."""
+    ma_maps1 = sp_sparse.eye(3, 5, format="csr", dtype=np.float32)
+    ma_maps2 = sp_sparse.eye(4, 6, format="csr", dtype=np.float32)
+
+    with pytest.raises(ValueError, match="same number of voxels"):
+        pairwise_utils._compute_partition_ale_summarystat(ma_maps1, ma_maps2, np.array([0, 1]), 3)
+
+    ma_maps2 = sp_sparse.eye(4, 5, format="csr", dtype=np.float32)
+    with pytest.raises(ValueError, match="n_grp1 must match"):
+        pairwise_utils._compute_partition_ale_summarystat(ma_maps1, ma_maps2, np.array([0, 1]), 2)
+
+    with pytest.raises(IndexError, match="out-of-bounds"):
+        pairwise_utils._compute_partition_ale_summarystat(ma_maps1, ma_maps2, np.array([7]), 3)
+
+
+def test_ALESubtraction_low_memory_matches_standard_path(testdata_cbma):
+    """Forced low-memory mode should preserve ALE subtraction results."""
+    dset1 = testdata_cbma.slice(testdata_cbma.ids[:3])
+    dset2 = testdata_cbma.slice(testdata_cbma.ids[3:6])
+
+    standard = ale.ALESubtraction(n_iters=2, n_cores=1, low_memory=False).fit(dset1, dset2)
+    low_memory = ale.ALESubtraction(n_iters=2, n_cores=1, low_memory=True).fit(dset1, dset2)
+
+    for map_name in (
+        "stat_desc-group1MinusGroup2",
+        "p_desc-group1MinusGroup2",
+        "z_desc-group1MinusGroup2",
+        "logp_desc-group1MinusGroup2",
+    ):
+        np.testing.assert_allclose(
+            standard.get_map(map_name, return_type="array"),
+            low_memory.get_map(map_name, return_type="array"),
+        )
+
+    np.testing.assert_allclose(
+        standard.estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"],
+        low_memory.estimator.null_distributions_["values_level-voxel_corr-fwe_method-montecarlo"],
+    )
+
+
+def test_ALESubtraction_directional_inference_maps_gate_pairwise_results(testdata_cbma_full):
+    """Directional inference maps should zero unsupported ALE subtraction voxels."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+
+    baseline = ale.ALESubtraction(n_iters=8, n_cores=1, generate_description=False).fit(
+        dset1, dset2
+    )
+    baseline_z = baseline.get_map("z_desc-group1MinusGroup2", return_type="array")
+    pos_map = (baseline_z > 0).astype(np.int8)
+    neg_map = (baseline_z < 0).astype(np.int8)
+
+    masked = ale.ALESubtraction(n_iters=8, n_cores=1, generate_description=False).fit(
+        dset1,
+        dset2,
+        inference_map1=pos_map,
+        inference_map2=neg_map,
+    )
+
+    z_values = masked.get_map("z_desc-group1MinusGroup2", return_type="array")
+    p_values = masked.get_map("p_desc-group1MinusGroup2", return_type="array")
+    union = (pos_map > 0) | (neg_map > 0)
+
+    assert np.all(z_values[~union] == 0)
+    np.testing.assert_allclose(p_values[~union], 1.0)
+    assert np.all(z_values[pos_map <= 0] <= 0)
+    assert np.all(z_values[neg_map <= 0] >= 0)
+
+
+def test_ALESubtraction_restrict_to_inference_mask_slices_permutation_voxels(
+    monkeypatch, testdata_cbma_full
+):
+    """Restricted ALE subtraction should permute only inference-union voxels."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+
+    baseline = ale.ALESubtraction(n_iters=2, n_cores=1, generate_description=False).fit(
+        dset1, dset2
+    )
+    baseline_z = baseline.get_map("z_desc-group1MinusGroup2", return_type="array")
+    pos_map = baseline_z > 0
+    neg_map = baseline_z < 0
+    union = pos_map | neg_map
+    seen_n_voxels = []
+    original = ale.ALESubtraction._run_null_permutations
+
+    def _wrapped_run_null_permutations(self, ma_store, *args, **kwargs):
+        seen_n_voxels.append(ma_store.n_voxels)
+        return original(self, ma_store, *args, **kwargs)
+
+    monkeypatch.setattr(
+        ale.ALESubtraction,
+        "_run_null_permutations",
+        _wrapped_run_null_permutations,
+    )
+
+    restricted = ale.ALESubtraction(
+        n_iters=2,
+        n_cores=1,
+        generate_description=False,
+        restrict_to_inference_mask=True,
+    ).fit(dset1, dset2, inference_map1=pos_map, inference_map2=neg_map)
+
+    z_values = restricted.get_map("z_desc-group1MinusGroup2", return_type="array")
+    p_values = restricted.get_map("p_desc-group1MinusGroup2", return_type="array")
+    stat_values = restricted.get_map("stat_desc-group1MinusGroup2", return_type="array")
+    baseline_stat = baseline.get_map("stat_desc-group1MinusGroup2", return_type="array")
+
+    assert seen_n_voxels == [int(union.sum())]
+    assert z_values.shape == baseline_z.shape
+    assert p_values.shape == baseline_z.shape
+    np.testing.assert_allclose(stat_values, baseline_stat)
+    assert np.all(z_values[~union] == 0)
+    np.testing.assert_allclose(p_values[~union], 1.0)
+
+
+@pytest.mark.parametrize("restrict_to_inference_mask", [False, True])
+def test_ALESubtraction_rejects_empty_inference_union(
+    testdata_cbma_full, restrict_to_inference_mask
+):
+    """Directional ALE subtraction should fail clearly when inference maps are empty."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+    n_voxels = int(np.count_nonzero(testdata_cbma_full.masker.mask_img.get_fdata()))
+    empty_map = np.zeros(n_voxels, dtype=bool)
+
+    meta = ale.ALESubtraction(
+        n_iters=2,
+        n_cores=1,
+        generate_description=False,
+        restrict_to_inference_mask=restrict_to_inference_mask,
+    )
+    with pytest.raises(ValueError, match="at least one nonzero voxel"):
+        meta.fit(dset1, dset2, inference_map1=empty_map, inference_map2=empty_map)
+
+
+def test_ALESubtraction_restrict_to_inference_mask_cluster_nulls(testdata_cbma_full):
+    """Restricted ALE subtraction should support cluster nulls through the full image mask."""
+    dset1 = testdata_cbma_full.slice(testdata_cbma_full.ids[:10])
+    dset2 = testdata_cbma_full.slice(testdata_cbma_full.ids[10:20])
+
+    baseline = ale.ALESubtraction(n_iters=2, n_cores=1, generate_description=False).fit(
+        dset1, dset2
+    )
+    baseline_z = baseline.get_map("z_desc-group1MinusGroup2", return_type="array")
+    pos_map = baseline_z > 0
+    neg_map = baseline_z < 0
+
+    restricted = ale.ALESubtraction(
+        n_iters=2,
+        n_cores=1,
+        generate_description=False,
+        restrict_to_inference_mask=True,
+        vfwe_only=False,
+    ).fit(dset1, dset2, inference_map1=pos_map, inference_map2=neg_map)
+
+    assert "values_desc-size_level-cluster_corr-fwe_method-montecarlo" in (
+        restricted.estimator.null_distributions_
+    )
+    assert restricted.get_map("z_desc-group1MinusGroup2", return_type="array").shape == (
+        baseline_z.shape
+    )
+
+
+def test_pairwise_ma_store_close_skips_gc_without_temp_files(monkeypatch):
+    """In-memory pairwise MA stores should not force a global GC pass on close."""
+    calls = []
+    store = pairwise_utils._PairwiseMAStore(
+        group1=sp_sparse.csr_matrix(np.zeros((1, 2))),
+        group2=sp_sparse.csr_matrix(np.zeros((1, 2))),
+        group1_stat=np.zeros(2),
+        group2_stat=np.zeros(2),
+        temp_files=[],
+    )
+
+    monkeypatch.setattr(pairwise_utils.gc, "collect", lambda: calls.append("gc"))
+    store.close()
+
+    assert calls == []
+
+
+def test_ALESubtraction_low_memory_chunk_rows_scale_with_available_ram():
+    """Chunk size should shrink when available RAM shrinks."""
+    meta = ale.ALESubtraction()
+
+    many_rows = meta._determine_chunk_rows(1000.0, available_bytes=512 * 1024**2)
+    few_rows = meta._determine_chunk_rows(1000.0, available_bytes=8 * 1024**2)
+
+    assert many_rows > few_rows
+    assert few_rows >= 1
+
+
+def test_ALESubtraction_low_memory_reuses_sample_chunk(monkeypatch, testdata_cbma):
+    """Chunked MA collection should reuse the sampled MA chunk when chunk_rows permits."""
+    dset = testdata_cbma.slice(testdata_cbma.ids[:3])
+    meta = ale.ALESubtraction(n_iters=1, n_cores=1, low_memory=True)
+    meta.masker = dset.masker
+    meta._collect_inputs(dset, drop_invalid=True)
+    meta._preprocess_input(dset)
+    meta.inputs_["coordinates1"] = meta.inputs_.pop("coordinates")
+
+    original_transform = meta.kernel_transformer.transform
+    calls = {"count": 0}
+
+    def _wrapped_transform(*args, **kwargs):
+        calls["count"] += 1
+        return original_transform(*args, **kwargs)
+
+    monkeypatch.setattr(meta.kernel_transformer, "transform", _wrapped_transform)
+
+    estimate = meta._estimate_group_ma_bytes("coordinates1")
+    assert calls["count"] == 1
+
+    def _collect_and_cleanup():
+        ma_group, stat_values, temp_files = meta._collect_chunked_ma_maps(
+            coords_key="coordinates1",
+            chunk_rows=estimate.sample_n_studies,
+            prefix="ALESubtractionReuseSample",
+            estimate=estimate,
+        )
+        n_rows = ma_group.shape[0]
+        n_voxels = ma_group.shape[1]
+        stat_len = stat_values.shape[0]
+
+        store = pairwise_utils._PairwiseMAStore(
+            group1=ma_group,
+            group2=sp_sparse.csr_matrix((0, n_voxels), dtype=np.float32),
+            group1_stat=stat_values,
+            group2_stat=np.zeros(n_voxels, dtype=np.float32),
+            temp_files=temp_files,
+        )
+        del ma_group
+        store.close()
+        return n_rows, n_voxels, stat_len
+
+    n_rows, n_voxels, stat_len = _collect_and_cleanup()
+
+    assert calls["count"] == 1
+    assert n_rows == estimate.sample_n_studies
+    assert stat_len == n_voxels
+
+
+def test_ALESubtraction_pairwise_store_close_releases_refs_before_cleanup(monkeypatch):
+    """Pairwise MA store should drop memmap-backed references before file cleanup."""
+    store = pairwise_utils._PairwiseMAStore(
+        group1=object(),
+        group2=object(),
+        group1_stat=np.zeros(1, dtype=np.float32),
+        group2_stat=np.zeros(1, dtype=np.float32),
+        temp_files=["dummy.mmap"],
+    )
+
+    monkeypatch.setattr(pairwise_utils, "_close_csr_memmaps", lambda _: None)
+
+    observed = {}
+
+    def _wrapped_cleanup(filenames):
+        observed["filenames"] = filenames
+        observed["group1"] = store.group1
+        observed["group2"] = store.group2
+        observed["group1_stat"] = store.group1_stat
+        observed["group2_stat"] = store.group2_stat
+        observed["temp_files"] = store.temp_files
+
+    monkeypatch.setattr(pairwise_utils, "_cleanup_temp_files", _wrapped_cleanup)
+
+    store.close()
+
+    assert observed["filenames"] == ["dummy.mmap"]
+    assert observed["group1"] is None
+    assert observed["group2"] is None
+    assert observed["group1_stat"] is None
+    assert observed["group2_stat"] is None
+    assert observed["temp_files"] == []
+
+
+def test_close_memmap_array_closes_nested_memmap_base(tmp_path):
+    """Memmap cleanup should traverse ndarray view chains to the mmap owner."""
+    filename = tmp_path / "nested-view.mmap"
+    mapped = np.memmap(filename, dtype=np.float32, mode="w+", shape=(6,))
+    mapped[:] = np.arange(6, dtype=np.float32)
+    view = np.asarray(mapped)[1:5][::2]
+
+    io_utils._close_memmap_array(view)
+
+    assert mapped._mmap.closed
+
+
+def test_close_csr_memmaps_detaches_memmap_backing(tmp_path):
+    """CSR memmap cleanup should detach backing arrays before file deletion."""
+    ma_values = sp_sparse.csr_matrix(np.array([[1, 0, 2], [0, 3, 0]], dtype=np.float32))
+    mapped, filenames = ale._csr_to_memmap(ma_values, prefix="ALESubtractionUnit")
+
+    io_utils._close_csr_memmaps(mapped)
+
+    for arr in (mapped.data, mapped.indices, mapped.indptr):
+        base = arr
+        while base is not None:
+            assert getattr(base, "_mmap", None) is None
+            base = getattr(base, "base", None)
+
+    for filename in filenames:
+        os.remove(filename)
+
+
+def test_ALESubtraction_low_memory_auto_activates(monkeypatch, testdata_cbma):
+    """Auto low-memory mode should spill MA maps when available RAM is tiny."""
+    dset1 = testdata_cbma.slice(testdata_cbma.ids[:3])
+    dset2 = testdata_cbma.slice(testdata_cbma.ids[3:6])
+
+    calls = []
+    original = ale._csr_to_memmap
+
+    def _wrapped(ma_values, prefix):
+        calls.append(prefix)
+        return original(ma_values, prefix)
+
+    monkeypatch.setattr(ale, "_get_available_memory_bytes", lambda: 1)
+    monkeypatch.setattr(ale, "_csr_to_memmap", _wrapped)
+
+    ale.ALESubtraction(n_iters=2, n_cores=1, low_memory="auto").fit(dset1, dset2)
+
+    assert any(call.startswith("ALESubtractionGroup1Chunk") for call in calls)
+    assert any(call.startswith("ALESubtractionGroup2Chunk") for call in calls)
+
+
+def test_ALESubtraction_low_memory_auto_activates_during_fwe_recompute(monkeypatch, testdata_cbma):
+    """Auto low-memory mode should also activate in the FWE recomputation branch."""
+    dset1 = testdata_cbma.slice(testdata_cbma.ids[:3])
+    dset2 = testdata_cbma.slice(testdata_cbma.ids[3:6])
+
+    estimator = ale.ALESubtraction(n_iters=1, n_cores=1, low_memory="auto")
+    result = estimator.fit(dset1, dset2)
+
+    calls = []
+    original = ale._csr_to_memmap
+
+    def _wrapped(ma_values, prefix):
+        calls.append(prefix)
+        return original(ma_values, prefix)
+
+    monkeypatch.setattr(ale, "_get_available_memory_bytes", lambda: 1)
+    monkeypatch.setattr(ale, "_csr_to_memmap", _wrapped)
+
+    estimator.correct_fwe_montecarlo(result, n_iters=2, n_cores=1, vfwe_only=True)
+
+    assert any(call.startswith("ALESubtractionGroup1Chunk") for call in calls)
+    assert any(call.startswith("ALESubtractionGroup2Chunk") for call in calls)
+
+
+def test_ALESubtraction_fwe_description_branches(testdata_cbma):
+    """Verify ALESubtraction Monte Carlo FWE descriptions match correction mode."""
+    # Voxel-only branch.
+    sub_meta_vfwe = ale.ALESubtraction(n_iters=2, n_cores=1, vfwe_only=True)
+    results_vfwe = sub_meta_vfwe.fit(testdata_cbma, testdata_cbma)
+    corr_vfwe = FWECorrector(method="montecarlo", n_iters=2, n_cores=1, vfwe_only=True)
+    corr_results_vfwe = corr_vfwe.transform(results_vfwe)
+
+    assert (
+        "voxel-level Monte Carlo procedure for ALE subtraction" in corr_results_vfwe.description_
+    )
+    assert "cluster sizes, and cluster masses" not in corr_results_vfwe.description_
+
+    # Voxel + cluster branch.
+    sub_meta_cluster = ale.ALESubtraction(n_iters=2, n_cores=1, vfwe_only=False, voxel_thresh=0.05)
+    results_cluster = sub_meta_cluster.fit(testdata_cbma, testdata_cbma)
+    corr_cluster = FWECorrector(
+        method="montecarlo", n_iters=2, n_cores=1, vfwe_only=False, voxel_thresh=0.05
+    )
+    corr_results_cluster = corr_cluster.transform(results_cluster)
+
+    assert "cluster sizes, and cluster masses" in corr_results_cluster.description_
+    assert "face-wise connectivity" in corr_results_cluster.description_
+    assert "p < 0.05" in corr_results_cluster.description_
+
+
+def test_SCALE_smoke(testdata_cbma, tmp_path_factory):
+    """Smoke test for SCALE."""
+    tmpdir = tmp_path_factory.mktemp("test_SCALE_smoke")
+    out_file = os.path.join(tmpdir, "file.pkl.gz")
+    dset = testdata_cbma.slice(testdata_cbma.ids[:3])
+
+    with pytest.raises(TypeError):
+        ale.SCALE(xyz="dog", n_iters=5, n_cores=1)
+
+    with pytest.raises(ValueError):
+        ale.SCALE(xyz=np.random.random((5, 3, 1)), n_iters=5, n_cores=1)
+
+    with pytest.raises(ValueError):
+        ale.SCALE(xyz=np.random.random((3, 10)), n_iters=5, n_cores=1)
+
+    xyz = vox2mm(
+        np.vstack(np.where(testdata_cbma.masker.mask_img.get_fdata())).T,
+        testdata_cbma.masker.mask_img.affine,
+    )
+    xyz = xyz[:20, :]
+    meta = ale.SCALE(xyz, n_iters=5, n_cores=1)
+    results = meta.fit(dset)
+    assert isinstance(results, nimare.results.MetaResult)
+    assert isinstance(results.description_, str)
+    assert "z" in results.maps.keys()
+    assert isinstance(results.get_map("z", return_type="image"), nib.Nifti1Image)
+    assert isinstance(results.get_map("z", return_type="array"), np.ndarray)
+
+    corr = FWECorrector(method="montecarlo", n_iters=5, n_cores=1)
+    corr_results = corr.transform(results)
+    assert isinstance(corr_results, nimare.results.MetaResult)
+    assert "z_level-voxel_corr-FWE_method-montecarlo" in corr_results.maps
+    assert "logp_level-voxel_corr-FWE_method-montecarlo" in corr_results.maps
+    assert "z_desc-size_level-cluster_corr-FWE_method-montecarlo" not in corr_results.maps
+    assert isinstance(
+        corr_results.get_map("z_level-voxel_corr-FWE_method-montecarlo", return_type="array"),
+        np.ndarray,
+    )
+
+    meta.save(out_file)
+    assert os.path.isfile(out_file)
+
+
+def test_SCALE_cluster_fwe_not_supported(testdata_cbma):
+    """SCALE should reject cluster-level Monte Carlo FWE correction."""
+    dset = testdata_cbma.slice(testdata_cbma.ids[:3])
+    xyz = vox2mm(
+        np.vstack(np.where(testdata_cbma.masker.mask_img.get_fdata())).T,
+        testdata_cbma.masker.mask_img.affine,
+    )[:20, :]
+    meta = ale.SCALE(xyz, n_iters=2, n_cores=1)
+    results = meta.fit(dset)
+    corr = FWECorrector(method="montecarlo", n_iters=2, n_cores=1, vfwe_only=False)
+
+    with pytest.raises(NotImplementedError, match="voxel-level Monte Carlo FWE correction"):
+        corr.transform(results)
+
+
+def test_SCALE_chunked_pvalues_match_scalar_path():
+    """Chunked SCALE p-value conversion should match the scalar implementation."""
+    rng = np.random.default_rng(7)
+    stat_values = rng.uniform(0.0, 0.8, size=9).astype(np.float32)
+    scale_values = rng.uniform(0.0, 0.8, size=(13, 9)).astype(np.float32)
+    scale_values[scale_values < 0.2] = 0
+
+    scalar_p = np.array(
+        [
+            null_to_p(stat_values[i_voxel], scale_values[:, i_voxel].copy(), tail="upper")
+            for i_voxel in range(stat_values.shape[0])
+        ]
+    ).reshape(-1)
+
+    chunked_p = _scale_to_p_values_reference(stat_values, scale_values, chunk_size=4)
+
+    np.testing.assert_allclose(chunked_p, scalar_p)
+
+
+def test_SCALE_exceedance_counts_match_permutation_matrix_path():
+    """Streamed SCALE exceedance counts should match direct permutation p-values."""
+    rng = np.random.default_rng(17)
+    stat_values = rng.uniform(0.0, 0.8, size=9).astype(np.float32)
+    scale_values = rng.uniform(0.0, 0.8, size=(11, 9)).astype(np.float32)
+
+    matrix_p = _scale_to_p_values_reference(stat_values, scale_values, chunk_size=4)
+    exceedance_counts = np.count_nonzero(scale_values >= stat_values[None, :], axis=0).astype(
+        np.uint32
+    )
+    count_p = _scale_counts_to_p_values_reference(exceedance_counts, scale_values.shape[0])
+
+    np.testing.assert_allclose(count_p, matrix_p)
+
+
+def test_SCALE_optimized_permutation_matches_dataframe_path(testdata_cbma):
+    """Optimized SCALE permutation path should match the legacy DataFrame path."""
+    mask_data = testdata_cbma.masker.mask_img.get_fdata().astype(bool)
+    xyz = vox2mm(np.vstack(np.where(mask_data)).T, testdata_cbma.masker.mask_img.affine)[:50, :]
+    meta = ale.SCALE(xyz=xyz, n_iters=5, n_cores=1)
+    meta.dataset = testdata_cbma
+    meta.masker = testdata_cbma.masker
+    meta.null_distributions_ = {}
+    meta._clear_precomputed_ma_inputs()
+    meta._collect_inputs(testdata_cbma)
+    meta._preprocess_input(testdata_cbma)
+
+    iter_df = meta.inputs_["coordinates"].copy()
+    permutation_args = meta._prepare_permutation_args(iter_df)
+    voxel_ijk = mm2vox(meta.xyz, meta.masker.mask_img.affine).astype(np.int32, copy=False)
+    sampled_voxel_idx = np.arange(iter_df.shape[0]) % voxel_ijk.shape[0]
+
+    optimized = meta._run_permutation(
+        sampled_voxel_idx, voxel_ijk, iter_df, permutation_args=permutation_args
+    )
+
+    legacy_df = iter_df.copy()
+    legacy_df[["x", "y", "z"]] = meta.xyz[sampled_voxel_idx, :]
+    drop_cols = [col for col in ("i", "j", "k") if col in legacy_df.columns]
+    if drop_cols:
+        legacy_df = legacy_df.drop(columns=drop_cols)
+    legacy = meta._compute_summarystat_est(legacy_df)
+
+    np.testing.assert_allclose(optimized, legacy)
+
+
+def test_ALE_non_nifti_masker(testdata_cbma):
+    """Unit test for ALE with non-NiftiMasker.
+
+    CBMA estimators don't work with non-NiftiMasker (e.g., a NiftiLabelsMasker).
+    """
+    atlas = os.path.join(get_test_data_path(), "test_pain_dataset", "atlas.nii.gz")
+    masker = NiftiLabelsMasker(atlas)
+    meta = ale.ALE(mask=masker, n_iters=10)
+
+    with pytest.raises(ValueError):
+        meta.fit(testdata_cbma)

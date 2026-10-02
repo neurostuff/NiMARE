@@ -1,0 +1,23 @@
+{% extends "!layout.html" %}
+{% set title = 'NiMARE: Neuroimaging Meta-Analysis Research Environment' %}
+{% set short_title = 'NiMARE' %}
+
+{% block relbar1 %}{% endblock %}
+
+{% block header %}
+<div class="header-wrapper">
+    <div style="background-color: white; text-align: left; padding: 10px 10px 15px 15px">
+        {%- block headertitle %}
+            <a href="{{pathto('index') }}">
+            <img src="{{ pathto("_static/nimare_banner.png", 1) }}" alt="NiMARE logo"  border="0" />
+        {%- endblock %}
+        <div style="margin-top: 1em;
+                border-top: 1px solid #AAA;
+                border-bottom: 1px solid #AAA;
+                border-radius: 5px;
+                padding: 3px 1em;">
+           {% include 'navbar.html' %}
+        </div>
+    </div>
+</div>
+{% endblock %}

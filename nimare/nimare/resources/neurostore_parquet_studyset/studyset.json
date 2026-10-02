@@ -1,0 +1,20 @@
+{
+  "annotations": [
+    {
+      "id": "test-neurostore-annotation"
+    }
+  ],
+  "format": "nimare-studyset-parquet",
+  "id": "test-neurostore-parquet-studyset",
+  "name": "test-neurostore-parquet-studyset",
+  "tables": {
+    "analyses": "analyses.parquet",
+    "annotations": "annotations.parquet",
+    "coordinates": "coordinates.parquet",
+    "images": "images.parquet",
+    "metadata": "metadata.parquet",
+    "studies": "studies.parquet",
+    "texts": "texts.parquet"
+  },
+  "version": 1
+}

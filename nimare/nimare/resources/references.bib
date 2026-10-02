@@ -1,0 +1,658 @@
+@misc{Frahm_Monimu_Hoffstaedter,
+    title={Juaml/Jale},
+    url={https://github.com/juaml/JALE},
+    journal={Juaml/JALE},
+    author={Frahm, Lennart and Monimu and Hoffstaedter, Felix}
+} 
+@article{10.1162/imag_a_00423,
+    author = {Frahm, Lennart and Patil, Kaustubh R. and Satterthwaite, Theodore D. and Fox, Peter T. and Eickhoff, Simon B. and Langner, Robert},
+    title = {Predictive modeling of significance thresholding in activation likelihood estimation meta-analysis},
+    journal = {Imaging Neuroscience},
+    volume = {3},
+    pages = {imag_a_00423},
+    year = {2025},
+    month = {01},
+    abstract = {Activation Likelihood Estimation (ALE) employs voxel- or cluster-level family-wise error (vFWE or cFWE) correction or threshold-free cluster enhancement (TFCE) to counter false positives due to multiple comparisons. These corrections utilize Monte-Carlo simulations to approximate a null distribution of spatial convergence, which allows for the determination of a corrected significance threshold. The simulations may take many hours depending on the dataset and the hardware used to run the computations. In this study, we aimed to replace the time-consuming Monte-Carlo simulation procedure with an instantaneous machine-learning prediction based on features of the meta-analysis dataset. These features were created from the number of experiments in the dataset, the number of subjects per experiment, and the number of foci reported per experiment. We simulated 68,100 training datasets, containing between 10 and 150 experiments and computed the vFWE, cFWE, and TFCE significance thresholds. We then used this data to train one XGBoost regression model for each thresholding technique. Lastly, we validated the performance of the three models using 11 independent real-life datasets (21 contrasts) from previously published ALE meta-analyses. The vFWE model reached near-perfect prediction levels (R² = 0.996), while the TFCE and cFWE models achieved very good prediction accuracies of R² = 0.951 and R² = 0.938, respectively. This means that, on average, the difference between predicted and standard (monte-carlo based) cFWE thresholds was less than two voxels. Given that our model predicts significance thresholds in ALE meta-analyses with very high accuracy, we advocate our efficient prediction approach as a replacement for the currently used Monte-Carlo simulations in future ALE analyses. This will save hours of computation time and reduce energy consumption. Furthermore, the reduced compute time allows for easier implementation of multi-analysis set-ups like leave-one-out sensitivity analysis or subsampling.},
+    issn = {2837-6056},
+    doi = {10.1162/imag_a_00423},
+    url = {https://doi.org/10.1162/imag_a_00423},
+    eprint = {https://direct.mit.edu/imag/article-pdf/doi/10.1162/imag_a_00423/2483917/imag_a_00423.pdf},
+}
+
+@article{10.3389/fninf.2014.00014,
+  title={Machine learning for neuroimaging with scikit-learn},
+  author={Abraham, Alexandre and Pedregosa, Fabian and Eickenberg, Michael and Gervais, Philippe and Mueller, Andreas and Kossaifi, Jean and Gramfort, Alexandre and Thirion, Bertrand and Varoquaux, Gael},
+	journal={Frontiers in Neuroinformatics},
+	volume={8},
+	year={2014},
+	url={https://www.frontiersin.org/article/10.3389/fninf.2014.00014},
+	doi={10.3389/fninf.2014.00014},
+	issn={1662-5196}
+}
+
+@article{amft2015definition,
+  title={Definition and characterization of an extended social-affective default network},
+  author={Amft, Maren and Bzdok, Danilo and Laird, Angela R and Fox, Peter T and Schilbach, Leonhard and Eickhoff, Simon B},
+  journal={Brain Structure and Function},
+  volume={220},
+  number={2},
+  pages={1031--1049},
+  year={2015},
+  publisher={Springer},
+  url={https://doi.org/10.1007/s00429-013-0698-0},
+  doi={10.1007/s00429-013-0698-0}
+}
+
+@article{benjamini1995controlling,
+  title={Controlling the false discovery rate: a practical and powerful approach to multiple testing},
+  author={Benjamini, Yoav and Hochberg, Yosef},
+  journal={Journal of the Royal statistical society: series B (Methodological)},
+  volume={57},
+  number={1},
+  pages={289--300},
+  year={1995},
+  publisher={Wiley Online Library},
+  url={https://doi.org/10.1111/j.2517-6161.1995.tb02031.x},
+  doi={10.1111/j.2517-6161.1995.tb02031.x}
+}
+
+@article{benjamini2001control,
+  author={Yoav Benjamini and Daniel Yekutieli},
+  title={The control of the false discovery rate in multiple testing under dependency},
+  volume={29},
+  journal={The Annals of Statistics},
+  number={4},
+  publisher={Institute of Mathematical Statistics},
+  pages={1165 -- 1188},
+  year={2001},
+  doi={10.1214/aos/1013699998},
+  url={https://doi.org/10.1214/aos/1013699998}
+}
+
+@article{blei2003latent,
+  title={Latent dirichlet allocation},
+  author={Blei, David M and Ng, Andrew Y and Jordan, Michael I},
+  journal={Journal of machine Learning research},
+  volume={3},
+  number={Jan},
+  pages={993--1022},
+  year={2003},
+  url={https://dl.acm.org/doi/10.5555/944919.944937}
+}
+
+@article{bonferroni1936teoria,
+  title={Teoria statistica delle classi e calcolo delle probabilita},
+  author={Bonferroni, Carlo},
+  journal={Pubblicazioni del R Istituto Superiore di Scienze Economiche e Commericiali di Firenze},
+  volume={8},
+  pages={3--62},
+  year={1936}
+}
+
+@article{brockwell2001comparison,
+  title={A comparison of statistical methods for meta-analysis},
+  author={Brockwell, Sarah E and Gordon, Ian R},
+  journal={Statistics in medicine},
+  volume={20},
+  number={6},
+  pages={825--840},
+  year={2001},
+  publisher={Wiley Online Library},
+  url={https://doi.org/10.1002/sim.650},
+  doi={10.1002/sim.650}
+}
+
+@article{bullmore1999global,
+  title={Global, voxel, and cluster tests, by theory and permutation, for a difference between two groups of structural MR images of the brain},
+  author={Bullmore, Edward T and Suckling, John and Overmeyer, Stephan and Rabe-Hesketh, Sophia and Taylor, Eric and Brammer, Michael J},
+  journal={IEEE transactions on medical imaging},
+  volume={18},
+  number={1},
+  pages={32--42},
+  year={1999},
+  publisher={IEEE},
+  url={https://doi.org/10.1109/42.750253},
+  doi={10.1109/42.750253}
+}
+
+@article{dersimonian1986meta,
+  title={Meta-analysis in clinical trials},
+  author={DerSimonian, Rebecca and Laird, Nan},
+  journal={Controlled clinical trials},
+  volume={7},
+  number={3},
+  pages={177--188},
+  year={1986},
+  publisher={Elsevier}
+}
+
+@article{eickhoff2010anatomical,
+  title={Anatomical and functional connectivity of cytoarchitectonic areas within the human parietal operculum},
+  author={Eickhoff, Simon B and Jbabdi, Saad and Caspers, Svenja and Laird, Angela R and Fox, Peter T and Zilles, Karl and Behrens, Timothy EJ},
+  journal={Journal of Neuroscience},
+  volume={30},
+  number={18},
+  pages={6409--6421},
+  year={2010},
+  publisher={Soc Neuroscience},
+  url={https://doi.org/10.1523/JNEUROSCI.5664-09.2010},
+  doi={10.1523/JNEUROSCI.5664-09.2010}
+}
+
+@article{eickhoff2012activation,
+  title={Activation likelihood estimation meta-analysis revisited},
+  author={Eickhoff, Simon B and Bzdok, Danilo and Laird, Angela R and Kurth, Florian and Fox, Peter T},
+  journal={Neuroimage},
+  volume={59},
+  number={3},
+  pages={2349--2361},
+  year={2012},
+  publisher={Elsevier},
+  url={https://doi.org/10.1016/j.neuroimage.2011.09.017},
+  doi={10.1016/j.neuroimage.2011.09.017}
+}
+
+@article{eickhoff2016behavior,
+  title={Behavior, sensitivity, and power of activation likelihood estimation characterized by massive empirical simulation},
+  author={Eickhoff, Simon B and Nichols, Thomas E and Laird, Angela R and Hoffstaedter, Felix and Amunts, Katrin and Fox, Peter T and Bzdok, Danilo and Eickhoff, Claudia R},
+  journal={Neuroimage},
+  volume={137},
+  pages={70--85},
+  year={2016},
+  publisher={Elsevier},
+  url={https://doi.org/10.1016/j.neuroimage.2016.04.072},
+  doi={10.1016/j.neuroimage.2016.04.072}
+}
+
+@article{enge2021meta,
+  title={A meta-analysis of fMRI studies of semantic cognition in children},
+  author={Enge, Alexander and Rahman, Rasha Abdel and Skeide, Michael A},
+  journal={NeuroImage},
+  volume={241},
+  pages={118436},
+  year={2021},
+  publisher={Elsevier},
+  url={https://doi.org/10.1016/j.neuroimage.2021.118436},
+  doi={10.1016/j.neuroimage.2021.118436}
+}
+
+@article{fisher1946statistical,
+  title={Statistical methods for research workers.},
+  author={Fisher, Ronald Aylmer and others},
+  journal={Statistical methods for research workers.},
+  number={10th. ed.},
+  year={1946},
+  publisher={Oliver and Boyd}
+}
+
+@article{frahm2022evaluation,
+  author={Frahm, Lennart and Cieslik, Edna C. and Hoffstaedter, Felix and Satterthwaite, Theodore D. and Fox, Peter T. and Langner, Robert and Eickhoff, Simon B.},
+  title={Evaluation of thresholding methods for activation likelihood estimation meta-analysis via large-scale simulations},
+  journal={Human Brain Mapping},
+  volume={n/a},
+  number={n/a},
+  pages={},
+  year={2022},
+  keywords={family-wise error, FWE, multiple comparison correction, neuroimaging meta-analysis, significance thresholding, threshold-free cluster enhancement cluster extent},
+  doi={10.1002/hbm.25898},
+  url={https://onlinelibrary.wiley.com/doi/abs/10.1002/hbm.25898},
+  abstract={In recent neuroimaging studies, threshold-free cluster enhancement (TFCE) gained popularity as a sophisticated thresholding method for statistical inference. It was shown to feature higher sensitivity than the frequently used approach of controlling the cluster-level family-wise error (cFWE) and it does not require setting a cluster-forming threshold at voxel level. Here, we examined the applicability of TFCE to a widely used method for coordinate-based neuroimaging meta-analysis, Activation Likelihood Estimation (ALE), by means of large-scale simulations. We created over 200,000 artificial meta-analysis datasets by independently varying the total number of experiments included and the amount of spatial convergence across experiments. Next, we applied ALE to all datasets and compared the performance of TFCE to both voxel-level and cluster-level FWE correction approaches. All three multiple-comparison correction methods yielded valid results, with only about 5\% of the significant clusters being based on spurious convergence, which corresponds to the nominal level the methods were controlling for. On average, TFCE's sensitivity was comparable to that of cFWE correction, but it was slightly worse for a subset of parameter combinations, even after TFCE parameter optimization. cFWE yielded the largest significant clusters, closely followed by TFCE, while voxel-level FWE correction yielded substantially smaller clusters, showcasing its high spatial specificity. Given that TFCE does not outperform the standard cFWE correction but is computationally much more expensive, we conclude that employing TFCE for ALE cannot be recommended to the general user.}
+}
+
+@article{freedman1983nonstochastic,
+  title={A nonstochastic interpretation of reported significance levels},
+  author={Freedman, David and Lane, David},
+  journal={Journal of Business \& Economic Statistics},
+  volume={1},
+  number={4},
+  pages={292--298},
+  year={1983},
+  publisher={Taylor \& Francis}
+}
+
+@book{hedges2014statistical,
+  title={Statistical methods for meta-analysis},
+  author={Hedges, Larry V and Olkin, Ingram},
+  year={2014},
+  publisher={Academic press}
+}
+
+@article{hughett2008accurate,
+  title={Accurate computation of the F-to-z and t-to-z transforms for large arguments},
+  author={Hughett, Paul},
+  journal={Journal of Statistical Software},
+  volume={23},
+  pages={1--5},
+  year={2008},
+  url={https://doi.org/10.18637/jss.v023.c01},
+  doi={10.18637/jss.v023.c01}
+}
+
+@article{kosmidis2017improving,
+  title={Improving the accuracy of likelihood-based inference in meta-analysis and meta-regression},
+  author={Kosmidis, Ioannis and Guolo, Annamaria and Varin, Cristiano},
+  journal={Biometrika},
+  volume={104},
+  number={2},
+  pages={489--496},
+  year={2017},
+  publisher={Oxford University Press},
+  url={https://doi.org/10.1093/biomet/asx001},
+  doi={10.1093/biomet/asx001}
+}
+
+@article{laird2005ale,
+  title={ALE meta-analysis: Controlling the false discovery rate and performing statistical contrasts},
+  author={Laird, Angela R and Fox, P Mickle and Price, Cathy J and Glahn, David C and Uecker, Angela M and Lancaster, Jack L and Turkeltaub, Peter E and Kochunov, Peter and Fox, Peter T},
+  journal={Human brain mapping},
+  volume={25},
+  number={1},
+  pages={155--164},
+  year={2005},
+  publisher={Wiley Online Library},
+  url={https://doi.org/10.1002/hbm.20136},
+  doi={10.1002/hbm.20136}
+}
+
+@article{laird2009investigating,
+  title={Investigating the functional heterogeneity of the default mode network using coordinate-based meta-analytic modeling},
+  author={Laird, Angela R and Eickhoff, Simon B and Li, Karl and Robin, Donald A and Glahn, David C and Fox, Peter T},
+  journal={Journal of Neuroscience},
+  volume={29},
+  number={46},
+  pages={14496--14505},
+  year={2009},
+  publisher={Soc Neuroscience},
+  url={https://doi.org/10.1523/JNEUROSCI.4004-09.2009},
+  doi={10.1523/JNEUROSCI.4004-09.2009}
+}
+
+@article{langner2014meta,
+  title={Meta-analytic connectivity modeling revisited: controlling for activation base rates},
+  author={Langner, Robert and Rottschy, Claudia and Laird, Angela R and Fox, Peter T and Eickhoff, Simon B},
+  journal={Neuroimage},
+  volume={99},
+  pages={559--570},
+  year={2014},
+  publisher={Elsevier},
+  url={https://doi.org/10.1016/j.neuroimage.2014.06.007},
+  doi={10.1016/j.neuroimage.2014.06.007}
+}
+
+@article{newman2009distributed,
+  title={Distributed algorithms for topic models.},
+  author={Newman, David and Asuncion, Arthur and Smyth, Padhraic and Welling, Max},
+  journal={Journal of Machine Learning Research},
+  volume={10},
+  number={8},
+  year={2009},
+  url={http://jmlr.org/papers/v10/newman09a.html}
+}
+
+@article{nichols2005valid,
+  title={Valid conjunction inference with the minimum statistic},
+  author={Nichols, Thomas and Brett, Matthew and Andersson, Jesper and Wager, Tor and Poline, Jean-Baptiste},
+  journal={Neuroimage},
+  volume={25},
+  number={3},
+  pages={653--660},
+  year={2005},
+  publisher={Elsevier},
+  url={https://doi.org/10.1016/j.neuroimage.2004.12.005},
+  doi={10.1016/j.neuroimage.2004.12.005}
+}
+
+@article{poldrack2011cognitive,
+  title={The cognitive atlas: toward a knowledge foundation for cognitive neuroscience},
+  author={Poldrack, Russell A and Kittur, Aniket and Kalar, Donald and Miller, Eric and Seppa, Christian and Gil, Yolanda and Parker, D Stott and Sabb, Fred W and Bilder, Robert M},
+  journal={Frontiers in neuroinformatics},
+  volume={5},
+  pages={17},
+  year={2011},
+  publisher={Frontiers},
+  url={https://doi.org/10.3389/fninf.2011.00017},
+  doi={10.3389/fninf.2011.00017}
+}
+
+@article{poldrack2012discovering,
+  title={Discovering relations between mind, brain, and mental disorders using topic mapping},
+  author={Poldrack, Russell A and Mumford, Jeanette A and Schonberg, Tom and Kalar, Donald and Barman, Bishal and Yarkoni, Tal},
+  year={2012},
+  publisher={Public Library of Science San Francisco, USA},
+  journal={PLOS Computational Biology},
+  url={https://doi.org/10.1371/journal.pcbi.1002707},
+  doi={10.1371/journal.pcbi.1002707}
+}
+
+@article{robinson2010metaanalytic,
+  title={Metaanalytic connectivity modeling: delineating the functional connectivity of the human amygdala},
+  author={Robinson, Jennifer L and Laird, Angela R and Glahn, David C and Lovallo, William R and Fox, Peter T},
+  journal={Human brain mapping},
+  volume={31},
+  number={2},
+  pages={173--184},
+  year={2010},
+  publisher={Wiley Online Library},
+  url={https://doi.org/10.1002/hbm.20854},
+  doi={10.1002/hbm.20854}
+}
+
+@article{rubin2017decoding,
+  title={Decoding brain activity using a large-scale probabilistic functional-anatomical atlas of human cognition},
+  author={Rubin, Timothy N and Koyejo, Oluwasanmi and Gorgolewski, Krzysztof J and Jones, Michael N and Poldrack, Russell A and Yarkoni, Tal},
+  journal={PLoS computational biology},
+  volume={13},
+  number={10},
+  pages={e1005649},
+  year={2017},
+  publisher={Public Library of Science San Francisco, CA USA},
+  url={https://doi.org/10.1371/journal.pcbi.1005649},
+  doi={10.1371/journal.pcbi.1005649}
+}
+
+@article{Salo2022,
+  doi = {10.55458/neurolibre.00007},
+  url = {https://doi.org/10.55458/neurolibre.00007},
+  year = {2022},
+  publisher = {The Open Journal},
+  volume = {1},
+  number = {1},
+  pages = {7},
+  author = {Taylor Salo and Tal Yarkoni and Thomas E. Nichols and Jean-Baptiste Poline and Murat Bilgel and Katherine L. Bottenhorn and Dorota Jarecka and James D. Kent and Adam Kimbler and Dylan M. Nielson and Kendra M. Oudyk and Julio A. Peraza and Alexandre Pérez and Puck C. Reeders and Julio A. Yanes and Angela R. Laird},
+  title = {NiMARE: Neuroimaging Meta-Analysis Research Environment},
+  journal = {NeuroLibre}
+}
+
+@article{Salo2023,
+  doi = {10.52294/001c.87681},
+  url = {https://doi.org/10.52294/001c.87681},
+  year = {2023},
+  volume = {3},
+  pages = {1 - 32},
+  author = {Taylor Salo and Tal Yarkoni and Thomas E. Nichols and Jean-Baptiste Poline and Murat Bilgel and Katherine L. Bottenhorn and Dorota Jarecka and James D. Kent and Adam Kimbler and Dylan M. Nielson and Kendra M. Oudyk and Julio A. Peraza and Alexandre Pérez and Puck C. Reeders and Julio A. Yanes and Angela R. Laird},
+  title = {NiMARE: Neuroimaging Meta-Analysis Research Environment},
+  journal = {Aperture Neuro}
+}
+
+@article{shaffer1995multiple,
+  title={Multiple hypothesis testing},
+  author={Shaffer, Juliet Popper},
+  journal={Annual review of psychology},
+  volume={46},
+  number={1},
+  pages={561--584},
+  year={1995},
+  publisher={Annual Reviews 4139 El Camino Way, PO Box 10139, Palo Alto, CA 94303-0139, USA}
+}
+
+@article{smith2009threshold,
+ 	title={Threshold-free cluster enhancement: addressing problems of smoothing, threshold dependence and localisation in cluster inference},
+ 	author={Smith, Stephen M and Nichols, Thomas E},
+ 	journal={Neuroimage},
+ 	volume={44},
+ 	number={1},
+ 	pages={83--98},
+ 	year={2009},
+ 	publisher={Elsevier},
+ 	url={https://doi.org/10.1016/j.neuroimage.2008.03.061},
+ 	doi={10.1016/j.neuroimage.2008.03.061}
+ }
+
+@misc{sochat2015ttoz,
+  author = {Sochat, Vanessa},
+  title = {TtoZ Original Release},
+  month = oct,
+  year = 2015,
+  publisher = {Zenodo},
+  doi = {10.5281/zenodo.32508},
+  url = {https://doi.org/10.5281/zenodo.32508}
+}
+
+@article{stouffer1949american,
+  title={The american soldier: Adjustment during army life.(studies in social psychology in world war ii), vol. 1},
+  author={Stouffer, Samuel A and Suchman, Edward A and DeVinney, Leland C and Star, Shirley A and Williams Jr, Robin M},
+  journal={Studies in social psychology in World War II},
+  year={1949},
+  publisher={Princeton Univ. Press}
+}
+
+@article{turkeltaub2002meta,
+  title={Meta-analysis of the functional neuroanatomy of single-word reading: method and validation},
+  author={Turkeltaub, Peter E and Eden, Guinevere F and Jones, Karen M and Zeffiro, Thomas A},
+  journal={Neuroimage},
+  volume={16},
+  number={3},
+  pages={765--780},
+  year={2002},
+  publisher={Elsevier},
+  url={https://doi.org/10.1006/nimg.2002.1131},
+  doi={10.1006/nimg.2002.1131}
+}
+
+@article{turkeltaub2012minimizing,
+  title={Minimizing within-experiment and within-group effects in activation likelihood estimation meta-analyses},
+  author={Turkeltaub, Peter E and Eickhoff, Simon B and Laird, Angela R and Fox, Mick and Wiener, Martin and Fox, Peter},
+  journal={Human brain mapping},
+  volume={33},
+  number={1},
+  pages={1--13},
+  year={2012},
+  publisher={Wiley Online Library},
+  url={https://doi.org/10.1002/hbm.21186},
+  doi={10.1002/hbm.21186}
+}
+
+@article{wager2003valence,
+  title={Valence, gender, and lateralization of functional brain anatomy in emotion: a meta-analysis of findings from neuroimaging},
+  author={Wager, Tor D and Phan, K Luan and Liberzon, Israel and Taylor, Stephan F},
+  journal={Neuroimage},
+  volume={19},
+  number={3},
+  pages={513--531},
+  year={2003},
+  publisher={Elsevier},
+  url={https://doi.org/10.1016/S1053-8119(03)00078-8},
+  doi={10.1016/S1053-8119(03)00078-8}
+}
+
+@article{wager2004neuroimaging,
+  title={Neuroimaging studies of shifting attention: a meta-analysis},
+  author={Wager, Tor D and Jonides, John and Reading, Susan},
+  journal={Neuroimage},
+  volume={22},
+  number={4},
+  pages={1679--1693},
+  year={2004},
+  publisher={Elsevier},
+  url={https://doi.org/10.1016/j.neuroimage.2004.03.052},
+  doi={10.1016/j.neuroimage.2004.03.052}
+}
+
+@article{wager2007meta,
+  title={Meta-analysis of functional neuroimaging data: current and future directions},
+  author={Wager, Tor D and Lindquist, Martin and Kaplan, Lauren},
+  journal={Social cognitive and affective neuroscience},
+  volume={2},
+  number={2},
+  pages={150--158},
+  year={2007},
+  publisher={Oxford University Press},
+  url={https://doi.org/10.1093/scan/nsm015},
+  doi={10.1093/scan/nsm015}
+}
+
+@article{yarkoni2011large,
+  title={Large-scale automated synthesis of human functional neuroimaging data},
+  author={Yarkoni, Tal and Poldrack, Russell A and Nichols, Thomas E and Van Essen, David C and Wager, Tor D},
+  journal={Nature methods},
+  volume={8},
+  number={8},
+  pages={665--670},
+  year={2011},
+  publisher={Nature Publishing Group},
+  url={https://doi.org/10.1038/nmeth.1635},
+  doi={10.1038/nmeth.1635}
+}
+
+@article{zaykin2011optimally,
+  title={Optimally weighted Z-test is a powerful method for combining probabilities in meta-analysis},
+  author={Zaykin, Dmitri V},
+  journal={Journal of evolutionary biology},
+  volume={24},
+  number={8},
+  pages={1836--1841},
+  year={2011},
+  publisher={Wiley Online Library},
+  url={https://doi.org/10.1111/j.1420-9101.2011.02297.x},
+  doi={10.1111/j.1420-9101.2011.02297.x}
+}
+
+@article{zhang2009cluster,
+  title={Cluster mass inference via random field theory},
+  author={Zhang, Hui and Nichols, Thomas E and Johnson, Timothy D},
+  journal={Neuroimage},
+  volume={44},
+  number={1},
+  pages={51--61},
+  year={2009},
+  publisher={Elsevier},
+  url={https://doi.org/10.1016/j.neuroimage.2008.08.017},
+  doi={10.1016/j.neuroimage.2008.08.017}
+}
+
+@article{eisenberg1966general,
+  title={A general use of the Poisson approximation for binomial events, with application to bacterial endocarditis data},
+  author={Eisenberg, Herbert B and Geoghagen, Randolph RM and Walsh, John E},
+  journal={Biometrics},
+  pages={74--82},
+  year={1966},
+  publisher={JSTOR}
+}
+
+@article{barndorff1969negative,
+  title={Negative binomial processes},
+  author={Barndorff-Nielsen, Ole and Yeo, GF},
+  journal={Journal of Applied Probability},
+  volume={6},
+  number={3},
+  pages={633--647},
+  year={1969},
+  publisher={Cambridge University Press}
+}
+
+@article{geoffroy2001poisson,
+  title={A Poisson-gamma model for two-stage cluster sampling data},
+  author={Geoffroy, Pedro and Weerakkody, Govinda},
+  journal={Journal of Statistical Computation and Simulation},
+  volume={68},
+  number={2},
+  pages={161--172},
+  year={2001},
+  publisher={Taylor \& Francis}
+}
+
+@article {bossier2019,
+	author = {Bossier, Han and Nichols, Thomas E. and Moerkerke, Beatrijs},
+	title = {Standardized Effect Sizes and Image-Based Meta-Analytical Approaches for fMRI Data},
+	elocation-id = {865881},
+	year = {2019},
+	doi = {10.1101/865881},
+	publisher = {Cold Spring Harbor Laboratory},
+	journal = {bioRxiv}
+}
+
+@article{winkler2014permutation,
+  title={Permutation inference for the general linear model},
+  author={Winkler, Anderson M. and Ridgway, Gerard R. and Webster, Matthew A. and Smith, Stephen M. and Nichols, Thomas E.},
+  journal={NeuroImage},
+  volume={92},
+  pages={381--397},
+  year={2014},
+  publisher={Elsevier},
+  doi={10.1016/j.neuroimage.2014.01.060}
+}
+
+@article{hedges2010robust,
+  title={Robust variance estimation in meta-regression with dependent effect size estimates},
+  author={Hedges, Larry V and Tipton, Elizabeth and Johnson, Matthew C},
+  journal={Research Synthesis Methods},
+  volume={1},
+  number={1},
+  pages={39--65},
+  year={2010},
+  publisher={Wiley Online Library},
+  url={https://doi.org/10.1002/jrsm.5},
+  doi={10.1002/jrsm.5}
+}
+
+@article{tipton2015small,
+  title={Small sample adjustments for robust variance estimation with meta-regression},
+  author={Tipton, Elizabeth},
+  journal={Psychological Methods},
+  volume={20},
+  number={3},
+  pages={375--393},
+  year={2015},
+  publisher={American Psychological Association},
+  url={https://doi.org/10.1037/met0000011},
+  doi={10.1037/met0000011}
+}
+
+@article{fisher2015robumeta,
+  title={robumeta: An R-package for robust variance estimation in meta-analysis},
+  author={Fisher, Zachary and Tipton, Elizabeth},
+  journal={arXiv preprint arXiv:1503.02220},
+  year={2015},
+  url={https://doi.org/10.48550/arXiv.1503.02220},
+  doi={10.48550/arXiv.1503.02220}
+}
+
+@article{pustejovsky2022expanding,
+  title={Meta-analysis with robust variance estimation: Expanding the range of working models},
+  author={Pustejovsky, James E and Tipton, Elizabeth},
+  journal={Prevention Science},
+  volume={23},
+  number={3},
+  pages={425--438},
+  year={2022},
+  publisher={Springer},
+  url={https://doi.org/10.1007/s11121-021-01246-3},
+  doi={10.1007/s11121-021-01246-3}
+}
+
+@article{brown1975method,
+  title={A method for combining non-independent, one-sided tests of significance},
+  author={Brown, Morton B},
+  journal={Biometrics},
+  volume={31},
+  number={4},
+  pages={987--992},
+  year={1975},
+  publisher={JSTOR},
+  url={https://doi.org/10.2307/2529826},
+  doi={10.2307/2529826}
+}
+
+@article{kost2002combining,
+  title={Combining dependent p-values},
+  author={Kost, James T and McDermott, Michael P},
+  journal={Statistics \& Probability Letters},
+  volume={60},
+  number={2},
+  pages={183--190},
+  year={2002},
+  publisher={Elsevier},
+  url={https://doi.org/10.1016/S0167-7152(02)00310-3},
+  doi={10.1016/S0167-7152(02)00310-3}
+}
+@article{knapp2003improved,
+  title={Improved tests for a random effects meta-regression with a single covariate},
+  author={Knapp, Guido and Hartung, Joachim},
+  journal={Statistics in Medicine},
+  volume={22},
+  number={17},
+  pages={2693--2710},
+  year={2003},
+  publisher={Wiley},
+  doi={10.1002/sim.1482}
+}

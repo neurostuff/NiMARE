@@ -1,0 +1,2113 @@
+id,name,alias,length,ratio
+tsk_4a57abb949e35,structured clinical interview for diagnostic and statistical manual of mental disorders (dsm-iv),structured clinical interview for diagnostic and statistical manual of mental disorders (dsm-iv),96.0,100
+tsk_4a57abb949e35,structured clinical interview for diagnostic and statistical manual of mental disorders (dsm-iv),dsm-iv structured clinical interview for diagnostic and statistical manual of mental disorders,94.0,92
+tsk_4a57abb949e35,structured clinical interview for diagnostic and statistical manual of mental disorders (dsm-iv),structured clinical interview for diagnostic and statistical manual of mental disorders,87.0,95
+trm_5176cf9d3d512,living/nonliving judgment on mirror-reversed and plain-text words,living/nonliving judgment on mirror-reversed and plain-text words,65.0,100
+trm_56a2b7c08a279,short penn continuous performance test-number and letter version,short penn continuous performance test-number and letter version,64.0,100
+trm_523f58d91f2c0,beery-buktenica developmental test of visual-motor integration,beery-buktenica developmental test of visual-motor integration,62.0,100
+trm_52718631bc934,communication and symbolic behavior scales development profile,communication and symbolic behavior scales development profile,62.0,100
+trm_4e5662373bc89,heat sensitization/adaptation,tonic stimulation model with continuous visual analog scale,59.0,36
+tsk_4a57abb949a4f,eriksen flanker task,nih toolbox flanker inhibitory control and attention test,57.0,34
+trm_56ac06bac9334,selection-optimization-compensation (soc) questionnaire ,selection-optimization-compensation (soc) questionnaire ,56.0,100
+trm_58a5d31f5c72d,biological motion perception (passive viewing) paradigm,biological motion perception (passive viewing) paradigm,55.0,100
+trm_529ce04b778b6,joint attention / social and nonsocial orienting task,joint attention / social and nonsocial orienting task,53.0,100
+trm_56ac06bac9334,selection-optimization-compensation (soc) questionnaire ,soc selection-optimization-compensation questionnaire,53.0,90
+trm_58a5d31f5c72d,biological motion perception (passive viewing) paradigm,passive viewing biological motion perception paradigm,53.0,69
+trm_4da880ff8fd4a,cambridge neuropsychological test automated battery ,cambridge neuropsychological test automated battery ,52.0,100
+trm_550b557e5f90e,social cognition (theory of mind) fmri task paradigm,social cognition (theory of mind) fmri task paradigm,52.0,100
+trm_5887c029d46f4,gustatory stimulation with liquid tastes or flavors ,gustatory stimulation with liquid tastes or flavors ,52.0,100
+trm_4da6338803ed2,wechsler intelligence scale for children - revised,wechsler intelligence scale for children - revised,50.0,100
+trm_4da891d43240c,modified erickson scale of communication attitudes,modified erickson scale of communication attitudes,50.0,100
+trm_56a91e3e982f9,i7 impulsiveness and venturesomeness questionnaire,i7 impulsiveness and venturesomeness questionnaire,50.0,100
+trm_550b557e5f90e,social cognition (theory of mind) fmri task paradigm,theory of mind social cognition fmri task paradigm,50.0,69
+tsk_4a57abb9498ab,behavioral rating inventory of executive function,behavioral rating inventory of executive function,49.0,100
+trm_50f37f231aa4c,nih toolbox vision-related quality of life survey,nih toolbox vision-related quality of life survey,49.0,100
+trm_5258346e72223,center for epidemiologic studies depression scale,center for epidemiologic studies depression scale,49.0,100
+trm_55217e77441b0,manipulation of language and non-verbal behaviors,manipulation of language and non-verbal behaviors,49.0,100
+trm_57c0bf6b14b90,eckblad and chapman's hypomanic personality scale,eckblad and chapman's hypomanic personality scale,49.0,100
+trm_56ac06bac9334,selection-optimization-compensation (soc) questionnaire ,selection-optimization-compensation questionnaire,49.0,93
+trm_52602c143d3a9,children's yale-brown obsessive compulsive scale,children's yale-brown obsessive compulsive scale,48.0,100
+trm_55217d7fbfdba,manipulation of predictability and acceptability,manipulation of predictability and acceptability,48.0,100
+trm_559e2af1cc0ce,hamilton psychiatric rating scale for depression,hamilton psychiatric rating scale for depression,48.0,100
+tsk_4a57abb949dfe,spielberger's state-trait anxiety questionnaire,spielberger's state-trait anxiety questionnaire,47.0,100
+trm_4d55a2bbcfdff,choice task between risky and non-risky options,choice task between risky and non-risky options,47.0,100
+trm_4da891794859f,macarthur communicative development inventories,macarthur communicative development inventories,47.0,100
+trm_558c3350c6a9f,stop signal task with dot motion discrimination,stop signal task with dot motion discrimination,47.0,100
+trm_56a2a98785453,penn visual object learning test delayed memory,penn visual object learning test delayed memory,47.0,100
+trm_56bbe12994926,stanford leisure-time activity categorical item,stanford leisure-time activity categorical item,47.0,100
+trm_579640ddba2c0,birkbeck reversible sentence comprehension test,birkbeck reversible sentence comprehension test,47.0,100
+tsk_4a57abb9499a8,clinical evaluation of language fundamentals-3,clinical evaluation of language fundamentals-3,46.0,100
+trm_51c453f64d2a6,psychological refractory period (prp) paradigm,psychological refractory period (prp) paradigm,46.0,100
+trm_55217860a9dea,coherent/incoherent discourse distinction task,coherent/incoherent discourse distinction task,46.0,100
+trm_5667476fc14dd,inter-dimensional/extra-dimensional shift task,inter-dimensional/extra-dimensional shift task,46.0,100
+trm_4f24154867d84,logical reasoning task,baddeley&#39;s grammatical transformation task,46.0,53
+trm_50eb115b6c476,nih toolbox dimensional change card sort test,nih toolbox dimensional change card sort test,45.0,100
+trm_526027c99b726,comprehensive test of phonological processing,comprehensive test of phonological processing,45.0,100
+trm_55a6a36d9c3f9,scale for the assessment of negative symptoms,scale for the assessment of negative symptoms,45.0,100
+trm_55a6cffbcb5f7,scale for the assessment of positive symptoms,scale for the assessment of positive symptoms,45.0,100
+tsk_BuPIiFcjBo2aX,generalization of instrumental avoidance task,generalization of instrumental avoidance task,45.0,100
+trm_550b557e5f90e,social cognition (theory of mind) fmri task paradigm,theory of mind social cognition fmri paradigm,45.0,62
+trm_50eb17385e9a6,nih toolbox list sorting working memory test,nih toolbox list sorting working memory test,44.0,100
+trm_50f3c003327c4,nih toolbox general life satisfaction survey,nih toolbox general life satisfaction survey,44.0,100
+trm_524b563fb87c8,conners comprehensive behavior rating scales,conners comprehensive behavior rating scales,44.0,100
+trm_56a2a665baeb1,adult's penn word memory test delayed memory,adult's penn word memory test delayed memory,44.0,100
+dso_12685,mixed receptive-expressive language disorder,mixed receptive-expressive language disorder,44.0,100
+trm_51c453f64d2a6,psychological refractory period (prp) paradigm,prp psychological refractory period paradigm,44.0,89
+trm_58a5d31f5c72d,biological motion perception (passive viewing) paradigm,passive viewing biological motion perception,44.0,57
+trm_4c8a840d6f969,subjective emotional picture discrimination,subjective emotional picture discrimination,43.0,100
+tsk_4a57abb949f12,wechsler adult intelligence scale - revised,wechsler adult intelligence scale - revised,43.0,100
+trm_5262c98a09546,expressive one word-picture vocabulary test,expressive one word-picture vocabulary test,43.0,100
+trm_5298f15fe0fcf,expressive one-word picture vocabulary test,expressive one-word picture vocabulary test,43.0,100
+trm_553eb28436233,multi-attribute reward-guided decision task,multi-attribute reward-guided decision task,43.0,100
+trm_55a6c80b2c1d6,minnesota multiphasic personality inventory,minnesota multiphasic personality inventory,43.0,100
+dso_0050667,alcohol-related neurodevelopmental disorder,alcohol-related neurodevelopmental disorder,43.0,100
+trm_515495b718cd6,ax-dpx,"dot pattern expectancy,dot probe expectancy",43.0,20
+trm_4b94affc43245,wechsler abbreviated scale of intelligence,wechsler abbreviated scale of intelligence,42.0,100
+tsk_4a57abb949d69,salthouse and babcock listening span task ,salthouse and babcock listening span task ,42.0,100
+trm_50eb4d3d96ff8,nih toolbox 9-hole pegboard dexterity test,nih toolbox 9-hole pegboard dexterity test,42.0,100
+trm_553fbbf79ebc5,social influence for food preferences task,social influence for food preferences task,42.0,100
+trm_55a6aa62c54f8,multidimensional personality questionnaire,multidimensional personality questionnaire,42.0,100
+trm_5873e2469dd0d,synatcting and semantic fmri task paradigm,synatcting and semantic fmri task paradigm,42.0,100
+trm_4cacf22a22d80,probabilistic classification task,probabilistic classification learning task,42.0,88
+tsk_4a57abb949f04,wechsler adult intelligence scale-revised,wechsler adult intelligence scale-revised,41.0,100
+trm_4d54b8361e93e,behavioral investment allocation strategy,behavioral investment allocation strategy,41.0,100
+trm_50eb3b2d1de11,nih toolbox oral reading recognition test,nih toolbox oral reading recognition test,41.0,100
+trm_50eb585f62f24,nih toolbox 4-meter walk gait speed test ,nih toolbox 4-meter walk gait speed test ,41.0,100
+dso_10932,obsessive-compulsive personality disorder,obsessive-compulsive personality disorder,41.0,100
+trm_550b557e5f90e,social cognition (theory of mind) fmri task paradigm,theory of mind social cognition fmri task,41.0,56
+tsk_4a57abb949ece,unified parkinson's disease rating scale,unified parkinson's disease rating scale,40.0,100
+trm_4da86c6808ddd,cattell's culture fair intelligence test,cattell's culture fair intelligence test,40.0,100
+trm_4da88cb222308,nih toolbox picture sequence memory test,nih toolbox picture sequence memory test,40.0,100
+trm_4eb1f3a8ec119,intermodal preferential looking paradigm,intermodal preferential looking paradigm,40.0,100
+trm_50eb69a57bc96,nih toolbox 2-minute walk endurance test,nih toolbox 2-minute walk endurance test,40.0,100
+trm_5181f863d24f4,stop signal task with pseudo word naming,stop signal task with pseudo word naming,40.0,100
+trm_5298e7a465b41,early childhood behavioral questionnaire,early childhood behavioral questionnaire,40.0,100
+trm_550b5a47aa23e,relational processing fmri task paradigm,relational processing fmri task paradigm,40.0,100
+trm_551f0c294ce23,continuous performance test - ax version,continuous performance test - ax version,40.0,100
+dso_0050776,non-specific x-linked mental retardation,non-specific x-linked mental retardation,40.0,100
+dso_1094,attention deficit hyperactivity disorder,attention deficit hyperactivity disorder,40.0,100
+trm_51c453f64d2a6,psychological refractory period (prp) paradigm,psychological refractory period paradigm,40.0,93
+tsk_4a57abb949a78,fagerstrom test for nicotine dependence,fagerstrom test for nicotine dependence,39.0,100
+tsk_4a57abb949b54,maudsley obsessive compulsive inventory,maudsley obsessive compulsive inventory,39.0,100
+tsk_4a57abb949ef7,warrington's face/word recognition test,warrington's face/word recognition test,39.0,100
+trm_523c7a0a73cf5,aberrant behavior checklist - community,aberrant behavior checklist - community,39.0,100
+trm_551b17b190582,intensity for somatosensory stimulation,intensity for somatosensory stimulation,39.0,100
+trm_553e77887abc7,becker-degroot-marschak (bdm) procedure,becker-degroot-marschak (bdm) procedure,39.0,100
+trm_56aa9833c4be2,treatment self-regulation questionnaire,treatment self-regulation questionnaire,39.0,100
+dso_0060037,developmental disorder of mental health,developmental disorder of mental health,39.0,100
+dso_5798cf99cfaa3,ideational apraxia (conceptual apraxia),ideational apraxia (conceptual apraxia),39.0,100
+trm_5154b23a3156a,production of non-facial communication,production of non-facial communication,38.0,100
+tsk_4a57abb949aca,international affective picture system,international affective picture system,38.0,100
+trm_4da891a546d8c,autism diagnostic observation schedule,autism diagnostic observation schedule,38.0,100
+trm_50f37767e2958,nih toolbox hearing handicap inventory,nih toolbox hearing handicap inventory,38.0,100
+trm_50f38098952cb,nih toolbox dynamic visual acuity test,nih toolbox dynamic visual acuity test,38.0,100
+trm_50f5bfef58abb,nih toolbox meaning and purpose survey,nih toolbox meaning and purpose survey,38.0,100
+trm_524055ac4fecf,broader phenotype autism symptom scale,broader phenotype autism symptom scale,38.0,100
+trm_5262cb3d852c0,leiter international performance scale,leiter international performance scale,38.0,100
+trm_550b54a8b30f4,language processing fmri task paradigm,language processing fmri task paradigm,38.0,100
+trm_552174d3b61fb,verbal description of visual depiction,verbal description of visual depiction,38.0,100
+trm_552181d7be45e,manipulation of coherence and cohesion,manipulation of coherence and cohesion,38.0,100
+trm_552184243d7ab,surface properties of object paradigms,surface properties of object paradigms,38.0,100
+trm_56a2a622cdfbd,penn facial memory test delayed memory,penn facial memory test delayed memory,38.0,100
+trm_56a9137d9dce1,behavioral approach/inhibition systems,behavioral approach/inhibition systems,38.0,100
+trm_5873d0be34b8f,emotional localizer fmri task paradigm,emotional localizer fmri task paradigm,38.0,100
+trm_5154b049c279f,reception of non-facial communication,reception of non-facial communication,37.0,100
+tsk_4a57abb949879,rapid serial visual presentation task,rapid serial visual presentation task,37.0,100
+tsk_4a57abb9498ce,birmingham object recognition battery,birmingham object recognition battery,37.0,100
+trm_4da8911e715e3,early social and communication scales,early social and communication scales,37.0,100
+trm_4da8914987ee2,reynell developmental language scales,reynell developmental language scales,37.0,100
+trm_4ebc9d2e397f2,classification probe without feedback,classification probe without feedback,37.0,100
+trm_4ebd44cd88360,abstract/concrete judgment: bilingual,abstract/concrete judgment: bilingual,37.0,100
+trm_4f240e7f989f8,auditory temporal discrimination task,auditory temporal discrimination task,37.0,100
+trm_4f24211a03b07,raven's advanced progressive matrices,raven's advanced progressive matrices,37.0,100
+trm_5542841f3dcd5,color-word stroop with task switching,color-word stroop with task switching,37.0,100
+trm_525d847e2bd0b,autism diagnostic interview - revised,autism diagnostic interview - revised,37.0,100
+trm_52713c85c0bd2,test of adolescent and adult language,test of adolescent and adult language,37.0,100
+trm_550b5b066d37b,emotion processing fmri task paradigm,emotion processing fmri task paradigm,37.0,100
+trm_558c36935a0e9,spatial working memory localizer task,spatial working memory localizer task,37.0,100
+trm_56a2a74ab3ef6,measured emotion differentiation test,measured emotion differentiation test,37.0,100
+trm_56a915fe77945,future time perspective questionnaire,future time perspective questionnaire,37.0,100
+trm_56abcba3df89b,mindful attention and awareness scale,mindful attention and awareness scale,37.0,100
+trm_5873cd1c9d4c4,standard localizer fmri task paradigm,standard localizer fmri task paradigm,37.0,100
+trm_553e77887abc7,becker-degroot-marschak (bdm) procedure,bdm becker-degroot-marschak procedure,37.0,87
+trm_58a5d31f5c72d,biological motion perception (passive viewing) paradigm,biological motion perception paradigm,37.0,80
+trm_4f24154867d84,logical reasoning task,baddeley&#39;s logical reasoning task,37.0,75
+dso_5798cf99cfaa3,ideational apraxia (conceptual apraxia),conceptual apraxia ideational apraxia,37.0,66
+trm_55c298bbe56d5,high energy density food recognition,high energy density food recognition,36.0,100
+trm_565a2e79b22f2,incentive modulated antisaccade task,incentive modulated antisaccade task,36.0,100
+trm_4b94b12bf0eb2,wechsler memory scale fourth edition,wechsler memory scale fourth edition,36.0,100
+trm_4da6318f7381b,probabilistic reversal learning task,probabilistic reversal learning task,36.0,100
+trm_4da86cfe8cf1b,sustained attention to response task,sustained attention to response task,36.0,100
+trm_4f244fee7d195,multi-attribute decision making task,multi-attribute decision making task,36.0,100
+trm_50f383e76e03b,nih toolbox odor identification test,nih toolbox odor identification test,36.0,100
+trm_50f3862422509,nih toolbox pain interference survey,nih toolbox pain interference survey,36.0,100
+trm_523dfd5b7a9f1,broad autism phenotype questionnaire,broad autism phenotype questionnaire,36.0,100
+trm_551f0713a5a17,inter-modal selective attention task,inter-modal selective attention task,36.0,100
+trm_553e6b8e33da4,predictive-inference helicopter task,predictive-inference helicopter task,36.0,100
+trm_553fcbbe974ba,stop signal walking task with stroop,stop signal walking task with stroop,36.0,100
+trm_5586ff878155d,adult adhd clinical diagnostic scale,adult adhd clinical diagnostic scale,36.0,100
+trm_56ab12e0f1a61,five facet mindfulness questionnaire,five facet mindfulness questionnaire,36.0,100
+trm_5798fa39b4315,american national adult reading test,american national adult reading test,36.0,100
+trm_5873ce8e77d1d,spatial localizer fmri task paradigm,spatial localizer fmri task paradigm,36.0,100
+tsk_4a57abb949e7c,syntactic acceptability judgement task,syntactic acceptability judgmenttask,36.0,97
+trm_550b557e5f90e,social cognition (theory of mind) fmri task paradigm,theory of mind social cognition fmri,36.0,48
+trm_4b7c27094a093,behavioral inhibition (temperament),behavioral inhibition (temperament),35.0,100
+trm_4c89912c79030,olfactory monitoring/discrimination,olfactory monitoring/discrimination,35.0,100
+trm_4c8a84afdd863,vibrotactile monitor/discrimination,vibrotactile monitor/discrimination,35.0,100
+tsk_4a57abb949af3,ishihara plates for color blindness,ishihara plates for color blindness,35.0,100
+trm_4da87fb28978e,paced auditory serial addition test,paced auditory serial addition test,35.0,100
+trm_5181f83b77fa4,stop signal task with letter naming,stop signal task with letter naming,35.0,100
+trm_50eb0dc6668e1,nih toolbox picture vocabulary test,nih toolbox picture vocabulary test,35.0,100
+trm_50f8516279419,rapid visual information processing,rapid visual information processing,35.0,100
+trm_525c56680c13c,children's psychiatric rating scale,children's psychiatric rating scale,35.0,100
+trm_558c35979a284,sentence/nonword language localizer,sentence/nonword language localizer,35.0,100
+trm_55a6cb4f951ea,temperament and character inventory,temperament and character inventory,35.0,100
+trm_56a9123fe580f,stimulus selective stop signal task,stimulus selective stop signal task,35.0,100
+trm_56a91e92eab46,zimbardo time perspective inventory,zimbardo time perspective inventory,35.0,100
+trm_57c0c146e0019,chapman perceptual aberration scale,chapman perceptual aberration scale,35.0,100
+trm_5873d014bcfc8,social localizer fmri task paradigm,social localizer fmri task paradigm,35.0,100
+dso_9923,developmental coordination disorder,developmental coordination disorder,35.0,100
+trm_4f23fc8c42d28,monetary incentive delay task,monetary incentive delay (mid) task,35.0,91
+trm_550b557e5f90e,social cognition (theory of mind) fmri task paradigm,social cognition fmri task paradigm,35.0,80
+trm_51c453f64d2a6,psychological refractory period (prp) paradigm,prp psychological refractory period,35.0,77
+trm_4b1968619b00b,color-word stroop task,stroop color-word interference task,35.0,63
+trm_557b499fac085,resistance to distractor inference,resistance to distractor inference,34.0,100
+trm_5595bda0c5dc3,facial trustworthiness recognition,facial trustworthiness recognition,34.0,100
+trm_4b86dbcd8ff78,rapid serial object transformation,rapid serial object transformation,34.0,100
+trm_4c8990f59266f,non-painful electrical stimulation,non-painful electrical stimulation,34.0,100
+tsk_4a57abb949889,audio-visual target detection task,audio-visual target detection task,34.0,100
+tsk_4a57abb949900,california verbal learning test-ii,california verbal learning test-ii,34.0,100
+tsk_4a57abb949d09,positive and negative affect scale,positive and negative affect scale,34.0,100
+tsk_4a57abb949e0c,sternberg delayed recognition task,sternberg delayed recognition task,34.0,100
+trm_50eb461d446e1,nih toolbox oral symbol digit test,nih toolbox oral symbol digit test,34.0,100
+trm_50f374718a91c,nih toolbox hearing threshold test,nih toolbox hearing threshold test,34.0,100
+trm_50f3bc06cae36,nih toolbox positive affect survey,nih toolbox positive affect survey,34.0,100
+trm_521687032f822,social communication questionnaire,social communication questionnaire,34.0,100
+trm_5255c99be1e53,children's communication checklist,children's communication checklist,34.0,100
+trm_526af65b16c82,stanford-binet intelligence scales,stanford-binet intelligence scales,34.0,100
+trm_527138126fb20,test of early language development,test of early language development,34.0,100
+trm_56a919a478935,ten item personality questionnaire,ten item personality questionnaire,34.0,100
+tsk_4a57abb9499f1,delayed nonmatch to sample task,delayed nonmatching to sample task,34.0,95
+trm_4e5662373bc89,heat sensitization/adaptation,heat sensibilization / habituation,34.0,79
+trm_4b7c270940f9d,behavioral inhibition (cognitive),behavioral inhibition (cognitive),33.0,100
+trm_5154a9f45903f,reception of facial communication,reception of facial communication,33.0,100
+trm_5595bd89d77c6,facial attractiveness recognition,facial attractiveness recognition,33.0,100
+trm_4cacf22a22d80,probabilistic classification task,probabilistic classification task,33.0,100
+trm_4da87f81bc2c8,retrieval-induced forgetting task,retrieval-induced forgetting task,33.0,100
+trm_4da880396c76b,rey-ostereith complex figure test,rey-ostereith complex figure test,33.0,100
+trm_4da88ae0f2952,rey auditory verbal learning task,rey auditory verbal learning task,33.0,100
+trm_4da88c5302e06,brixton spatial anticipation test,brixton spatial anticipation test,33.0,100
+trm_50eb54d78841b,nih toolbox standing balance test,nih toolbox standing balance test,33.0,100
+trm_50f385a8269ce,nih toolbox pain intensity survey,nih toolbox pain intensity survey,33.0,100
+trm_52717a95a3b03,vineland adaptive behavior scales,vineland adaptive behavior scales,33.0,100
+trm_5298ed1336e43,early development interview (edi),early development interview (edi),33.0,100
+trm_529ce3d22be3e,judgment of line orientation task,judgment of line orientation task,33.0,100
+trm_550b50095d4a3,working memory fmri task paradigm,working memory fmri task paradigm,33.0,100
+trm_551efd8a98162,emotion expression identification,emotion expression identification,33.0,100
+trm_55a6ae8f44ac3,eysenck personality questionnaire,eysenck personality questionnaire,33.0,100
+trm_566db10532583,roving somatosensory oddball task,roving somatosensory oddball task,33.0,100
+trm_58335e885873f,hidden state decision making task,hidden state decision making task,33.0,100
+trm_56abebfe9aaa3,zuckerman sensation seeking scale,zuckerman sensation seeking scale,33.0,100
+dso_13868,hypoactive sexual desire disorder,hypoactive sexual desire disorder,33.0,100
+dso_2745,narcissistic personality disorder,narcissistic personality disorder,33.0,100
+trm_4f23fc8c42d28,monetary incentive delay task,mid monetary incentive delay task,33.0,94
+trm_553e77887abc7,becker-degroot-marschak (bdm) procedure,becker-degroot-marschak procedure,33.0,92
+trm_4b7c27094a093,behavioral inhibition (temperament),temperament behavioral inhibition,33.0,62
+trm_559f0a5b4cd36,monetary reward prediction error,monetary reward prediction error,32.0,100
+trm_4b4a537644d76,penn continuous performance task,penn continuous performance task,32.0,100
+trm_4c8991c5beb0a,pain monitor/discrimination task,pain monitor/discrimination task,32.0,100
+trm_4da88c904862b,hayling sentence completion test,hayling sentence completion test,32.0,100
+trm_4f244a88013ae,artificial grammar learning task,artificial grammar learning task,32.0,100
+trm_50f379c6c9ea9,nih toolbox taste intensity test,nih toolbox taste intensity test,32.0,100
+trm_50f84bbdcfa4e,one touch stockings of cambridge,one touch stockings of cambridge,32.0,100
+trm_523e10cad0ce6,battelle developmental inventory,battelle developmental inventory,32.0,100
+trm_55218116cbf40,manipulation of individual words,manipulation of individual words,32.0,100
+trm_553e73e29cf7d,contextual semantic priming task,contextual semantic priming task,32.0,100
+trm_553ec64e6cb1b,associative memory encoding task,associative memory encoding task,32.0,100
+trm_56a2a6ad6edee,penn visual object learning test,penn visual object learning test,32.0,100
+trm_56bbe45003cf7,motor selective stop signal task,motor selective stop signal task,32.0,100
+trm_56bbead1a7ed4,emotion regulation questionnaire,emotion regulation questionnaire,32.0,100
+trm_57c0c1af018a5,chapman physical anhedonia scale,chapman physical anhedonia scale,32.0,100
+dso_0060040,pervasive developmental disorder,pervasive developmental disorder,32.0,100
+dso_10646,schizotypal personality disorder,schizotypal personality disorder,32.0,100
+dso_13487,childhood disintegrative disease,childhood disintegrative disease,32.0,100
+trm_4da8885b33375,rivermead behavioural memory test,rivermead behavioral memory test,32.0,98
+trm_4a3fd79d09ad5,auditory sentence comprehension,auditory sentence comprehension,31.0,100
+trm_4ffca95528c88,psychological refractory period,psychological refractory period,31.0,100
+trm_5154aa9735134,productive facial communication,productive facial communication,31.0,100
+trm_55b6b910b4b23,right finger response execution,right finger response execution,31.0,100
+trm_4c89910b7f8bc,non-painful thermal stimulation,non-painful thermal stimulation,31.0,100
+trm_4c8a83f27ac55,spatial location/discrimination,spatial location/discrimination,31.0,100
+tsk_4a57abb9499c7,continuous recognition paradigm,continuous recognition paradigm,31.0,100
+tsk_4a57abb9499f1,delayed nonmatch to sample task,delayed nonmatch to sample task,31.0,100
+tsk_4a57abb949aae,hooper visual organization test,hooper visual organization test,31.0,100
+tsk_4a57abb949ea5,test of word reading efficiency,test of word reading efficiency,31.0,100
+trm_4da6331cdeeb5,california verbal learning test,california verbal learning test,31.0,100
+trm_4ebc728326a13,single-task weather prediction ,single-task weather prediction ,31.0,100
+trm_50eb0a01bfd05,nih toolbox words-in noise test,nih toolbox words-in noise test,31.0,100
+trm_50f9952c2311a,penn conditional exclusion test,penn conditional exclusion test,31.0,100
+trm_525c4a78089ad,social competence questionnaire,social competence questionnaire,31.0,100
+trm_5262d6d7b2097,mullen scales of early learning,mullen scales of early learning,31.0,100
+trm_5266bebe14d2e,peabody picture vocabulary test,peabody picture vocabulary test,31.0,100
+trm_529ce6ecb35f8,kaufman brief intelligence test,kaufman brief intelligence test,31.0,100
+trm_5519c329eb334,regularity and change detection,regularity and change detection,31.0,100
+trm_551f0a8b5ba2c,sternberg item recognition task,sternberg item recognition task,31.0,100
+trm_5521807e50549,sentence/discourse content test,sentence/discourse content test,31.0,100
+trm_553e85265f51e,functional localizer fmri tasks,functional localizer fmri tasks,31.0,100
+trm_56a2a7750ffd0,pennâs logical reasoning test,pennâs logical reasoning test,31.0,100
+trm_5879199fde201,body image self-reflection task,body image self-reflection task,31.0,100
+trm_59ed1f7a0ac9c,episodic recombination paradigm,episodic recombination paradigm,31.0,100
+dso_0050696,fetal alcohol spectrum disorder,fetal alcohol spectrum disorder,31.0,100
+dso_0060038,specific developmental disorder,specific developmental disorder,31.0,100
+dso_10930,borderline personality disorder,borderline personality disorder,31.0,100
+dso_10939,antisocial personality disorder,antisocial personality disorder,31.0,100
+dso_12401,intermittent explosive disorder,intermittent explosive disorder,31.0,100
+dso_13352,ego-dystonic sexual orientation,ego-dystonic sexual orientation,31.0,100
+dso_251,alcohol-induced mental disorder,alcohol-induced mental disorder,31.0,100
+dso_334,histrionic personality disorder,histrionic personality disorder,31.0,100
+dso_9207,periodic limb movement disorder,periodic limb movement disorder,31.0,100
+tsk_4a57abb9499e3,delayed match to sample task,delayed matching to sample task,31.0,95
+tsk_4a57abb949e0c,sternberg delayed recognition task,sternberg item recognition task,31.0,86
+trm_5298ed1336e43,early development interview (edi),edi early development interview,31.0,84
+trm_56a2a622cdfbd,penn facial memory test delayed memory,penn face memory test - delayed,31.0,81
+trm_51c453f64d2a6,psychological refractory period (prp) paradigm,psychological refractory period,31.0,81
+trm_4b7c270940f9d,behavioral inhibition (cognitive),cognitive behavioral inhibition,31.0,66
+trm_559f09a5cdca9,subjective food value,self-reported food pleasantness,31.0,46
+trm_4a3fd79d0aa6a,object centered representation,object centered representation,30.0,100
+trm_4a3fd79d0b2fa,supervisory attentional system,supervisory attentional system,30.0,100
+trm_55b6b8e291dba,auditory arithmetic processing,auditory arithmetic processing,30.0,100
+trm_55b6b92c1fd76,left finger response execution,left finger response execution,30.0,100
+trm_50b55d8a6da00,pebl perceptual vigilance task,pebl perceptual vigilance task,30.0,100
+trm_4b65e5e2ab3ca,word-picture verification task,word-picture verification task,30.0,100
+trm_4c8990b07a037,music comprehension/production,music comprehension/production,30.0,100
+trm_4c8a830dec136,recitation/repetition (covert),recitation/repetition (covert),30.0,100
+trm_4c8a843d8d352,tactile monitor/discrimination,tactile monitor/discrimination,30.0,100
+tsk_4a57abb9498bc,benton facial recognition test,benton facial recognition test,30.0,100
+tsk_4a57abb949a41,edinburgh handedness inventory,edinburgh handedness inventory,30.0,100
+trm_4da86cdbd9eeb,test of variables of attention,test of variables of attention,30.0,100
+trm_4da87b8bf1511,matching familiar figures test,matching familiar figures test,30.0,100
+trm_4f241e8a01052,sentence-picture matching task,sentence-picture matching task,30.0,100
+trm_50eb51c2cd9fe,nih toolbox grip strength test,nih toolbox grip strength test,30.0,100
+trm_50f37caf81432,nih toolbox visual acuity test,nih toolbox visual acuity test,30.0,100
+trm_551b0dc4e4359,visual illusion susceptibility,visual illusion susceptibility,30.0,100
+trm_551f0757982bc,blocked channel-selection task,blocked channel-selection task,30.0,100
+trm_551f07a281283,distraction paradigm (capture),distraction paradigm (capture),30.0,100
+trm_553ebfc390256,perceptual discrimination task,perceptual discrimination task,30.0,100
+trm_553fc858cacc5,consensus decision-making task,consensus decision-making task,30.0,100
+trm_55492d262a847,manipulation of predictability,manipulation of predictability,30.0,100
+trm_5585c83d15fad,pittsburgh sleep quality index,pittsburgh sleep quality index,30.0,100
+trm_55a6a52537c2b,brief psychiatric rating scale,brief psychiatric rating scale,30.0,100
+trm_57c0c570473d3,chapman magical ideation scale,chapman magical ideation scale,30.0,100
+trm_56674e49d15e9,adaptation of marshmellow test,adaptation of marshmellow test,30.0,100
+trm_5696b61ff253e,multi-source interference task,multi-source interference task,30.0,100
+trm_57c0c186b07d4,chapman social anhedonia scale,chapman social anhedonia scale,30.0,100
+dso_0050666,partial fetal alcohol syndrome,partial fetal alcohol syndrome,30.0,100
+dso_10931,dependent personality disorder,dependent personality disorder,30.0,100
+dso_2055,post-traumatic stress disorder,post-traumatic stress disorder,30.0,100
+trm_4f2414059baa8,instrumental learning task,instrumental conditioning task,30.0,79
+trm_5585c83d15fad,pittsburgh sleep quality index,pittsburgh sleep questionnaire,30.0,77
+trm_550b557e5f90e,social cognition (theory of mind) fmri task paradigm,social cognition fmri paradigm,30.0,73
+tsk_4a57abb949e44,symbol-digit substitution,digit symbol substitution task,30.0,69
+trm_521687032f822,social communication questionnaire,autism screening questionnaire,30.0,62
+trm_5358ede949107,conflict adaptation effect,trial-to-trial conflict effect,30.0,54
+trm_50240f06af135,operant task,instrumental conditioning task,30.0,43
+trm_558c73f3c8c6f,visual pseudoword recognition,visual pseudoword recognition,29.0,100
+trm_558c7b14c076e,auditory sentence recognition,auditory sentence recognition,29.0,100
+trm_558c7b337080f,right hand response execution,right hand response execution,29.0,100
+trm_4b86c2e871b14,rapid automatized naming test,rapid automatized naming test,29.0,100
+trm_4c8a8329cb8ff,recitation/repetition (overt),recitation/repetition (overt),29.0,100
+trm_4c8a858da803d,word stem completion (covert),word stem completion (covert),29.0,100
+tsk_4a57abb949bb1,mini mental state examination,mini mental state examination,29.0,100
+tsk_4a57abb949e5b,symptom checklist-90-revised ,symptom checklist-90-revised ,29.0,100
+tsk_4a57abb949eb3,tobacco craving questionnaire,tobacco craving questionnaire,29.0,100
+trm_4dadbe225bdf1,spatial delayed response task,spatial delayed response task,29.0,100
+trm_4e5662373bc89,heat sensitization/adaptation,heat sensitization/adaptation,29.0,100
+trm_4f23fc8c42d28,monetary incentive delay task,monetary incentive delay task,29.0,100
+trm_4f2417d4a63ae,random number generation task,random number generation task,29.0,100
+trm_4f2419c4a1646,multisource interference task,multisource interference task,29.0,100
+trm_502ad907e3299,apparent verticality judgment,apparent verticality judgment,29.0,100
+trm_50f5822624e53,articulatory suppression task,articulatory suppression task,29.0,100
+trm_50f852c084fde,match to sample visual search,match to sample visual search,29.0,100
+trm_553eb45e2b709,social judgment of faces task,social judgment of faces task,29.0,100
+trm_553ec40d44c51,numerical working memory task,numerical working memory task,29.0,100
+trm_55a6a95f66508,dickman impulsivity inventory,dickman impulsivity inventory,29.0,100
+trm_56674c7c2fa4f,sternberg directed forgetting,sternberg directed forgetting,29.0,100
+trm_56a2a6ce24586,penn emotion recognition task,penn emotion recognition task,29.0,100
+trm_56a91ed5f1ccc,self regulation questionnaire,self regulation questionnaire,29.0,100
+trm_57964b8a66aed,montreal cognitive assessment,montreal cognitive assessment,29.0,100
+dso_0050628,advanced sleep phase syndrome,advanced sleep phase syndrome,29.0,100
+dso_10933,obsessive-compulsive disorder,obsessive-compulsive disorder,29.0,100
+dso_10934,multiple personality disorder,multiple personality disorder,29.0,100
+dso_10936,schizoid personality disorder,schizoid personality disorder,29.0,100
+dso_10938,paranoid personality disorder,paranoid personality disorder,29.0,100
+dso_1509,avoidant personality disorder,avoidant personality disorder,29.0,100
+dso_2303,stereotypic movement disorder,stereotypic movement disorder,29.0,100
+dso_52c73c015b5a4,explorer deprecation disorder,explorer deprecation disorder,29.0,100
+trm_4f23fc8c42d28,monetary incentive delay task,monetary incentive delay task,29.0,100
+tsk_4a57abb949d84,semantic anomaly judgement task,semantic anomaly judgmenttask,29.0,97
+trm_5667441c338a7,2nd-order rule acquisition,second-order rule acquisition,29.0,91
+trm_4a3fd79d09713,acoustic phonetic processing,acoustic phonetic processing,28.0,100
+trm_4e5506161998c,interoceptive representation,interoceptive representation,28.0,100
+trm_557b476527a27,auditory tone discrimination,auditory tone discrimination,28.0,100
+trm_557b48e337218,negative feedback processing,negative feedback processing,28.0,100
+trm_557b493e4203a,positive feedback processing,positive feedback processing,28.0,100
+trm_558c7b707f606,left hand response execution,left hand response execution,28.0,100
+trm_5595bd2b92003,facial happiness recognition,facial happiness recognition,28.0,100
+trm_55b6b952c1b4c,right toe response execution,right toe response execution,28.0,100
+trm_4c89924414c69,pitch/monitor discrimination,pitch/monitor discrimination,28.0,100
+trm_4c8a85a4564b2,word stem completion (overt),word stem completion (overt),28.0,100
+trm_4cacf3fbc503b,conditional stop signal task,conditional stop signal task,28.0,100
+tsk_4a57abb9499e3,delayed match to sample task,delayed match to sample task,28.0,100
+tsk_4a57abb949d32,pyramids and palm trees task,pyramids and palm trees task,28.0,100
+trm_4d8a48e403c78,inductive reasoning aptitude,inductive reasoning aptitude,28.0,100
+trm_4da88ec6735ad,uznadze haptic illusion task,uznadze haptic illusion task,28.0,100
+trm_4e31d69b7f422,temporal order judgment task,temporal order judgment task,28.0,100
+trm_4e8dd3831f0cc,deterministic classification,deterministic classification,28.0,100
+trm_4ebc98cc77e7b,dual-task weather prediction,dual-task weather prediction,28.0,100
+trm_4f24108555294,visually guided saccade task,visually guided saccade task,28.0,100
+trm_4f2412d4c3b88,semantic classification task,semantic classification task,28.0,100
+trm_4f2414a1bab77,phonetic discrimination task,phonetic discrimination task,28.0,100
+trm_4f244d2a54e27,autobiographical memory task,autobiographical memory task,28.0,100
+trm_50f9daf1c3834,visual object learning test ,visual object learning test ,28.0,100
+trm_523df616da8a6,adolescent symptom inventory,adolescent symptom inventory,28.0,100
+trm_527143a263937,test of language development,test of language development,28.0,100
+trm_55218536d1710,time-series of response time,time-series of response time,28.0,100
+trm_55a6a79b55c8b,adult adhd self-report scale,adult adhd self-report scale,28.0,100
+trm_55c686e0824e8,single item food choice task,single item food choice task,28.0,100
+trm_5667483dcc371,probabilistic selection task,probabilistic selection task,28.0,100
+trm_56674f71483b0,holt and laury risk titrator,holt and laury risk titrator,28.0,100
+trm_56a9166421494,duckworth's short grit scale,duckworth's short grit scale,28.0,100
+trm_56bbee951f161,kirby delay discounting task,kirby delay discounting task,28.0,100
+dso_0050668,alcohol-related birth defect,alcohol-related birth defect,28.0,100
+dso_11385,expressive language disorder,expressive language disorder,28.0,100
+dso_1203,drug-induced mental disorder,drug-induced mental disorder,28.0,100
+dso_12294,atypical depressive disorder,atypical depressive disorder,28.0,100
+dso_14320,generalized anxiety disorder,generalized anxiety disorder,28.0,100
+dso_9828,neonatal abstinence syndrome,neonatal abstinence syndrome,28.0,100
+trm_4f23fc8c42d28,monetary incentive delay task,mid monetary incentive delay,28.0,84
+trm_4c8a830dec136,recitation/repetition (covert),covert recitation/repetition,28.0,72
+trm_551f07a281283,distraction paradigm (capture),capture distraction paradigm,28.0,69
+trm_58a5d31f5c72d,biological motion perception (passive viewing) paradigm,biological motion perception,28.0,67
+trm_4dadbe225bdf1,spatial delayed response task,oculo-motor delayed response,28.0,63
+trm_4a3fd79d09ae1,auditory stream segregation,auditory stream segregation,27.0,100
+trm_4a3fd79d09aed,auditory word comprehension,auditory word comprehension,27.0,100
+trm_4a3fd79d0a72e,kinaesthetic representation,kinaesthetic representation,27.0,100
+trm_4a3fd79d0ac9e,phonological working memory,phonological working memory,27.0,100
+trm_5159c0a633cda,understanding mental states,understanding mental states,27.0,100
+trm_557b4abe521af,spatial selective attention,spatial selective attention,27.0,100
+trm_557b4b05ae470,visual color discrimination,visual color discrimination,27.0,100
+trm_558c7b5228ed4,visual sentence recognition,visual sentence recognition,27.0,100
+trm_55b6b96e77df6,left toe response execution,left toe response execution,27.0,100
+trm_4b843655d5d75,chimeric animal stroop task,chimeric animal stroop task,27.0,100
+trm_4c3e0add96550,oculomotor delayed response,oculomotor delayed response,27.0,100
+trm_4c898acd1f28e,pavlovian conditioning task,pavlovian conditioning task,27.0,100
+trm_4c898cb4ada49,face monitor/discrimination,face monitor/discrimination,27.0,100
+trm_4c89913f80802,orthographic discrimination,orthographic discrimination,27.0,100
+trm_4c89922cb6402,phonological discrimination,phonological discrimination,27.0,100
+trm_4c8a84825c4e4,tone monitor/discrimination,tone monitor/discrimination,27.0,100
+tsk_4a57abb949869,antisaccade/prosaccade task,antisaccade/prosaccade task,27.0,100
+tsk_4a57abb949a5d,extradimensional shift task,extradimensional shift task,27.0,100
+tsk_4a57abb949ad7,intradimensional shift task,intradimensional shift task,27.0,100
+tsk_4a57abb949f21,wisconsin card sorting test,wisconsin card sorting test,27.0,100
+trm_4d54b61a14a14,probabilistic gambling task,probabilistic gambling task,27.0,100
+trm_4da86c2a70a7d,dot pattern expectancy task,dot pattern expectancy task,27.0,100
+trm_4da890cf99b9e,stockings of cambridge task,stockings of cambridge task,27.0,100
+trm_4f2453b806fe1,spatial working memory task,spatial working memory task,27.0,100
+trm_4fbd2d71adf87,minimal feature match task ,minimal feature match task ,27.0,100
+trm_50df1dd534ff2,space fortress with oddball,space fortress with oddball,27.0,100
+trm_5181fb7bf350b,reversal weather prediction,reversal weather prediction,27.0,100
+trm_5208fe678c652,social responsiveness scale,social responsiveness scale,27.0,100
+trm_5272806688e63,differential ability scales,differential ability scales,27.0,100
+trm_5346927710e88,covert verb generation task,covert verb generation task,27.0,100
+trm_550b5c1a7f4db,gambling fmri task paradigm,gambling fmri task paradigm,27.0,100
+trm_5519c7f17de9f,vernier discrimination task,vernier discrimination task,27.0,100
+trm_55217a446eb3b,discourse content questions,discourse content questions,27.0,100
+trm_553e88a66b676,social bargaining fmri task,social bargaining fmri task,27.0,100
+trm_553fd2fc7a648,complex trait judgment task,complex trait judgment task,27.0,100
+trm_558c33e7714ba,multi-object localizer task,multi-object localizer task,27.0,100
+trm_55a6a8e81b7f4,barratt impulsiveness scale,barratt impulsiveness scale,27.0,100
+trm_55a6c92db12b0,hypomanic personality scale,hypomanic personality scale,27.0,100
+trm_566748c929afc,delay discounting titration,delay discounting titration,27.0,100
+trm_56a91a3082c31,theories of willpower scale,theories of willpower scale,27.0,100
+trm_5798f5c57048d,national adult reading test,national adult reading test,27.0,100
+trm_57c0c34e61fdf,continuous performance task,continuous performance task,27.0,100
+trm_58c80c3376c95,social norm processing task,social norm processing task,27.0,100
+dso_0060167,seasonal affective disorder,seasonal affective disorder,27.0,100
+dso_10685,separation anxiety disorder,separation anxiety disorder,27.0,100
+dso_8646,substance-induced psychosis,substance-induced psychosis,27.0,100
+dso_9091,rem sleep behavior disorder,rem sleep behavior disorder,27.0,100
+trm_5298ed1336e43,early development interview (edi),early development interview,27.0,90
+trm_4c8a8329cb8ff,recitation/repetition (overt),overt recitation/repetition,27.0,75
+trm_4c8a858da803d,word stem completion (covert),covert word stem completion,27.0,71
+trm_4a3fd79d09804,analogical problem solving,analogical problem solving,26.0,100
+trm_5358ede949107,conflict adaptation effect,conflict adaptation effect,26.0,100
+trm_557b482a7c62b,emotional face recognition,emotional face recognition,26.0,100
+trm_557b4b27dfd5e,visual form discrimination,visual form discrimination,26.0,100
+trm_557b4b652cbec,visual pattern recognition,visual pattern recognition,26.0,100
+trm_55b6b9d7c9435,working memory maintenance,working memory maintenance,26.0,100
+trm_567982752ff4a,decision under uncertainty,decision under uncertainty,26.0,100
+trm_565a31fa6f444,regulated heat stimulation,regulated heat stimulation,26.0,100
+trm_5667441c338a7,2nd-order rule acquisition,2nd-order rule acquisition,26.0,100
+trm_4c40d325977f0,self ordered pointing task,self ordered pointing task,26.0,100
+trm_4c40d325977f0,self ordered pointing task,self ordered pointing task,26.0,100
+trm_4c898bbab4fd4,divided auditory attention,divided auditory attention,26.0,100
+tsk_4a57abb949858,adult attachment interview,adult attachment interview,26.0,100
+tsk_4a57abb949912,cambridge face memory test,cambridge face memory test,26.0,100
+tsk_4a57abb949aa1,gray oral reading test - 4,gray oral reading test - 4,26.0,100
+tsk_4a57abb949be9,object-discrimination task,object-discrimination task,26.0,100
+trm_4fbd2b6fd33c5,position of gap match task,position of gap match task,26.0,100
+trm_4f2414059baa8,instrumental learning task,instrumental learning task,26.0,100
+trm_4f241c8d4a75c,gender discrimination task,gender discrimination task,26.0,100
+trm_4f241ee9c4e37,word-picture matching task,word-picture matching task,26.0,100
+trm_4f2421c391b83,object working memory task,object working memory task,26.0,100
+trm_4f244f997615c,bimanual coordination task,bimanual coordination task,26.0,100
+trm_4f2457454e458,numerosity estimation task,numerosity estimation task,26.0,100
+trm_4f2457a8b0bc8,verbal working memory task,verbal working memory task,26.0,100
+trm_4f2457d94fd93,memory guided saccade task,memory guided saccade task,26.0,100
+trm_50f733d7305a1,spatial recognition memory,spatial recognition memory,26.0,100
+trm_52602e2e0c43b,expressive vocabulary test,expressive vocabulary test,26.0,100
+trm_551b0bb59173d,contour interpolation task,contour interpolation task,26.0,100
+trm_551b0fd03d7d8,retinotopic representation,retinotopic representation,26.0,100
+trm_551f06a08dcc4,attentional blink paradigm,attentional blink paradigm,26.0,100
+trm_55217a9f473f0,listening and reading task,listening and reading task,26.0,100
+trm_55295382db2c5,non-spatial cuing paradigm,non-spatial cuing paradigm,26.0,100
+trm_553fc63a54ae6,motion discrimination task,motion discrimination task,26.0,100
+trm_56a2a5f8315c5,penn matrix reasoning test,penn matrix reasoning test,26.0,100
+trm_586fd907e4fc6,hand chirality recognition,hand chirality recognition,26.0,100
+dso_11038,depersonalization disorder,depersonalization disorder,26.0,100
+dso_303,substance-related disorder,substance-related disorder,26.0,100
+trm_4c8a85a4564b2,word stem completion (overt),overt word stem completion,26.0,74
+tsk_4a57abb949d40,recognition memory test,pattern recognition memory,26.0,73
+trm_4e31d031bc8c2,synchrony judgment task,simultaneity judgment task,26.0,69
+trm_550b557e5f90e,social cognition (theory of mind) fmri task paradigm,social cognition fmri task,26.0,67
+trm_50b55d8a6da00,pebl perceptual vigilance task,psychomotor vigilance task,26.0,64
+trm_4fe9fae4321e7,difference threshold,just noticeable difference,26.0,43
+trm_50240f06af135,operant task,instrumental learning task,26.0,42
+trm_4a3fd79d09af8,auditory word recognition,auditory word recognition,25.0,100
+trm_4a3fd79d09f64,crystallized intelligence,crystallized intelligence,25.0,100
+trm_4a3fd79d0a18b,emotional decision making,emotional decision making,25.0,100
+trm_4a3fd79d0a642,instrumental conditioning,instrumental conditioning,25.0,100
+trm_4a3fd79d0ab93,perceptual categorization,perceptual categorization,25.0,100
+trm_4a3fd79d0abaa,perceptual identification,perceptual identification,25.0,100
+trm_4a3fd79d0b4a9,visual object recognition,visual object recognition,25.0,100
+trm_4a3fd79d0b9dd,figure ground segregation,figure ground segregation,25.0,100
+trm_557b4817db34d,economic value processing,economic value processing,25.0,100
+trm_557b4855a12b4,emotional self-evaluation,emotional self-evaluation,25.0,100
+trm_557b495cdde57,potential monetary reward,potential monetary reward,25.0,100
+trm_557b4b47d994a,visual number recognition,visual number recognition,25.0,100
+trm_558c736199abd,subjective value judgment,subjective value judgment,25.0,100
+trm_558c7439832d9,visual letter recognition,visual letter recognition,25.0,100
+trm_559f0986182cc,visual object maintenance,visual object maintenance,25.0,100
+trm_55b6b98b88f45,tongue response execution,tongue response execution,25.0,100
+trm_55ef1fd2bc418,visual string recognition,visual string recognition,25.0,100
+trm_4c898b29660b0,cued explicit recognition,cued explicit recognition,25.0,100
+tsk_4a57abb949934,choice reaction time task,choice reaction time task,25.0,100
+tsk_4a57abb9499b8,color-discrimination task,color-discrimination task,25.0,100
+tsk_4a57abb949d92,semantic association task,semantic association task,25.0,100
+tsk_4a57abb949dc8,simple reaction time task,simple reaction time task,25.0,100
+tsk_4a57abb949e44,symbol-digit substitution,symbol-digit substitution,25.0,100
+tsk_4a57abb949e98,temporal discounting task,temporal discounting task,25.0,100
+tsk_4a57abb949ec0,trail making test a and b,trail making test a and b,25.0,100
+trm_4da88a2a63d97,paired associate learning,paired associate learning,25.0,100
+trm_4da88b8b60ffb,alternating runs paradigm,alternating runs paradigm,25.0,100
+trm_4da890594742a,emotional regulation task,emotional regulation task,25.0,100
+trm_4e8a0dd29ec7b,sequential shape matching,sequential shape matching,25.0,100
+trm_4e8dd3dfd9fff,mixed event-related probe,mixed event-related probe,25.0,100
+trm_4f240d7664628,semantic relatedness task,semantic relatedness task,25.0,100
+trm_4f241001dfcee,letter case judgment task,letter case judgment task,25.0,100
+trm_4f241c735e7f6,serial reaction time task,serial reaction time task,25.0,100
+trm_4f2449bdcb0b1,wason card selection task,wason card selection task,25.0,100
+trm_4f244f0286947,analogical reasoning task,analogical reasoning task,25.0,100
+trm_4f2454dfca337,relational reasoning task,relational reasoning task,25.0,100
+trm_4f24550fc5f38,prototype distortion task,prototype distortion task,25.0,100
+trm_50b6660b1b847,implicit association task,implicit association task,25.0,100
+trm_50f73d557c967,information sampling task,information sampling task,25.0,100
+trm_551b1460e89a3,auditory scene perception,auditory scene perception,25.0,100
+trm_551efdcd10677,contrast sensitivity test,contrast sensitivity test,25.0,100
+trm_551f1491a2fe8,transitive inference task,transitive inference task,25.0,100
+trm_553fce5d21da7,bistable percept paradigm,bistable percept paradigm,25.0,100
+trm_55a6a860a7088,hopkins symptom checklist,hopkins symptom checklist,25.0,100
+trm_55c691909c580,two item food choice task,two item food choice task,25.0,100
+trm_56675359b663a,cognitive reflection test,cognitive reflection test,25.0,100
+trm_57c0c015b603c,chapman infrequency scale,chapman infrequency scale,25.0,100
+trm_59cd03eeeab30,fictitious event ordering,fictitious event ordering,25.0,100
+dso_11328,schizophreniform disorder,schizophreniform disorder,25.0,100
+dso_11569,neurocirculatory asthenia,neurocirculatory asthenia,25.0,100
+dso_11718,antidepressant type abuse,antidepressant type abuse,25.0,100
+dso_1470,major depressive disorder,major depressive disorder,25.0,100
+dso_52c731124ad3e,formula creation disorder,formula creation disorder,25.0,100
+dso_579651a7e2604,mild cognitive impairment,mild cognitive impairment,25.0,100
+trm_4f241c735e7f6,serial reaction time task,serial response time task,25.0,84
+trm_4c8a85a4564b2,word stem completion (overt),word stem completion task,25.0,83
+trm_4da88a2a63d97,paired associate learning,associative learning task,25.0,72
+tsk_4a57abb949e98,temporal discounting task,intertemporal choice task,25.0,68
+trm_4f2457a8b0bc8,verbal working memory task,verbal recognition memory,25.0,67
+trm_559f09a5cdca9,subjective food value,self-reported food liking,25.0,48
+trm_4a3fd79d09c34,category based induction,category based induction,24.0,100
+trm_4a3fd79d09efb,conversational structure,conversational structure,24.0,100
+trm_4a3fd79d09f36,creative problem solving,creative problem solving,24.0,100
+trm_4a3fd79d09f70,cue dependent forgetting,cue dependent forgetting,24.0,100
+trm_4a3fd79d0a6b9,intermediate-term memory,intermediate-term memory,24.0,100
+trm_4a3fd79d0aa23,nondeclarative knowledge,nondeclarative knowledge,24.0,100
+trm_4a3fd79d0afab,retroactive interference,retroactive interference,24.0,100
+trm_4a3fd79d0b832,morphological processing,morphological processing,24.0,100
+trm_4a3fd79d0ba6c,working memory retrieval,working memory retrieval,24.0,100
+trm_4e31ced566649,multisensory integration,multisensory integration,24.0,100
+trm_557b48f22ba99,numerical scale judgment,numerical scale judgment,24.0,100
+trm_557b4b7e68727,visual place recognition,visual place recognition,24.0,100
+trm_55ef273a77a86,auditory tone perception,auditory tone perception,24.0,100
+trm_55ef3ba010121,vocal response execution,vocal response execution,24.0,100
+trm_5a2852438fa35,episodic future thinking,episodic future thinking,24.0,100
+trm_4fbd2b964d3ec,overlapping figures task,overlapping figures task,24.0,100
+trm_4c3e0a9576c3b,letter number sequencing,letter number sequencing,24.0,100
+trm_4c898b8c2d071,deductive reasoning task,deductive reasoning task,24.0,100
+trm_4c8a83cac75f5,sequence recall/learning,sequence recall/learning,24.0,100
+trm_4c8a842512a33,syntactic discrimination,syntactic discrimination,24.0,100
+tsk_4a57abb94989b,backward digit span task,backward digit span task,24.0,100
+tsk_4a57abb949a25,digit/symbol coding test,digit/symbol coding test,24.0,100
+tsk_4a57abb949d76,selective attention task,selective attention task,24.0,100
+tsk_4a57abb949d9f,sentence completion test,sentence completion test,24.0,100
+tsk_4a57abb949ee9,visuospatial cueing task,visuospatial cueing task,24.0,100
+trm_4da87f383435b,directed forgetting task,directed forgetting task,24.0,100
+trm_4dadbfd771a54,picture-word stroop test,picture-word stroop test,24.0,100
+trm_4f241614d4a25,attention switching task,attention switching task,24.0,100
+trm_4f2421a62cdf8,face working memory task,face working memory task,24.0,100
+trm_4fbd2e5614028,drawing from memory task,drawing from memory task,24.0,100
+trm_50b65ef129e23,partial report procedure,partial report procedure,24.0,100
+trm_50df0dd9d0b6f,incidental encoding task,incidental encoding task,24.0,100
+trm_50f734f86b11a,emotion recognition task,emotion recognition task,24.0,100
+trm_51070ae889d95,wais picture arrangement,wais picture arrangement,24.0,100
+trm_51d6fe3f3942f,autism spectrum quotient,autism spectrum quotient,24.0,100
+trm_523ca67b786d5,adult behavior checklist,adult behavior checklist,24.0,100
+trm_524b4a402c87e,child behavior checklist,child behavior checklist,24.0,100
+trm_5266bc6473fd8,preschool language scale,preschool language scale,24.0,100
+trm_550b53d7dd674,motor fmri task paradigm,motor fmri task paradigm,24.0,100
+trm_5519c85ed1e8d,contour integration task,contour integration task,24.0,100
+trm_551efdfd1a356,face identification task,face identification task,24.0,100
+trm_55217bd86ee12,mouse tracking paradigms,mouse tracking paradigms,24.0,100
+trm_558702243da12,young mania rating scale,young mania rating scale,24.0,100
+trm_558c4d3105abf,retinotopic mapping task,retinotopic mapping task,24.0,100
+trm_569989ef8cff4,willingness to wait task,willingness to wait task,24.0,100
+trm_56a915461cd91,brief self control scale,brief self control scale,24.0,100
+trm_56a91a92043bc,upps-p impulsivity scale,upps-p impulsivity scale,24.0,100
+dso_0060041,autism spectrum disorder,autism spectrum disorder,24.0,100
+dso_0060149,social emotional agnosia,social emotional agnosia,24.0,100
+dso_0060163,body dysmorphic disorder,body dysmorphic disorder,24.0,100
+dso_10937,impulse control disorder,impulse control disorder,24.0,100
+dso_1234,gender identity disorder,gender identity disorder,24.0,100
+dso_5418,schizoaffective disorder,schizoaffective disorder,24.0,100
+dso_55e1b3573c90c,letter position dyslexia,letter position dyslexia,24.0,100
+trm_4d559bcd67c18,balloon analogue risk task,balloon analog risk task,24.0,96
+trm_4f23fc8c42d28,monetary incentive delay task,monetary incentive delay,24.0,91
+trm_4da6304c9aa23,attention networks test,attentional network task,24.0,85
+tsk_4a57abb949e0c,sternberg delayed recognition task,delayed recognition task,24.0,83
+trm_4c8a84825c4e4,tone monitor/discrimination,tone discrimination task,24.0,75
+trm_4b1968619b00b,color-word stroop task,stroop color naming task,24.0,48
+trm_4a3fd79d0b607,set shifting,task set reconfiguration,24.0,44
+trm_4a3fd79d09a84,auditory lexical access,auditory lexical access,23.0,100
+trm_4a3fd79d09aca,auditory scene analysis,auditory scene analysis,23.0,100
+trm_4a3fd79d09b04,auditory working memory,auditory working memory,23.0,100
+trm_4a3fd79d09b10,autobiographical memory,autobiographical memory,23.0,100
+trm_4a3fd79d09b1c,autobiographical recall,autobiographical recall,23.0,100
+trm_4a3fd79d0a9b9,motor sequence learning,motor sequence learning,23.0,100
+trm_4a3fd79d0ad41,preattentive processing,preattentive processing,23.0,100
+trm_4a3fd79d0ad4c,preconscious perception,preconscious perception,23.0,100
+trm_4a3fd79d0b08f,semantic working memory,semantic working memory,23.0,100
+trm_4a3fd79d0b507,visuospatial sketch pad,visuospatial sketch pad,23.0,100
+trm_4a3fd79d0b6d1,discourse comprehension,discourse comprehension,23.0,100
+trm_4c3e04d656f06,interference resolution,interference resolution,23.0,100
+trm_4e5faabfe8ce3,sense of body ownership,sense of body ownership,23.0,100
+trm_4fe3861edc919,inattentional blindness,inattentional blindness,23.0,100
+trm_52b5f1ef4f9cc,phonological processing,phonological processing,23.0,100
+trm_5524572b66764,feature-based attention,feature-based attention,23.0,100
+trm_557b474e2b578,auditory tone detection,auditory tone detection,23.0,100
+trm_557b494ca540d,potential monetary loss,potential monetary loss,23.0,100
+trm_557b4ab076338,semantic categorization,semantic categorization,23.0,100
+trm_557b4af7cc1cb,visual body recognition,visual body recognition,23.0,100
+trm_557b4b154e0d9,visual face recognition,visual face recognition,23.0,100
+trm_557b4b3a6a34d,visual form recognition,visual form recognition,23.0,100
+trm_557b4b56de455,visual object detection,visual object detection,23.0,100
+trm_557b4b8cd05ca,visual tool recognition,visual tool recognition,23.0,100
+trm_557b4b9ccdc4a,visual word recognition,visual word recognition,23.0,100
+trm_558c73b3663a6,phonological comparison,phonological comparison,23.0,100
+trm_55b6b9a666604,working memory updating,working memory updating,23.0,100
+trm_4af89b3a925ca,vandenberg & kuse tasks,vandenberg & kuse tasks,23.0,100
+trm_4c89903149aeb,imagined objects/scenes,imagined objects/scenes,23.0,100
+trm_4c8991e6e8597,paired associate recall,paired associate recall,23.0,100
+trm_4c8a85534241d,visual pursuit/tracking,visual pursuit/tracking,23.0,100
+tsk_4a57abb949846,action observation task,action observation task,23.0,100
+tsk_4a57abb949a85,forward digit span task,forward digit span task,23.0,100
+tsk_4a57abb949d40,recognition memory test,recognition memory test,23.0,100
+trm_4d54b2cc0f943,cambridge gambling task,cambridge gambling task,23.0,100
+trm_4d949c5b0e380,rhyme verification task,rhyme verification task,23.0,100
+trm_4da6304c9aa23,attention networks test,attention networks test,23.0,100
+trm_4da86cb034ff6,pattern comparison task,pattern comparison task,23.0,100
+trm_4da87e9c79847,dichotic listening task,dichotic listening task,23.0,100
+trm_4da88b17b985b,nonword repetition task,nonword repetition task,23.0,100
+trm_4da88bb3c2462,object alternation task,object alternation task,23.0,100
+trm_4e31d031bc8c2,synchrony judgment task,synchrony judgment task,23.0,100
+trm_4e6114e7b1ff2,phasic pain stimulation,phasic pain stimulation,23.0,100
+trm_4f240fbdf1601,word comprehension task,word comprehension task,23.0,100
+trm_4f24194bce29f,conjunction search task,conjunction search task,23.0,100
+trm_4f244860c702c,prospective memory task,prospective memory task,23.0,100
+trm_4fbd2dc0273d9,foreshortened view task,foreshortened view task,23.0,100
+trm_502be67697201,contrast detection task,contrast detection task,23.0,100
+trm_5090b32d6b376,facial recognition task,facial recognition task,23.0,100
+trm_5107067241007,wais picture completion,wais picture completion,23.0,100
+trm_5206bf053acf4,piaget's water jar task,piaget's water jar task,23.0,100
+trm_52167db323438,children's memory scale,children's memory scale,23.0,100
+trm_52405b6f7ebe9,brief symptom inventory,brief symptom inventory,23.0,100
+trm_529911569b592,halstead-reitan battery,halstead-reitan battery,23.0,100
+trm_529d087705bfa,loneliness rating scale,loneliness rating scale,23.0,100
+trm_551b05e03be48,perceptual closure task,perceptual closure task,23.0,100
+trm_551b0e6b88363,perceptual organization,perceptual organization,23.0,100
+trm_551b0f2b930ab,object recognition task,object recognition task,23.0,100
+trm_558c324478d22,multi-class n-back task,multi-class n-back task,23.0,100
+trm_56674987c8f0c,sternberg recent probes,sternberg recent probes,23.0,100
+trm_5696bcf1b5c64,tower of london imagine,tower of london imagine,23.0,100
+trm_5696d061adfb5,wrat-4 math computation,wrat-4 math computation,23.0,100
+trm_56bbea82c12bb,emotion regulation task,emotion regulation task,23.0,100
+trm_586fd4fd8754a,horizontal checkerboard,horizontal checkerboard,23.0,100
+dso_0060154,verbal auditory agnosia,verbal auditory agnosia,23.0,100
+dso_1059,intellectual disability,intellectual disability,23.0,100
+dso_11120,psychologic dyspareunia,psychologic dyspareunia,23.0,100
+dso_9977,hallucinogen dependence,hallucinogen dependence,23.0,100
+trm_4a3fd79d0ab70,pavlovian conditioning,respondent conditioning,23.0,71
+trm_4a3fd79d0b0bd,serial processing,intermittent processing,23.0,70
+trm_4da890a9bd7a3,morris water maze,morris water navigation,23.0,70
+trm_5667441c338a7,2nd-order rule acquisition,2nd-order decision task,23.0,69
+trm_4a3fd79d09849,anticipation,imaginative speculation,23.0,57
+trm_4cacf22a22d80,probabilistic classification task,weather prediction task,23.0,50
+trm_4ebfe9a465449,expectancy,reward prediction error,23.0,36
+trm_56a9137d9dce1,behavioral approach/inhibition systems,"bis/bas,bis,bas,bis-bas",23.0,26
+trm_4a3fd79d098a6,articulatory rehearsal,articulatory rehearsal,22.0,100
+trm_4a3fd79d09953,audiovisual perception,audiovisual perception,22.0,100
+trm_4a3fd79d09b33,availability heuristic,availability heuristic,22.0,100
+trm_4a3fd79d09c05,categorical clustering,categorical clustering,22.0,100
+trm_4a3fd79d09c1c,categorical perception,categorical perception,22.0,100
+trm_4a3fd79d0a173,elaborative processing,elaborative processing,22.0,100
+trm_4a3fd79d0a1a2,emotional intelligence,emotional intelligence,22.0,100
+trm_4a3fd79d0a689,intentional forgetting,intentional forgetting,22.0,100
+trm_4a3fd79d0a775,language comprehension,language comprehension,22.0,100
+trm_4a3fd79d0a862,mathematical reasoning,mathematical reasoning,22.0,100
+trm_4a3fd79d0ab70,pavlovian conditioning,pavlovian conditioning,22.0,100
+trm_4a3fd79d0ac30,performance monitoring,performance monitoring,22.0,100
+trm_4a3fd79d0ac93,phonological retrieval,phonological retrieval,22.0,100
+trm_4a3fd79d0adab,proactive interference,proactive interference,22.0,100
+trm_4a3fd79d0b1e0,spatial working memory,spatial working memory,22.0,100
+trm_4a3fd79d0b892,sentence comprehension,sentence comprehension,22.0,100
+trm_4a3fd79d0b9d1,figure ground reversal,figure ground reversal,22.0,100
+trm_4a3fd79d0ba77,working memory storage,working memory storage,22.0,100
+trm_4e416f1373936,tactile working memory,tactile working memory,22.0,100
+trm_4feb44e5ae25b,unconscious perception,unconscious perception,22.0,100
+trm_502abeab4e1d8,multistable perception,multistable perception,22.0,100
+trm_523e024c14df9,antisocial personality,antisocial personality,22.0,100
+trm_5240fddc2e43e,phonological awareness,phonological awareness,22.0,100
+trm_552185f5cda66,object-based attention,object-based attention,22.0,100
+trm_557b4993a0fdd,reinforcement learning,reinforcement learning,22.0,100
+trm_5595bd6c61d78,facial age recognition,facial age recognition,22.0,100
+trm_56798c5f25b0c,context representation,context representation,22.0,100
+trm_58c80b824c51b,social norm processing,social norm processing,22.0,100
+trm_4fbd2b4bb165c,orientation match task,orientation match task,22.0,100
+trm_4b1968619b00b,color-word stroop task,color-word stroop task,22.0,100
+tsk_4a57abb949b46,matching pennies game ,matching pennies game ,22.0,100
+tsk_4a57abb949d25,pseudoword naming task,pseudoword naming task,22.0,100
+tsk_4a57abb949d4e,reversal learning task,reversal learning task,22.0,100
+tsk_4a57abb949edb,visual alignment task ,visual alignment task ,22.0,100
+trm_4da6327154fd4,scene recognition task,scene recognition task,22.0,100
+trm_4da86c8bb3b04,letter comparison task,letter comparison task,22.0,100
+trm_4e5d07565b68e,mechanical stimulation,mechanical stimulation,22.0,100
+trm_4e5fcd75efb58,thermal grill illusion,thermal grill illusion,22.0,100
+trm_4e6112759926e,tonic pain stimulation,tonic pain stimulation,22.0,100
+trm_4f240cb09f8e5,semantic decision task,semantic decision task,22.0,100
+trm_4f24126c22011,abstract/concrete task,abstract/concrete task,22.0,100
+trm_4f24154867d84,logical reasoning task,logical reasoning task,22.0,100
+trm_4f24179122380,mental arithmetic task,mental arithmetic task,22.0,100
+trm_4f241fd47f16b,passive avoidance task,passive avoidance task,22.0,100
+trm_4f24237f2ed47,general knowledge task,general knowledge task,22.0,100
+trm_4f24239cc239e,short-term memory task,short-term memory task,22.0,100
+trm_4f24479b0db8f,phoneme detection task,phoneme detection task,22.0,100
+trm_4f24492504ca0,contextual cueing task,contextual cueing task,22.0,100
+trm_4f245326e2eaf,biological motion task,biological motion task,22.0,100
+trm_5736095d91380,delayed intention task,delayed intention task,22.0,100
+trm_523f5c17d7edb,big five questionnaire,big five questionnaire,22.0,100
+trm_5262d903ae91d,pdd behavior inventory,pdd behavior inventory,22.0,100
+trm_551b06cf9783b,parallel/serial search,parallel/serial search,22.0,100
+trm_551b0ee81fb6b,object perception task,object perception task,22.0,100
+trm_551b15af981c6,action-perception loop,action-perception loop,22.0,100
+trm_551eff0fdab74,novelty detection task,novelty detection task,22.0,100
+trm_551f0634b2607,spatial cuing paradigm,spatial cuing paradigm,22.0,100
+trm_55217b48995ce,eye tracking paradigms,eye tracking paradigms,22.0,100
+trm_56674d6aa9faf,dietary decisions task,dietary decisions task,22.0,100
+trm_5696bb7166121,hierarchical rule task,hierarchical rule task,22.0,100
+trm_5798d0fbe2bd1,ideational praxis task,ideational praxis task,22.0,100
+trm_586fd8a2c77ca,hand side  recognition,hand side  recognition,22.0,100
+trm_597249e1ec9d3,network traversal task,network traversal task,22.0,100
+dso_0050665,fetal alcohol syndrome,fetal alcohol syndrome,22.0,100
+dso_1229,paranoid schizophrenia,paranoid schizophrenia,22.0,100
+dso_2033,communication disorder,communication disorder,22.0,100
+dso_2575,barbiturate dependence,barbiturate dependence,22.0,100
+dso_4762,vasculogenic impotence,vasculogenic impotence,22.0,100
+dso_5798d1ed9bd8f,constructional apraxia,constructional apraxia,22.0,100
+trm_4da89077f19ae,digit cancellation task,digit cancelation task,22.0,98
+tsk_4a57abb949e98,temporal discounting task,delay discounting task,22.0,81
+trm_4f244ad7dcde7,dot motion task,random-dot motion task,22.0,81
+trm_4a3fd79d0ab70,pavlovian conditioning,classical conditioning,22.0,73
+trm_4b1968619b00b,color-word stroop task,stroop color-word task,22.0,68
+trm_4c8990c87035d,naming (covert),covert production task,22.0,32
+trm_4c8a82ba8a538,reading (covert),silent production task,22.0,32
+trm_4a3fd79d097bf,altruistic motivation,altruistic motivation,21.0,100
+trm_4a3fd79d097d6,amodal representation,amodal representation,21.0,100
+trm_4a3fd79d097e2,analog representation,analog representation,21.0,100
+trm_4a3fd79d09877,appetitive motivation,appetitive motivation,21.0,100
+trm_4a3fd79d0989a,articulatory planning,articulatory planning,21.0,100
+trm_4a3fd79d09925,attentional resources,attentional resources,21.0,100
+trm_4a3fd79d09a8f,auditory localization,auditory localization,21.0,100
+trm_4a3fd79d09b79,behavioral inhibition,behavioral inhibition,21.0,100
+trm_4a3fd79d09b9c,binocular convergence,binocular convergence,21.0,100
+trm_4a3fd79d09c11,categorical knowledge,categorical knowledge,21.0,100
+trm_4a3fd79d09d35,cognitive development,cognitive development,21.0,100
+trm_4a3fd79d09e07,conditional reasoning,conditional reasoning,21.0,100
+trm_4a3fd79d09e64,constituent structure,constituent structure,21.0,100
+trm_4a3fd79d09ef0,conversational speech,conversational speech,21.0,100
+trm_4a3fd79d0a044,declarative knowledge,declarative knowledge,21.0,100
+trm_4a3fd79d0a1d1,emotional suppression,emotional suppression,21.0,100
+trm_4a3fd79d0a36a,fixed action patterns,fixed action patterns,21.0,100
+trm_4a3fd79d0a64e,instrumental learning,instrumental learning,21.0,100
+trm_4a3fd79d0a700,involuntary attention,involuntary attention,21.0,100
+trm_4a3fd79d0a7f8,linguistic competence,linguistic competence,21.0,100
+trm_4a3fd79d0a908,mental representation,mental representation,21.0,100
+trm_4a3fd79d0aa2f,nondeclarative memory,nondeclarative memory,21.0,100
+trm_4a3fd79d0aa5e,object categorization,object categorization,21.0,100
+trm_4a3fd79d0abc1,perceptual similarity,perceptual similarity,21.0,100
+trm_4a3fd79d0ac87,phonological encoding,phonological encoding,21.0,100
+trm_4a3fd79d0b2bf,subliminal perception,subliminal perception,21.0,100
+trm_4a3fd79d0b4c1,visual representation,visual representation,21.0,100
+trm_4a3fd79d0b4d8,visual working memory,visual working memory,21.0,100
+trm_4a3fd79d0b8d9,elaborative rehearsal,elaborative rehearsal,21.0,100
+trm_525d8cd1c9cc3,sensory defensiveness,sensory defensiveness,21.0,100
+trm_525d8e198e0da,sensitivity to change,sensitivity to change,21.0,100
+trm_568427366401c,sentence recognition ,sentence recognition ,21.0,100
+trm_5534111a8bc96,punishment processing,punishment processing,21.0,100
+trm_555cfb890d721,relational comparison,relational comparison,21.0,100
+trm_557b4844ca14d,emotional reappraisal,emotional reappraisal,21.0,100
+trm_558c74156b7ee,phonological assembly,phonological assembly,21.0,100
+trm_558c7ae1eaf86,arithmetic processing,arithmetic processing,21.0,100
+trm_559f09a5cdca9,subjective food value,subjective food value,21.0,100
+trm_5679b0e9d8c20,emotional enhancement,emotional enhancement,21.0,100
+trm_5667451917a34,2-stage decision task,2-stage decision task,21.0,100
+trm_4b749b8829eee,embedded figures test,embedded figures test,21.0,100
+trm_4c898f8f297ac,flashing checkerboard,flashing checkerboard,21.0,100
+trm_4c898fc6722f4,free word list recall,free word list recall,21.0,100
+trm_4c8a84f20dde2,visual attention task,visual attention task,21.0,100
+tsk_4a57abb94981d,action imitation task,action imitation task,21.0,100
+tsk_4a57abb949923,category fluency test,category fluency test,21.0,100
+tsk_4a57abb949a33,doors and people test,doors and people test,21.0,100
+tsk_4a57abb949abc,immediate recall test,immediate recall test,21.0,100
+tsk_4a57abb949b38,lexical decision task,lexical decision task,21.0,100
+tsk_4a57abb949bbf,motor sequencing task,motor sequencing task,21.0,100
+trm_4da869646e5d1,item recognition task,item recognition task,21.0,100
+trm_4da88b3b0cbcc,response mapping task,response mapping task,21.0,100
+trm_4dadbdd0b2b8c,delayed response task,delayed response task,21.0,100
+trm_4fba857ad04ac,immediate memory task,immediate memory task,21.0,100
+trm_4e6a2f61b17b0,capsaicin-evoked pain,capsaicin-evoked pain,21.0,100
+trm_4f241bd52b509,semantic fluency task,semantic fluency task,21.0,100
+trm_4f241be43458e,phonemic fluency task,phonemic fluency task,21.0,100
+trm_4f241fb95918f,recency judgment task,recency judgment task,21.0,100
+trm_4f242499b8952,target detection task,target detection task,21.0,100
+trm_4f24258b51e2c,living-nonliving task,living-nonliving task,21.0,100
+trm_4f244d64e45bc,negative priming task,negative priming task,21.0,100
+trm_502abd109f255,ambiguous figure task,ambiguous figure task,21.0,100
+trm_50f998dcbfcc8,penn word memory test,penn word memory test,21.0,100
+trm_50f99e56117fe,penn face memory test,penn face memory test,21.0,100
+trm_5154906cbead5,change detection task,change detection task,21.0,100
+trm_534690b0e9dc5,overt word repetition,overt word repetition,21.0,100
+trm_551b107c5c111,object classification,object classification,21.0,100
+trm_551b1b6f6a262,auditory masking task,auditory masking task,21.0,100
+trm_551efd39a74dd,re-entrant processing,re-entrant processing,21.0,100
+trm_551f103b3edeb,sequence reproduction,sequence reproduction,21.0,100
+trm_55217c8179b00,visual world paradigm,visual world paradigm,21.0,100
+trm_5798c6a933abc,word recognition task,word recognition task,21.0,100
+trm_586fd45d1bd21,vertical checkerboard,vertical checkerboard,21.0,100
+dso_0060153,topographical agnosia,topographical agnosia,21.0,100
+dso_0060156,visual verbal agnosia,visual verbal agnosia,21.0,100
+dso_0060165,kleine-levin syndrome,kleine-levin syndrome,21.0,100
+dso_10132,psychosexual disorder,psychosexual disorder,21.0,100
+dso_10935,dissociative disorder,dissociative disorder,21.0,100
+dso_12399,pathological gambling,pathological gambling,21.0,100
+dso_13709,premature ejaculation,premature ejaculation,21.0,100
+dso_13918,somatization disorder,somatization disorder,21.0,100
+dso_1595,endogenous depression,endogenous depression,21.0,100
+dso_4186,articulation disorder,articulation disorder,21.0,100
+dso_6088,acute stress disorder,acute stress disorder,21.0,100
+dso_8619,recurrent hypersomnia,recurrent hypersomnia,21.0,100
+dso_9478,postpartum depression,postpartum depression,21.0,100
+trm_4a3fd79d0b0bd,serial processing,sequential processing,21.0,84
+trm_4c8a8329cb8ff,recitation/repetition (overt),recitation/repetition,21.0,84
+trm_4c8a830dec136,recitation/repetition (covert),recitation/repetition,21.0,82
+trm_4b7c270940f9d,behavioral inhibition (cognitive),behavioral inhibition,21.0,78
+trm_4b7c27094a093,behavioral inhibition (temperament),behavioral inhibition,21.0,75
+trm_4a3fd79d0a642,instrumental conditioning,instrumental learning,21.0,74
+trm_4d949c5b0e380,rhyme verification task,rhyming decision task,21.0,68
+trm_550b557e5f90e,social cognition (theory of mind) fmri task paradigm,social cognition fmri,21.0,58
+trm_4d949c5b0e380,rhyme verification task,rhyming judgment task,21.0,55
+trm_4a3fd79d097f9,analogical inference,analogical inference,20.0,100
+trm_4a3fd79d09810,analogical reasoning,analogical reasoning,20.0,100
+trm_4a3fd79d098c9,association learning,association learning,20.0,100
+trm_4a3fd79d09bf9,case based reasoning,case based reasoning,20.0,100
+trm_4a3fd79d09d41,cognitive dissonance,cognitive dissonance,20.0,100
+trm_4a3fd79d09dd9,conceptual coherence,conceptual coherence,20.0,100
+trm_4a3fd79d09e93,contextual knowledge,contextual knowledge,20.0,100
+trm_4a3fd79d09e9e,contingency learning,contingency learning,20.0,100
+trm_4a3fd79d09ee6,conversational skill,conversational skill,20.0,100
+trm_4a3fd79d0a15c,effortful processing,effortful processing,20.0,100
+trm_4a3fd79d0a196,emotional expression,emotional expression,20.0,100
+trm_4a3fd79d0a28c,extrinsic motivation,extrinsic motivation,20.0,100
+trm_4a3fd79d0a3a4,functional fixedness,functional fixedness,20.0,100
+trm_4a3fd79d0a477,gustatory perception,gustatory perception,20.0,100
+trm_4a3fd79d0a61f,inhibition of return,inhibition of return,20.0,100
+trm_4a3fd79d0a695,intentional learning,intentional learning,20.0,100
+trm_4a3fd79d0a6e8,intrinsic motivation,intrinsic motivation,20.0,100
+trm_4a3fd79d0a87a,mechanical reasoning,mechanical reasoning,20.0,100
+trm_4a3fd79d0aac8,olfactory perception,olfactory perception,20.0,100
+trm_4a3fd79d0aad4,orthographic lexicon,orthographic lexicon,20.0,100
+trm_4a3fd79d0adc3,procedural knowledge,procedural knowledge,20.0,100
+trm_4a3fd79d0ae7b,prospective planning,prospective planning,20.0,100
+trm_4a3fd79d0b26d,spreading activation,spreading activation,20.0,100
+trm_4a3fd79d0b34b,syntactic processing,syntactic processing,20.0,100
+trm_4a3fd79d0b5ef,attentional focusing,attentional focusing,20.0,100
+trm_4a3fd79d0b6f5,discourse processing,discourse processing,20.0,100
+trm_4a3fd79d0b701,discourse production,discourse production,20.0,100
+trm_4a3fd79d0b756,grammatical encoding,grammatical encoding,20.0,100
+trm_4a3fd79d0b7f4,language acquisition,language acquisition,20.0,100
+trm_4a3fd79d0b920,memory consolidation,memory consolidation,20.0,100
+trm_4a3fd79d0b9e9,gustation processing,gustation processing,20.0,100
+trm_4d2201d530697,semantic information,semantic information,20.0,100
+trm_4e31e6dca01ca,synchrony perception,synchrony perception,20.0,100
+trm_4fe9fae4321e7,difference threshold,difference threshold,20.0,100
+trm_5024002a85b1f,spontaneous recovery,spontaneous recovery,20.0,100
+trm_5159c885a7314,defensive aggression,defensive aggression,20.0,100
+trm_5159c8a5d3d13,offensive aggression,offensive aggression,20.0,100
+trm_523c7c886b614,inappropriate speech,inappropriate speech,20.0,100
+trm_5519bb7767d98,spatial localization,spatial localization,20.0,100
+trm_551f11bb8f6a8,interference control,interference control,20.0,100
+trm_558c73324a6ca,intertemporal choice,intertemporal choice,20.0,100
+trm_55ef687f48a9d,auditory recognition,auditory recognition,20.0,100
+trm_5678a999f1c19,numerical comparison,numerical comparison,20.0,100
+trm_56798223b43b8,decision uncertainty,decision uncertainty,20.0,100
+trm_56674133b666c,adaptive n-back task,adaptive n-back task,20.0,100
+trm_4fbd2c18e1dd9,object decision task,object decision task,20.0,100
+trm_4c898a20eb254,braille reading task,braille reading task,20.0,100
+trm_4c898b02722d2,counting/calculation,counting/calculation,20.0,100
+trm_4c8990810541d,mental rotation task,mental rotation task,20.0,100
+trm_50f72e93ea9e3,motor screening task,motor screening task,20.0,100
+tsk_4a57abb949a4f,eriksen flanker task,eriksen flanker task,20.0,100
+tsk_4a57abb949b0e,letter fluency test ,letter fluency test ,20.0,100
+tsk_4a57abb949de3,span/supra-span test,span/supra-span test,20.0,100
+tsk_4a57abb949f3d,word generation task,word generation task,20.0,100
+trm_4da631be60291,counting stroop task,counting stroop task,20.0,100
+trm_4da886fc2bc46,visual patterns test,visual patterns test,20.0,100
+trm_4da88c205b16b,haptic illusion task,haptic illusion task,20.0,100
+trm_4e5bb14d814a8,rubber hand illusion,rubber hand illusion,20.0,100
+trm_4e68e08950157,electric stimulation,electric stimulation,20.0,100
+trm_4ebd47b8bab6b,object one-back task,object one-back task,20.0,100
+trm_4f241325579c6,problem solving task,problem solving task,20.0,100
+trm_4f24183fe80c6,verb generation task,verb generation task,20.0,100
+trm_4f241c0737cc0,semantic memory task,semantic memory task,20.0,100
+trm_4f2453ce33f16,social judgment task,social judgment task,20.0,100
+trm_4f24572cb42e4,parity judgment task,parity judgment task,20.0,100
+trm_51071fc87a61f,wais object assembly,wais object assembly,20.0,100
+trm_5519c5f2ad56f,tone detection (jnd),tone detection (jnd),20.0,100
+trm_551b0c0a742d2,lateral facilitation,lateral facilitation,20.0,100
+trm_551b153bc78fc,self monitoring task,self monitoring task,20.0,100
+trm_551f151f7347e,acquired equivalence,acquired equivalence,20.0,100
+trm_5535623c2536a,muller-lyer illusion,muller-lyer illusion,20.0,100
+trm_566745bbf272a,task switching (3x2),task switching (3x2),20.0,100
+trm_5696e10fcd36a,penn vocabulary test,penn vocabulary test,20.0,100
+trm_56aac5f6e4702,eating questionnaire,eating questionnaire,20.0,100
+tsk_nzi0bkdoO8a23,error awareness task,error awareness task,20.0,100
+dso_0060134,apperceptive agnosia,apperceptive agnosia,20.0,100
+dso_11037,dissociative amnesia,dissociative amnesia,20.0,100
+dso_1510,personality disorder,personality disorder,20.0,100
+dso_2510,kluver-bucy syndrome,kluver-bucy syndrome,20.0,100
+dso_845,cyclothymic disorder,cyclothymic disorder,20.0,100
+dso_9973,substance dependence,substance dependence,20.0,100
+trm_50f7370ace495,visual analogue scales,visual analog scales,20.0,95
+trm_4c8a85a4564b2,word stem completion (overt),word stem completion,20.0,83
+trm_4c8a858da803d,word stem completion (covert),word stem completion,20.0,82
+trm_551f07a281283,distraction paradigm (capture),distraction paradigm,20.0,80
+trm_4f241c8d4a75c,gender discrimination task,gender decision task,20.0,78
+trm_52068e5bd9aa1,restricted behavior,stereotyped behavior,20.0,77
+trm_4a3fd79d0a642,instrumental conditioning,operant conditioning,20.0,71
+trm_557b476527a27,auditory tone discrimination,sound discrimination,20.0,71
+trm_4f241c8d4a75c,gender discrimination task,gender judgment task,20.0,70
+trm_4a3fd79d0b043,selective attention,controlled attention,20.0,67
+trm_4c8a84825c4e4,tone monitor/discrimination,tone monitoring task,20.0,64
+trm_56a2a6ce24586,penn emotion recognition task,children&#39;s er40),20.0,20
+trm_4a3fd79d096be,abductive reasoning,abductive reasoning,19.0,100
+trm_4a3fd79d0971e,acoustic processing,acoustic processing,19.0,100
+trm_4a3fd79d097ed,analogical encoding,analogical encoding,19.0,100
+trm_4a3fd79d0981b,analogical transfer,analogical transfer,19.0,100
+trm_4a3fd79d09ab2,auditory perception,auditory perception,19.0,100
+trm_4a3fd79d09bb3,binocular disparity,binocular disparity,19.0,100
+trm_4a3fd79d09bee,capacity limitation,capacity limitation,19.0,100
+trm_4a3fd79d09d58,cognitive heuristic,cognitive heuristic,19.0,100
+trm_4a3fd79d09dcd,conceptual category,conceptual category,19.0,100
+trm_4a3fd79d09de4,conceptual planning,conceptual planning,19.0,100
+trm_4a3fd79d09ece,convergent thinking,convergent thinking,19.0,100
+trm_4a3fd79d0a021,decay of activation,decay of activation,19.0,100
+trm_4a3fd79d0a066,deductive inference,deductive inference,19.0,100
+trm_4a3fd79d0a072,deductive reasoning,deductive reasoning,19.0,100
+trm_4a3fd79d0a33b,feedback processing,feedback processing,19.0,100
+trm_4a3fd79d0a556,incidental learning,incidental learning,19.0,100
+trm_4a3fd79d0a590,inductive reasoning,inductive reasoning,19.0,100
+trm_4a3fd79d0a78d,language production,language production,19.0,100
+trm_4a3fd79d0a92b,metacognitive skill,metacognitive skill,19.0,100
+trm_4a3fd79d0aa8d,object manipulation,object manipulation,19.0,100
+trm_4a3fd79d0ab65,pattern recognition,pattern recognition,19.0,100
+trm_4a3fd79d0abb6,perceptual learning,perceptual learning,19.0,100
+trm_4a3fd79d0ac61,phonological buffer,phonological buffer,19.0,100
+trm_4a3fd79d0ad12,pragmatic inference,pragmatic inference,19.0,100
+trm_4a3fd79d0ad1d,pragmatic knowledge,pragmatic knowledge,19.0,100
+trm_4a3fd79d0ad29,pragmatic reasoning,pragmatic reasoning,19.0,100
+trm_4a3fd79d0adcf,procedural learning,procedural learning,19.0,100
+trm_4a3fd79d0adf4,processing capacity,processing capacity,19.0,100
+trm_4a3fd79d0aed8,relational learning,relational learning,19.0,100
+trm_4a3fd79d0af66,response inhibition,response inhibition,19.0,100
+trm_4a3fd79d0b043,selective attention,selective attention,19.0,100
+trm_4a3fd79d0b154,social intelligence,social intelligence,19.0,100
+trm_4a3fd79d0b311,sustained attention,sustained attention,19.0,100
+trm_4a3fd79d0b3cb,top down processing,top down processing,19.0,100
+trm_4a3fd79d0b406,unconscious process,unconscious process,19.0,100
+trm_4a3fd79d0b665,emotion recognition,emotion recognition,19.0,100
+trm_4a3fd79d0b6dd,discourse knowledge,discourse knowledge,19.0,100
+trm_4a3fd79d0b7b5,illocutionary force,illocutionary force,19.0,100
+trm_4a3fd79d0b802,language processing,language processing,19.0,100
+trm_4a3fd79d0b87a,semantic processing,semantic processing,19.0,100
+trm_4a3fd79d0b89e,sentence processing,sentence processing,19.0,100
+trm_4a3fd79d0b8aa,sentence production,sentence production,19.0,100
+trm_4d7fa1ee2f870,phonemic paraphasia,phonemic paraphasia,19.0,100
+trm_4d920c905d465,conceptual metaphor,conceptual metaphor,19.0,100
+trm_4e5505361f160,body representation,body representation,19.0,100
+trm_4e61264db33d4,pain sensitization ,pain sensitization ,19.0,100
+trm_4fea04a02ce37,binocular depth cue,binocular depth cue,19.0,100
+trm_502954662d63e,feature integration,feature integration,19.0,100
+trm_52068e5bd9aa1,restricted behavior,restricted behavior,19.0,100
+trm_5519b92bde7dc,visual localization,visual localization,19.0,100
+trm_56006cb5a61ac,exogenous attention,exogenous attention,19.0,100
+trm_5521a5f310604,associative priming,associative priming,19.0,100
+trm_557b49206928b,pattern maintenance,pattern maintenance,19.0,100
+trm_557b4a81a4a17,reward anticipation,reward anticipation,19.0,100
+trm_55c6f58e77fbe,story comprehension,story comprehension,19.0,100
+trm_55ef153d47bc0,confidence judgment,confidence judgment,19.0,100
+trm_5a285423171d9,episodic simulation,episodic simulation,19.0,100
+trm_5a285482e89c2,episodic prediction,episodic prediction,19.0,100
+trm_4fba85a597ca9,delayed memory task,delayed memory task,19.0,100
+trm_4b75ea4ddd896,same-different task,same-different task,19.0,100
+trm_4c40d10cd776e,operation span task,operation span task,19.0,100
+trm_4c40d1d16071e,listening span task,listening span task,19.0,100
+trm_4c898f079d05e,finger tapping task,finger tapping task,19.0,100
+trm_4c8a8467304e2,theory of mind task,theory of mind task,19.0,100
+tsk_4a57abb9499ff,delayed recall test,delayed recall test,19.0,100
+tsk_4a57abb949cfb,picture naming task,picture naming task,19.0,100
+tsk_4a57abb949df1,spatial n-back task,spatial n-back task,19.0,100
+tsk_4a57abb949f4a,word identification,word identification,19.0,100
+trm_4f240edf92865,mental imagery task,mental imagery task,19.0,100
+trm_4f240f1c740da,verbal fluency task,verbal fluency task,19.0,100
+trm_4f24112057e90,categorization task,categorization task,19.0,100
+trm_4f242042e5805,cambridge risk task,cambridge risk task,19.0,100
+trm_4f244a67d5b17,mirror tracing task,mirror tracing task,19.0,100
+trm_50240427b4c1b,counterconditioning,counterconditioning,19.0,100
+trm_50b66c50ca2ac,symbol counter task,symbol counter task,19.0,100
+trm_5176cf2c19e89,mirror reading task,mirror reading task,19.0,100
+trm_525c4cb94bfff,conners 3rd edition,conners 3rd edition,19.0,100
+trm_54f93101b2fd8,think/no-think task,think/no-think task,19.0,100
+trm_551efeacb9deb,manipulation of isi,manipulation of isi,19.0,100
+trm_553e8882e3cb6,ultimatum game (ug),ultimatum game (ug),19.0,100
+trm_5696c2c063222,multiplication task,multiplication task,19.0,100
+trm_5696d0a4902df,wrat-4 word reading,wrat-4 word reading,19.0,100
+trm_569fc84bd541d,penn fractal n-back,penn fractal n-back,19.0,100
+dso_0050742,nicotine dependence,nicotine dependence,19.0,100
+dso_0060001,withdrawal disorder,withdrawal disorder,19.0,100
+dso_0060044,paraphilia disorder,paraphilia disorder,19.0,100
+dso_0060045,munchausen by proxy,munchausen by proxy,19.0,100
+dso_0060136,associative agnosia,associative agnosia,19.0,100
+dso_0060143,integrative agnosia,integrative agnosia,19.0,100
+dso_0060166,bipolar ll disorder,bipolar ll disorder,19.0,100
+dso_0060179,renpenning syndrome,renpenning syndrome,19.0,100
+dso_11507,rumination disorder,rumination disorder,19.0,100
+dso_1766,factitious disorder,factitious disorder,19.0,100
+dso_1768,conversion disorder,conversion disorder,19.0,100
+dso_1849,cannabis dependence,cannabis dependence,19.0,100
+dso_252,alcoholic psychosis,alcoholic psychosis,19.0,100
+dso_2560,morphine dependence,morphine dependence,19.0,100
+dso_4737,somatoform disorder,somatoform disorder,19.0,100
+dso_5062,phencyclidine abuse,phencyclidine abuse,19.0,100
+dso_507,adjustment disorder,adjustment disorder,19.0,100
+dso_5340,anterograde amnesia,anterograde amnesia,19.0,100
+dso_778,delusional disorder,delusional disorder,19.0,100
+dso_8927,learning disability,learning disability,19.0,100
+dso_9220,central sleep apnea,central sleep apnea,19.0,100
+trm_5358ede949107,conflict adaptation effect,conflict adaptation,19.0,84
+trm_557b476527a27,auditory tone discrimination,tone discrimination,19.0,81
+trm_52068e5bd9aa1,restricted behavior,repetitive behavior,19.0,79
+trm_4a3fd79d0b607,set shifting,mental set shifting,19.0,77
+trm_53c4465b0466f,why/how task,yes/no why/how task,19.0,77
+trm_4d949c5b0e380,rhyme verification task,rhyme decision task,19.0,76
+trm_4d949c5b0e380,rhyme verification task,rhyme judgment task,19.0,62
+tsk_4a57abb949d40,recognition memory test,old-new recognition,19.0,52
+trm_4c8a82ba8a538,reading (covert),covert reading task,19.0,51
+trm_4c8a82ba8a538,reading (covert),silent reading task,19.0,51
+trm_551f07a281283,distraction paradigm (capture),capture distraction,19.0,45
+trm_4a3fd79d09d64,cognitive load,processing capacity,19.0,24
+trm_4a3fd79d096f0,abstract knowledge,abstract knowledge,18.0,100
+trm_4a3fd79d0977b,affect recognition,affect recognition,18.0,100
+trm_4a3fd79d0990e,attention capacity,attention capacity,18.0,100
+trm_4a3fd79d09919,attentional effort,attentional effort,18.0,100
+trm_4a3fd79d09a10,auditory attention,auditory attention,18.0,100
+trm_4a3fd79d09c97,chromatic contrast,chromatic contrast,18.0,100
+trm_4a3fd79d09e13,conflict detection,conflict detection,18.0,100
+trm_4a3fd79d09e1e,conjunction search,conjunction search,18.0,100
+trm_4a3fd79d09eaa,contrastive stress,contrastive stress,18.0,100
+trm_4a3fd79d09f2a,creative cognition,creative cognition,18.0,100
+trm_4a3fd79d0a04f,declarative memory,declarative memory,18.0,100
+trm_4a3fd79d0a0ff,distributed coding,distributed coding,18.0,100
+trm_4a3fd79d0a10a,divergent thinking,divergent thinking,18.0,100
+trm_4a3fd79d0a269,explicit knowledge,explicit knowledge,18.0,100
+trm_4a3fd79d0a32f,feature extraction,feature extraction,18.0,100
+trm_4a3fd79d0a375,fluid intelligence,fluid intelligence,18.0,100
+trm_4a3fd79d0a460,gustatory learning,gustatory learning,18.0,100
+trm_4a3fd79d0a51c,implicit knowledge,implicit knowledge,18.0,100
+trm_4a3fd79d0aab0,object recognition,object recognition,18.0,100
+trm_4a3fd79d0ab88,perceptual binding,perceptual binding,18.0,100
+trm_4a3fd79d0ab9f,perceptual fluency,perceptual fluency,18.0,100
+trm_4a3fd79d0ae70,prospective memory,prospective memory,18.0,100
+trm_4a3fd79d0aeaa,quantitative skill,quantitative skill,18.0,100
+trm_4a3fd79d0af71,response selection,response selection,18.0,100
+trm_4a3fd79d0b077,semantic knowledge,semantic knowledge,18.0,100
+trm_4a3fd79d0b0df,shallow processing,shallow processing,18.0,100
+trm_4a3fd79d0b37a,text comprehension,text comprehension,18.0,100
+trm_4a3fd79d0b548,word comprehension,word comprehension,18.0,100
+trm_4a3fd79d0b583,word pronunciation,word pronunciation,18.0,100
+trm_4a3fd79d0b5fb,attention shifting,attention shifting,18.0,100
+trm_4a3fd79d0b65a,emotion perception,emotion perception,18.0,100
+trm_4a3fd79d0b6e9,discourse planning,discourse planning,18.0,100
+trm_4a3fd79d0b826,lexical processing,lexical processing,18.0,100
+trm_4a3fd79d0b914,memory acquisition,memory acquisition,18.0,100
+trm_4a3fd79d0ba0d,active maintenance,active maintenance,18.0,100
+trm_4e5badf095692,sense of ownership,sense of ownership,18.0,100
+trm_4f33e65d0daac,embodied cognition,embodied cognition,18.0,100
+trm_4fea25630ffb5,motion aftereffect,motion aftereffect,18.0,100
+trm_5021684cba96c,domain specificity,domain specificity,18.0,100
+trm_502ad54c11389,visual orientation,visual orientation,18.0,100
+trm_50f382d7abdff,vestibular control,vestibular control,18.0,100
+trm_5159beaf80413,animacy perception,animacy perception,18.0,100
+trm_51a6905a3f021,cognitive training,cognitive training,18.0,100
+trm_51a690a7492eb,emotion regulation,emotion regulation,18.0,100
+trm_5519b80525e89,stimulus detection,stimulus detection,18.0,100
+trm_5519ba1746e95,perceptual priming,perceptual priming,18.0,100
+trm_5521a2aa5b127,conceptual priming,conceptual priming,18.0,100
+trm_5521a45a397a6,repetition priming,repetition priming,18.0,100
+trm_557b47abe9a34,decision certainty,decision certainty,18.0,100
+trm_557b4891e9265,feature comparison,feature comparison,18.0,100
+trm_557b4904ee26d,object maintenance,object maintenance,18.0,100
+trm_557b4a7315f1b,response execution,response execution,18.0,100
+trm_557b4acdee820,string maintenance,string maintenance,18.0,100
+trm_557b4b7176394,visual recognition,visual recognition,18.0,100
+trm_5595bde6b2e95,facial recognition,facial recognition,18.0,100
+trm_59d184d0980bf,arousal (physical),arousal (physical),18.0,100
+trm_5a28604b01314,episodic intention,episodic intention,18.0,100
+trm_4a3fd79d0b3d7,trace conditioning,trace conditioning,18.0,100
+trm_50b40bca8cf83,hungry donkey task,hungry donkey task,18.0,100
+trm_4c898a8fd3afb,chewing/swallowing,chewing/swallowing,18.0,100
+trm_4cacee4a1d875,mixed gambles task,mixed gambles task,18.0,100
+tsk_4a57abb9498df,block tapping test,block tapping test,18.0,100
+tsk_4a57abb9498ef,boston naming test,boston naming test,18.0,100
+tsk_4a57abb949ae5,iowa gambling task,iowa gambling task,18.0,100
+tsk_4a57abb949b1c,letter n-back task,letter n-back task,18.0,100
+tsk_4a57abb949b2b,letter naming task,letter naming task,18.0,100
+tsk_4a57abb949bdb,nine-hole peg test,nine-hole peg test,18.0,100
+tsk_4a57abb949d17,posner cueing task,posner cueing task,18.0,100
+tsk_4a57abb949dd6,source memory test,source memory test,18.0,100
+trm_4da63146f12d7,remember/know task,remember/know task,18.0,100
+trm_4da634216ebbc,dual-task paradigm,dual-task paradigm,18.0,100
+trm_4da88b63787d6,pursuit rotor task,pursuit rotor task,18.0,100
+trm_4da88bd4412da,animal naming task,animal naming task,18.0,100
+trm_4da890f978492,glasgow coma scale,glasgow coma scale,18.0,100
+trm_4e5e7ac84c2e5,dual sensitization,dual sensitization,18.0,100
+trm_4ebd482eba5b1,word one-back task,word one-back task,18.0,100
+trm_4f240d346320c,covert naming task,covert naming task,18.0,100
+trm_4f241fe40a950,fame judgment task,fame judgment task,18.0,100
+trm_4f24247912761,face matching task,face matching task,18.0,100
+trm_4f2447fe67fb9,visual search task,visual search task,18.0,100
+trm_4f2448d02d4d9,object naming task,object naming task,18.0,100
+trm_5023ef8eab626,delay conditioning,delay conditioning,18.0,100
+trm_502985b4baaed,psychophysics task,psychophysics task,18.0,100
+trm_50f741a965470,graded naming test,graded naming test,18.0,100
+trm_5106f82530aff,wais comprehension,wais comprehension,18.0,100
+trm_5519c2d8d7b1d,deviance detection,deviance detection,18.0,100
+trm_551b0d687ee33,figure ground task,figure ground task,18.0,100
+trm_553fbba5d5327,object rating task,object rating task,18.0,100
+trm_5667492c555b7,columbia card task,columbia card task,18.0,100
+trm_57ebe6583f52d,moral dilemma task,moral dilemma task,18.0,100
+trm_5798cb6027f28,following commands,following commands,18.0,100
+trm_5798d2693915d,clock drawing task,clock drawing task,18.0,100
+dso_0050741,alcohol dependence,alcohol dependence,18.0,100
+dso_12139,dysthymic disorder,dysthymic disorder,18.0,100
+dso_12797,hallucinogen abuse,hallucinogen abuse,18.0,100
+dso_14042,bipolar i disorder,bipolar i disorder,18.0,100
+dso_1561,cognitive disorder,cognitive disorder,18.0,100
+dso_1876,sexual dysfunction,sexual dysfunction,18.0,100
+dso_2468,psychotic disorder,psychotic disorder,18.0,100
+dso_4543,retrograde amnesia,retrograde amnesia,18.0,100
+dso_9975,cocaine dependence,cocaine dependence,18.0,100
+dso_5341d1ef4107e,alzheimer disease ,alzheimer disease ,18.0,100
+trm_4a3fd79d0b043,selective attention,directed attention,18.0,76
+trm_5519c5f2ad56f,tone detection (jnd),jnd tone detection,18.0,74
+trm_566745bbf272a,task switching (3x2),3x2 task switching,18.0,74
+trm_4f24226fa2903,fitts task,fitts tapping task,18.0,71
+dso_5798cf99cfaa3,ideational apraxia (conceptual apraxia),ideational apraxia,18.0,63
+trm_4aae62e4ad209,cognitive control,executive function,18.0,51
+trm_4c8990c87035d,naming (covert),covert naming task,18.0,48
+trm_4f241d7adf14e,global-local task,navon letters task,18.0,46
+trm_4c8990e187dc7,naming (overt),reading aloud task,18.0,44
+trm_5887c029d46f4,gustatory stimulation with liquid tastes or flavors ,flavor stimulation,18.0,43
+trm_523c7ba79c2f1,lethargy,socially withdrawn,18.0,31
+trm_4a3fd79d09707,acoustic encoding,acoustic encoding,17.0,100
+trm_4a3fd79d09770,affect perception,affect perception,17.0,100
+trm_4a3fd79d098f7,attended stimulus,attended stimulus,17.0,100
+trm_4a3fd79d09930,attentional state,attentional state,17.0,100
+trm_4a3fd79d09a49,auditory encoding,auditory encoding,17.0,100
+trm_4a3fd79d09a55,auditory feedback,auditory feedback,17.0,100
+trm_4a3fd79d09a61,auditory grouping,auditory grouping,17.0,100
+trm_4a3fd79d09a78,auditory learning,auditory learning,17.0,100
+trm_4a3fd79d09b3f,aversive learning,aversive learning,17.0,100
+trm_4a3fd79d09b62,backward chaining,backward chaining,17.0,100
+trm_4a3fd79d09c3f,category learning,category learning,17.0,100
+trm_4a3fd79d09c69,central attention,central attention,17.0,100
+trm_4a3fd79d09dfc,conceptualization,conceptualization,17.0,100
+trm_4a3fd79d09e7b,context dependent,context dependent,17.0,100
+trm_4a3fd79d09f42,creative thinking,creative thinking,17.0,100
+trm_4a3fd79d0a116,divided attention,divided attention,17.0,100
+trm_4a3fd79d0a1b9,emotional mimicry,emotional mimicry,17.0,100
+trm_4a3fd79d0a1e8,episodic learning,episodic learning,17.0,100
+trm_4a3fd79d0a275,explicit learning,explicit learning,17.0,100
+trm_4a3fd79d0a318,facial expression,facial expression,17.0,100
+trm_4a3fd79d0a38d,focused attention,focused attention,17.0,100
+trm_4a3fd79d0a3f6,generic knowledge,generic knowledge,17.0,100
+trm_4a3fd79d0a527,implicit learning,implicit learning,17.0,100
+trm_4a3fd79d0a781,language learning,language learning,17.0,100
+trm_4a3fd79d0a7e0,lexical retrieval,lexical retrieval,17.0,100
+trm_4a3fd79d0a81b,logical reasoning,logical reasoning,17.0,100
+trm_4a3fd79d0a8ed,mental arithmetic,mental arithmetic,17.0,100
+trm_4a3fd79d0aa47,novelty detection,novelty detection,17.0,100
+trm_4a3fd79d0aaa4,object perception,object perception,17.0,100
+trm_4a3fd79d0ab4d,passive attention,passive attention,17.0,100
+trm_4a3fd79d0ac7a,phonological code,phonological code,17.0,100
+trm_4a3fd79d0addc,procedural memory,procedural memory,17.0,100
+trm_4a3fd79d0b06b,semantic category,semantic category,17.0,100
+trm_4a3fd79d0b0a6,sequence learning,sequence learning,17.0,100
+trm_4a3fd79d0b0bd,serial processing,serial processing,17.0,100
+trm_4a3fd79d0b0f7,short-term memory,short-term memory,17.0,100
+trm_4a3fd79d0b125,skill acquisition,skill acquisition,17.0,100
+trm_4a3fd79d0b19b,source monitoring,source monitoring,17.0,100
+trm_4a3fd79d0b1b2,spatial attention,spatial attention,17.0,100
+trm_4a3fd79d0b1bd,spatial cognition,spatial cognition,17.0,100
+trm_4a3fd79d0b1f7,speech perception,speech perception,17.0,100
+trm_4a3fd79d0b238,speech processing,speech processing,17.0,100
+trm_4a3fd79d0b247,speech production,speech production,17.0,100
+trm_4a3fd79d0b340,syntactic parsing,syntactic parsing,17.0,100
+trm_4a3fd79d0b4b5,visual perception,visual perception,17.0,100
+trm_4a3fd79d0b5c0,action initiation,action initiation,17.0,100
+trm_4a3fd79d0b671,emotional bonding,emotional bonding,17.0,100
+trm_4a3fd79d0b81b,lexical ambiguity,lexical ambiguity,17.0,100
+trm_4a3fd79d0b9ad,feature detection,feature detection,17.0,100
+trm_4a3fd79d0ba19,articulatory loop,articulatory loop,17.0,100
+trm_4a3fd79d0ba25,central executive,central executive,17.0,100
+trm_4a3fd79d0ba48,phonological loop,phonological loop,17.0,100
+trm_4aae62e4ad209,cognitive control,cognitive control,17.0,100
+trm_4b6525253c63f,reward processing,reward processing,17.0,100
+trm_4b82c75498408,central coherence,central coherence,17.0,100
+trm_4d7fc763cf777,metacomprehension,metacomprehension,17.0,100
+trm_4fea1aeaa7b17,attentional blink,attentional blink,17.0,100
+trm_500d8626d0770,binocular rivalry,binocular rivalry,17.0,100
+trm_500d8839c2877,cone of confusion,cone of confusion,17.0,100
+trm_5021873f37abc,global precedence,global precedence,17.0,100
+trm_5029751d118c4,phototransduction,phototransduction,17.0,100
+trm_50f3c0af04e37,life satisfaction,life satisfaction,17.0,100
+trm_5159c00c3dac3,action perception,action perception,17.0,100
+trm_52090251db8c8,social motivation,social motivation,17.0,100
+trm_52583e8a46ded,suicidal ideation,suicidal ideation,17.0,100
+trm_525d8f3ed78a2,noise sensitivity,noise sensitivity,17.0,100
+trm_553967f006b70,shape recognition,shape recognition,17.0,100
+trm_557b478ce1c24,color recognition,color recognition,17.0,100
+trm_557b48a224b95,loss anticipation,loss anticipation,17.0,100
+trm_565bce2791089,implicit learning,implicit learning,17.0,100
+trm_557b491318742,oddball detection,oddball detection,17.0,100
+trm_557b493133416,place maintenance,place maintenance,17.0,100
+trm_557b49851e991,proactive control,proactive control,17.0,100
+trm_557b49ad14adf,response conflict,response conflict,17.0,100
+trm_557b4aa070c10,selective control,selective control,17.0,100
+trm_59d184d09066b,arousal (emotion),arousal (emotion),17.0,100
+trm_5a2860fa6b59e,episodic planning,episodic planning,17.0,100
+trm_4b7497a289534,block design test,block design test,17.0,100
+trm_4c40d168898db,reading span task,reading span task,17.0,100
+trm_4c898fad429ed,flexion/extension,flexion/extension,17.0,100
+trm_4c899005b11d5,imagined movement,imagined movement,17.0,100
+trm_4c8991fadfe01,passive listening,passive listening,17.0,100
+tsk_4a57abb949dad,set-shifting task,set-shifting task,17.0,100
+trm_4da633dbb5817,word fluency test,word fluency test,17.0,100
+trm_4da633fe917c4,color trails test,color trails test,17.0,100
+trm_4da86ad02b3ea,complex span test,complex span test,17.0,100
+trm_4da86b539924c,spatial span test,spatial span test,17.0,100
+trm_4da87fdd7820e,porteus maze test,porteus maze test,17.0,100
+trm_4da890a9bd7a3,morris water maze,morris water maze,17.0,100
+trm_4fbd2b16e7aff,length match task,length match task,17.0,100
+trm_4e664d3718e1b,cold stimulation ,cold stimulation ,17.0,100
+trm_4e6a44ee854f8,cold pressor test,cold pressor test,17.0,100
+trm_4f241b751c5a0,phonological task,phonological task,17.0,100
+trm_4f241d7adf14e,global-local task,global-local task,17.0,100
+trm_4f24250e0137e,orthographic task,orthographic task,17.0,100
+trm_4f244c1f6b53f,color naming task,color naming task,17.0,100
+trm_4f2456027809f,false belief task,false belief task,17.0,100
+trm_50f72fafa53ec,big/little circle,big/little circle,17.0,100
+trm_510703e93367e,wais similarities,wais similarities,17.0,100
+trm_551b1004bc652,local computation,local computation,17.0,100
+trm_551f0cc82ed49,sequence encoding,sequence encoding,17.0,100
+trm_5536be03400e7,motion processing,motion processing,17.0,100
+trm_553e77e53497d,cue approach task,cue approach task,17.0,100
+trm_5667488d52ccc,angling risk task,angling risk task,17.0,100
+trm_56a2abffcfae3,penn motor praxis,penn motor praxis,17.0,100
+trm_5845a809e30d5,false belief task,false belief task,17.0,100
+trm_59668f09db813,yellow light game,yellow light game,17.0,100
+dso_0050432,asperger syndrome,asperger syndrome,17.0,100
+dso_0060140,cortical deafness,cortical deafness,17.0,100
+dso_10914,amnestic disorder,amnestic disorder,17.0,100
+dso_12849,autistic disorder,autistic disorder,17.0,100
+dso_1596,mental depression,mental depression,17.0,100
+dso_2559,opiate dependence,opiate dependence,17.0,100
+dso_4627,ideomotor apraxia,ideomotor apraxia,17.0,100
+dso_4964,neurotic disorder,neurotic disorder,17.0,100
+dso_670,amphetamine abuse,amphetamine abuse,17.0,100
+dso_8519,barbiturate abuse,barbiturate abuse,17.0,100
+dso_8645,subacute delirium,subacute delirium,17.0,100
+dso_93,language disorder,language disorder,17.0,100
+dso_9976,heroin dependence,heroin dependence,17.0,100
+dso_55ac96d54ae2c,semantic dementia,semantic dementia,17.0,100
+trm_4da890a9bd7a3,morris water maze,morris water task,17.0,82
+trm_553e8882e3cb6,ultimatum game (ug),ug ultimatum game,17.0,78
+trm_4aae62e4ad209,cognitive control,executive control,17.0,76
+trm_557b491318742,oddball detection,anomaly detection,17.0,76
+trm_557b4a913f8cc,risk processing,danger processing,17.0,75
+trm_557b4a913f8cc,risk processing,threat processing,17.0,75
+trm_557b491318742,oddball detection,outlier detection,17.0,71
+trm_52583e8a46ded,suicidal ideation,suicidal thoughts,17.0,65
+trm_53c4465b0466f,why/how task,why/how localizer,17.0,62
+trm_4c8990e187dc7,naming (overt),overt naming task,17.0,52
+trm_4f4511e519b53,imagination,mental conception,17.0,50
+trm_5887c029d46f4,gustatory stimulation with liquid tastes or flavors ,taste stimulation,17.0,43
+trm_4f241d7adf14e,global-local task,navon figure task,17.0,41
+trm_5206bf053acf4,piaget's water jar task,water jug problem,17.0,40
+trm_5534111a8bc96,punishment processing,negative feedback,17.0,26
+trm_4a3fd79d096e3,abstract analogy,abstract analogy,16.0,100
+trm_4a3fd79d0974d,activation level,activation level,16.0,100
+trm_4a3fd79d09764,adaptive control,adaptive control,16.0,100
+trm_4a3fd79d098eb,attended channel,attended channel,16.0,100
+trm_4a3fd79d09a6c,auditory imagery,auditory imagery,16.0,100
+trm_4a3fd79d09a9b,auditory masking,auditory masking,16.0,100
+trm_4a3fd79d09bbf,binocular vision,binocular vision,16.0,100
+trm_4a3fd79d09be2,body orientation,body orientation,16.0,100
+trm_4a3fd79d09c5b,causal inference,causal inference,16.0,100
+trm_4a3fd79d09c80,chemonociception,chemonociception,16.0,100
+trm_4a3fd79d09d4d,cognitive effort,cognitive effort,16.0,100
+trm_4a3fd79d09d93,color perception,color perception,16.0,100
+trm_4a3fd79d09dc1,concept learning,concept learning,16.0,100
+trm_4a3fd79d09df0,conceptual skill,conceptual skill,16.0,100
+trm_4a3fd79d0a05b,declarative rule,declarative rule,16.0,100
+trm_4a3fd79d0a0a1,depth perception,depth perception,16.0,100
+trm_4a3fd79d0a1ae,emotional memory,emotional memory,16.0,100
+trm_4a3fd79d0a30c,face recognition,face recognition,16.0,100
+trm_4a3fd79d0a431,goal maintenance,goal maintenance,16.0,100
+trm_4a3fd79d0a46b,gustatory memory,gustatory memory,16.0,100
+trm_4a3fd79d0a4be,heuristic search,heuristic search,16.0,100
+trm_4a3fd79d0a7d4,lexical encoding,lexical encoding,16.0,100
+trm_4a3fd79d0a833,long-term memory,long-term memory,16.0,100
+trm_4a3fd79d0aa76,object detection,object detection,16.0,100
+trm_4a3fd79d0abcd,perceptual skill,perceptual skill,16.0,100
+trm_4a3fd79d0ae00,processing stage,processing stage,16.0,100
+trm_4a3fd79d0aeef,repressed memory,repressed memory,16.0,100
+trm_4a3fd79d0af5a,resource sharing,resource sharing,16.0,100
+trm_4fb3f4d58aeb0,gestalt grouping,gestalt grouping,16.0,100
+trm_4a3fd79d0b13d,social cognition,social cognition,16.0,100
+trm_4a3fd79d0b2b4,sublexical route,sublexical route,16.0,100
+trm_4a3fd79d0b3ef,traumatic memory,traumatic memory,16.0,100
+trm_4fb2c38960950,optical illusion,optical illusion,16.0,100
+trm_4a3fd79d0b46f,visual attention,visual attention,16.0,100
+trm_4a3fd79d0b58f,word recognition,word recognition,16.0,100
+trm_4a3fd79d0b779,graphemic buffer,graphemic buffer,16.0,100
+trm_4a3fd79d0b8c1,active retrieval,active retrieval,16.0,100
+trm_4a3fd79d0ba01,memory retrieval,memory retrieval,16.0,100
+trm_4e6127bd91be9,pain habituation,pain habituation,16.0,100
+trm_4ff36d79c26c6,visual awareness,visual awareness,16.0,100
+trm_4fea238758d33,change blindness,change blindness,16.0,100
+trm_4feb3ffa1ab51,covert attention,covert attention,16.0,100
+trm_502ab8dd991bf,border ownership,border ownership,16.0,100
+trm_510059e54b2cf,attentional bias,attentional bias,16.0,100
+trm_5159c382bd8d4,circadian rhythm,circadian rhythm,16.0,100
+trm_5159c94667677,reward valuation,reward valuation,16.0,100
+trm_5159c971bf444,effort valuation,effort valuation,16.0,100
+trm_51838baad343e,semantic network,semantic network,16.0,100
+trm_523e00f356226,conduct disorder,conduct disorder,16.0,100
+trm_551f0f822d95e,limited capacity,limited capacity,16.0,100
+trm_5521a3da10349,positive priming,positive priming,16.0,100
+trm_5521a51034353,semantic priming,semantic priming,16.0,100
+trm_5521a663cd89c,response priming,response priming,16.0,100
+trm_5521a6bc4db33,kindness priming,kindness priming,16.0,100
+trm_5521a7a1376ed,negative priming,negative priming,16.0,100
+trm_557b471bc6cd8,animacy decision,animacy decision,16.0,100
+trm_557b477b4a15f,body maintenance,body maintenance,16.0,100
+trm_557b48aeb7d58,motion detection,motion detection,16.0,100
+trm_557b48d40d3cf,negative emotion,negative emotion,16.0,100
+trm_557b4aeaeb744,tool maintenance,tool maintenance,16.0,100
+trm_557b4bb7cf05b,word maintenance,word maintenance,16.0,100
+trm_5595be14a57c5,social inference,social inference,16.0,100
+trm_55b6b8b8e7870,tone recognition,tone recognition,16.0,100
+trm_55c6f87595b39,face maintenance,face maintenance,16.0,100
+trm_55e1b27f5655e,surface dyslexia,surface dyslexia,16.0,100
+trm_58575b0d3c548,processing speed,processing speed,16.0,100
+trm_586fd9dcd78e5,sound perception,sound perception,16.0,100
+trm_586fda1743344,voice perception,voice perception,16.0,100
+trm_4a3fd79d09b6d,backward masking,backward masking,16.0,100
+trm_5667436296862,image monitoring,image monitoring,16.0,100
+trm_4b86c473a7166,underlining test,underlining test,16.0,100
+trm_4c8989e1f3df7,acupuncture task,acupuncture task,16.0,100
+trm_4c89909cc1f33,micturition task,micturition task,16.0,100
+trm_4c8a82ba8a538,reading (covert),reading (covert),16.0,100
+tsk_4a57abb949a6a,face n-back task,face n-back task,16.0,100
+tsk_4a57abb949d5b,risky gains task,risky gains task,16.0,100
+tsk_4a57abb949e1a,stop signal task,stop signal task,16.0,100
+trm_4da869e68b5c4,memory span test,memory span test,16.0,100
+trm_4e550887d92de,heat stimulation,heat stimulation,16.0,100
+trm_4f241ab50513b,mentalizing task,mentalizing task,16.0,100
+trm_4f2420b042165,reappraisal task,reappraisal task,16.0,100
+trm_4f2447dfa5947,stop-change task,stop-change task,16.0,100
+trm_5106eae236c21,wais-information,wais-information,16.0,100
+trm_54e69c642d89b,rest eyes closed,rest eyes closed,16.0,100
+trm_5519c3eaa3fb7,speech detection,speech detection,16.0,100
+trm_551f0b9654d23,simple span task,simple span task,16.0,100
+trm_5798d7ba0197d,orientation test,orientation test,16.0,100
+dso_0050587,trichotillomania,trichotillomania,16.0,100
+dso_0060047,writing disorder,writing disorder,16.0,100
+dso_0060137,auditory agnosia,auditory agnosia,16.0,100
+dso_0060147,semantic agnosia,semantic agnosia,16.0,100
+dso_10849,sexual masochism,sexual masochism,16.0,100
+dso_12995,conduct disorder,conduct disorder,16.0,100
+dso_13365,reading disorder,reading disorder,16.0,100
+dso_2030,anxiety disorder,anxiety disorder,16.0,100
+dso_3312,bipolar disorder,bipolar disorder,16.0,100
+dso_6680,capgras syndrome,capgras syndrome,16.0,100
+dso_8689,anorexia nervosa,anorexia nervosa,16.0,100
+dso_55e1b3f9ace16,surface dyslexia,surface dyslexia,16.0,100
+trm_4a3fd79d09d64,cognitive load,cognitive effort,16.0,73
+trm_4a3fd79d0af71,response selection,action selection,16.0,71
+trm_55ef273a77a86,auditory tone perception,sound perception,16.0,65
+trm_56a2a74ab3ef6,measured emotion differentiation test,measured emodiff,16.0,60
+trm_4da88cb222308,nih toolbox picture sequence memory test,picture set test,16.0,54
+trm_59d184d0980bf,arousal (physical),physical arousal,16.0,47
+trm_56a2a98785453,penn visual object learning test delayed memory,short volt delay,16.0,38
+trm_56a2b7c08a279,short penn continuous performance test-number and letter version,short numlet-cpt,16.0,32
+trm_4a3fd79d096fc,acoustic coding,acoustic coding,15.0,100
+trm_4a3fd79d09855,apparent motion,apparent motion,15.0,100
+trm_4a3fd79d09a3d,auditory coding,auditory coding,15.0,100
+trm_4a3fd79d09aa7,auditory memory,auditory memory,15.0,100
+trm_4a3fd79d09eb6,conventionality,conventionality,15.0,100
+trm_4a3fd79d09f4d,critical period,critical period,15.0,100
+trm_4a3fd79d0a038,decision making,decision making,15.0,100
+trm_4a3fd79d0a07e,deep processing,deep processing,15.0,100
+trm_4a3fd79d0a1f4,episodic memory,episodic memory,15.0,100
+trm_4a3fd79d0a20c,error detection,error detection,15.0,100
+trm_4a3fd79d0a281,explicit memory,explicit memory,15.0,100
+trm_4a3fd79d0a300,face perception,face perception,15.0,100
+trm_4a3fd79d0a398,form perception,form perception,15.0,100
+trm_4a3fd79d0a43c,goal management,goal management,15.0,100
+trm_4a3fd79d0a533,implicit memory,implicit memory,15.0,100
+trm_4a3fd79d0a6c5,internal speech,internal speech,15.0,100
+trm_4a3fd79d0a914,mental rotation,mental rotation,15.0,100
+trm_4a3fd79d0adb7,problem solving,problem solving,15.0,100
+trm_4a3fd79d0ade8,procedural rule,procedural rule,15.0,100
+trm_4a3fd79d0ae58,prosodic stress,prosodic stress,15.0,100
+trm_4a3fd79d0afda,route knowledge,route knowledge,15.0,100
+trm_4a3fd79d0b05e,self monitoring,self monitoring,15.0,100
+trm_4a3fd79d0b083,semantic memory,semantic memory,15.0,100
+trm_4a3fd79d0b0b1,serial learning,serial learning,15.0,100
+trm_4a3fd79d0b160,somatosensation,somatosensation,15.0,100
+trm_4a3fd79d0b1a6,spatial ability,spatial ability,15.0,100
+trm_4a3fd79d0b386,text processing,text processing,15.0,100
+trm_4a3fd79d0b39d,thermosensation,thermosensation,15.0,100
+trm_4a3fd79d0b55f,word generation,word generation,15.0,100
+trm_4a3fd79d0b59b,word repetition,word repetition,15.0,100
+trm_4a3fd79d0b5d7,attention shift,attention shift,15.0,100
+trm_4a3fd79d0b8f0,episodic buffer,episodic buffer,15.0,100
+trm_4a3fd79d0b972,reconsolidation,reconsolidation,15.0,100
+trm_4b75ed06c917d,joint attention,joint attention,15.0,100
+trm_4fea09fac5316,color constancy,color constancy,15.0,100
+trm_4feb3f8c551cb,overt attention,overt attention,15.0,100
+trm_502bdc6bdaa2b,lateral masking,lateral masking,15.0,100
+trm_5159cb12a0f92,reward learning,reward learning,15.0,100
+trm_51a690eeadcb7,neuroplasticity,neuroplasticity,15.0,100
+trm_557b4a913f8cc,risk processing,risk processing,15.0,100
+trm_557b4add1837e,task difficulty,task difficulty,15.0,100
+trm_4fbd2af083332,size match task,size match task,15.0,100
+trm_4fb4175126374,meditation task,meditation task,15.0,100
+trm_4c40d4054f38b,keep-track task,keep-track task,15.0,100
+trm_4c898c0786246,eating/drinking,eating/drinking,15.0,100
+trm_4c898c8bf1b4f,episodic recall,episodic recall,15.0,100
+trm_4c8990480ad0f,isometric force,isometric force,15.0,100
+trm_4c8990c87035d,naming (covert),naming (covert),15.0,100
+trm_4c899211a965c,passive viewing,passive viewing,15.0,100
+trm_4c8a82eeaa58f,reading (overt),reading (overt),15.0,100
+tsk_4a57abb949a0d,digit span task,digit span task,15.0,100
+tsk_4a57abb949b00,kanizsa figures,kanizsa figures,15.0,100
+tsk_4a57abb949e8a,task-switching ,task-switching ,15.0,100
+trm_4d55997cd3edb,non-choice task,non-choice task,15.0,100
+trm_4da87e439c411,tower of london,tower of london,15.0,100
+trm_4f241173868a3,navigation task,navigation task,15.0,100
+trm_4f244ad7dcde7,dot motion task,dot motion task,15.0,100
+trm_502420a682976,npu-threat test,npu-threat test,15.0,100
+trm_5106eee90937a,wais digit span,wais digit span,15.0,100
+trm_5106f17025386,wais vocabulary,wais vocabulary,15.0,100
+trm_5106f4dfe08b1,wais arithmetic,wais arithmetic,15.0,100
+trm_526943e3cbaaf,sensory profile,sensory profile,15.0,100
+trm_551b0c616de16,coherent motion,coherent motion,15.0,100
+trm_5521752956bb2,corpus analysis,corpus analysis,15.0,100
+trm_5550e5011ce10,audio narrative,audio narrative,15.0,100
+trm_5696a599bfcb6,bickel titrator,bickel titrator,15.0,100
+trm_566747c3d757f,dimensions task,dimensions task,15.0,100
+trm_5696b180169bd,volatile bandit,volatile bandit,15.0,100
+dso_0060042,atypical autism,atypical autism,15.0,100
+dso_0060043,sexual disorder,sexual disorder,15.0,100
+dso_0060148,simultanagnosia,simultanagnosia,15.0,100
+dso_0060151,tactile agnosia,tactile agnosia,15.0,100
+dso_12129,bulimia nervosa,bulimia nervosa,15.0,100
+dso_12883,hypochondriasis,hypochondriasis,15.0,100
+dso_302,substance abuse,substance abuse,15.0,100
+dso_4541,nominal aphasia,nominal aphasia,15.0,100
+dso_591,phobic disorder,phobic disorder,15.0,100
+dso_599,specific phobia,specific phobia,15.0,100
+dso_6950,combat disorder,combat disorder,15.0,100
+dso_8670,eating disorder,eating disorder,15.0,100
+dso_92,speech disorder,speech disorder,15.0,100
+dso_9974,drug dependence,drug dependence,15.0,100
+trm_4f244ad7dcde7,dot motion task,dot-motion task,15.0,93
+trm_4f24226fa2903,fitts task,fitts&#39; task,15.0,80
+trm_55ef273a77a86,auditory tone perception,tone perception,15.0,77
+trm_4f2449bdcb0b1,wason card selection task,wason card task,15.0,75
+trm_557b474e2b578,auditory tone detection,sound detection,15.0,63
+trm_4f244ad7dcde7,dot motion task,moving-dot task,15.0,60
+trm_4a3fd79d0af71,response selection,motor execution,15.0,55
+trm_58575b0d3c548,processing speed,cognitive speed,15.0,52
+trm_56a2a74ab3ef6,measured emotion differentiation test,morphed emodiff,15.0,46
+trm_4ee8facd77dfc,self control,self-regulation,15.0,44
+trm_4ee8facd77dfc,self control,self-discipline,15.0,44
+trm_59d184d09066b,arousal (emotion),emotion arousal,15.0,44
+trm_525d8b8908809,eating,food preference,15.0,19
+trm_4a3fd79d09abe,auditory scene,auditory scene,14.0,100
+trm_4a3fd79d09c28,categorization,categorization,14.0,100
+trm_4a3fd79d09d64,cognitive load,cognitive load,14.0,100
+trm_4a3fd79d09e87,context memory,context memory,14.0,100
+trm_4a3fd79d0a08a,deep structure,deep structure,14.0,100
+trm_4a3fd79d0a223,error trapping,error trapping,14.0,100
+trm_4a3fd79d0a3ea,generalization,generalization,14.0,100
+trm_4a3fd79d0a425,goal formation,goal formation,14.0,100
+trm_4a3fd79d0a48e,habit learning,habit learning,14.0,100
+trm_4a3fd79d0a6a1,intentionality,intentionality,14.0,100
+trm_4a3fd79d0a8fc,mental imagery,mental imagery,14.0,100
+trm_4a3fd79d0a943,misattribution,misattribution,14.0,100
+trm_4a3fd79d0a995,motor learning,motor learning,14.0,100
+trm_4a3fd79d0a9a1,motor planning,motor planning,14.0,100
+trm_4a3fd79d0ad94,primary memory,primary memory,14.0,100
+trm_4a3fd79d0ae3d,proprioception,proprioception,14.0,100
+trm_4a3fd79d0af4c,resource limit,resource limit,14.0,100
+trm_4a3fd79d0b09a,sensory memory,sensory memory,14.0,100
+trm_4a3fd79d0b148,social context,social context,14.0,100
+trm_4a3fd79d0b1d5,spatial memory,spatial memory,14.0,100
+trm_4a3fd79d0b363,taste aversion,taste aversion,14.0,100
+trm_4a3fd79d0b392,theory of mind,theory of mind,14.0,100
+trm_4a3fd79d0b44c,verbal fluency,verbal fluency,14.0,100
+trm_4a3fd79d0b487,visual imagery,visual imagery,14.0,100
+trm_4a3fd79d0b492,visual masking,visual masking,14.0,100
+trm_4a3fd79d0b5a7,working memory,working memory,14.0,100
+trm_4a3fd79d0b5e3,attention span,attention span,14.0,100
+trm_4a3fd79d0b613,task switching,task switching,14.0,100
+trm_4a3fd79d0b80f,lexical access,lexical access,14.0,100
+trm_4a3fd79d0b938,memory storage,memory storage,14.0,100
+trm_4a3fd79d0b9a1,edge detection,edge detection,14.0,100
+trm_4a3fd79d0ba60,rehearsal loop,rehearsal loop,14.0,100
+trm_4fea18ec76bc9,feature search,feature search,14.0,100
+trm_5154b39a3193d,self knowledge,self knowledge,14.0,100
+trm_5519b5f181edd,goal selection,goal selection,14.0,100
+trm_5519b7525d7a2,discrimination,discrimination,14.0,100
+trm_4c898a680e424,breath-holding,breath-holding,14.0,100
+trm_4c898b4b463aa,deception task,deception task,14.0,100
+trm_4c8990e187dc7,naming (overt),naming (overt),14.0,100
+trm_4c8a834779883,rest eyes open,rest eyes open,14.0,100
+tsk_4a57abb949c04,pantomime task,pantomime task,14.0,100
+trm_4da87e7282f92,tower of hanoi,tower of hanoi,14.0,100
+trm_4f24189031a4a,cyberball task,cyberball task,14.0,100
+trm_4f244a453522b,syntactic task,syntactic task,14.0,100
+trm_4f2456932f11b,shadowing task,shadowing task,14.0,100
+trm_50df0d8dc717b,attention bias,attention bias,14.0,100
+trm_50df1c0d946b8,space fortress,space fortress,14.0,100
+trm_551b0cdcde976,multistability,multistability,14.0,100
+trm_551b0e17c6c76,cross modality,cross modality,14.0,100
+trm_551f0b18d7ca0,running memory,running memory,14.0,100
+trm_58ab8a6131c5a,route learning,route learning,14.0,100
+dso_0060138,autotopagnosia,autotopagnosia,14.0,100
+dso_0060141,finger agnosia,finger agnosia,14.0,100
+dso_0060144,mirror agnosia,mirror agnosia,14.0,100
+dso_0060155,visual agnosia,visual agnosia,14.0,100
+dso_10919,transsexualism,transsexualism,14.0,100
+dso_1742,drug psychosis,drug psychosis,14.0,100
+dso_535,sleep disorder,sleep disorder,14.0,100
+dso_594,panic disorder,panic disorder,14.0,100
+dso_9505,cannabis abuse,cannabis abuse,14.0,100
+trm_553e8882e3cb6,ultimatum game (ug),ultimatum game,14.0,85
+trm_5519c5f2ad56f,tone detection (jnd),tone detection,14.0,82
+trm_566745bbf272a,task switching (3x2),task switching,14.0,82
+trm_557b474e2b578,auditory tone detection,tone detection,14.0,76
+trm_4f241614d4a25,attention switching task,switching task,14.0,74
+trm_4f2449bdcb0b1,wason card selection task,selection task,14.0,72
+trm_5206bf053acf4,piaget's water jar task,water jug task,14.0,65
+tsk_4a57abb949e0c,sternberg delayed recognition task,sternberg task,14.0,58
+trm_56a2a4dbdf127,motor praxis,mouse practice,14.0,54
+trm_4f4511e519b53,imagination,representation,14.0,48
+trm_4c8a82ba8a538,reading (covert),covert reading,14.0,47
+trm_56a2abffcfae3,penn motor praxis,mouse practice,14.0,45
+trm_56a2b7c08a279,short penn continuous performance test-number and letter version,short penn cpt,14.0,36
+trm_523c7afe39f78,irritability,short tempered,14.0,23
+trm_523c7c13bc55f,hyperactivity,non-compliance,14.0,22
+trm_4a3fd79d09d70,cognitive map,cognitive map,13.0,100
+trm_4a3fd79d09d9e,communication,communication,13.0,100
+trm_4a3fd79d09e35,consciousness,consciousness,13.0,100
+trm_4a3fd79d0a4a6,hallucination,hallucination,13.0,100
+trm_4a3fd79d0a4c9,hill climbing,hill climbing,13.0,100
+trm_4a3fd79d0a4f9,iconic memory,iconic memory,13.0,100
+trm_4a3fd79d0a6d0,interrogative,interrogative,13.0,100
+trm_4a3fd79d0a6f4,introspection,introspection,13.0,100
+trm_4a3fd79d0a83f,loss aversion,loss aversion,13.0,100
+trm_4a3fd79d0a920,metacognition,metacognition,13.0,100
+trm_4a3fd79d0a972,motor control,motor control,13.0,100
+trm_4a3fd79d0a9ad,motor program,motor program,13.0,100
+trm_4a3fd79d0ae17,pronunciation,pronunciation,13.0,100
+trm_4a3fd79d0aee4,remote memory,remote memory,13.0,100
+trm_4a3fd79d0afa0,retrieval cue,retrieval cue,13.0,100
+trm_4a3fd79d0affd,rule learning,rule learning,13.0,100
+trm_4a3fd79d0b0c8,serial search,serial search,13.0,100
+trm_4a3fd79d0b18f,source memory,source memory,13.0,100
+trm_4a3fd79d0b457,verbal memory,verbal memory,13.0,100
+trm_4a3fd79d0b47b,visual buffer,visual buffer,13.0,100
+trm_4a3fd79d0b49e,visual memory,visual memory,13.0,100
+trm_4a3fd79d0b4cd,visual search,visual search,13.0,100
+trm_4a3fd79d0b642,risk aversion,risk aversion,13.0,100
+trm_4a3fd79d0b8b5,active recall,active recall,13.0,100
+trm_4a3fd79d0b8cd,consolidation,consolidation,13.0,100
+trm_4b185801de7a1,echoic memory,echoic memory,13.0,100
+trm_4fe39e4388409,interoception,interoception,13.0,100
+trm_500d8bcf5f29a,visual acuity,visual acuity,13.0,100
+trm_502403240a2a2,reinstatement,reinstatement,13.0,100
+trm_50aff037c389f,trait anxiety,trait anxiety,13.0,100
+trm_523c7c13bc55f,hyperactivity,hyperactivity,13.0,100
+trm_523ca7e778c50,internalizing,internalizing,13.0,100
+trm_523ca883711cc,externalizing,externalizing,13.0,100
+trm_523e053844495,social phobia,social phobia,13.0,100
+trm_523f5ee64102c,agreeableness,agreeableness,13.0,100
+trm_525c58f9aabae,perfectionism,perfectionism,13.0,100
+trm_559f0a129c136,response bias,response bias,13.0,100
+trm_55ce71c47f37b,risk aversion,risk aversion,13.0,100
+trm_59cd0184eb2bf,chronesthesia,chronesthesia,13.0,100
+trm_4c898c33ee5f8,encoding task,encoding task,13.0,100
+trm_4c898f72228f3,fixation task,fixation task,13.0,100
+trm_4c898ff0bea97,grasping task,grasping task,13.0,100
+tsk_4a57abb949a93,go/no-go task,go/no-go task,13.0,100
+tsk_4a57abb949ce9,parrott scale,parrott scale,13.0,100
+trm_4ebc6a6b75ebf,tone counting,tone counting,13.0,100
+trm_4ebd477ab5a11,object n-back,object n-back,13.0,100
+trm_4f24135453d65,spelling task,spelling task,13.0,100
+trm_4f241b50caaf7,semantic task,semantic task,13.0,100
+trm_4f242172aea5d,updating task,updating task,13.0,100
+trm_4f24496a80587,gambling task,gambling task,13.0,100
+trm_4f2452adb7d23,odd-even task,odd-even task,13.0,100
+trm_50f84e8ab7af8,reaction time,reaction time,13.0,100
+trm_512e7621189ad,criteria task,criteria task,13.0,100
+trm_512e7621189ad,criteria task,criteria task,13.0,100
+trm_51a637dfeffd5,mcgurk effect,mcgurk effect,13.0,100
+trm_5346938eed092,landmark task,landmark task,13.0,100
+trm_5519c2645167e,tone matching,tone matching,13.0,100
+trm_5696a9cfe45b1,letter memory,letter memory,13.0,100
+dso_0060139,color agnosia,color agnosia,13.0,100
+dso_0060150,astereognosia,astereognosia,13.0,100
+dso_0060164,pain disorder,pain disorder,13.0,100
+dso_10236,exhibitionism,exhibitionism,13.0,100
+dso_10817,sexual sadism,sexual sadism,13.0,100
+dso_11257,social phobia,social phobia,13.0,100
+dso_1206,rett syndrome,rett syndrome,13.0,100
+dso_1574,alcohol abuse,alcohol abuse,13.0,100
+dso_3324,mood disorder,mood disorder,13.0,100
+dso_4970,prosopagnosia,prosopagnosia,13.0,100
+dso_5419,schizophrenia,schizophrenia,13.0,100
+dso_600,animal phobia,animal phobia,13.0,100
+dso_602,cancerophobia,cancerophobia,13.0,100
+dso_605,flying phobia,flying phobia,13.0,100
+dso_809,cocaine abuse,cocaine abuse,13.0,100
+dso_52d06688e07f3,philoprogeria,philoprogeria,13.0,100
+trm_566745bbf272a,task switching (3x2),3x2 switching,13.0,61
+trm_4c8a82eeaa58f,reading (overt),overt reading,13.0,50
+trm_4c8990c87035d,naming (covert),covert naming,13.0,43
+trm_4b6525253c63f,reward processing,reinforcement,13.0,40
+trm_56a2b7c08a279,short penn continuous performance test-number and letter version,short pcpt-nl,13.0,34
+tsk_4a57abb949bb1,mini mental state examination,folstein test,13.0,33
+trm_5667476fc14dd,inter-dimensional/extra-dimensional shift task,ided+reversal,13.0,31
+trm_4a3fd79d09849,anticipation,foreknowledge,13.0,16
+trm_4a3fd79d09849,anticipation,anticipation,12.0,100
+trm_4a3fd79d0986c,apperception,apperception,12.0,100
+trm_4a3fd79d0988f,articulation,articulation,12.0,100
+trm_4a3fd79d098b2,assimilation,assimilation,12.0,100
+trm_4a3fd79d09b28,automaticity,automaticity,12.0,100
+trm_4a3fd79d09eda,conversation,conversation,12.0,100
+trm_4a3fd79d09f07,coordination,coordination,12.0,100
+trm_4a3fd79d09f12,coproduction,coproduction,12.0,100
+trm_4a3fd79d09f7c,cue validity,cue validity,12.0,100
+trm_4a3fd79d0a006,dative shift,dative shift,12.0,100
+trm_4a3fd79d0a0e7,dispositions,dispositions,12.0,100
+trm_4a3fd79d0a218,error signal,error signal,12.0,100
+trm_4a3fd79d0a323,false memory,false memory,12.0,100
+trm_4a3fd79d0a49a,habit memory,habit memory,12.0,100
+trm_4a3fd79d0a504,imageability,imageability,12.0,100
+trm_4a3fd79d0a666,intelligence,intelligence,12.0,100
+trm_4a3fd79d0a6ad,interference,interference,12.0,100
+trm_4a3fd79d0b607,set shifting,set shifting,12.0,100
+trm_4a3fd79d0b64e,risk seeking,risk seeking,12.0,100
+trm_4a3fd79d0b92c,memory decay,memory decay,12.0,100
+trm_4a3fd79d0b943,memory trace,memory trace,12.0,100
+trm_4a3fd79d0b996,echolocation,echolocation,12.0,100
+trm_4a3fd79d0ba3c,manipulation,manipulation,12.0,100
+trm_4d21e9a7dd8ca,subconscious,subconscious,12.0,100
+trm_4fa28299dbddd,deliberation,deliberation,12.0,100
+trm_4e31d3ba7d25b,multisensory,multisensory,12.0,100
+trm_4ee8facd77dfc,self control,self control,12.0,100
+trm_500d8c8fcc520,visual angle,visual angle,12.0,100
+trm_50297454e516b,transduction,transduction,12.0,100
+trm_523c7afe39f78,irritability,irritability,12.0,100
+trm_5521a0512df9a,localization,localization,12.0,100
+trm_558c74b165bb1,overt naming,overt naming,12.0,100
+trm_56a2a4dbdf127,motor praxis,motor praxis,12.0,100
+trm_4b86c55f3d5df,wisc-r mazes,wisc-r mazes,12.0,100
+trm_4c898da401420,film viewing,film viewing,12.0,100
+trm_4c8a85c5c75eb,writing task,writing task,12.0,100
+tsk_4a57abb949bf6,oddball task,oddball task,12.0,100
+trm_4d559d2703bae,devil's task,devil's task,12.0,100
+trm_4da881dace79c,corsi blocks,corsi blocks,12.0,100
+trm_4da89089ce0af,zoo map test,zoo map test,12.0,100
+trm_4fbd2ac1cd035,copying task,copying task,12.0,100
+trm_50240f06af135,operant task,operant task,12.0,100
+trm_534692ef3b5df,tapping task,tapping task,12.0,100
+trm_53c4465b0466f,why/how task,why/how task,12.0,100
+trm_552174863d51e,naming tasks,naming tasks,12.0,100
+dso_0060142,form agnosia,form agnosia,12.0,100
+dso_0060145,pain agnosia,pain agnosia,12.0,100
+dso_0060152,time agnosia,time agnosia,12.0,100
+dso_11206,opioid abuse,opioid abuse,12.0,100
+dso_12128,pica disease,pica disease,12.0,100
+dso_1233,transvestism,transvestism,12.0,100
+dso_4260,gait apraxia,gait apraxia,12.0,100
+tsk_4a57abb949a4f,eriksen flanker task,flanker task,12.0,75
+trm_4d949c5b0e380,rhyme verification task,rhyming task,12.0,63
+trm_58575b0d3c548,processing speed,mental speed,12.0,57
+trm_4c8990e187dc7,naming (overt),overt naming,12.0,46
+trm_4f4511e519b53,imagination,envisagement,12.0,43
+trm_4f2414059baa8,instrumental learning task,operant task,12.0,42
+trm_4ee8facd77dfc,self control,ego strength,12.0,33
+trm_523e034f9e69a,defiance,oppositional,12.0,20
+trm_523c7c13bc55f,hyperactivity,restlessness,12.0,16
+trm_4a3fd79d098bd,association,association,11.0,100
+trm_4a3fd79d09daa,competition,competition,11.0,100
+trm_4a3fd79d09e2a,connotation,connotation,11.0,100
+trm_4a3fd79d09f1e,coreference,coreference,11.0,100
+trm_4a3fd79d0a0f3,distraction,distraction,11.0,100
+trm_4a3fd79d0a4e1,humiliation,humiliation,11.0,100
+trm_4a3fd79d0a54b,inattention,inattention,11.0,100
+trm_4a3fd79d0a56e,indignation,indignation,11.0,100
+trm_4a3fd79d0a65a,integration,integration,11.0,100
+trm_4a3fd79d0a73a,kinesthesia,kinesthesia,11.0,100
+trm_4a3fd79d0aa0c,nociception,nociception,11.0,100
+trm_4a3fd79d0ae2b,proper noun,proper noun,11.0,100
+trm_4a3fd79d0b285,stereotypes,stereotypes,11.0,100
+trm_4a3fd79d0b3fa,uncertainty,uncertainty,11.0,100
+trm_4a3fd79d0b695,frustration,frustration,11.0,100
+trm_4a3fd79d0b84a,orthography,orthography,11.0,100
+trm_4a3fd79d0b8fc,familiarity,familiarity,11.0,100
+trm_4a3fd79d0b967,recognition,recognition,11.0,100
+trm_4a3fd79d0ba30,maintenance,maintenance,11.0,100
+trm_4f4511e519b53,imagination,imagination,11.0,100
+trm_50070dce14554,impulsivity,impulsivity,11.0,100
+trm_5a285375c6a43,prospection,prospection,11.0,100
+trm_4c40d2a93ea15,ax-cpt task,ax-cpt task,11.0,100
+trm_4c8a84d4c4157,video games,video games,11.0,100
+tsk_4a57abb949bcd,n-back task,n-back task,11.0,100
+tsk_4a57abb949e27,stroop task,stroop task,11.0,100
+tsk_4a57abb949f2f,word attack,word attack,11.0,100
+trm_4da88bff0507c,catbat task,catbat task,11.0,100
+trm_4f2411c91ae5e,recall test,recall test,11.0,100
+trm_5519c4bb1d1ee,bistability,bistability,11.0,100
+trm_569d6eef27433,gm paradigm,gm paradigm,11.0,100
+trm_5975f939336c0,motorphotic,motorphotic,11.0,100
+dso_0060130,akinetopsia,akinetopsia,11.0,100
+dso_0060131,alexithymia,alexithymia,11.0,100
+dso_0060133,anosognosia,anosognosia,11.0,100
+dso_0060146,phonagnosia,phonagnosia,11.0,100
+dso_12400,kleptomania,kleptomania,11.0,100
+dso_12568,dyscalculia,dyscalculia,11.0,100
+dso_2848,melancholia,melancholia,11.0,100
+dso_593,agoraphobia,agoraphobia,11.0,100
+dso_603,aids phobia,aids phobia,11.0,100
+tsk_4a57abb949bcd,n-back task,1-back task,11.0,91
+tsk_4a57abb949bcd,n-back task,2-back task,11.0,91
+tsk_4a57abb949bcd,n-back task,3-back task,11.0,91
+trm_4ebfe9a465449,expectancy,expectation,11.0,76
+trm_551f07a281283,distraction paradigm (capture),distraction,11.0,54
+trm_523e034f9e69a,defiance,disobedient,11.0,42
+trm_525d8e198e0da,sensitivity to change,flexibility,11.0,38
+trm_523e00f356226,conduct disorder,unemotional,11.0,30
+trm_523f5ee64102c,agreeableness,cooperative,11.0,25
+trm_523f5f918cb2c,openness,imaginative,11.0,21
+trm_523f5ee64102c,agreeableness,sympathetic,11.0,17
+trm_4a3fd79d09741,activation,activation,10.0,100
+trm_4a3fd79d09758,adaptation,adaptation,10.0,100
+trm_4a3fd79d098e0,attachment,attachment,10.0,100
+trm_4a3fd79d09bcb,bitterness,bitterness,10.0,100
+trm_4a3fd79d09c74,centration,centration,10.0,100
+trm_4a3fd79d0a145,efficiency,efficiency,10.0,100
+trm_4a3fd79d0a168,egocentric,egocentric,10.0,100
+trm_4a3fd79d0a22f,excitation,excitation,10.0,100
+trm_4a3fd79d0a448,goal state,goal state,10.0,100
+trm_4a3fd79d0a53f,imprinting,imprinting,10.0,100
+trm_4a3fd79d0a562,incubation,incubation,10.0,100
+trm_4a3fd79d0a613,inhibition,inhibition,10.0,100
+trm_4a3fd79d0a6dc,intonation,intonation,10.0,100
+trm_4a3fd79d0a94f,monitoring,monitoring,10.0,100
+trm_4a3fd79d0aa00,navigation,navigation,10.0,100
+trm_4a3fd79d0ab59,past tense,past tense,10.0,100
+trm_4a3fd79d0ab7c,perception,perception,10.0,100
+trm_4a3fd79d0b10e,skepticism,skepticism,10.0,100
+trm_4a3fd79d0b279,stereopsis,stereopsis,10.0,100
+trm_4a3fd79d0b56b,word order,word order,10.0,100
+trm_4a3fd79d0b83e,morphology,morphology,10.0,100
+trm_4a3fd79d0b908,forgetting,forgetting,10.0,100
+trm_4a3fd79d0b94f,metamemory,metamemory,10.0,100
+trm_4d7fa1a3e2a10,paraphasia,paraphasia,10.0,100
+trm_4e31d2241319f,crossmodal,crossmodal,10.0,100
+trm_4e31d365bc7e2,unisensory,unisensory,10.0,100
+trm_4ebfe9a465449,expectancy,expectancy,10.0,100
+trm_4fe8edc62f613,extinction,extinction,10.0,100
+trm_4ff1fc04e22e8,autonoesis,autonoesis,10.0,100
+trm_5029515e29f7f,blindsight,blindsight,10.0,100
+trm_50eb692db57eb,locomotion,locomotion,10.0,100
+trm_529d0d62290de,loneliness,loneliness,10.0,100
+tsk_4a57abb949dbb,simon task,simon task,10.0,100
+trm_4f24226fa2903,fitts task,fitts task,10.0,100
+trm_5696b316c220a,plus-minus,plus-minus,10.0,100
+trm_5696c3fa0061a,shift task,shift task,10.0,100
+dso_0060048,nosophobia,nosophobia,10.0,100
+dso_13351,pedophilia,pedophilia,10.0,100
+dso_4540,dysgraphia,dysgraphia,10.0,100
+dso_8986,narcolepsy,narcolepsy,10.0,100
+dso_9336,bestiality,bestiality,10.0,100
+trm_5534111a8bc96,punishment processing,punishment,10.0,65
+trm_4d949c5b0e380,rhyme verification task,rhyme task,10.0,61
+trm_4f2449bdcb0b1,wason card selection task,wason task,10.0,57
+trm_4a3fd79d09849,anticipation,prediction,10.0,55
+trm_523ca7e778c50,internalizing,negativity,10.0,43
+trm_523e00f356226,conduct disorder,antisocial,10.0,38
+trm_523ca7e778c50,internalizing,depression,10.0,35
+trm_529ce6ecb35f8,kaufman brief intelligence test,"kbit,k-bit",10.0,29
+trm_56a2a6ad6edee,penn visual object learning test,short volt,10.0,29
+trm_4a3fd79d09849,anticipation,prescience,10.0,27
+trm_56a2a7750ffd0,pennâs logical reasoning test,short pvrt,10.0,24
+trm_4a3fd79d09833,anchoring,anchoring,9.0,100
+trm_4a3fd79d09902,attention,attention,9.0,100
+trm_4a3fd79d09e58,constancy,constancy,9.0,100
+trm_4a3fd79d09f59,crosstalk,crosstalk,9.0,100
+trm_4a3fd79d0a02c,deception,deception,9.0,100
+trm_4a3fd79d0a095,depth cue,depth cue,9.0,100
+trm_4a3fd79d0a0dc,diphthong,diphthong,9.0,100
+trm_4a3fd79d0a25e,expertise,expertise,9.0,100
+trm_4a3fd79d0a352,filtering,filtering,9.0,100
+trm_4a3fd79d0a579,induction,induction,9.0,100
+trm_4a3fd79d0a5ed,inference,inference,9.0,100
+trm_4a3fd79d0a67d,intention,intention,9.0,100
+trm_4a3fd79d0a746,knowledge,knowledge,9.0,100
+trm_4a3fd79d0a803,listening,listening,9.0,100
+trm_4a3fd79d0a9e8,narrative,narrative,9.0,100
+trm_4a3fd79d0aabc,olfaction,olfaction,9.0,100
+trm_4a3fd79d0ac4a,phonation,phonation,9.0,100
+trm_4a3fd79d0ad64,prejudice,prejudice,9.0,100
+trm_4a3fd79d0ae87,prototype,prototype,9.0,100
+trm_4a3fd79d0aec1,reasoning,reasoning,9.0,100
+trm_4a3fd79d0af7d,retention,retention,9.0,100
+trm_4a3fd79d0af94,retrieval,retrieval,9.0,100
+trm_4a3fd79d0b6ad,happiness,happiness,9.0,100
+trm_4a3fd79d0b6c5,discourse,discourse,9.0,100
+trm_4a3fd79d0b862,phonetics,phonetics,9.0,100
+trm_4a3fd79d0ba54,rehearsal,rehearsal,9.0,100
+trm_4a7b128b8b2d0,test term,test term,9.0,100
+trm_4d7fa2df05f23,neologism,neologism,9.0,100
+trm_4f3bdeedcc99d,curiosity,curiosity,9.0,100
+trm_4fafd1626bf2b,addiction,addiction,9.0,100
+trm_4f4672db34a46,self talk,self talk,9.0,100
+trm_4f46753b8be4f,worldview,worldview,9.0,100
+trm_523e0419ec219,obsession,obsession,9.0,100
+trm_52405de6b7a63,psychosis,psychosis,9.0,100
+trm_52583dceb345e,anhedonia,anhedonia,9.0,100
+trm_55ce70b20186b,detection,detection,9.0,100
+trm_4c8a8575d1e55,whistling,whistling,9.0,100
+tsk_4a57abb9499d5,cups task,cups task,9.0,100
+trm_4da88a8e13f26,vigilance,vigilance,9.0,100
+trm_50c0f3e6c596e,time wall,time wall,9.0,100
+dso_10834,voyeurism,voyeurism,9.0,100
+dso_1235,fetishism,fetishism,9.0,100
+dso_12402,pyromania,pyromania,9.0,100
+dso_1875,impotence,impotence,9.0,100
+dso_4188,echolalia,echolalia,9.0,100
+trm_4a3fd79d09849,anticipation,intuition,9.0,67
+tsk_4a57abb9499f1,delayed nonmatch to sample task,dnms task,9.0,45
+trm_529d0d62290de,loneliness,isolation,9.0,42
+trm_523e024c14df9,antisocial personality,introvert,9.0,39
+trm_523c7afe39f78,irritability,agitation,9.0,38
+trm_525d8e198e0da,sensitivity to change,tolerance,9.0,33
+trm_4ee8facd77dfc,self control,willpower,9.0,29
+trm_56a2a7750ffd0,pennâs logical reasoning test,shortpvrt,9.0,25
+trm_4a3fd79d09849,anticipation,foresight,9.0,19
+trm_523c7afe39f78,irritability,moodiness,9.0,10
+trm_4a3fd79d097b4,altruism,altruism,8.0,100
+trm_4a3fd79d097cb,alveolar,alveolar,8.0,100
+trm_4a3fd79d09947,attitude,attitude,8.0,100
+trm_4a3fd79d0995e,audition,audition,8.0,100
+trm_4a3fd79d09cae,chunking,chunking,8.0,100
+trm_4a3fd79d0a35e,fixation,fixation,8.0,100
+trm_4a3fd79d0a4b2,hedonism,hedonism,8.0,100
+trm_4a3fd79d0a637,instinct,instinct,8.0,100
+trm_4a3fd79d0a723,judgment,judgment,8.0,100
+trm_4a3fd79d0a769,language,language,8.0,100
+trm_4a3fd79d0a7bb,learning,learning,8.0,100
+trm_4a3fd79d0a937,metaphor,metaphor,8.0,100
+trm_4a3fd79d0a9c4,movement,movement,8.0,100
+trm_4a3fd79d0acc1,planning,planning,8.0,100
+trm_4a3fd79d0b020,salience,salience,8.0,100
+trm_4a3fd79d0b29c,strategy,strategy,8.0,100
+trm_4a3fd79d0b306,surprise,surprise,8.0,100
+trm_4a3fd79d0b61f,decision,decision,8.0,100
+trm_4a3fd79d0b76e,grapheme,grapheme,8.0,100
+trm_4a3fd79d0b8e5,encoding,encoding,8.0,100
+trm_4c3e05903e4bb,updating,updating,8.0,100
+trm_4c3e0646a2408,task set,task set,8.0,100
+trm_4fa3afaeef512,delusion,delusion,8.0,100
+trm_4f3a72a028d90,resource,resource,8.0,100
+trm_502c139d5ed78,crowding,crowding,8.0,100
+trm_50eb5469ba37a,strength,strength,8.0,100
+trm_523c7ba79c2f1,lethargy,lethargy,8.0,100
+trm_523e034f9e69a,defiance,defiance,8.0,100
+trm_523e0a4b443dc,rigidity,rigidity,8.0,100
+trm_523f5f918cb2c,openness,openness,8.0,100
+trm_52405e33adafa,paranoia,paranoia,8.0,100
+trm_52583e083c9ab,appetite,appetite,8.0,100
+trm_55e1b08e5b06c,dyslexia,dyslexia,8.0,100
+trm_4b9568b2865c2,microcog,microcog,8.0,100
+trm_4c89926767870,pointing,pointing,8.0,100
+trm_551f0857e1db8,ant task,ant task,8.0,100
+trm_5696abecf2569,dospert ,dospert ,8.0,100
+dso_1307,dementia,dementia,8.0,100
+dso_4428,dyslexia,dyslexia,8.0,100
+dso_uHjC9RdkuVboM,rigidity,rigidity,8.0,100
+trm_512e7621189ad,criteria task,criteria,8.0,76
+trm_52583e8a46ded,suicidal ideation,suicidal,8.0,64
+trm_4f244ad7dcde7,dot motion task,rdm task,8.0,61
+tsk_4a57abb9499e3,delayed match to sample task,dms task,8.0,44
+trm_525d8b8908809,eating,appetite,8.0,43
+trm_529d0d62290de,loneliness,solitary,8.0,33
+trm_56a2a622cdfbd,penn facial memory test delayed memory,cpfdelay,8.0,30
+trm_56a2a5f8315c5,penn matrix reasoning test,pmat24-a,8.0,29
+trm_56a2a665baeb1,adult's penn word memory test delayed memory,cpwdelay,8.0,27
+trm_523c7c13bc55f,hyperactivity,movement,8.0,19
+trm_4a3fd79d09827,analogy,analogy,7.0,100
+trm_4a3fd79d09883,arousal,arousal,7.0,100
+trm_4a3fd79d09db6,concept,concept,7.0,100
+trm_4a3fd79d09e6f,context,context,7.0,100
+trm_4a3fd79d0a17f,emotion,emotion,7.0,100
+trm_4a3fd79d0a402,gestalt,gestalt,7.0,100
+trm_4a3fd79d0a510,imagery,imagery,7.0,100
+trm_4a3fd79d0a62b,insight,insight,7.0,100
+trm_4a3fd79d0a7ec,lexicon,lexicon,7.0,100
+trm_4a3fd79d0a86e,meaning,meaning,7.0,100
+trm_4a3fd79d0ab42,parsing,parsing,7.0,100
+trm_4a3fd79d0ae64,prosody,prosody,7.0,100
+trm_4a3fd79d0aeb6,reading,reading,7.0,100
+trm_4a3fd79d0afe6,routine,routine,7.0,100
+trm_4a3fd79d0b014,sadness,sadness,7.0,100
+trm_4a3fd79d0b412,utility,utility,7.0,100
+trm_4a3fd79d0b429,valence,valence,7.0,100
+trm_4a3fd79d0b636,framing,framing,7.0,100
+trm_4a3fd79d0b67d,empathy,empathy,7.0,100
+trm_4fa295124a375,thought,thought,7.0,100
+trm_4e89aebaa311d,priming,priming,7.0,100
+trm_500d8aef38f2c,vection,vection,7.0,100
+trm_5022ef7599294,anxiety,anxiety,7.0,100
+trm_50eb56a7867db,balance,balance,7.0,100
+trm_52583e52d5e7a,fatigue,fatigue,7.0,100
+trm_4c898be57fcbc,drawing,drawing,7.0,100
+dso_0060046,aphasia,aphasia,7.0,100
+dso_0060135,apraxia,apraxia,7.0,100
+dso_2846,bruxism,bruxism,7.0,100
+dso_4090,agnosia,agnosia,7.0,100
+trm_56a2a4dbdf127,motor praxis,mpraxis,7.0,74
+trm_4c8a82eeaa58f,reading (overt),reading,7.0,64
+trm_4c8a82ba8a538,reading (covert),reading,7.0,61
+trm_56a2abffcfae3,penn motor praxis,mpraxis,7.0,58
+trm_59d184d09066b,arousal (emotion),arousal,7.0,58
+trm_59d184d0980bf,arousal (physical),arousal,7.0,56
+trm_55a6a860a7088,hopkins symptom checklist,hopkins,7.0,44
+trm_523e00f356226,conduct disorder,callous,7.0,35
+trm_523f5f918cb2c,openness,curious,7.0,27
+trm_4da6338803ed2,wechsler intelligence scale for children - revised,wisc-iv,7.0,21
+trm_523ca7e778c50,internalizing,anxiety,7.0,20
+trm_56a2b7c08a279,short penn continuous performance test-number and letter version,spcptnl,7.0,20
+trm_4a3fd79d09735,action,action,6.0,100
+trm_4a3fd79d09b85,belief,belief,6.0,100
+trm_4a3fd79d09f87,cueing,cueing,6.0,100
+trm_4a3fd79d0a0ad,desire,desire,6.0,100
+trm_4a3fd79d0a151,effort,effort,6.0,100
+trm_4a3fd79d0a886,melody,melody,6.0,100
+trm_4a3fd79d0a891,memory,memory,6.0,100
+trm_4a3fd79d0a9dc,naming,naming,6.0,100
+trm_4a3fd79d0aecd,regret,regret,6.0,100
+trm_4a3fd79d0afc3,rhythm,rhythm,6.0,100
+trm_4a3fd79d0b02c,schema,schema,6.0,100
+trm_4a3fd79d0b037,search,search,6.0,100
+trm_4a3fd79d0b2a8,stress,stress,6.0,100
+trm_4a3fd79d0b357,syntax,syntax,6.0,100
+trm_4a3fd79d0b530,wisdom,wisdom,6.0,100
+trm_4a3fd79d0b95b,recall,recall,6.0,100
+trm_4a3fd79d0b98a,acuity,acuity,6.0,100
+trm_4ffdc96dc85b7,noesis,noesis,6.0,100
+trm_502c343d20523,lexeme,lexeme,6.0,100
+trm_5154b2f947fe9,agency,agency,6.0,100
+trm_525d8b8908809,eating,eating,6.0,100
+trm_515495b718cd6,ax-dpx,ax-dpx,6.0,100
+trm_551b14d7d5882,gating,gating,6.0,100
+trm_56a2a8d78dd39,ataxia,ataxia,6.0,100
+trm_5798f94752841,nart-r,nart-r,6.0,100
+dso_0060132,amusia,amusia,6.0,100
+dso_13417,alexia,alexia,6.0,100
+dso_4189,mutism,mutism,6.0,100
+trm_4c8990e187dc7,naming (overt),naming,6.0,60
+trm_4c8990c87035d,naming (covert),naming,6.0,57
+trm_4b6525253c63f,reward processing,reward,6.0,52
+trm_5534111a8bc96,punishment processing,punish,6.0,44
+trm_523e024c14df9,antisocial personality,hermit,6.0,29
+trm_569fc84bd541d,penn fractal n-back,sfnbx2,6.0,24
+trm_523c7afe39f78,irritability,grumpy,6.0,22
+trm_56a2a74ab3ef6,measured emotion differentiation test,medf36,6.0,19
+trm_56a2a98785453,penn visual object learning test delayed memory,svoltd,6.0,19
+trm_56a2a98785453,penn visual object learning test delayed memory,svoltd,6.0,19
+trm_4a3fd79d09ca3,chunk,chunk,5.0,100
+trm_4a3fd79d0a12d,dream,dream,5.0,100
+trm_4a3fd79d0a381,focus,focus,5.0,100
+trm_4a3fd79d0a483,habit,habit,5.0,100
+trm_4a3fd79d0a4ed,humor,humor,5.0,100
+trm_4a3fd79d0a70b,irony,irony,5.0,100
+trm_4a3fd79d0a7c7,lemma,lemma,5.0,100
+trm_4a3fd79d0a80f,logic,logic,5.0,100
+trm_4a3fd79d0a84a,lying,lying,5.0,100
+trm_4a3fd79d0b0eb,shame,shame,5.0,100
+trm_4a3fd79d0b11a,skill,skill,5.0,100
+trm_4a3fd79d0b6a1,grief,grief,5.0,100
+trm_5159c70d0e98e,sleep,sleep,5.0,100
+trm_52583d9f2ad98,guilt,guilt,5.0,100
+trm_P4qxFaMb6wiZ1,meter,meter,5.0,100
+trm_529d0d62290de,loneliness,alone,5.0,53
+trm_58575b0d3c548,processing speed,speed,5.0,48
+trm_523c7afe39f78,irritability,testy,5.0,35
+trm_523c7a0a73cf5,aberrant behavior checklist - community,abc-c,5.0,23
+trm_4da86c6808ddd,cattell's culture fair intelligence test,ccfit,5.0,22
+trm_56a2a6ad6edee,penn visual object learning test,svolt,5.0,22
+trm_4f241614d4a25,attention switching task,(ast),5.0,21
+trm_4da88a2a63d97,paired associate learning,(pal),5.0,20
+trm_4f2457a8b0bc8,verbal working memory task,(vrm),5.0,19
+trm_5208fe678c652,social responsiveness scale,srs-2,5.0,19
+trm_56a2a98785453,penn visual object learning test delayed memory,voltd,5.0,19
+trm_523df616da8a6,adolescent symptom inventory,asi-4,5.0,18
+trm_56a2a7750ffd0,pennâs logical reasoning test,spvrt,5.0,17
+tsk_4a57abb949d40,recognition memory test,(prm),5.0,14
+trm_56a2a622cdfbd,penn facial memory test delayed memory,rcpfd,5.0,14
+trm_523c7afe39f78,irritability,anger,5.0,12
+trm_523ca7e778c50,internalizing,worry,5.0,11
+trm_4a3fd79d0a3d2,gaze,gaze,4.0,100
+trm_4a3fd79d0a419,goal,goal,4.0,100
+trm_4a3fd79d0a95a,mood,mood,4.0,100
+trm_4a3fd79d0afcf,risk,risk,4.0,100
+trm_4a3fd79d0aff2,rule,rule,4.0,100
+trm_4a3fd79d0b689,fear,fear,4.0,100
+trm_4b65259eeee34,pain,pain,4.0,100
+trm_5159c80c1dd24,loss,loss,4.0,100
+trm_523f5f918cb2c,openness,open,4.0,67
+trm_523ca67b786d5,adult behavior checklist,abcl,4.0,29
+tsk_4a57abb949e44,symbol-digit substitution,dsst,4.0,28
+trm_4f241c735e7f6,serial reaction time task,srtt,4.0,28
+trm_55a6a860a7088,hopkins symptom checklist,hscl,4.0,28
+trm_4c40d325977f0,self ordered pointing task,sopt,4.0,27
+trm_56a2a5f8315c5,penn matrix reasoning test,pmat,4.0,27
+trm_569fc84bd541d,penn fractal n-back,fnb2,4.0,26
+trm_523f5ee64102c,agreeableness,warm,4.0,24
+trm_50b55d8a6da00,pebl perceptual vigilance task,ppvt,4.0,24
+tsk_4a57abb949bb1,mini mental state examination,mmse,4.0,24
+trm_5585c83d15fad,pittsburgh sleep quality index,psqi,4.0,24
+trm_56a2a6ad6edee,penn visual object learning test,volt,4.0,22
+tsk_4a57abb949b54,maudsley obsessive compulsive inventory,moci,4.0,19
+trm_56a2a622cdfbd,penn facial memory test delayed memory,pfmt,4.0,19
+trm_4da86c6808ddd,cattell's culture fair intelligence test,cfit,4.0,18
+trm_4da88cb222308,nih toolbox picture sequence memory test,psmt,4.0,18
+trm_4eb1f3a8ec119,intermodal preferential looking paradigm,iplp,4.0,18
+trm_523c7ba79c2f1,lethargy,slow,4.0,17
+trm_56a2a7750ffd0,pennâs logical reasoning test,pvrt,4.0,17
+trm_5667476fc14dd,inter-dimensional/extra-dimensional shift task,ided,4.0,16
+trm_4da6338803ed2,wechsler intelligence scale for children - revised,wisc,4.0,15
+trm_56a2a622cdfbd,penn facial memory test delayed memory,cpfd,4.0,14
+trm_56a2a622cdfbd,penn facial memory test delayed memory,cpfd,4.0,14
+trm_523f5ee64102c,agreeableness,kind,4.0,12
+trm_4dadbe225bdf1,spatial delayed response task,omdr,4.0,12
+trm_56a2a665baeb1,adult's penn word memory test delayed memory,cpwd,4.0,12
+trm_56a2a6ce24586,penn emotion recognition task,er40,4.0,12
+trm_4da890a9bd7a3,morris water maze,mwm,3.0,30
+trm_4da6304c9aa23,attention networks test,ant,3.0,23
+trm_523ca67b786d5,adult behavior checklist,abc,3.0,22
+trm_4f241614d4a25,attention switching task,ast,3.0,22
+trm_4f241c735e7f6,serial reaction time task,srt,3.0,21
+trm_4da88a2a63d97,paired associate learning,pal,3.0,21
+trm_4f2457a8b0bc8,verbal working memory task,vrm,3.0,21
+trm_5208fe678c652,social responsiveness scale,srs,3.0,20
+trm_4c8a85a4564b2,word stem completion (overt),wsc,3.0,19
+trm_4dadbe225bdf1,spatial delayed response task,sdr,3.0,19
+trm_4f23fc8c42d28,monetary incentive delay task,mid,3.0,19
+trm_523df616da8a6,adolescent symptom inventory,asi,3.0,19
+trm_50b55d8a6da00,pebl perceptual vigilance task,pvt,3.0,18
+trm_4fe9fae4321e7,difference threshold,jnd,3.0,17
+trm_55a6ae8f44ac3,eysenck personality questionnaire,epq,3.0,17
+trm_55a6ae8f44ac3,eysenck personality questionnaire,epi,3.0,17
+trm_521687032f822,social communication questionnaire,scq,3.0,16
+tsk_4a57abb949d40,recognition memory test,prm,3.0,15
+tsk_4a57abb949b54,maudsley obsessive compulsive inventory,moc,3.0,14
+trm_4eb1f3a8ec119,intermodal preferential looking paradigm,ipl,3.0,14
+trm_523c7a0a73cf5,aberrant behavior checklist - community,abc,3.0,14
+trm_521687032f822,social communication questionnaire,asq,3.0,11
+trm_56a91e3e982f9,i7 impulsiveness and venturesomeness questionnaire,i-7,3.0,8
+trm_4e31d031bc8c2,synchrony judgment task,sj,2.0,16
+trm_56a91e3e982f9,i7 impulsiveness and venturesomeness questionnaire,i7,2.0,8

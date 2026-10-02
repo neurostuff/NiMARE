@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools==69.5.1", "wheel"]
+
+[tool.black]
+line-length = 99
+target-version = ['py37']
+include = '\.pyi?$'
+exclude = '''
+
+(
+  /(
+      \.eggs         # exclude a few common directories in the
+    | \.git          # root of the project
+    | \.github
+    | \.hg
+    | \.pytest_cache
+    | _build
+    | build
+    | dist
+  )/
+  | versioneer.py
+  | nimare/_version.py
+)
+'''
+
+[tool.pytest.ini_options]
+testpaths = [
+    "nimare/tests",
+]
+markers = [
+    "performance_smoke: mark smoke tests that measure performance",
+    "performance_estimators: mark tests that measure estimator performance",
+    "performance_correctors: mark tests that measure corrector performance",
+    "cbmr_importerror: mark tests that should fail due to missing torch dependencies",
+]
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3

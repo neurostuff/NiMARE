@@ -394,27 +394,37 @@ def _build_cluster_summary_context(masker, label_map, label_vector, cluster_ids)
 def _summarize_cluster_values(values, masker, cluster_summary_context):
     """Reduce per-feature values to cluster-level means."""
     if cluster_summary_context["mode"] == "masked_array":
-        return np.array(
+        raw_means = np.array(
             [
-                np.mean(values[cluster_idx])
+                np.mean(values[cluster_idx]) if cluster_idx.size > 0 else np.nan
                 for cluster_idx in cluster_summary_context["cluster_indices"]
             ],
             dtype=DEFAULT_FLOAT_DTYPE,
         )
+    else:
+        stat_prop_img = masker.inverse_transform(values)
+        stat_prop_values = cluster_summary_context["cluster_masker"].transform(stat_prop_img)
+        raw_means = stat_prop_values.flatten()
 
-    stat_prop_img = masker.inverse_transform(values)
-    stat_prop_values = cluster_summary_context["cluster_masker"].transform(stat_prop_img)
-    return stat_prop_values.flatten()
+    # Guardrail: replace non-finite values (nan, inf) with zeros (or median) to ensure downstream code handles them.
+    if not np.isfinite(raw_means).all():
+        logging.warning(
+            "Non-finite (NaN/inf) values detected in Jackknife cluster contributions. "
+            "Imputing with safe baseline defaults to prevent hierarchical clustering crashes."
+        )
+        valid_median = np.nanmedian(raw_means)
+        fallback_value = 0.0 if not np.isfinite(valid_median) else valid_median
+        raw_means = np.nan_to_num(raw_means, nan=fallback_value, posinf=fallback_value, neginf=fallback_value)
+
+    return raw_means
 
 
 def _infer_label_map_tails(label_maps, clusters_table, n_clusters):
     """Infer tail labels from label maps and cluster statistics."""
     inferred_tail = "positive"
     mixed_signs = False
-
     if len(label_maps) == 2:
         return ["positive", "negative"], inferred_tail, mixed_signs
-
     if len(label_maps) == 1 and n_clusters > 0:
         peak_stats = clusters_table["Peak Stat"].astype(float)
         has_pos = (peak_stats > 0).any()
@@ -426,8 +436,8 @@ def _infer_label_map_tails(label_maps, clusters_table, n_clusters):
         else:
             mixed_signs = True
         return [inferred_tail], inferred_tail, mixed_signs
-
     return [inferred_tail], inferred_tail, mixed_signs
+
 
 
 class Diagnostics(NiMAREBase):

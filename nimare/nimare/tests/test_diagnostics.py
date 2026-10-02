@@ -616,26 +616,21 @@ def test_focuscounter_smoke(
 def test_focusfilter(testdata_laird):
     """Ensure that the FocusFilter removes out-of-mask coordinates.
 
-    The Laird dataset contains 17 foci outside of the MNI brain mask, which the filter should
-    remove. 316 of its 1117 foci do not land on the voxel grid -- 129 are Talairach coordinates
-    projected into MNI, the rest were reported at odd millimetres -- so which voxel each of
-    those is assigned to depends on how :func:`nimare.utils.mm2vox` resolves the fraction.
-    Rounding to the nearest voxel moves seven of them across the mask boundary, one more out
-    than in, against the truncation this count was originally taken under.
+    The Laird dataset contains 16 foci outside of the MNI brain mask, which the filter should
+    remove.
     """
     n_coordinates_all = testdata_laird.coordinates.shape[0]
     ffilter = diagnostics.FocusFilter()
     filtered_dset = ffilter.transform(testdata_laird)
     n_coordinates_filtered = filtered_dset.coordinates.shape[0]
     assert n_coordinates_all == 1117
-    assert n_coordinates_filtered == 1100
+    assert n_coordinates_filtered == 1101
     assert n_coordinates_filtered <= n_coordinates_all
 
 
 def test_jackknife_non_finite_guardrail():
     """Test that Jackknife's cluster summary guardrail correctly sanitizes non-finite values."""
     import numpy as np
-
     from nimare.diagnostics import _summarize_cluster_values
 
     # Mock masker for testing array mode
@@ -658,4 +653,8 @@ def test_jackknife_non_finite_guardrail():
 
     # Assert that the guardrail successfully converted everything to safe finite numbers
     assert np.isfinite(summarized).all()
+<<<<<<< HEAD
     assert summarized.shape[0] == 2
+=======
+    assert summarized.shape[0] == 2
+>>>>>>> e29d730 (Save local debugging fixes in NiMARE submodule)
