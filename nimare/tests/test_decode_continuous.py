@@ -13,6 +13,32 @@ from nimare.decode import continuous
 from nimare.meta import ale, kernel, mkda
 
 
+def _assert_transform_shares_fitted_state(decoder, fitted_results, table_name):
+    """Check that transform did not deep-copy the fitted decoder or its maps.
+
+    A fitted decoder can hold the whole database; copying it on every transform
+    doubled peak memory on Neurosynth-sized data.
+    """
+    assert decoder.results_ is not fitted_results
+    assert decoder.results_.estimator is fitted_results.estimator
+    assert decoder.results_.maps is fitted_results.maps
+    assert table_name in decoder.results_.tables
+    assert table_name not in fitted_results.tables
+
+
+def test_CorrelationDecoder_transform_does_not_copy_fitted_state(testdata_laird):
+    """CorrelationDecoder.transform shares the fitted state and leaves old results alone."""
+    features = testdata_laird.get_labels(ids=testdata_laird.ids[0])[:2]
+    img = mkda.KDA(null_method="approximate").fit(testdata_laird).get_map("stat")
+
+    decoder = continuous.CorrelationDecoder(features=features)
+    decoder.fit(testdata_laird)
+    fitted_results = decoder.results_
+    decoder.transform(img)
+
+    _assert_transform_shares_fitted_state(decoder, fitted_results, "correlation")
+
+
 def test_CorrelationDecoder_smoke(testdata_laird, tmp_path_factory):
     """Smoke test for continuous.CorrelationDecoder."""
     testdata_laird = testdata_laird.copy()
@@ -220,9 +246,11 @@ def test_CorrelationDistributionDecoder_smoke(testdata_laird, tmp_path_factory):
     meta = mkda.KDA(null_method="approximate")
     res = meta.fit(testdata_laird)
     img = res.get_map("stat")
+    fitted_results = decoder.results_
     decoded_df = decoder.transform(img)
 
     assert isinstance(decoded_df, pd.DataFrame)
+    _assert_transform_shares_fitted_state(decoder, fitted_results, "correlation")
 
     # Test: try transforming an image without fitting the decoder
     decoder2 = decoder = continuous.CorrelationDistributionDecoder()
