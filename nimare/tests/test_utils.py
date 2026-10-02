@@ -443,3 +443,11 @@ def test_nlogp_to_logp_values_converts_nlogp_to_logp():
     assert logp.dtype == np.dtype(utils.DEFAULT_FLOAT_DTYPE)
     # The same tail through the p-value instead would have been clipped at 44.85.
     assert utils._p_to_logp_values(np.array([1e-300]))[0] < 45.0
+
+
+def test_find_citations_without_citations(caplog):
+    """A description without citations yields no citation keys and no warning."""
+    assert utils.find_citations("A description with no citations.") == []
+    with caplog.at_level(logging.WARNING, logger="nimare.utils"):
+        assert utils.get_description_references("A description with no citations.") == ""
+    assert "not found" not in caplog.text
