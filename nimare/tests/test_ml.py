@@ -2364,23 +2364,51 @@ def test_coefficient_image_refuses_a_step_it_cannot_read_weights_through(
         ml.coefficient_image(pipeline, bunch)
 
 
+def _zero_variance_pca():
+    """Return a whitened PCA with a zero-variance last component, as a rank-deficient fit has."""
+    rng = np.random.default_rng(RANDOM_SEED)
+    pca = PCA(3, whiten=True, random_state=RANDOM_SEED).fit(rng.normal(size=(20, 5)))
+    pca.explained_variance_[-1] = 0.0
+    return pca
+
+
+def _pca_floors_whitening():
+    """Report whether this scikit-learn's PCA.transform floors a zero whitening scale.
+
+    Later releases floor it at machine epsilon; earlier ones, such as 1.4, divide by zero
+    and return inf, which no model downstream can be fitted on.
+    """
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return bool(np.isfinite(_zero_variance_pca().transform(np.ones((1, 5)))).all())
+
+
+def test_coefficient_image_keeps_a_zero_variance_component_finite():
+    """A whitened component with no variance does not turn the weights into inf."""
+    from nimare.ml.interpret import _pull_back
+
+    weights = np.random.default_rng(RANDOM_SEED).normal(size=(1, 3))
+
+    assert np.isfinite(_pull_back(_zero_variance_pca(), weights)).all()
+
+
+@pytest.mark.skipif(
+    not _pca_floors_whitening(),
+    reason="this scikit-learn's PCA.transform divides by a zero whitening scale",
+)
 def test_coefficient_image_reads_a_zero_variance_component_as_pca_transforms_it():
-    """A whitened component with no variance is scaled as PCA.transform scales it, not by 0.
+    """A whitened component with no variance is scaled as PCA.transform scales it.
 
     PCA.transform floors a whitening scale at machine epsilon; dividing a weight by the
     unfloored zero gives inf where the transform gives a finite feature.
     """
     from nimare.ml.interpret import _pull_back
 
-    rng = np.random.default_rng(RANDOM_SEED)
-    pca = PCA(3, whiten=True, random_state=RANDOM_SEED).fit(rng.normal(size=(20, 5)))
-    # what a rank-deficient fit leaves for a component past the rank
-    pca.explained_variance_[-1] = 0.0
+    rng = np.random.default_rng(RANDOM_SEED + 1)
+    pca = _zero_variance_pca()
     weights = rng.normal(size=(1, 3))
 
     pulled = _pull_back(pca, weights)
 
-    assert np.isfinite(pulled).all()
     probe = rng.normal(size=(4, 5))
     linear_part = pca.transform(probe) - pca.transform(np.zeros((1, 5)))
     np.testing.assert_allclose(probe @ pulled.T, linear_part @ weights.T, rtol=1e-6)
