@@ -642,6 +642,8 @@ def test_get_analyses_by_metadata_and_annotations_keep_shared_short_ids_apart():
     assert sorted(by_metadata) == expected
     assert by_metadata["other-plain"] == {"site": "other"}
     assert sorted(labelled.get_analyses_by_annotations("lab")) == expected
+    # Keyed by the whole annotation id rather than one of its labels.
+    assert sorted(labelled.get_analyses_by_annotations("custom")) == expected
 
 
 def test_points_outside_mask_volume_are_not_clipped_to_edge():
