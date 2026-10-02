@@ -2340,18 +2340,50 @@ def test_coefficient_image_weights_reproduce_the_model(ml_studyset, step):
     _assert_weights_reproduce(pipeline, _voxels(bunch), image, bunch.masker)
 
 
-def test_coefficient_image_refuses_a_step_it_cannot_read_weights_through(ml_studyset):
+@pytest.mark.parametrize(
+    "step, message",
+    [
+        (QuantileTransformer(n_quantiles=5), "QuantileTransformer"),
+        (MinMaxScaler(clip=True), "clip=True clips values"),
+    ],
+    ids=["quantile", "clipped_minmax"],
+)
+def test_coefficient_image_refuses_a_step_it_cannot_read_weights_through(
+    ml_studyset, step, message
+):
     """Having an inverse_transform is not enough: weights move back by the transpose."""
     bunch = ml_studyset.to_bunch(target_field=("annotations", "target_score"))
     pipeline = make_pipeline(
         MAKernel(MKDAKernel(r=4), source_masker=bunch.masker),
         FunctionTransformer(_to_dense, accept_sparse=True),
-        QuantileTransformer(n_quantiles=5),
+        step,
         Ridge(),
     ).fit(_voxels(bunch), bunch.target)
 
-    with pytest.raises(ValueError, match="QuantileTransformer"):
+    with pytest.raises(ValueError, match=message):
         ml.coefficient_image(pipeline, bunch)
+
+
+def test_coefficient_image_reads_a_zero_variance_component_as_pca_transforms_it():
+    """A whitened component with no variance is scaled as PCA.transform scales it, not by 0.
+
+    PCA.transform floors a whitening scale at machine epsilon; dividing a weight by the
+    unfloored zero gives inf where the transform gives a finite feature.
+    """
+    from nimare.ml.interpret import _pull_back
+
+    rng = np.random.default_rng(RANDOM_SEED)
+    pca = PCA(3, whiten=True, random_state=RANDOM_SEED).fit(rng.normal(size=(20, 5)))
+    # what a rank-deficient fit leaves for a component past the rank
+    pca.explained_variance_[-1] = 0.0
+    weights = rng.normal(size=(1, 3))
+
+    pulled = _pull_back(pca, weights)
+
+    assert np.isfinite(pulled).all()
+    probe = rng.normal(size=(4, 5))
+    linear_part = pca.transform(probe) - pca.transform(np.zeros((1, 5)))
+    np.testing.assert_allclose(probe @ pulled.T, linear_part @ weights.T, rtol=1e-6)
 
 
 def _brain_atlases(mask_img):

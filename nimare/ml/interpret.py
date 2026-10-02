@@ -106,7 +106,7 @@ def coefficient_image(estimator, bunch, coef=None, kind="weights", atlas="voxel"
     are therefore the ones whose linear part is known: the scikit-learn scalers
     (:class:`~sklearn.preprocessing.StandardScaler`,
     :class:`~sklearn.preprocessing.MaxAbsScaler`,
-    :class:`~sklearn.preprocessing.MinMaxScaler`,
+    :class:`~sklearn.preprocessing.MinMaxScaler` unless it clips,
     :class:`~sklearn.preprocessing.RobustScaler`),
     :class:`~sklearn.decomposition.PCA`,
     :class:`~sklearn.decomposition.TruncatedSVD`, feature selectors, and a
@@ -247,12 +247,20 @@ def _pull_back(step, weights):
         # x' = (x - offset) / scale; scale_ is None when scaling was switched off
         return weights if step.scale_ is None else weights / step.scale_
     if isinstance(step, MinMaxScaler):
+        if step.clip:
+            raise ValueError(
+                "A MinMaxScaler with clip=True clips values outside the range it was "
+                "fitted on, so it is not linear and has no transpose to read weights back "
+                "through. Fit it with clip=False, or use kind='pattern'."
+            )
         # x' = x * scale_ + min_
         return weights * step.scale_
     if isinstance(step, PCA):
         # z = (x - mean_) @ components_.T, divided by sqrt(explained_variance_) if whitened
         if step.whiten:
-            weights = weights / np.sqrt(step.explained_variance_)
+            # the same floor PCA.transform puts under a zero-variance component's scale
+            scale = np.sqrt(step.explained_variance_)
+            weights = weights / np.maximum(scale, np.finfo(scale.dtype).eps)
         return weights @ step.components_
     if isinstance(step, TruncatedSVD):
         return weights @ step.components_
