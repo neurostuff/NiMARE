@@ -449,3 +449,15 @@ def test_studyset_from_sleuth_does_not_warn_about_the_internal_dataset():
     messages = [str(w.message) for w in caught]
     assert not [m for m in messages if "Dataset is deprecated" in m], messages
     assert not [m for m in messages if "No mask or target space specified" in m], messages
+
+
+@pytest.mark.parametrize(
+    "wrap", [Path, lambda p: [Path(p)], lambda p: (p,)], ids=["path", "list", "tuple"]
+)
+def test_convert_sleuth_to_nimads_dict_accepts_documented_path_types(wrap):
+    """Path objects and sequences of them are accepted, as documented."""
+    from nimare.tests.utils import get_test_data_path
+
+    sleuth_file = str(Path(get_test_data_path()) / "test_sleuth_file.txt")
+    expected = convert_sleuth_to_nimads_dict(sleuth_file)
+    assert convert_sleuth_to_nimads_dict(wrap(sleuth_file)) == expected
