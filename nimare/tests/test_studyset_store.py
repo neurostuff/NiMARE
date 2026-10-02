@@ -595,11 +595,55 @@ def test_a_hyphenated_short_analysis_id_is_looked_up_not_split():
 
     assert list(studyset.slice(analyses=["a-b"]).ids) == ["mixed-a-b"]
     # "b" is what splitting the full id on its last hyphen produces, and it is
-    # not an id of anything, so the short ids the query helpers hand back can be
-    # fed straight back to slice.
+    # not an id of anything.
     with pytest.raises(ValueError, match=r"matches: b\."):
         studyset.slice(analyses=["b"])
-    assert studyset.get_analyses_by_coordinate([1.0, 2.0, 3.0], r=1) == ["a-b"]
+    assert studyset.get_analyses_by_coordinate([1.0, 2.0, 3.0], r=1) == ["mixed-a-b"]
+
+
+def test_get_analyses_by_helpers_return_ids_slice_selects_exactly():
+    """Check that get_analyses_by_* ids select only what was found, despite shared short ids.
+
+    "plain" is an analysis id in two studies, as "1" is throughout Neurosynth, so a short
+    id handed back to slice() would select both.
+    """
+    import nibabel as nib
+
+    studyset = Studyset(selection_document())
+    affine = np.diag([2.0, 2.0, 2.0, 1.0])
+    mask_data = np.zeros((5, 5, 5), dtype=np.int8)
+    mask_data[2, 2, 3] = 1  # the voxel holding mixed-plain's focus at (4, 5, 6)
+    mask = nib.Nifti1Image(mask_data, affine)
+    values = np.array([[1.0] if i == "mixed-plain" else [0.0] for i in studyset.ids])
+    labelled = studyset.with_annotation("custom", ["lab"], values)
+
+    found = {
+        "coordinate": studyset.get_analyses_by_coordinate([4.0, 5.0, 6.0], r=1),
+        "mask": studyset.get_analyses_by_mask(mask),
+        "label": labelled.get_analyses_by_label("lab", label_threshold=0.5),
+    }
+    for how, ids in found.items():
+        assert ids == ["mixed-plain"], how
+        assert list(studyset.slice(ids=ids).ids) == ["mixed-plain"], how
+
+
+def test_get_analyses_by_metadata_and_annotations_keep_shared_short_ids_apart():
+    """Check that analyses sharing a short id are not merged into one dict entry."""
+    document = selection_document()
+    for study in document["studies"]:
+        for analysis in study["analyses"]:
+            analysis["metadata"] = {"site": study["id"]}
+    studyset = Studyset(document)
+    values = np.ones((len(studyset.ids), 1))
+    labelled = studyset.with_annotation("custom", ["lab"], values)
+    expected = ["mixed-a-b", "mixed-plain", "other-plain"]
+
+    by_metadata = studyset.get_analyses_by_metadata("site")
+    assert sorted(by_metadata) == expected
+    assert by_metadata["other-plain"] == {"site": "other"}
+    assert sorted(labelled.get_analyses_by_annotations("lab")) == expected
+    # Keyed by the whole annotation id rather than one of its labels.
+    assert sorted(labelled.get_analyses_by_annotations("custom")) == expected
 
 
 def test_points_outside_mask_volume_are_not_clipped_to_edge():

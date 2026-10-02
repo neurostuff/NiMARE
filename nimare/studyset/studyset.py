@@ -423,9 +423,15 @@ class Studyset:
         return list(self.ids[self._label_masks(labels, label_threshold, annotation).all(axis=0)])
 
     def get_analyses_by_label(self, labels=None, label_threshold=0.001, annotation=None):
-        """Short analysis ids whose labels reach the threshold."""
+        """Full analysis ids whose labels reach the threshold.
+
+        .. versionchanged:: 0.22.1
+
+            Returns full ``"<study id>-<analysis id>"`` ids. Short analysis ids can be
+            shared across studies, so slicing by them selected unrelated analyses.
+        """
         keep = self._label_masks(labels, label_threshold, annotation).all(axis=0)
-        return list(self._view.short_keys[keep].astype(str))
+        return list(self._view.keys[keep].astype(str))
 
     def _analyses_in_mask(self, mask):
         """Studies filtered with at least one focus in ``mask``."""
@@ -444,8 +450,14 @@ class Studyset:
         return list(self._analyses_in_mask(mask).keys.astype(str))
 
     def get_analyses_by_mask(self, mask):
-        """Short analysis ids with at least one focus inside ``mask``."""
-        return list(self._analyses_in_mask(mask).short_keys.astype(str))
+        """Full analysis ids with at least one focus inside ``mask``.
+
+        .. versionchanged:: 0.22.1
+
+            Returns full ``"<study id>-<analysis id>"`` ids. Short analysis ids can be
+            shared across studies, so slicing by them selected unrelated analyses.
+        """
+        return list(self._analyses_in_mask(mask).keys.astype(str))
 
     def get_studies_by_coordinate(self, xyz, r=20):
         """Full analysis ids with a focus within ``r`` mm of any of ``xyz``."""
@@ -455,7 +467,13 @@ class Studyset:
         return list(self._view.analyses_with_points(flagged).keys.astype(str))
 
     def get_analyses_by_coordinate(self, xyz, r=None, n=None):
-        """Short analysis ids near ``xyz``, by radius or by count."""
+        """Full analysis ids near ``xyz``, by radius or by count.
+
+        .. versionchanged:: 0.22.1
+
+            Returns full ``"<study id>-<analysis id>"`` ids. Short analysis ids can be
+            shared across studies, so slicing by them selected unrelated analyses.
+        """
         if (r is None) == (n is None):
             raise ValueError("Exactly one of r or n must be provided.")
         xyz = np.asarray(xyz).ravel()
@@ -471,7 +489,7 @@ class Studyset:
         else:
             hit = np.unique(groups[np.argsort(distances)[:n]])
         # hit indexes the coordinate block's groups, which are this selection.
-        return list(self._view.short_keys[hit].astype(str))
+        return list(self._view.keys[hit].astype(str))
 
     def _frame_field(self, frame, field, what):
         """Field names in ``frame``, or one field's values."""
@@ -515,7 +533,13 @@ class Studyset:
         return {str(store.analysis_key[r]): cache.get(int(r), []) for r in rows}
 
     def get_analyses_by_metadata(self, key, value=None):
-        """``{analysis id: {key: value}}`` for analyses carrying ``key``."""
+        """``{full analysis id: {key: value}}`` for analyses carrying ``key``.
+
+        .. versionchanged:: 0.22.1
+
+            Keyed by full ``"<study id>-<analysis id>"`` ids. Short ids can be shared
+            across studies, which silently merged those analyses into one entry.
+        """
         store = self.store
         out = {}
         for level in (store.metadata, store.study_metadata):
@@ -531,7 +555,7 @@ class Studyset:
                     continue
                 if value is None or found == value:
                     analysis_row = self._view.index[pos]
-                    out[str(store.analysis_key[analysis_row])] = {key: found}
+                    out[str(store.analysis_full_key[analysis_row])] = {key: found}
             if out:
                 break
         return out
@@ -541,6 +565,11 @@ class Studyset:
 
         Accepts either form: the previous implementation keyed on the annotation
         id here while ``get_studies_by_label`` keyed on the label.
+
+        .. versionchanged:: 0.22.1
+
+            Keyed by full ``"<study id>-<analysis id>"`` ids. Short ids can be shared
+            across studies, which silently merged those analyses into one entry.
         """
         store = self.store
         out = {}
@@ -549,7 +578,7 @@ class Studyset:
             for row in self._view.index:
                 note = notes.get(int(row))
                 if note and (value is None or note == value):
-                    out[str(store.analysis_key[row])] = {key: note}
+                    out[str(store.analysis_full_key[row])] = {key: note}
             return out
         for annotation in store.annotations.values():
             if key not in annotation.columns:
@@ -560,7 +589,7 @@ class Studyset:
                 if found is None:
                     continue
                 if value is None or found == value:
-                    out[str(store.analysis_key[row])] = {key: found}
+                    out[str(store.analysis_full_key[row])] = {key: found}
         return out
 
     def get_annotations(self, analyses=None):
