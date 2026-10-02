@@ -37,7 +37,13 @@ class Decoder(NiMAREBase):
             feature_names = self.inputs_["annotations"].columns.values
             feature_names = [f for f in feature_names if f.startswith(self.feature_group)]
             if self.features is not None:
-                features = [f.split("__")[-1] for f in feature_names if f in self.features]
+                # Accept each feature with or without the group prefix.
+                requested = set(self.features)
+                features = [
+                    f
+                    for f in feature_names
+                    if f in requested or f[len(self.feature_group) :] in requested
+                ]
             else:
                 features = feature_names
         else:
