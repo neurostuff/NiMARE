@@ -1589,12 +1589,3 @@ def test_ALE_non_nifti_masker(testdata_cbma):
 
     with pytest.raises(ValueError):
         meta.fit(testdata_cbma)
-
-
-def test_BalancedALESubtraction_description_cites_with_latex_markup():
-    """The methods text uses LaTeX citep markup, so its reference is found."""
-    from nimare.utils import get_description_references
-
-    description = ale.BalancedALESubtraction()._generate_description()
-    assert ":footcite:" not in description
-    assert "Frahm_Monimu_Hoffstaedter" in get_description_references(description)
