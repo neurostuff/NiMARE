@@ -347,8 +347,34 @@ through the atlas; any other step is refused rather than guessed past. With a
 voxels, so descriptor weights stay where they belong. The walk stops at
 :class:`~nimare.ml.MAKernel`, whose input is peaks.
 
+Through an atlas, each voxel gets its own share of a region's weight — the
+region's weight divided by its size for an averaging labels atlas, corrected for
+the overlap of the maps for a probabilistic one — so that the image still scores
+a map as the model does. ``atlas="region"`` paints each region's weight over its
+voxels instead, which shows the regions but is not a per-voxel weight:
+
+.. code-block:: python
+
+    per_voxel = coefficient_image(pipeline, bunch)
+    painted = coefficient_image(pipeline, bunch, atlas="region")
+
 Pass ``coef`` to project weights the model does not carry itself, such as a
 permutation importance.
+
+Weights say what a model uses, which includes voxels that only cancel noise
+elsewhere, so a weight map is not an activation map. ``kind="pattern"`` returns
+the activation pattern of :footcite:t:`haufe2014interpretation` instead: how
+each voxel covaries with the model's scores. It is computed from the voxel maps
+and the scores rather than by undoing each step, so it works through any
+pipeline whose final model is linear in its features, including steps whose
+weights cannot be read back:
+
+.. code-block:: python
+
+    pattern = coefficient_image(pipeline, bunch, kind="pattern")
+
+Pass ``X`` when the pipeline was fitted on something other than ``bunch.data``,
+such as the voxel block alone.
 
 Working at release scale
 ------------------------
@@ -374,3 +400,7 @@ If you are searching over the steps that follow the kernel, ``cache=True`` on
 .. seealso::
 
     :ref:`machine_learning_in_nimare` walks through the whole workflow.
+
+References
+----------
+.. footbibliography::
