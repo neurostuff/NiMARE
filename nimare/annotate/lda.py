@@ -15,6 +15,11 @@ class LDAModel(NiMAREBase):
 
     This class is a light wrapper around scikit-learn tools for tokenization and LDA.
 
+    .. versionchanged:: 0.22.0
+
+        - New parameter: ``random_state``, which seeds the model so that its topics can be
+          reproduced.
+
     Parameters
     ----------
     n_topics : :obj:`int`
@@ -37,6 +42,11 @@ class LDAModel(NiMAREBase):
         Number of cores to use for parallelization.
         If <=0, defaults to using all available cores.
         Default is 1.
+    random_state : :obj:`int`, :class:`numpy.random.RandomState`, or None, optional
+        Seed for the model's variational Bayes initialization, passed through to the
+        ``random_state`` parameter of
+        :class:`~sklearn.decomposition.LatentDirichletAllocation`. If None, the topics will
+        differ between runs. Default is None.
 
     Attributes
     ----------
@@ -61,7 +71,14 @@ class LDAModel(NiMAREBase):
     """
 
     def __init__(
-        self, n_topics, max_iter=1000, alpha=None, beta=0.001, text_column="abstract", n_cores=1
+        self,
+        n_topics,
+        max_iter=1000,
+        alpha=None,
+        beta=0.001,
+        text_column="abstract",
+        n_cores=1,
+        random_state=None,
     ):
         self.n_topics = n_topics
         self.max_iter = max_iter
@@ -69,6 +86,7 @@ class LDAModel(NiMAREBase):
         self.beta = beta
         self.text_column = text_column
         self.n_cores = _check_ncores(n_cores)
+        self.random_state = random_state
 
         self.model = LatentDirichletAllocation(
             n_components=n_topics,
@@ -77,6 +95,7 @@ class LDAModel(NiMAREBase):
             doc_topic_prior=alpha,
             topic_word_prior=beta,
             n_jobs=self.n_cores,
+            random_state=random_state,
         )
 
     def fit(self, dset):

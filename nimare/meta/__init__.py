@@ -11,8 +11,10 @@ from .cbma import (
     BalancedALESubtraction,
     MKDAChi2,
     MKDADensity,
+    StudyWeights,
     ale,
     mkda,
+    weights,
 )
 from .ibma import (
     DerSimonianLaird,
@@ -79,4 +81,6 @@ __all__ = [
     "cbmr",
     "ale",
     "mkda",
+    "weights",
+    "StudyWeights",
 ]

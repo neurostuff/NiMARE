@@ -420,3 +420,126 @@ def test_data_retrieval_methods(example_nimads_studyset):
     frame_counts = studyset.coordinates.groupby("contrast_id").size().to_dict()
     for contrast_id, count in frame_counts.items():
         assert accessor_counts[contrast_id] == count
+
+
+def test_selection_reaches_nested_accessors(split_studyset):
+    """Every path out of a selected Studyset reports the same analyses and foci.
+
+    The accessors used to hold only a store row, so a walk read the store's full
+    ranges and handed back the analyses and foci the selection had dropped.
+    """
+    studyset = nimads.Studyset(split_studyset, target=None)
+
+    sub = studyset.slice(["S1-A1"]).select_points([True, False, False])
+
+    kept = {"A1": [[1.0, 2.0, 3.0]]}
+    assert {a.id: [p.coordinates for p in a.points] for a in sub.analyses} == kept
+    assert {
+        a.id: [p.coordinates for p in a.points] for s in sub.studies for a in s.analyses
+    } == kept
+    # Reverse navigation is a walk too, so it hides what the walk down hid.
+    assert [a.id for a in sub.analyses[0].study.analyses] == ["A1"]
+    assert sub.coordinates[["x", "y", "z"]].to_numpy().tolist() == kept["A1"]
+    # An unselected studyset still walks the whole store.
+    assert {a.id: len(a.points) for s in studyset.studies for a in s.analyses} == {
+        "A1": 2,
+        "A2": 1,
+    }
+    # A point mask is aligned to the studyset's foci, not to what the slice kept.
+    with pytest.raises(ValueError, match="one entry per focus"):
+        sub.select_points([True, False])
+
+
+def test_selection_reaches_export(split_studyset, tmp_path):
+    """A selection survives every way out of a Studyset, not just the frames.
+
+    A point mask lives on the view rather than in the columns, so export has to
+    materialise it; analysis selection was already passed as rows.
+    """
+    sub = (
+        nimads.Studyset(split_studyset, target=None)
+        .slice(["S1-A1"])
+        .select_points([True, False, False])
+    )
+    kept = {"A1": [[1.0, 2.0, 3.0]]}
+
+    def analyses_of(document):
+        return {
+            a["id"]: [p["coordinates"] for p in a["points"]]
+            for s in document["studies"]
+            for a in s["analyses"]
+        }
+
+    assert analyses_of(sub.to_dict()) == kept
+
+    sub.to_nimads(tmp_path / "selected.json")
+    assert analyses_of(load_json(str(tmp_path / "selected.json"))) == kept
+
+    sub.to_parquet(tmp_path / "release")
+    assert analyses_of(nimads.Studyset.from_parquet(tmp_path / "release").to_dict()) == kept
+
+    dataset = sub.to_dataset()
+    assert list(dataset.ids) == ["S1-A1"]
+    assert dataset.coordinates[["x", "y", "z"]].to_numpy().tolist() == kept["A1"]
+
+
+def test_accessors_read_in_their_view_s_space(split_studyset):
+    """An accessor reports coordinates in the space its view reads them in.
+
+    The view is the accessor's only input, so a selection and a space cannot
+    come from different places.
+    """
+    raw = nimads.Studyset(split_studyset, target=None)
+    projected = nimads.Studyset(split_studyset, target="TAL")
+
+    point = projected.analyses[0].points[0]
+    assert (raw.analyses[0].points[0].space, point.space) == ("MNI", "TAL")
+    assert point.coordinates != raw.analyses[0].points[0].coordinates
+    # And the accessor agrees with the frame the same view builds.
+    assert point.coordinates == projected.coordinates[["x", "y", "z"]].to_numpy()[0].tolist()
+
+
+def test_image_references_resolve_against_the_view(tmp_path):
+    """Image paths come back openable, while export still writes what NIMADS stores.
+
+    A reference is stored relative, so the frames resolved it against the base
+    path and the accessors did not, which left the two Dataset doors disagreeing.
+    """
+    (tmp_path / "imgs").mkdir()
+    (tmp_path / "imgs" / "z.nii.gz").write_text("placeholder")
+    image_doc = {
+        "value_type": "z",
+        "filename": "imgs/z.nii.gz",
+        "url": "https://neurovault.org/images/1",
+        "space": "MNI",
+    }
+    doc = {
+        "id": "example",
+        "studies": [
+            {
+                "id": "S1",
+                "name": "s1",
+                "analyses": [{"id": "A1", "images": [image_doc], "points": []}],
+            }
+        ],
+    }
+    rooted = nimads.Studyset(doc, target=None, basepath=str(tmp_path))
+    image = rooted.analyses[0].images[0]
+
+    # Compared as paths, not as strings: joining a POSIX-style reference onto a
+    # Windows base path gives mixed separators, which open fine and compare equal
+    # as paths but not as text.
+    assert Path(image.filename) == tmp_path / "imgs" / "z.nii.gz"
+    assert Path(image.filename).is_file()
+    assert nimads.Studyset(doc, target=None).analyses[0].images[0].filename == "imgs/z.nii.gz"
+    # A URL is already a location; only relative paths are resolved.
+    assert image.url == image_doc["url"]
+    # Export writes the document's own form, base path or not.
+    exported = rooted.to_dict()["studies"][0]["analyses"][0]["images"][0]
+    assert exported["filename"] == image_doc["filename"]
+    # Both doors into a Dataset resolve the same way.
+    from nimare.io import convert_nimads_to_dataset
+
+    direct = convert_nimads_to_dataset(rooted).images["z"].tolist()
+    assert direct == rooted.to_dataset().images["z"].tolist()
+    assert [Path(p) for p in direct] == [Path(image.filename)]

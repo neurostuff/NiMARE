@@ -69,6 +69,21 @@ To install NiMARE check out our `installation guide`_.
 .. image:: _static/nimare_overview.png
    :align: center
 
+Getting help
+------------
+
+Questions, bug reports, and consulting inquiries are all welcome.
+
+* **General usage questions**: ask on NeuroStars using the
+  `nimare tag <https://neurostars.org/tag/nimare>`_. The NiMARE developers follow NeuroStars, and
+  public answers help the next person with the same question.
+* **Consulting, collaboration, or private inquiries**: email us at neurosynthorg@gmail.com.
+* **Bugs and feature requests**: open an issue on
+  `GitHub <https://github.com/neurostuff/NiMARE/issues>`_.
+
+See :doc:`contact` for more detail. Every page of this documentation also has a **Contact us**
+button in the bottom-right corner with these links.
+
 Citing NiMARE
 -------------
 
@@ -132,6 +147,7 @@ Then, to cite NiMARE in your manuscript, we recommend something like the followi
 
    about
    installation
+   contact
    api
    auto_examples/index
    contributing

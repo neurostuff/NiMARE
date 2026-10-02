@@ -6,12 +6,25 @@
 Neurosynth and NeuroQuery
 =========================
 
-Neurosynth and NeuroQuery are the two largest publicly-available coordinate-based databases.
+Neurosynth and NeuroQuery are two large publicly-available coordinate-based databases.
 NiMARE includes functions for downloading releases of each database and converting the databases
 to NiMARE collections for analysis.
 
 In this example, we download and convert the Neurosynth and NeuroQuery databases for analysis with
 NiMARE.
+
+.. warning::
+    Both databases are **frozen snapshots**: Neurosynth's coordinates were extracted in 2018,
+    and its data files were last repackaged in 2021.
+    :func:`~nimare.extract.fetch_neurosynth` is deprecated: calling it emits a
+    ``FutureWarning``, and it will be removed in NiMARE 1.0.0.
+
+    Use these fetchers only to reproduce published Neurosynth/NeuroQuery analyses, or to get the
+    Neurosynth term annotations that NiMARE's Neurosynth-based decoders need.
+    **For up-to-date coordinate data, use** :func:`~nimare.extract.fetch_neurostore`, which
+    downloads a `NeuroStore studyset release
+    <https://neurostore.org/api/neurostore-studyset-releases/>`_ rebuilt from the live NeuroStore
+    database. See :ref:`datasets_neurostore` for that workflow.
 
 For most Neurosynth term-based workflows, including the decoding examples in NiMARE, you should
 download only the abstract-derived term annotations by passing ``source="abstract"`` and
@@ -75,9 +88,15 @@ see :doc:`../../fetching`.
 # Start with the necessary imports
 # -----------------------------------------------------------------------------
 import os
+import warnings
 from pprint import pprint
 
 from nimare.extract import download_abstracts, fetch_neuroquery, fetch_neurosynth
+
+# This example intentionally demonstrates the deprecated Neurosynth fetcher, so the
+# deprecation warning is silenced here. Do not do this in new analyses; use
+# nimare.extract.fetch_neurostore instead.
+warnings.filterwarnings("ignore", message="fetch_neurosynth downloads a frozen")
 
 # biopython is unnecessary here, but is required by download_abstracts.
 # We import it here only to document the dependency and cause an early failure if it's missing.

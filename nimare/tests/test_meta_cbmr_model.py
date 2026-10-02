@@ -383,3 +383,56 @@ def test_singular_information_says_which_knob_to_turn(data):
 
     with pytest.raises(np.linalg.LinAlgError, match="spline_spacing"):
         model.covariance()
+
+
+def test_information_method_rejects_an_unknown_value(data):
+    """A typo in ``information_method`` should fail at construction, not silently fall back."""
+    annotations, bases, _ = data
+    predictor = _build("~ s(diagnosis)", annotations, bases)
+    with pytest.raises(ValueError, match="information_method"):
+        CBMRModel(predictor, Poisson(), information_method="exact")
+
+
+def test_closed_form_information_warns_once(data, caplog):
+    """The default, fast information matrix should say it is not yet fully validated.
+
+    Once per model, not once per call: fitting a design with several hypotheses should not spam
+    the same warning for every one of them.
+    """
+    annotations, bases, _ = data
+    predictor = _build("~ s(diagnosis)", annotations, bases)
+    foci = _simulate(predictor, np.random.default_rng(83))
+    model = CBMRModel(predictor, Poisson()).fit(foci, n_iter=200)
+
+    with caplog.at_level("WARNING", logger="nimare.meta.cbmr.model"):
+        model.information_matrix()
+        model.information_matrix()
+
+    warnings = [message for message in caplog.messages if "pull/1121" in message]
+    assert len(warnings) == 1
+    assert "NOT" in warnings[0] and "validated" in warnings[0]
+
+
+def test_autodiff_information_method_does_not_warn_and_agrees_with_closed_form(data, caplog):
+    """``information_method="autodiff"`` is the pre-#1121 computation and needs no caveat.
+
+    It should also agree with the closed form it replaces -- this is the same identity
+    test_meta_cbmr_information.py checks, exercised through the public option instead of the
+    private helper.
+    """
+    annotations, bases, _ = data
+    predictor = _build("~ s(diagnosis)", annotations, bases)
+    foci = _simulate(predictor, np.random.default_rng(83))
+
+    closed_form_model = CBMRModel(predictor, Poisson()).fit(foci, n_iter=200)
+    autodiff_model = CBMRModel(predictor, Poisson(), information_method="autodiff")
+    autodiff_model.load_state_dict(closed_form_model.state_dict())
+    autodiff_model._foci = closed_form_model._foci
+
+    with caplog.at_level("WARNING", logger="nimare.meta.cbmr.model"):
+        autodiff_information = autodiff_model.information_matrix()
+    assert not caplog.messages
+
+    np.testing.assert_allclose(
+        autodiff_information, closed_form_model.information_matrix(), rtol=1e-8
+    )

@@ -40,7 +40,11 @@
 
 .. _NeuroScout: https://alpha.neuroscout.org
 
-.. _NeuroStars: https://neurostars.org/latest
+.. _NeuroStars: https://neurostars.org/tag/nimare
+
+.. _NeuroStars NiMARE tag: https://neurostars.org/tag/nimare
+
+.. _NeuroStars software support: https://neurostars.org/tags/c/software-support/234/nimare
 
 .. _NeuroStore: https://github.com/neurostuff/neurostore
 

@@ -22,7 +22,6 @@ from datetime import datetime
 from distutils.version import LooseVersion
 
 import sphinx
-from m2r2 import MdInclude
 from sphinx_gallery.sorting import FileNameSortKey
 
 sys.path.insert(0, os.path.abspath(os.path.pardir))
@@ -57,6 +56,10 @@ extensions = [
     "sphinxcontrib.bibtex",  # for foot-citations
     "sphinxcontrib.mermaid",  # for mermaid diagrams
     "recommonmark",  # markdown parser
+    # The `mdinclude` directive, for pulling .md files into .rst pages. Deliberately the
+    # submodule and not "m2r2": the full extension also registers a parser for .md source
+    # files, which collides with recommonmark above.
+    "m2r2.mdinclude",
 ]
 
 if LooseVersion(sphinx.__version__) < LooseVersion("1.4"):
@@ -220,16 +223,8 @@ def setup(app):
     """From https://github.com/rtfd/sphinx_rtd_theme/issues/117"""
     app.add_css_file("theme_overrides.css")
     app.add_css_file("nimare.css")
+    app.add_js_file("contact.js")
     app.connect("autodoc-process-docstring", generate_example_rst)
-    # Fix to https://github.com/sphinx-doc/sphinx/issues/7420
-    # from https://github.com/life4/deal/commit/7f33cbc595ed31519cefdfaaf6f415dada5acd94
-    # from m2r to make `mdinclude` work
-    app.add_config_value("no_underscore_emphasis", False, "env")
-    app.add_config_value("m2r_parse_relative_links", False, "env")
-    app.add_config_value("m2r_anonymous_references", False, "env")
-    app.add_config_value("m2r_disable_inline_math", False, "env")
-    app.add_config_value("m2r_use_mermaid", True, "env")
-    app.add_directive("mdinclude", MdInclude)
 
 
 def generate_example_rst(app, what, name, obj, options, lines):

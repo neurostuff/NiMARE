@@ -25,7 +25,8 @@ def one_way(data, n):
     n : :obj:`int`
         Maximum possible count (aka total number of units) for all cells in
         ``data``. If data is n_voxels long, then ``n`` is the number of studies
-        in the analysis.
+        in the analysis. This is a scalar: every count in ``data`` is drawn from the
+        same number of trials.
 
     Returns
     -------
@@ -35,12 +36,18 @@ def one_way(data, n):
     Notes
     -----
     Taken from Neurosynth.
+
+    The expected count is the mean of ``data``, so for counts bounded by ``n`` it can only
+    reach 0 or ``n`` when *every* count does. Both make the variance term
+    ``expected * (n - expected)`` zero, and both also put every count exactly at
+    expectation, so the statistic is zero rather than the 0/0 it would otherwise be.
     """
     term = np.asarray(data, dtype=np.float64)
     expected_term = np.mean(term, axis=0)
+    denominator = expected_term * (n - expected_term)
     with np.errstate(divide="ignore", invalid="ignore"):
-        chi2 = (term - expected_term) ** 2 * n / (expected_term * (n - expected_term))
-    return chi2
+        chi2 = (term - expected_term) ** 2 * n / denominator
+    return np.where(denominator == 0, 0.0, chi2)
 
 
 def two_way_counts(selected, unselected, n_selected, n_unselected):
@@ -357,7 +364,15 @@ def nlogp_fdr(nlogp, method="bh"):
     Returns
     -------
     :obj:`numpy.ndarray`
-        Natural logarithms of the corrected p-values.
+        Natural logarithms of the corrected p-values. NaN entries stay NaN.
+
+    Notes
+    -----
+    A NaN is a test that could not be evaluated, so it takes no part in the step-up procedure
+    and comes back as NaN. It is still counted in the number of tests, which is the more
+    conservative of the two readings and the one R's ``p.adjust`` takes: NAs are dropped from
+    the procedure while ``n`` stays at the full length of the input. Without this, a single
+    NaN would win every ``minimum.accumulate`` comparison and erase the whole correction.
 
     References
     ----------
@@ -366,10 +381,29 @@ def nlogp_fdr(nlogp, method="bh"):
     nlogp = _check_nlogp(nlogp)
     n_tests = nlogp.size
 
+    # The mask is one byte per test against the eight the sort already costs, so checking is
+    # far cheaper than the copies the NaN path needs. Voxelwise callers take the fast path.
+    unevaluated = np.isnan(nlogp)
+    if not unevaluated.any():
+        return _fdr_step_up(nlogp, method, n_tests)
+
+    corrected = np.full(nlogp.shape, np.nan)
+    evaluated = ~unevaluated
+    if evaluated.any():
+        corrected[evaluated] = _fdr_step_up(nlogp[evaluated], method, n_tests)
+    return corrected
+
+
+def _fdr_step_up(nlogp, method, n_tests):
+    """Run the step-up procedure over tests that were evaluated.
+
+    ``nlogp`` holds only the evaluated tests, while ``n_tests`` counts every test in the
+    family, so the two differ exactly when some test came back NaN.
+    """
     sort_idx = np.argsort(nlogp)
     revert_idx = np.argsort(sort_idx)
 
-    log_ecdffactor = np.log(np.arange(1, n_tests + 1) / n_tests)
+    log_ecdffactor = np.log(np.arange(1, nlogp.size + 1) / n_tests)
     if method == "by":
         log_ecdffactor = log_ecdffactor - np.log(np.sum(1 / np.arange(1, n_tests + 1)))
 

@@ -768,9 +768,9 @@ def convert_neurosynth_to_dataset(
 
     .. warning::
         :class:`~nimare.dataset.Dataset` output is deprecated and will be removed in NiMARE
-        1.0.0. When possible, prefer :func:`~nimare.extract.fetch_neurosynth` or
-        :func:`~nimare.extract.fetch_neuroquery`, which return
-        :class:`~nimare.nimads.Studyset` objects by default.
+        1.0.0. When possible, prefer :func:`~nimare.extract.fetch_neurostore`, which returns
+        an up-to-date :class:`~nimare.nimads.Studyset`, or
+        :func:`~nimare.io.convert_neurosynth_to_studyset` for files already on disk.
 
     .. warning::
         Starting in version 0.0.10, this function operates on the new Neurosynth/NeuroQuery file

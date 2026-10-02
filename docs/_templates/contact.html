@@ -1,0 +1,30 @@
+{# Floating "Contact us" widget, rendered at the bottom of every documentation page. #}
+<div class="nimare-contact">
+  <details class="nimare-contact-details">
+    <summary class="nimare-contact-button" title="Get help with NiMARE or contact the developers">
+      <span class="nimare-contact-icon" aria-hidden="true">&#9993;</span> Contact us
+    </summary>
+    <div class="nimare-contact-menu" role="menu">
+      <p class="nimare-contact-heading">Need help with NiMARE?</p>
+      <ul>
+        <li>
+          <a href="https://neurostars.org/tag/nimare" target="_blank" rel="noopener">Ask on NeuroStars</a>
+          <span class="nimare-contact-note">Public Q&amp;A with the <code>nimare</code> tag. Best for usage questions.</span>
+        </li>
+        <li>
+          <a href="mailto:neurosynthorg@gmail.com?subject=NiMARE%20question">Email neurosynthorg@gmail.com</a>
+          <span class="nimare-contact-note">Best for consulting, collaboration, or private inquiries.</span>
+        </li>
+        <li>
+          <a href="https://github.com/neurostuff/NiMARE/issues" target="_blank" rel="noopener">Report a bug on GitHub</a>
+          <span class="nimare-contact-note">Bug reports and feature requests.</span>
+        </li>
+        <li>
+          <a href="https://mattermost.brainhack.org/brainhack/channels/nimare" target="_blank" rel="noopener">Chat on Mattermost</a>
+          <span class="nimare-contact-note">Informal chat with users and developers.</span>
+        </li>
+      </ul>
+      <a class="nimare-contact-more" href="{{ pathto('contact') }}">More ways to get in touch &#8594;</a>
+    </div>
+  </details>
+</div>

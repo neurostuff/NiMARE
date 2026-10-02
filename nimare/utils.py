@@ -2,6 +2,7 @@
 
 import datetime
 import gzip
+import hashlib
 import inspect
 import json
 import logging
@@ -232,6 +233,77 @@ def validate_coordinate_spaces(coordinates):
         )
 
 
+def _seed_sequence(random_state, stream=None):
+    """Build a :class:`numpy.random.SeedSequence` from a user-provided seed.
+
+    Parameters
+    ----------
+    random_state : :obj:`int` or None
+        The seed to derive the sequence from. If None, the sequence is seeded from operating
+        system entropy, so draws will differ between runs.
+
+        Only an integer (or None) is accepted. An already-built generator, such as a
+        :class:`numpy.random.Generator`, is deliberately rejected: it carries mutable state
+        that advances as it is drawn from, which cannot provide either the fresh-per-call or
+        the independent-per-step behaviour described below.
+    stream : :obj:`str` or None, optional
+        Name of the stochastic step the sequence will be used for. When ``random_state`` is not
+        None, the name is mixed into the entropy, so that different steps of the same object
+        (e.g., an Estimator's uncorrected null and its FWE null) draw independent, but still
+        reproducible, sequences instead of reusing the same one.
+        Default is None.
+
+    Returns
+    -------
+    :class:`numpy.random.SeedSequence`
+    """
+    if random_state is None:
+        return np.random.SeedSequence()
+
+    if isinstance(random_state, bool) or not isinstance(random_state, (int, np.integer)):
+        raise TypeError(
+            f"random_state must be None or an integer; got {type(random_state)}. "
+            "A generator object is not accepted, because NiMARE derives a fresh generator "
+            "for each stochastic step; to seed from an existing generator, pass an integer "
+            "drawn from it, e.g. random_state=int(rng.integers(2**32))."
+        )
+
+    # SeedSequence entropy must be non-negative, but negative seeds are common enough in the
+    # wild (and accepted by scikit-learn) that they are folded into the unsigned range instead
+    # of rejected.
+    entropy = int(random_state) % 2**64
+    if stream is not None:
+        # A stable hash: Python's built-in hash() is salted per process, which would make
+        # seeded results differ between sessions.
+        stream_key = int.from_bytes(hashlib.sha256(stream.encode("utf-8")).digest()[:8], "big")
+        entropy = [entropy, stream_key]
+
+    return np.random.SeedSequence(entropy)
+
+
+def _check_random_state(random_state, stream=None):
+    """Turn a user-provided seed into a :class:`numpy.random.Generator`.
+
+    A new generator is built on every call, so the same seed and ``stream`` always give the
+    same draws, however many times they are requested.
+
+    Parameters
+    ----------
+    random_state : :obj:`int` or None
+        Seed for the generator. If None, the generator is seeded from operating system entropy
+        and results will vary between runs. See :func:`_seed_sequence` for why generator
+        objects are not accepted.
+    stream : :obj:`str` or None, optional
+        Name of the stochastic step the generator will be used for. See :func:`_seed_sequence`.
+        Default is None.
+
+    Returns
+    -------
+    :class:`numpy.random.Generator`
+    """
+    return np.random.default_rng(_seed_sequence(random_state, stream=stream))
+
+
 def seed_torch(seed, device="cpu"):
     """Seed torch RNGs when torch is available and a seed is provided."""
     if seed is None or torch is None:
@@ -432,6 +504,40 @@ def vox2mm(ijk, affine):
     return xyz
 
 
+def _get_voxel_values(data, ijk):
+    """Return values at voxel indices and flag indices outside ``data``.
+
+    Parameters
+    ----------
+    data : :obj:`numpy.ndarray`
+        Array from which to retrieve values.
+    ijk : (N, D) array_like
+        Matrix subscripts, with one column for each dimension of ``data``.
+
+    Returns
+    -------
+    values : (N,) :obj:`numpy.ndarray`
+        Values at the supplied indices. Values for out-of-bounds indices are
+        retrieved from a clipped boundary index and must be combined with
+        ``in_bounds`` before use.
+    in_bounds : (N,) :obj:`numpy.ndarray`
+        Boolean array indicating which indices lie within ``data``.
+    """
+    data = np.asarray(data)
+    with np.errstate(invalid="ignore"):
+        ijk = np.atleast_2d(np.asarray(ijk)).astype(np.int64)
+
+    if ijk.shape[1] != data.ndim:
+        raise ValueError(
+            f"Voxel indices have {ijk.shape[1]} dimensions, but data has {data.ndim}."
+        )
+
+    shape = np.asarray(data.shape)
+    in_bounds = np.all((ijk >= 0) & (ijk < shape), axis=1)
+    flat_idx = np.ravel_multi_index(tuple(ijk.T), data.shape, mode="clip")
+    return data.reshape(-1)[flat_idx], in_bounds
+
+
 def mm2vox(xyz, affine):
     """Convert coordinates to matrix subscripts.
 
@@ -456,9 +562,12 @@ def mm2vox(xyz, affine):
     -----
     From here:
     http://blog.chrisgorgolewski.org/2014/12/how-to-convert-between-voxel-and-mm.html
+
+    Coordinates that do not land on the voxel grid are rounded to the nearest voxel, so a focus
+    moves by at most half a voxel along each axis.
     """
     with np.errstate(invalid="ignore"):
-        ijk = nib.affines.apply_affine(np.linalg.inv(affine), xyz).astype(int)
+        ijk = np.round(nib.affines.apply_affine(np.linalg.inv(affine), xyz)).astype(int)
     return ijk
 
 

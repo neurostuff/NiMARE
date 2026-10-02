@@ -151,6 +151,11 @@ def _collect_ale_masked_ma_maps(estimator, coords_key="coordinates", maps_key="m
 class ALE(CBMAEstimator):
     """Activation likelihood estimation.
 
+    .. versionchanged:: 0.22.0
+
+        - New parameter: ``random_state``, which seeds the Monte Carlo null
+          distribution and the Monte Carlo FWE correction.
+
     .. versionchanged:: 0.2.1
 
         - New parameters: ``memory`` and ``memory_level`` for memory caching.
@@ -199,6 +204,10 @@ class ALE(CBMAEstimator):
         This is only used if ``null_method=="montecarlo"``.
         If <=0, defaults to using all available cores.
         Default is 1.
+    random_state : :obj:`int` or None, optional
+        Seed for the Monte Carlo null distribution and for
+        :meth:`~nimare.meta.cbma.ale.ALE.correct_fwe_montecarlo`, so that their results can be
+        reproduced. If None, the permutations will differ between runs. Default is None.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned here,
         with the prefix ``kernel__`` in the variable name.
@@ -269,6 +278,7 @@ class ALE(CBMAEstimator):
         memory=Memory(location=None, verbose=0),
         memory_level=0,
         n_cores=1,
+        random_state=None,
         **kwargs,
     ):
         if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
@@ -283,6 +293,7 @@ class ALE(CBMAEstimator):
             kernel_transformer=kernel_transformer,
             memory=memory,
             memory_level=memory_level,
+            random_state=random_state,
             **kwargs,
         )
         self.null_method = null_method
@@ -573,6 +584,11 @@ class ALE(CBMAEstimator):
 class ALESubtraction(PairwiseCBMAEstimator):
     """ALE subtraction analysis.
 
+    .. versionchanged:: 0.22.0
+
+        - New parameter: ``random_state``, which selects the group-assignment
+          permutations used to build the null.
+
     .. versionchanged:: 0.9.0
 
         - New parameters: ``vfwe_only`` and ``voxel_thresh``
@@ -633,6 +649,11 @@ class ALESubtraction(PairwiseCBMAEstimator):
         Default is 1.
 
         .. versionadded:: 0.0.12
+    random_state : :obj:`int` or None, optional
+        Seed for the group-assignment permutations. If None, each permutation is seeded with
+        its own iteration index, as it was before this parameter existed; the null is then
+        identical from run to run, but cannot be varied. Pass an integer to draw a different,
+        equally reproducible, set of permutations. Default is None.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned here,
         with the prefix ``kernel__`` in the variable name. Another optional argument is ``mask``.
@@ -684,6 +705,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
         memory=Memory(location=None, verbose=0),
         memory_level=0,
         n_cores=1,
+        random_state=None,
         **kwargs,
     ):
         if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
@@ -698,6 +720,7 @@ class ALESubtraction(PairwiseCBMAEstimator):
             kernel_transformer=kernel_transformer,
             memory=memory,
             memory_level=memory_level,
+            random_state=random_state,
             **kwargs,
         )
 
@@ -1005,12 +1028,12 @@ class ALESubtraction(PairwiseCBMAEstimator):
 
         return maps, {}, description
 
-    def _run_permutation(self, i_iter, ma_store):
+    def _run_permutation(self, i_iter, ma_store, seed):
         """Run a single permutation of the ALESubtraction null distribution procedure."""
         group1_idx, group2_idx = self._permute_pairwise_group_indices(
             n_total=ma_store.n_total,
             n_group1=ma_store.n_group1,
-            seed=i_iter,
+            seed=seed,
         )
         iter_grp1_ale_values = ma_store.compute_partition_summarystat(group1_idx)
         iter_grp2_ale_values = ma_store.compute_partition_summarystat(group2_idx)
@@ -1023,9 +1046,11 @@ class ALESubtraction(PairwiseCBMAEstimator):
             "n_jobs": _check_ncores(n_cores),
             "backend": self._permutation_parallel_backend,
         }
+        iter_seeds = self._iteration_seeds(n_iters, stream="alesubtraction_permutations")
         return tqdm(
             Parallel(**parallel_kwargs)(
-                delayed(self._run_permutation)(i_iter, ma_store) for i_iter in range(n_iters)
+                delayed(self._run_permutation)(i_iter, ma_store, iter_seeds[i_iter])
+                for i_iter in range(n_iters)
             ),
             total=n_iters,
         )
@@ -1632,6 +1657,9 @@ class BalancedALESubtraction(PairwiseCBMAEstimator):
         Family-wise error rate for the per-group cluster threshold used inside
         ``_probabilistic_map`` and for the balanced-subtraction extrema
         percentiles in ``_fit``. Default is 0.05.
+    random_state : :obj:`int` or None, optional
+        Seed for the subsampling and for the null distribution, so that results can be
+        reproduced. If None, they will differ between runs. Default is None.
     """
 
     def __init__(
@@ -1655,6 +1683,7 @@ class BalancedALESubtraction(PairwiseCBMAEstimator):
             kernel_transformer=kernel_transformer,
             memory=memory,
             memory_level=memory_level,
+            random_state=random_state,
             **kwargs,
         )
         if null_method not in ("random-foci", "label-permutation"):
@@ -1672,7 +1701,6 @@ class BalancedALESubtraction(PairwiseCBMAEstimator):
         self.mask_coverage = mask_coverage
         self.alpha = alpha
         self.n_cores = _check_ncores(n_cores)
-        self.random_state = random_state
         self.dataset1 = None
         self.dataset2 = None
 
@@ -1938,6 +1966,11 @@ class SCALE(CBMAEstimator):
 
     This method was originally introduced in :footcite:t:`langner2014meta`.
 
+    .. versionchanged:: 0.22.0
+
+        - New parameter: ``random_state``, which seeds the permutations used
+          to build the null distribution.
+
     .. versionchanged:: 0.14.0
 
         Use direct empirical voxelwise permutation p-values and add voxel-level Monte Carlo
@@ -1987,6 +2020,9 @@ class SCALE(CBMAEstimator):
     memory_level : :obj:`int`, default=0
         Rough estimator of the amount of memory used by caching.
         Higher value means more memory for caching. Zero means no caching.
+    random_state : :obj:`int` or None, optional
+        Seed for the permutations used to build the null distribution, so that results can be
+        reproduced. If None, the permutations will differ between runs. Default is None.
     **kwargs
         Keyword arguments. Arguments for the kernel_transformer can be assigned here,
         with the prefix '\kernel__' in the variable name.
@@ -2030,6 +2066,7 @@ class SCALE(CBMAEstimator):
         kernel_transformer=ALEKernel,
         memory=Memory(location=None, verbose=0),
         memory_level=0,
+        random_state=None,
         **kwargs,
     ):
         if not (isinstance(kernel_transformer, ALEKernel) or kernel_transformer == ALEKernel):
@@ -2044,6 +2081,7 @@ class SCALE(CBMAEstimator):
             kernel_transformer=kernel_transformer,
             memory=memory,
             memory_level=memory_level,
+            random_state=random_state,
             **kwargs,
         )
 
@@ -2148,7 +2186,8 @@ class SCALE(CBMAEstimator):
         iter_df = self.inputs_["coordinates"].copy()
         voxel_ijk = mm2vox(self.xyz, self.masker.mask_img.affine).astype(np.int32, copy=False)
         permutation_args = self._prepare_permutation_args(iter_df)
-        sampled_voxel_idx = np.random.choice(voxel_ijk.shape[0], size=(iter_df.shape[0], n_iters))
+        rng = self._get_rng("scale_permutations")
+        sampled_voxel_idx = rng.choice(voxel_ijk.shape[0], size=(iter_df.shape[0], n_iters))
         return iter_df, voxel_ijk, permutation_args, sampled_voxel_idx
 
     def _prepare_permutation_args(self, coordinates):

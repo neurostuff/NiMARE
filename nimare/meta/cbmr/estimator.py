@@ -11,9 +11,9 @@ Exactly two things, both produced by ``_collect_inputs`` from a single narrowed 
 
 ``blocks_["coordinates"]``
     A :class:`~nimare.studyset.blocks.CoordinateBlock`. Used for ``group_of_point()``, which
-    gives each focus's analysis position, ``ijk(affine)``, which is memoised and truncates
-    exactly as :func:`nimare.utils.mm2vox` does, and ``space``/``space_categories`` for the
-    mixed-space check.
+    gives each focus's analysis position, ``ijk(affine)``, which is memoised and rounds to the
+    nearest voxel exactly as :func:`nimare.utils.mm2vox` does, and ``space``/``space_categories``
+    for the mixed-space check.
 ``studyset_``
     The narrowed selection itself, for ``ids`` and ``annotations_df``. The formula's terms are
     built against that frame.
@@ -149,9 +149,10 @@ class _CBMRInputs(Estimator):
         """Map every focus onto ``(experiment row, masked-voxel column)``.
 
         Both come straight off the coordinate block. ``ijk`` is memoised there and documented to
-        truncate exactly as :func:`nimare.utils.mm2vox` does, and ``group_of_point`` gives each
-        focus's analysis position directly -- which *is* the experiment row, because the block is
-        aligned to ``studyset_`` by construction. Foci outside the mask are dropped.
+        round to the nearest voxel exactly as :func:`nimare.utils.mm2vox` does, and
+        ``group_of_point`` gives each focus's analysis position directly -- which *is* the
+        experiment row, because the block is aligned to ``studyset_`` by construction. Foci
+        outside the mask are dropped.
         """
         ijk = block.ijk(mask_img.affine)
         rows = block.group_of_point()
@@ -307,6 +308,16 @@ class CBMR(_CBMRInputs):
         ``"cpu"`` or ``"cuda"``. Default is ``"cpu"``.
     random_state : :obj:`int`, optional
         Seed for weight initialization. Default is None.
+    information_method : {"closed_form", "autodiff"}, optional
+        How the observed Fisher information behind standard errors, p-values and hypothesis
+        tests is computed. ``"closed_form"`` uses the fast derivations added in
+        https://github.com/neurostuff/NiMARE/pull/1121, which were written with LLM assistance
+        and are checked against symbolic proofs and a limited set of numerical comparisons
+        (https://github.com/jdkent/cbmr-proofs) but are not yet independently or exhaustively
+        validated; using it logs a warning the first time it actually runs. ``"autodiff"``
+        always differentiates the log-likelihood directly instead, which is the slower,
+        more memory-intensive computation CBMR used before that PR and carries no such caveat.
+        Default is ``"closed_form"``.
 
     Notes
     -----
@@ -328,9 +339,11 @@ class CBMR(_CBMRInputs):
         tol=1e-8,
         device="cpu",
         random_state=None,
+        information_method="closed_form",
         **kwargs,
     ):
         from nimare.meta.cbmr.distributions import resolve_distribution
+        from nimare.meta.cbmr.model import INFORMATION_METHODS
         from nimare.meta.cbmr.terms import formula_to_design
 
         self.design = formula_to_design(formula)
@@ -344,6 +357,12 @@ class CBMR(_CBMRInputs):
         self.lr = lr
         self.tol = tol
         self.device = device
+        if information_method not in INFORMATION_METHODS:
+            raise ValueError(
+                f"information_method must be one of {INFORMATION_METHODS}, got "
+                f"{information_method!r}."
+            )
+        self.information_method = information_method
         if _uses_cuda(self.device) and not torch.cuda.is_available():
             LGR.debug("CUDA not found; using device 'cpu'.")
             self.device = "cpu"
@@ -427,7 +446,12 @@ class CBMR(_CBMRInputs):
         )
 
         foci = self.inputs_["foci"]
-        self.cbmr_model = CBMRModel(self.predictor, self.distribution, device=self.device)
+        self.cbmr_model = CBMRModel(
+            self.predictor,
+            self.distribution,
+            device=self.device,
+            information_method=self.information_method,
+        )
         self.cbmr_model.fit(foci, n_iter=self.n_iter, lr=self.lr, tol=self.tol)
 
         maps, tables = self._summarize()

@@ -29,4 +29,6 @@ For an overview of what you can do with NiMARE see `NiMARE Documentation`_.
 
 To get right to using NiMARE see the documentation on the `command line interface`_.
 
-If you have questions, or need help with using NiMARE, check out `NeuroStars`_.
+If you have questions, or need help with using NiMARE, check out `NeuroStars`_ or any of the other
+options on the :doc:`contact` page.
+You can also use the **Contact us** button in the bottom-right corner of any page.

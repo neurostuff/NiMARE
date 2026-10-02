@@ -18,6 +18,24 @@ from nimare.meta.cbmr.information import closed_form_information
 
 LGR = logging.getLogger(__name__)
 
+#: Accepted values of ``information_method``.
+INFORMATION_METHODS = ("closed_form", "autodiff")
+
+#: Emitted the first time a fitted model actually uses a closed form. Not shown for
+#: ``information_method="autodiff"``, or for a distribution without a derivation, since neither
+#: takes the path this warns about.
+_CLOSED_FORM_WARNING = (
+    "CBMR is computing its observed information matrix -- and so its standard errors, p-values, "
+    "and hypothesis tests -- from closed-form formulas added in "
+    "https://github.com/neurostuff/NiMARE/pull/1121 to replace automatic differentiation of "
+    "the log-likelihood. The closed form formulas were derived and implemented with the help of "
+    "a large language model. They are checked against symbolic proofs and against automatic "
+    "differentiation on a limited set of designs (https://github.com/jdkent/cbmr-proofs), but "
+    "have NOT been independently or exhaustively validated. To use the slower, more "
+    "memory-intensive automatic-differentiation computation this replaced, pass "
+    "information_method='autodiff' to CBMR(...)."
+)
+
 
 class CBMRModel(torch.nn.Module):
     """A CBMR model over a term-based design.
@@ -31,14 +49,30 @@ class CBMRModel(torch.nn.Module):
         :func:`~nimare.meta.cbmr.distributions.resolve_distribution`.
     device : :obj:`str`, optional
         Torch device. Default is ``"cpu"``.
+    information_method : {"closed_form", "autodiff"}, optional
+        How :meth:`information_matrix` is computed. ``"closed_form"`` uses the derivations in
+        :mod:`nimare.meta.cbmr.information`, which are fast but were derived with LLM assistance
+        and are not yet independently validated -- see :data:`_CLOSED_FORM_WARNING`.
+        ``"autodiff"`` always differentiates the log-likelihood with ``torch.func.hessian``
+        instead, which is slower and can use tens of GB more memory on a many-group model, but is
+        the computation CBMR used before that PR. Default is ``"closed_form"``.
     """
 
-    def __init__(self, predictor, distribution="poisson", device="cpu"):
+    def __init__(
+        self, predictor, distribution="poisson", device="cpu", information_method="closed_form"
+    ):
         super().__init__()
         self.predictor = predictor
         self.distribution = resolve_distribution(distribution)
         self.distribution.check_design(predictor)
         self.device = device
+        if information_method not in INFORMATION_METHODS:
+            raise ValueError(
+                f"information_method must be one of {INFORMATION_METHODS}, got "
+                f"{information_method!r}."
+            )
+        self.information_method = information_method
+        self._closed_form_warned = False
 
         self.n_spatial = predictor.n_spatial_columns * predictor.n_bases
         self.n_global = predictor.n_global_columns
@@ -187,16 +221,29 @@ class CBMRModel(torch.nn.Module):
         One matrix over all coefficients, so the cross blocks between terms are present rather
         than assumed away. Nuisance parameters are held fixed at their fitted values.
 
-        Computed in closed form for every distribution with automatic differentiation as the
-        fallback for distributions added without a derivation.
+        Computed in closed form for every distribution when ``information_method="closed_form"``
+        (the default), with automatic differentiation as the fallback for a distribution added
+        without a derivation. ``information_method="autodiff"`` always differentiates instead,
+        regardless of whether a closed form exists.
         """
         self._require_foci()
-        closed_form = closed_form_information(self.distribution)
-        if closed_form is not None:
-            return closed_form(self)
+        if self.information_method == "closed_form":
+            closed_form = closed_form_information(self.distribution)
+            if closed_form is not None:
+                result = closed_form(self)
+                if not self._closed_form_warned:
+                    self._closed_form_warned = True
+                    LGR.warning(_CLOSED_FORM_WARNING)
+                return result
 
-        # No derivation, so differentiate. jacfwd(jacrev(.)) builds an intermediate of shape
-        # (n_parameters, n_patterns, n_voxels), which is tens of GB on a many-group model.
+        return self._autodiff_information_matrix()
+
+    def _autodiff_information_matrix(self):
+        """Return the observed Fisher information by automatic differentiation.
+
+        ``jacfwd(jacrev(.))`` builds an intermediate of shape ``(n_parameters, n_patterns,
+        n_voxels)``, which is tens of GB on a many-group model.
+        """
         flat = self.coefficients.detach().clone()
         nuisance = None if self.nuisance is None else self.nuisance.detach().clone()
 

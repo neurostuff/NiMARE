@@ -35,6 +35,10 @@ As stated in the code, severe or repeated violations by community members may re
 
 Please direct usage-related questions to [NeuroStars][link_neurostars], with [the "Software Support" category and the "nimare" tag][link_neurostars_nimare].
 The ``NiMARE`` developers follow NeuroStars, and will be able to answer your question there.
+You can also browse everything tagged `nimare` at [neurostars.org/tag/nimare][link_neurostars_tag].
+
+For consulting, collaboration, or anything you would rather not discuss in public, email us at <neurosynthorg@gmail.com>.
+All of these options are listed on the [Getting help and contacting us](https://nimare.readthedocs.io/en/latest/contact.html) page, and behind the "Contact us" button in the corner of every documentation page.
 
 ## Labels
 
@@ -192,6 +196,7 @@ You're awesome.
 [link_discussingissues]: https://help.github.com/articles/discussing-projects-in-issues-and-pull-requests
 [link_neurostars]: https://neurostars.org
 [link_neurostars_nimare]: https://neurostars.org/tags/c/software-support/234/nimare
+[link_neurostars_tag]: https://neurostars.org/tag/nimare
 
 [link_pullrequest]: https://help.github.com/articles/creating-a-pull-request/
 [link_fork]: https://help.github.com/articles/fork-a-repo/

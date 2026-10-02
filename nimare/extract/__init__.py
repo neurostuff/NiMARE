@@ -6,6 +6,8 @@ from .extract import (
     download_cognitive_atlas,
     download_nidm_pain,
     fetch_neuroquery,
+    fetch_neurostore,
+    fetch_neurostore_releases,
     fetch_neurosynth,
 )
 
@@ -14,6 +16,8 @@ __all__ = [
     "download_cognitive_atlas",
     "download_abstracts",
     "fetch_neuroquery",
+    "fetch_neurostore",
+    "fetch_neurostore_releases",
     "fetch_neurosynth",
     "utils",
 ]

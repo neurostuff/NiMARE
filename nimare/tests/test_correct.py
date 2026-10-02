@@ -30,12 +30,20 @@ def test_FWECorrector_montecarlo_default_parameters():
     assert corr.parameters["n_cores"] == 1
 
 
-def test_FWECorrector_montecarlo_custom_parameters():
+@pytest.mark.parametrize("n_iters", [10, np.int64(10)])
+def test_FWECorrector_montecarlo_custom_parameters(n_iters):
     """FWECorrector(montecarlo) should propagate explicit n_iters and n_cores."""
-    corr = FWECorrector(method="montecarlo", n_iters=10, n_cores=2)
+    corr = FWECorrector(method="montecarlo", n_iters=n_iters, n_cores=2)
 
-    assert corr.parameters["n_iters"] == 10
+    assert corr.parameters["n_iters"] == n_iters
     assert corr.parameters["n_cores"] == 2
+
+
+@pytest.mark.parametrize("n_iters", [0, -1, 1.5, True, np.bool_(True), "10"])
+def test_FWECorrector_montecarlo_rejects_invalid_n_iters(n_iters):
+    """FWECorrector(montecarlo) should require a positive integer iteration count."""
+    with pytest.raises(ValueError, match="n_iters must be a positive integer"):
+        FWECorrector(method="montecarlo", n_iters=n_iters)
 
 
 class RecordingEstimator(DummyEstimator):
