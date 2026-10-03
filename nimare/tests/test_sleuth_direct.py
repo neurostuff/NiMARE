@@ -83,3 +83,12 @@ def test_direct_sleuth_preserves_invalid_input_errors(tmp_path, text, as_studyse
     with pytest.raises(type(legacy_error.value)) as direct_error:
         convert(str(path))
     assert str(direct_error.value) == str(legacy_error.value)
+
+
+def test_direct_sleuth_omits_missing_coordinates(tmp_path):
+    """Match the legacy treatment of missing coordinate values."""
+    path = tmp_path / "missing.txt"
+    path.write_text("//Reference=MNI\n//Study: task\n//Subjects=12\nnan 2 3\n4 5 6\n")
+    legacy = io.convert_sleuth_to_dataset(str(path), target=None)
+    expected = io.convert_dataset_to_nimads_dict(legacy, studyset_id=None)
+    assert io.convert_sleuth_to_nimads_dict(path) == expected

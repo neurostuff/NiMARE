@@ -1475,6 +1475,8 @@ def _sleuth_to_nimads(text_file, target, studyset_id, studyset_name):
         for contrast_id, contrast in sorted(study["contrasts"].items()):
             points = []
             for row in grouped[(study_id, contrast_id)].itertuples(index=False):
+                if pd.isna(row.x) or pd.isna(row.y) or pd.isna(row.z):
+                    continue
                 space = row.space
                 if "mni" in space.lower() or "ale" in space.lower():
                     space = "MNI"
