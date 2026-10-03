@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import re
-import warnings
 from collections import Counter, defaultdict
 from functools import lru_cache
 from itertools import groupby
@@ -20,7 +19,7 @@ from scipy import sparse
 from nimare.dataset import Dataset
 from nimare.exceptions import InvalidStudysetError
 from nimare.extract.utils import _get_dataset_dir
-from nimare.utils import load_nimads, mni2tal, tal2mni
+from nimare.utils import _dict_to_coordinates, load_nimads, mni2tal, tal2mni
 
 LGR = logging.getLogger(__name__)
 
@@ -1451,12 +1450,61 @@ def convert_sleuth_to_studyset(text_file, target="ale_2mm"):
     :obj:`~nimare.nimads.Studyset`
         Studyset object containing experiment information from ``text_file``.
     """
-    from nimare.dataset import _quiet_dataset_deprecation
     from nimare.nimads import Studyset
 
-    with _quiet_dataset_deprecation():
-        dataset = convert_sleuth_to_dataset(text_file, target=target)
-    return Studyset.from_dataset(dataset)
+    payload = _sleuth_to_nimads(text_file, target, "nimads_from_dataset", "")
+    return Studyset(payload, target=target)
+
+
+def _sleuth_to_nimads(text_file, target, studyset_id, studyset_name):
+    """Build a NIMADS payload while retaining the existing Sleuth coordinate rules."""
+    if not isinstance(text_file, (str, list)):
+        raise ValueError(f"Unsupported type for parameter 'text_file': {type(text_file)}")
+    records = convert_sleuth_to_dict(text_file)
+    coordinates = _dict_to_coordinates(records, space=target)
+    grouped = {
+        (study, contrast): group
+        for (study, contrast), group in coordinates.groupby(
+            ["study_id", "contrast_id"], sort=False
+        )
+    }
+    studies = []
+    for study_id in sorted(records, key=lambda value: f"{value}-"):
+        study = records[study_id]
+        analyses = []
+        for contrast_id, contrast in sorted(study["contrasts"].items()):
+            points = []
+            for row in grouped[(study_id, contrast_id)].itertuples(index=False):
+                space = row.space
+                if "mni" in space.lower() or "ale" in space.lower():
+                    space = "MNI"
+                elif "tal" in space.lower():
+                    space = "TAL"
+                points.append(
+                    {"space": space, "coordinates": [float(row.x), float(row.y), float(row.z)]}
+                )
+            analyses.append(
+                {
+                    "id": contrast_id,
+                    "name": contrast_id,
+                    "conditions": [{"name": "default", "description": ""}],
+                    "weights": [1.0],
+                    "images": [],
+                    "points": points,
+                    "metadata": contrast["metadata"],
+                }
+            )
+        studies.append(
+            {
+                "id": study_id,
+                "name": study_id,
+                "authors": "",
+                "publication": "",
+                "metadata": {},
+                "analyses": analyses,
+            }
+        )
+    return {"id": studyset_id, "name": studyset_name, "studies": studies}
 
 
 def _is_missing(value: Any) -> bool:
@@ -1867,7 +1915,7 @@ def convert_sleuth_to_nimads_dict(
     text_file : :obj:`str`, :obj:`pathlib.Path`, or sequence of such
         Path(s) to Sleuth text file(s).
     target : :obj:`str`, optional
-        Target space for Dataset loader. If None (default), uses the space
+        Target coordinate space. If None (default), uses the space
         specified in the Sleuth file's //Reference= tag without conversion.
         Accepts common dataset targets (e.g., "ale_2mm", "mni152_2mm") or
         user-friendly strings like "MNI", "TAL", or variants such as
@@ -1910,16 +1958,7 @@ def convert_sleuth_to_nimads_dict(
     else:
         ds_target = None
 
-    from nimare.dataset import _quiet_dataset_deprecation
-
-    # The Dataset is only an intermediate: the caller asked for a Studyset, which sets
-    # its own target and masker, so warnings about the Dataset point at nothing they made.
-    with _quiet_dataset_deprecation(), warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message="No mask or target space specified")
-        dset = convert_sleuth_to_dataset(text_file, target=ds_target)
-    return convert_dataset_to_nimads_dict(
-        dset, studyset_id=studyset_id, studyset_name=studyset_name
-    )
+    return _sleuth_to_nimads(text_file, ds_target, studyset_id, studyset_name)
 
 
 def convert_neurovault_to_dataset(
