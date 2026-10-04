@@ -913,7 +913,9 @@ class Jackknife(Diagnostics):
 
         # Collect the target values (e.g., ALE values) from the N-1 meta-analysis
         temp_stat_vals = temp_result.get_map(target_value_map, return_type="array")
-
+        # Guard against non-finite values (NaNs or infinities)
+        if not np.all(np.isfinite(temp_stat_vals)):
+            temp_stat_vals = np.nan_to_num(temp_stat_vals, nan=0.0, posinf=0.0, neginf=0.0)
         # Voxelwise proportional reduction of each statistic after removal of the experiment
         with np.errstate(divide="ignore", invalid="ignore"):
             prop_values = np.true_divide(temp_stat_vals, stat_values)
