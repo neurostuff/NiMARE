@@ -2,7 +2,31 @@
 
 All notable changes to NiMARE releases are documented in this page.
 
-## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.22.0...HEAD)
+## [Unreleased](https://github.com/neurostuff/NiMARE/compare/0.22.1...HEAD)
+
+## [0.22.1](https://github.com/neurostuff/NiMARE/compare/0.22.0...0.22.1) - 2026-10-04
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+This is changing how studysets output ids when searching by metadata/annotations, before it was just the analysis id, but in order to properly differentiate (outside of the neurostore mechanism), study AND analysis ids are necessary.
+A few more bug fixes around decoders and for transforming results back to brain maps from the new machine learning module.
+
+### What's Changed
+
+#### 🛠 Breaking Changes
+
+* [FIX] Key get_analyses_by_metadata/annotations by full analysis id by @jdkent in https://github.com/neurostuff/NiMARE/pull/1168
+
+#### 🐛 Bug Fixes
+
+* [FIX] Accept path-like Sleuth files in convert_sleuth_to_nimads_dict by @jdkent in https://github.com/neurostuff/NiMARE/pull/1171
+* [FIX] Make download_cognitive_atlas work under pandas 3 by @jdkent in https://github.com/neurostuff/NiMARE/pull/1167
+* [FIX] Stop spurious 'Citation  not found' warnings in methods descriptions by @jdkent in https://github.com/neurostuff/NiMARE/pull/1170
+* [FIX] Don't warn about the internal Dataset in Studyset.from_sleuth by @jdkent in https://github.com/neurostuff/NiMARE/pull/1169
+* [FIX] Stop CorrelationDecoder.transform from deep-copying the fitted decoder by @jdkent in https://github.com/neurostuff/NiMARE/pull/1166
+* [FIX] Accept decoder features with or without the feature_group prefix by @jdkent in https://github.com/neurostuff/NiMARE/pull/1165
+* [FIX] Read weights back by the transpose in coefficient_image; add per-voxel atlas weights and Haufe patterns by @jdkent in https://github.com/neurostuff/NiMARE/pull/1164
+
+**Full Changelog**: https://github.com/neurostuff/NiMARE/compare/0.22.0...0.22.1
 
 ## [0.22.0](https://github.com/neurostuff/NiMARE/compare/0.21.0...0.22.0) - 2026-09-30
 
@@ -69,6 +93,7 @@ The third theme is machine learning, where Google Summer of Code student @lyralu
 
 ```
 warnings.filterwarnings("ignore", message=".*nimare.dataset.Dataset is deprecated")
+
 
 
 ```
