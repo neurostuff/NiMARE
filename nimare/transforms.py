@@ -276,6 +276,8 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
         img = resolve_transforms(target, available_data, new_masker)
         if img is not None:
             if overwrite or not op.isfile(new_file):
+                # The mask header may store integers, unlike the derived statistics.
+                img.set_data_dtype(np.asanyarray(img.dataobj).dtype)
                 img.to_filename(new_file)
             else:
                 LGR.debug("Image already exists. Not overwriting.")
