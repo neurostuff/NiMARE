@@ -635,18 +635,18 @@ def test_jackknife_near_zero_denominator_guardrail():
     """Test that Jackknife sensitivity analysis handles near-zero stat values gracefully
     using machine epsilon, preventing infinite or NaN proportional reductions.
     """
-    from nimare.diagnostics import Jackknife, DEFAULT_FLOAT_DTYPE
+    from nimare.diagnostics import DEFAULT_FLOAT_DTYPE
     import numpy as np
 
     eps = np.finfo(DEFAULT_FLOAT_DTYPE).eps
-    stat_values = np.array([0.0, eps / 2, 1.0, 5.0], dtype=DEFAULT_FLOAT_DTYPE)
+    stat_vals = np.array([0.0, eps / 2, 1.0, 5.0], dtype=DEFAULT_FLOAT_DTYPE)
     temp_stat_vals = np.array([1.0, 1.0, 1.0, 1.0], dtype=DEFAULT_FLOAT_DTYPE)
 
     with np.errstate(divide="ignore", invalid="ignore"):
         safe_stat_values = np.where(
-            np.abs(stat_values) < eps,
-            np.sign(stat_values) * eps + (stat_values == 0) * eps,
-            stat_values,
+            np.abs(stat_vals) < eps,
+            np.sign(stat_vals) * eps + (stat_vals == 0) * eps,
+            stat_vals,
         )
         prop_values = np.true_divide(temp_stat_vals, safe_stat_values)
         prop_values = np.nan_to_num(prop_values, nan=0.0, posinf=0.0, neginf=0.0)
@@ -661,14 +661,65 @@ def test_jackknife_explicit_non_finite_guardrail():
     from nimare.diagnostics import DEFAULT_FLOAT_DTYPE
     import numpy as np
 
-    stat_values = np.array([np.nan, np.inf, -np.inf, 2.0], dtype=DEFAULT_FLOAT_DTYPE)
+    stat_vals = np.array([np.nan, np.inf, -np.inf, 2.0], dtype=DEFAULT_FLOAT_DTYPE)
     temp_stat_vals = np.array([1.0, 1.0, 1.0, 1.0], dtype=DEFAULT_FLOAT_DTYPE)
 
     with np.errstate(divide="ignore", invalid="ignore"):
-        prop_values = np.true_divide(temp_stat_vals, stat_values)
+        prop_values = np.true_divide(temp_stat_vals, stat_vals)
         prop_values = np.nan_to_num(prop_values, nan=0.0, posinf=0.0, neginf=0.0)
 
     assert np.all(np.isfinite(prop_values))
     assert prop_values[0] == 0.0
     assert prop_values[1] == 0.0
     assert prop_values[2] == 0.0
+
+
+def test_jackknife_denominator_unstable_values():
+    """Test specifically that unstable, extremely small finite values in the
+    denominator (stat_vals) are correctly handled via machine epsilon.
+    """
+    from nimare.diagnostics import DEFAULT_FLOAT_DTYPE
+    import numpy as np
+
+    eps = np.finfo(DEFAULT_FLOAT_DTYPE).eps
+    stat_vals = np.array([eps / 10, eps * 0.5, 0.0, 10.0], dtype=DEFAULT_FLOAT_DTYPE)
+    temp_stat_vals = np.array([1.0, 1.0, 1.0, 1.0], dtype=DEFAULT_FLOAT_DTYPE)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        safe_stat_values = np.where(
+            np.abs(stat_vals) < eps,
+            np.sign(stat_vals) * eps + (stat_vals == 0) * eps,
+            stat_vals,
+        )
+        prop_values = np.true_divide(temp_stat_vals, safe_stat_values)
+        prop_values = np.nan_to_num(prop_values, nan=0.0, posinf=0.0, neginf=0.0)
+
+    assert np.all(np.isfinite(prop_values))
+
+def test_jackknife_guardrail_extreme_limits():
+    """Test the absolute numerical limits of the Jackknife denominator guardrail,
+    including subnormal numbers, maximum float limits, and potential overflow scenarios.
+    """
+    from nimare.diagnostics import DEFAULT_FLOAT_DTYPE
+    import numpy as np
+
+    eps = np.finfo(DEFAULT_FLOAT_DTYPE).eps
+    dtype_max = np.finfo(DEFAULT_FLOAT_DTYPE).max
+    dtype_tiny = np.finfo(DEFAULT_FLOAT_DTYPE).tiny
+
+    # Simulate extreme boundaries: tiny/subnormal numbers, max float limits, and zero
+    stat_vals = np.array([dtype_tiny / 10, dtype_max, 0.0, -dtype_max], dtype=DEFAULT_FLOAT_DTYPE)
+    temp_stat_vals = np.array([dtype_max, 1.0, 1.0, 1.0], dtype=DEFAULT_FLOAT_DTYPE)
+
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore", under="ignore"):
+        safe_stat_values = np.where(
+            np.abs(stat_vals) < eps,
+            np.sign(stat_vals) * eps + (stat_vals == 0) * eps,
+            stat_vals,
+        )
+        prop_values = np.true_divide(temp_stat_vals, safe_stat_values)
+        prop_values = np.nan_to_num(prop_values, nan=0.0, posinf=0.0, neginf=0.0)
+
+    # Assert that regardless of extreme hardware limits, no non-finite values escape
+    assert np.all(np.isfinite(prop_values))
+
