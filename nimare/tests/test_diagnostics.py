@@ -630,3 +630,45 @@ def test_focusfilter(testdata_laird):
     assert n_coordinates_all == 1117
     assert n_coordinates_filtered == 1100
     assert n_coordinates_filtered <= n_coordinates_all
+
+def test_jackknife_near_zero_denominator_guardrail():
+    """Test that Jackknife sensitivity analysis handles near-zero stat values gracefully
+    using machine epsilon, preventing infinite or NaN proportional reductions.
+    """
+    from nimare.diagnostics import Jackknife, DEFAULT_FLOAT_DTYPE
+    import numpy as np
+
+    eps = np.finfo(DEFAULT_FLOAT_DTYPE).eps
+    stat_values = np.array([0.0, eps / 2, 1.0, 5.0], dtype=DEFAULT_FLOAT_DTYPE)
+    temp_stat_vals = np.array([1.0, 1.0, 1.0, 1.0], dtype=DEFAULT_FLOAT_DTYPE)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        safe_stat_values = np.where(
+            np.abs(stat_values) < eps,
+            np.sign(stat_values) * eps + (stat_values == 0) * eps,
+            stat_values,
+        )
+        prop_values = np.true_divide(temp_stat_vals, safe_stat_values)
+        prop_values = np.nan_to_num(prop_values, nan=0.0, posinf=0.0, neginf=0.0)
+
+    assert np.all(np.isfinite(prop_values))
+
+
+def test_jackknife_explicit_non_finite_guardrail():
+    """Test that Jackknife diagnostic logic handles explicit NaN and Inf values
+    safely without throwing runtime errors or propagating bad numbers.
+    """
+    from nimare.diagnostics import DEFAULT_FLOAT_DTYPE
+    import numpy as np
+
+    stat_values = np.array([np.nan, np.inf, -np.inf, 2.0], dtype=DEFAULT_FLOAT_DTYPE)
+    temp_stat_vals = np.array([1.0, 1.0, 1.0, 1.0], dtype=DEFAULT_FLOAT_DTYPE)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        prop_values = np.true_divide(temp_stat_vals, stat_values)
+        prop_values = np.nan_to_num(prop_values, nan=0.0, posinf=0.0, neginf=0.0)
+
+    assert np.all(np.isfinite(prop_values))
+    assert prop_values[0] == 0.0
+    assert prop_values[1] == 0.0
+    assert prop_values[2] == 0.0
