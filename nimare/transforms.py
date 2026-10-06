@@ -124,6 +124,8 @@ class ImageTransformer(NiMAREBase):
         ``'g'`` and ``'g_var'`` give a standardized effect size and its variance, which
         unlike :term:`beta` and :term:`varcope` are comparable across studies whose
         pipelines used different units.
+        When requested consecutively, their shared calculation is reused within
+        each analysis. Intermediate arrays are not retained between analyses or calls.
     overwrite : :obj:`bool`, optional
         Whether to overwrite existing files or not. Default is False.
 
@@ -155,16 +157,14 @@ class ImageTransformer(NiMAREBase):
         """
         dataset = normalize_collection(dataset)
 
-        temp_images = dataset.images
-        for target_type in self.target:
-            temp_images = transform_images(
-                temp_images,
-                target=target_type,
-                masker=dataset.masker,
-                metadata_df=dataset.metadata,
-                out_dir=dataset.basepath,
-                overwrite=self.overwrite,
-            )
+        temp_images = _transform_images(
+            dataset.images,
+            targets=self.target,
+            masker=dataset.masker,
+            metadata_df=dataset.metadata,
+            out_dir=dataset.basepath,
+            overwrite=self.overwrite,
+        )
 
         # Append the derived maps rather than replacing an images table. A
         # studyset holds every image an analysis has, so a generated map sits
@@ -230,13 +230,21 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
     images_df : :class:`pandas.DataFrame`
         DataFrame with paths to new images added.
     """
-    new_images_df = images_df.copy()  # Work on a copy of the images_df
+    return _transform_images(images_df, [target], masker, metadata_df, out_dir, overwrite)
+
+
+def _transform_images(images_df, targets, masker, metadata_df=None, out_dir=None, overwrite=False):
+    """Generate targets in order, retaining paired results for only one analysis."""
+    new_images_df = images_df.copy()
+    if not targets:
+        return new_images_df
 
     valid_targets = {"t", "z", "p", "beta", "varcope", "d", "g", "g_var"}
-    if target not in valid_targets:
-        raise ValueError(
-            f"Target type {target} not supported. Must be one of: {', '.join(valid_targets)}"
-        )
+    for target in targets:
+        if target not in valid_targets:
+            raise ValueError(
+                f"Target type {target} not supported. Must be one of: {', '.join(valid_targets)}"
+            )
 
     mask_img = masker.mask_img
     new_mask = np.ones(mask_img.shape, int)
@@ -244,49 +252,49 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
     new_masker = get_masker(new_mask)
     res = masker.mask_img.header.get_zooms()
     res = "x".join([str(r) for r in res])
-    if target not in images_df.columns:
-        target_ids = images_df["id"].values
-    else:
-        target_ids = images_df.loc[images_df[target].isnull(), "id"]
 
-    for id_ in target_ids:
-        row = images_df.loc[images_df["id"] == id_].iloc[0]
-
-        # Determine output filename, if file can be generated
-        if out_dir is None:
-            options = [r for r in row.values if isinstance(r, str) and op.isfile(r)]
-            if not options:
-                LGR.warning(f"No existing image files for {id_}, skipping {target} transform.")
+    for id_ in images_df["id"].values:
+        effect_cache = {}
+        for target in targets:
+            # Other targets can change the source map used by the next conversion.
+            if target not in ("g", "g_var"):
+                effect_cache.clear()
+            row = new_images_df.loc[new_images_df["id"] == id_].iloc[0]
+            if target in row and pd.notnull(row[target]):
                 continue
-            id_out_dir = op.dirname(options[0])
-        else:
-            id_out_dir = out_dir
-        new_file = op.join(id_out_dir, f"{id_}_{res}_{target}.nii.gz")
 
-        # Grab columns with actual values
-        available_data = row[~row.isnull()].to_dict()
-        if metadata_df is not None:
-            metadata_row = metadata_df.loc[metadata_df["id"] == id_].iloc[0]
-            metadata = metadata_row[~metadata_row.isnull()].to_dict()
-            for k, v in metadata.items():
-                if k not in available_data.keys():
-                    available_data[k] = v
-
-        # Get converted data
-        img = resolve_transforms(target, available_data, new_masker)
-        if img is not None:
-            if overwrite or not op.isfile(new_file):
-                img.to_filename(new_file)
+            if out_dir is None:
+                options = [r for r in row.values if isinstance(r, str) and op.isfile(r)]
+                if not options:
+                    LGR.warning(f"No existing image files for {id_}, skipping {target} transform.")
+                    continue
+                id_out_dir = op.dirname(options[0])
             else:
-                LGR.debug("Image already exists. Not overwriting.")
+                id_out_dir = out_dir
+            new_file = op.join(id_out_dir, f"{id_}_{res}_{target}.nii.gz")
 
-            new_images_df.loc[new_images_df["id"] == id_, target] = new_file
-        else:
-            new_images_df.loc[new_images_df["id"] == id_, target] = None
+            available_data = row[~row.isnull()].to_dict()
+            if metadata_df is not None:
+                metadata_row = metadata_df.loc[metadata_df["id"] == id_].iloc[0]
+                metadata = metadata_row[~metadata_row.isnull()].to_dict()
+                for k, v in metadata.items():
+                    if k not in available_data:
+                        available_data[k] = v
+
+            img = _resolve_transforms(target, available_data, new_masker, effect_cache)
+            if img is not None:
+                if overwrite or not op.isfile(new_file):
+                    img.to_filename(new_file)
+                else:
+                    LGR.debug("Image already exists. Not overwriting.")
+                new_images_df.loc[new_images_df["id"] == id_, target] = new_file
+            else:
+                new_images_df.loc[new_images_df["id"] == id_, target] = None
 
     # Ensure the target column exists even when every study was skipped.
-    if target not in new_images_df.columns:
-        new_images_df[target] = None
+    for target in targets:
+        if target not in new_images_df.columns:
+            new_images_df[target] = None
 
     return new_images_df
 
@@ -333,6 +341,11 @@ def resolve_transforms(target, available_data, masker):
     performed anyway, and warns. A t map in the same analysis supplies the sign even when
     it lacks the sample size its magnitude would need.
     """
+    return _resolve_transforms(target, available_data, masker)
+
+
+def _resolve_transforms(target, available_data, masker, effect_cache=None):
+    """Resolve one target, optionally sharing paired effect sizes within an analysis."""
     if target in available_data.keys():
         LGR.warning(f"Target '{target}' already available.")
         return available_data[target]
@@ -383,12 +396,15 @@ def resolve_transforms(target, available_data, masker):
     elif target in ("d", "g", "g_var"):
         # All three start from t and the sample size. t itself resolves from z, so a
         # studyset holding only z maps can still reach a standardized effect size.
-        if "t" not in available_data.keys():
+        cached = effect_cache is not None and target in effect_cache
+        if "t" not in available_data.keys() and not cached:
             temp = resolve_transforms("t", available_data, masker)
             if temp is not None:
                 available_data["t"] = temp
 
-        if ("t" not in available_data.keys()) or ("sample_sizes" not in available_data.keys()):
+        if ("t" not in available_data.keys() and not cached) or (
+            "sample_sizes" not in available_data.keys()
+        ):
             return None
 
         sample_sizes = available_data["sample_sizes"]
@@ -402,11 +418,16 @@ def resolve_transforms(target, available_data, masker):
             )
         sample_size = sample_sizes_to_sample_size(sample_sizes)
 
+        if cached:
+            return masker.inverse_transform(effect_cache[target].squeeze())
+
         d = t_to_d(masker.transform(available_data["t"]), sample_size)
         if target == "d":
             values = d
         else:
             g, g_var = d_to_g(d, sample_size, return_variance=True)
+            if effect_cache is not None:
+                effect_cache.update(g=g, g_var=g_var)
             values = g if target == "g" else g_var
 
         return masker.inverse_transform(values.squeeze())

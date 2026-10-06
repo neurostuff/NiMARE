@@ -15,6 +15,139 @@ from nimare import transforms
 from nimare.utils import DEFAULT_FLOAT_DTYPE
 
 
+@pytest.mark.parametrize("targets", [["g", "g_var"], ["g_var", "g"]])
+@pytest.mark.parametrize("source_type", ["t", "z"])
+@pytest.mark.parametrize("as_studyset", [False, True])
+def test_ImageTransformer_reuses_paired_effect_sizes(
+    tmp_path, monkeypatch, targets, source_type, as_studyset
+):
+    """Compute paired maps once per analysis, without reusing another analysis's data."""
+    from unittest.mock import Mock
+
+    from nimare.dataset import Dataset
+    from nimare.nimads import Studyset
+
+    mask = nib.Nifti1Image(np.ones((2, 2, 2)), np.eye(4))
+    source = {}
+    expected = {}
+    for index, n in enumerate((25, 40)):
+        values = np.arange(8, dtype=float).reshape((2, 2, 2)) / 4 + index
+        path = tmp_path / f"input{index}.nii.gz"
+        nib.Nifti1Image(values, np.eye(4)).to_filename(path)
+        source[str(index)] = {
+            "contrasts": {
+                "a": {"images": {source_type: str(path)}, "metadata": {"sample_sizes": [n]}}
+            }
+        }
+        if source_type == "z":
+            values = transforms.z_to_t(values, n - 1)
+        expected[f"{index}-a"] = transforms.d_to_g(
+            transforms.t_to_d(values, n), n, return_variance=True
+        )
+    dataset = Dataset(source, mask=mask)
+    if as_studyset:
+        dataset = Studyset.from_dataset(dataset)
+    t_to_d = Mock(wraps=transforms.t_to_d)
+    direct_d_to_g = transforms.d_to_g
+    d_to_g = Mock(wraps=direct_d_to_g)
+    monkeypatch.setattr(transforms, "t_to_d", t_to_d)
+    monkeypatch.setattr(transforms, "d_to_g", d_to_g)
+
+    transformer = transforms.ImageTransformer(targets, overwrite=True)
+    result = transformer.transform(dataset)
+
+    assert t_to_d.call_count == 2
+    assert d_to_g.call_count == 2
+    for _, row in result.images.iterrows():
+        for target, values in zip(("g", "g_var"), expected[row["id"]]):
+            np.testing.assert_allclose(nib.load(row[target]).get_fdata(), values)
+    assert "g" not in dataset.images
+    assert "g_var" not in dataset.images
+
+    # Reusing the transformer must not reuse a previous call's cached values.
+    replacement = np.full((2, 2, 2), 2.0)
+    nib.Nifti1Image(replacement, np.eye(4)).to_filename(tmp_path / "input0.nii.gz")
+    result = transformer.transform(dataset)
+    assert t_to_d.call_count == 4
+    assert d_to_g.call_count == 4
+    if source_type == "z":
+        replacement = transforms.z_to_t(replacement, 24)
+    expected_g, expected_var = direct_d_to_g(replacement / 5, 25, return_variance=True)
+    row = result.images.loc[result.images["id"] == "0-a"].iloc[0]
+    np.testing.assert_allclose(nib.load(row["g"]).get_fdata(), expected_g)
+    np.testing.assert_allclose(nib.load(row["g_var"]).get_fdata(), expected_var)
+
+
+@pytest.mark.parametrize("overwrite", [False, True])
+@pytest.mark.parametrize("existing_target", ["g", "g_var"])
+def test_transform_paired_images_preserves_existing_files(tmp_path, overwrite, existing_target):
+    """Honor existing output files without using them as the paired result."""
+    from nimare.utils import get_masker
+
+    values = np.full((2, 2, 2), 2.0)
+    mask = nib.Nifti1Image(np.ones((2, 2, 2)), np.eye(4))
+    path = tmp_path / "input.nii.gz"
+    nib.Nifti1Image(values, np.eye(4)).to_filename(path)
+    existing = tmp_path / f"a_1.0x1.0x1.0_{existing_target}.nii.gz"
+    nib.Nifti1Image(np.full((2, 2, 2), 99.0), np.eye(4)).to_filename(existing)
+    result = transforms._transform_images(
+        pd.DataFrame({"id": ["a"], "t": [str(path)]}),
+        ["g", "g_var"],
+        get_masker(mask),
+        pd.DataFrame({"id": ["a"], "sample_sizes": [[25]]}),
+        out_dir=str(tmp_path),
+        overwrite=overwrite,
+    )
+    g, variance = transforms.d_to_g(values / 5, 25, return_variance=True)
+    for target, expected in (("g", g), ("g_var", variance)):
+        if target == existing_target and not overwrite:
+            expected = np.full((2, 2, 2), 99.0)
+        np.testing.assert_allclose(nib.load(result.loc[0, target]).get_fdata(), expected)
+
+
+def test_transform_paired_images_retains_group_warnings(tmp_path, caplog):
+    """Retain each target's warning even when its calculation is reused."""
+    from nimare.utils import get_masker
+
+    image = nib.Nifti1Image(np.ones((2, 2, 2)), np.eye(4))
+    path = tmp_path / "t.nii.gz"
+    image.to_filename(path)
+    with caplog.at_level(logging.WARNING, logger="nimare.transforms"):
+        transforms._transform_images(
+            pd.DataFrame({"id": ["a"], "t": [str(path)]}),
+            ["g", "g_var"],
+            get_masker(image),
+            pd.DataFrame({"id": ["a"], "sample_sizes": [[20, 20]]}),
+            out_dir=str(tmp_path),
+        )
+    assert "Converting to 'g' from 2 group sample sizes" in caplog.text
+    assert "Converting to 'g_var' from 2 group sample sizes" in caplog.text
+
+
+def test_transform_paired_images_preserves_supplied_target(tmp_path):
+    """A supplied target is retained and does not substitute for the source t map."""
+    from nimare.utils import get_masker
+
+    image = nib.Nifti1Image(np.ones((2, 2, 2)), np.eye(4))
+    path = tmp_path / "t.nii.gz"
+    image.to_filename(path)
+    supplied = tmp_path / "supplied_g.nii.gz"
+    nib.Nifti1Image(np.full((2, 2, 2), 99.0), np.eye(4)).to_filename(supplied)
+    images = pd.DataFrame({"id": ["a"], "t": [str(path)], "g": [str(supplied)]})
+    result = transforms._transform_images(
+        images,
+        ["g", "g_var"],
+        get_masker(image),
+        pd.DataFrame({"id": ["a"], "sample_sizes": [[25]]}),
+        out_dir=str(tmp_path),
+        overwrite=True,
+    )
+    assert result.loc[0, "g"] == str(supplied)
+    np.testing.assert_array_equal(nib.load(supplied).get_fdata(), 99.0)
+    _, expected = transforms.d_to_g(np.ones((2, 2, 2)) / 5, 25, return_variance=True)
+    np.testing.assert_allclose(nib.load(result.loc[0, "g_var"]).get_fdata(), expected)
+
+
 def test_ImageTransformer(testdata_ibma):
     """Smoke test on transforms.ImageTransformer."""
     dset = testdata_ibma
