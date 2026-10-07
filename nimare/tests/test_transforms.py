@@ -15,7 +15,7 @@ from nimare import transforms
 from nimare.utils import DEFAULT_FLOAT_DTYPE
 
 
-@pytest.mark.parametrize("targets", [["g", "g_var"], ["g_var", "g"]])
+@pytest.mark.parametrize("targets", [["g", "g_var"], ["g_var", "g"], np.array(["g", "g_var"])])
 @pytest.mark.parametrize("source_type", ["t", "z"])
 @pytest.mark.parametrize("as_studyset", [False, True])
 def test_ImageTransformer_reuses_paired_effect_sizes(
@@ -41,6 +41,9 @@ def test_ImageTransformer_reuses_paired_effect_sizes(
         }
         if source_type == "z":
             values = transforms.z_to_t(values, n - 1)
+        # The image resolver reads t maps through the default float32 masker.
+        values = values.astype(DEFAULT_FLOAT_DTYPE)
+        n = transforms.sample_sizes_to_sample_size([n])
         expected[f"{index}-a"] = transforms.d_to_g(
             transforms.t_to_d(values, n), n, return_variance=True
         )
@@ -72,7 +75,10 @@ def test_ImageTransformer_reuses_paired_effect_sizes(
     assert d_to_g.call_count == 4
     if source_type == "z":
         replacement = transforms.z_to_t(replacement, 24)
-    expected_g, expected_var = direct_d_to_g(replacement / 5, 25, return_variance=True)
+    n = transforms.sample_sizes_to_sample_size([25])
+    expected_g, expected_var = direct_d_to_g(
+        transforms.t_to_d(replacement.astype(DEFAULT_FLOAT_DTYPE), n), n, return_variance=True
+    )
     row = result.images.loc[result.images["id"] == "0-a"].iloc[0]
     np.testing.assert_allclose(nib.load(row["g"]).get_fdata(), expected_g)
     np.testing.assert_allclose(nib.load(row["g_var"]).get_fdata(), expected_var)
@@ -98,7 +104,10 @@ def test_transform_paired_images_preserves_existing_files(tmp_path, overwrite, e
         out_dir=str(tmp_path),
         overwrite=overwrite,
     )
-    g, variance = transforms.d_to_g(values / 5, 25, return_variance=True)
+    n = transforms.sample_sizes_to_sample_size([25])
+    g, variance = transforms.d_to_g(
+        transforms.t_to_d(values.astype(DEFAULT_FLOAT_DTYPE), n), n, return_variance=True
+    )
     for target, expected in (("g", g), ("g_var", variance)):
         if target == existing_target and not overwrite:
             expected = np.full((2, 2, 2), 99.0)
@@ -144,8 +153,23 @@ def test_transform_paired_images_preserves_supplied_target(tmp_path):
     )
     assert result.loc[0, "g"] == str(supplied)
     np.testing.assert_array_equal(nib.load(supplied).get_fdata(), 99.0)
-    _, expected = transforms.d_to_g(np.ones((2, 2, 2)) / 5, 25, return_variance=True)
+    n = transforms.sample_sizes_to_sample_size([25])
+    _, expected = transforms.d_to_g(
+        transforms.t_to_d(np.ones((2, 2, 2), dtype=DEFAULT_FLOAT_DTYPE), n),
+        n,
+        return_variance=True,
+    )
     np.testing.assert_allclose(nib.load(result.loc[0, "g_var"]).get_fdata(), expected)
+
+
+@pytest.mark.parametrize("targets", [[], (), np.array([], dtype=str)])
+def test_ImageTransformer_empty_targets(testdata_ibma, targets):
+    """Empty target sequences leave the image table unchanged."""
+    from nimare.nimads import Studyset
+
+    studyset = Studyset.from_dataset(testdata_ibma)
+    result = transforms.ImageTransformer(targets).transform(studyset)
+    pd.testing.assert_frame_equal(result.images, studyset.images)
 
 
 def test_ImageTransformer(testdata_ibma):

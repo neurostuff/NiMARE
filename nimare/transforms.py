@@ -236,7 +236,7 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
 def _transform_images(images_df, targets, masker, metadata_df=None, out_dir=None, overwrite=False):
     """Generate targets in order, retaining paired results for only one analysis."""
     new_images_df = images_df.copy()
-    if not targets:
+    if len(targets) == 0:
         return new_images_df
 
     valid_targets = {"t", "z", "p", "beta", "varcope", "d", "g", "g_var"}
