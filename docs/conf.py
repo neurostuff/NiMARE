@@ -17,6 +17,7 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 import os
+import shutil
 import sys
 from datetime import datetime
 from distutils.version import LooseVersion
@@ -61,6 +62,11 @@ extensions = [
     # files, which collides with recommonmark above.
     "m2r2.mdinclude",
 ]
+
+# Run the gallery examples in the browser with JupyterLite. Building the kernel
+# environment needs micromamba, so local builds without it skip this.
+if shutil.which("micromamba") or os.environ.get("READTHEDOCS"):
+    extensions += ["jupyterlite_sphinx", "nimare_lite"]  # after sphinx_gallery
 
 if LooseVersion(sphinx.__version__) < LooseVersion("1.4"):
     extensions.append("sphinx.ext.pngmath")
@@ -205,7 +211,13 @@ sphinx_gallery_conf = {
     "within_subsection_order": FileNameSortKey,
     "default_thumb_file": "_static/nimare_favicon.png",
     "remove_config_comments": True,
+    "jupyterlite": {"notebook_modification_function": "nimare_lite.modify_notebook"},
 }
+
+# -----------------------------------------------------------------------------
+# JupyterLite (see sphinxext/nimare_lite.py)
+# -----------------------------------------------------------------------------
+jupyterlite_dir = "jupyterlite"
 
 # Generate the plots for the gallery
 plot_gallery = True
