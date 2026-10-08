@@ -68,7 +68,9 @@ class CoordinateBlock:
 
     def group_sizes(self):
         """Return the number of foci in each group."""
-        return np.diff(self.offsets)
+        # intp, not the offsets' int64: np.repeat rejects int64 counts where intp
+        # is 32-bit (WebAssembly).
+        return np.diff(self.offsets).astype(np.intp, copy=False)
 
     def group_of_point(self):
         """Return the group index of every focus."""

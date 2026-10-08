@@ -109,7 +109,7 @@ def point_parents(store):
     """Return the point -> analysis column, stored rather than re-derived."""
     if store.point_analysis is not None:
         return store.point_analysis
-    counts = np.diff(store.point_offsets)
+    counts = np.diff(store.point_offsets).astype(np.intp, copy=False)
     return np.repeat(np.arange(store.n_analyses, dtype=np.int32), counts)
 
 
