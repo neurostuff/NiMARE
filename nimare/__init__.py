@@ -4,10 +4,18 @@ import logging
 import warnings
 
 import lazy_loader as lazy
+import numpy as np
 
 from ._version import get_versions
 
 logging.basicConfig(level=logging.INFO)
+
+# Ask for float64's machine limits before anything can ask for long double's. NumPy caches
+# finfo by dtype, and where long double is double-sized (Windows) the two dtypes compare
+# equal, so whichever is requested first answers for both. nibabel requests long double on
+# import; after that, np.finfo(float).eps is a long double scalar, and statsmodels' GLM,
+# which reads it at import, promotes its arrays to a type numpy.linalg rejects.
+np.finfo(np.float64)
 
 # Subpackages are imported on first attribute access, so ``import nimare`` stays cheap
 # and ``from nimare.meta.cbma import ALE`` loads only what ALE needs. Set the
