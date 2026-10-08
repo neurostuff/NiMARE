@@ -14,7 +14,8 @@ logging.basicConfig(level=logging.INFO)
 # finfo by dtype, and where long double is double-sized (Windows) the two dtypes compare
 # equal, so whichever is requested first answers for both. nibabel requests long double on
 # import; after that, np.finfo(float).eps is a long double scalar, and statsmodels' GLM,
-# which reads it at import, promotes its arrays to a type numpy.linalg rejects.
+# which reads it at import, promotes its arrays to a type numpy.linalg rejects
+# (numpy/numpy#32947, since NumPy 2.4).
 np.finfo(np.float64)
 
 # Subpackages are imported on first attribute access, so ``import nimare`` stays cheap
