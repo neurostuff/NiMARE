@@ -280,7 +280,7 @@ class View:
             )
             if self.point_mask is not None:
                 keep = self.point_mask[p_idx]
-                counts = np.diff(offsets).astype(np.intp, copy=False)
+                counts = layout.sizes_from_offsets(offsets)
                 groups = np.repeat(np.arange(len(counts)), counts)
                 p_idx = p_idx[keep]
                 offsets = np.concatenate(

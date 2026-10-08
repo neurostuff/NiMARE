@@ -105,11 +105,20 @@ def offsets_from_parents(parents, n_parents):
     return np.concatenate(([0], np.cumsum(np.bincount(parents, minlength=n_parents))))
 
 
+def sizes_from_offsets(offsets):
+    """Per-group counts from CSR offsets, as intp so they can feed ``np.repeat``.
+
+    Offsets stay int64 (the store's schema); ``np.repeat`` rejects int64 counts where intp
+    is 32-bit (WebAssembly).
+    """
+    return np.diff(offsets).astype(np.intp, copy=False)
+
+
 def point_parents(store):
     """Return the point -> analysis column, stored rather than re-derived."""
     if store.point_analysis is not None:
         return store.point_analysis
-    counts = np.diff(store.point_offsets).astype(np.intp, copy=False)
+    counts = sizes_from_offsets(store.point_offsets)
     return np.repeat(np.arange(store.n_analyses, dtype=np.int32), counts)
 
 
