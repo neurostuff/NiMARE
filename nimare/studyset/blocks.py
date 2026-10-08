@@ -21,6 +21,7 @@ from typing import Optional
 import numpy as np
 
 from nimare.studyset.columns import LabelNamer
+from nimare.studyset.layout import sizes_from_offsets
 from nimare.studyset.store import derived
 
 __all__ = [
@@ -68,7 +69,7 @@ class CoordinateBlock:
 
     def group_sizes(self):
         """Return the number of foci in each group."""
-        return np.diff(self.offsets)
+        return sizes_from_offsets(self.offsets)
 
     def group_of_point(self):
         """Return the group index of every focus."""

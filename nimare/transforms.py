@@ -9,7 +9,6 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 from nilearn.reporting import get_clusters_table
-from pymare.stats import log_chi2_sf
 from scipy import special, stats
 
 from nimare.base import NiMAREBase
@@ -1314,6 +1313,9 @@ def chi2_to_nlogp(chi2_values, dof):
         # tail is the two-tailed normal tail at sqrt(x), i.e. erfc(sqrt(x / 2)). The cap is
         # against log(1), which rounding can reach at a statistic of essentially zero.
         return np.minimum(_log_erfc(np.sqrt(chi2_values / 2.0)), 0.0)
+
+    # Imported here: PyMARE loads SymPy, which coordinate-based estimators never need.
+    from pymare.stats import log_chi2_sf
 
     return log_chi2_sf(chi2_values, dof)
 

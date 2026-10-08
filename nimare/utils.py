@@ -22,11 +22,6 @@ from nilearn import datasets
 from nilearn.image import resample_to_img
 from nilearn.maskers import NiftiMasker
 
-try:
-    import torch  # type: ignore[import-not-found]
-except ImportError:
-    torch = None
-
 LGR = logging.getLogger(__name__)
 DEFAULT_FLOAT_DTYPE = np.float32
 _RESAMPLED_GM_PRIOR_CACHE = {}
@@ -306,7 +301,11 @@ def _check_random_state(random_state, stream=None):
 
 def seed_torch(seed, device="cpu"):
     """Seed torch RNGs when torch is available and a seed is provided."""
-    if seed is None or torch is None:
+    if seed is None:
+        return
+    try:
+        import torch  # type: ignore[import-not-found]
+    except ImportError:
         return
 
     torch.manual_seed(seed)
