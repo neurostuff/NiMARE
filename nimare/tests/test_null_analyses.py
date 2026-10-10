@@ -161,6 +161,20 @@ def test_MKDAChi2_accepts_a_group_of_only_null_analyses():
     assert result.maps["prob_desc-AgU"].max() == 1
 
 
+def test_MKDAChi2_rejects_two_groups_of_only_null_analyses():
+    """With no focus in either group there is nothing to compare, so the fit fails clearly."""
+    with pytest.raises(ValueError, match="Neither group has any coordinates"):
+        MKDAChi2().fit(_studyset("g1", [], n_null=3), _studyset("g2", [], n_null=2))
+
+
+def test_dropped_nulls_are_plain_str_and_reach_the_description():
+    """The ids are str, and the description (which is written to file) lists them."""
+    studyset = _studyset("g", [ORIGIN, ELSEWHERE], n_null=2)
+    result = ALE(null_method="approximate").fit(studyset)
+    assert all(type(i) is str for i in result.dropped_null_analyses)
+    assert "gnull0-a, gnull1-a" in result.description_
+
+
 def test_combine_analyses_keeps_a_null_only_when_every_analysis_was_null():
     """A study is null after merging only if each of its analyses was a declared null."""
     null = {"metadata": {OUTCOME_KEY: NULL_OUTCOME}, "points": []}

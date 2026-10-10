@@ -118,7 +118,8 @@ Every other estimator, :class:`~nimare.meta.cbmr.CBMR` included, leaves null ana
 before. The fit logs a warning with the number left out, and
 :attr:`MetaResult.dropped_null_analyses <nimare.results.MetaResult.dropped_null_analyses>`
 lists their ids. ALE, MKDADensity and KDA are unchanged by an empty modeled activation map, so
-for them nothing is lost. CBMR does not yet count a null as an experiment with zero foci.
+for them nothing is lost. ALESubtraction drops nulls, so it loses that information: its label
+permutation would otherwise pool them. CBMR does not yet count a null as an experiment with zero foci.
 
 .. _null methods:
 

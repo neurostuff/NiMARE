@@ -903,10 +903,12 @@ class Jackknife(Diagnostics):
         if self._is_pairwaise_estimator:
             if sign == POSTAIL_LBL:
                 temp_dset = estimator.dataset1.slice(other_ids)
-                temp_result = estimator.fit(temp_dset, estimator.dataset2)
+                other_dset = estimator.dataset2.slice(estimator.inputs_["id2"])
+                temp_result = estimator.fit(temp_dset, other_dset)
             else:
                 temp_dset = estimator.dataset2.slice(other_ids)
-                temp_result = estimator.fit(estimator.dataset1, temp_dset)
+                other_dset = estimator.dataset1.slice(estimator.inputs_["id1"])
+                temp_result = estimator.fit(other_dset, temp_dset)
         else:
             temp_dset = estimator.dataset.slice(other_ids)
             temp_result = estimator.fit(temp_dset)

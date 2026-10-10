@@ -428,6 +428,7 @@ class CBMAEstimator(Estimator):
         maps, tables, description = self._cache(self._fit, func_memory_level=1)(dataset)
         if not self.generate_description:
             description = ""
+        description = _null_drop_description(self, description)
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker
@@ -1420,6 +1421,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         maps, tables, description = self._cache(self._fit, func_memory_level=1)(dataset1, dataset2)
         if not self.generate_description:
             description = ""
+        description = _null_drop_description(self, description)
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker
@@ -1427,6 +1429,19 @@ class PairwiseCBMAEstimator(CBMAEstimator):
             masker = dataset1.masker
 
         return MetaResult(self, mask=masker, maps=maps, tables=tables, description=description)
+
+
+def _null_drop_description(estimator, description):
+    """Append the ids of dropped null analyses to a description."""
+    from nimare.results import _dropped_null_analyses
+
+    dropped = _dropped_null_analyses(estimator)
+    if not description or not dropped:
+        return description
+    return (
+        f"{description} {len(dropped)} analyses reported no significant foci and were left out "
+        f"of the model: {', '.join(dropped)}."
+    )
 
 
 def _approximate_z_from_ma(estimator, ma_maps, subset_study_ids=None, precomputed_null=None):

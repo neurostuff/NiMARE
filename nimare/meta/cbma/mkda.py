@@ -738,6 +738,11 @@ class MKDAChi2(PairwiseCBMAEstimator):
         return f", {n_null} of which reported no significant foci and were counted as such"
 
     def _fit(self, dataset1, dataset2):
+        if self.inputs_["coordinates1"].empty and self.inputs_["coordinates2"].empty:
+            raise ValueError(
+                "Neither group has any coordinates: every analysis in both groups is a null. "
+                "MKDAChi2 needs at least one analysis with foci."
+            )
         self.dataset1 = dataset1
         self.dataset2 = dataset2
         self.masker = self.masker or dataset1.masker

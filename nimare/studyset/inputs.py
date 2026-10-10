@@ -71,4 +71,4 @@ def _dropped_nulls(studyset, narrowed):
     """Return the ids of the declared null analyses that narrowing left out."""
     is_null = _req.null_analyses(studyset.store)[studyset.view.index]
     kept = set(narrowed.ids)
-    return [i for i, null in zip(studyset.ids, is_null) if null and i not in kept]
+    return [str(i) for i, null in zip(studyset.ids, is_null) if null and i not in kept]
