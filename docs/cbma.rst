@@ -88,6 +88,39 @@ raises; pass ``StudyWeights(on_missing="impute")`` to give it the mean weight in
 
 Example: :ref:`metas_mkda_weighting`
 
+.. _null analyses:
+
+Null analyses
+`````````````
+
+An analysis that was run and found nothing reports no coordinates, but it is still an
+experiment, and the file drawer of such experiments is a known bias in coordinate-based
+meta-analysis :footcite:p:`acar2018assessing,samartsidis2020estimating`. Declare one with no
+points and ``outcome`` set to ``"no_significant_effect"`` in its metadata:
+
+.. code-block:: python
+
+    {
+        "id": "a1",
+        "metadata": {"outcome": "no_significant_effect", "sample_sizes": [24]},
+        "points": [],
+    }
+
+Having no points is not enough by itself, because an analysis can also lack coordinates
+because it was reported only as an image or was never curated.
+
+:class:`~nimare.meta.cbma.mkda.MKDAChi2` counts declared null analyses. Each is an
+experiment that activates no voxel, so it enters the number of experiments in its group and
+the proportions computed from it, and it is shuffled with the others in the label-permutation
+FWE correction.
+
+Every other estimator, :class:`~nimare.meta.cbmr.CBMR` included, leaves null analyses out, as
+before. The fit logs a warning with the number left out, and
+:attr:`MetaResult.dropped_null_analyses <nimare.results.MetaResult.dropped_null_analyses>`
+lists their ids. ALE, MKDADensity and KDA are unchanged by an empty modeled activation map, so
+for them nothing is lost. ALESubtraction drops nulls, so it loses that information: its label
+permutation would otherwise pool them. CBMR does not yet count a null as an experiment with zero foci.
+
 .. _null methods:
 
 Null methods

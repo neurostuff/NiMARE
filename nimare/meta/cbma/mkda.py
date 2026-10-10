@@ -567,6 +567,11 @@ class MKDAChi2(PairwiseCBMAEstimator):
 
     The MKDA chi-square method was originally introduced in :footcite:t:`wager2007meta`.
 
+    .. versionchanged:: 0.23.0
+
+        - Count null analyses (no foci, ``outcome: "no_significant_effect"``) as experiments
+          that activate no voxel. See :ref:`null analyses`.
+
     .. versionchanged:: 0.22.0
 
         - New parameter: ``random_state``, which seeds the permutations used by the Monte
@@ -665,6 +670,10 @@ class MKDAChi2(PairwiseCBMAEstimator):
     .. footbibliography::
     """
 
+    # Null analyses are experiments that activate no voxel, so they belong in both groups'
+    # denominators.
+    _required_inputs = {"coordinates": ("coordinates", "with_nulls")}
+
     def __init__(
         self,
         kernel_transformer=MKDAKernel,
@@ -713,14 +722,27 @@ class MKDAChi2(PairwiseCBMAEstimator):
             "The first dataset was evaluated for uniformity of activation via a one-way "
             "chi-square test. "
             f"The first input dataset included {self.inputs_['coordinates1'].shape[0]} foci from "
-            f"{len(self.inputs_['id1'])} experiments. "
+            f"{len(self.inputs_['id1'])} experiments{self._null_text('1')}. "
             f"The second input dataset included {self.inputs_['coordinates2'].shape[0]} foci from "
-            f"{len(self.inputs_['id2'])} experiments."
+            f"{len(self.inputs_['id2'])} experiments{self._null_text('2')}."
         )
 
         return description
 
+    def _null_text(self, group):
+        """Describe the null analyses counted in one group, or nothing if there are none."""
+        n_with_foci = self.inputs_[f"coordinates{group}"]["id"].nunique()
+        n_null = len(self.inputs_[f"id{group}"]) - n_with_foci
+        if not n_null:
+            return ""
+        return f", {n_null} of which reported no significant foci and were counted as such"
+
     def _fit(self, dataset1, dataset2):
+        if self.inputs_["coordinates1"].empty and self.inputs_["coordinates2"].empty:
+            raise ValueError(
+                "Neither group has any coordinates: every analysis in both groups is a null. "
+                "MKDAChi2 needs at least one analysis with foci."
+            )
         self.dataset1 = dataset1
         self.dataset2 = dataset2
         self.masker = self.masker or dataset1.masker
@@ -1280,9 +1302,20 @@ class MKDAChi2(PairwiseCBMAEstimator):
             ma_maps2 = require_masked_csr(
                 self.kernel_transformer.transform(iter_df2, self.masker, return_type="sparse")
             )
-            n_selected = ma_maps1.shape[0]
-            n_unselected = ma_maps2.shape[0]
-            pooled_maps = sp_sparse.vstack([ma_maps1, ma_maps2], format="csr")
+            # The kernel returns a row only for analyses with foci; null analyses join the
+            # pool as empty rows, so that they are shuffled between the groups too.
+            n_selected = len(self.inputs_["id1"])
+            n_unselected = len(self.inputs_["id2"])
+            n_voxels = ma_maps1.shape[1]
+            pooled_maps = sp_sparse.vstack(
+                [
+                    ma_maps1,
+                    sp_sparse.csr_matrix((n_selected - ma_maps1.shape[0], n_voxels)),
+                    ma_maps2,
+                    sp_sparse.csr_matrix((n_unselected - ma_maps2.shape[0], n_voxels)),
+                ],
+                format="csr",
+            )
             del ma_maps1, ma_maps2
 
             iter_seeds = self._iteration_seeds(n_iters, stream="chi2_label_permutations")

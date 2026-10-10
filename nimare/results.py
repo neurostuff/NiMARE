@@ -226,6 +226,17 @@ class MetaResult(NiMAREBase):
         self.description_ = description
 
     @property
+    def dropped_null_analyses(self):
+        """:obj:`list` of :obj:`str` or None: Ids of the null analyses the estimator left out.
+
+        A null analysis has no foci and ``outcome: "no_significant_effect"`` in its metadata
+        (see :ref:`null analyses`). None if the estimator took no coordinates.
+
+        .. versionadded:: 0.23.0
+        """
+        return _dropped_null_analyses(self.estimator)
+
+    @property
     def description_(self):
         """:obj:`str`: A textual description of the method that generated the result."""
         return self.__description
@@ -399,3 +410,17 @@ class MetaResult(NiMAREBase):
             tables=copy.deepcopy(self.tables),
             metadata={},
         )
+
+
+def _dropped_null_analyses(estimator):
+    """Return the ids of the null analyses the estimator left out, or None if it took no foci.
+
+    See :ref:`null analyses`.
+    """
+    inputs = getattr(estimator, "inputs_", None) or {}
+    keys = [
+        k for k in ("dropped_null_ids", "dropped_null_ids1", "dropped_null_ids2") if k in inputs
+    ]
+    if not keys:
+        return None
+    return [i for k in keys for i in inputs[k]]
