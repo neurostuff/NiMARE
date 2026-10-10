@@ -260,7 +260,9 @@ class CBMAEstimator(Estimator):
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
             in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
         """
-        validate_coordinate_spaces(self.inputs_["coordinates"])
+        # A collection of only null analyses has no foci, and so no space to validate.
+        if not self.inputs_["coordinates"].empty:
+            validate_coordinate_spaces(self.inputs_["coordinates"])
         masker, mask_img = get_masker_mask_image(
             self.masker,
             dataset=dataset,
@@ -1392,6 +1394,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
 
         self.inputs_["id1"] = self.inputs_.pop("id")
         self.inputs_["coordinates1"] = self.inputs_.pop("coordinates")
+        self.inputs_["dropped_null_ids1"] = self.inputs_.pop("dropped_null_ids", [])
 
         # Reproduce fit() for dataset2 to collect and process inputs.
         self._collect_inputs(dataset2, drop_invalid=drop_invalid)
@@ -1404,6 +1407,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
 
         self.inputs_["id2"] = self.inputs_.pop("id")
         self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
+        self.inputs_["dropped_null_ids2"] = self.inputs_.pop("dropped_null_ids", [])
         inference_masker = self.masker or dataset1.masker
         self.inputs_["inference_map1"] = self._coerce_inference_map(
             inference_map1, masker=inference_masker, label="inference_map1"

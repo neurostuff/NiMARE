@@ -28,6 +28,18 @@ from nimare.utils import _add_metadata_to_dataframe, _mask_img_to_bool, mm2vox
 LGR = logging.getLogger(__name__)
 
 
+def _report_null_analyses(studyset):
+    """Warn that a studyset's null analyses get no MA map, since they have no foci."""
+    from nimare.studyset.requirements import null_analyses
+
+    n_null = int(null_analyses(studyset.store)[studyset.view.index].sum())
+    if n_null:
+        LGR.warning(
+            f"{n_null} of {len(studyset.ids)} analyses are null analyses (no foci). They get no "
+            "modeled activation map, so the output has a row only for each analysis with foci."
+        )
+
+
 def _sparse_maps_to_summary_array(sparse_maps):
     """Collapse sparse MA maps across studies into a 1D summary array."""
     return np.asarray(sparse_maps.sum(axis=0)).ravel()
@@ -211,6 +223,7 @@ class KernelTransformer(NiMAREBase):
                 _warn_dataset_input()
             else:
                 dataset = normalize_collection(dataset)
+                _report_null_analyses(dataset)
 
             masker = dataset.masker if not masker else masker
             mask = masker.mask_img
