@@ -1,5 +1,6 @@
 """Input/Output operations."""
 
+import csv
 import json
 import logging
 import os
@@ -1457,6 +1458,186 @@ def convert_sleuth_to_studyset(text_file, target="ale_2mm"):
     with _quiet_dataset_deprecation():
         dataset = convert_sleuth_to_dataset(text_file, target=target)
     return Studyset.from_dataset(dataset)
+
+
+def convert_mkda_to_studyset(
+    text_file,
+    metadata_columns=(),
+    annotation_columns=(),
+    target="mni152_2mm",
+    space=None,
+):
+    """Convert a tab-delimited MKDA coordinate table to a Studyset.
+
+    MKDA files start with a column count, followed by column names and one
+    focus per row. Rows with the same ``Study`` and ``Contrast`` become one
+    analysis. ``N`` or ``Subjects`` becomes ``sample_sizes`` automatically.
+
+    Parameters
+    ----------
+    text_file : :obj:`str` or :class:`os.PathLike`
+        Path to an MKDA coordinate table.
+    metadata_columns : sequence of :obj:`str`, optional
+        Additional columns to retain as analysis metadata. Values must be
+        constant across all foci in an analysis.
+    annotation_columns : sequence of :obj:`str`, optional
+        Columns to retain as analysis annotations. Values must be constant
+        across all foci in an analysis.
+    target : :obj:`str` or None, optional
+        Space in which the Studyset reports coordinates. Source coordinates
+        are retained.
+    space : {'MNI', 'T88', 'TAL'}, optional
+        Source space when the file has no ``Original_Space`` or ``CoordSys``
+        column. A file's space column takes precedence when present.
+
+    Returns
+    -------
+    :class:`~nimare.studyset.Studyset`
+        Studies and analyses from the MKDA table.
+
+    Raises
+    ------
+    ValueError
+        If the table is malformed or analysis-level values conflict.
+    """
+    from nimare.nimads import Studyset
+
+    def normalize_space(value, line):
+        spaces = {"MNI": "MNI", "T88": "TAL", "TAL": "TAL", "TALAIRACH": "TAL"}
+        normalized = spaces.get(value.strip().upper())
+        if normalized is None:
+            raise ValueError(f"MKDA line {line}: unsupported coordinate space {value!r}")
+        return normalized
+
+    def selected_columns(names, header, label):
+        if isinstance(names, str):
+            raise ValueError(f"{label} must be a sequence of column names, not a string")
+        names = tuple(names)
+        unknown = set(names) - set(header)
+        if unknown:
+            raise ValueError(f"Unknown {label}: {', '.join(sorted(unknown))}")
+        return names
+
+    with open(text_file, newline="", encoding="utf-8-sig") as file_obj:
+        rows = csv.reader(file_obj, delimiter="\t")
+        try:
+            count_row = next(rows)
+            header = next(rows)
+        except StopIteration as exc:
+            raise ValueError("MKDA file needs a column count and a header row") from exc
+
+        try:
+            column_count = int(count_row[0])
+        except (IndexError, ValueError) as exc:
+            raise ValueError("MKDA line 1: expected a column count") from exc
+        if any(cell.strip() for cell in count_row[1:]):
+            raise ValueError("MKDA line 1: unexpected text after column count")
+        if column_count < 1 or len(header) != column_count or len(set(header)) != len(header):
+            raise ValueError("MKDA line 2: header must have the declared number of unique columns")
+
+        columns = {name.casefold(): name for name in header}
+        if len(columns) != len(header):
+            raise ValueError("MKDA line 2: column names must be unique regardless of case")
+        required = ("x", "y", "z", "study", "contrast")
+        missing = set(required) - set(columns)
+        if missing:
+            raise ValueError(
+                f"MKDA line 2: missing required columns: {', '.join(sorted(missing))}"
+            )
+
+        metadata_columns = selected_columns(metadata_columns, header, "metadata_columns")
+        annotation_columns = selected_columns(annotation_columns, header, "annotation_columns")
+        overlap = set(metadata_columns) & set(annotation_columns)
+        if overlap:
+            raise ValueError(f"Columns cannot be both metadata and annotations: {overlap}")
+
+        space_column = columns.get("original_space") or columns.get("coordsys")
+        if not space_column and space is None:
+            raise ValueError("MKDA file has no space column; specify space explicitly")
+        default_space = normalize_space(space, 2) if not space_column else None
+        size_columns = [columns[key] for key in ("n", "subjects") if key in columns]
+
+        studies = {}
+        analyses = {}
+        for line, cells in enumerate(rows, start=3):
+            if not cells or all(not cell.strip() for cell in cells):
+                continue
+            if len(cells) != column_count:
+                raise ValueError(
+                    f"MKDA line {line}: expected {column_count} columns, got {len(cells)}"
+                )
+            row = dict(zip(header, cells))
+            study_id = row[columns["study"]].strip()
+            analysis_id = row[columns["contrast"]].strip()
+            if not study_id or not analysis_id:
+                raise ValueError(f"MKDA line {line}: Study and Contrast must be nonempty")
+            try:
+                coordinates = [float(row[columns[axis]]) for axis in ("x", "y", "z")]
+            except ValueError as exc:
+                raise ValueError(f"MKDA line {line}: coordinates must be numeric") from exc
+            if not np.all(np.isfinite(coordinates)):
+                raise ValueError(f"MKDA line {line}: coordinates must be finite")
+
+            point_space = (
+                normalize_space(row[space_column], line) if space_column else default_space
+            )
+            sample_sizes = set()
+            for column in size_columns:
+                value = row[column].strip()
+                if value:
+                    try:
+                        size = int(value)
+                    except ValueError as exc:
+                        raise ValueError(
+                            f"MKDA line {line}: {column} must be a positive integer"
+                        ) from exc
+                    if size < 1:
+                        raise ValueError(f"MKDA line {line}: {column} must be a positive integer")
+                    sample_sizes.add(size)
+            if len(sample_sizes) > 1:
+                raise ValueError(f"MKDA line {line}: N and Subjects disagree")
+
+            study = studies.setdefault(
+                study_id, {"id": study_id, "name": study_id, "analyses": []}
+            )
+            key = (study_id, analysis_id)
+            if key not in analyses:
+                analysis = {"id": analysis_id, "name": analysis_id, "points": [], "metadata": {}}
+                study["analyses"].append(analysis)
+                analyses[key] = analysis
+            analysis = analyses[key]
+            analysis["points"].append({"coordinates": coordinates, "space": point_space})
+
+            fields = {
+                name: _coerce_coordinate_extra_value(row[name].strip())
+                for name in metadata_columns
+                if row[name].strip()
+            }
+            if sample_sizes:
+                fields["sample_sizes"] = [next(iter(sample_sizes))]
+            for name, value in fields.items():
+                previous = analysis["metadata"].setdefault(name, value)
+                if previous != value:
+                    raise ValueError(
+                        f"MKDA line {line}: inconsistent {name!r} in {study_id!r}, {analysis_id!r}"
+                    )
+            annotations = {
+                name: _coerce_coordinate_extra_value(row[name].strip())
+                for name in annotation_columns
+                if row[name].strip()
+            }
+            if annotations:
+                values = analysis.setdefault("annotations", {}).setdefault("mkda", {})
+                for name, value in annotations.items():
+                    previous = values.setdefault(name, value)
+                    if previous != value:
+                        raise ValueError(
+                            f"MKDA line {line}: inconsistent {name!r} in {study_id!r}, {analysis_id!r}"
+                        )
+
+    if not studies:
+        raise ValueError("MKDA file contains no coordinate rows")
+    return Studyset({"id": Path(text_file).stem, "studies": list(studies.values())}, target=target)
 
 
 def _is_missing(value: Any) -> bool:

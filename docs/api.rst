@@ -157,6 +157,7 @@ For more information about functional characterization analysis, see :doc:`decod
    io.convert_sleuth_to_json
    io.convert_sleuth_to_dataset
    io.convert_sleuth_to_studyset
+   io.convert_mkda_to_studyset
    io.convert_neurovault_to_dataset
 
 
