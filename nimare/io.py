@@ -1472,6 +1472,8 @@ def convert_mkda_to_studyset(
     MKDA files start with a column count, followed by column names and one
     focus per row. Rows with the same ``Study`` and ``Contrast`` become one
     analysis. ``N`` or ``Subjects`` becomes ``sample_sizes`` automatically.
+    Contrast names are preserved; hyphens and percent signs in their IDs are
+    escaped so each Studyset analysis has a distinct full ID.
 
     Parameters
     ----------
@@ -1503,11 +1505,12 @@ def convert_mkda_to_studyset(
     from nimare.nimads import Studyset
 
     def normalize_space(value, line):
-        spaces = {"MNI": "MNI", "T88": "TAL", "TAL": "TAL", "TALAIRACH": "TAL"}
-        normalized = spaces.get(value.strip().upper())
-        if normalized is None:
-            raise ValueError(f"MKDA line {line}: unsupported coordinate space {value!r}")
-        return normalized
+        label = value.strip().lower()
+        if "mni" in label or "ale" in label:
+            return "MNI"
+        if label == "t88" or "tal" in label:
+            return "TAL"
+        raise ValueError(f"MKDA line {line}: unsupported coordinate space {value!r}")
 
     def selected_columns(names, header, label):
         if isinstance(names, str):
@@ -1602,7 +1605,10 @@ def convert_mkda_to_studyset(
             )
             key = (study_id, analysis_id)
             if key not in analyses:
-                analysis = {"id": analysis_id, "name": analysis_id, "points": [], "metadata": {}}
+                # Studyset joins study and analysis ids with a hyphen. Escape
+                # hyphens in contrasts so different pairs cannot share a full id.
+                safe_id = analysis_id.replace("%", "%25").replace("-", "%2D")
+                analysis = {"id": safe_id, "name": analysis_id, "points": [], "metadata": {}}
                 study["analyses"].append(analysis)
                 analyses[key] = analysis
             analysis = analyses[key]
@@ -1632,7 +1638,8 @@ def convert_mkda_to_studyset(
                     previous = values.setdefault(name, value)
                     if previous != value:
                         raise ValueError(
-                            f"MKDA line {line}: inconsistent {name!r} in {study_id!r}, {analysis_id!r}"
+                            f"MKDA line {line}: inconsistent {name!r} in "
+                            f"{study_id!r}, {analysis_id!r}"
                         )
 
     if not studies:

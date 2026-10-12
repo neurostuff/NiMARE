@@ -72,6 +72,37 @@ def test_convert_mkda_subjects_and_t88_space(tmp_path):
     assert analysis["points"][0]["space"] == "TAL"
 
 
+@pytest.mark.parametrize(
+    "source,expected",
+    [("MNI152", "MNI"), ("ALE", "MNI"), ("Talairach-Tournoux", "TAL")],
+)
+def test_convert_mkda_accepts_common_space_labels(tmp_path, source, expected):
+    """Common source labels use NiMARE's existing MNI and Talairach categories."""
+    path = mkda_file(
+        tmp_path,
+        ["x", "y", "z", "Study", "Contrast", "Original_Space"],
+        [f"1\t2\t3\tA\tB\t{source}"],
+    )
+    studyset = convert_mkda_to_studyset(path)
+    assert studyset.to_dict()["studies"][0]["analyses"][0]["points"][0]["space"] == expected
+
+
+def test_convert_mkda_full_ids_remain_unique_with_hyphens(tmp_path):
+    """Different study and contrast pairs cannot produce the same full id."""
+    path = mkda_file(
+        tmp_path,
+        ["x", "y", "z", "Study", "Contrast", "Original_Space"],
+        [
+            "1\t2\t3\tA-B\tC\tMNI",
+            "4\t5\t6\tA\tB-C\tMNI",
+            "7\t8\t9\tA\tB%2DC\tMNI",
+        ],
+    )
+    studyset = convert_mkda_to_studyset(path)
+    assert set(studyset.ids) == {"A-B-C", "A-B%2DC", "A-B%252DC"}
+    assert {analysis.name for analysis in studyset.analyses} == {"C", "B-C", "B%2DC"}
+
+
 def test_convert_mkda_requires_explicit_space_without_space_column(tmp_path):
     """Import does not silently assume a coordinate space."""
     path = mkda_file(
