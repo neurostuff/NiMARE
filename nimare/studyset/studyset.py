@@ -628,6 +628,7 @@ class Studyset:
                 "images": [i for a in analyses for i in (a.get("images") or [])],
                 "points": [p for a in analyses for p in (a.get("points") or [])],
             }
+            _merge_outcome(merged, analyses)
             study["analyses"] = [merged]
         return Studyset(
             doc,
@@ -939,6 +940,25 @@ def _infer_basepath(dataset):
 def _materialize(studyset):
     """Return a store containing only the selected analyses."""
     return from_nimads(studyset.to_dict())
+
+
+def _merge_outcome(merged, analyses):
+    """Keep a null outcome on a merged analysis only if every analysis merged into it was null.
+
+    Last-wins metadata would otherwise let one null analysis declare a study null that also
+    holds an analysis whose result is unknown.
+    """
+    from nimare.studyset.requirements import NULL_OUTCOME, OUTCOME_KEY
+
+    def is_null(analysis):
+        metadata = analysis.get("metadata") or {}
+        return not analysis.get("points") and metadata.get(OUTCOME_KEY) == NULL_OUTCOME
+
+    metadata = merged["metadata"]
+    if all(is_null(a) for a in analyses):
+        metadata[OUTCOME_KEY] = NULL_OUTCOME
+    elif metadata is not None and metadata.get(OUTCOME_KEY) == NULL_OUTCOME:
+        del metadata[OUTCOME_KEY]
 
 
 def _merge_dicts(dicts):

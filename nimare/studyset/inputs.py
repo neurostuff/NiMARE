@@ -25,7 +25,9 @@ def requirement_for(name, spec):
     """Translate one ``_required_inputs`` entry into a requirement."""
     kind, field = spec
     if kind == "coordinates":
-        return _req.Coordinates(name=name)
+        if field not in (None, "with_nulls"):
+            raise ValueError(f"Coordinates field {field!r} not understood.")
+        return _req.Coordinates(name=name, count_nulls=field == "with_nulls")
     if kind == "metadata":
         return _req.PerAnalysis(field, name=name)
     if kind == "image":
@@ -53,6 +55,8 @@ def collect_inputs(studyset, required_inputs, drop_invalid=True):
     narrowed, blocks = studyset.resolve(reqs, drop_invalid=drop_invalid)
 
     out = {"id": list(narrowed.ids)}
+    if any(isinstance(req, _req.Coordinates) for req in reqs):
+        out["dropped_null_ids"] = _dropped_nulls(studyset, narrowed)
     for req in reqs:
         value = req.as_input(narrowed.view, blocks[req.name])
         if value is None:
@@ -61,3 +65,10 @@ def collect_inputs(studyset, required_inputs, drop_invalid=True):
             )
         out[req.name] = value
     return narrowed, out, blocks
+
+
+def _dropped_nulls(studyset, narrowed):
+    """Return the ids of the declared null analyses that narrowing left out."""
+    is_null = _req.null_analyses(studyset.store)[studyset.view.index]
+    kept = set(narrowed.ids)
+    return [str(i) for i, null in zip(studyset.ids, is_null) if null and i not in kept]
