@@ -45,17 +45,17 @@ def null_analyses(store):
     those as experiments that found nothing would be wrong.
     """
     cache = derived(store)
-    got = cache.get("null_analyses")
-    if got is None:
-        got = np.zeros(store.n_analyses, dtype=bool)
+    is_null = cache.get("null_analyses")
+    if is_null is None:
+        is_null = np.zeros(store.n_analyses, dtype=bool)
         if store.metadata is not None and OUTCOME_KEY in store.metadata:
             rows, values = store.metadata.entries(OUTCOME_KEY)
             declared = np.asarray([value == NULL_OUTCOME for value in values], dtype=bool)
-            got[rows[declared]] = True
-        got &= np.diff(store.point_offsets) == 0
-        got.flags.writeable = False
-        cache["null_analyses"] = got
-    return got
+            is_null[rows[declared]] = True
+        is_null &= np.diff(store.point_offsets) == 0
+        is_null.flags.writeable = False
+        cache["null_analyses"] = is_null
+    return is_null
 
 
 def _name_ids(ids, limit=10):
@@ -67,13 +67,7 @@ def _name_ids(ids, limit=10):
 
 @dataclass(frozen=True)
 class Coordinates:
-    """Foci, grouped by analysis, in ``space``.
-
-    With ``count_nulls``, declared null analyses (see :func:`null_analyses`) satisfy the
-    requirement too and reach the algorithm with no foci, for estimators whose counts they belong
-    in. Without it they are dropped like any other analysis without coordinates, and the drop is
-    logged.
-    """
+    """Foci, grouped by analysis, in ``space``."""
 
     space: Optional[str] = None
     name: str = "coordinates"

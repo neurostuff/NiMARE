@@ -570,7 +570,7 @@ class MKDAChi2(PairwiseCBMAEstimator):
     .. versionchanged:: 0.23.0
 
         - Count null analyses (no foci, ``outcome: "no_significant_effect"``) as experiments
-          that activate no voxel. See :ref:`null analyses`.
+          that activate no voxel.
 
     .. versionchanged:: 0.22.0
 

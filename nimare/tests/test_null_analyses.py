@@ -27,6 +27,7 @@ else:
 
 ORIGIN = [0.0, 0.0, 0.0]
 ELSEWHERE = [40.0, 40.0, 20.0]
+THIRD = [-40.0, -20.0, 10.0]
 
 
 def _studyset(name, foci, n_null=0, n_undeclared=0, sample_size=20):
@@ -216,6 +217,80 @@ def test_kernel_transform_reports_null_analyses(caplog):
         maps = MKDAKernel().transform(studyset, return_type="sparse")
     assert sp_sparse.issparse(maps) and maps.shape[0] == 2
     assert "1 of 3 analyses are null analyses" in caplog.text
+
+
+def _interleaved():
+    """Analyses whose sorted ids put a null before, between and after each one with foci.
+
+    The ones with foci are each at their own location with their own sample size, so a map or a
+    weight that lands on the wrong analysis shows at the wrong location.
+    """
+    foci = {"b": ([ORIGIN], 16), "d": ([ELSEWHERE], 64), "f": ([THIRD], 256)}
+    studies = []
+    for name in "abcdefg":
+        points, n = foci.get(name, ([], 100))
+        metadata = {"sample_sizes": [n]}
+        if name not in foci:
+            metadata[OUTCOME_KEY] = NULL_OUTCOME
+        points = [{"space": "MNI", "coordinates": list(c)} for c in points]
+        studies.append(
+            {"id": name, "analyses": [{"id": "a", "metadata": metadata, "points": points}]}
+        )
+    studyset = Studyset({"id": "interleaved", "studies": studies})
+    return studyset, {f"{name}-a": xyz for name, (xyz, _) in foci.items()}
+
+
+def test_dropped_nulls_leave_each_ma_map_on_its_own_analysis():
+    """Dropping nulls cannot shift a map or a weight onto a neighbouring analysis.
+
+    Kernels key their rows by the sorted analysis ids, and a studyset's ids are sorted, so the
+    rows are the ids with foci in studyset order, with the nulls simply absent.
+    """
+    studyset, foci = _interleaved()
+    kernel = MKDAKernel(r=4)
+
+    maps = kernel.transform(studyset, return_type="array")
+    assert maps.shape[0] == len(foci)
+    np.testing.assert_array_equal(
+        maps, kernel.transform(studyset.slice(list(foci)), return_type="array")
+    )
+    for row in range(len(foci)):
+        for other, xyz in enumerate(foci.values()):
+            hit = maps[row, _masked_index(studyset.masker, xyz[0])]
+            assert hit == (1 if other == row else 0)
+
+    # Weights are collected per id and the MA maps per row, so a shift would weight a focus
+    # with another analysis's sample size. sqrt(16, 64, 256) = 4, 8, 16, rescaled to sum to 3.
+    meta = MKDADensity(
+        kernel_transformer=kernel, weighting="sample_size", null_method="approximate"
+    )
+    result = meta.fit(studyset)
+    assert list(meta.inputs_["id"]) == list(foci)
+    assert result.dropped_null_analyses == ["a-a", "c-a", "e-a", "g-a"]
+    stat = result.get_map("stat", return_type="array")
+    for xyz, weight in zip(foci.values(), (4, 8, 16)):
+        assert stat[_masked_index(meta.masker, xyz[0])] == pytest.approx(3 * weight / 28)
+
+
+def test_ml_ma_features_keep_null_analyses_on_their_own_rows():
+    """In the ML interface a null kept as a row gets an empty map, and no other row moves."""
+    from nimare.ml import MAKernel
+
+    studyset, foci = _interleaved()
+    bunch = studyset.to_bunch(missing_coordinates="include")
+    maps = MAKernel(MKDAKernel(r=4), source_masker=bunch.masker).fit_transform(
+        bunch.data[:, bunch.voxel_columns]
+    )
+
+    ids = [str(i) for i in bunch.ids]
+    assert sorted(ids) == sorted(studyset.ids)
+    for row, analysis in enumerate(ids):
+        for other, xyz in foci.items():
+            hit = maps[row, _masked_index(bunch.masker, xyz[0])]
+            assert hit == (1 if other == analysis else 0), (analysis, other)
+
+    # Dropping them instead (the default) records which, as for any analysis without foci.
+    assert studyset.to_bunch().provenance["dropped_ids"] == ["a-a", "c-a", "e-a", "g-a"]
 
 
 @pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
