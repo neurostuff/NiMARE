@@ -294,6 +294,7 @@ def test_studyset_merge_preserves_execution_target():
 
 @pytest.mark.parametrize("right_basepath_kind", ["absolute", "relative", "none"])
 def test_studyset_merge_preserves_image_sources(tmp_path, monkeypatch, right_basepath_kind):
+    """Merged image references should retain their original source directories."""
     monkeypatch.chdir(tmp_path)
     left_dir = tmp_path / "left"
     right_dir = tmp_path / "right"
