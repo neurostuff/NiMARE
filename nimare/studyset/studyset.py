@@ -641,7 +641,10 @@ class Studyset:
         if not isinstance(right, Studyset):
             raise ValueError("Can only merge with another Studyset")
         left_doc = to_nimads_dict(self.store, self._view.index)
-        right_doc = to_nimads_dict(right.store, right.view.index)
+        right_basepath = right.basepath or (os.curdir if self.basepath else None)
+        if right_basepath:
+            right_basepath = os.path.abspath(right_basepath)
+        right_doc = to_nimads_dict(right.store, right.view.index, basepath=right_basepath)
         left_doc["id"] = f"{self.id}_{right.id}"
         left_doc["name"] = f"Merged: {self.name} + {right.name}"
         by_id = {str(s["id"]): s for s in left_doc["studies"]}
