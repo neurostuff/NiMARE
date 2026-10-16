@@ -642,8 +642,11 @@ class Studyset:
             raise ValueError("Can only merge with another Studyset")
         left_doc = to_nimads_dict(self.store, self._view.index)
         # The merged studyset only has this side's basepath, so resolve the
-        # other side's relative images against its own basepath first.
-        right_basepath = right.basepath if right.basepath != self.basepath else None
+        # other side's relative images against their own location first: its
+        # basepath, or the working directory when it has none.
+        right_basepath = None
+        if right.basepath != self.basepath:
+            right_basepath = os.path.abspath(right.basepath or os.curdir)
         right_doc = to_nimads_dict(right.store, right.view.index, basepath=right_basepath)
         left_doc["id"] = f"{self.id}_{right.id}"
         left_doc["name"] = f"Merged: {self.name} + {right.name}"
