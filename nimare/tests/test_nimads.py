@@ -292,6 +292,48 @@ def test_studyset_merge_preserves_execution_target():
     assert merged.masker is not None
 
 
+def test_studyset_merge_keeps_right_image_basepath(tmp_path):
+    """Relative images of the right-hand Studyset should stay under its own basepath."""
+
+    def make_studyset(study_id, basepath):
+        return nimads.Studyset(
+            {
+                "id": study_id,
+                "studies": [
+                    {
+                        "id": study_id,
+                        "analyses": [
+                            {
+                                "id": "A1",
+                                "images": [
+                                    {
+                                        "value_type": "z",
+                                        "filename": "imgs/z.nii.gz",
+                                        "space": "MNI",
+                                    }
+                                ],
+                                "points": [],
+                            }
+                        ],
+                    }
+                ],
+            },
+            target=None,
+            basepath=str(basepath),
+        )
+
+    left = make_studyset("left", tmp_path / "left")
+    right = make_studyset("right", tmp_path / "right")
+
+    merged = left.merge(right)
+
+    filenames = [analysis.images[0].filename for analysis in merged.analyses]
+    assert filenames == [
+        str(tmp_path / "left" / "imgs" / "z.nii.gz"),
+        str(tmp_path / "right" / "imgs" / "z.nii.gz"),
+    ]
+
+
 def test_studyset_init_normalizes_literal_none_strings():
     """Studyset tabular views should normalize literal "None" strings like Dataset does."""
     source = {
