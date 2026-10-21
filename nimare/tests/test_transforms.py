@@ -8,11 +8,41 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 import pytest
+from nilearn.maskers import NiftiMasker
 from pymare.stats import log_chi2_sf
 from scipy import stats
 
 from nimare import transforms
 from nimare.utils import DEFAULT_FLOAT_DTYPE
+
+
+@pytest.mark.parametrize("mask_dtype", [np.uint8, np.int16, np.float32])
+@pytest.mark.parametrize("target", ["z", "d", "g", "g_var"])
+def test_transform_images_preserves_statistical_precision(tmp_path, mask_dtype, target):
+    """Mask storage types must not quantize saved statistical values."""
+    values = np.linspace(-4, 4, 1000).reshape((10, 10, 10))
+    affine = np.diag([2.0, 2.0, 2.0, 1.0])
+    source = tmp_path / "t.nii.gz"
+    nib.Nifti1Image(values, affine).to_filename(source)
+    mask = nib.Nifti1Image(np.ones(values.shape, dtype=mask_dtype), affine)
+    masker = NiftiMasker(mask_img=mask).fit()
+    result = transforms.transform_images(
+        pd.DataFrame({"id": ["study"], "t": [str(source)]}),
+        target,
+        masker,
+        metadata_df=pd.DataFrame({"id": ["study"], "sample_sizes": [[25]]}),
+        out_dir=str(tmp_path),
+    )
+
+    d = transforms.t_to_d(values, 25)
+    g, g_var = transforms.d_to_g(d, 25, return_variance=True)
+    expected = {"z": transforms.t_to_z(values, 24), "d": d, "g": g, "g_var": g_var}
+    saved = nib.load(result[target][0])
+    assert np.issubdtype(saved.get_data_dtype(), np.floating)
+    np.testing.assert_allclose(saved.get_fdata(), expected[target], rtol=1e-6, atol=1e-7)
+    np.testing.assert_array_equal(saved.affine, affine)
+    assert saved.shape == values.shape
+    assert mask.get_data_dtype() == np.dtype(mask_dtype)
 
 
 def test_ImageTransformer(testdata_ibma):
