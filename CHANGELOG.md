@@ -85,7 +85,7 @@ The third theme is machine learning, where Google Summer of Code student @lyralu
    Signature changes: get_metadata, get_images, get_texts, get_annotations all dropped their analyses= argument; get_images gained policy=; get_studies_by_label/get_analyses_by_label/filter_annotations gained annotation=.
    New methods: from_parquet, to_parquet, harmonized(target), select_analyses, select_points, with_context, sample_sizes, analyses, **len**.
    Studyset.slice now raises ValueError on any id it can't resolve instead of silently returning a subset (#1113). Previously a typo, a foreign id, and "no data" were indistinguishable.
-   Estimators now expose studyset* and blocks_ alongside inputs_; _required_inputs moved from Estimator up to NiMAREBase.
+   Estimators now expose studyset* and `blocks_` alongside `inputs_`; `_required_inputs` moved from Estimator up to NiMAREBase.
    
 2. Dataset is now formally deprecated for 1.0.0 (#1107)
    Constructing a Dataset or passing one to any algorithm emits a FutureWarning. Silence with:
@@ -1043,7 +1043,7 @@ In addition, we have renamed the CBMA estimators' null methods.
 The "analytic" method is now "approximate" and the "empirical" method is now "montecarlo".
 
 .. warning:: Known Bugs This version contains some bugs that were identified after it was released.
-\   - The ALESubtraction class from this release should not be used, as it uses a symmetric null distribution, which does not work properly for comparisons between Datasets with different sizes.
+   The ALESubtraction class from this release should not be used, as it uses a symmetric null distribution, which does not work properly for comparisons between Datasets with different sizes.
 
 ### What's Changed
 

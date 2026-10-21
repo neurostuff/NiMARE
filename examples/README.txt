@@ -12,3 +12,9 @@
 
 Examples
 ===================
+
+Most examples have a **launch JupyterLite** button at the bottom of the page,
+which opens the example as a notebook that runs in your browser, with nothing to install.
+The first imports take about half a minute, and the analyses run a few times slower
+than they would on your own machine.
+Examples that download data from other sites, or that need PyTorch, XGBoost or pyarrow, don't have the button.

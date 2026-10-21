@@ -5,11 +5,16 @@ from __future__ import division
 import logging
 import os
 import os.path as op
+import warnings
 
 import numpy as np
 import pandas as pd
 import requests
-from fuzzywuzzy import fuzz
+
+with warnings.catch_warnings():
+    # Without python-Levenshtein, fuzzywuzzy warns on import that it uses difflib.
+    warnings.filterwarnings("ignore", message="Using slow pure-python SequenceMatcher")
+    from fuzzywuzzy import fuzz
 
 from nimare.utils import _uk_to_us
 

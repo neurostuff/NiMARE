@@ -13,6 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # Draw figures without a GUI toolkit: Tk can be broken in the runners' Pythons.
+  MPLBACKEND: Agg
   PYTEST_COMMON_ARGS: --cov-append --cov-report=xml --cov=nimare nimare
   PYTEST_UNIT_MARKERS: not performance_estimators and not performance_correctors and not performance_smoke and not cbmr_importerror
   PYTEST_PERFORMANCE_ESTIMATORS_MARKERS: performance_estimators

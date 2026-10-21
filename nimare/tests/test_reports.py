@@ -1,6 +1,8 @@
 """Test nimare.reports."""
 
 import os.path as op
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -201,3 +203,20 @@ def test_diagnostic_summary_reports_the_threshold_that_was_used(tmp_path, kwargs
     _gen_diag_summary(diagnostic, out_filename)
 
     assert "1.65" in out_filename.read_text(encoding="UTF-8")
+
+
+def test_importing_figures_keeps_matplotlib_backend():
+    """Importing the report figures must not switch the session's matplotlib backend.
+
+    A forced switch to Agg turned off inline figures in Jupyter. The import runs in a fresh
+    interpreter because this session has already imported the module.
+    """
+    code = (
+        "import matplotlib\n"
+        "matplotlib.use('svg')\n"
+        "import matplotlib.pyplot\n"
+        "import nimare.reports.figures\n"
+        "print(matplotlib.get_backend())"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert out.stdout.strip().splitlines()[-1] == "svg"

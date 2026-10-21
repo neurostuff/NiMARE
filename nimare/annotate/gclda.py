@@ -509,7 +509,7 @@ class GCLDAModel(NiMAREBase):
         word_counts = count_df[self.vocabulary].to_numpy(dtype=np.int64, copy=False)
         word_docs = count_df["docidx"].to_numpy(dtype=np.int64, copy=False)
         nz_docs, nz_words = np.nonzero(word_counts)
-        nz_counts = word_counts[nz_docs, nz_words].astype(np.int64, copy=False)
+        nz_counts = word_counts[nz_docs, nz_words].astype(np.intp, copy=False)
 
         # Expand the dense document-term matrix into token-level indices in NumPy
         # order, which already matches the old docidx-then-widx sorting.

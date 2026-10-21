@@ -5,6 +5,10 @@ docs/_build/
 docs/generated/
 docs/modules/
 docs/auto_examples/
+# JupyterLite contents staged by sphinx-gallery and jupyterlite-sphinx.
+docs/jupyterlite_contents/
+docs/_contents/
+.jupyterlite.doit.db
 # sphinx-gallery writes per-example timings on every docs build.
 docs/sg_execution_times.rst
 nimare/resources/data/neurovault-data/

@@ -13,7 +13,7 @@ help:
 	@$(SPHINXBUILD) -M help "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 
 clean:
-	rm -r _build generated auto_examples
+	rm -r _build generated auto_examples jupyterlite_contents _contents
 
 html-noplot:
 	$(SPHINXBUILD) -D plot_gallery=0 -b html $(ALLSPHINXOPTS) $(SOURCEDIR) $(BUILDDIR)/html
