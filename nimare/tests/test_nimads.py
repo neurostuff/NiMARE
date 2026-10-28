@@ -292,6 +292,66 @@ def test_studyset_merge_preserves_execution_target():
     assert merged.masker is not None
 
 
+@pytest.mark.parametrize("right_basepath_kind", ["absolute", "relative", "none"])
+def test_studyset_merge_preserves_image_sources(tmp_path, monkeypatch, right_basepath_kind):
+    """Merged image references should retain their original source directories."""
+    monkeypatch.chdir(tmp_path)
+    left_dir = tmp_path / "left"
+    right_dir = tmp_path / "right"
+    left_image = left_dir / "imgs" / "z.nii.gz"
+    right_image = right_dir / "imgs" / "z.nii.gz"
+    left_image.parent.mkdir(parents=True)
+    right_image.parent.mkdir(parents=True)
+    left_image.write_text("left")
+    right_image.write_text("right")
+
+    def make_studyset(study_id, filename, basepath):
+        return nimads.Studyset(
+            {
+                "id": study_id,
+                "studies": [
+                    {
+                        "id": study_id,
+                        "analyses": [
+                            {
+                                "id": "A1",
+                                "images": [
+                                    {
+                                        "value_type": "z",
+                                        "filename": filename,
+                                        "space": "MNI",
+                                    }
+                                ],
+                                "points": [],
+                            }
+                        ],
+                    }
+                ],
+            },
+            target=None,
+            basepath=basepath,
+        )
+
+    left = make_studyset("left", "imgs/z.nii.gz", str(left_dir))
+    right_basepath = {
+        "absolute": str(right_dir),
+        "relative": "right",
+        "none": None,
+    }[right_basepath_kind]
+    right = make_studyset(
+        "right",
+        "imgs/z.nii.gz" if right_basepath else "right/imgs/z.nii.gz",
+        right_basepath,
+    )
+
+    merged = left.merge(right)
+
+    assert merged.basepath == str(left_dir)
+    assert Path(merged.analyses[0].images[0].filename) == left_image
+    assert Path(merged.analyses[1].images[0].filename) == right_image
+    assert Path(merged.analyses[1].images[0].filename).read_text() == "right"
+
+
 def test_studyset_init_normalizes_literal_none_strings():
     """Studyset tabular views should normalize literal "None" strings like Dataset does."""
     source = {
