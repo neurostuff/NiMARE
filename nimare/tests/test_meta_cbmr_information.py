@@ -254,6 +254,15 @@ def test_negative_binomial_information_refuses_fractional_counts(data):
         closed_form_information(model.distribution)(model)
 
 
+def test_negative_binomial_information_without_moderators_takes_fractional_counts(data):
+    """Without moderators no count sum is needed, and fractional counts get the exact matrix."""
+    model, foci = _fit("~ s(diagnosis)", "negativebinomial", data)
+    model._foci = foci * 0.5
+    reference = _autodiff_information(model)
+    analytic = closed_form_information(model.distribution)(model)
+    assert np.abs(analytic - reference).max() < 1e-8 * np.abs(reference).max()
+
+
 def test_unknown_distribution_falls_back_to_autodiff(data):
     """A distribution with no derivation must not get another one's Hessian."""
     from nimare.meta.cbmr.distributions import Distribution

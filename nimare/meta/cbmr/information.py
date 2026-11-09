@@ -179,6 +179,12 @@ def negative_binomial_information_matrix(model):
     :obj:`numpy.ndarray`
         Shape ``(n_parameters, n_parameters)``.
 
+    Raises
+    ------
+    ValueError
+        If the design has moderators and the foci counts are not integers. The moderator block
+        sums over the counts; the spatial block does not and takes fractional counts.
+
     Notes
     -----
     Each pattern's voxel totals are negative binomial with mean ``mu_v = S1 u_v`` and dispersion
