@@ -11,9 +11,16 @@ against. The Poisson case is additionally pinned against statsmodels in
 :mod:`nimare.tests.test_meta_cbmr_glm_equivalence`, which no transcription can drift from.
 """
 
+import math
+
 import numpy as np
 import pandas as pd
 import pytest
+
+from nimare.tests.cbmr_reference import (
+    negative_binomial_log_likelihood,
+    negative_hessian,
+)
 
 try:
     import torch
@@ -39,8 +46,7 @@ N_BASES = 4
 GROUPS = ("schiz", "dep")
 
 
-@pytest.fixture
-def setup():
+def _grouped_setup(n_voxels=N_VOXELS, n_bases=N_BASES):
     """Build a grouped design, a basis, coefficients, and Poisson-drawn foci."""
     rng = np.random.default_rng(17)
     n_experiments = N_PER_GROUP * len(GROUPS)
@@ -51,12 +57,12 @@ def setup():
             "vol": np.linspace(0.5, 2.0, n_experiments),
         }
     )
-    raw = rng.uniform(0.05, 1.0, (N_VOXELS, N_BASES))
+    raw = rng.uniform(0.05, 1.0, (n_voxels, n_bases))
     bases = raw / raw.sum(axis=1, keepdims=True)
 
     predictor = CBMRPredictor(bind(Design.from_formula("~ s(diagnosis) + n"), annotations), bases)
     spatial = torch.tensor(
-        rng.normal(1.0, 0.2, (predictor.n_spatial_columns, N_BASES)), dtype=torch.float64
+        rng.normal(1.0, 0.2, (predictor.n_spatial_columns, n_bases)), dtype=torch.float64
     )
     global_coef = torch.tensor(rng.normal(0.0, 0.1, 1), dtype=torch.float64)
 
@@ -64,6 +70,12 @@ def setup():
         eta = predictor.linear_predictor(spatial, global_coef).numpy()
     foci = rng.poisson(np.exp(eta)).astype(float)
     return predictor, spatial, global_coef, foci, annotations
+
+
+@pytest.fixture
+def setup():
+    """Build the grouped design most tests share."""
+    return _grouped_setup()
 
 
 def _legacy_pieces(predictor, foci):
@@ -385,12 +397,85 @@ def test_conversions_are_reused_only_while_keeping_tensors(setup, monkeypatch, n
         n_conversions = len(conversions)
         marginals = FociMarginals(predictor.patterns, foci)
         assert torch.equal(evaluate(marginals), first)
-        assert len(conversions) == n_conversions + 2  # the new marginals and totals only
+        # The new marginals and totals only, and for NegativeBinomial each pattern's n_j.
+        new = 2 + (predictor.patterns.n_patterns if name == "NegativeBinomial" else 0)
+        assert len(conversions) == n_conversions + new
         assert torch.equal(evaluate(marginals), first)
-        assert len(conversions) == n_conversions + 2
+        assert len(conversions) == n_conversions + new
     assert predictor._tensors is None
 
     counts = foci.copy()
     assert torch.equal(evaluate(counts), first)
     counts *= 2
     assert not torch.equal(evaluate(counts), first)
+
+
+# The first pair puts one pattern at the boundary a Poisson-like fit reaches. The second puts
+# k * mu on both sides of the point where the likelihood switches to a series.
+@pytest.mark.parametrize("overdispersion", [[1e-12, 0.05], [1e-4, 1e-3]])
+def test_negative_binomial_stays_exact_near_zero_overdispersion(overdispersion):
+    """The likelihood and its autodiff Hessian stay exact as an overdispersion approaches zero.
+
+    A fit lands there when one pattern's counts are no more variable than Poisson, as these
+    are. The negative-binomial size then grows like one over the overdispersion, and
+    ``lgamma(y + r) - lgamma(r)`` subtracts numbers of order ``r log r`` that should cancel to
+    order one. The design is kept small because the reference differentiates in mpmath.
+    """
+    mpmath = pytest.importorskip("mpmath")
+    predictor, spatial, global_coef, foci, _ = _grouped_setup(n_voxels=8, n_bases=2)
+    n_spatial = spatial.numel()
+
+    def log_likelihood(flat):
+        return NegativeBinomial().log_likelihood(
+            predictor,
+            flat[:n_spatial].reshape(spatial.shape),
+            flat[n_spatial:],
+            torch.tensor(overdispersion, dtype=torch.float64),
+            foci,
+        )
+
+    flat = torch.cat([spatial.reshape(-1), global_coef])
+    reference = negative_binomial_log_likelihood(predictor, overdispersion, foci, n_spatial)
+    with mpmath.workdps(50):
+        value = float(reference(*(mpmath.mpf(x) for x in flat.tolist())))
+    # The reference leaves out the parameter-free -lgamma(y + 1).
+    value -= sum(math.lgamma(y + 1) for y in predictor.patterns.marginal_by_pattern(foci).flat)
+    hessian = -negative_hessian(reference, flat.tolist())
+
+    assert log_likelihood(flat).item() == pytest.approx(value, rel=1e-13)
+    np.testing.assert_allclose(
+        torch.func.hessian(log_likelihood)(flat).numpy(),
+        hessian,
+        rtol=1e-11,
+        atol=1e-11 * np.abs(hessian).max(),
+    )
+
+
+def test_negative_binomial_keeps_fractional_counts(setup):
+    """Fractional counts have no finite sum over ``j < y``, so they keep the gamma functions."""
+    predictor, spatial, global_coef, foci, _ = setup
+    foci = foci * 0.5
+    per_voxel, per_experiment, members = _legacy_pieces(predictor, foci)
+    overdispersion = torch.tensor([0.03, 0.07], dtype=torch.float64)
+
+    actual = NegativeBinomial().log_likelihood(
+        predictor, spatial, global_coef, overdispersion, foci
+    )
+    expected = _reference_negative_binomial(
+        predictor, spatial, global_coef, overdispersion, per_voxel, per_experiment, members
+    )
+    torch.testing.assert_close(actual, expected, rtol=1e-9, atol=1e-7)
+
+
+def test_count_histograms_are_built_once_per_marginals(setup):
+    """``n_j`` depends only on the foci, so a fit's evaluations share one copy of it."""
+    predictor, _, _, foci, _ = setup
+    marginals = FociMarginals(predictor.patterns, foci)
+
+    histograms = marginals.count_histograms(torch.float64, "cpu")
+
+    assert marginals.count_histograms(torch.float64, "cpu") is histograms
+    for above, counts in zip(histograms, marginals.by_pattern):
+        assert torch.equal(
+            above, torch.tensor([(counts > j).sum() for j in range(int(counts.max()))]).double()
+        )

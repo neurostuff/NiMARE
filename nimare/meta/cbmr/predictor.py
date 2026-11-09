@@ -42,6 +42,7 @@ import contextlib
 import numpy as np
 import scipy.sparse
 
+from nimare.meta.cbmr._negative_binomial import count_histogram
 from nimare.meta.cbmr._torch import torch
 
 
@@ -183,6 +184,22 @@ class FociMarginals:
                 _as_tensor(self.by_pattern, dtype, device),
                 _as_tensor(self.per_experiment, dtype, device),
             )
+        return self._tensors[key]
+
+    def count_histograms(self, dtype, device):
+        """Return, per pattern, the negative binomial's ``n_j`` as a tensor on ``device``.
+
+        ``n_j`` is the number of voxels with more than ``j`` foci, from
+        :func:`~nimare.meta.cbmr._negative_binomial.count_histogram`, and ``None`` for a pattern
+        whose counts are fractional. Built in numpy, since ``torch.func`` transforms cannot read a
+        tensor's values, and kept like the other conversions.
+        """
+        key = ("count_histograms", dtype, device)
+        if key not in self._tensors:
+            self._tensors[key] = [
+                None if above is None else _as_tensor(above, dtype, device)
+                for above in map(count_histogram, self.by_pattern)
+            ]
         return self._tensors[key]
 
 
