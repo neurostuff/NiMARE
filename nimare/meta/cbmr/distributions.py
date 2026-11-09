@@ -28,12 +28,9 @@ import math
 
 import numpy as np
 
+from nimare.meta.cbmr._negative_binomial import matched_dispersion
 from nimare.meta.cbmr._torch import torch
-from nimare.meta.cbmr.predictor import (
-    _as_tensor,
-    experiment_totals,
-    poisson_log_likelihood,
-)
+from nimare.meta.cbmr.predictor import FociMarginals, poisson_log_likelihood
 
 
 class DistributionError(ValueError):
@@ -98,14 +95,6 @@ class Distribution:
         raise NotImplementedError
 
 
-def _pattern_slices(predictor):
-    """Return, per pattern, the indices of the experiments sharing it."""
-    assignment = predictor.patterns.assignment
-    return [
-        np.flatnonzero(assignment == pattern) for pattern in range(predictor.patterns.n_patterns)
-    ]
-
-
 def _pattern_quantities(predictor, spatial_coef, global_coef, foci):
     """Return the per-pattern pieces the marginal likelihoods are written in terms of.
 
@@ -114,11 +103,11 @@ def _pattern_quantities(predictor, spatial_coef, global_coef, foci):
     ``sum_i y_i. m_i`` term: its exposure counterpart ``sum_i y_i. log E_i`` is parameter-free
     and deliberately never formed.
     """
+    dtype, device = spatial_coef.dtype, spatial_coef.device
     log_intensity = predictor.log_intensity_by_pattern(spatial_coef)
-    moderator = predictor.moderator_effect(global_coef).to(spatial_coef.dtype)
-    weight = predictor.experiment_weights(global_coef, spatial_coef.dtype)
-    foci_per_voxel = _as_tensor(predictor.patterns.marginal_by_pattern(foci), spatial_coef.dtype)
-    foci_per_experiment = _as_tensor(experiment_totals(foci), spatial_coef.dtype)
+    moderator = predictor.moderator_effect(global_coef, device).to(dtype)
+    weight = predictor.experiment_weights(global_coef, dtype, device)
+    foci_per_voxel, foci_per_experiment = predictor.foci_tensors(foci, dtype, device)
     return log_intensity, moderator, weight, foci_per_voxel, foci_per_experiment
 
 
@@ -166,6 +155,40 @@ class _OverdispersedDistribution(Distribution):
         return torch.exp(raw)
 
 
+def _log1p_ratio(x):
+    """Return ``log(1 + x) / x`` for ``x >= 0``, with derivatives that stay exact near zero.
+
+    The value is accurate either way, but its automatic derivatives subtract terms of order
+    ``1/x`` (first) and ``1/x^3`` (second) that cancel to order one. Below ``1e-3`` the power
+    series ``sum_n (-x)^n / (n + 1)`` is summed instead; six terms reach double precision.
+    """
+    small = x < 1e-3
+    near = torch.where(small, x, torch.zeros_like(x))
+    far = torch.where(small, torch.ones_like(x), x)
+    series = torch.zeros_like(x)
+    for n in reversed(range(6)):
+        series = 1 / (n + 1) - near * series
+    return torch.where(small, series, torch.log1p(far) / far)
+
+
+def _log_size_ratio(above, counts, dispersion):
+    """Return ``sum_v [lgamma(y_v + 1/k) - lgamma(1/k) + y_v log k]``.
+
+    For integer counts this is ``sum_v sum_{j<y_v} log(1 + j k) = sum_j n_j log(1 + j k)``,
+    with ``n_j = above[j]`` and every term of order ``j k``. Written with gamma functions, the
+    terms are of order ``log(1/k) / k`` and cancel as ``k`` approaches zero. Fractional counts
+    (``above`` is None) have no finite sum and keep that form, so for them the likelihood and
+    its automatic derivatives still lose precision near zero overdispersion.
+    """
+    if above is None:
+        size = 1 / dispersion
+        return torch.sum(
+            torch.lgamma(counts + size) - torch.lgamma(size) + counts * torch.log(dispersion)
+        )
+    steps = torch.arange(above.shape[0], dtype=above.dtype, device=above.device)
+    return torch.sum(above * torch.log1p(steps * dispersion))
+
+
 class NegativeBinomial(_OverdispersedDistribution):
     """Negative binomial counts, allowing excess variance relative to Poisson.
 
@@ -179,30 +202,35 @@ class NegativeBinomial(_OverdispersedDistribution):
 
     def log_likelihood(self, predictor, spatial_coef, global_coef, nuisance, foci):
         """Return the moment-matched negative-binomial log-likelihood."""
+        dtype, device = spatial_coef.dtype, spatial_coef.device
+        if not isinstance(foci, FociMarginals):
+            foci = FociMarginals(predictor.patterns, foci)
         log_intensity, _, weight, foci_per_voxel, _ = _pattern_quantities(
             predictor, spatial_coef, global_coef, foci
         )
-        total = torch.zeros((), dtype=spatial_coef.dtype)
-        for pattern, members in enumerate(_pattern_slices(predictor)):
-            overdispersion = nuisance[pattern]
-            intensity = torch.exp(log_intensity[pattern])
+        histograms = foci.count_histograms(dtype, device)
+        total = torch.zeros((), dtype=dtype, device=device)
+        for pattern, members in enumerate(predictor.member_tensors(device)):
             member_weight = weight[members]
             counts = foci_per_voxel[pattern]
 
-            # Parameters of the single NB variable matching the first two moments of the sum.
-            # Both moments carry the exposure, the second one squared, so this is not a single
-            # weighting of an unexposed quantity.
-            moderator_sum = torch.sum(member_weight)
-            moderator_square_sum = torch.sum(member_weight**2)
-            r = moderator_sum**2 / (overdispersion * moderator_square_sum)
-            p = 1 / (1 + moderator_sum / (overdispersion * intensity * moderator_square_sum))
+            # Each voxel total is matched by one NB variable with mean mu = S1 u and dispersion
+            # k = theta S2 / S1^2, whose size 1/k carries the exposure squared in S2. The size
+            # grows without bound as theta approaches zero, so nothing is formed in it: the
+            # gamma functions become _log_size_ratio, and (1/k) log(1 + k mu) is
+            # mu * _log1p_ratio(k mu).
+            dispersion = matched_dispersion(nuisance[pattern], member_weight)
+            log_mean = torch.log(torch.sum(member_weight)) + log_intensity[pattern]
+            mean = torch.exp(log_mean)
+            scaled = dispersion * mean
 
-            total = total + torch.sum(
-                torch.lgamma(counts + r)
-                - torch.lgamma(counts + 1)
-                - torch.lgamma(r)
-                + r * torch.log(1 - p)
-                + counts * torch.log(p)
+            total = total + (
+                _log_size_ratio(histograms[pattern], counts, dispersion)
+                + torch.sum(
+                    counts * (log_mean - torch.log1p(scaled))
+                    - mean * _log1p_ratio(scaled)
+                    - torch.lgamma(counts + 1)
+                )
             )
         return total
 
@@ -222,8 +250,8 @@ class ClusteredNegativeBinomial(_OverdispersedDistribution):
         log_intensity, moderator, weight, foci_per_voxel, foci_per_experiment = (
             _pattern_quantities(predictor, spatial_coef, global_coef, foci)
         )
-        total = torch.zeros((), dtype=spatial_coef.dtype)
-        for pattern, members in enumerate(_pattern_slices(predictor)):
+        total = torch.zeros((), dtype=spatial_coef.dtype, device=spatial_coef.device)
+        for pattern, members in enumerate(predictor.member_tensors(spatial_coef.device)):
             precision = 1 / nuisance[pattern]
             intensity_sum = torch.sum(torch.exp(log_intensity[pattern]))
             member_moderator = moderator[members]
