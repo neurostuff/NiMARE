@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 try:
-    import torch  # noqa: F401
+    import torch
 except ImportError:
     TORCH_INSTALLED = False
 else:
@@ -129,6 +129,89 @@ def test_overdispersion_stays_off_the_poisson_boundary(distribution, data):
     assert fitted.min() > 1e-3, f"overdispersion collapsed to {fitted}; counts are not dispersed"
 
 
+def _high_precision_information(model, digits=50):
+    """Return the NegativeBinomial information by differencing the likelihood in mpmath.
+
+    The reference for overdispersions near zero, where float64 cannot serve: the likelihood
+    holds ``lgamma(y + r) - lgamma(r)`` with ``r`` of order ``1/overdispersion``, so automatic
+    differentiation in float64 cancels as badly as a float64 closed form does. At 50 digits the
+    cancellation leaves more than enough.
+    """
+    mpmath = pytest.importorskip("mpmath")
+    predictor = model.predictor
+    n_bases = predictor.n_bases
+    flat = model.coefficients.detach().numpy()
+    overdispersion = model.overdispersion()
+    foci = predictor.patterns.marginal_by_pattern(model.foci)
+    members = [
+        np.flatnonzero(predictor.patterns.assignment == p)
+        for p in range(predictor.patterns.n_patterns)
+    ]
+
+    def log_likelihood(*vector):
+        spatial = mpmath.matrix(
+            [vector[c * n_bases : (c + 1) * n_bases] for c in range(predictor.n_spatial_columns)]
+        )
+        gamma = vector[model.n_spatial :]
+        weight = [
+            mpmath.exp(mpmath.fsum(x * g for x, g in zip(row, gamma)))
+            for row in predictor.global_block
+        ]
+        total = mpmath.mpf(0)
+        for p, rows in enumerate(members):
+            sum_1 = mpmath.fsum(weight[i] for i in rows)
+            sum_2 = mpmath.fsum(weight[i] ** 2 for i in rows)
+            size = sum_1**2 / (overdispersion[p] * sum_2)
+            for v in range(predictor.n_voxels):
+                log_intensity = mpmath.fsum(
+                    predictor.patterns.loadings[p, c] * predictor.bases[v, k] * spatial[c, k]
+                    for c in range(predictor.n_spatial_columns)
+                    for k in range(n_bases)
+                )
+                ratio = sum_1 / (overdispersion[p] * mpmath.exp(log_intensity) * sum_2)
+                count = foci[p, v]
+                total += (
+                    mpmath.loggamma(count + size)
+                    - mpmath.loggamma(size)
+                    + size * (mpmath.log(ratio) - mpmath.log1p(ratio))
+                    - count * mpmath.log1p(ratio)
+                )
+        return total
+
+    n = flat.size
+    information = np.zeros((n, n))
+    with mpmath.workdps(digits):
+        point = [mpmath.mpf(value) for value in flat]
+        for i in range(n):
+            for j in range(i, n):
+                orders = [0] * n
+                orders[i] += 1
+                orders[j] += 1
+                information[i, j] = information[j, i] = -float(
+                    mpmath.diff(log_likelihood, point, orders)
+                )
+    return information
+
+
+def test_negative_binomial_information_near_zero_overdispersion(data):
+    """The closed form stays exact as a pattern's overdispersion approaches zero.
+
+    A fit lands there when one pattern's counts are no more variable than Poisson. The
+    negative-binomial size then grows like one over the overdispersion, and derivatives taken in
+    it subtract numbers of that order which should cancel to order one.
+    """
+    model, _ = _fit("~ s(diagnosis) + n + age", "negativebinomial", data)
+    with torch.no_grad():
+        model.nuisance[0] = np.log(1e-12)
+
+    reference = _high_precision_information(model)
+    analytic = closed_form_information(model.distribution)(model)
+
+    np.testing.assert_allclose(
+        analytic, reference, rtol=1e-8, atol=1e-10 * np.abs(reference).max()
+    )
+
+
 @pytest.mark.parametrize("distribution", DISTRIBUTIONS)
 @pytest.mark.parametrize("formula", FORMULAS)
 def test_information_is_symmetric(formula, distribution, data):
@@ -161,6 +244,14 @@ def test_overdispersed_information_uses_the_foci(distribution, data):
     model._foci = foci * 3
     two = closed_form_information(model.distribution)(model)
     assert np.abs(one - two).max() > 1e-6 * np.abs(one).max()
+
+
+def test_negative_binomial_information_refuses_fractional_counts(data):
+    """The moderator block sums over integer counts, so fractional ones are refused."""
+    model, foci = _fit("~ s(diagnosis) + n", "negativebinomial", data)
+    model._foci = foci * 0.5
+    with pytest.raises(ValueError, match="information_method='autodiff'"):
+        closed_form_information(model.distribution)(model)
 
 
 def test_unknown_distribution_falls_back_to_autodiff(data):
