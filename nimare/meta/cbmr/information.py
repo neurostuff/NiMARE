@@ -12,7 +12,13 @@ between them. Each is ``n_patterns`` rank-updates of width ``n_bases``, so nothi
 """
 
 import numpy as np
+from scipy.special import digamma, polygamma
 
+from nimare.meta.cbmr._negative_binomial import (
+    count_histogram,
+    log1p_ratio_excess,
+    matched_dispersion,
+)
 from nimare.meta.cbmr.distributions import (
     ClusteredNegativeBinomial,
     NegativeBinomial,
@@ -129,39 +135,25 @@ def poisson_information_matrix(model):
     return _finalize(information, n_spatial, n_global)
 
 
-def _log1p_ratio_excess(x):
-    """Return ``log(1 + x) / x - 1 / (1 + x)`` without cancellation as ``x`` approaches zero.
-
-    Both terms tend to one while their difference is about ``x / 2``, so the direct form loses
-    all precision at ``x = 1e-12``. Below ``1e-2`` the power series
-    ``sum_n (-1)^(n+1) n x^n / (n + 1)`` is summed instead; ten terms reach double precision.
-    """
-    x = np.asarray(x, dtype=float)
-    small = x < 1e-2
-    result = np.empty_like(x)
-    xs = x[small]
-    result[small] = sum((-1) ** (n + 1) * n * xs**n / (n + 1) for n in range(1, 11))
-    xl = x[~small]
-    result[~small] = np.log1p(xl) / xl - 1.0 / (1.0 + xl)
-    return result
-
-
 def _count_sums(counts, dispersion):
     """Return ``sum_v sum_{j<y_v} f(j)`` for ``f = j k / (1 + j k)`` and ``j k / (1 + j k)^2``.
 
     These are the derivatives in ``log k`` of ``sum_v [lgamma(y_v + 1/k) - lgamma(1/k) +
     y_v log k]``. Written with digamma functions they are differences of numbers near
-    ``log(1/k)`` and cancel as ``k`` approaches zero; written as finite sums every term is
-    positive. ``n_j``, the number of voxels with more than ``j`` foci, groups the sum by ``j``.
+    ``log(1/k)`` and cancel as ``k`` approaches zero; for integer counts they are finite sums
+    grouped by ``n_j``, the number of voxels with more than ``j`` foci, and every term is
+    positive. Fractional counts have no finite sum and use the digamma form, which is exact away
+    from ``k = 0``.
     """
-    integral = np.rint(counts)
-    if not np.allclose(counts, integral, rtol=0, atol=1e-8) or np.any(integral < 0):
-        raise ValueError(
-            "The closed-form NegativeBinomial information needs integer foci counts. Pass "
-            "information_method='autodiff' to CBMR(...) to differentiate the likelihood instead."
+    above = count_histogram(counts)
+    if above is None:
+        size = 1 / dispersion
+        log_step = digamma(counts + size) - digamma(size)
+        square_step = polygamma(1, counts + size) - polygamma(1, size)
+        return (
+            (counts - size * log_step).sum(),
+            (size * log_step + size**2 * square_step).sum(),
         )
-    histogram = np.bincount(integral.astype(np.int64))
-    above = counts.size - np.cumsum(histogram)[:-1]  # n_j for j = 0 .. max(y) - 1
     scaled = np.arange(above.size) * dispersion
     return (above * scaled / (1 + scaled)).sum(), (above * scaled / (1 + scaled) ** 2).sum()
 
@@ -179,12 +171,6 @@ def negative_binomial_information_matrix(model):
     :obj:`numpy.ndarray`
         Shape ``(n_parameters, n_parameters)``.
 
-    Raises
-    ------
-    ValueError
-        If the design has moderators and the foci counts are not integers. The moderator block
-        sums over the counts; the spatial block does not and takes fractional counts.
-
     Notes
     -----
     Each pattern's voxel totals are negative binomial with mean ``mu_v = S1 u_v`` and dispersion
@@ -197,7 +183,10 @@ def negative_binomial_information_matrix(model):
     overdispersion approaches zero the size grows without bound, and derivatives taken in it are
     differences of numbers of order ``1/k`` that should cancel to order one. At ``k = 1e-12``
     they cancel to rounding error and can make the information indefinite. In ``log k`` every
-    term stays of order one and the matrix tends to its Poisson limit.
+    term stays of order one and the matrix tends to the information of a Poisson likelihood on
+    the pattern marginals. That limit is not :func:`poisson_information_matrix`, whose moderator
+    block is taken per experiment and differs from it by ``sum_v y_v`` times the Hessian of
+    ``log S1``.
     """
     predictor, loadings, intensity, global_block, weight = _intensity_pieces(model)
     n_spatial, n_global, n_bases = model.n_spatial, model.n_global, predictor.n_bases
@@ -212,7 +201,7 @@ def negative_binomial_information_matrix(model):
         member_weight = weight[members]
         sum_1 = member_weight.sum()
         sum_2 = np.square(member_weight).sum()
-        dispersion = overdispersion[p] * sum_2 / sum_1**2  # k
+        dispersion = matched_dispersion(overdispersion[p], member_weight)  # k
 
         counts = marginal[p]
         mean = sum_1 * intensity[p]  # mu_v
@@ -242,7 +231,7 @@ def negative_binomial_information_matrix(model):
         _scatter_cross(information, row, n_bases, n_spatial, bases.T @ neg_mm, m_1)
         _scatter_cross(information, row, n_bases, n_spatial, bases.T @ neg_mk, k_1)
 
-        gap = _log1p_ratio_excess(scaled)
+        gap = log1p_ratio_excess(scaled)
         sum_k, sum_kk = _count_sums(counts, dispersion)
         psi_m = (excess / (1 + scaled)).sum()
         psi_k = sum_k + (mean * gap - counts * scaled / (1 + scaled)).sum()
