@@ -29,11 +29,7 @@ import math
 import numpy as np
 
 from nimare.meta.cbmr._torch import torch
-from nimare.meta.cbmr.predictor import (
-    _as_tensor,
-    experiment_totals,
-    poisson_log_likelihood,
-)
+from nimare.meta.cbmr.predictor import poisson_log_likelihood
 
 
 class DistributionError(ValueError):
@@ -118,8 +114,7 @@ def _pattern_quantities(predictor, spatial_coef, global_coef, foci):
     log_intensity = predictor.log_intensity_by_pattern(spatial_coef)
     moderator = predictor.moderator_effect(global_coef, device).to(dtype)
     weight = predictor.experiment_weights(global_coef, dtype, device)
-    foci_per_voxel = _as_tensor(predictor.patterns.marginal_by_pattern(foci), dtype, device)
-    foci_per_experiment = _as_tensor(experiment_totals(foci), dtype, device)
+    foci_per_voxel, foci_per_experiment = predictor.foci_tensors(foci, dtype, device)
     return log_intensity, moderator, weight, foci_per_voxel, foci_per_experiment
 
 

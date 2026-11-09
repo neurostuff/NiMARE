@@ -343,3 +343,48 @@ def test_likelihood_stays_on_the_coefficients_device(setup, name, formula):
     actual = distribution().log_likelihood(predictor, spatial, global_coef, overdispersion, foci)
 
     assert actual.device.type == "meta"
+
+
+@pytest.mark.parametrize("name", ["Poisson", "NegativeBinomial", "ClusteredNegativeBinomial"])
+def test_likelihood_reuses_converted_inputs(setup, monkeypatch, name):
+    """Repeated evaluations on the same foci reuse the converted design and foci tensors.
+
+    A fit evaluates the likelihood hundreds of times, and on a GPU each conversion is a
+    host-to-device copy. New foci must still be picked up.
+    """
+    import pickle
+
+    from nimare.meta.cbmr import predictor as predictor_module
+
+    distribution = {
+        "Poisson": Poisson,
+        "NegativeBinomial": NegativeBinomial,
+        "ClusteredNegativeBinomial": ClusteredNegativeBinomial,
+    }[name]()
+    predictor, spatial, global_coef, foci, _ = setup
+    overdispersion = torch.full((predictor.patterns.n_patterns,), 0.05, dtype=torch.float64)
+    conversions = []
+    as_tensor = predictor_module._as_tensor
+    monkeypatch.setattr(
+        predictor_module,
+        "_as_tensor",
+        lambda *args, **kwargs: conversions.append(args) or as_tensor(*args, **kwargs),
+    )
+
+    def evaluate(counts):
+        return distribution.log_likelihood(predictor, spatial, global_coef, overdispersion, counts)
+
+    first = evaluate(foci)
+    n_conversions = len(conversions)
+    assert torch.equal(evaluate(foci), first)
+    assert len(conversions) == n_conversions
+
+    doubled = foci * 2
+    assert not torch.equal(evaluate(doubled), first)
+    assert len(conversions) == n_conversions + 2  # the new foci's marginals and totals only
+
+    restored = pickle.loads(pickle.dumps(predictor))
+    assert restored._tensors == {} and restored._foci_tensors == {}
+    assert torch.equal(
+        distribution.log_likelihood(restored, spatial, global_coef, overdispersion, foci), first
+    )
