@@ -28,7 +28,7 @@ else:
         Poisson,
         resolve_distribution,
     )
-    from nimare.meta.cbmr.predictor import CBMRPredictor
+    from nimare.meta.cbmr.predictor import CBMRPredictor, FociMarginals
     from nimare.meta.cbmr.terms import Design, bind
 
 pytestmark = pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
@@ -48,6 +48,7 @@ def setup():
         {
             "diagnosis": [g for g in GROUPS for _ in range(N_PER_GROUP)],
             "n": rng.normal(size=n_experiments),
+            "vol": np.linspace(0.5, 2.0, n_experiments),
         }
     )
     raw = rng.uniform(0.05, 1.0, (N_VOXELS, N_BASES))
@@ -310,3 +311,86 @@ def test_overdispersion_gradients_flow(setup):
     assert overdispersion.grad is not None
     assert torch.all(torch.isfinite(overdispersion.grad))
     assert torch.any(overdispersion.grad != 0)
+
+
+@pytest.mark.parametrize("name", ["Poisson", "NegativeBinomial", "ClusteredNegativeBinomial"])
+@pytest.mark.parametrize(
+    "formula", ["~ s(diagnosis) + n", "~ 1 + sz(diagnosis)", "~ s(diagnosis) + n + exposure(vol)"]
+)
+def test_likelihood_stays_on_the_coefficients_device(setup, name, formula):
+    """Every tensor a likelihood builds is put on the coefficients' device.
+
+    Evaluated on torch's ``meta`` device, which has shapes but no data. A tensor left on the CPU
+    fails here with the "Expected all tensors to be on the same device" error a CUDA fit raises,
+    so this runs without a GPU. The second formula has no moderators, which is the path where no
+    moderator coefficient exists to take the device from; the third has an exposure. The full
+    predictor and mean, which the sandwich covariance reads, are checked too.
+    """
+    distribution = {
+        "Poisson": Poisson,
+        "NegativeBinomial": NegativeBinomial,
+        "ClusteredNegativeBinomial": ClusteredNegativeBinomial,
+    }[name]
+    _, _, _, foci, annotations = setup
+    rng = np.random.default_rng(5)
+    predictor = CBMRPredictor(
+        bind(Design.from_formula(formula), annotations), rng.uniform(0.05, 1.0, (N_VOXELS, 4))
+    )
+    spatial = torch.ones((predictor.n_spatial_columns, N_BASES), device="meta")
+    global_coef = (
+        torch.ones(predictor.n_global_columns, device="meta")
+        if predictor.n_global_columns
+        else None
+    )
+    overdispersion = torch.full((predictor.patterns.n_patterns,), 0.05, device="meta")
+
+    actual = distribution().log_likelihood(predictor, spatial, global_coef, overdispersion, foci)
+
+    assert actual.device.type == "meta"
+    assert predictor.linear_predictor(spatial, global_coef).device.type == "meta"
+    assert predictor.fitted_mean(spatial, global_coef).device.type == "meta"
+
+
+@pytest.mark.parametrize("name", ["Poisson", "NegativeBinomial", "ClusteredNegativeBinomial"])
+def test_conversions_are_reused_only_while_keeping_tensors(setup, monkeypatch, name):
+    """A fit's repeated evaluations reuse the converted inputs; a direct call stays pure.
+
+    A fit evaluates the likelihood hundreds of times, and on a GPU each conversion is a
+    host-to-device copy, so inside ``keeping_tensors`` with :class:`FociMarginals` a second
+    evaluation converts nothing. Outside it the likelihood depends only on its arguments: foci
+    changed in place are seen, and nothing is left cached.
+    """
+    from nimare.meta.cbmr import predictor as predictor_module
+
+    distribution = {
+        "Poisson": Poisson,
+        "NegativeBinomial": NegativeBinomial,
+        "ClusteredNegativeBinomial": ClusteredNegativeBinomial,
+    }[name]()
+    predictor, spatial, global_coef, foci, _ = setup
+    overdispersion = torch.full((predictor.patterns.n_patterns,), 0.05, dtype=torch.float64)
+    conversions = []
+    as_tensor = predictor_module._as_tensor
+    monkeypatch.setattr(
+        predictor_module,
+        "_as_tensor",
+        lambda *args, **kwargs: conversions.append(args) or as_tensor(*args, **kwargs),
+    )
+
+    def evaluate(counts):
+        return distribution.log_likelihood(predictor, spatial, global_coef, overdispersion, counts)
+
+    with predictor.keeping_tensors():
+        first = evaluate(FociMarginals(predictor.patterns, foci))
+        n_conversions = len(conversions)
+        marginals = FociMarginals(predictor.patterns, foci)
+        assert torch.equal(evaluate(marginals), first)
+        assert len(conversions) == n_conversions + 2  # the new marginals and totals only
+        assert torch.equal(evaluate(marginals), first)
+        assert len(conversions) == n_conversions + 2
+    assert predictor._tensors is None
+
+    counts = foci.copy()
+    assert torch.equal(evaluate(counts), first)
+    counts *= 2
+    assert not torch.equal(evaluate(counts), first)

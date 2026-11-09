@@ -29,11 +29,7 @@ import math
 import numpy as np
 
 from nimare.meta.cbmr._torch import torch
-from nimare.meta.cbmr.predictor import (
-    _as_tensor,
-    experiment_totals,
-    poisson_log_likelihood,
-)
+from nimare.meta.cbmr.predictor import poisson_log_likelihood
 
 
 class DistributionError(ValueError):
@@ -98,14 +94,6 @@ class Distribution:
         raise NotImplementedError
 
 
-def _pattern_slices(predictor):
-    """Return, per pattern, the indices of the experiments sharing it."""
-    assignment = predictor.patterns.assignment
-    return [
-        np.flatnonzero(assignment == pattern) for pattern in range(predictor.patterns.n_patterns)
-    ]
-
-
 def _pattern_quantities(predictor, spatial_coef, global_coef, foci):
     """Return the per-pattern pieces the marginal likelihoods are written in terms of.
 
@@ -114,11 +102,11 @@ def _pattern_quantities(predictor, spatial_coef, global_coef, foci):
     ``sum_i y_i. m_i`` term: its exposure counterpart ``sum_i y_i. log E_i`` is parameter-free
     and deliberately never formed.
     """
+    dtype, device = spatial_coef.dtype, spatial_coef.device
     log_intensity = predictor.log_intensity_by_pattern(spatial_coef)
-    moderator = predictor.moderator_effect(global_coef).to(spatial_coef.dtype)
-    weight = predictor.experiment_weights(global_coef, spatial_coef.dtype)
-    foci_per_voxel = _as_tensor(predictor.patterns.marginal_by_pattern(foci), spatial_coef.dtype)
-    foci_per_experiment = _as_tensor(experiment_totals(foci), spatial_coef.dtype)
+    moderator = predictor.moderator_effect(global_coef, device).to(dtype)
+    weight = predictor.experiment_weights(global_coef, dtype, device)
+    foci_per_voxel, foci_per_experiment = predictor.foci_tensors(foci, dtype, device)
     return log_intensity, moderator, weight, foci_per_voxel, foci_per_experiment
 
 
@@ -182,8 +170,8 @@ class NegativeBinomial(_OverdispersedDistribution):
         log_intensity, _, weight, foci_per_voxel, _ = _pattern_quantities(
             predictor, spatial_coef, global_coef, foci
         )
-        total = torch.zeros((), dtype=spatial_coef.dtype)
-        for pattern, members in enumerate(_pattern_slices(predictor)):
+        total = torch.zeros((), dtype=spatial_coef.dtype, device=spatial_coef.device)
+        for pattern, members in enumerate(predictor.member_tensors(spatial_coef.device)):
             overdispersion = nuisance[pattern]
             intensity = torch.exp(log_intensity[pattern])
             member_weight = weight[members]
@@ -222,8 +210,8 @@ class ClusteredNegativeBinomial(_OverdispersedDistribution):
         log_intensity, moderator, weight, foci_per_voxel, foci_per_experiment = (
             _pattern_quantities(predictor, spatial_coef, global_coef, foci)
         )
-        total = torch.zeros((), dtype=spatial_coef.dtype)
-        for pattern, members in enumerate(_pattern_slices(predictor)):
+        total = torch.zeros((), dtype=spatial_coef.dtype, device=spatial_coef.device)
+        for pattern, members in enumerate(predictor.member_tensors(spatial_coef.device)):
             precision = 1 / nuisance[pattern]
             intensity_sum = torch.sum(torch.exp(log_intensity[pattern]))
             member_moderator = moderator[members]
