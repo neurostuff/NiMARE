@@ -211,6 +211,14 @@ def test_negative_binomial_information_takes_fractional_counts(data, formula):
     assert np.abs(analytic - reference).max() < 1e-8 * np.abs(reference).max()
 
 
+def test_negative_binomial_information_refuses_negative_counts(data):
+    """Negative counts are an error, not a case for the fractional fallback."""
+    model, foci = _fit("~ s(diagnosis) + n", "negativebinomial", data)
+    model._foci = foci - foci.max()
+    with pytest.raises(ValueError, match="cannot be negative"):
+        closed_form_information(model.distribution)(model)
+
+
 def test_unknown_distribution_falls_back_to_autodiff(data):
     """A distribution with no derivation must not get another one's Hessian."""
     from nimare.meta.cbmr.distributions import Distribution

@@ -145,6 +145,8 @@ def _count_sums(counts, dispersion):
     positive. Fractional counts have no finite sum and use the digamma form, which is exact away
     from ``k = 0``.
     """
+    if np.any(counts < 0):
+        raise ValueError("NegativeBinomial foci counts cannot be negative.")
     above = count_histogram(counts)
     if above is None:
         size = 1 / dispersion
