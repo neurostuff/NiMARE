@@ -310,3 +310,36 @@ def test_overdispersion_gradients_flow(setup):
     assert overdispersion.grad is not None
     assert torch.all(torch.isfinite(overdispersion.grad))
     assert torch.any(overdispersion.grad != 0)
+
+
+@pytest.mark.parametrize("name", ["Poisson", "NegativeBinomial", "ClusteredNegativeBinomial"])
+@pytest.mark.parametrize("formula", ["~ s(diagnosis) + n", "~ 1 + sz(diagnosis)"])
+def test_likelihood_stays_on_the_coefficients_device(setup, name, formula):
+    """Every tensor a likelihood builds is put on the coefficients' device.
+
+    Evaluated on torch's ``meta`` device, which has shapes but no data. A tensor left on the CPU
+    fails here with the "Expected all tensors to be on the same device" error a CUDA fit raises,
+    so this runs without a GPU. The second formula has no moderators, which is the path where no
+    moderator coefficient exists to take the device from.
+    """
+    distribution = {
+        "Poisson": Poisson,
+        "NegativeBinomial": NegativeBinomial,
+        "ClusteredNegativeBinomial": ClusteredNegativeBinomial,
+    }[name]
+    _, _, _, foci, annotations = setup
+    rng = np.random.default_rng(5)
+    predictor = CBMRPredictor(
+        bind(Design.from_formula(formula), annotations), rng.uniform(0.05, 1.0, (N_VOXELS, 4))
+    )
+    spatial = torch.ones((predictor.n_spatial_columns, N_BASES), device="meta")
+    global_coef = (
+        torch.ones(predictor.n_global_columns, device="meta")
+        if predictor.n_global_columns
+        else None
+    )
+    overdispersion = torch.full((predictor.patterns.n_patterns,), 0.05, device="meta")
+
+    actual = distribution().log_likelihood(predictor, spatial, global_coef, overdispersion, foci)
+
+    assert actual.device.type == "meta"

@@ -58,8 +58,8 @@ def experiment_totals(foci):
     return np.asarray(foci.sum(axis=1)).reshape(-1)
 
 
-def _as_tensor(array, dtype=torch.float64):
-    """Convert an array to a torch tensor, copying anything that is not already contiguous.
+def _as_tensor(array, dtype=torch.float64, device=None):
+    """Convert an array to a torch tensor on ``device``, copying anything not contiguous.
 
     Everything reaching this function today is contiguous by construction -- ``np.hstack`` output,
     patsy design matrices, freshly allocated accumulators -- but that is a property of the current
@@ -67,10 +67,14 @@ def _as_tensor(array, dtype=torch.float64):
     blocks and can be non-contiguous, read-only or negatively strided depending on how the
     requested columns sit relative to the frame's own order; torch rejects the last outright and
     warns about the second. One guard at the boundary beats auditing the layout at each caller.
+
+    ``device`` is the device of the coefficients the result will be combined with. The design
+    is held in numpy, so every tensor built from it starts on the CPU and a CUDA fit fails unless
+    it is moved here.
     """
     if torch.is_tensor(array):
-        return array.to(dtype)
-    return torch.as_tensor(np.ascontiguousarray(array), dtype=dtype)
+        return array.to(dtype=dtype, device=device)
+    return torch.as_tensor(np.ascontiguousarray(array), dtype=dtype, device=device)
 
 
 class SpatialPatterns:
@@ -213,20 +217,22 @@ class CBMRPredictor:
         """Whether the design carries an exposure."""
         return self.exposure is not None
 
-    def experiment_weights(self, global_coef, dtype=None):
+    def experiment_weights(self, global_coef, dtype=None, device=None):
         """Return ``E_i exp(m_i)``, the multiplier on each experiment's spatial intensity.
 
         The single place this product is formed. Every consumer -- the likelihood, the closed-form
         information, the sandwich, the overdispersed marginals -- needs exactly it, and an earlier
         arrangement in which two of them built it separately is how a change to one could be
         silently missing from the other.
+
+        ``device`` is used only when there is no ``global_coef`` to take the device from.
         """
-        weights = torch.exp(self.moderator_effect(global_coef))
+        weights = torch.exp(self.moderator_effect(global_coef, device))
         if dtype is not None:
             weights = weights.to(dtype)
         if self.exposure is None:
             return weights
-        return _as_tensor(self.exposure, weights.dtype) * weights
+        return _as_tensor(self.exposure, weights.dtype, weights.device) * weights
 
     def log_intensity_by_pattern(self, spatial_coef):
         """Return the spatial log-intensity for each distinct pattern.
@@ -241,17 +247,20 @@ class CBMRPredictor:
         :obj:`torch.Tensor`
             Shape ``(n_patterns, n_voxels)``.
         """
-        loadings = _as_tensor(self.patterns.loadings, spatial_coef.dtype)
-        bases = _as_tensor(self.bases, spatial_coef.dtype)
+        loadings = _as_tensor(self.patterns.loadings, spatial_coef.dtype, spatial_coef.device)
+        bases = _as_tensor(self.bases, spatial_coef.dtype, spatial_coef.device)
         return (loadings @ spatial_coef) @ bases.T
 
-    def moderator_effect(self, global_coef):
+    def moderator_effect(self, global_coef, device=None):
         """Return the scalar linear predictor contributed per experiment.
 
         Parameters
         ----------
         global_coef : :obj:`torch.Tensor` or None
             Shape ``(n_global_columns,)``. None when the design has no non-spatial terms.
+        device : :obj:`torch.device` or :obj:`str`, optional
+            Device of the zeros returned when there is no ``global_coef``. Otherwise the result
+            is on ``global_coef``'s device.
 
         Returns
         -------
@@ -259,8 +268,8 @@ class CBMRPredictor:
             Shape ``(n_experiments,)``. Zeros when there are no non-spatial terms.
         """
         if self.global_block is None or global_coef is None:
-            return torch.zeros(self.patterns.n_experiments, dtype=torch.float64)
-        block = _as_tensor(self.global_block, global_coef.dtype)
+            return torch.zeros(self.patterns.n_experiments, dtype=torch.float64, device=device)
+        block = _as_tensor(self.global_block, global_coef.dtype, global_coef.device)
         return block @ global_coef
 
     def linear_predictor(self, spatial_coef, global_coef=None):
@@ -274,9 +283,9 @@ class CBMRPredictor:
         would reintroduce the logarithm of zero the multiplicative form exists to avoid.
         """
         by_pattern = self.log_intensity_by_pattern(spatial_coef)
-        assignment = torch.as_tensor(self.patterns.assignment, dtype=torch.long)
+        assignment = _as_tensor(self.patterns.assignment, torch.long, by_pattern.device)
         eta = by_pattern[assignment]
-        return eta + self.moderator_effect(global_coef)[:, None]
+        return eta + self.moderator_effect(global_coef, by_pattern.device)[:, None]
 
     def fitted_mean(self, spatial_coef, global_coef=None):
         """Return the fitted (experiment x voxel) mean, exposure included.
@@ -285,8 +294,8 @@ class CBMRPredictor:
         sandwich and for diagnostics rather than for fitting.
         """
         by_pattern = torch.exp(self.log_intensity_by_pattern(spatial_coef))
-        assignment = torch.as_tensor(self.patterns.assignment, dtype=torch.long)
-        weights = self.experiment_weights(global_coef, by_pattern.dtype)
+        assignment = _as_tensor(self.patterns.assignment, torch.long, by_pattern.device)
+        weights = self.experiment_weights(global_coef, by_pattern.dtype, by_pattern.device)
         return by_pattern[assignment] * weights[:, None]
 
 
@@ -317,13 +326,12 @@ def poisson_log_likelihood(predictor, spatial_coef, global_coef, foci):
     :obj:`torch.Tensor`
         Scalar log-likelihood.
     """
-    marginal_by_pattern = _as_tensor(
-        predictor.patterns.marginal_by_pattern(foci), spatial_coef.dtype
-    )
-    foci_per_experiment = _as_tensor(experiment_totals(foci), spatial_coef.dtype)
+    dtype, device = spatial_coef.dtype, spatial_coef.device
+    marginal_by_pattern = _as_tensor(predictor.patterns.marginal_by_pattern(foci), dtype, device)
+    foci_per_experiment = _as_tensor(experiment_totals(foci), dtype, device)
 
     log_intensity = predictor.log_intensity_by_pattern(spatial_coef)
-    moderator = predictor.moderator_effect(global_coef).to(spatial_coef.dtype)
+    moderator = predictor.moderator_effect(global_coef, device).to(dtype)
 
     # sum_p Y_p . s_p
     spatial_term = torch.sum(marginal_by_pattern * log_intensity)
@@ -332,9 +340,9 @@ def poisson_log_likelihood(predictor, spatial_coef, global_coef, foci):
 
     # sum_p (sum_v exp(s_p)) T_p, with T_p the summed weight within pattern p
     intensity_sum = torch.exp(log_intensity).sum(dim=1)
-    assignment = torch.as_tensor(predictor.patterns.assignment, dtype=torch.long)
+    assignment = _as_tensor(predictor.patterns.assignment, torch.long, device)
     moderator_sum = torch.zeros(
-        predictor.patterns.n_patterns, dtype=spatial_coef.dtype
-    ).index_add_(0, assignment, predictor.experiment_weights(global_coef, spatial_coef.dtype))
+        predictor.patterns.n_patterns, dtype=dtype, device=device
+    ).index_add_(0, assignment, predictor.experiment_weights(global_coef, dtype, device))
 
     return spatial_term + moderator_term - torch.dot(intensity_sum, moderator_sum)

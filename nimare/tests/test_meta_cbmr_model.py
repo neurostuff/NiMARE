@@ -14,7 +14,7 @@ import pytest
 statsmodels_api = pytest.importorskip("statsmodels.api")
 
 try:
-    import torch  # noqa: F401
+    import torch
 except ImportError:
     TORCH_INSTALLED = False
 else:
@@ -25,6 +25,7 @@ else:
     from nimare.meta.cbmr.terms import Design, bind
 
 pytestmark = pytest.mark.skipif(not TORCH_INSTALLED, reason="Torch not installed.")
+CUDA_AVAILABLE = TORCH_INSTALLED and torch.cuda.is_available()
 
 N_PER_GROUP = 14
 N_VOXELS = 32
@@ -79,8 +80,8 @@ def _build(formula, annotations, bases):
     return CBMRPredictor(bind(Design.from_formula(formula), annotations), bases)
 
 
-def _simulate(predictor, rng, scale=1.3):
-    """Draw Poisson counts from a known coefficient vector."""
+def _simulate(predictor, rng, scale=1.3, size=None):
+    """Draw Poisson counts from a known coefficient vector, gamma-mixed when ``size`` is given."""
     spatial = torch.tensor(
         rng.normal(scale, 0.25, (predictor.n_spatial_columns, predictor.n_bases)),
         dtype=torch.float64,
@@ -92,7 +93,10 @@ def _simulate(predictor, rng, scale=1.3):
     )
     with torch.no_grad():
         eta = predictor.linear_predictor(spatial, global_coef).numpy()
-    return rng.poisson(np.exp(eta)).astype(float)
+    mean = np.exp(eta)
+    if size is not None:
+        mean = rng.gamma(size, mean / size)
+    return rng.poisson(mean).astype(float)
 
 
 def _materialize(predictor):
@@ -435,4 +439,37 @@ def test_autodiff_information_method_does_not_warn_and_agrees_with_closed_form(d
 
     np.testing.assert_allclose(
         autodiff_information, closed_form_model.information_matrix(), rtol=1e-8
+    )
+
+
+@pytest.mark.skipif(not CUDA_AVAILABLE, reason="CUDA not available.")
+@pytest.mark.parametrize("distribution", ["poisson", "negativebinomial"])
+def test_cuda_fit_matches_cpu_fit(data, distribution):
+    """A model fit on the GPU reaches the same coefficients and standard errors as on the CPU.
+
+    The design is held in numpy, so this guards every place a tensor is built from it.
+    ``sz()`` and a moderator together cover the spatial loadings, the moderator block and the
+    level map a hypothesis is pushed through.
+
+    The counts are overdispersed. On Poisson counts the negative-binomial fit drives an
+    overdispersion toward zero, where its likelihood loses precision and the two devices part
+    ways for reasons that have nothing to do with where the tensors live.
+    """
+    annotations, bases, _ = data
+    annotations = annotations.assign(drug=["yes", "no"] * N_PER_GROUP)
+    predictor = _build("~ 1 + sz(diagnosis) + sz(drug) + n", annotations, bases)
+    foci = _simulate(predictor, np.random.default_rng(71), size=6.0)
+
+    cpu = CBMRModel(predictor, distribution, device="cpu").fit(foci, n_iter=500)
+    cuda = CBMRModel(predictor, distribution, device="cuda").fit(foci, n_iter=500)
+
+    assert cuda.coefficients.device.type == "cuda"
+    np.testing.assert_allclose(
+        cuda.coefficients.detach().cpu().numpy(),
+        cpu.coefficients.detach().numpy(),
+        rtol=1e-6,
+        atol=1e-8,
+    )
+    np.testing.assert_allclose(
+        np.sqrt(np.diag(cuda.covariance())), np.sqrt(np.diag(cpu.covariance())), rtol=1e-5
     )
