@@ -15,6 +15,7 @@ import numpy as np
 from nimare.meta.cbmr._torch import torch
 from nimare.meta.cbmr.distributions import resolve_distribution
 from nimare.meta.cbmr.information import closed_form_information
+from nimare.meta.cbmr.predictor import FociMarginals
 
 LGR = logging.getLogger(__name__)
 
@@ -93,7 +94,7 @@ class CBMRModel(torch.nn.Module):
         )
         self._iterations = 0
         self._foci = None
-        self._candidate_foci = None
+        self._candidate_marginals = None
         self._covariance_cache = None
 
     @property
@@ -135,8 +136,10 @@ class CBMRModel(torch.nn.Module):
         return self._foci
 
     def _active_foci(self):
-        """Return the candidate foci during fitting, otherwise the fitted foci."""
-        return self._candidate_foci if self._candidate_foci is not None else self._require_foci()
+        """Return the candidate foci's marginals during fitting, otherwise the fitted foci."""
+        if self._candidate_marginals is not None:
+            return self._candidate_marginals
+        return self._require_foci()
 
     def log_likelihood(self, flat=None, nuisance=None):
         """Return the log-likelihood at ``flat``, defaulting to the current coefficients."""
@@ -173,7 +176,7 @@ class CBMRModel(torch.nn.Module):
         previous_values = [parameter.detach().clone() for parameter in parameters]
         previous_iterations = self._iterations
         candidate_foci = self._copy_foci(foci)
-        self._candidate_foci = candidate_foci
+        self._candidate_marginals = FociMarginals(self.predictor.patterns, candidate_foci)
         optimizer = torch.optim.LBFGS(
             params=parameters,
             lr=lr,
@@ -182,33 +185,34 @@ class CBMRModel(torch.nn.Module):
             line_search_fn="strong_wolfe",
         )
 
-        try:
+        with self.predictor.keeping_tensors():
+            try:
 
-            def closure():
-                optimizer.zero_grad()
+                def closure():
+                    optimizer.zero_grad()
+                    loss = self()
+                    loss.backward()
+                    return loss
+
+                optimizer.step(closure)
+                state = optimizer.state.get(parameters[0], {})
+                iterations = int(state.get("n_iter", 0))
+
                 loss = self()
-                loss.backward()
-                return loss
-
-            optimizer.step(closure)
-            state = optimizer.state.get(parameters[0], {})
-            iterations = int(state.get("n_iter", 0))
-
-            loss = self()
-            if not torch.isfinite(loss):
-                raise ValueError(
-                    f"The {self.distribution.name} log-likelihood became "
-                    f"{float(loss.detach())} during optimization. Try a smaller lr, a coarser "
-                    "spline_spacing, or the Poisson distribution."
-                )
-        except Exception:
-            with torch.no_grad():
-                for parameter, previous_value in zip(parameters, previous_values):
-                    parameter.copy_(previous_value)
-            self._iterations = previous_iterations
-            raise
-        finally:
-            self._candidate_foci = None
+                if not torch.isfinite(loss):
+                    raise ValueError(
+                        f"The {self.distribution.name} log-likelihood became "
+                        f"{float(loss.detach())} during optimization. Try a smaller lr, a coarser "
+                        "spline_spacing, or the Poisson distribution."
+                    )
+            except Exception:
+                with torch.no_grad():
+                    for parameter, previous_value in zip(parameters, previous_values):
+                        parameter.copy_(previous_value)
+                self._iterations = previous_iterations
+                raise
+            finally:
+                self._candidate_marginals = None
 
         self._foci = candidate_foci
         self._covariance_cache = None

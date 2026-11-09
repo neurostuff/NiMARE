@@ -94,14 +94,6 @@ class Distribution:
         raise NotImplementedError
 
 
-def _pattern_slices(predictor):
-    """Return, per pattern, the indices of the experiments sharing it."""
-    assignment = predictor.patterns.assignment
-    return [
-        np.flatnonzero(assignment == pattern) for pattern in range(predictor.patterns.n_patterns)
-    ]
-
-
 def _pattern_quantities(predictor, spatial_coef, global_coef, foci):
     """Return the per-pattern pieces the marginal likelihoods are written in terms of.
 
@@ -179,7 +171,7 @@ class NegativeBinomial(_OverdispersedDistribution):
             predictor, spatial_coef, global_coef, foci
         )
         total = torch.zeros((), dtype=spatial_coef.dtype, device=spatial_coef.device)
-        for pattern, members in enumerate(_pattern_slices(predictor)):
+        for pattern, members in enumerate(predictor.member_tensors(spatial_coef.device)):
             overdispersion = nuisance[pattern]
             intensity = torch.exp(log_intensity[pattern])
             member_weight = weight[members]
@@ -219,7 +211,7 @@ class ClusteredNegativeBinomial(_OverdispersedDistribution):
             _pattern_quantities(predictor, spatial_coef, global_coef, foci)
         )
         total = torch.zeros((), dtype=spatial_coef.dtype, device=spatial_coef.device)
-        for pattern, members in enumerate(_pattern_slices(predictor)):
+        for pattern, members in enumerate(predictor.member_tensors(spatial_coef.device)):
             precision = 1 / nuisance[pattern]
             intensity_sum = torch.sum(torch.exp(log_intensity[pattern]))
             member_moderator = moderator[members]

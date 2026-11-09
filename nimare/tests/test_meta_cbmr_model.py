@@ -470,6 +470,21 @@ def test_cuda_fit_matches_cpu_fit(data, distribution):
         rtol=1e-6,
         atol=1e-8,
     )
-    np.testing.assert_allclose(
-        np.sqrt(np.diag(cuda.covariance())), np.sqrt(np.diag(cpu.covariance())), rtol=1e-5
-    )
+    for cov_type in ("fisher", "sandwich"):
+        np.testing.assert_allclose(
+            np.sqrt(np.diag(cuda.covariance(cov_type))),
+            np.sqrt(np.diag(cpu.covariance(cov_type))),
+            rtol=1e-5,
+        )
+
+
+def test_fit_releases_its_tensors(data):
+    """The tensors converted for a fit are dropped when it returns, so none stay on a device."""
+    annotations, bases, _ = data
+    predictor = _build("~ s(diagnosis) + n", annotations, bases)
+    foci = _simulate(predictor, np.random.default_rng(3))
+    model = CBMRModel(predictor, "negativebinomial").fit(foci, n_iter=20)
+
+    assert predictor._tensors is None
+    assert model._candidate_marginals is None
+    assert model._active_foci() is model.foci

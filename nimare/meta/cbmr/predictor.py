@@ -37,6 +37,8 @@ combination is rejected for want of an implementation -- expensive designs are m
 expensive, which the parameter budget already warns about.
 """
 
+import contextlib
+
 import numpy as np
 import scipy.sparse
 
@@ -91,6 +93,8 @@ class SpatialPatterns:
         One row per distinct pattern, of shape ``(n_patterns, n_spatial_columns)``.
     assignment : :obj:`numpy.ndarray`
         Index into ``loadings`` for each experiment.
+    members : :obj:`list` of :obj:`numpy.ndarray`
+        Per pattern, the indices of the experiments sharing it.
     """
 
     def __init__(self, spatial_block):
@@ -100,6 +104,7 @@ class SpatialPatterns:
         loadings, assignment = np.unique(spatial_block, axis=0, return_inverse=True)
         self.loadings = loadings
         self.assignment = np.asarray(assignment).reshape(-1)
+        self.members = [np.flatnonzero(self.assignment == p) for p in range(len(loadings))]
 
     @property
     def n_patterns(self):
@@ -150,6 +155,37 @@ class SpatialPatterns:
         return np.asarray(marginal, dtype=float)
 
 
+class FociMarginals:
+    """Foci counts summed the two ways the marginal likelihoods read them.
+
+    Built once per foci matrix by :meth:`~nimare.meta.cbmr.model.CBMRModel.fit`, which then
+    evaluates the likelihood hundreds of times on it. The tensor conversions are kept per dtype
+    and device, since on a GPU each one is a host-to-device copy.
+
+    Parameters
+    ----------
+    patterns : :class:`SpatialPatterns`
+        Patterns the voxel marginals are summed within.
+    foci : :obj:`scipy.sparse.spmatrix` or :obj:`numpy.ndarray`
+        Foci counts, of shape ``(n_experiments, n_voxels)``.
+    """
+
+    def __init__(self, patterns, foci):
+        self.by_pattern = patterns.marginal_by_pattern(foci)
+        self.per_experiment = experiment_totals(foci)
+        self._tensors = {}
+
+    def tensors(self, dtype, device):
+        """Return the voxel marginals and experiment totals as tensors on ``device``."""
+        key = (dtype, device)
+        if key not in self._tensors:
+            self._tensors[key] = (
+                _as_tensor(self.by_pattern, dtype, device),
+                _as_tensor(self.per_experiment, dtype, device),
+            )
+        return self._tensors[key]
+
+
 class CBMRPredictor:
     """The linear predictor implied by a bound design and a spline basis.
 
@@ -186,49 +222,60 @@ class CBMRPredictor:
         self.global_block = np.hstack(global_blocks) if global_blocks else None
         self.exposure = bound_design.exposure
         self.patterns = SpatialPatterns(self.spatial_block)
-        self._tensors = {}
-        self._cached_foci = None
-        self._foci_tensors = {}
+        self._tensors = None
 
-    def __getstate__(self):
-        """Drop the cached tensors, which only duplicate arrays held here in numpy."""
-        state = self.__dict__.copy()
-        state.update(_tensors={}, _cached_foci=None, _foci_tensors={})
-        return state
+    @contextlib.contextmanager
+    def keeping_tensors(self):
+        """Keep the design arrays' tensor conversions for the duration of the block.
+
+        A fit evaluates the likelihood hundreds of times on the same design, and on a GPU each
+        conversion is a host-to-device copy of arrays as large as the spline basis.
+        :meth:`~nimare.meta.cbmr.model.CBMRModel.fit` evaluates inside this block; outside it
+        every call converts afresh, so nothing stays on the device after the fit.
+        """
+        if self._tensors is not None:
+            yield
+            return
+        self._tensors = {}
+        try:
+            yield
+        finally:
+            self._tensors = None
 
     def _tensor(self, name, array, dtype, device):
-        """Return the design array ``array`` as a tensor, converting it once per dtype and device.
-
-        A fit evaluates the likelihood hundreds of times on the same design. On a GPU each
-        conversion is a host-to-device copy of arrays as large as the spline basis, so the
-        converted tensors are kept.
-        """
+        """Return ``array`` as a tensor, reusing the conversion inside :meth:`keeping_tensors`."""
+        if self._tensors is None:
+            return _as_tensor(array, dtype, device)
         key = (name, dtype, device)
         if key not in self._tensors:
             self._tensors[key] = _as_tensor(array, dtype, device)
         return self._tensors[key]
 
+    def assignment_tensor(self, device):
+        """Return each experiment's pattern index, as a tensor on ``device``."""
+        return self._tensor("assignment", self.patterns.assignment, torch.long, device)
+
+    def member_tensors(self, device):
+        """Return, per pattern, the indices of the experiments sharing it, on ``device``."""
+        return [
+            self._tensor(("members", pattern), members, torch.long, device)
+            for pattern, members in enumerate(self.patterns.members)
+        ]
+
     def foci_tensors(self, foci, dtype, device):
         """Return the per-pattern voxel marginals and per-experiment totals of ``foci``.
 
-        Computed once per ``foci``, dtype and device, and recomputed when a different ``foci``
-        object is passed. ``foci`` must not be changed in place between calls;
-        :class:`~nimare.meta.cbmr.model.CBMRModel` passes a read-only copy.
+        ``foci`` is a count matrix, summed and converted on every call, or a
+        :class:`FociMarginals`, whose sums and conversions are reused.
 
         Returns
         -------
         :obj:`tuple` of :obj:`torch.Tensor`
             Shapes ``(n_patterns, n_voxels)`` and ``(n_experiments,)``.
         """
-        if foci is not self._cached_foci:
-            self._cached_foci, self._foci_tensors = foci, {}
-        key = (dtype, device)
-        if key not in self._foci_tensors:
-            self._foci_tensors[key] = (
-                _as_tensor(self.patterns.marginal_by_pattern(foci), dtype, device),
-                _as_tensor(experiment_totals(foci), dtype, device),
-            )
-        return self._foci_tensors[key]
+        if not isinstance(foci, FociMarginals):
+            foci = FociMarginals(self.patterns, foci)
+        return foci.tensors(dtype, device)
 
     @property
     def n_voxels(self):
@@ -329,9 +376,7 @@ class CBMRPredictor:
         would reintroduce the logarithm of zero the multiplicative form exists to avoid.
         """
         by_pattern = self.log_intensity_by_pattern(spatial_coef)
-        assignment = self._tensor(
-            "assignment", self.patterns.assignment, torch.long, by_pattern.device
-        )
+        assignment = self.assignment_tensor(by_pattern.device)
         eta = by_pattern[assignment]
         return eta + self.moderator_effect(global_coef, by_pattern.device)[:, None]
 
@@ -342,9 +387,7 @@ class CBMRPredictor:
         sandwich and for diagnostics rather than for fitting.
         """
         by_pattern = torch.exp(self.log_intensity_by_pattern(spatial_coef))
-        assignment = self._tensor(
-            "assignment", self.patterns.assignment, torch.long, by_pattern.device
-        )
+        assignment = self.assignment_tensor(by_pattern.device)
         weights = self.experiment_weights(global_coef, by_pattern.dtype, by_pattern.device)
         return by_pattern[assignment] * weights[:, None]
 
@@ -389,7 +432,7 @@ def poisson_log_likelihood(predictor, spatial_coef, global_coef, foci):
 
     # sum_p (sum_v exp(s_p)) T_p, with T_p the summed weight within pattern p
     intensity_sum = torch.exp(log_intensity).sum(dim=1)
-    assignment = predictor._tensor("assignment", predictor.patterns.assignment, torch.long, device)
+    assignment = predictor.assignment_tensor(device)
     moderator_sum = torch.zeros(
         predictor.patterns.n_patterns, dtype=dtype, device=device
     ).index_add_(0, assignment, predictor.experiment_weights(global_coef, dtype, device))
