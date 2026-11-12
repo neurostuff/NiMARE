@@ -328,6 +328,26 @@ def test_images_to_coordinates(tmp_path, caplog, testdata_ibma, kwargs, drop_dat
     )
 
 
+def test_images_to_coordinates_reuses_original_ids(testdata_ibma, monkeypatch):
+    """Project original coordinates a fixed number of times, not once per image."""
+    large = transforms.normalize_collection(testdata_ibma)
+    cls = type(large)
+    small = cls(large.slice(large.ids[:1]).to_dict(), basepath=large.basepath)
+    coordinates = cls.coordinates
+    calls = {id(small): 0, id(large): 0}
+
+    def counted_coordinates(self):
+        if id(self) in calls:
+            calls[id(self)] += 1
+        return coordinates.__get__(self, cls)
+
+    monkeypatch.setattr(cls, "coordinates", property(counted_coordinates))
+    transformer = transforms.ImagesToCoordinates()
+    transformer.transform(small)
+    transformer.transform(large)
+    assert calls[id(small)] == calls[id(large)]
+
+
 def test_ddimages_to_coordinates_merge_strategy(testdata_ibma):
     """Test different merging strategies."""
     img2coord = transforms.ImagesToCoordinates(z_threshold=1.9)

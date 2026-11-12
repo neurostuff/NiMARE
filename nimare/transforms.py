@@ -562,9 +562,10 @@ class ImagesToCoordinates(NiMAREBase):
             coordinate_space = None
 
         coordinates_dict = {}
+        coordinate_ids = set(dataset.coordinates["id"])
         cluster_threshold = 0 if self.cluster_threshold is None else self.cluster_threshold
         for _, row in images_df.iterrows():
-            if row["id"] in list(dataset.coordinates["id"]) and self.merge_strategy == "fill":
+            if row["id"] in coordinate_ids and self.merge_strategy == "fill":
                 continue
 
             z_path = row.get("z")
