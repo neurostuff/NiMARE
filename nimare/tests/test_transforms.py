@@ -345,7 +345,7 @@ def test_images_to_coordinates_reuses_original_ids(testdata_ibma, monkeypatch):
     transformer = transforms.ImagesToCoordinates()
     transformer.transform(small)
     transformer.transform(large)
-    assert calls[id(small)] == calls[id(large)]
+    assert calls[id(small)] == calls[id(large)] > 0
 
 
 def test_ddimages_to_coordinates_merge_strategy(testdata_ibma):
