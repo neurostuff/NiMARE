@@ -715,16 +715,19 @@ def test_resolve_transforms_integer_mask_returns_floating_header(tmp_path):
 def test_resolve_transforms_varcope_sd_branch(tmp_path):
     """resolve_transforms must compute varcope from sd without premature inverse_transform."""
     shape = (5, 5, 5)
-    sd_vals = np.full(shape, 2.0, dtype=np.float32)
+    sd_vals = np.linspace(1.0, 5.0, 125, dtype=np.float32).reshape(shape)
     source = tmp_path / "sd.nii.gz"
     nib.Nifti1Image(sd_vals, np.eye(4)).to_filename(str(source))
 
     mask = nib.Nifti1Image(np.ones(shape, dtype=np.uint8), np.eye(4))
     masker = get_masker(mask)
 
+    sample_size = 16
     img = transforms.resolve_transforms(
-        "varcope", {"sd": str(source), "sample_sizes": [16]}, masker
+        "varcope", {"sd": str(source), "sample_sizes": [sample_size]}, masker
     )
     assert img is not None
-    assert np.allclose(img.get_fdata(), 0.25)
+    expected_var = (sd_vals / np.sqrt(sample_size)) ** 2
+    assert np.allclose(img.get_fdata(), expected_var)
     assert np.issubdtype(img.header.get_data_dtype(), np.floating)
+
