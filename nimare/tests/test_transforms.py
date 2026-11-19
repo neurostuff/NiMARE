@@ -12,7 +12,7 @@ from pymare.stats import log_chi2_sf
 from scipy import stats
 
 from nimare import transforms
-from nimare.utils import DEFAULT_FLOAT_DTYPE
+from nimare.utils import DEFAULT_FLOAT_DTYPE, get_masker
 
 
 def test_ImageTransformer(testdata_ibma):
@@ -641,3 +641,90 @@ def test_z_to_nlogp_agrees_with_the_log_ndtr_route(tail):
         expected = stats.norm.logcdf(-z)
     assert np.all(np.isfinite(nlogp))
     assert np.allclose(nlogp, np.minimum(expected, 0.0), rtol=1e-12, atol=1e-12)
+
+
+@pytest.mark.parametrize("mask_dtype", [np.uint8, np.int16, np.int32, np.float32])
+@pytest.mark.parametrize("target", ["z", "d", "g", "g_var"])
+def test_transform_images_preserves_floating_storage_precision(tmp_path, mask_dtype, target):
+    """Saving derived statistical images must not quantize to integer mask header dtype (#1174)."""
+    shape = (10, 10, 10)
+    values = np.linspace(-4.0, 4.0, 1000, dtype=np.float32).reshape(shape)
+    source = tmp_path / "t.nii.gz"
+    nib.Nifti1Image(values, np.eye(4)).to_filename(str(source))
+
+    mask = nib.Nifti1Image(np.ones(shape, dtype=mask_dtype), np.eye(4))
+    masker = get_masker(mask)
+
+    images_df = pd.DataFrame({"id": ["study_1"], "t": [str(source)]})
+    metadata_df = pd.DataFrame({"id": ["study_1"], "sample_sizes": [[25]]})
+
+    out_df = transforms.transform_images(
+        images_df,
+        target=target,
+        masker=masker,
+        metadata_df=metadata_df,
+        out_dir=str(tmp_path),
+        overwrite=True,
+    )
+
+    out_file = out_df[target].iloc[0]
+    assert out_file is not None
+
+    saved_img = nib.load(out_file)
+    assert np.issubdtype(saved_img.get_data_dtype(), np.floating)
+
+    sample_size = 25
+    n = transforms.sample_sizes_to_sample_size([sample_size])
+    dof = transforms.sample_sizes_to_dof([sample_size])
+    if target == "z":
+        expected = transforms.t_to_z(values, dof)
+    elif target == "d":
+        expected = transforms.t_to_d(values, n)
+    elif target == "g":
+        d_val = transforms.t_to_d(values, n)
+        expected, _ = transforms.d_to_g(d_val, n, return_variance=True)
+    elif target == "g_var":
+        d_val = transforms.t_to_d(values, n)
+        _, expected = transforms.d_to_g(d_val, n, return_variance=True)
+
+    saved_data = saved_img.get_fdata()
+    assert np.allclose(saved_data, expected, rtol=1e-5, atol=1e-6)
+    expected_unique = 500 if target == 'g_var' else 1000
+    assert np.unique(saved_data).size == expected_unique
+    assert masker.mask_img.header.get_data_dtype() == np.dtype(mask_dtype)
+
+
+def test_resolve_transforms_integer_mask_returns_floating_header(tmp_path):
+    """resolve_transforms must return image with floating storage dtype under integer mask."""
+    shape = (5, 5, 5)
+    values = np.linspace(-3.0, 3.0, 125, dtype=np.float32).reshape(shape)
+    source = tmp_path / "t.nii.gz"
+    nib.Nifti1Image(values, np.eye(4)).to_filename(str(source))
+
+    mask = nib.Nifti1Image(np.ones(shape, dtype=np.uint8), np.eye(4))
+    masker = get_masker(mask)
+
+    img = transforms.resolve_transforms(
+        "d", {"t": str(source), "sample_sizes": [16]}, masker
+    )
+    assert img is not None
+    assert np.issubdtype(img.header.get_data_dtype(), np.floating)
+    assert np.issubdtype(img.get_data_dtype(), np.floating)
+
+
+def test_resolve_transforms_varcope_sd_branch(tmp_path):
+    """resolve_transforms must compute varcope from sd without premature inverse_transform."""
+    shape = (5, 5, 5)
+    sd_vals = np.full(shape, 2.0, dtype=np.float32)
+    source = tmp_path / "sd.nii.gz"
+    nib.Nifti1Image(sd_vals, np.eye(4)).to_filename(str(source))
+
+    mask = nib.Nifti1Image(np.ones(shape, dtype=np.uint8), np.eye(4))
+    masker = get_masker(mask)
+
+    img = transforms.resolve_transforms(
+        "varcope", {"sd": str(source), "sample_sizes": [16]}, masker
+    )
+    assert img is not None
+    assert np.allclose(img.get_fdata(), 0.25)
+    assert np.issubdtype(img.header.get_data_dtype(), np.floating)

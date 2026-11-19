@@ -39,6 +39,20 @@ def _coerce_image_like(image):
     )
 
 
+def _set_output_dtype(img):
+    """Ensure image header storage datatype matches computed floating point precision."""
+    if hasattr(img, "header") and hasattr(img, "set_data_dtype"):
+        computed_dtype = (
+            np.asanyarray(img.dataobj).dtype
+            if hasattr(img, "dataobj")
+            else None
+        )
+        if computed_dtype is None or not np.issubdtype(computed_dtype, np.floating):
+            computed_dtype = DEFAULT_FLOAT_DTYPE
+        img.set_data_dtype(computed_dtype)
+    return img
+
+
 def threshold_image(image, threshold, thresholding_values=None, tail="upper", fill_value=0):
     """Threshold an array or Niimg-like object and zero voxels that fail the criterion.
 
@@ -199,6 +213,11 @@ class ImageTransformer(NiMAREBase):
 def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, overwrite=False):
     """Generate images of a given type from other image types and write out to files.
 
+    .. versionchanged:: 0.22.0
+
+        * [FIX] Prevent derived statistical images from being quantized to integer mask header
+          storage dtype on save (:issue:`1174`).
+
     .. versionchanged:: 0.0.9
 
         * [ENH] Add overwrite option to transform_images
@@ -274,6 +293,7 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
         # Get converted data
         img = resolve_transforms(target, available_data, new_masker)
         if img is not None:
+            img = _set_output_dtype(img)
             if overwrite or not op.isfile(new_file):
                 img.to_filename(new_file)
             else:
@@ -292,6 +312,11 @@ def transform_images(images_df, target, masker, metadata_df=None, out_dir=None, 
 
 def resolve_transforms(target, available_data, masker):
     """Determine and apply the appropriate transforms to a target image type from available data.
+
+    .. versionchanged:: 0.22.0
+
+        * [FIX] Ensure output spatial image retains floating point storage dtype from computed
+          data array (:issue:`1174`).
 
     .. versionchanged:: 0.21.0
 
@@ -364,7 +389,7 @@ def resolve_transforms(target, available_data, masker):
         else:
             return None
         z = masker.inverse_transform(z.squeeze())
-        return z
+        return _set_output_dtype(z)
     elif target == "t":
         # will return none given no transform/target exists
         temp = resolve_transforms("z", available_data, masker)
@@ -376,7 +401,7 @@ def resolve_transforms(target, available_data, masker):
             z = masker.transform(available_data["z"])
             t = z_to_t(z, dof)
             t = masker.inverse_transform(t.squeeze())
-            return t
+            return _set_output_dtype(t)
         else:
             return None
     elif target in ("d", "g", "g_var"):
@@ -408,7 +433,7 @@ def resolve_transforms(target, available_data, masker):
             g, g_var = d_to_g(d, sample_size, return_variance=True)
             values = g if target == "g" else g_var
 
-        return masker.inverse_transform(values.squeeze())
+        return _set_output_dtype(masker.inverse_transform(values.squeeze()))
     elif target == "beta":
         if "t" not in available_data.keys():
             # will return none given no transform/target exists
@@ -426,7 +451,7 @@ def resolve_transforms(target, available_data, masker):
             varcope = masker.transform(available_data["varcope"])
             beta = t_and_varcope_to_beta(t, varcope)
             beta = masker.inverse_transform(beta.squeeze())
-            return beta
+            return _set_output_dtype(beta)
         else:
             return None
     elif target == "varcope":
@@ -443,7 +468,6 @@ def resolve_transforms(target, available_data, masker):
             sample_size = sample_sizes_to_sample_size(available_data["sample_sizes"])
             sd = masker.transform(available_data["sd"])
             varcope = sd_to_varcope(sd, sample_size)
-            varcope = masker.inverse_transform(varcope)
         elif ("t" in available_data.keys()) and ("beta" in available_data.keys()):
             t = masker.transform(available_data["t"])
             beta = masker.transform(available_data["beta"])
@@ -451,7 +475,7 @@ def resolve_transforms(target, available_data, masker):
         else:
             return None
         varcope = masker.inverse_transform(varcope.squeeze())
-        return varcope
+        return _set_output_dtype(varcope)
     elif target == "p":
         if ("t" in available_data.keys()) and ("sample_sizes" in available_data.keys()):
             dof = sample_sizes_to_dof(available_data["sample_sizes"])
@@ -464,7 +488,7 @@ def resolve_transforms(target, available_data, masker):
         else:
             return None
         p = masker.inverse_transform(p.squeeze())
-        return p
+        return _set_output_dtype(p)
     else:
         return None
 
