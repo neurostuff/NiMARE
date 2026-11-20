@@ -314,6 +314,12 @@ def brainmap_decode(
 
     # Binarize with frequency threshold
     features_df = annotations.set_index("id", drop=True)
+    if features is None:
+        features = [c for c in features_df.columns if c not in ("study_id", "contrast_id")]
+    elif isinstance(features, str):
+        features = [features]
+    else:
+        features = list(features)
     features_df = features_df[features].ge(frequency_threshold)
 
     sel_array = features_df.loc[ids].values
@@ -683,6 +689,12 @@ def neurosynth_decode(
 
     # Binarize with frequency threshold
     features_df = annotations.set_index("id", drop=True)
+    if features is None:
+        features = [c for c in features_df.columns if c not in ("study_id", "contrast_id")]
+    elif isinstance(features, str):
+        features = [features]
+    else:
+        features = list(features)
     features_df = features_df[features].ge(frequency_threshold)
 
     sel_array = features_df.loc[ids].values
