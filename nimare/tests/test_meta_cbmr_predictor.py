@@ -15,6 +15,7 @@ else:
     from nimare.meta.cbmr.predictor import (
         CBMRPredictor,
         SpatialPatterns,
+        _as_tensor,
         poisson_log_likelihood,
     )
     from nimare.meta.cbmr.terms import Design, bind
@@ -221,3 +222,10 @@ def test_mismatched_foci_shape_is_reported(annotations, bases):
     predictor = _predictor("~ s(diagnosis)", annotations, bases)
     with pytest.raises(ValueError, match="but the design covers"):
         predictor.patterns.marginal_by_pattern(np.zeros((N_EXPERIMENTS + 3, N_VOXELS)))
+
+
+def test_as_tensor_moves_a_tensor_to_the_requested_dtype_and_device():
+    """A tensor input is cast and moved like an array, not left where it was."""
+    moved = _as_tensor(torch.arange(3), torch.float64, "meta")
+    assert moved.dtype == torch.float64
+    assert moved.device.type == "meta"
