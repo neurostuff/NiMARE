@@ -135,7 +135,7 @@ small_sample_correction (#1094) — forwards PyMARE's Knapp–Hartung adjustment
 
 Log-space p-values (#1099) — new public transforms.z_to_nlogp, nlogp_to_z, t_to_nlogp, chi2_to_nlogp and stats.nlogp_bonferroni, stats.nlogp_fdr. Correction, MKDA chi-square, ALE and the discrete decoders now carry statistics in log space, so p-values no longer bottom out at float32's 1e-45 or at np.spacing(1).
 
-Spatial CBMR estimator + tutorial (#1080), closed-form observed information (#1121), per-experiment exposure() conditioning (#1123), foci stored on CBMRModel (#1126), plus CBMR benchmarks in [benchmarks/benchmark_cbmr.py](vscode-webview://00b8c1ffl2c01l4hks1jjf5u8o2jrul45eennee4ol6tggttondb/benchmarks/benchmark_cbmr.py).
+Spatial CBMR estimator + tutorial (#1080), closed-form observed information (#1121), per-experiment exposure() conditioning (#1123), foci stored on CBMRModel (#1126), plus CBMR benchmarks in [benchmarks/benchmark_cbmr.py](benchmarks/benchmark_cbmr.py).
 
 ImageTransformer gains d, g, g_var targets (#1092) — standardized effect sizes were previously reachable only inside FixedEffectsHedges.
 
