@@ -351,3 +351,82 @@ def test_neurosynth_decode_min_studies_is_relative_to_the_analysis_universe():
     # 6% of the universe is 2.4 studies, so it does not.
     dropped = discrete.neurosynth_decode(coordinates, annotations, min_studies=0.06, **kwargs)
     assert "edge" not in dropped.index
+
+
+def test_brainmap_decode_default_features(testdata_laird):
+    """Test that brainmap_decode defaults to all available annotation features."""
+    ids = testdata_laird.ids[:5]
+    all_features = [
+        c for c in testdata_laird.annotations.columns if c not in ("id", "study_id", "contrast_id")
+    ]
+    df_default = discrete.brainmap_decode(
+        testdata_laird.coordinates,
+        testdata_laird.annotations,
+        ids=ids,
+        features=None,
+        correction=None,
+    )
+    df_explicit = discrete.brainmap_decode(
+        testdata_laird.coordinates,
+        testdata_laird.annotations,
+        ids=ids,
+        features=all_features,
+        correction=None,
+    )
+    assert isinstance(df_default, pd.DataFrame)
+    pd.testing.assert_frame_equal(df_default, df_explicit)
+
+
+def test_neurosynth_decode_default_features(testdata_laird):
+    """Test that neurosynth_decode defaults to all available annotation features."""
+    ids = testdata_laird.ids[:5]
+    all_features = [
+        c for c in testdata_laird.annotations.columns if c not in ("id", "study_id", "contrast_id")
+    ]
+    df_default = discrete.neurosynth_decode(
+        testdata_laird.coordinates,
+        testdata_laird.annotations,
+        ids=ids,
+        features=None,
+        correction=None,
+    )
+    df_explicit = discrete.neurosynth_decode(
+        testdata_laird.coordinates,
+        testdata_laird.annotations,
+        ids=ids,
+        features=all_features,
+        correction=None,
+    )
+    assert isinstance(df_default, pd.DataFrame)
+    pd.testing.assert_frame_equal(df_default, df_explicit)
+
+
+def test_discrete_decoders_string_feature(testdata_laird):
+    """Test that a single string feature name is accepted without error."""
+    ids = testdata_laird.ids[:5]
+    df_all = discrete.brainmap_decode(
+        testdata_laird.coordinates,
+        testdata_laird.annotations,
+        ids=ids,
+        correction=None,
+    )
+    feature = df_all.index[0]
+    df_bm = discrete.brainmap_decode(
+        testdata_laird.coordinates,
+        testdata_laird.annotations,
+        ids=ids,
+        features=feature,
+        correction=None,
+    )
+    df_ns = discrete.neurosynth_decode(
+        testdata_laird.coordinates,
+        testdata_laird.annotations,
+        ids=ids,
+        features=feature,
+        correction=None,
+        min_studies=0,
+    )
+    assert isinstance(df_bm, pd.DataFrame)
+    assert isinstance(df_ns, pd.DataFrame)
+    assert feature in df_bm.index
+    assert feature in df_ns.index
