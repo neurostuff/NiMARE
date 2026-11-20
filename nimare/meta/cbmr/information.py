@@ -14,6 +14,11 @@ between them. Each is ``n_patterns`` rank-updates of width ``n_bases``, so nothi
 import numpy as np
 from scipy.special import digamma, polygamma
 
+from nimare.meta.cbmr._negative_binomial import (
+    count_histogram,
+    log1p_ratio_excess,
+    matched_dispersion,
+)
 from nimare.meta.cbmr.distributions import (
     ClusteredNegativeBinomial,
     NegativeBinomial,
@@ -130,6 +135,31 @@ def poisson_information_matrix(model):
     return _finalize(information, n_spatial, n_global)
 
 
+def _count_sums(counts, dispersion):
+    """Return ``sum_v sum_{j<y_v} f(j)`` for ``f = j k / (1 + j k)`` and ``j k / (1 + j k)^2``.
+
+    These are the derivatives in ``log k`` of ``sum_v [lgamma(y_v + 1/k) - lgamma(1/k) +
+    y_v log k]``. Written with digamma functions they are differences of numbers near
+    ``log(1/k)`` and cancel as ``k`` approaches zero; for integer counts they are finite sums
+    grouped by ``n_j``, the number of voxels with more than ``j`` foci, and every term is
+    positive. Fractional counts have no finite sum and use the digamma form, which is exact away
+    from ``k = 0``.
+    """
+    if np.any(counts < 0):
+        raise ValueError("NegativeBinomial foci counts cannot be negative.")
+    above = count_histogram(counts)
+    if above is None:
+        size = 1 / dispersion
+        log_step = digamma(counts + size) - digamma(size)
+        square_step = polygamma(1, counts + size) - polygamma(1, size)
+        return (
+            (counts - size * log_step).sum(),
+            (size * log_step + size**2 * square_step).sum(),
+        )
+    scaled = np.arange(above.size) * dispersion
+    return (above * scaled / (1 + scaled)).sum(), (above * scaled / (1 + scaled) ** 2).sum()
+
+
 def negative_binomial_information_matrix(model):
     """Return the observed Fisher information of a fitted NegativeBinomial model.
 
@@ -145,16 +175,24 @@ def negative_binomial_information_matrix(model):
 
     Notes
     -----
-    Uses ``A = S1/(theta S2)`` and ``R = S1 A`` in place of NiMARE's shape and probability. In
-    those terms the gamma functions depend only on ``R``, the voxels only on the log-intensity,
-    and the moderators only on ``R`` and ``A``.
+    Each pattern's voxel totals are negative binomial with mean ``mu_v = S1 u_v`` and dispersion
+    ``k = theta S2 / S1^2``, where ``S1`` and ``S2`` are the sums of the members' weights and
+    squared weights. The moderators reach the likelihood only through ``m = log S1`` and
+    ``log k``, so the moderator block is the chain rule through those two, and the spatial
+    coefficients reach it the way ``m`` does, one voxel at a time.
 
-    Precision is poor when ``theta`` approaches zero. The moderator block then sums large terms
-    of opposite sign, and the fit is a Poisson one in all but name.
+    The derivatives are taken in ``log k`` rather than in the size ``1/k``. As the fitted
+    overdispersion approaches zero the size grows without bound, and derivatives taken in it are
+    differences of numbers of order ``1/k`` that should cancel to order one. At ``k = 1e-12``
+    they cancel to rounding error and can make the information indefinite. In ``log k`` every
+    term stays of order one and the matrix tends to the information of a Poisson likelihood on
+    the pattern marginals. That limit is not :func:`poisson_information_matrix`, whose moderator
+    block is taken per experiment and differs from it by ``sum_v y_v`` times the Hessian of
+    ``log S1``.
     """
     predictor, loadings, intensity, global_block, weight = _intensity_pieces(model)
     n_spatial, n_global, n_bases = model.n_spatial, model.n_global, predictor.n_bases
-    n_voxels, bases = predictor.n_voxels, predictor.bases
+    bases = predictor.bases
     assignment = predictor.patterns.assignment
     overdispersion = _nuisance(model)
     marginal = predictor.patterns.marginal_by_pattern(model.foci)
@@ -165,19 +203,21 @@ def negative_binomial_information_matrix(model):
         member_weight = weight[members]
         sum_1 = member_weight.sum()
         sum_2 = np.square(member_weight).sum()
-        a = sum_1 / (overdispersion[p] * sum_2)
-        r = sum_1 * a
+        dispersion = matched_dispersion(overdispersion[p], member_weight)  # k
 
-        u = intensity[p]
         counts = marginal[p]
-        denominator = u + a
+        mean = sum_1 * intensity[p]  # mu_v
+        scaled = dispersion * mean  # x_v = k mu_v
+        excess = counts - mean
+        squared = (1 + scaled) ** 2
 
-        weight_v = (r + counts) * u * a / denominator**2
-        _scatter_spatial(information, row, n_bases, bases.T @ (bases * weight_v[:, None]))
+        # Second derivatives in m per voxel, which are also those in the spatial log-intensity.
+        neg_mm = (mean + counts * scaled) / squared
+        _scatter_spatial(information, row, n_bases, bases.T @ (bases * neg_mm[:, None]))
         if not n_global:
             continue
 
-        # dR/dgamma and dA/dgamma, through their log derivatives.
+        # Derivatives of m and log k in gamma.
         member_block = global_block[members]
         u_1 = member_weight @ member_block
         u_2 = np.square(member_weight) @ member_block
@@ -186,32 +226,24 @@ def negative_binomial_information_matrix(model):
         d_log_1, d_log_2 = u_1 / sum_1, 2 * u_2 / sum_2
         dd_log_1 = u_1_2 / sum_1 - np.outer(u_1, u_1) / sum_1**2
         dd_log_2 = 4 * u_2_2 / sum_2 - 4 * np.outer(u_2, u_2) / sum_2**2
-        d_log_a, d_log_r = d_log_1 - d_log_2, 2 * d_log_1 - d_log_2
-        a_1, r_1 = a * d_log_a, r * d_log_r
-        a_2 = a * (np.outer(d_log_a, d_log_a) + dd_log_1 - dd_log_2)
-        r_2 = r * (np.outer(d_log_r, d_log_r) + 2 * dd_log_1 - dd_log_2)
+        m_1, m_2 = d_log_1, dd_log_1
+        k_1, k_2 = d_log_2 - 2 * d_log_1, dd_log_2 - 2 * dd_log_1
 
-        # d2Psi/dS dR and d2Psi/dS dA, each carried into gamma by its own chain factor.
-        _scatter_cross(information, row, n_bases, n_spatial, bases.T @ (u / denominator), r_1)
-        cross_a = -(bases.T @ ((r + counts) * u / denominator**2))
-        _scatter_cross(information, row, n_bases, n_spatial, cross_a, a_1)
+        neg_mk = excess * scaled / squared
+        _scatter_cross(information, row, n_bases, n_spatial, bases.T @ neg_mm, m_1)
+        _scatter_cross(information, row, n_bases, n_spatial, bases.T @ neg_mk, k_1)
 
-        psi_r = (
-            -digamma(counts + r).sum()
-            + n_voxels * digamma(r)
-            - n_voxels * np.log(a)
-            + np.log(denominator).sum()
-        )
-        psi_a = -n_voxels * r / a + ((r + counts) / denominator).sum()
-        psi_rr = -polygamma(1, counts + r).sum() + n_voxels * polygamma(1, r)
-        psi_ra = -n_voxels / a + (1.0 / denominator).sum()
-        psi_aa = n_voxels * r / a**2 - ((r + counts) / denominator**2).sum()
+        gap = log1p_ratio_excess(scaled)
+        sum_k, sum_kk = _count_sums(counts, dispersion)
+        psi_m = (excess / (1 + scaled)).sum()
+        psi_k = sum_k + (mean * gap - counts * scaled / (1 + scaled)).sum()
+        psi_kk = sum_kk + (mean * (scaled / squared - gap) - counts * scaled / squared).sum()
         information[n_spatial:, n_spatial:] += (
-            psi_rr * np.outer(r_1, r_1)
-            + psi_ra * (np.outer(r_1, a_1) + np.outer(a_1, r_1))
-            + psi_aa * np.outer(a_1, a_1)
-            + psi_r * r_2
-            + psi_a * a_2
+            neg_mm.sum() * np.outer(m_1, m_1)
+            + neg_mk.sum() * (np.outer(m_1, k_1) + np.outer(k_1, m_1))
+            - psi_kk * np.outer(k_1, k_1)
+            - psi_m * m_2
+            - psi_k * k_2
         )
 
     return _finalize(information, n_spatial, n_global)

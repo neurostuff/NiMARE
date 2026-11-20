@@ -312,8 +312,9 @@ class CBMR(_CBMRInputs):
         How the observed Fisher information behind standard errors, p-values and hypothesis
         tests is computed. ``"closed_form"`` uses the fast derivations added in
         https://github.com/neurostuff/NiMARE/pull/1121, which were written with LLM assistance
-        and are checked against symbolic proofs and a limited set of numerical comparisons
-        (https://github.com/jdkent/cbmr-proofs) but are not yet independently or exhaustively
+        and are checked against symbolic proofs (https://github.com/jdkent/cbmr-proofs, which
+        proves an earlier form of the NegativeBinomial one) and a limited set of numerical
+        comparisons but are not yet independently or exhaustively
         validated; using it logs a warning the first time it actually runs. ``"autodiff"``
         always differentiates the log-likelihood directly instead, which is the slower,
         more memory-intensive computation CBMR used before that PR and carries no such caveat.

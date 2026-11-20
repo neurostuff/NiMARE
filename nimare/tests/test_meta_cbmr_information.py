@@ -1,16 +1,22 @@
 """Tests for the closed-form observed information and the covariance strategies.
 
 Checked against ``torch.func.hessian``, the path these replace, so a shared mistake cannot pass.
-The derivations are proved at https://github.com/jdkent/cbmr-proofs; what is checked here is the
-code that implements them.
+The derivations are proved at https://github.com/jdkent/cbmr-proofs, except that it still proves
+an earlier form of the negative binomial's; that one is checked here against a 50-digit Hessian
+of its likelihood instead. What is checked here is the code that implements them.
 """
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from nimare.tests.cbmr_reference import (
+    negative_binomial_log_likelihood,
+    negative_hessian,
+)
+
 try:
-    import torch  # noqa: F401
+    import torch
 except ImportError:
     TORCH_INSTALLED = False
 else:
@@ -56,6 +62,7 @@ def data():
             "drug": ["yes", "no"] * N_PER_GROUP,
             "n": rng.normal(size=n_experiments),
             "age": rng.normal(size=n_experiments),
+            "vol": np.linspace(0.5, 2.0, n_experiments),
         }
     )
     raw = rng.uniform(0.05, 1.0, (N_VOXELS, N_BASES))
@@ -129,6 +136,34 @@ def test_overdispersion_stays_off_the_poisson_boundary(distribution, data):
     assert fitted.min() > 1e-3, f"overdispersion collapsed to {fitted}; counts are not dispersed"
 
 
+@pytest.mark.parametrize("overdispersion", [1e-12, 1e-5])
+@pytest.mark.parametrize(
+    "formula", ["~ s(diagnosis) + n + age", "~ sz(diagnosis) + n + exposure(vol)"]
+)
+def test_negative_binomial_information_near_zero_overdispersion(data, formula, overdispersion):
+    """The closed form stays exact as a pattern's overdispersion approaches zero.
+
+    A fit lands there when one pattern's counts are no more variable than Poisson. The
+    negative-binomial size then grows like one over the overdispersion, and derivatives taken in
+    it subtract numbers of that order which should cancel to order one. At ``1e-12`` the terms
+    in ``log k`` are below the tolerance; ``1e-5`` keeps them visible. The second formula has
+    ``sz()`` loadings and an exposure.
+    """
+    model, _ = _fit(formula, "negativebinomial", data)
+    with torch.no_grad():
+        model.nuisance[0] = np.log(overdispersion)
+
+    log_likelihood = negative_binomial_log_likelihood(
+        model.predictor, model.overdispersion(), model.foci, model.n_spatial
+    )
+    reference = negative_hessian(log_likelihood, model.coefficients.detach().numpy())
+    analytic = closed_form_information(model.distribution)(model)
+
+    np.testing.assert_allclose(
+        analytic, reference, rtol=1e-8, atol=1e-10 * np.abs(reference).max()
+    )
+
+
 @pytest.mark.parametrize("distribution", DISTRIBUTIONS)
 @pytest.mark.parametrize("formula", FORMULAS)
 def test_information_is_symmetric(formula, distribution, data):
@@ -161,6 +196,27 @@ def test_overdispersed_information_uses_the_foci(distribution, data):
     model._foci = foci * 3
     two = closed_form_information(model.distribution)(model)
     assert np.abs(one - two).max() > 1e-6 * np.abs(one).max()
+
+
+@pytest.mark.parametrize("formula", ["~ s(diagnosis)", "~ s(diagnosis) + n"])
+def test_negative_binomial_information_takes_fractional_counts(data, formula):
+    """Fractional counts get the exact matrix.
+
+    Without moderators no count sum is needed; with them the sums take their digamma form.
+    """
+    model, foci = _fit(formula, "negativebinomial", data)
+    model._foci = foci * 0.5
+    reference = _autodiff_information(model)
+    analytic = closed_form_information(model.distribution)(model)
+    assert np.abs(analytic - reference).max() < 1e-8 * np.abs(reference).max()
+
+
+def test_negative_binomial_information_refuses_negative_counts(data):
+    """Negative counts are an error, not a case for the fractional fallback."""
+    model, foci = _fit("~ s(diagnosis) + n", "negativebinomial", data)
+    model._foci = foci - foci.max()
+    with pytest.raises(ValueError, match="cannot be negative"):
+        closed_form_information(model.distribution)(model)
 
 
 def test_unknown_distribution_falls_back_to_autodiff(data):
