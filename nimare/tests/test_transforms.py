@@ -689,7 +689,7 @@ def test_transform_images_preserves_floating_storage_precision(tmp_path, mask_dt
 
     saved_data = saved_img.get_fdata()
     assert np.allclose(saved_data, expected, rtol=1e-5, atol=1e-6)
-    expected_unique = 500 if target == 'g_var' else 1000
+    expected_unique = 500 if target == "g_var" else 1000
     assert np.unique(saved_data).size == expected_unique
     assert masker.mask_img.header.get_data_dtype() == np.dtype(mask_dtype)
 
@@ -704,9 +704,7 @@ def test_resolve_transforms_integer_mask_returns_floating_header(tmp_path):
     mask = nib.Nifti1Image(np.ones(shape, dtype=np.uint8), np.eye(4))
     masker = get_masker(mask)
 
-    img = transforms.resolve_transforms(
-        "d", {"t": str(source), "sample_sizes": [16]}, masker
-    )
+    img = transforms.resolve_transforms("d", {"t": str(source), "sample_sizes": [16]}, masker)
     assert img is not None
     assert np.issubdtype(img.header.get_data_dtype(), np.floating)
     assert np.issubdtype(img.get_data_dtype(), np.floating)
@@ -730,4 +728,3 @@ def test_resolve_transforms_varcope_sd_branch(tmp_path):
     expected_var = (sd_vals / np.sqrt(sample_size)) ** 2
     assert np.allclose(img.get_fdata(), expected_var)
     assert np.issubdtype(img.header.get_data_dtype(), np.floating)
-

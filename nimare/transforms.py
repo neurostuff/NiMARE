@@ -42,11 +42,7 @@ def _coerce_image_like(image):
 def _set_output_dtype(img):
     """Ensure image header storage datatype matches computed floating point precision."""
     if hasattr(img, "header") and hasattr(img, "set_data_dtype"):
-        computed_dtype = (
-            np.asanyarray(img.dataobj).dtype
-            if hasattr(img, "dataobj")
-            else None
-        )
+        computed_dtype = np.asanyarray(img.dataobj).dtype if hasattr(img, "dataobj") else None
         if computed_dtype is None or not np.issubdtype(computed_dtype, np.floating):
             computed_dtype = DEFAULT_FLOAT_DTYPE
         img.set_data_dtype(computed_dtype)
