@@ -30,6 +30,11 @@ class Decoder(NiMAREBase):
         This also takes into account which features have at least one study in the
         Studyset/Dataset collection with the feature.
         """
+        if isinstance(self.features, str):
+            self.features = [self.features]
+        elif self.features is not None and not isinstance(self.features, (list, tuple)):
+            self.features = list(self.features)
+
         # Reduce feature list as desired
         if self.feature_group is not None:
             if not self.feature_group.endswith("__"):
