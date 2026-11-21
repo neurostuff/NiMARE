@@ -351,3 +351,119 @@ def test_neurosynth_decode_min_studies_is_relative_to_the_analysis_universe():
     # 6% of the universe is 2.4 studies, so it does not.
     dropped = discrete.neurosynth_decode(coordinates, annotations, min_studies=0.06, **kwargs)
     assert "edge" not in dropped.index
+
+
+def test_brainmap_decode_default_features(testdata_laird):
+    """Test that brainmap_decode defaults to all available annotation features."""
+    ids = testdata_laird.ids[:5]
+    features_df = testdata_laird.annotations.set_index("id", drop=True)
+    candidate_cols = [c for c in features_df.columns if c not in ("study_id", "contrast_id")]
+    counts = (features_df[candidate_cols] >= 0.001).sum(0)
+    expected_features = counts[counts > 0].index.tolist()
+
+    df_default = discrete.brainmap_decode(
+        testdata_laird.coordinates,
+        testdata_laird.annotations,
+        ids=ids,
+        features=None,
+        correction=None,
+    )
+    df_explicit = discrete.brainmap_decode(
+        testdata_laird.coordinates,
+        testdata_laird.annotations,
+        ids=ids,
+        features=expected_features,
+        correction=None,
+    )
+    assert isinstance(df_default, pd.DataFrame)
+    assert len(df_default) > 0
+    assert set(df_default.index) == set(expected_features)
+    pd.testing.assert_frame_equal(df_default, df_explicit)
+
+
+def test_neurosynth_decode_default_features(testdata_laird):
+    """Test that neurosynth_decode defaults to all available annotation features."""
+    ids = testdata_laird.ids[:5]
+    features_df = testdata_laird.annotations.set_index("id", drop=True)
+    candidate_cols = [c for c in features_df.columns if c not in ("study_id", "contrast_id")]
+    counts = (features_df[candidate_cols] >= 0.001).sum(0)
+    expected_features = counts[counts > 0].index.tolist()
+
+    df_default = discrete.neurosynth_decode(
+        testdata_laird.coordinates,
+        testdata_laird.annotations,
+        ids=ids,
+        features=None,
+        correction=None,
+    )
+    df_explicit = discrete.neurosynth_decode(
+        testdata_laird.coordinates,
+        testdata_laird.annotations,
+        ids=ids,
+        features=expected_features,
+        correction=None,
+    )
+    assert isinstance(df_default, pd.DataFrame)
+    assert len(df_default) > 0
+    assert set(df_default.index) == set(expected_features)
+    pd.testing.assert_frame_equal(df_default, df_explicit)
+
+
+def test_discrete_decoders_string_feature(testdata_laird):
+    """Test that a single string feature name and non-list iterables are accepted without error."""
+    ids = testdata_laird.ids[:5]
+    df_all = discrete.brainmap_decode(
+        testdata_laird.coordinates,
+        testdata_laird.annotations,
+        ids=ids,
+        correction=None,
+    )
+    feature = df_all.index[0]
+
+    # Test single string feature in functional decoders
+    df_bm = discrete.brainmap_decode(
+        testdata_laird.coordinates,
+        testdata_laird.annotations,
+        ids=ids,
+        features=feature,
+        correction=None,
+    )
+    df_ns = discrete.neurosynth_decode(
+        testdata_laird.coordinates,
+        testdata_laird.annotations,
+        ids=ids,
+        features=feature,
+        correction=None,
+        min_studies=0,
+    )
+    assert isinstance(df_bm, pd.DataFrame)
+    assert isinstance(df_ns, pd.DataFrame)
+    assert list(df_bm.index) == [feature]
+    assert list(df_ns.index) == [feature]
+
+    # Test non-list iterable (set and tuple)
+    df_bm_set = discrete.brainmap_decode(
+        testdata_laird.coordinates,
+        testdata_laird.annotations,
+        ids=ids,
+        features={feature},
+        correction=None,
+    )
+    df_bm_tuple = discrete.brainmap_decode(
+        testdata_laird.coordinates,
+        testdata_laird.annotations,
+        ids=ids,
+        features=(feature,),
+        correction=None,
+    )
+    pd.testing.assert_frame_equal(df_bm, df_bm_set)
+    pd.testing.assert_frame_equal(df_bm, df_bm_tuple)
+
+    # Test class-based decoders with single string feature
+    decoder_bm = discrete.BrainMapDecoder(features=feature)
+    decoder_bm.fit(testdata_laird)
+    assert decoder_bm.features_ == [feature]
+
+    decoder_ns = discrete.NeurosynthDecoder(features=feature)
+    decoder_ns.fit(testdata_laird)
+    assert decoder_ns.features_ == [feature]
