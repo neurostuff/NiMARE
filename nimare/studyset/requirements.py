@@ -9,6 +9,7 @@ narrows once, so every block comes back aligned to the same analyses.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Optional
 
@@ -16,7 +17,52 @@ import numpy as np
 
 from nimare.studyset.store import derived
 
-__all__ = ["Coordinates", "Images", "Labels", "PerAnalysis", "Texts"]
+LGR = logging.getLogger(__name__)
+
+__all__ = [
+    "NULL_OUTCOME",
+    "OUTCOME_KEY",
+    "Coordinates",
+    "Images",
+    "Labels",
+    "PerAnalysis",
+    "Texts",
+    "null_analyses",
+]
+
+#: The analysis metadata key, and the value of it, that declare a null analysis: one that was
+#: run and reported no significant foci. The vocabulary is study_schema's ``Analysis.outcome``.
+OUTCOME_KEY = "outcome"
+NULL_OUTCOME = "no_significant_effect"
+
+
+def null_analyses(store):
+    """Return a boolean over the store's analyses, True for each declared null analysis.
+
+    A null analysis has no points and its analysis-level metadata says
+    ``outcome: no_significant_effect``. Having no points is not enough by itself: an analysis can
+    lack coordinates because it was reported only as an image, or never curated, and counting
+    those as experiments that found nothing would be wrong.
+    """
+    cache = derived(store)
+    is_null = cache.get("null_analyses")
+    if is_null is None:
+        is_null = np.zeros(store.n_analyses, dtype=bool)
+        if store.metadata is not None and OUTCOME_KEY in store.metadata:
+            rows, values = store.metadata.entries(OUTCOME_KEY)
+            declared = np.asarray([value == NULL_OUTCOME for value in values], dtype=bool)
+            is_null[rows[declared]] = True
+        is_null &= np.diff(store.point_offsets) == 0
+        is_null.flags.writeable = False
+        cache["null_analyses"] = is_null
+    return is_null
+
+
+def _name_ids(ids, limit=10):
+    """Join the first ``limit`` ids, saying how many more there are."""
+    names = [str(i) for i in ids[:limit]]
+    more = len(ids) - len(names)
+    return ", ".join(names) + (f" and {more} more" if more > 0 else "")
 
 
 @dataclass(frozen=True)
@@ -25,12 +71,40 @@ class Coordinates:
 
     space: Optional[str] = None
     name: str = "coordinates"
+    count_nulls: bool = False
 
     def validity(self, view):
         """Return a boolean over the view's analyses, True where satisfiable."""
         store = view.store
         sizes = store.point_offsets[view.index + 1] - store.point_offsets[view.index]
-        return sizes > 0
+        valid = sizes > 0
+        if self.count_nulls:
+            valid |= null_analyses(store)[view.index]
+        return valid
+
+    def report_dropped(self, view, valid):
+        """Log the analyses without coordinates that ``valid`` leaves out."""
+        store = view.store
+        sizes = store.point_offsets[view.index + 1] - store.point_offsets[view.index]
+        dropped = ~valid & (sizes == 0)
+        declared = null_analyses(store)[view.index]
+        is_null = dropped & declared
+        nulls = int(is_null.sum())
+        others = int((dropped & ~declared).sum())
+        if nulls:
+            LGR.warning(
+                f"{nulls} of {len(valid)} analyses are null analyses (outcome "
+                f"'{NULL_OUTCOME}', no foci) and were left out, because this algorithm does not "
+                "count analyses without foci (only MKDAChi2 does): "
+                f"{_name_ids(store.analysis_full_key[view.index][is_null])}. They are listed in "
+                "MetaResult.dropped_null_analyses (Decoder.dropped_null_analyses for a decoder)."
+            )
+        if others:
+            LGR.info(
+                f"{others} of {len(valid)} analyses have no coordinates and were left out. To "
+                f"count an analysis that found nothing, give it metadata "
+                f"{{'{OUTCOME_KEY}': '{NULL_OUTCOME}'}}."
+            )
 
     def resolve(self, view):
         """Return the block this requirement asked for."""

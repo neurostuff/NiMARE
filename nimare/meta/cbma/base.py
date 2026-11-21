@@ -260,7 +260,9 @@ class CBMAEstimator(Estimator):
             Support for :class:`~nimare.dataset.Dataset` inputs is deprecated and will be removed
             in NiMARE 1.0.0. Prefer :class:`~nimare.nimads.Studyset`.
         """
-        validate_coordinate_spaces(self.inputs_["coordinates"])
+        # A collection of only null analyses has no foci, and so no space to validate.
+        if not self.inputs_["coordinates"].empty:
+            validate_coordinate_spaces(self.inputs_["coordinates"])
         masker, mask_img = get_masker_mask_image(
             self.masker,
             dataset=dataset,
@@ -426,6 +428,7 @@ class CBMAEstimator(Estimator):
         maps, tables, description = self._cache(self._fit, func_memory_level=1)(dataset)
         if not self.generate_description:
             description = ""
+        description = _null_drop_description(self, description)
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker
@@ -1392,6 +1395,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
 
         self.inputs_["id1"] = self.inputs_.pop("id")
         self.inputs_["coordinates1"] = self.inputs_.pop("coordinates")
+        self.inputs_["dropped_null_ids1"] = self.inputs_.pop("dropped_null_ids", [])
 
         # Reproduce fit() for dataset2 to collect and process inputs.
         self._collect_inputs(dataset2, drop_invalid=drop_invalid)
@@ -1404,6 +1408,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
 
         self.inputs_["id2"] = self.inputs_.pop("id")
         self.inputs_["coordinates2"] = self.inputs_.pop("coordinates")
+        self.inputs_["dropped_null_ids2"] = self.inputs_.pop("dropped_null_ids", [])
         inference_masker = self.masker or dataset1.masker
         self.inputs_["inference_map1"] = self._coerce_inference_map(
             inference_map1, masker=inference_masker, label="inference_map1"
@@ -1416,6 +1421,7 @@ class PairwiseCBMAEstimator(CBMAEstimator):
         maps, tables, description = self._cache(self._fit, func_memory_level=1)(dataset1, dataset2)
         if not self.generate_description:
             description = ""
+        description = _null_drop_description(self, description)
 
         if hasattr(self, "masker") and self.masker is not None:
             masker = self.masker
@@ -1423,6 +1429,19 @@ class PairwiseCBMAEstimator(CBMAEstimator):
             masker = dataset1.masker
 
         return MetaResult(self, mask=masker, maps=maps, tables=tables, description=description)
+
+
+def _null_drop_description(estimator, description):
+    """Append the ids of dropped null analyses to a description."""
+    from nimare.results import _dropped_null_analyses
+
+    dropped = _dropped_null_analyses(estimator)
+    if not description or not dropped:
+        return description
+    return (
+        f"{description} {len(dropped)} analyses reported no significant foci and were left out "
+        f"of the model: {', '.join(dropped)}."
+    )
 
 
 def _approximate_z_from_ma(estimator, ma_maps, subset_study_ids=None, precomputed_null=None):

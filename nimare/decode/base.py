@@ -65,6 +65,19 @@ class Decoder(NiMAREBase):
 
         self.features_ = features
 
+    @property
+    def dropped_null_analyses(self):
+        """:obj:`list` of :obj:`str` or None: Ids of the null analyses the decoder left out.
+
+        Same record as :attr:`nimare.results.MetaResult.dropped_null_analyses`, for decoders, whose
+        ``fit`` returns nothing. None if the decoder took no coordinates or has not been fit.
+
+        .. versionadded:: 0.23.0
+        """
+        from nimare.results import _dropped_null_analyses
+
+        return _dropped_null_analyses(self)
+
     def fit(self, dataset, drop_invalid=True):
         """Fit Decoder to a Studyset/Dataset collection.
 
