@@ -150,6 +150,22 @@ def test_two_way_counts_matches_two_way_reference():
     assert np.allclose(actual, expected, equal_nan=True)
 
 
+def test_two_way_counts_empty_margin_is_zero_not_two():
+    """An empty contingency margin has no association, so the chi-square is zero.
+
+    Regression test: the degenerate 0/0 case used to be assigned 2.0, which reads as a
+    spurious association (p ~= 0.157). It should be 0.0, matching ``one_way``.
+    """
+    # Voxel active in zero studies (empty row) and active in every study (empty row).
+    selected = np.array([0, 21])
+    unselected = np.array([0, 17])
+
+    chi_sq = two_way_counts(selected, unselected, 21, 17)
+
+    assert np.all(np.isfinite(chi_sq))
+    np.testing.assert_array_equal(chi_sq, np.zeros(2))
+
+
 @pytest.mark.parametrize("method", ["bh", "by"])
 def test_nlogp_fdr_matches_the_p_space_procedure(method):
     """The step-up procedure must be the same one, only carried out in logs."""
