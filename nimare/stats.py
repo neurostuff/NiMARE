@@ -64,6 +64,12 @@ def two_way_counts(selected, unselected, n_selected, n_unselected):
     -------
     chi_sq : :class:`numpy.ndarray`
         Chi-square values, one per voxel.
+
+    Notes
+    -----
+    When a table has an empty margin (``row0`` or ``row1`` is zero) there is no
+    association to measure, so the chi-square is zero. This mirrors ``one_way``,
+    which returns zero for the same 0/0 case.
     """
     a = np.asarray(selected, dtype=np.float64)
     b = np.asarray(unselected, dtype=np.float64)
@@ -76,7 +82,7 @@ def two_way_counts(selected, unselected, n_selected, n_unselected):
         denominator = row0 * row1 * n_selected * n_unselected
         chi_sq = numerator / denominator
 
-    chi_sq[denominator == 0] = 2.0
+    chi_sq[denominator == 0] = 0.0
     return chi_sq
 
 
