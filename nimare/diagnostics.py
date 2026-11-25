@@ -915,9 +915,16 @@ class Jackknife(Diagnostics):
         temp_stat_vals = temp_result.get_map(target_value_map, return_type="array")
 
         # Voxelwise proportional reduction of each statistic after removal of the experiment
+        eps = np.finfo(DEFAULT_FLOAT_DTYPE).eps
         with np.errstate(divide="ignore", invalid="ignore"):
-            prop_values = np.true_divide(temp_stat_vals, stat_values)
-            prop_values = np.nan_to_num(prop_values)
+            # Guard against division by near-zero values in the denominator (stat_values)
+            safe_stat_values = np.where(
+                np.abs(stat_values) < eps,
+                np.sign(stat_values) * eps + (stat_values == 0) * eps,
+                stat_values,
+            )
+            prop_values = np.true_divide(temp_stat_vals, safe_stat_values)
+            prop_values = np.nan_to_num(prop_values, nan=0.0, posinf=0.0, neginf=0.0)
 
         return 1 - prop_values, estimator.masker
 
@@ -975,7 +982,7 @@ class Jackknife(Diagnostics):
         Returns
         -------
         stat_prop_values : 1D :obj:`numpy.ndarray`
-            1D array with the contribution of `expid` in each cluster of `label_map`.
+            1D array with the contribution of `expid` in each cluster ofF `label_map`.
         """
         context = {
             "sign": sign,
