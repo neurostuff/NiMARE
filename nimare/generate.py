@@ -1,5 +1,6 @@
 """Utilities for generating data for testing."""
 
+import warnings
 from itertools import zip_longest
 
 import numpy as np
@@ -12,11 +13,31 @@ from nimare.studyset import normalize_collection
 from nimare.transforms import ImageTransformer
 from nimare.utils import (
     DEFAULT_FLOAT_DTYPE,
+    _check_random_state,
     _mask_img_to_bool,
     get_template,
     mm2vox,
     vox2mm,
 )
+
+
+def _resolve_random_state(seed, random_state):
+    """Reconcile the deprecated ``seed`` argument with ``random_state``.
+
+    ``seed`` is kept working for one release so existing callers do not break, but it now
+    emits a :class:`DeprecationWarning` and defers to ``random_state`` when both are given.
+    """
+    if seed is not None:
+        warnings.warn(
+            "The 'seed' argument is deprecated and will be removed in a future release. "
+            "Use 'random_state' instead.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        if random_state is None:
+            random_state = seed
+    return random_state
+
 
 # defaults for creating a neurovault dataset
 NEUROVAULT_IDS = (8836, 8838, 8893, 8895, 8892, 8891, 8962, 8894, 8956, 8854, 9000)
@@ -32,6 +53,7 @@ def create_coordinate_dataset(
     n_noise_foci=0,
     seed=None,
     space="MNI",
+    random_state=None,
 ):
     """Generate coordinate based dataset for meta analysis.
 
@@ -40,6 +62,10 @@ def create_coordinate_dataset(
         1.0.0. Prefer :func:`~nimare.generate.create_coordinate_studyset`.
 
     .. versionadded:: 0.0.4
+
+    .. versionchanged:: 0.23.0
+        Added ``random_state``, which routes draws through :func:`numpy.random.default_rng`
+        to match the convention introduced in #1152. ``seed`` is deprecated in its favor.
 
     Parameters
     ----------
@@ -63,12 +89,16 @@ def create_coordinate_dataset(
     n_noise_foci : :obj:`int`
         Number of foci considered to be noise in each study. (Default=0)
     seed : :obj:`int` or None
-        Random state to reproducibly initialize random numbers.
-        If seed is None, then the random state will try to be initialized
-        with data from /dev/urandom (or the Windows analogue) if available
-        or will initialize from the clock otherwise. (Default=None)
+        .. deprecated:: 0.23.0
+            Use ``random_state`` instead. ``seed`` still works for one release and defers to
+            ``random_state`` when both are given.
     space : :obj:`str`
         The template space the coordinates are reported in. (Default='MNI')
+    random_state : :obj:`int` or None, optional
+        Seed for the generator built via :func:`numpy.random.default_rng`. If None, the
+        generator is seeded from operating system entropy and results will vary between runs.
+        An already-built generator is not accepted; see :func:`nimare.utils._check_random_state`.
+        (Default=None)
 
     Returns
     -------
@@ -77,7 +107,8 @@ def create_coordinate_dataset(
     dataset : :class:`~nimare.dataset.Dataset`
     """
     # set random state
-    rng = np.random.RandomState(seed=seed)
+    random_state = _resolve_random_state(seed, random_state)
+    rng = _check_random_state(random_state)
 
     # check foci argument
     if not isinstance(foci, int) and not _array_like(foci):
@@ -113,7 +144,9 @@ def create_coordinate_dataset(
     elif _array_like(sample_size) and len(sample_size) == 2 and n_studies != 2:
         sample_size_lower_limit = sample_size[0]
         sample_size_upper_limit = sample_size[1]
-        sample_size = rng.randint(sample_size_lower_limit, sample_size_upper_limit, size=n_studies)
+        sample_size = rng.integers(
+            sample_size_lower_limit, sample_size_upper_limit, size=n_studies
+        )
 
     ground_truth_foci, foci_dict = _create_foci(
         foci, foci_percentage, fwhm, n_studies, n_noise_foci, rng, space
@@ -134,11 +167,16 @@ def create_coordinate_studyset(
     n_noise_foci=0,
     seed=None,
     space="MNI",
+    random_state=None,
 ):
     """Generate a coordinate-based Studyset for meta-analysis.
 
     This is the Studyset-native companion to :func:`create_coordinate_dataset`
     and accepts the same arguments.
+
+    .. versionchanged:: 0.23.0
+        Added ``random_state`` and deprecated ``seed``, mirroring
+        :func:`create_coordinate_dataset`.
 
     Returns
     -------
@@ -146,6 +184,7 @@ def create_coordinate_studyset(
         Generated foci in xyz (mm) coordinates.
     studyset : :class:`~nimare.nimads.Studyset`
     """
+    random_state = _resolve_random_state(seed, random_state)
     with _quiet_dataset_deprecation():
         ground_truth_foci, dataset = create_coordinate_dataset(
             foci=foci,
@@ -154,8 +193,8 @@ def create_coordinate_studyset(
             sample_size=sample_size,
             n_studies=n_studies,
             n_noise_foci=n_noise_foci,
-            seed=seed,
             space=space,
+            random_state=random_state,
         )
         return ground_truth_foci, normalize_collection(dataset)
 
@@ -310,8 +349,9 @@ def _create_foci(foci, foci_percentage, fwhm, n_studies, n_noise_foci, rng, spac
         Number of n_studies to generate.
     n_noise_foci : :obj:`int`
         Number of foci considered to be noise in each study.
-    rng : :class:`numpy.random.RandomState`
-        Random state to reproducibly initialize random numbers.
+    rng : :class:`numpy.random.Generator` or :class:`numpy.random.RandomState`
+        Random generator used to reproducibly initialize random numbers. Only
+        :meth:`~numpy.random.Generator.choice` is used, so either kind works.
     space : :obj:`str`
         The template space the coordinates are reported in.
 
