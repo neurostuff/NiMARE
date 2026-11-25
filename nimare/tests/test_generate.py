@@ -3,7 +3,7 @@
 from contextlib import ExitStack as does_not_raise
 
 import pytest
-from numpy.random import RandomState
+from numpy.random import default_rng
 
 from nimare.dataset import Dataset
 from nimare.generate import (
@@ -28,7 +28,7 @@ from nimare.nimads import Studyset
                 "fwhm": 10.0,
                 "n_studies": 5,
                 "n_noise_foci": 2,
-                "rng": RandomState(seed=42),
+                "rng": default_rng(42),
                 "space": "MNI",
             },
             does_not_raise(),
@@ -41,7 +41,7 @@ from nimare.nimads import Studyset
                 "fwhm": 10.0,
                 "n_studies": 5,
                 "n_noise_foci": 2,
-                "rng": RandomState(seed=42),
+                "rng": default_rng(42),
                 "space": "MNI",
             },
             does_not_raise(),
@@ -54,7 +54,7 @@ from nimare.nimads import Studyset
                 "fwhm": 10.0,
                 "n_studies": 5,
                 "n_noise_foci": 0,
-                "rng": RandomState(seed=42),
+                "rng": default_rng(42),
                 "space": "MNI",
             },
             does_not_raise(),
@@ -88,7 +88,7 @@ def test_create_source():
                 "sample_size": (10, 20),
                 "n_studies": 5,
                 "n_noise_foci": 0,
-                "seed": 42,
+                "random_state": 42,
                 "space": "MNI",
             },
             does_not_raise(),
@@ -102,7 +102,7 @@ def test_create_source():
                 "sample_size": [30] * 5,
                 "n_studies": 5,
                 "n_noise_foci": 0,
-                "seed": 42,
+                "random_state": 42,
                 "space": "MNI",
             },
             does_not_raise(),
@@ -115,7 +115,7 @@ def test_create_source():
                 "sample_size": [30] * 4,
                 "n_studies": 5,
                 "n_noise_foci": 0,
-                "seed": 42,
+                "random_state": 42,
                 "space": "MNI",
             },
             pytest.raises(ValueError),
@@ -129,7 +129,7 @@ def test_create_source():
                 "sample_size": (10, 20),
                 "n_studies": 5,
                 "n_noise_foci": 0,
-                "seed": 42,
+                "random_state": 42,
                 "space": "MNI",
             },
             does_not_raise(),
@@ -143,7 +143,7 @@ def test_create_source():
                 "sample_size": (10, 20),
                 "n_studies": 5,
                 "n_noise_foci": 10,
-                "seed": 42,
+                "random_state": 42,
                 "space": "MNI",
             },
             does_not_raise(),
@@ -157,7 +157,7 @@ def test_create_source():
                 "sample_size": (10, 20),
                 "n_studies": 5,
                 "n_noise_foci": 0,
-                "seed": 42,
+                "random_state": 42,
                 "space": "MNI",
             },
             does_not_raise(),
@@ -171,7 +171,7 @@ def test_create_source():
                 "sample_size": (10, 20),
                 "n_studies": 5,
                 "n_noise_foci": 0,
-                "seed": 42,
+                "random_state": 42,
                 "space": "MNI",
             },
             pytest.raises(ValueError),
@@ -185,7 +185,7 @@ def test_create_source():
                 "sample_size": (10, 20),
                 "n_studies": 5,
                 "n_noise_foci": 0,
-                "seed": 42,
+                "random_state": 42,
                 "space": "MNI",
             },
             pytest.raises(ValueError),
@@ -199,7 +199,7 @@ def test_create_source():
                 "sample_size": "INVALID_SAMPLE_SIZE",
                 "n_studies": 5,
                 "n_noise_foci": 0,
-                "seed": 42,
+                "random_state": 42,
                 "space": "MNI",
             },
             pytest.raises(ValueError),
@@ -213,7 +213,7 @@ def test_create_source():
                 "sample_size": 30,
                 "n_studies": 5,
                 "n_noise_foci": 0,
-                "seed": 42,
+                "random_state": 42,
                 "space": "INVALID_SPACE",
             },
             pytest.raises(NotImplementedError),
@@ -249,7 +249,7 @@ def test_create_coordinate_studyset():
         sample_size=30,
         n_studies=5,
         n_noise_foci=1,
-        seed=42,
+        random_state=42,
         space="MNI",
     )
 
@@ -257,6 +257,55 @@ def test_create_coordinate_studyset():
     assert len(studyset.ids) == 5
     assert len(ground_truth_foci) == 2
     assert not studyset.coordinates.empty
+
+
+def test_create_coordinate_dataset_random_state_reproducible():
+    """Same random_state reproduces the Dataset; a different one changes it."""
+    kwargs = dict(foci=2, n_studies=5, n_noise_foci=1, sample_size=30, space="MNI")
+
+    foci_a, dset_a = create_coordinate_dataset(random_state=7, **kwargs)
+    foci_b, dset_b = create_coordinate_dataset(random_state=7, **kwargs)
+    foci_c, _ = create_coordinate_dataset(random_state=8, **kwargs)
+
+    assert foci_a == foci_b
+    assert dset_a.coordinates.equals(dset_b.coordinates)
+    # A different seed should move at least the ground-truth foci.
+    assert foci_a != foci_c
+
+
+def test_create_coordinate_dataset_seed_deprecated():
+    """``seed`` still works but warns, and matches ``random_state``."""
+    kwargs = dict(foci=2, n_studies=5, n_noise_foci=1, sample_size=30, space="MNI")
+
+    with pytest.warns(DeprecationWarning, match="seed"):
+        foci_seed, dset_seed = create_coordinate_dataset(seed=11, **kwargs)
+
+    foci_rs, dset_rs = create_coordinate_dataset(random_state=11, **kwargs)
+
+    # The deprecated argument is a straight alias for random_state.
+    assert foci_seed == foci_rs
+    assert dset_seed.coordinates.equals(dset_rs.coordinates)
+
+
+def test_create_coordinate_dataset_random_state_overrides_seed():
+    """When both are given, random_state wins and seed is ignored."""
+    kwargs = dict(foci=2, n_studies=5, n_noise_foci=1, sample_size=30, space="MNI")
+
+    with pytest.warns(DeprecationWarning, match="seed"):
+        foci_both, _ = create_coordinate_dataset(seed=999, random_state=11, **kwargs)
+
+    foci_rs, _ = create_coordinate_dataset(random_state=11, **kwargs)
+    assert foci_both == foci_rs
+
+
+def test_create_coordinate_studyset_seed_deprecated():
+    """``seed`` on the studyset helper also warns and stays functional."""
+    with pytest.warns(DeprecationWarning, match="seed"):
+        _, studyset = create_coordinate_studyset(
+            foci=2, n_studies=5, n_noise_foci=1, sample_size=30, seed=3, space="MNI"
+        )
+    assert isinstance(studyset, Studyset)
+    assert len(studyset.ids) == 5
 
 
 def test_create_neurovault_dataset():
