@@ -79,6 +79,70 @@ def test_summarize_cluster_values_image_mode():
     assert np.allclose(reduced, np.array([2.0, 3.0]))
 
 
+def test_summarize_cluster_values_masked_array_skips_nan():
+    """Voxels without a defined value are left out of the cluster means, not imputed."""
+    values = np.array([0.0, 1.0, np.nan, 2.0, np.nan], dtype=float)
+    cluster_summary_context = {
+        "mode": "masked_array",
+        "cluster_indices": [
+            np.array([1, 2], dtype=int),
+            np.array([3, 4], dtype=int),
+            np.array([2, 4], dtype=int),
+        ],
+    }
+
+    reduced = diagnostics._summarize_cluster_values(
+        values, masker=None, cluster_summary_context=cluster_summary_context
+    )
+
+    assert np.allclose(reduced[:2], np.array([1.0, 2.0]))
+    # A cluster with no defined voxel has no defined contribution.
+    assert np.isnan(reduced[2])
+
+
+def test_summarize_cluster_values_image_mode_skips_nan():
+    """Image mode must also leave undefined voxels out of the cluster means."""
+    mask_data = np.ones((2, 2, 1), dtype=np.int8)
+    mask_img = nib.Nifti1Image(mask_data, affine=np.eye(4))
+
+    class DummyMasker:
+        """Minimal masker with the inverse_transform API used by diagnostics."""
+
+        def __init__(self, mask_img):
+            self.mask_img_ = mask_img
+
+        def inverse_transform(self, data):
+            arr = np.asarray(data)
+            if arr.ndim == 1:
+                arr = arr[np.newaxis, :]
+
+            vol = np.zeros(mask_data.shape, dtype=float)
+            vol[mask_data.astype(bool)] = arr[0]
+            return nib.Nifti1Image(vol, affine=mask_img.affine)
+
+    label_data = np.zeros(mask_data.shape, dtype=np.int16)
+    label_data[0, 0, 0] = 1
+    label_data[0, 1, 0] = 1
+    label_data[1, 0, 0] = 2
+    label_data[1, 1, 0] = 2
+    label_img = nib.Nifti1Image(label_data, affine=np.eye(4))
+
+    cluster_masker = NiftiLabelsMasker(label_img, **diagnostics._cluster_masker_kwargs())
+    cluster_masker.fit(label_img)
+
+    cluster_summary_context = {"mode": "image", "cluster_masker": cluster_masker}
+    values = np.array([1.0, np.nan, np.nan, np.nan], dtype=float)
+
+    reduced = diagnostics._summarize_cluster_values(
+        values,
+        masker=DummyMasker(mask_img),
+        cluster_summary_context=cluster_summary_context,
+    )
+
+    assert np.isclose(reduced[0], 1.0)
+    assert np.isnan(reduced[1])
+
+
 def test_cluster_ids_survive_a_map_with_no_background():
     """A fully suprathreshold map has one real cluster, not zero.
 
@@ -396,6 +460,30 @@ def test_jackknife_with_zero_clusters(testdata_cbma_full):
     assert contribution_table is None
     assert clusters_table.empty
     assert not label_maps
+
+
+def test_jackknife_leave_one_out_does_not_impute_zero_denominators(testdata_cbma_full):
+    """Voxels where the original statistic is zero must come back undefined, not huge.
+
+    Dividing by a zero statistic gives infinity, and turning that into the largest float would
+    overflow the distance calculations used to cluster the contribution table in the reports.
+    """
+    res = cbma.ALE().fit(testdata_cbma_full)
+    stat = np.array(res.get_map("stat", return_type="array"), dtype=float)
+    zero_voxels = np.flatnonzero(stat > 0)[:5]
+    assert zero_voxels.size == 5
+    stat[zero_voxels] = 0.0
+    res.maps["stat"] = stat
+
+    jackknife = diagnostics.Jackknife(target_image="z")
+    jackknife._is_pairwaise_estimator = False
+    expid = res.estimator.inputs_["id"][0]
+    values, _ = jackknife._leave_one_out_values(expid, "positive", res, "stat")
+
+    assert np.isnan(values[zero_voxels]).all()
+    defined = np.delete(values, zero_voxels)
+    assert np.isfinite(defined[~np.isnan(defined)]).all()
+    assert np.abs(defined[~np.isnan(defined)]).max() < 1e6
 
 
 def test_jackknife_with_custom_masker_smoke(testdata_ibma):

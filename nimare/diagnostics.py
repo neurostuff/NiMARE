@@ -392,19 +392,35 @@ def _build_cluster_summary_context(masker, label_map, label_vector, cluster_ids)
 
 
 def _summarize_cluster_values(values, masker, cluster_summary_context):
-    """Reduce per-feature values to cluster-level means."""
-    if cluster_summary_context["mode"] == "masked_array":
-        return np.array(
-            [
-                np.mean(values[cluster_idx])
-                for cluster_idx in cluster_summary_context["cluster_indices"]
-            ],
-            dtype=DEFAULT_FLOAT_DTYPE,
-        )
+    """Reduce per-feature values to cluster-level means.
 
-    stat_prop_img = masker.inverse_transform(values)
-    stat_prop_values = cluster_summary_context["cluster_masker"].transform(stat_prop_img)
-    return stat_prop_values.flatten()
+    Values that are not finite (NaN) are left out of each cluster's mean. A cluster with no
+    finite value at all gets NaN.
+    """
+    values = np.asarray(values, dtype=float)
+    finite = np.isfinite(values)
+
+    if cluster_summary_context["mode"] == "masked_array":
+        cluster_means = []
+        for cluster_idx in cluster_summary_context["cluster_indices"]:
+            cluster_values = values[cluster_idx]
+            cluster_values = cluster_values[np.isfinite(cluster_values)]
+            cluster_means.append(cluster_values.mean() if cluster_values.size else np.nan)
+        return np.array(cluster_means, dtype=DEFAULT_FLOAT_DTYPE)
+
+    cluster_masker = cluster_summary_context["cluster_masker"]
+    if finite.all():
+        stat_prop_img = masker.inverse_transform(values)
+        return cluster_masker.transform(stat_prop_img).flatten()
+
+    # The labels masker averages over every voxel in a cluster, so average the finite values
+    # (with the others set to zero) and divide by the share of voxels that are finite.
+    sums = cluster_masker.transform(masker.inverse_transform(np.where(finite, values, 0.0)))
+    shares = cluster_masker.transform(masker.inverse_transform(finite.astype(float)))
+    sums, shares = sums.flatten(), shares.flatten()
+    with np.errstate(divide="ignore", invalid="ignore"):
+        cluster_means = np.where(shares > 0, sums / shares, np.nan)
+    return cluster_means
 
 
 def _infer_label_map_tails(label_maps, clusters_table, n_clusters):
@@ -914,10 +930,16 @@ class Jackknife(Diagnostics):
         # Collect the target values (e.g., ALE values) from the N-1 meta-analysis
         temp_stat_vals = temp_result.get_map(target_value_map, return_type="array")
 
-        # Voxelwise proportional reduction of each statistic after removal of the experiment
-        with np.errstate(divide="ignore", invalid="ignore"):
-            prop_values = np.true_divide(temp_stat_vals, stat_values)
-            prop_values = np.nan_to_num(prop_values)
+        # Voxelwise proportional reduction of each statistic after removal of the experiment.
+        # The proportion is undefined wherever the original statistic is zero (or not finite),
+        # so those voxels are marked as NaN and left out of the cluster summaries, rather than
+        # being turned into a made-up number (np.nan_to_num would turn x / 0 into the largest
+        # float, which overflows the distance calculations done later for the report).
+        stat_values = np.asarray(stat_values, dtype=float)
+        temp_stat_vals = np.asarray(temp_stat_vals, dtype=float)
+        valid = np.isfinite(stat_values) & (stat_values != 0) & np.isfinite(temp_stat_vals)
+        prop_values = np.full(stat_values.shape, np.nan, dtype=float)
+        np.true_divide(temp_stat_vals, stat_values, out=prop_values, where=valid)
 
         return 1 - prop_values, estimator.masker
 
