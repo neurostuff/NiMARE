@@ -220,3 +220,76 @@ def test_importing_figures_keeps_matplotlib_backend():
     )
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
     assert out.stdout.strip().splitlines()[-1] == "svg"
+
+
+def test_reorder_matrix_defined_only_matches_reorder_when_all_defined():
+    """Without undefined values the heatmap ordering must not change."""
+    import numpy as np
+
+    from nimare.reports.figures import _reorder_matrix, _reorder_matrix_defined_only
+
+    rng = np.random.default_rng(0)
+    mat = rng.random((5, 4))
+    rows = [f"s{i}" for i in range(5)]
+    cols = [f"c{i}" for i in range(4)]
+
+    expected = _reorder_matrix(mat, rows, cols)
+    observed = _reorder_matrix_defined_only(mat, rows, cols)
+
+    assert np.array_equal(expected[0], observed[0])
+    assert expected[1] == observed[1]
+    assert expected[2] == observed[2]
+
+
+def test_reorder_matrix_defined_only_keeps_undefined_values_out_of_the_clustering():
+    """Undefined values must not reach scipy's linkage, and must not be filled in."""
+    import numpy as np
+
+    from nimare.reports.figures import _reorder_matrix, _reorder_matrix_defined_only
+
+    rng = np.random.default_rng(1)
+    mat = rng.random((6, 5))
+    mat[2, 1] = np.nan
+    rows = [f"s{i}" for i in range(6)]
+    cols = [f"c{i}" for i in range(5)]
+
+    # The plain reordering cannot handle a NaN.
+    with pytest.raises(ValueError):
+        _reorder_matrix(mat, rows, cols)
+
+    new_mat, new_rows, new_cols = _reorder_matrix_defined_only(mat, rows, cols)
+
+    assert sorted(new_rows) == sorted(rows)
+    assert sorted(new_cols) == sorted(cols)
+    # The row holding the undefined value is set aside and placed last.
+    assert new_rows[-1] == "s2"
+    assert sorted(new_cols) == sorted(cols)
+    # Values travel with their labels, and the single undefined value is still undefined.
+    assert np.isnan(new_mat).sum() == 1
+    for i, row in enumerate(new_rows):
+        for j, col in enumerate(new_cols):
+            expected = mat[rows.index(row), cols.index(col)]
+            assert np.isclose(new_mat[i, j], expected, equal_nan=True)
+
+
+def test_reorder_matrix_defined_only_symmetric():
+    """A symmetric matrix with an undefined row/column is reordered on the rest."""
+    import numpy as np
+
+    from nimare.reports.figures import _reorder_matrix_defined_only
+
+    rng = np.random.default_rng(2)
+    base = rng.random((6, 6))
+    mat = (base + base.T) / 2
+    mat[3, :] = np.nan
+    mat[:, 3] = np.nan
+    labels = [f"s{i}" for i in range(6)]
+
+    new_mat, new_rows, new_cols = _reorder_matrix_defined_only(
+        mat, labels, labels, symmetric=True
+    )
+
+    assert new_rows == new_cols
+    assert new_rows[-1] == "s3"
+    assert np.isnan(new_mat[-1, :]).all()
+    assert np.isnan(new_mat[:, -1]).all()

@@ -115,6 +115,69 @@ def _reorder_matrix(mat, row_labels, col_labels, symmetric=False, reorder="singl
     return mat, row_labels, col_labels
 
 
+def _reorder_matrix_defined_only(mat, row_labels, col_labels, symmetric=False, reorder="single"):
+    """Reorder a matrix without letting undefined (NaN) values reach the clustering.
+
+    Hierarchical clustering needs finite values, and an undefined value is not a number to
+    be filled in. Rows and columns are therefore ordered using only the rows and columns
+    that are fully defined, and any row or column holding an undefined value is placed after
+    them in its original order, so the heatmap shows the gap instead of an invented value.
+    A matrix with no undefined values is reordered exactly as :func:`_reorder_matrix` does.
+    """
+    mat = np.asarray(mat, dtype=float)
+    defined = np.isfinite(mat)
+    if defined.all():
+        return _reorder_matrix(mat, row_labels, col_labels, symmetric=symmetric, reorder=reorder)
+
+    # Set aside, one at a time, the row or column holding the most undefined values until
+    # what is left is fully defined (a row goes first when it ties with a column).
+    row_ok = np.ones(mat.shape[0], dtype=bool)
+    col_ok = np.ones(mat.shape[1], dtype=bool)
+    while True:
+        remaining = defined[np.ix_(row_ok, col_ok)]
+        if remaining.all():
+            break
+        row_missing = np.where(row_ok, (~defined[:, col_ok]).sum(axis=1), -1)
+        col_missing = np.where(col_ok, (~defined[row_ok, :]).sum(axis=0), -1)
+        if symmetric:
+            # Rows and columns are the same items, so set an item aside from both.
+            item_missing = np.where(row_ok, row_missing + col_missing, -1)
+            item = int(np.argmax(item_missing))
+            row_ok[item] = col_ok[item] = False
+        elif row_missing.max() >= col_missing.max():
+            row_ok[int(np.argmax(row_missing))] = False
+        else:
+            col_ok[int(np.argmax(col_missing))] = False
+
+    row_idx = np.flatnonzero(row_ok).tolist()
+    col_idx = np.flatnonzero(col_ok).tolist()
+    row_rest = np.flatnonzero(~row_ok).tolist()
+    col_rest = np.flatnonzero(~col_ok).tolist()
+
+    unique_labels = len(set(row_labels)) == len(row_labels) and len(set(col_labels)) == len(
+        col_labels
+    )
+    if len(row_idx) > 2 and len(col_idx) > 2 and unique_labels:
+        _, sorted_rows, sorted_cols = _reorder_matrix(
+            mat[np.ix_(row_idx, col_idx)],
+            [row_labels[i] for i in row_idx],
+            [col_labels[i] for i in col_idx],
+            symmetric=symmetric,
+            reorder=reorder,
+        )
+        row_position = {label: i for i, label in zip(row_idx, [row_labels[i] for i in row_idx])}
+        col_position = {label: i for i, label in zip(col_idx, [col_labels[i] for i in col_idx])}
+        row_idx = [row_position[label] for label in sorted_rows]
+        col_idx = [col_position[label] for label in sorted_cols]
+
+    row_order = row_idx + row_rest
+    col_order = col_idx + col_rest
+    new_mat = mat[row_order, :][:, col_order]
+    new_row_labels = [row_labels[i] for i in row_order]
+    new_col_labels = [col_labels[i] for i in col_order]
+    return new_mat, new_row_labels, new_col_labels
+
+
 _mni_template_cache = {}
 
 
@@ -368,7 +431,7 @@ def plot_heatmap(
             data_df.index.to_list(),
             data_df.columns.to_list(),
         )
-        new_mat, new_row_labels, new_col_labels = _reorder_matrix(
+        new_mat, new_row_labels, new_col_labels = _reorder_matrix_defined_only(
             mat,
             row_labels,
             col_labels,

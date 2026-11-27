@@ -143,6 +143,21 @@ def test_summarize_cluster_values_image_mode_skips_nan():
     assert np.isnan(reduced[1])
 
 
+def test_merge_tail_contribution_tables_keeps_undefined_contributions():
+    """Merging the two tails must not turn an undefined contribution into a zero."""
+    positive = pd.DataFrame({"id": ["a", "b", "c"], "PositiveTail 1": [0.1, np.nan, 0.3]})
+    negative = pd.DataFrame({"id": ["a", "b", "c"], "NegativeTail 1": [np.nan, 0.2, 0.0]})
+
+    merged = diagnostics._merge_tail_contribution_tables(positive, negative)
+
+    assert merged["id"].tolist() == ["a", "b", "c"]
+    assert merged.loc[1, "PositiveTail 1"] != 0
+    assert np.isnan(merged.loc[1, "PositiveTail 1"])
+    assert np.isnan(merged.loc[0, "NegativeTail 1"])
+    # A contribution that really is zero stays zero.
+    assert merged.loc[2, "NegativeTail 1"] == 0
+
+
 def test_cluster_ids_survive_a_map_with_no_background():
     """A fully suprathreshold map has one real cluster, not zero.
 

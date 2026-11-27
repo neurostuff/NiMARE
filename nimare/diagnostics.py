@@ -423,6 +423,15 @@ def _summarize_cluster_values(values, masker, cluster_summary_context):
     return cluster_means
 
 
+def _merge_tail_contribution_tables(positive_table, negative_table):
+    """Merge the positive- and negative-tail contribution tables of an IBMA result.
+
+    Both tables hold the same analyses, so the merge itself adds no gaps. A missing value is a
+    contribution that could not be computed, and it is kept as NaN rather than filled in.
+    """
+    return positive_table.merge(negative_table, how="outer")
+
+
 def _infer_label_map_tails(label_maps, clusters_table, n_clusters):
     """Infer tail labels from label maps and cluster statistics."""
     inferred_tail = "positive"
@@ -781,9 +790,7 @@ class Diagnostics(NiMAREBase):
         tails = [sign_to_tail[sign] for sign in signs]
         if not self._is_pairwaise_estimator and len(contribution_tables) == 2:
             # Merge POSTAIL_LBL and NEGTAIL_LBL tables for IBMA
-            contribution_table = (
-                contribution_tables[0].merge(contribution_tables[1], how="outer").fillna(0)
-            )
+            contribution_table = _merge_tail_contribution_tables(*contribution_tables)
             tables_dict[contribution_table_name] = contribution_table
         else:
             # Plot separate tables for CBMA
